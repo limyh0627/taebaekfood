@@ -119,6 +119,24 @@ export function stockUnits(
 }
 
 /**
+ * 전표의 미발행 주문 두 목록에 적을 수량 — 어느 화면에서 보든 같은 말을 쓰게 한다.
+ *
+ * 박스로 받은 주문은 `quantity`에 낱개 수량, `boxQuantity`에 주문한 박스 수가 든다.
+ * 박스 수만 보이면 실제 출고량을 모르고, 낱개 수만 보이면 몇 박스를 주문했는지 모른다.
+ * 둘 다 있는 주문은 `2박스 (24개)`처럼 함께 적는다.
+ */
+export function orderItemQuantityLabel(
+  item: Pick<OrderItem, 'quantity' | 'isBoxUnit' | 'boxQuantity' | 'unitsPerBox'>,
+  unit = '개',
+): string {
+  if (item.isBoxUnit && item.boxQuantity) {
+    const each = item.unitsPerBox ? ` (${item.quantity}개)` : '';
+    return `${item.boxQuantity}박스${each}`;
+  }
+  return `${item.quantity}${unit || '개'}`;
+}
+
+/**
  * 한 박스에 낱개가 몇 개 드는가.
  *
  * **근거는 BOM 하나다.** 박스 품목의 BOM에 `낱개 × 20`이 들어 있는 것이 개입수다.

@@ -123,6 +123,8 @@ interface OrderCardProps {
   gridCols?: number;
   isHighlighted?: boolean;
   highlightOrderId?: string | null;
+  /** 상세 확인 팝업에서는 주문 내용을 보여주되 편집·상태변경은 열지 않는다. */
+  readOnly?: boolean;
 }
 
 interface OrderSourceGroupProps {
@@ -178,7 +180,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [],
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
 }) => {
   // Compute derived variables
   const products = items;
@@ -284,10 +286,10 @@ export const OrderCard = memo<OrderCardProps>(({
   return (
     <div
       id={`order-card-${order.id}`}
-      draggable={!isEditing}
+      draggable={!readOnly && !isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      onClick={() => { if (!isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      onClick={() => { if (!readOnly && !isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       {/* 머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다 */}
       <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
@@ -308,14 +310,18 @@ export const OrderCard = memo<OrderCardProps>(({
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
         <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-            className="text-[12px] font-black transition-all hover:opacity-70 opacity-80"
-          >
-            {STATUS_LABEL[order.status] ?? order.status}
-          </button>
-          {showStatusPicker && (
+          {readOnly ? (
+            <span className="text-[12px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
+              className="text-[12px] font-black transition-all hover:opacity-70 opacity-80"
+            >
+              {STATUS_LABEL[order.status] ?? order.status}
+            </button>
+          )}
+          {!readOnly && showStatusPicker && (
             <div
               className="absolute top-full right-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
               onClick={(e) => e.stopPropagation()}

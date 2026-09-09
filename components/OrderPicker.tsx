@@ -1,14 +1,16 @@
 import React from 'react';
-import { ClipboardList, Package, FileText, Search, Plus, ChevronRight, X, Check } from 'lucide-react';
+import { ClipboardList, FileText, Search, Plus, ChevronRight, ChevronDown, X, Check } from 'lucide-react';
 import type { Order, PurchaseOrder, IssuedStatement, Item, Partner } from '../src/shared/types';
 import { poLines } from '../src/shared/types';
 import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import { itemSummary } from '../src/shared/itemSummary';
-import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
 import { weekMonday, weekSunday, monthStart, monthEnd, today, dateOfLocal } from '../src/shared/day';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { matchesSearch } from '../src/shared/hangul';
 import type { ManualRow } from '../src/shared/statementLines';
+import { OrderCard } from './OrdersList';
+import OrderStatusDot from '../src/shared/components/OrderStatusDot';
+import OrderItemLines from '../src/shared/components/OrderItemLines';
 
 /**
  * 거래처를 고른 뒤, **어느 주문·발주로 전표를 끊을지 고르는 화면.**
@@ -79,6 +81,15 @@ export interface OrderPickerProps {
   };
 }
 
+const VoucherStatusDot: React.FC<{ issued: boolean; className?: string }> = ({ issued, className = '' }) => (
+  <span className={`inline-flex items-center gap-1.5 ${className}`}>
+    <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${issued ? 'bg-emerald-500' : 'bg-pink-500'}`} />
+    <span className={`text-[10px] font-bold whitespace-nowrap ${issued ? 'text-emerald-600' : 'text-pink-500'}`}>
+      {issued ? '발행' : '미발행'}
+    </span>
+  </span>
+);
+
 const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on }) => {
   const { createMode, manualMode, editingStmt } = mode;
   const { selectedClientId, selectedOrderId, selectedOrderIds } = pick;
@@ -90,6 +101,26 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
     setDateFrom, setDateTo, setOrderDateQuick, setActiveVisible, setTradeDate,
     setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows,
   } = on;
+  const itemById = React.useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
+  const [previewOrder, setPreviewOrder] = React.useState<Order | null>(null);
+  const [expandedOrderIds, setExpandedOrderIds] = React.useState<Set<string>>(() => new Set());
+  const toggleOrderItems = (orderId: string) => {
+    setExpandedOrderIds(current => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  React.useEffect(() => {
+    if (!previewOrder) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewOrder(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [previewOrder]);
 
   return (
     <>
@@ -103,28 +134,8 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
             {selectedClientId && !(manualMode || editingStmt) && (
               <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0 flex-wrap">
-                  <span className="text-xs font-black text-slate-600">{createMode==='매출'?'주문 선택':'발주 선택'}</span>
-                  {createMode==='매출' && <span className="text-xs text-slate-400">{partnerOrders.length}건</span>}
-                  {/* 몇 건을 골랐는지 — 여러 건이면 한 전표로 묶인다는 걸 여기서 알려 준다 */}
-                  {/*  고른 뒤 뜨는 것들은 **한 줄 내려서** 놓는다(2026-09-07 사장님).
-                       '주문 선택 1건' 옆에 딱지·해제·작성이 다 붙으니 폰에서 빽빽했다.
-                       `basis-full` 로 제 줄을 차지하게 한다(부모가 flex-wrap 이다). */}
-                  {createMode==='매출' && selectedOrderIds.length > 0 && (
-                    <span className="basis-full flex items-center gap-1.5 pt-0.5">
-                      <span className="text-[11px] font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-                        {selectedOrderIds.length}건 선택{selectedOrderIds.length > 1 && ' — 한 전표로'}
-                      </span>
-                      <button type="button"
-                        onClick={() => { setSelectedOrderIds([]); setManualMode(false); setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]); }}
-                        className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline">선택 해제</button>
-                      <button type="button" onClick={goCompose}
-                        className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all">
-                        전표 작성 →
-                      </button>
-                    </span>
-                  )}
                   {createMode==='매출' && (
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div aria-label="주문 날짜 필터" className="basis-full flex items-center gap-1.5 flex-wrap">
                       {(['당일','금주','당월'] as const).map(p=>(
                         <button key={p} onClick={()=>{
                           if(p==='금주'){setDateFrom(weekMonday());setDateTo(weekSunday());setOrderDateQuick('금주');return;} // 월~일 고정
@@ -145,8 +156,24 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                       )}
                     </div>
                   )}
+                  {createMode==='매출' && (
+                    <div className="basis-full flex items-center gap-2 whitespace-nowrap">
+                      <span className="text-xs font-black text-slate-600">주문 선택</span>
+                      <span className="text-xs text-slate-400">{partnerOrders.length}건</span>
+                      {selectedOrderIds.length > 0 && <>
+                        <button type="button" onClick={goCompose}
+                          className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all">
+                          전표 작성 →
+                        </button>
+                        <button type="button"
+                          onClick={() => { setSelectedOrderIds([]); setManualMode(false); setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]); }}
+                          className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline">선택 해제</button>
+                      </>}
+                    </div>
+                  )}
                   {createMode==='매입' && (
                     <>
+                      <span className="text-xs font-black text-slate-600">발주 선택</span>
                       {/*  매출 쪽과 같은 모양으로 — `N건` (2026-09-03 사장님, ui 통일) */}
                       <span className="text-xs text-slate-400">
                         {(confirmedBySupplier.find(s=>s.partnerId===selectedClientId)?.items.length??0) + (orderRequestsBySupplier.find(s=>s.partnerId===selectedClientId)?.items.length??0)}건
@@ -187,9 +214,13 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                             {rows.map(o=>{
                               const alreadyIssued = isVouchered(o);   // 목록 필터와 같은 기준
                               return (
-                                <button key={o.id} onClick={()=>handleOrderClick(o)}
-                                  aria-pressed={selectedOrderIds.includes(o.id)}
-                                  className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
+                                <div key={o.id} data-testid={`order-pick-${o.id}`}
+                                  className={`relative w-full px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50':'bg-white'}`}>
+                                  <button type="button" onClick={()=>handleOrderClick(o)}
+                                    aria-label={`주문 선택 ${cardNoLabel(o)}`}
+                                    aria-pressed={selectedOrderIds.includes(o.id)}
+                                    className={`absolute inset-0 z-0 w-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400 ${alreadyIssued?'hover:bg-emerald-100':'hover:bg-pink-50'}`}/>
+                                  <div className="relative z-10 pointer-events-none flex items-start gap-3 text-left">
                                   {/* 여러 건을 골라 한 전표로 묶을 수 있다 — 고른 것만 줄이 이어 붙는다 */}
                                   <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-all ${
                                     selectedOrderIds.includes(o.id)
@@ -197,20 +228,36 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                                       : 'bg-white border-slate-300'}`}>
                                     {selectedOrderIds.includes(o.id) && <Check size={11} strokeWidth={4}/>}
                                   </span>
+                                  <VoucherStatusDot issued={alreadyIssued} className="w-16 shrink-0" />
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                                    <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
-                                    <span className="text-slate-400">
-                                      {/*  카드번호 — 어느 주문 카드인지 화면끼리 가리킬 이름 */}
-                                      <b className="text-slate-500 font-black tabular-nums mr-1.5">{cardNoLabel(o)}</b>
-                                      주문일 {dateOfLocal(o.createdAt)} · {o.items.length}품목
+                                    <span className="flex items-center gap-2">
+                                      <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
+                                      <button type="button" onClick={() => setPreviewOrder(o)}
+                                        className="pointer-events-auto text-[10px] font-black text-blue-600 tabular-nums hover:text-blue-700 underline underline-offset-2"
+                                        title="주문카드 보기">
+                                        {cardNoLabel(o)}
+                                      </button>
                                     </span>
+                                    <span className="flex items-center gap-1 text-slate-400">
+                                      <span>주문일 {dateOfLocal(o.createdAt)} ·</span>
+                                      <button type="button"
+                                        aria-expanded={expandedOrderIds.has(o.id)}
+                                        aria-label={`${cardNoLabel(o)} ${o.items.length}품목 ${expandedOrderIds.has(o.id) ? '접기' : '보기'}`}
+                                        onClick={() => toggleOrderItems(o.id)}
+                                        className="pointer-events-auto inline-flex items-center gap-0.5 font-bold text-slate-500 hover:text-indigo-600">
+                                        {o.items.length}품목
+                                        <ChevronDown size={11} className={`transition-transform ${expandedOrderIds.has(o.id) ? 'rotate-180' : ''}`}/>
+                                      </button>
+                                    </span>
+                                    {expandedOrderIds.has(o.id) && (
+                                      <OrderItemLines orderItems={o.items} itemById={itemById}
+                                        className="mt-1.5 border-t border-slate-100 pt-1.5" />
+                                    )}
                                   </div>
-                                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status]||'bg-slate-100 text-slate-500'}`}>{STATUS_LABEL[o.status]||o.status}</span>
-                                  {alreadyIssued
-                                    ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                    : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                                  <OrderStatusDot status={o.status} className="shrink-0" />
                                   <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                                </button>
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
@@ -273,14 +320,12 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                               return (
                                 <button key={po.id} onClick={()=>clickCard(po)}
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
+                                  <VoucherStatusDot issued={alreadyIssued} className="w-16 shrink-0" />
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="font-black text-slate-800">입고: {receivedDate||'미정'}</span>
                                     <span className="text-slate-400"><b className="text-slate-500 font-black tabular-nums mr-1.5">{cardNoLabel(po)}</b>발주일 {createdDate} · {summarize(po)}</span>
                                   </div>
                                   <span className="text-slate-600 font-bold shrink-0">{totalQty(po)}개</span>
-                                  {alreadyIssued
-                                    ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                    : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
                                   <ChevronRight size={14} className="text-slate-300 shrink-0"/>
                                 </button>
                               );
@@ -301,13 +346,11 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                               return (
                                 <button key={po.id} onClick={()=>clickCard(po)}
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-indigo-50'}`}>
+                                  <VoucherStatusDot issued={alreadyIssued} className="w-16 shrink-0" />
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="font-black text-slate-800">발주: {createdDate||'미정'}</span>
                                     <span className="text-slate-400">{summarize(po)} · {totalQty(po)}개</span>
                                   </div>
-                                  {alreadyIssued
-                                    ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                    : <span className="text-[10px] font-black text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded-full">미발행</span>}
                                   <ChevronRight size={14} className="text-slate-300 shrink-0"/>
                                 </button>
                               );
@@ -345,13 +388,13 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                       <button key={g.partnerId || g.partnerName}
                         onClick={() => { setSelectedClientId(g.partnerId ?? ''); setManualMode(false); }}
                         className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-rose-50 transition-colors">
+                        <VoucherStatusDot issued={false} className="w-16 shrink-0" />
                         <span className="font-black text-slate-800 w-40 truncate shrink-0">{g.partnerName || '거래처 미지정'}</span>
                         <span className="text-slate-400 flex-1 min-w-0 truncate">
                           {g.items.slice(0, 2).map(x => x.product?.name).filter(Boolean).join(', ')}
                           {g.items.length > 2 && ` 외 ${g.items.length - 2}`}
                         </span>
                         <span className="text-slate-600 font-bold shrink-0">{g.items.length}품목</span>
-                        <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full shrink-0">미발행</span>
                         <ChevronRight size={14} className="text-slate-300 shrink-0"/>
                       </button>
                     ))}
@@ -381,27 +424,43 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                 {/*  줄에 못 박은 칸이 456px 이라 폰(안쪽 약 330px)에서는 뒤가 잘려 나간다 —
                      발행 여부와 품목 수가 화면 밖이었다. **옆으로 민다**(table.ts 규칙, 칸을 감추지 않는다). */}
                 <div className="flex-1 overflow-y-auto overflow-x-auto divide-y divide-slate-50">
-                  <div className="min-w-[560px]">
+                  <div className="min-w-[600px]">
                   {listOrders.slice(0, activeVisible).map(o => {
                     const cl = partners.find(c => c.id === o.partnerId);
                     return (
-                      <button key={o.id}
-                        onClick={() => { setSelectedClientId(o.partnerId ?? ''); setManualMode(false); handleOrderClick(o); }}
-                        className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-blue-50 transition-colors">
+                      <div key={o.id} data-testid={`active-order-${o.id}`}
+                        className="relative w-full px-5 py-2.5 text-xs">
+                        <button type="button"
+                          aria-label={`미발행 주문 선택 ${cardNoLabel(o)}`}
+                          onClick={() => { setSelectedClientId(o.partnerId ?? ''); setManualMode(false); handleOrderClick(o); }}
+                          className="absolute inset-0 z-0 w-full transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"/>
+                        <div className="relative z-10 pointer-events-none text-left">
+                        <div className="flex items-center gap-2">
+                        <VoucherStatusDot issued={isVouchered(o)} className="w-16 shrink-0" />
+                        <span className="w-24 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
                         <span className="font-black text-slate-800 w-32 truncate shrink-0">{cl?.name || o.partnerId}</span>
-                        <span className={`w-16 text-center shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status] || 'bg-slate-100 text-slate-500'}`}>
-                          {STATUS_LABEL[o.status] || o.status}
-                        </span>
+                        <OrderStatusDot status={o.status} className="w-20 shrink-0" />
                         {/*  카드번호 — 어느 주문 카드인지 가리킬 이름(2026-09-03) */}
-                        <span className="w-24 shrink-0 text-[10px] font-black text-slate-400 tabular-nums truncate">{cardNoLabel(o)}</span>
-                        <span className="w-28 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
-                        <span className="w-14 shrink-0 text-center">
-                          {isVouchered(o)
-                            ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행</span>
-                            : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                        </span>
-                        <span className="ml-auto shrink-0 text-slate-400">{o.items.length}품목</span>
-                      </button>
+                        <button type="button" onClick={() => setPreviewOrder(o)}
+                          className="pointer-events-auto w-24 shrink-0 truncate text-[10px] font-black text-blue-600 tabular-nums hover:text-blue-700 underline underline-offset-2"
+                          title="주문카드 보기">
+                          {cardNoLabel(o)}
+                        </button>
+                        <button type="button"
+                          aria-expanded={expandedOrderIds.has(o.id)}
+                          aria-label={`${cardNoLabel(o)} ${o.items.length}품목 ${expandedOrderIds.has(o.id) ? '접기' : '보기'}`}
+                          onClick={() => toggleOrderItems(o.id)}
+                          className="pointer-events-auto ml-auto inline-flex shrink-0 items-center gap-0.5 font-bold text-slate-500 hover:text-indigo-600">
+                          {o.items.length}품목
+                          <ChevronDown size={11} className={`transition-transform ${expandedOrderIds.has(o.id) ? 'rotate-180' : ''}`}/>
+                        </button>
+                        </div>
+                        {expandedOrderIds.has(o.id) && (
+                          <OrderItemLines orderItems={o.items} itemById={itemById}
+                            className="mt-2 border-t border-slate-100 pt-2" />
+                        )}
+                        </div>
+                      </div>
                     );
                   })}
                   {listOrders.length > activeVisible && (
@@ -415,6 +474,45 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
               </div>
               );
             })()}
+
+            {/* 주문번호는 주문을 고르는 단추와 별개다 — 번호를 눌러도 체크가 뒤집히지 않는다. */}
+            {previewOrder && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                onClick={() => setPreviewOrder(null)}>
+                <div role="dialog" aria-modal="true" aria-labelledby="statement-order-preview-title"
+                  className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-slate-50 shadow-2xl"
+                  onClick={event => event.stopPropagation()}>
+                  <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
+                    <div className="min-w-0">
+                      <h3 id="statement-order-preview-title" className="font-black text-slate-900">주문 카드</h3>
+                      <p className="truncate text-[11px] font-bold text-slate-400">
+                        {previewOrder.partnerName || partners.find(p => p.id === previewOrder.partnerId)?.name || '거래처 미지정'}
+                        <span className="ml-1.5 tabular-nums">{cardNoLabel(previewOrder)}</span>
+                      </p>
+                    </div>
+                    <button type="button" aria-label="주문카드 닫기" onClick={() => setPreviewOrder(null)}
+                      className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                      <X size={18}/>
+                    </button>
+                  </div>
+                  <div className="overflow-y-auto p-4">
+                    <OrderCard
+                      readOnly
+                      order={previewOrder}
+                      partners={partners}
+                      items={allItems}
+                      editingOrderId={null}
+                      setEditingOrderId={() => {}}
+                      showAddProductSelect={null}
+                      setShowAddProductSelect={() => {}}
+                      onUpdateDeliveryDate={() => {}}
+                      onUpdateStatus={() => {}}
+                      onDeleteOrder={() => {}}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
     </>
   );
 };

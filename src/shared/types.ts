@@ -873,6 +873,7 @@ export interface AppNotification {
   title: string;
   body: string;
   readBy: string[];   // 읽은 userId 목록
+  dismissedBy?: string[]; // 이 사용자에게만 종 목록에서 숨김 — 공유 신규 주문을 실제 삭제하면 안 된다
   createdAt: string;
   linkedId?: string;  // 관련 order/request ID
   senderId?: string;  // 발생시킨 userId

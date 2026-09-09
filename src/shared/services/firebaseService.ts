@@ -20,6 +20,7 @@ import {
   QuerySnapshot,
   QueryConstraint,
   documentId,
+  arrayUnion,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { today } from '../day';
@@ -155,6 +156,18 @@ export const updateItem = async (collectionName: CollectionName, id: string, dat
 export const deleteItem = async (collectionName: CollectionName, id: string) => {
   const docRef = doc(db, collectionName, id);
   await deleteDoc(docRef);
+};
+
+/**
+ * 알림의 읽음·숨김은 여러 직원이 같은 문서에 자기 ID를 보탠다.
+ * 화면 배열을 다시 써버리면 동시 처리 때 다른 직원 ID가 사라지므로 arrayUnion만 쓴다.
+ */
+export const markNotificationForUser = async (
+  id: string,
+  field: 'readBy' | 'dismissedBy',
+  userId: string,
+) => {
+  await updateDoc(doc(db, 'notifications', id), { [field]: arrayUnion(userId) });
 };
 
 /**

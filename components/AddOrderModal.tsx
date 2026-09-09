@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { today, addDays } from '../src/shared/day';
+import { today, addDays, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
-import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
+import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
@@ -13,9 +13,14 @@ import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
+import { isActive } from '../src/shared/statementOrders';
+import { cardNoLabel } from '../src/shared/cardNo';
+import OrderStatusDot from '../src/shared/components/OrderStatusDot';
+import OrderItemLines from '../src/shared/components/OrderItemLines';
 
 interface AddOrderModalProps {
   items: Item[];
+  orders: readonly Order[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   palletStocks: PalletStock[];
@@ -44,8 +49,9 @@ const decompound = (str: string): string =>
 const matchClient = (name: string, query: string): boolean =>
   !!query.trim() && matchesSearch(name, query);
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onSave }) => {
   const products = items;
+  const itemById = useMemo(() => new Map(items.map(item => [item.id, item])), [items]);
   const submaterials = _submaterials ?? items.filter(i => i.type !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
 
@@ -71,6 +77,30 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   const [source, setSource] = useState<OrderSource>('일반');
   const [pallets, setPallets] = useState<OrderPallet[]>([]);
   const [isDelivery, setIsDelivery] = useState(false);
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(() => new Set());
+
+  // 거래처 이름이 같아도 주문은 섞지 않는다 — 연결의 근거는 partnerId 하나다.
+  const activeClientOrders = useMemo(() => {
+    if (!selectedClient) return [];
+    return orders
+      .filter(order => order.partnerId === selectedClient.id && isActive(order))
+      .sort((a, b) => {
+        const aDate = dateOfLocal(a.deliveryDate) || '9999-12-31';
+        const bDate = dateOfLocal(b.deliveryDate) || '9999-12-31';
+        return aDate.localeCompare(bDate)
+          || b.createdAt.localeCompare(a.createdAt)
+          || a.id.localeCompare(b.id);
+      });
+  }, [orders, selectedClient]);
+
+  const toggleOrderItems = (orderId: string) => {
+    setExpandedOrderIds(current => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
@@ -639,6 +669,51 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
               </div>
             )}
           </section>
+
+          {selectedClient && (
+            <section aria-labelledby="active-client-orders-title" className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="flex items-center gap-2 text-slate-400">
+                <ClipboardList size={16} />
+                <span id="active-client-orders-title" className="text-xs font-bold uppercase tracking-widest">현재 진행 주문</span>
+                <span className="text-[10px] font-bold text-slate-400">{activeClientOrders.length}건</span>
+              </div>
+
+              {activeClientOrders.length === 0 ? (
+                <p className="border-y border-slate-100 py-3 text-[11px] font-medium text-slate-400">
+                  현재 진행 중인 주문이 없습니다.
+                </p>
+              ) : (
+                <div className="max-h-44 overflow-y-auto border-y border-slate-100 divide-y divide-slate-100 custom-scrollbar">
+                  {activeClientOrders.map(order => {
+                    const expanded = expandedOrderIds.has(order.id);
+                    return (
+                      <div key={order.id} data-testid={`active-client-order-${order.id}`} className="px-1 py-2.5">
+                        <div className="flex items-center gap-3">
+                          <OrderStatusDot status={order.status} className="w-20 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[10px] font-black text-slate-600 tabular-nums">{cardNoLabel(order)}</p>
+                            <p className="mt-0.5 text-[10px] font-medium text-slate-400">납품 {dateOfLocal(order.deliveryDate) || '미정'}</p>
+                          </div>
+                          <button type="button"
+                            aria-expanded={expanded}
+                            aria-label={`${cardNoLabel(order)} ${order.items.length}품목 ${expanded ? '접기' : '보기'}`}
+                            onClick={() => toggleOrderItems(order.id)}
+                            className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[10px] font-bold text-slate-500 hover:text-indigo-600">
+                            {order.items.length}품목
+                            <ChevronDown size={11} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          </button>
+                        </div>
+                        {expanded && (
+                          <OrderItemLines orderItems={order.items} itemById={itemById}
+                            className="mt-2 border-t border-slate-100 pt-2 pl-1" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
           {selectedClient && (
             <section className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">

@@ -107,6 +107,7 @@ import OfficeTalk from '../../../components/OfficeTalk';
 import { notify, loadNotifyMode } from '../../shared/notify';
 import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
 import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
+import { selectBellNotifications } from '../../shared/bellNotifications';
 import { roomNameFor } from '../../shared/roomName';
 import { leaveStatusPatch } from '../../shared/leave';
 import AccountMenu from '../../../components/AccountMenu';
@@ -155,6 +156,7 @@ import {
   fetchDateRange,
   mutateRawMaterialLots,
   adjustItemStock,
+  markNotificationForUser,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -1589,7 +1591,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {/* 알림 벨 */}
           {(() => {
-            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
+            const { unread } = selectBellNotifications(appNotifications, currentUser.id);
             return (
               <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
                 <button
@@ -1671,6 +1673,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="대시보드" storageKey="dash" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
+                      <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
                     </nav>
                   </NavGroup>
                   <NavGroup title="업무 관리" storageKey="work" collapsed={isSidebarCollapsed}>
@@ -4330,7 +4333,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal items={allItems} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal items={allItems} orders={allOrders} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
@@ -4501,16 +4504,27 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {/* 알림 패널 — aside overflow-hidden 우회용 포털 */}
       {showNotifPanel && createPortal(
         (() => {
-          const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
+          const { visible, unread } = selectBellNotifications(appNotifications, currentUser.id);
+          const markForCurrentUser = async (
+            notifications: AppNotification[],
+            field: 'readBy' | 'dismissedBy',
+          ) => {
+            await Promise.all(notifications.map(n =>
+              markNotificationForUser(n.id, field, currentUser.id)));
+          };
           const markRead = async (id: string) => {
-            const n = appNotifications.find(x => x.id === id);
+            const n = visible.find(x => x.id === id);
             if (!n || n.readBy.includes(currentUser.id)) return;
-            await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
+            await markForCurrentUser([n], 'readBy');
           };
           const markAll = async () => {
-            await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
+            await markForCurrentUser(unread, 'readBy');
           };
-          const sorted = [...appNotifications].filter(n => !n.targetId || n.targetId === currentUser.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          const dismissAll = async () => {
+            if (!window.confirm('종 알림을 전부 삭제할까요?')) return;
+            await markForCurrentUser(visible, 'dismissedBy');
+          };
+          const sorted = [...visible].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
           const handleNotifClick = async (n: AppNotification) => {
             await markRead(n.id);
@@ -4580,9 +4594,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <ChevronLeft size={20} className="text-slate-600" />
                   </button>
                   <span className="flex-1 text-sm font-black text-slate-700">알림</span>
-                  {unread.length > 0 && (
-                    <button onClick={markAll} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 transition-colors px-2 py-1">전부 읽음</button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {unread.length > 0 && (
+                      <button onClick={markAll} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 transition-colors px-2 py-1">전부 읽음</button>
+                    )}
+                    {visible.length > 0 && (
+                      <button onClick={dismissAll} className="text-xs font-bold text-rose-500 hover:text-rose-700 transition-colors px-2 py-1">전부 삭제</button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {notifList}
@@ -4600,9 +4619,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                   <span className="text-xs font-black text-slate-700">알림</span>
-                  {unread.length > 0 && (
-                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">전부 읽음</button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {unread.length > 0 && (
+                      <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">전부 읽음</button>
+                    )}
+                    {visible.length > 0 && (
+                      <button onClick={dismissAll} className="text-[10px] font-bold text-rose-500 hover:text-rose-700 transition-colors">전부 삭제</button>
+                    )}
+                  </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
                   {notifList}
