@@ -86,6 +86,41 @@ export const isLinkedToPartner = (
   p.itemId === itemId && p.partnerId === partnerId && !isPurchaseLine(p));
 
 /**
+ * **품목 → 그 품목을 파는 거래처 이름들** — 한 번 만들어 두고 쓴다.
+ *
+ * 2026-09-09 사장님: "여기있는 품목명 검색이 왤케 느리냐".
+ *
+ * 품목관리 검색이 거래처 이름으로도 찾게 돼 있는데, 그걸 이렇게 짜고 있었다 —
+ *
+ *     result.filter(p => 이름에걸리나(p)
+ *       || partners.some(c => isLinkedToPartner(partnerItems, c.id, p.id) && ...))
+ *
+ * `isLinkedToPartner` 는 안에서 `partnerItems` 를 통째로 훑는다. 그래서 한 글자 칠 때마다
+ * **품목 × 거래처 × 거래처단가**를 돌았다 — 536 × 317 × 1,267 = **2억 번**이다(2026-09-09 실측).
+ *
+ * 표를 미리 만들면 검색은 품목 수만큼만 돈다. **2억 번 → 536번.**
+ *
+ * 돌려주는 값은 **소문자로 이어 붙인 한 줄**이다 — 부르는 쪽이 `includes` 한 번만 하면 된다.
+ */
+export function partnerNamesByItem(
+  partnerItems: readonly PartnerItem[] | undefined,
+  partners: readonly { id: string; name?: string }[] | undefined,
+): Map<string, string> {
+  const 이름 = new Map<string, string>();
+  for (const c of partners ?? []) if (c.id) 이름.set(c.id, String(c.name ?? '').toLowerCase());
+
+  const out = new Map<string, string[]>();
+  for (const p of partnerItems ?? []) {
+    if (isPurchaseLine(p)) continue;             // 매입 연결은 '파는 거래처'가 아니다
+    const n = 이름.get(p.partnerId);
+    if (!p.itemId || !n) continue;
+    const arr = out.get(p.itemId);
+    if (arr) { if (!arr.includes(n)) arr.push(n); } else out.set(p.itemId, [n]);
+  }
+  return new Map([...out].map(([id, names]) => [id, names.join(' ')]));
+}
+
+/**
  * **이 품목을 스마트스토어에서 파는가.**
  *
  * 표시가 **두 군데로 갈려 있었다** — 품목의 `isSmartStore` 스위치와,

@@ -18,7 +18,7 @@ import { priceParts } from '../src/shared/lineAmount';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import FilterRow from '../src/shared/ui/FilterRow';
-import { partnersOfItem, isLinkedToPartner } from '../src/shared/partnerPrice';
+import { partnersOfItem, isLinkedToPartner, partnerNamesByItem } from '../src/shared/partnerPrice';
 
 interface ItemManagerProps {
   items: Item[];
@@ -383,6 +383,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
   const selectedClient = selectedClientId ? partners.find(c => c.id === selectedClientId) : null;
 
+  /*  **거래처 이름 표를 미리 만든다** — 검색은 이 표만 본다.
+   *  전에는 한 글자마다 품목×거래처×거래처단가(2억 번)를 돌아서 타이핑이 밀렸다. */
+  const 거래처이름표 = useMemo(
+    () => partnerNamesByItem(partnerItems, partners), [partnerItems, partners]);
+
   const filteredItems = useMemo(() => {
     const isByClientPurchase = mainView === 'by-partner' && partnerScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
@@ -408,7 +413,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       if (mainView === 'flat') {
         result = result.filter(p =>
           p.name.toLowerCase().includes(term) ||
-          partners.some(c => isLinkedToPartner(partnerItems, c.id, p.id) && c.name.toLowerCase().includes(term))
+          (거래처이름표.get(p.id) ?? '').includes(term)
         );
       } else {
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
@@ -420,7 +425,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       const d = catOrder(categoryOf(a)) - catOrder(categoryOf(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
-  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
+  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
