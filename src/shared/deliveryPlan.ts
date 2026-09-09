@@ -1,6 +1,7 @@
 import type { Order } from './types';
 import { OrderStatus } from './types';
 import { dateOfLocal } from './day';
+import { clusterByGroup, addGroup, removeFromGroups } from './rowGroup';
 
 /**
  * **배송 계획 — 날짜별 순서·오전오후·완료표시.**
@@ -143,49 +144,29 @@ export function dayRows(input: {
 }
 
 /**
- * 같은 묶음끼리 **붙여 세운다**. 자리는 그 묶음의 **제일 앞 사람 자리**다.
- *
- * 흩어져 있으면 "같이 간다"가 안 읽힌다. 그렇다고 묶음을 맨 앞으로 끌어올리면
- * 애써 잡은 순서가 통째로 뒤집힌다 — 그래서 첫 사람 자리에 나머지를 데려온다.
+ * 묶은 것끼리 붙여 세운다 — **규칙은 [rowGroup.clusterByGroup](./rowGroup.ts) 한 곳**이다.
+ * 작업순서(품목 단위)도 같은 규칙을 쓴다. 두 벌로 두면 갈린다.
  */
 function 묶어세우기(rows: DayRow[], groups: readonly DeliveryGroup[]): DayRow[] {
   if (groups.length === 0) return rows;
   const 어느묶음 = new Map<string, DeliveryGroup>();
   for (const g of groups) for (const id of g.orderIds) 어느묶음.set(id, g);
-
-  const out: DayRow[] = [];
-  const 이미 = new Set<string>();
-  for (const r of rows) {
-    if (이미.has(r.orderId)) continue;
-    const g = 어느묶음.get(r.orderId);
-    if (!g) { out.push(r); 이미.add(r.orderId); continue; }
-    //  이 묶음 사람들을 **지금 늘어선 차례 그대로** 데려온다
-    const 식구 = rows.filter(x => 어느묶음.get(x.orderId)?.id === g.id && !이미.has(x.orderId));
-    식구.forEach((x, i) => {
-      out.push({ ...x, groupId: g.id, groupName: g.name, groupFirst: i === 0, groupLast: i === 식구.length - 1 });
-      이미.add(x.orderId);
-    });
-  }
-  return out;
+  return clusterByGroup(rows, r => r.orderId, id => 어느묶음.get(id));
 }
 
 /** 고른 것들을 한 묶음으로. 이미 다른 묶음에 있던 건 거기서 빠진다 — 한 사람은 한 차만 탄다. */
 export function withGroup(plan: DayPlan, orderIds: readonly string[], name?: string, id = `g-${Date.now()}`): DayPlan {
-  const 넣을것 = orderIds.filter(Boolean);
-  if (넣을것.length === 0) return plan;
-  const 남은묶음 = (plan.groups ?? [])
-    .map(g => ({ ...g, orderIds: g.orderIds.filter(x => !넣을것.includes(x)) }))
-    //  한 명만 남은 묶음은 묶음이 아니다
-    .filter(g => g.orderIds.length > 1);
-  return { ...plan, groups: [...남은묶음, { id, ...(name ? { name } : {}), orderIds: [...넣을것] }] };
+  const 담기 = (g: DeliveryGroup) => ({ ...g, memberIds: g.orderIds });
+  const 풀기 = (g: { id: string; name?: string; memberIds: string[] }): DeliveryGroup =>
+    ({ id: g.id, ...(g.name ? { name: g.name } : {}), orderIds: g.memberIds });
+  const next = addGroup((plan.groups ?? []).map(담기), orderIds, g => ({ ...풀기(g), memberIds: g.memberIds }), name, id);
+  return { ...plan, groups: next.map(풀기) };
 }
 
 /** 이 주문을 묶음에서 뺀다. 한 명만 남으면 그 묶음도 없앤다. */
 export function ungroup(plan: DayPlan, orderId: string): DayPlan {
-  const groups = (plan.groups ?? [])
-    .map(g => ({ ...g, orderIds: g.orderIds.filter(x => x !== orderId) }))
-    .filter(g => g.orderIds.length > 1);
-  return { ...plan, groups };
+  const next = removeFromGroups((plan.groups ?? []).map(g => ({ ...g, memberIds: g.orderIds })), orderId);
+  return { ...plan, groups: next.map(g => ({ id: g.id, ...(g.name ? { name: g.name } : {}), orderIds: g.memberIds })) };
 }
 
 /** 오전/오후로 가른다 — 화면이 두 묶음으로 그린다 */

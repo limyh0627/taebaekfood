@@ -3,6 +3,8 @@ import React, { useState, useEffect, useMemo, memo } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
+  Link2,
+  Unlink,
   Plus,
   Clock,
   Inbox,
@@ -37,6 +39,8 @@ import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
+import { itemIndexOf } from '../src/shared/workItemLine';
+import { clusterByGroup } from '../src/shared/rowGroup';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -94,8 +98,8 @@ interface OrdersListProps {
   onHighlightClear?: () => void;
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
-  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[]) => void;
+  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void;
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
   ordersMonths?: number;
@@ -1119,13 +1123,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; };
+  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
     onSetWorkOrderItems?.(resolved);
   };
   const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
+  /** 같이 만들 것으로 고른 줄들 — 두 개 이상 골라야 묶을 수 있다 */
+  const [workGroupPick, setWorkGroupPick] = useState<string[]>([]);
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
@@ -1342,9 +1348,35 @@ const OrdersList: React.FC<OrdersListProps> = ({
             .filter(wi => wi.category !== '향미유' && wi.category !== '고춧가루');
         });
 
-        // 기름 / 가루 분류
-        const oilItems = validWorkItems.filter(wi => isOil(wi.itemName));
-        const powderItems = validWorkItems.filter(wi => isPowder(wi.itemName));
+        /*  기름 / 가루 분류 — 나눈 **뒤에** 묶음끼리 붙여 세운다.
+         *  붙여 세우는 규칙은 [rowGroup](../src/shared/rowGroup.ts) 한 곳이다(배송도 같은 것을 쓴다). */
+        const 묶음찾기 = (key: string) => {
+          const wi = validWorkItems.find(x => x.key === key);
+          return wi?.groupId ? { id: wi.groupId, name: wi.groupName } : undefined;
+        };
+        const 세우기 = (list: WorkItem[]) => clusterByGroup(list, x => x.key, 묶음찾기);
+        const oilItems = 세우기(validWorkItems.filter(wi => isOil(wi.itemName)));
+        const powderItems = 세우기(validWorkItems.filter(wi => isPowder(wi.itemName)));
+
+        /** 고른 줄들을 한 묶음으로 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */
+        const toggleWorkGroupPick = (key: string) => {
+          const wi = validWorkItems.find(x => x.key === key);
+          if (wi?.groupId) {
+            const 남는수 = validWorkItems.filter(x => x.groupId === wi.groupId).length - 1;
+            setWorkItems(prev => prev.map(x =>
+              //  한 명만 남으면 그 묶음도 없앤다 — 혼자는 묶음이 아니다
+              (x.key === key || (남는수 < 2 && x.groupId === wi.groupId))
+                ? { ...x, groupId: undefined, groupName: undefined } : x));
+            return;
+          }
+          setWorkGroupPick(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
+        };
+        const confirmWorkGroup = () => {
+          if (workGroupPick.length < 2) return;
+          const gid = `wg-${Date.now()}`;
+          setWorkItems(prev => prev.map(x => workGroupPick.includes(x.key) ? { ...x, groupId: gid } : x));
+          setWorkGroupPick([]);
+        };
 
         // 섹션 내에서만 순서 이동 (기름↔기름, 가루↔가루)
         const getSection = (name: string) => isPowder(name) ? 'powder' : 'oil';
@@ -1370,6 +1402,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const sectionIdx = sectionItems.findIndex(x => x.key === wi.key);
           const isFirst = sectionIdx === 0;
           const isLast = sectionIdx === sectionItems.length - 1;
+          /*  **체크는 주문 품목 줄의 것을 그대로 쓴다**(2026-09-09 사장님:
+           *  "주문 카드에는 한줄별로 체크박스가 달려있잖아 그거 그대로 쓰면 되는거 아니야?").
+           *  새 칸을 만들면 같은 사실이 두 곳에 남아 갈린다. 여기서 체크하면 주문카드에도 뜨고,
+           *  마지막 품목을 체크하면 handleToggleItemChecked 가 주문을 작업완료로 넘겨준다. */
+          const wiOrder = orders.find(x => x.id === wi.orderId);
+          const lineIdx = itemIndexOf(wi, wiOrder);
+          const checked = lineIdx >= 0 && !!wiOrder?.items?.[lineIdx]?.checked;
           return (
             <div
               key={wi.key}
@@ -1392,21 +1431,37 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   return a;
                 });
               }}
-              className={`flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border cursor-grab active:cursor-grabbing ${isPowder(wi.itemName) ? 'border-orange-100' : 'border-pink-100'}`}
+              className={`flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border cursor-grab active:cursor-grabbing ${checked ? 'opacity-50 ' : ''}${
+                (wi as WorkItem & { groupId?: string }).groupId ? 'border-l-4 border-l-violet-400 ' : ''}${
+                workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400 border-violet-200' : (isPowder(wi.itemName) ? 'border-orange-100' : 'border-pink-100')}`}
             >
               <GripVertical size={11} className="text-slate-200 shrink-0" />
+              {lineIdx >= 0 && onToggleItemChecked && (
+                <button
+                  onClick={e => { e.stopPropagation(); onToggleItemChecked(wi.orderId, lineIdx); }}
+                  aria-label={checked ? '작업 취소' : '작업 완료'}
+                  className={`shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center text-[10px] transition-colors ${
+                    checked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 hover:border-emerald-400'}`}
+                >{checked ? '✓' : ''}</button>
+              )}
               <span className={`text-[10px] font-black w-4 shrink-0 ${isPowder(wi.itemName) ? 'text-orange-400' : 'text-pink-500'}`}>{sectionIdx + 1}</span>
               <button
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
                 className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
               >
-                <p className="text-[11px] font-bold text-slate-700 truncate">{wi.itemName}</p>
+                <p className={`text-[11px] font-bold truncate ${checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{wi.itemName}</p>
                 <p className="text-[9px] text-slate-400 truncate">{wi.partnerName} · {wi.qty}개</p>
               </button>
               <div className="flex flex-col gap-0.5">
                 <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'up'); }} disabled={isFirst} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronUp size={12} /></button>
                 <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'down'); }} disabled={isLast} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronDown size={12} /></button>
               </div>
+              {/*  같이 만들 것끼리 묶기 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */}
+              <button
+                onClick={e => { e.stopPropagation(); toggleWorkGroupPick(wi.key); }}
+                aria-label={(wi as WorkItem & { groupId?: string }).groupId ? '묶음에서 빼기' : '같이 만들 것 고르기'}
+                className={`shrink-0 transition-colors ${workGroupPick.includes(wi.key) ? 'text-violet-500' : 'text-slate-200 hover:text-violet-400'}`}
+              >{(wi as WorkItem & { groupId?: string }).groupId ? <Unlink size={11} /> : <Link2 size={11} />}</button>
               <button onClick={e => { e.stopPropagation(); removeItem(wi.key); }} className="text-slate-200 hover:text-rose-400 transition-all ml-0.5"><X size={12} /></button>
             </div>
           );
@@ -1492,6 +1547,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider px-1">가루</span>
                         {powderItems.map(wi => renderItemRow(wi, powderItems))}
                       </div>
+                    )}
+                    {workGroupPick.length >= 2 && (
+                      <button onClick={confirmWorkGroup}
+                        className="mt-1 text-[10px] font-black text-white bg-violet-500 hover:bg-violet-600 rounded-xl py-2 transition-colors">
+                        고른 {workGroupPick.length}건 같이 만들 것으로 묶기
+                      </button>
                     )}
                   </>
                 )}

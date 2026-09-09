@@ -27,6 +27,12 @@ export interface WorkOrderItem {
   category: string;
   sortIndex: number;
   date?: string;
+  /**
+   * **같이 만들 것끼리 묶은 표식**(2026-09-09 사장님). 배송의 '한 차' 와 같은 얼개다 —
+   * 붙여 세우는 규칙은 [rowGroup](../rowGroup.ts) 한 곳이 안다.
+   */
+  groupId?: string;
+  groupName?: string;
 }
 
 export interface AppData {
