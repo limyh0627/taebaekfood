@@ -5,6 +5,7 @@ import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
+import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
@@ -286,8 +287,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const usedKg = Math.round(ledgerOnly[raw] * 1000) / 1000;
       if (usedKg <= 0) continue;
       const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
+      const 홀더 = rawHolderByName(allItems, raw);
       await setDoc(doc(db, 'rawMaterialLedger', entryId), {
-        id: entryId, material: raw, date: dateStr, received: 0, used: usedKg,
+        id: entryId, material: raw, ...(홀더 ? rawLedgerKeys(홀더) : {}), date: dateStr, received: 0, used: usedKg,
         note: `자동: ${customerName}`, createdAt: new Date().toISOString(), type: 'auto', unit: 'kg', orderId: order.id,
         ...작성자,
       }, { merge: true });
@@ -296,7 +298,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const raw of rawNames) {
       const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
       // 원료 홀더 = raw, 또는 wip 벌크 반제품(unit≠'개'). phantom(무재고)은 이미 전개돼 여기 오지 않음.
-      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === raw);
+      const rawItem = rawHolderByName(allItems, raw);
       let noteSuffix = '';
       if (rawItem) {
         const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
@@ -321,7 +323,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         }
       }
       const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
-      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id, ...작성자 }, { merge: true });
+      //  **열쇠를 같이 박는다** — 어느 회사·어느 품목에서 빠졌는지는 실제로 깎은 홀더가 안다.
+      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, ...(rawItem ? rawLedgerKeys(rawItem) : {}), date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id, ...작성자 }, { merge: true });
 
       /**
        * **둘 다 쓴 뒤에 되읽어 대조한다.**
@@ -350,7 +353,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const byMat: Record<string, NonNullable<Order['rawConsumedLots']>> = {};
     for (const c of consumed) (byMat[c.material] = byMat[c.material] || []).push(c);
     for (const [material, arr] of Object.entries(byMat)) {
-      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === material);
+      const rawItem = rawHolderByName(allItems, material);
       if (rawItem) {
         await mutateRawMaterialLots(
           rawItem.id,

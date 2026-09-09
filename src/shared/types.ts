@@ -954,7 +954,19 @@ export interface RawMaterialEntry {
   id: string;
   /** 어느 회사 창고에서 일어난 일인가. 없으면 태백(옛 기록 전부). [[Item.companyId]]와 같은 규칙. */
   companyId?: CompanyId;
-  material: string;  // 원료명
+  /**
+   * **어느 품목의 줄인가 — 이게 열쇠다.**
+   *
+   * 예전엔 `material` 이름밖에 없었다. 이름은 바뀌면 연결이 끊기고, 겹치면 남의 회사 것을
+   * 집는다(참깨·깻묵이 태백·풍회에 다 있다). 실제로 검정참깨 줄 하나가 이름이 안 맞아
+   * 원장에서 떨어져 나가 −80kg 으로 갈려 있었다.
+   *
+   * 2026-09-09 에 726줄 전부 채웠다(`scripts/fix-raw-ledger-keys.mts`).
+   * 새 줄은 [rawLedgerKeys](rawHolder.ts) 로 반드시 같이 박는다.
+   */
+  rawItemId?: string;
+  /** 원료명 — **보여주기용 스냅샷이다.** 대상을 찾는 열쇠로 쓰지 마라(`rawItemId` 를 써라). */
+  material: string;
   date: string;
   received: number;  // 입고량
   used: number;      // 사용량 (정정은 음수)

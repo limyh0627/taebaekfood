@@ -20,7 +20,9 @@ vi.mock('./services/firebaseService', () => ({
 
 const { recordRawMaterialReceipt } = await import('./rawReceipt');
 
-const 참깨 = (): Item => ({ id: 'raw-sesame', name: '참깨', type: 'raw', unit: 'kg', stock: 0, lots: [] } as unknown as Item);
+//  `subtype: '벌크'` 가 홀더 판정의 **유일한 근거**다(itemTaxonomy.isBulkItem).
+//  예전엔 `type==='raw'` 로도 봐줬는데, 그 탓에 태백 깻묵이 자리마다 다르게 보였다(2026-09-09).
+const 참깨 = (): Item => ({ id: 'raw-sesame', name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', stock: 0, lots: [] } as unknown as Item);
 const 입고 = (over: Record<string, unknown> = {}) => recordRawMaterialReceipt({
   allItems: [참깨()], itemName: '참깨', quantity: 1500, unit: 'kg',
   partnerId: 'p1', partnerName: '한국농수산물유통공사',

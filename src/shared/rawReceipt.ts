@@ -4,11 +4,11 @@
  * (스캔입고·선입고는 2026-09-03 에 없앴다 — 사장님 판단.)
  */
 import type { CompanyId, Item } from './types';
-import { companyOf } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
 import { itemKg } from './orderUnits';
 import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
+import { rawHolderByName, rawLedgerKeys, isRawHolder } from './rawHolder';
 
 /**
  * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
@@ -27,11 +27,10 @@ export function rawLotTarget(
 ): { baseName: string; rawItem: Item } | null {
   const baseName = product?.rawMaterialName || baseRawName(itemName);
   if (!RM_LIST.includes(baseName)) return null;
-  const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
-  const holders = allItems.filter(i => isHolder(i.type, i.unit) && baseRawName(i.name) === baseName);
-  const rawItem = (companyId ? holders.find(i => companyOf(i) === companyId) : undefined)
-               ?? holders[0]
-               ?? (isHolder(product?.type, product?.unit) ? product : undefined);
+  //  홀더 고르기는 [rawHolder](./rawHolder.ts) 하나가 안다 — 회사를 넘기면 그 회사 것만 고른다.
+  //  예전엔 여기서 `?? holders[0]` 로 **남의 회사 홀더를 대신 집었다.**
+  const rawItem = rawHolderByName(allItems, baseName, companyId)
+               ?? (product && companyId == null && isRawHolder(product) ? product : undefined);
   return rawItem ? { baseName, rawItem } : null;
 }
 
@@ -117,7 +116,8 @@ export async function recordRawMaterialReceipt(opts: {
   await addItem('rawMaterialLedger', {
     id: `rm-rcv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     material: baseName,
-    ...(companyId ? { companyId } : {}),
+    //  **열쇠를 같이 박는다**(companyId + rawItemId) — 이름으로 되짚지 않는다.
+    ...rawLedgerKeys(rawItem),
     date: dateStr,
     received: kgIn,
     used: 0,
@@ -183,7 +183,8 @@ export async function adjustRawLots(opts: {
   if (ledger) {
     await addItem('rawMaterialLedger', {
       id: `rm-adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      material, date, ...(companyId ? { companyId } : {}),
+      //  **열쇠를 같이 박는다** — `rawItemId` 는 이미 받아 놓고 원장에는 안 적고 있었다.
+      material, date, rawItemId, ...(companyId ? { companyId } : {}),
       received: deltaKg > 0 ? deltaKg : 0,
       used: deltaKg < 0 ? -deltaKg : 0,
       note, type: ledgerType, unit: 'kg', addedBy,

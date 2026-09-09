@@ -21,6 +21,7 @@ import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
+import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { createPortal } from 'react-dom';
 import {
@@ -988,10 +989,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
 
     // 원료 홀더(벌크·1kg포 등) 부족 체크 — 원료식 kg 기준 (로트 합계 우선)
-    const isRawHolderItem = (i: Item) => isBulkItem(i);
     const round1 = (n: number) => Math.round(n * 10) / 10;
     for (const [material, neededKg] of Object.entries(rawUsageKg)) {
-      const holder = allItems.find(i => isRawHolderItem(i) && baseRawName(i.name) === material);
+      const holder = rawHolderByName(allItems, material);
       if (!holder) continue;
       const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
       if (neededKg <= stockKg) continue;
@@ -1279,9 +1279,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
-    const holder = allItems.find(i => !i.phantom && !i.archived
-      && isBulkItem(i)
-      && baseRawName(i.name) === material);
+    const holder = rawHolderByName(allItems, material);
     if (!holder) return 0;
     return holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
   };
@@ -2044,7 +2042,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               rawMaterialLedger={mergedRawMaterialLedger}
               
               onAddRawMaterialEntry={async (entry) => {
-                await addItem('rawMaterialLedger', entry);
+                //  **열쇠를 박아 저장한다** — 모달은 원료 이름만 안다.
+                //  이름은 바뀌고 겹친다(참깨·깻묵이 태백·풍회에 다 있다). 인수인계.md 참고.
+                const 홀더 = rawHolderByName(allItems, entry.material);
+                await addItem('rawMaterialLedger', 홀더 ? { ...entry, ...rawLedgerKeys(홀더) } : entry);
                 // 수율 파생 입고 자동 추가 — 규칙은 item_formula 데이터(yieldRules)에서 읽음(하드코딩 폴백).
                 //   참깨/들깨/깨분: 압착 사용 시 파생 오일 자동 생성. 볶음(볶음참깨/볶음들깨)은 수동 입력.
                 // 수율 자동입고는 '실제 사용(압착)'에만 — 재고실사/조정/로트삭제 등 correction은 제외.
@@ -2053,9 +2054,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const { product, rate } = yieldRules[entry.material];
                   // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
                   const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
+                  const 파생홀더 = rawHolderByName(allItems, product);
                   await addItem('rawMaterialLedger', {
                     id: `rm-yield-${Date.now()}`,
                     material: product,
+                    ...(파생홀더 ? rawLedgerKeys(파생홀더) : {}),
                     date: entry.date,
                     received: derivedKg,
                     used: 0,
@@ -2067,7 +2070,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     unit: 'kg', // canonical
                   });
                   // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
-                  const derivedRaw = allItems.find(i => isBulkItem(i) && baseRawName(i.name) === product);
+                  const derivedRaw = rawHolderByName(allItems, product);
                   if (derivedRaw && derivedKg > 0) {
                     const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
                     try {
@@ -2109,7 +2112,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const anchoredLater = at >= 0 && ordered.slice(at + 1).some(e => e.targetKg != null);
                 if (entry && !anchoredLater) {
                   const deltaKg = (entry.used ?? 0) - (entry.received ?? 0);   // 지우면 반대 방향으로
-                  const holder = allItems.find(i => isBulkItem(i) && !i.phantom && baseRawName(i.name) === entry.material);
+                  const holder = resolveRawHolder(allItems, { rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId });
                   if (holder && Math.abs(deltaKg) > 0.0001) {
                     try {
                       await adjustRawLots({
@@ -3555,9 +3558,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
                                             const baseNote = rmCorrectionForm.note
                                               || (isStocktake ? '수불부 실사정정' : `정정 (원본: ${row.id})`);
+                                            const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial);
                                             await addItem('rawMaterialLedger', {
                                               id: isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`,
                                               material: rmActiveMaterial,
+                                              ...(정정홀더 ? rawLedgerKeys(정정홀더) : {}),
                                               date: rmCorrectionForm.date,
                                               received: 0,
                                               // 실사는 잔량을 targetKg로 리셋(앵커)하므로 used는 0 — 입고·사용 합계도 안 건드린다.
@@ -3574,9 +3579,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             // 원장(rawMaterialLedger)과 로트는 한 몸이다 — 갈라지면 안 된다.
                                             // 여기서 정정·실사를 찍으면 로트도 같은 값으로 맞춘다.
                                             // (서류인 원료수불부만 따로 굴러간다 — 수율 파생·등급 분리는 표시 단계에서 처리)
-                                            const rawHolder = allItems.find(i =>
-                                              isBulkItem(i)
-                                              && baseRawName(i.name) === rmActiveMaterial);
+                                            const rawHolder = rawHolderByName(allItems, rmActiveMaterial);
                                             // 앵커 이전 날짜의 '정정'은 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 이중차감이 된다.
                                             //   (실사는 앵커를 새로 박는 것이므로 이 규칙에서 뺀다)
                                             //   rawLedgerBalance.ts의 latestAnchorDate 주석 참고.

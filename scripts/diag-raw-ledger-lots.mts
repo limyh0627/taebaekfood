@@ -55,7 +55,9 @@ let noCompany = 0;
 for (const e of ledger as RawMaterialEntry[]) {
   if (e.companyId == null) noCompany++;
   const m = String(e.material ?? '');
-  const key = `${companyOf(e)}\u0000${m}`;
+  //  **열쇠로 묶는다.** 이름으로 묶던 시절엔 이름이 어긋난 줄이 통째로 빠졌다 —
+  //  검정참깨 홀더의 줄이 원장엔 '검정깨' 로 적혀 있어 −80kg 이 갈려 보였다.
+  const key = e.rawItemId ? `id\u0000${e.rawItemId}` : `${companyOf(e)}\u0000${m}`;
   (rowsByKey.get(key) ?? rowsByKey.set(key, []).get(key)!).push(e);
   (rowsByMaterial.get(m) ?? rowsByMaterial.set(m, []).get(m)!).push(e);
 }
@@ -64,11 +66,11 @@ const rows: any[] = [];
 for (const h of holders) {
   const company = companyOf(h);
   const base = baseRawName(h.name ?? '');
-  const key = `${company}\u0000${base}`;
-  const mine = rowsByKey.get(key) ?? [];
+  //  홀더의 **id** 로 먼저 찾고, 아직 열쇠가 없는 옛 줄만 이름으로 줍는다.
+  const mine = rowsByKey.get(`id\u0000${h.id}`) ?? rowsByKey.get(`${company}\u0000${base}`) ?? [];
   const density = DENSITY[base] ?? 1;
   const bulk = lotKg(h.lots);
-  const prod = productLotByMaterial.get(key);
+  const prod = productLotByMaterial.get(`${company}\u0000${base}`);
   const ledgerKg = r3(ledgerBalanceKg(mine, density));
   const stateDoc = JSON.stringify({ activeLots: (h.lots ?? []).filter((l: any) => l.status !== 'depleted') });
   rows.push({
@@ -91,7 +93,8 @@ for (const h of holders) {
 
 //  홀더가 없는 원장 원료명 — 이관 때 어디로 넣을지 사람이 정해야 하는 줄.
 const holderNames = new Set(holders.map(h => `${companyOf(h)}\u0000${baseRawName(h.name ?? '')}`));
-const orphanKeys = [...rowsByKey.keys()].filter(k => !holderNames.has(k))
+const holderIds = new Set(holders.map(h => `id\u0000${h.id}`));
+const orphanKeys = [...rowsByKey.keys()].filter(k => !holderNames.has(k) && !holderIds.has(k))
   .map(k => { const [c, m] = k.split('\u0000'); return { company: c, material: m, 줄수: rowsByKey.get(k)!.length }; })
   .sort((a, b) => b.줄수 - a.줄수);
 

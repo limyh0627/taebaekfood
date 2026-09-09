@@ -1,7 +1,7 @@
 
 import { stampFor, claimDocNo } from '../../shared/voucherStamp';import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
-import { isBulkItem } from '../../shared/itemTaxonomy';
-import { parsePackageKg, parseSpecCount, baseRawName } from '../../constants/formula';
+import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
+import { parsePackageKg, parseSpecCount } from '../../constants/formula';
 import { itemKg } from '../../shared/orderUnits';
 import { lineAmount } from '../../shared/lineAmount';
 export { itemKg };
@@ -36,12 +36,12 @@ export interface OemEngineDeps {
   processingFeeCode?: string; // 기본 OEM_PROCESSING_FEE_CODE
 }
 
-/** 원료명 → raw 홀더 품목 (category raw, 또는 wip 벌크(unit≠개)). phantom 제외. */
-function findRawHolder(items: Item[], material: string): Item | undefined {
-  return items.find(i => !i.phantom && !i.archived
-    && isBulkItem(i)
-    && baseRawName(i.name) === material);
-}
+/**
+ * 원료명 → 홀더. 고르는 규칙은 [rawHolder](../../shared/rawHolder.ts) 하나가 안다 —
+ * 여기서 따로 `find(name===...)` 하던 걸 없앴다(이름으로 첫 항목 집기).
+ */
+const findRawHolder = (items: Item[], material: string): Item | undefined =>
+  rawHolderByName(items, material);
 
 
 export function createOemEngine(deps: OemEngineDeps) {
@@ -181,8 +181,9 @@ export function createOemEngine(deps: OemEngineDeps) {
     //   (벌크분은 위 adjustRawLots가 이미 원장에 입고를 남겼다 — 여기서 또 쓰면 두 번 잡힌다)
     for (const [raw, rawKg] of Object.entries(receivedByRaw)) {
       const id = `rm-oem-${po.id}-${raw.replace(/\s/g, '_')}`;
+      const 홀더 = findRawHolder(items, raw);
       await addItem('rawMaterialLedger', {
-        id, material: raw, date: input.date,
+        id, material: raw, ...(홀더 ? rawLedgerKeys(홀더) : {}), date: input.date,
         received: Math.round(rawKg * 1000) / 1000, used: 0,
         note: `OEM 가공입고 ← ${po.partnerName ?? ''}`,
         type: 'auto', unit: 'kg', createdAt: new Date().toISOString(),

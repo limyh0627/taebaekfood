@@ -239,7 +239,7 @@ export const mutateRawMaterialLots = async (
     // 그 이월은 **실제 원장에 아무 줄도 안 남겨서**, 로트합만 올라가고 잔량은 그대로라 영구히 벌어졌다.
     // → 여기서 기초이월 한 줄을 남긴다. 실제 원장의 줄과 로트 변화는 언제나 1:1이어야 한다.
     const opening = current.length === 0 && stockBefore > 0
-      ? { kg: Math.round(stockBefore * 1000) / 1000, name: String(data.name ?? "") }
+      ? { kg: Math.round(stockBefore * 1000) / 1000, name: String(data.name ?? ""), companyId: data.companyId ?? "taebaek" }
       : null;
     return { next, opening };
   });
@@ -254,6 +254,10 @@ export const mutateRawMaterialLots = async (
         {
           id: entryId,
           material,
+          //  **열쇠를 같이 박는다** — 이 줄은 이 품목의 로트가 처음 서면서 생긴 것이다.
+          //  이름으로 되짚게 두면 이름이 바뀌는 순간 원장에서 떨어져 나간다.
+          rawItemId,
+          companyId: opening.companyId,
           date: today(),
           received: opening.kg,
           used: 0,

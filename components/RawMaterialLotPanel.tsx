@@ -4,6 +4,7 @@ import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check,
 import { Item, Order, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
 import { mutateRawMaterialLots, updateItem, addItem } from '../src/shared/services/firebaseService';
 import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
+import { rawLedgerKeys } from '../src/shared/rawHolder';
 import RawLedgerList from './RawLedgerList';
 
 interface Props {
@@ -119,6 +120,8 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         await addItem('rawMaterialLedger', {
           id: `rm-lotdel-${Date.now()}`,
           material,
+          //  **열쇠를 같이 박는다** — 이 패널이 보고 있는 품목이 곧 그 홀더다.
+          ...rawLedgerKeys(product),
           date: today(),
           received: 0,
           used: lot.kgRemaining,

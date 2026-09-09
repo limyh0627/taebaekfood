@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
   Package,
@@ -264,7 +265,8 @@ type TopTab = string;
 
 // 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
 //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
-const isRawHolder = (p: any): boolean => isBulkItem(p);
+//  홀더 판정·고르기는 [rawHolder](../src/shared/rawHolder.ts) 하나가 안다.
+//  여기 있던 `isRawHolder` 는 그쪽 것과 같은 판정이라 그대로 가져다 쓴다.
 
 // #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계, 그 외는 stock 필드.
 //   저장은 전부 kg이므로, 밀도가 있는 품목(기름)만 나눠서 L로 보여준다.
@@ -1771,7 +1773,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
                   const lotRaw = isRawHolder(product)
                     ? product
-                    : items.find(i => isRawHolder(i) && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
+                    : rawHolderByName(items, product.rawMaterialName || product.name);
                   // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
                   // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
                   const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.type !== 'product')
@@ -2989,7 +2991,7 @@ const ItemList: React.FC<ItemListProps> = ({
         onSubmit={async (entry) => {
           // 원료수불부에 기록 (kg canonical)
           await onAddRawMaterialEntry(entry);
-          const rawTarget = items.find((i) => isRawHolder(i) && baseRawName(i.name) === entry.material);
+          const rawTarget = rawHolderByName(items, entry.material);
           // 실사 앵커보다 앞선 날짜면 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 또 빼면 이중차감이다.
           //   원장 줄은 위에서 이미 남겼다(사용량이 서류에 잡혀야 하고, 잔량은 앵커가 잡는다).
           //   자세한 이유는 rawLedgerBalance.ts의 latestAnchorDate 주석 참고.

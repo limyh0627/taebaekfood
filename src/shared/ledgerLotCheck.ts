@@ -50,13 +50,33 @@ export async function checkLedgerLot(
   db: Firestore, rawItemId: string, material: string, density = 1,
 ): Promise<LedgerLotGap | null> {
   try {
-    const [snap, rows] = await Promise.all([
+    /**
+     * **열쇠(`rawItemId`)로 찾는다 — 이름이 아니라.**
+     *
+     * 예전엔 `where('material','==',…)` 로 **전 회사를 한데 긁어** 한 회사 로트와 견줬다.
+     * 태백·풍회가 같이 쓰는 참깨·깻묵에서는 남의 회사 줄까지 더해 놓고 "안 맞는다"고 했다.
+     * 반대로 이름이 어긋난 줄(검정참깨 홀더인데 원장엔 '검정깨')은 아예 빠져서
+     * −80kg 이 조용히 갈려 있었다.
+     *
+     * 2026-09-09 에 원장 726줄 전부에 `rawItemId` 를 채웠다(`scripts/fix-raw-ledger-keys.mts`).
+     * 그래도 **한 줄이라도 열쇠가 없으면** 옛 방식(이름)으로 한 번 더 본다 — 새로 만들어진
+     * 줄이 열쇠를 빠뜨렸는데 조용히 "맞다"고 하면 안 되기 때문이다.
+     */
+    const [snap, byKey, byName] = await Promise.all([
       getDoc(doc(db, 'items', rawItemId)),
+      getDocs(query(collection(db, 'rawMaterialLedger'), where('rawItemId', '==', rawItemId))),
       getDocs(query(collection(db, 'rawMaterialLedger'), where('material', '==', material))),
     ]);
     if (!snap.exists()) return null;
     const lots = (snap.data().lots ?? []) as RawMaterialLot[];
-    const entries = rows.docs.map(d => ({ id: d.id, ...d.data() })) as RawMaterialEntry[];
+    const rows = new Map<string, RawMaterialEntry>();
+    for (const d of byKey.docs) rows.set(d.id, { id: d.id, ...d.data() } as RawMaterialEntry);
+    //  열쇠가 아직 안 박힌 옛 줄만 이름으로 주워 담는다. 열쇠가 **다른 품목**을 가리키면 남의 것이다.
+    for (const d of byName.docs) {
+      const e = { id: d.id, ...d.data() } as RawMaterialEntry;
+      if (e.rawItemId == null) rows.set(d.id, e);
+    }
+    const entries = [...rows.values()];
     return ledgerLotGap(material, entries, lots, density);
   } catch (e) {
     console.error('[원장·로트 대조] 되읽기 실패:', material, e);
