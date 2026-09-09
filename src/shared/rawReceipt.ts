@@ -4,11 +4,11 @@
  * (스캔입고·선입고는 2026-09-03 에 없앴다 — 사장님 판단.)
  */
 import type { CompanyId, Item } from './types';
-import { addItem, mutateRawMaterialLots } from './services/firebaseService';
+import { companyOf } from './types';
 import { executeRawInventoryCommand } from './services/rawInventoryService';
-import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
+import { RM_LIST, DENSITY, baseRawName, parsePackageKg } from '../constants/formula';
 import { itemKg } from './orderUnits';
-import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
+import { receiptToKg } from './lotUtils';
 import { rawHolderByName, rawLedgerKeys, isRawHolder } from './rawHolder';
 
 /**
@@ -182,33 +182,47 @@ export async function adjustRawLots(opts: {
   ledgerType?: 'auto' | 'manual' | 'correction';
   /** 어느 회사 창고인가 — 안 박으면 그 회사 수불부에서 사라진다 */
   companyId?: CompanyId;
-  /** 로트가 포장분까지 세는 원료면 true — stock을 안 덮어쓴다 (Item.lotsAreTotal) */
+  /** @deprecated 명령이 품목 문서를 직접 읽어 판정한다 — 안 넘겨도 된다. */
   lotsAreTotal?: boolean;
+  /** 이 조정의 **작업 id**. 같은 id 로 두 번 보내면 한 번만 먹는다. 안 넘기면 그때그때 다르다. */
+  operationId?: string;
 }): Promise<void> {
-  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction', companyId, lotsAreTotal } = opts;
+  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction', companyId } = opts;
   if (Math.abs(deltaKg) < 0.0001) return;
-  await mutateRawMaterialLots(
+
+  /**
+   * **로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+   *
+   * 예전엔 로트를 먼저 쓰고 원장을 따로 썼다 — 뒤가 실패하면 로트만 움직인 채 조용히 끝났다.
+   * `lotsAreTotal` 은 이제 안 받는다: 명령이 품목 문서를 직접 읽어 판정한다
+   * (부르는 쪽마다 챙기게 했더니 빠뜨리는 자리가 생겼었다).
+   *
+   * `ledger: false` 로 부르던 자리도 이제 이력은 남는다 — 새 구조에서 이력 문서가 곧
+   * **중복 방지 표**라 뺄 수가 없다. 대신 `type: 'correction'` 으로 남겨 옛 집계에서 빠지게 한다.
+   */
+  const operationId = opts.operationId ?? `adjust:${rawItemId}:${date}:${Date.now()}`;
+  const 공통 = {
+    operationId,
+    companyId: companyOf({ companyId }),
     rawItemId,
-    (lots, stock) => {
-      const carried = withCarryOverLot(lots, stock, material);
-      if (deltaKg >= 0) {
-        const lot = buildReceiveLot({ material, supplierName: note, qtyIn: 0, kgIn: deltaKg, receivedDate: date });
-        // 조정 입고 후 음수 이월(미상) 상쇄
-        return settleCarryOver([...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }]);
-      }
-      return deductFromLots(carried, -deltaKg).lots;
+    materialSnapshot: material,
+    effectiveDate: date,
+    ...(addedBy ? { actorName: addedBy } : {}),
+    source: { type: 'adjustment' as const, id: operationId },
+  };
+  const r = await executeRawInventoryCommand(
+    deltaKg >= 0
+      ? { ...공통, kind: 'receive' as const, kg: deltaKg, lot: { supplierName: note, qtyIn: 0 } }
+      : { ...공통, kind: 'consume' as const, kg: -deltaKg },
+    {
+      newLotId: `lot-${operationId}`,
+      carryOverLotId: `carry-${operationId}`,
+      legacy: {
+        note,
+        ...(addedBy ? { addedBy } : {}),
+        type: ledger ? ledgerType : ('correction' as const),
+      },
     },
-    lotsAreTotal ? undefined : (lots) => lotStockInUnit(lots, material),
   );
-  if (ledger) {
-    await addItem('rawMaterialLedger', {
-      id: `rm-adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      //  **열쇠를 같이 박는다** — `rawItemId` 는 이미 받아 놓고 원장에는 안 적고 있었다.
-      material, date, rawItemId, ...(companyId ? { companyId } : {}),
-      received: deltaKg > 0 ? deltaKg : 0,
-      used: deltaKg < 0 ? -deltaKg : 0,
-      note, type: ledgerType, unit: 'kg', addedBy,
-      createdAt: new Date().toISOString(),
-    });
-  }
+  if (r.status === 'rejected') throw new Error(`원료 조정 거절: ${r.reason}`);
 }

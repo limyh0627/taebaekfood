@@ -24,6 +24,7 @@ import { isBulkItem } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
+import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -2056,69 +2057,91 @@ const AdminApp: React.FC<AdminAppProps> = ({
               linesUsingRaw={linesUsingRaw}
               
               onAddRawMaterialEntry={async (entry) => {
-                //  **열쇠를 박아 저장한다** — 모달은 원료 이름만 안다.
-                //  이름은 바뀌고 겹친다(참깨·깻묵이 태백·풍회에 다 있다). 인수인계.md 참고.
+                /**
+                 * **손입력·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+                 *
+                 * 예전엔 여기서 원장만 쓰고, 로트는 부르는 화면(ItemList)이 **따로** 썼다.
+                 * 로트 쓰기가 실패하면 `catch` 가 삼키고 토스트만 띄웠다 — 원장만 남았다.
+                 * 이제 둘이 같이 성공하거나 같이 실패한다.
+                 *
+                 * **작업 id 는 `entry.id`** 다. 모달이 한 번 만든 값이라 재시도해도 같고,
+                 * 그래서 같은 저장을 두 번 눌러도 수량은 한 번만 움직인다(§7).
+                 *
+                 * 소급 입력(마지막 실사보다 앞선 날짜) 판정도 명령 안에서 한다 —
+                 * 화면이 들고 있는 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
+                 */
                 const 홀더 = rawHolderByName(allItems, entry.material);
-                await addItem('rawMaterialLedger', 홀더 ? { ...entry, ...rawLedgerKeys(홀더) } : entry);
-                // 수율 파생 입고 자동 추가 — 규칙은 item_formula 데이터(yieldRules)에서 읽음(하드코딩 폴백).
-                //   참깨/들깨/깨분: 압착 사용 시 파생 오일 자동 생성. 볶음(볶음참깨/볶음들깨)은 수동 입력.
-                // 수율 자동입고는 '실제 사용(압착)'에만 — 재고실사/조정/로트삭제 등 correction은 제외.
-                //   (예전엔 note==='재고실사정정'만 막아 다른 note의 실사조정이 phantom 입고를 만들었음)
-                if (entry.used > 0 && yieldRules[entry.material] && entry.type !== 'correction') {
+                if (!홀더) return { ok: false, reason: `원료 홀더를 못 찾았다: ${entry.material}` };
+
+                const 공통 = {
+                  ...rawLedgerKeys(홀더),
+                  materialSnapshot: entry.material,
+                  effectiveDate: entry.date,
+                  ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
+                };
+                const 옛칸 = {
+                  ...(entry.note ? { note: entry.note } : {}),
+                  ...(entry.type ? { type: entry.type } : {}),
+                  ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
+                  ...(entry.canSize ? { canSize: entry.canSize, canCount: entry.canCount } : {}),
+                  ...(entry.canSizeTag ? { canSizeTag: entry.canSizeTag } : {}),
+                  ...(entry.originalAmount != null ? { originalAmount: entry.originalAmount } : {}),
+                  ...(entry.originalUnit ? { originalUnit: entry.originalUnit } : {}),
+                };
+
+                //  실사(targetKg)가 먼저다 — 잔량을 그 값으로 다시 잡는 앵커라 입고·사용과 다르다.
+                const 명령 = entry.targetKg != null
+                  ? { ...공통, operationId: entry.id, source: { type: 'stocktake' as const, id: entry.id }, kind: 'stocktake' as const, targetKg: entry.targetKg }
+                  : (entry.received ?? 0) > 0
+                    ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'receive' as const, kg: entry.received, lot: { supplierName: entry.note?.trim() || '직접입고', qtyIn: entry.canCount ?? 0, packageKg: entry.canSize, packageType: entry.canSizeTag } }
+                    : (entry.used ?? 0) > 0
+                      ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume' as const, kg: entry.used, ...(홀더.mixEnabled ? { mix: { topPercent: 홀더.mixTopPercent ?? 50 } } : {}) }
+                      : null;
+                if (!명령) return { ok: false, reason: '수량이 0이다' };
+
+                const r = await executeRawInventoryCommand(명령, {
+                  newLotId: `lot-${entry.id}`, carryOverLotId: `carry-${entry.id}`, legacy: 옛칸,
+                });
+                if (r.status === 'rejected') return { ok: false, reason: r.reason };
+                const applied = r.status === 'applied' ? r.movement.appliedDeltaKg : 0;
+
+                /**
+                 * 수율 파생 입고 — 압착하면 기름이 나온다. 규칙은 `item_formula`(yieldRules).
+                 * **실제 사용(압착)에만** 붙인다. 실사·정정(correction)은 실물이 안 움직인 것이라 뺀다.
+                 * 소급이라 재고가 안 움직였으면(applied 0) 기름도 안 나온다.
+                 */
+                if ((entry.used ?? 0) > 0 && yieldRules[entry.material] && entry.type !== 'correction' && applied !== 0) {
                   const { product, rate } = yieldRules[entry.material];
-                  // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
                   const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
                   const 파생홀더 = rawHolderByName(allItems, product);
-                  await addItem('rawMaterialLedger', {
-                    id: `rm-yield-${Date.now()}`,
-                    material: product,
-                    ...(파생홀더 ? rawLedgerKeys(파생홀더) : {}),
-                    date: entry.date,
-                    received: derivedKg,
-                    used: 0,
-                    note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
-                    createdAt: new Date().toISOString(),
-                    //  파생입고는 원본 사용 줄을 넣은 사람이 만든 것이다 — 이름을 물려준다
-                    ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
-                    type: 'auto', // 자동 파생 — 수불부 표시 파생행과 이중계상 방지 판별에도 사용
-                    unit: 'kg', // canonical
-                  });
-                  // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
-                  const derivedRaw = rawHolderByName(allItems, product);
-                  if (derivedRaw && derivedKg > 0) {
-                    const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
-                    try {
-                      await mutateRawMaterialLots(
-                        derivedRaw.id,
-                        (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, product), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }]),
-                        (lots) => lotStockInUnit(lots, product),
-                      );
-                    } catch (err) {
-                      console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
-                    }
-                    /**
-                     * **쓰고 나서 되읽어 대조한다.** 위 catch는 던져진 실패만 잡고 콘솔에만 찍는다 —
-                     * 아무도 안 보고, 원장만 늘어난 채로 몇 주 뒤에 "왜 안 맞냐"로 만난다.
-                     * 순서를 바꾸는 걸로는 못 막는다(로트가 실패하면 일은 어차피 날아간다).
-                     */
-                    const gap = await checkLedgerLot(db, derivedRaw.id, product, derivedRaw.density ?? 1);
-                    if (gap) {
-                      console.warn(`[원장·로트 불일치] ${gapMessage(gap)}`);
-                      alert(`⚠ ${gapMessage(gap)}
-
-압착 입고가 한쪽에만 반영됐을 수 있습니다. 실사로 맞춰 주세요.`);
+                  if (파생홀더 && derivedKg > 0) {
+                    const 파생id = `yield:${entry.id}`;
+                    const dr = await executeRawInventoryCommand({
+                      operationId: 파생id,
+                      ...rawLedgerKeys(파생홀더),
+                      materialSnapshot: product,
+                      effectiveDate: entry.date,
+                      ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
+                      source: { type: 'manual', id: entry.id },
+                      kind: 'receive',
+                      kg: derivedKg,
+                      lot: { supplierName: `${entry.material} 압착`, qtyIn: 0 },
+                    }, {
+                      newLotId: `lot-${파생id}`,
+                      legacy: {
+                        note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
+                        type: 'auto',
+                        ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
+                      },
+                    });
+                    //  파생이 실패해도 본 사용은 이미 들어갔다. 조용히 넘기지 않고 알린다(§14).
+                    if (dr.status === 'rejected') {
+                      alert(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${dr.reason}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
                     }
                   }
                 }
-                setLedgerReloadKey(k => k + 1);   // 전역 구독 제거 → 원장 화면 재조회로 반영
+                return { ok: true, appliedKg: applied };
               }}
-              // 실제 원장 줄을 지우면 **로트도 같이 되돌린다.** 한쪽만 지우면 잔량과 로트가 그만큼 영구히 벌어진다.
-              //  (주문 되돌리기는 restoreRawLotsForOrder가 이미 둘을 같이 처리한다 — 손입력 줄만 빠져 있었다)
-              //  실사(targetKg) 줄도 마찬가지다 — targetKg는 잔량 앵커지만 그 줄의 received/used는
-              //  로트를 실제로 움직인 양이다. 앵커라고 건너뛰면 로트만 조정된 채 남아 또 벌어진다.
-              //  단, 그 줄 **뒤에 실사(앵커)가 있으면 로트를 건드리지 않는다.** 실사가 로트를 그 값으로
-              //  이미 덮어썼으니, 그보다 앞선 움직임을 이제 와서 되돌리면 이중으로 반영된다.
-              //  잔량도 앵커에 묶여 안 바뀌므로, 로트를 그대로 두는 쪽이 둘을 같이 유지한다.
               onDeleteRawMaterialEntry={async (id) => {
                 const entry = mergedRawMaterialLedger.find(e => e.id === id);
                 const ordered = sortLedger(mergedRawMaterialLedger.filter(e => e.material === entry?.material));
@@ -3572,58 +3595,44 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
                                             const baseNote = rmCorrectionForm.note
                                               || (isStocktake ? '수불부 실사정정' : `정정 (원본: ${row.id})`);
+                                            /**
+                                             * **정정·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+                                             *
+                                             * 예전엔 원장 줄을 먼저 쓰고 `mutateRawMaterialLots` 로 로트를 따로 맞췄다.
+                                             * 뒤가 실패하면 원장만 남았다. 이제 둘이 같이 성공하거나 같이 실패한다.
+                                             *
+                                             * 소급 판정(앵커보다 앞선 날짜)도 명령 안에서 한다 — 화면이 든 배열이 아니라
+                                             * **트랜잭션에서 읽은 상태**의 실사 정보로 본다(§10).
+                                             */
                                             const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial);
-                                            await addItem('rawMaterialLedger', {
-                                              id: isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`,
-                                              material: rmActiveMaterial,
-                                              ...(정정홀더 ? rawLedgerKeys(정정홀더) : {}),
-                                              date: rmCorrectionForm.date,
-                                              received: 0,
-                                              // 실사는 잔량을 targetKg로 리셋(앵커)하므로 used는 0 — 입고·사용 합계도 안 건드린다.
-                                              used: isStocktake ? 0 : correctionUsed,
-                                              ...(isStocktake ? { targetKg: amtKg } : {}),
+                                            if (!정정홀더) { alert(`원료 홀더를 못 찾았다: ${rmActiveMaterial}`); return; }
+                                            const opId = isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`;
+                                            const 공통정정 = {
+                                              operationId: opId,
+                                              ...rawLedgerKeys(정정홀더),
+                                              materialSnapshot: rmActiveMaterial,
+                                              effectiveDate: rmCorrectionForm.date,
+                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                                            };
+                                            const 정정옛칸 = {
                                               note: baseNote + inputTag,
-                                              createdAt: new Date().toISOString(),
+                                              type: 'correction' as const,
                                               ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
-                                              type: 'correction',
-                                              unit: 'kg',
                                               originalAmount: amt,
-                                              originalUnit: inputUnit,
+                                              originalUnit: inputUnit as 'kg' | 'L',
+                                            };
+                                            //  실사는 목표 절대값으로 맞추는 앵커, 정정은 그 수량만큼 증감(used 양수 = 재고 감소).
+                                            const 정정명령 = isStocktake
+                                              ? { ...공통정정, source: { type: 'stocktake' as const, id: opId }, kind: 'stocktake' as const, targetKg: amtKg }
+                                              : correctionUsed > 0
+                                                ? { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'consume' as const, kg: correctionUsed }
+                                                : { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'receive' as const, kg: -correctionUsed, lot: { supplierName: '정정', qtyIn: 0 } };
+                                            const cr = await executeRawInventoryCommand(정정명령, {
+                                              newLotId: `lot-${opId}`, carryOverLotId: `carry-${opId}`, legacy: 정정옛칸,
                                             });
-                                            // 원장(rawMaterialLedger)과 로트는 한 몸이다 — 갈라지면 안 된다.
-                                            // 여기서 정정·실사를 찍으면 로트도 같은 값으로 맞춘다.
-                                            // (서류인 원료수불부만 따로 굴러간다 — 수율 파생·등급 분리는 표시 단계에서 처리)
-                                            const rawHolder = rawHolderByName(allItems, rmActiveMaterial);
-                                            // 앵커 이전 날짜의 '정정'은 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 이중차감이 된다.
-                                            //   (실사는 앵커를 새로 박는 것이므로 이 규칙에서 뺀다)
-                                            //   rawLedgerBalance.ts의 latestAnchorDate 주석 참고.
-                                            const matLedger = mergedRawMaterialLedger.filter(e => e.material === rmActiveMaterial);
-                                            const skipLots = !isStocktake && isBackdated(matLedger, rmCorrectionForm.date);
-                                            if (skipLots) {
-                                              alert(`${latestAnchorDate(matLedger)} 실사 이전 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.`);
-                                            }
-                                            if (rawHolder && !skipLots) {
-                                              await mutateRawMaterialLots(
-                                                rawHolder.id,
-                                                (lots, stock) => {
-                                                  const withCarry = withCarryOverLot(lots, stock, rmActiveMaterial);
-                                                  // 실사 = 목표 절대값으로 맞춤 / 정정 = 그 수량만큼 증감
-                                                  const deltaKg = isStocktake
-                                                    ? Math.round((amtKg - lotKgRemaining(withCarry)) * 1000) / 1000
-                                                    : -correctionUsed;   // used 양수 = 재고 감소
-                                                  if (deltaKg > 0.001) {
-                                                    const lot = buildReceiveLot({
-                                                      material: rmActiveMaterial,
-                                                      supplierName: isStocktake ? '실사조정' : '정정',
-                                                      qtyIn: 0, kgIn: deltaKg, receivedDate: rmCorrectionForm.date,
-                                                    });
-                                                    return settleCarryOver([...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }]);
-                                                  }
-                                                  if (deltaKg < -0.001) return deductFromLots(withCarry, -deltaKg).lots;
-                                                  return withCarry;
-                                                },
-                                                (lots) => lotStockInUnit(lots, rmActiveMaterial),
-                                              );
+                                            if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.reason}`); return; }
+                                            if (cr.status === 'applied' && cr.movement.backdatedBeforeStocktake) {
+                                              alert('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
                                             }
                                             setRmCorrectionTargetId(null);
                                             setLedgerReloadKey(k => k + 1);
