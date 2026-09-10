@@ -164,7 +164,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -807,42 +807,69 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [ledgerTab, setLedgerTab] = useState<'cash' | 'partner'>('cash');
 
 
-  // 완료/반려 후 1일 지난 확인사항 자동 삭제
-  useEffect(() => {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    adjustmentRequests.forEach(r => {
-      if ((r.status === 'processed' || r.status === 'rejected') && r.processedAt && r.processedAt < oneDayAgo) {
-        deleteItem('adjustmentRequests', r.id);
-      }
-    });
-  }, [adjustmentRequests]);
+  /**
+   * **하루 지난 것은 목록에서 감춘다 — 지우지 않는다.**
+   *
+   * 예전엔 이 자리에 `deleteItem` 을 부르는 effect 가 둘 있었다. 완료·반려된 확인사항과
+   * 전표가 끊긴 선입고 이력을 **하루 뒤에 영구 삭제**했다.
+   *
+   * 목적은 "목록 누적 방지" 였다 — **안 보이게 하는 것**이지 없애는 게 아니었다.
+   * 그런데 지워 버리니 —
+   *   · 감사 근거가 사라진다. "그 발주 언제 들어왔지" 를 되짚을 수가 없다.
+   *   · 화면을 **연 사람의 브라우저**가 지운다. 직원 앱도 결국 이걸 그리므로 관리자만의
+   *     일이 아니고, 여러 기기가 같은 삭제를 되풀이한다.
+   *   · 삭제 실패는 아무도 안 본다.
+   *
+   * 그래서 **읽는 쪽에서 거른다.** 데이터는 남고 화면은 그대로 깨끗하다.
+   */
+  const 하루전 = Date.now() - 24 * 60 * 60 * 1000;
 
-  // 전표 발행된 선입고 이력은 발행 1일 뒤 자동 삭제 (목록 누적 방지 — 발행 시엔 유지)
-  //   OEM 배치는 제외 — 보낸 원료·받은 완제품·로스(수율) 이력을 계속 들고 있어야 한다.
-  useEffect(() => {
-    const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
-    receivedOrders.forEach(po => {
-      if (po.poType === 'oem') return;
-      if (!po.linkedStatementId) return;
-      const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
-      if (at && new Date(at).getTime() < oneDayAgoMs) deleteItem('purchaseOrders', po.id);
-    });
-  }, [receivedOrders, issuedStatements]);
+  //  완료·반려하고 하루 지난 확인사항은 안 보인다.
+  const 보이는확인사항 = useMemo(() => adjustmentRequests.filter(r => {
+    const 끝났나 = r.status === 'processed' || r.status === 'rejected';
+    if (!끝났나 || !r.processedAt) return true;
+    return new Date(r.processedAt).getTime() >= 하루전;
+  }), [adjustmentRequests, 하루전]);
 
-  // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
-  // Firestore에 초기화 날짜를 저장해 모든 기기에서 하루 1회만 실행
+  //  전표가 끊기고 하루 지난 선입고 이력은 안 보인다.
+  //  OEM 배치는 계속 보인다 — 보낸 원료·받은 완제품·로스(수율)를 들고 있어야 한다.
+  const 보이는입고이력 = useMemo(() => receivedOrders.filter(po => {
+    if (po.poType === 'oem' || !po.linkedStatementId) return true;
+    const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
+    return !at || new Date(at).getTime() >= 하루전;
+  }), [receivedOrders, issuedStatements, 하루전]);
+
+  /**
+   * 날짜가 바뀐 뒤 첫 접속에 작업순서를 비운다(주문 자료는 그대로).
+   *
+   * **다 지운 뒤에만 날짜를 적는다.** 예전엔 `Promise.all` 을 기다리지 않고 곧바로
+   * `lastResetDate` 를 오늘로 썼다. 일부가 안 지워져도 그날은 **다시 시도하지 않아**
+   * 어제 작업순서가 남은 채 하루를 갔다.
+   *
+   * **한 기기만 돌게 트랜잭션으로 자리를 잡는다.** 여러 기기가 같이 열면 셋 다 같은 삭제를
+   * 되풀이했다. 날짜 도장을 트랜잭션에서 먼저 찍고, 찍은 기기만 지운다.
+   * 지우다 실패하면 도장을 되돌려 다음 기기가 이어받는다.
+   */
   useEffect(() => {
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
     const resetRef = doc(db, 'appMeta', 'workOrderReset');
-    getDoc(resetRef).then(snap => {
-      const lastReset = snap.exists() ? snap.data().date : null;
-      if (lastReset !== today) {
-        getDocs(collection(db, 'workOrderItems')).then(snap => {
-          Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+    (async () => {
+      try {
+        const 내차례 = await runTransaction(db, async (tx: Transaction) => {
+          const snap = await tx.get(resetRef);
+          if ((snap.exists() ? snap.data().date : null) === today) return false;
+          tx.set(resetRef, { date: today });
+          return true;
         });
-        setDoc(resetRef, { date: today });
+        if (!내차례) return;
+        const snap = await getDocs(collection(db, 'workOrderItems'));
+        await Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+      } catch (e) {
+        //  못 지웠으면 도장을 물러 다음 기기가 이어받게 한다. 조용히 넘기면 어제 것이 하루 남는다.
+        console.error('[작업순서 초기화] 실패 — 도장을 되돌린다:', e);
+        try { await setDoc(resetRef, { date: '' }); } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
       }
-    });
+    })();
   }, []);
 
   /**
@@ -2184,7 +2211,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              receivedOrders={receivedOrders}
+              receivedOrders={보이는입고이력}
               returnBadge={returnRequests.filter(r => r.status === 'pending').length}
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
@@ -2489,10 +2516,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'admin-checklist' && (
             <AdminChecklist
               leaveRequests={leaveRequests}
-              adjustmentRequests={adjustmentRequests}
+              adjustmentRequests={보이는확인사항}
               employees={employees}
               returnRequests={returnRequests}
-              receivedOrders={receivedOrders}
+              receivedOrders={보이는입고이력}
               partners={partners}
               issuedStatements={issuedStatements}
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
