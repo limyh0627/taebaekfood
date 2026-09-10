@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-10 — `rawInventories` 최종 원자화 규격으로 재이관
+
+**작업자:** Codex (사장님 지시: "배포랑 마이그레이션도 해")
+**스크립트:** `scripts/migrate-raw-inventories.mts` (`--apply`)
+**백업:** `scripts/migrate-raw-inventories-v2-backup.json` (적용 전·후 문서 내용 전체, 로컬 전용이라 저장소에는 올리지 않음)
+**되돌리기:** `npx tsx scripts/migrate-raw-inventories.mts --undo` — 이관 뒤 재고 작업이 없을 때만
+한 트랜잭션으로 적용 전 문서를 복구한다. 이관 뒤 상태가 바뀌었으면 자동으로 중단한다.
+
+최초 이관 문서 18개에는 옛 `version`·`updatedAt`·`lastStocktakeDate` 규격이 남아 있었다.
+현재 `items.lots`를 다시 읽어 `revision: 0`·`lastProcessedAt`·`stocktakeAnchor` 규격으로
+18개 모두 한 트랜잭션에서 갱신했다. 적용 직전 원장과 로트 불일치 경고는 0건이었다.
+
+적용 후 다시 읽어 18개 모두 `revision`과 `lastProcessedAt`이 있고, 실사 이력이 있는 문서는
+`stocktakeAnchor`가 들어간 것을 확인했다. `items`와 `rawMaterialLedger`는 건드리지 않았다.
+최초 이관 때 만든 ID 전용 백업 `scripts/migrate-raw-inventories-backup.json`도 그대로 보존했다.
+
+---
+
 ## 2026-09-10 — `rawInventories` 컬렉션 신설 (원자화 이관 4단계)
 
 **작업자:** Claude 에이전트 (사장님 지시: "로트 숫자에 맞추고 **진행해**")
