@@ -26,6 +26,8 @@ export const COL = {
   returnRequests: 'returnRequests',
   adjustmentRequests: 'adjustmentRequests',
   workOrderItems: 'workOrderItems',
+  orderStatusAudits: 'orderStatusAudits',
+  deliveryScheduleAudits: 'deliveryScheduleAudits',
 
   // ── 전표·회계 ──
   issuedStatements: 'issuedStatements',

@@ -16,6 +16,7 @@ import {
   KeyRound
 } from 'lucide-react';
 import { Employee } from '../types';
+import { usingFirebaseEmulators } from '../firebase';
 
 interface AuthPageProps {
   onLogin: (_user: Employee) => void;
@@ -247,6 +248,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
                     <ShieldCheck size={20} />
                     <span>시스템 접속하기</span>
                   </button>
+
+                  {usingFirebaseEmulators && registeredEmployees.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleQuickLogin}
+                      className="w-full rounded-2xl border border-amber-300 bg-amber-50 py-3 text-xs font-black text-amber-800 hover:bg-amber-100"
+                    >
+                      테스트 관리자 바로 접속
+                    </button>
+                  )}
 
                 </div>
 

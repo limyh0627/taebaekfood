@@ -23,7 +23,7 @@ export const STATUS_LABEL: Record<string, string> = {
   [OrderStatus.PENDING]: '대기중',
   [OrderStatus.PROCESSING]: '작업중',
   [OrderStatus.DISPATCHED]: '작업완료',
-  [OrderStatus.SHIPPED]: '출고',
+  [OrderStatus.SHIPPED]: '출고완료',
   [OrderStatus.DELIVERED]: '예전 주문',
   [OrderStatus.ON_HOLD]: '보류',
 };
@@ -49,6 +49,16 @@ export const STATUS_HEAD: Record<string, string> = {
   [OrderStatus.SHIPPED]: 'bg-indigo-100 text-indigo-800',
   [OrderStatus.DELIVERED]: 'bg-slate-100 text-slate-600',
   [OrderStatus.ON_HOLD]: 'bg-orange-100 text-orange-800',
+};
+
+/** 주문 보드의 좁은 헤더 — 상태 색을 유지하면서 본문과 구분한다. */
+export const CARD_HEADER_COLOR: Record<string, string> = {
+  [OrderStatus.PENDING]: 'bg-amber-200 border-amber-300',
+  [OrderStatus.PROCESSING]: 'bg-sky-200 border-sky-300',
+  [OrderStatus.DISPATCHED]: 'bg-emerald-200 border-emerald-300',
+  [OrderStatus.SHIPPED]: 'bg-indigo-200 border-indigo-300',
+  [OrderStatus.DELIVERED]: 'bg-slate-200 border-slate-300',
+  [OrderStatus.ON_HOLD]: 'bg-orange-200 border-orange-300',
 };
 
 /** 테두리까지 있는 딱지 — 달력·배송관리처럼 바탕이 흰 데서 쓴다 */

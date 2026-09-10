@@ -22,6 +22,10 @@ export interface OrderItem {
   price: number;
   checked?: boolean;
   checkedBy?: string;    // 체크한 사람 이름
+  checkedAt?: string;    // 작업 완료 확인 시각
+  note?: string;         // 품목별 작업 메모
+  noteBy?: string;       // 메모 작성자
+  noteAt?: string;       // 메모 작성 시각
   mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
   labelType?: '대기' | '날인' | '부착';
   isBoxUnit?: boolean;    // 박스 단위로 주문했는지
@@ -149,6 +153,8 @@ export interface Order {
   region?: string;
   deliveryBoxes?: DeliveryBox[];
   invoicePrinted?: boolean;
+  shipmentConfirmedBy?: string | null; // 출고 완료 확인자
+  shipmentConfirmedAt?: string | null; // 출고 완료 확인 시각
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
@@ -164,6 +170,53 @@ export interface Order {
                                                       // 없으면 옛 주문(주문량 전량 생산) → 되돌리기는 주문량으로 계산한다.
   producedAt?: string;   // 작업완료(생산처리) 완료 시각 — 원료·부자재 차감 + 완제품 재고 +N 반영됨(가드)
   shippedOut?: boolean;  // 출고 완료 — 완제품/상품 재고 −N 반영됨(가드)
+  /**
+   * 작업 당시 실제 재고 증감을 남긴다. 되돌릴 때 현재 BOM을 다시 계산하지 않고 이 값을 반대로 적용한다.
+   * 이 필드가 없는 주문은 레거시로 취급해 별도 경고 승인을 받는다.
+   */
+  inventorySnapshots?: {
+    version: 1;
+    production?: OrderInventorySnapshot;
+    shipment?: OrderInventorySnapshot;
+  };
+  /** 여러 창에서 같은 주문 상태를 동시에 바꾸지 못하게 하는 짧은 작업 잠금. */
+  inventoryOperation?: {
+    id: string;
+    targetStatus: OrderStatus;
+    state: 'processing' | 'failed';
+    startedAt: string;
+    actor: string;
+    error?: string;
+  } | null;
+}
+
+export interface OrderInventoryAdjustment {
+  itemId: string;
+  delta: number;
+}
+
+export interface OrderInventorySnapshot {
+  capturedAt: string;
+  stockDeltas: OrderInventoryAdjustment[];
+  bomLines: { parentItemId: string; childItemId: string; quantity: number }[];
+  rawConsumedLots?: Order['rawConsumedLots'];
+  productConsumedLots?: Order['productConsumedLots'];
+  rawLedgerIds?: string[];
+}
+
+export interface OrderStatusAudit {
+  id: string;
+  orderId: string;
+  partnerName: string;
+  previousStatus: OrderStatus;
+  nextStatus: OrderStatus;
+  approvedBy: string;
+  approvedAt: string;
+  completedAt?: string;
+  state: 'processing' | 'completed' | 'failed';
+  legacyEvidenceWarning: boolean;
+  stockAdjustments: Array<OrderInventoryAdjustment & { name: string; unit: string }>;
+  error?: string;
 }
 
 export interface BoxConfig {

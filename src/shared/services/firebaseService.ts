@@ -24,7 +24,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { today } from '../day';
-import type { RawMaterialLot } from "../types";
+import type { Order, OrderStatus, RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
@@ -473,3 +473,23 @@ export const mutateDoc = async <T>(
     if (data) tx.set(ref, data, { merge: true });
   });
 };
+
+/**
+ * 주문 상태·재고 작업을 DB에서 선점한다. 화면별 메모리 잠금만으로는 다른 탭의 동시 승인을
+ * 막지 못하므로, 주문 문서의 현재 상태를 확인하고 작업 표식을 같은 트랜잭션에 기록한다.
+ */
+export const claimOrderInventoryOperation = async (
+  orderId: string,
+  expectedStatus: OrderStatus,
+  operation: NonNullable<Order['inventoryOperation']>,
+): Promise<Order> => runTransaction(db, async tx => {
+  const ref = doc(db, 'orders', orderId);
+  const snap = await tx.get(ref);
+  if (!snap.exists()) throw new Error('주문을 찾을 수 없습니다.');
+  const current = { id: snap.id, ...snap.data() } as Order;
+  if (current.status !== expectedStatus) throw new Error('주문 상태가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
+  if (current.inventoryOperation?.state === 'processing') throw new Error('이 주문의 재고 작업이 이미 진행 중입니다.');
+  if (current.inventoryOperation?.state === 'failed') throw new Error('이 주문의 이전 재고 작업이 실패 상태입니다. 재고·로트·수불부를 점검한 뒤 작업 잠금을 해제해 주세요.');
+  tx.update(ref, { inventoryOperation: operation });
+  return current;
+});

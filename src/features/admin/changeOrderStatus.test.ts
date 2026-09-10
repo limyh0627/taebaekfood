@@ -46,7 +46,7 @@ const 상품 = (): Item =>
 const 주문 = (over: Partial<Order> = {}): Order =>
   ({
     id: 'o1', partnerName: '해피유통', status: OrderStatus.PENDING,
-    items: [{ itemId: 'p1', name: '참기름/180ml', quantity: 10 } as any],
+    items: [{ itemId: 'p1', name: '참기름/180ml', quantity: 10, checked: true } as any],
     ...over,
   } as unknown as Order);
 
@@ -55,6 +55,7 @@ function harness(items: Item[], order: Order) {
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, { ...order });
   const 알림: any[] = [];
+  const 상태이력: any[] = [];
   const 주문쓰기: any[] = [];
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
@@ -70,11 +71,15 @@ function harness(items: Item[], order: Order) {
       }
       return undefined;
     },
-    addItem: async (col, data) => { if (col === 'notifications') 알림.push(data); return undefined; },
+    addItem: async (col, data) => {
+      if (col === 'notifications') 알림.push(data);
+      if (col === 'orderStatusAudits') 상태이력.push(data);
+      return undefined;
+    },
   });
   //  문을 지난 횟수 = 상태를 쓴 횟수. 막힌 호출은 아무것도 안 쓰고 돌아간다.
   const 상태쓴수 = (st: OrderStatus) => 주문쓰기.filter(w => w.status === st).length;
-  return { engine, 알림, 주문쓰기, 조정: () => dbx.조정, 상태쓴수 };
+  return { engine, 알림, 상태이력, 주문쓰기, 조정: () => dbx.조정, 상태쓴수 };
 }
 
 beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.조정 = 0; dbx.느린읽기 = false; });
@@ -184,13 +189,52 @@ describe('④ 배송완료일이 없으면 드러낸다 — 서류에서 조용�
 });
 
 describe('없는 주문', () => {
-  it('주문을 못 찾아도 상태는 쓴다 — 조용히 삼키면 화면이 멈춘 것처럼 보인다', async () => {
+  it('주문을 못 찾으면 완료 이후 상태 진입을 차단한다', async () => {
     const order = 주문();
     const { engine, 조정, 주문쓰기 } = harness([상품()], order);
 
-    await engine.changeOrderStatus('없는주문', OrderStatus.DELIVERED);
+    await expect(engine.changeOrderStatus('없는주문', OrderStatus.DELIVERED)).rejects.toThrow('주문 정보를 확인할 수 없어');
 
     expect(조정()).toBe(0);
-    expect(주문쓰기).toContainEqual({ status: OrderStatus.DELIVERED });
+    expect(주문쓰기).toHaveLength(0);
+  });
+});
+
+describe('작업완료 진입 검증', () => {
+  it('미완료 품목이 있으면 재고 처리와 상태 저장을 모두 차단한다', async () => {
+    const order = 주문({ items: [{ itemId: 'p1', name: '참기름/180ml', quantity: 10, checked: false } as any] });
+    const { engine, 조정, 주문쓰기 } = harness([상품()], order);
+
+    await expect(engine.changeOrderStatus('o1', OrderStatus.DISPATCHED)).rejects.toThrow('모든 주문 품목');
+
+    expect(조정()).toBe(0);
+    expect(주문쓰기).toHaveLength(0);
+  });
+
+  it('마지막 체크와 상태를 함께 저장하는 정상 경로는 통과한다', async () => {
+    const order = 주문({ items: [{ itemId: 'p1', name: '참기름/180ml', quantity: 10, checked: false } as any] });
+    const { engine, 상태쓴수 } = harness([상품()], order);
+    const completedItems = order.items.map(item => ({ ...item, checked: true }));
+
+    await engine.changeOrderStatus('o1', OrderStatus.DISPATCHED, undefined, { orderPatch: { items: completedItems } });
+
+    expect(상태쓴수(OrderStatus.DISPATCHED)).toBe(1);
+  });
+});
+
+describe('상태 변경 감사 이력', () => {
+  it('승인자·이전/변경 상태와 실제 재고 증감을 완료 이력에 남긴다', async () => {
+    const order = 주문({ status: OrderStatus.DISPATCHED, producedAt: '2026-09-01', producedUnits: [] } as never);
+    const { engine, 상태이력 } = harness([상품()], order);
+
+    await engine.changeOrderStatus('o1', OrderStatus.SHIPPED, undefined, { approvedBy: '테스트 관리자' });
+
+    expect(상태이력.at(-1)).toMatchObject({
+      orderId: 'o1', previousStatus: OrderStatus.DISPATCHED, nextStatus: OrderStatus.SHIPPED,
+      approvedBy: '테스트 관리자', state: 'completed',
+    });
+    expect(상태이력.at(-1).stockAdjustments).toEqual([
+      expect.objectContaining({ itemId: 'p1', delta: -10, name: '참기름/180ml' }),
+    ]);
   });
 });

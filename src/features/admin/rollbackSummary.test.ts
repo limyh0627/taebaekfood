@@ -56,4 +56,29 @@ describe('되돌리기 안내문', () => {
     const o = order({ shippedOut: true, items: [{ itemId: 'box', name: 'x', quantity: 30, isBoxUnit: true, boxQuantity: 3 } as never] });
     expect(buildRollbackPlan(o, items, OrderStatus.SHIPPED, OrderStatus.PENDING).text).toContain('+3');
   });
+
+  it('작업 당시 스냅샷이 있으면 현재 BOM 대신 실제 증감을 품목별로 보여준다', () => {
+    const p = buildRollbackPlan(order({
+      producedAt: '2026-09-01T00:00:00.000Z',
+      inventorySnapshots: {
+        version: 1,
+        production: {
+          capturedAt: '2026-09-01T00:00:00.000Z',
+          stockDeltas: [{ itemId: 'box', delta: 3 }, { itemId: 'loose', delta: -30 }],
+          bomLines: [{ parentItemId: 'box', childItemId: 'loose', quantity: 10 }],
+        },
+      },
+    }), items, OrderStatus.DISPATCHED, OrderStatus.PENDING);
+    expect(p.legacyEvidenceWarning).toBe(false);
+    expect(p.adjustments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ itemId: 'box', delta: -3 }),
+      expect.objectContaining({ itemId: 'loose', delta: 30 }),
+    ]));
+  });
+
+  it('스냅샷 없는 옛 생산 주문은 원복 근거 부족으로 별도 경고한다', () => {
+    const p = buildRollbackPlan(order({ producedAt: '2026-08-01T00:00:00.000Z' }), items, OrderStatus.DISPATCHED, OrderStatus.PENDING);
+    expect(p.legacyEvidenceWarning).toBe(true);
+    expect(p.warnings.join(' ')).toContain('현재 데이터로 추정');
+  });
 });

@@ -191,6 +191,11 @@ describe('되돌리기는 실제 생산분만 되돌린다', () => {
 
     await engine.reconcileOrderStock(order, OrderStatus.SHIPPED);
     expect(stockOf('box10')).toBe(0);
+    expect(order.inventorySnapshots?.production?.stockDeltas.length).toBeGreaterThan(0);
+    expect(order.inventorySnapshots?.production?.bomLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ parentItemId: 'box10', childItemId: 'loose', quantity: 10 }),
+    ]));
+    expect(order.inventorySnapshots?.shipment?.stockDeltas).toEqual([{ itemId: 'box10', delta: -40 }]);
 
     await engine.reconcileOrderStock(order, OrderStatus.PENDING);
     expect(stockOf('box10')).toBe(32);

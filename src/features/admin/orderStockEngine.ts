@@ -2,7 +2,7 @@ import { doc, setDoc, deleteDoc, getDoc, runTransaction, Firestore } from 'fireb
 import { today, dateOfLocal } from '../../shared/day';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot, OrderInventorySnapshot, OrderStatusAudit } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
@@ -11,6 +11,8 @@ import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
+import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
+import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -23,6 +25,19 @@ export interface StockUseChoice {
   loose?: number;
 }
 export type StockUsePlan = Record<number, StockUseChoice>;
+
+export interface OrderStatusChangeContext {
+  approvedBy?: string;
+  approvedAt?: string;
+  approvedPlan?: RollbackPlan;
+  approvedFromStatus?: OrderStatus;
+  orderPatch?: Partial<Order>;
+}
+
+export interface PreparedOrderStatusChange {
+  order: Order;
+  plan: RollbackPlan;
+}
 
 /**
  * 생산/출고 분리 재고 엔진 (도메인 모듈).
@@ -58,6 +73,7 @@ export interface OrderStockEngineDeps {
   mutateRawMaterialLots: (rawItemId: string, transform: (lots: RawMaterialLot[], stock: number) => RawMaterialLot[], computeStock?: (lots: RawMaterialLot[]) => number) => Promise<RawMaterialLot[]>;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
+  claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
 }
 
 /**
@@ -87,7 +103,7 @@ export const isGoodsItem = (p: Item) =>
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem } = deps;
+    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem, claimOrderOperation } = deps;
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
 
@@ -101,6 +117,12 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
   };
   const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };
+  const deltaRows = (m: Map<string, number>) => [...m]
+    .filter(([, delta]) => delta !== 0)
+    .map(([itemId, delta]) => ({ itemId, delta: Math.round(delta * 1000) / 1000 }));
+  const bomSnapshotOf = (order: Order): OrderInventorySnapshot['bomLines'] => stockTouchedIds(order).flatMap(parentItemId =>
+    bomOf(parentItemId).map(line => ({ parentItemId, childItemId: line.childId, quantity: line.qty }))
+  );
 
   /**
    * **재고 판정에 쓸 실제 값** — 생산 한 판이 시작될 때 DB에서 읽어 채운다.
@@ -589,20 +611,31 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
 
   // 목표 상태에 맞춰 재고 상태를 조정(생산/출고/취소 자동). ON_HOLD은 재고 미변동.
-  const reconcileOrderStock = async (order: Order, target: OrderStatus, plan?: StockUsePlan) => {
-    if (target === OrderStatus.ON_HOLD) return;
+  const reconcileOrderStock = async (order: Order, target: OrderStatus, plan?: StockUsePlan, deferOrderPatch = false) => {
+    if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = STATUS_WANT_SHIPPED.has(target);
     const deltas = new Map<string, number>();
     const patch: Partial<Order> = {};
     // 역방향(되돌리기): 출고취소 → 생산취소
     if (!wantShipped && order.shippedOut) {
-      unShipOrder(order, deltas); patch.shippedOut = false;
+      const snapshot = order.inventorySnapshots?.shipment;
+      if (snapshot) snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+      else unShipOrder(order, deltas);
+      patch.shippedOut = false;
       await restoreProductLotsForOrder(order); patch.productConsumedLots = [];
     }
-    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = []; }
+    if (!wantProduced && order.producedAt) {
+      const snapshot = order.inventorySnapshots?.production;
+      if (snapshot) {
+        snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+        await restoreRawLotsForOrder({ ...order, rawConsumedLots: snapshot.rawConsumedLots ?? order.rawConsumedLots });
+      } else await unProduceOrder(order, deltas);
+      patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
+    }
     // 정방향: 생산 → 출고
     if (wantProduced && !order.producedAt) {
+      const productionDeltasBefore = new Map(deltas);
       const { consumedLots, autoBuilt, producedUnits } = await produceOrder(order, deltas, plan);
       patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
       // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
@@ -612,18 +645,64 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
       patch.producedUnits = producedUnits;
       if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
+      const productionDeltas = new Map<string, number>();
+      for (const [itemId, value] of deltas) addDelta(productionDeltas, itemId, value - (productionDeltasBefore.get(itemId) ?? 0));
+      patch.inventorySnapshots = {
+        ...order.inventorySnapshots,
+        version: 1,
+        production: {
+          capturedAt: new Date().toISOString(),
+          stockDeltas: deltaRows(productionDeltas),
+          bomLines: bomSnapshotOf(order),
+          rawConsumedLots: consumedLots,
+          rawLedgerIds: [...new Set(consumedLots.map(row => `rm-auto-${order.id}-${row.material.replace(/\s/g, '_')}`))],
+        },
+      };
     }
     if (wantShipped && !order.shippedOut) {
+      const shipmentDeltasBefore = new Map(deltas);
       shipOrder(order, deltas); patch.shippedOut = true;
       // 빈 배열이어도 반드시 쓴다 — 안 쓰면 이전 출고의 스냅샷이 남아 취소 때 유령 복원이 된다.
-      patch.productConsumedLots = await deductProductLotsForOrder(order);
+      const productConsumedLots = await deductProductLotsForOrder(order);
+      patch.productConsumedLots = productConsumedLots;
+      const shipmentDeltas = new Map<string, number>();
+      for (const [itemId, value] of deltas) addDelta(shipmentDeltas, itemId, value - (shipmentDeltasBefore.get(itemId) ?? 0));
+      patch.inventorySnapshots = {
+        ...(patch.inventorySnapshots ?? order.inventorySnapshots),
+        version: 1,
+        shipment: {
+          capturedAt: new Date().toISOString(),
+          stockDeltas: deltaRows(shipmentDeltas),
+          bomLines: [],
+          productConsumedLots,
+        },
+      };
     }
     await applyStockDeltas(deltas);
-    if (Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
+    if (!deferOrderPatch && Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
+    return { patch, stockAdjustments: deltaRows(deltas) };
   };
 
   // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
-  const changeOrderStatus = async (id: string, status: OrderStatus, plan?: StockUsePlan) => {
+  const getFreshOrder = async (id: string, required = false): Promise<Order | undefined> => {
+    const cached = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+    try {
+      const snap = await getDoc(doc(db, 'orders', id));
+      if (snap.exists()) return { ...cached, ...(snap.data() as Partial<Order>), id } as Order;
+    } catch (error) {
+      if (required) throw new Error(`DB 최신 주문을 확인하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`);
+      /* 일반 상태 저장은 화면의 최신 구독값으로 폴백한다. */
+    }
+    return cached;
+  };
+
+  const prepareOrderStatusChange = async (id: string, status: OrderStatus): Promise<PreparedOrderStatusChange | undefined> => {
+    const order = await getFreshOrder(id, true);
+    if (!order) return undefined;
+    return { order, plan: buildRollbackPlan(order, allItems, order.status, status) };
+  };
+
+  const changeOrderStatus = async (id: string, status: OrderStatus, plan?: StockUsePlan, context: OrderStatusChangeContext = {}) => {
     // 같은 주문이 동시에 두 번 생산 처리되는 것을 막는다.
     //  품목 체크가 연달아 들어오면 handleToggleItemChecked가 같은 틱에 작업완료를 여러 번 부르는데,
     //  producedAt 판정이 React 상태 기준이라 전부 통과해 원료가 배수로 빠졌다(수입들기름 3배).
@@ -631,15 +710,48 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     inFlightOrders.add(id);
     try {
       const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
-      if (!order) { await updateItem('orders', id, { status }); return; }
+      if (!order) {
+        if (isWorkCompletedState(status)) throw new Error('주문 정보를 확인할 수 없어 작업완료 상태로 변경할 수 없습니다.');
+        await updateItem('orders', id, { status });
+        return;
+      }
       // producedAt·shippedOut은 DB에서 다시 읽는다 — React 상태는 같은 틱에 갱신되지 않아
       // 직전 호출이 이미 생산했는지 알 수 없다.
-      let live = order;
+      let live = await getFreshOrder(id, !!context.approvedPlan) ?? order;
+      if (live.status === status) {
+        await updateItem('orders', id, { status });
+        return;
+      }
+      const nextItems = context.orderPatch?.items ?? live.items;
+      if (requiresCompleteItemsForStatusChange(live.status, status) && !hasCompleteOrderItems(nextItems)) {
+        throw new Error('모든 주문 품목의 작업완료 여부를 확인한 뒤 상태를 변경해 주세요.');
+      }
+      const approvedAt = context.approvedAt ?? new Date().toISOString();
+      const approvedBy = context.approvedBy ?? actorName ?? '미기록';
+      const auditId = `order-status-${id}-${Date.now()}`;
+      const operation = { id: auditId, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
+      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
+      else await updateItem('orders', id, { inventoryOperation: operation });
+      if (context.approvedPlan) {
+        const latestPlan = buildRollbackPlan(live, allItems, live.status, status);
+        const approvedRows = JSON.stringify(context.approvedPlan.adjustments);
+        const latestRows = JSON.stringify(latestPlan.adjustments);
+        if (live.status !== context.approvedFromStatus || context.approvedPlan.legacyEvidenceWarning !== latestPlan.legacyEvidenceWarning || approvedRows !== latestRows) {
+          await updateItem('orders', id, { inventoryOperation: null });
+          throw new Error('승인 후 주문 상태 또는 재고 원복 계획이 변경되었습니다. 다시 확인해 주세요.');
+        }
+      }
+      let result = { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
+      const initialAudit: OrderStatusAudit = {
+        id: auditId, orderId: id, partnerName: live.partnerName, previousStatus: live.status, nextStatus: status,
+        approvedBy, approvedAt, state: 'processing', legacyEvidenceWarning: !!context.approvedPlan?.legacyEvidenceWarning,
+        stockAdjustments: context.approvedPlan?.adjustments.map(({ itemId, name, unit, delta }) => ({ itemId, name, unit, delta })) ?? [],
+      };
       try {
-        const snap = await getDoc(doc(db, 'orders', id));
-        if (snap.exists()) live = { ...order, ...(snap.data() as Partial<Order>) } as Order;
-      } catch { /* 읽기 실패 시 메모리 상태로 진행 */ }
-      if (live.status !== OrderStatus.DELIVERED) await reconcileOrderStock(live, status, plan);
+        await addItem('orderStatusAudits', initialAudit);
+        // 같은 상태 재저장만 재고를 건너뛴다. 예전 주문(DELIVERED)도 실제로 역행시키면
+        // 출고·생산 스냅샷을 따라 반드시 원복돼야 한다.
+        if (live.status !== status) result = await reconcileOrderStock(live, status, plan, true);
       // 배송완료일은 **여기서 만들어 넣지 않는다.** 서류 네 종의 유일한 기준일이라,
       // '지금 시각'으로 채우면 새벽에 처리한 건이 다음 날짜로 새서 서류가 갈린다.
       // 판매기록부를 뽑는 쪽이 서류 날짜로 미리 박아 준다. 비어 있으면 알림으로 드러낸다.
@@ -652,11 +764,22 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
           linkedId: id, readBy: [], createdAt: new Date().toISOString(),
         } as Omit<AppNotification, 'id'>);
       }
-      await updateItem('orders', id, { status });
+        const namedAdjustments = result.stockAdjustments.map(row => {
+          const item = allItems.find(candidate => candidate.id === row.itemId);
+          return { ...row, name: item?.name ?? row.itemId, unit: item?.unit ?? '개' };
+        });
+        await updateItem('orders', id, { ...result.patch, ...context.orderPatch, status, inventoryOperation: null });
+        await addItem('orderStatusAudits', { ...initialAudit, state: 'completed', completedAt: new Date().toISOString(), stockAdjustments: namedAdjustments });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await updateItem('orders', id, { inventoryOperation: { ...operation, state: 'failed', error: message } });
+        await addItem('orderStatusAudits', { ...initialAudit, state: 'failed', completedAt: new Date().toISOString(), error: message });
+        throw error;
+      }
     } finally {
       inFlightOrders.delete(id);
     }
   };
 
-  return { changeOrderStatus, reconcileOrderStock };
+  return { changeOrderStatus, reconcileOrderStock, prepareOrderStatusChange };
 }
