@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
+import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble';
 
 /**
  * **재고 판정은 화면 값이 아니라 DB 값으로 한다.**
@@ -53,6 +54,7 @@ function harness(items: Item[], orders: Order[]) {
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   for (const o of orders) dbx.orders.set(o.id, { ...o });
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
+  const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
     //  allItems는 **일부러 갱신하지 않는다** — 앱에서 구독이 늦는 상황 그대로다.
     allItems: items, submaterials: [], partners: [], allOrders: orders, orders,
@@ -66,6 +68,7 @@ function harness(items: Item[], orders: Order[]) {
       if (computeStock) dbx.stock.set(id, computeStock(next as any));
       return next;
     },
+    runRawInventoryJob: runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') {
         const o = orders.find(x => x.id === id);

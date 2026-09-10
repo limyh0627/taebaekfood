@@ -121,7 +121,9 @@ export async function recordRawMaterialReceipt(opts: {
     operationId,
     ...rawLedgerKeys(rawItem),
     materialSnapshot: baseName,
-    effectiveDate: dateStr,
+    // 입고 화면은 날짜만 받는다. 실사 앵커와 같은 날이면 순서를 임의로 만들지 않도록
+    // 오늘 입고는 실제 저장 시각, 과거 입고는 그 날짜 정오를 업무 시각으로 둔다.
+    effectiveAt: nowIso.slice(0, 10) === dateStr ? nowIso : `${dateStr}T12:00:00+09:00`,
     source: { type: 'purchase', id: poId ?? (partnerId ?? partnerName) },
     ...(addedBy ? { actorName: addedBy } : {}),
     kind: 'receive',
@@ -150,7 +152,8 @@ export async function recordRawMaterialReceipt(opts: {
   });
 
   //  거절은 삼키지 않는다 — 예전엔 실패가 콘솔에만 남아 아무도 몰랐다(설계 §14).
-  if (r.status === 'rejected') throw new Error(`원료 입고 거절: ${r.reason}`);
+  if (r.status === 'rejected') throw new Error(`원료 입고 거절: ${r.message}`);
+  if (r.status === 'conflict') throw new Error(`원료 입고 충돌: 같은 작업 번호의 내용이 다릅니다(${operationId})`);
 
   return { recorded: true, baseName, kgIn, lotted: true };
   } finally {
@@ -206,7 +209,7 @@ export async function adjustRawLots(opts: {
     companyId: companyOf({ companyId }),
     rawItemId,
     materialSnapshot: material,
-    effectiveDate: date,
+    effectiveAt: `${date}T12:00:00+09:00`,
     ...(addedBy ? { actorName: addedBy } : {}),
     source: { type: 'adjustment' as const, id: operationId },
   };
@@ -224,5 +227,6 @@ export async function adjustRawLots(opts: {
       },
     },
   );
-  if (r.status === 'rejected') throw new Error(`원료 조정 거절: ${r.reason}`);
+  if (r.status === 'rejected') throw new Error(`원료 조정 거절: ${r.message}`);
+  if (r.status === 'conflict') throw new Error(`원료 조정 충돌: 같은 작업 번호의 내용이 다릅니다(${operationId})`);
 }

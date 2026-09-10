@@ -23,7 +23,6 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { today } from '../day';
 import type { RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
@@ -225,7 +224,7 @@ export const mutateRawMaterialLots = async (
     if (computeStock && !lotsAreTotal) patch.stock = computeStock(next);
     return patch;
   };
-  const { next, opening } = await runTransaction(db, async (tx) => {
+  const next = await runTransaction(db, async (tx) => {
     const ref = doc(db, "items", rawItemId);
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
@@ -235,44 +234,8 @@ export const mutateRawMaterialLots = async (
     // #1 로트 배열 무한 증가 방지 — 오래된 depleted 로트 정리(모든 로트 쓰기 경로가 이 함수를 지남)
     const next = pruneDepletedLots(transform(current, stockBefore));
     tx.update(ref, buildPatch(next, !!data.lotsAreTotal));
-    // 로트가 하나도 없던 원료를 처음 건드리는 순간 = withCarryOverLot이 stock을 '이월' 로트로 옮기는 때.
-    // 그 이월은 **실제 원장에 아무 줄도 안 남겨서**, 로트합만 올라가고 잔량은 그대로라 영구히 벌어졌다.
-    // → 여기서 기초이월 한 줄을 남긴다. 실제 원장의 줄과 로트 변화는 언제나 1:1이어야 한다.
-    const opening = current.length === 0 && stockBefore > 0
-      ? { kg: Math.round(stockBefore * 1000) / 1000, name: String(data.name ?? ""), companyId: data.companyId ?? "taebaek" }
-      : null;
-    return { next, opening };
+    return next;
   });
-
-  if (opening) {
-    // 문서 id를 원료별로 고정 → 재시도·중복 호출에도 딱 한 번만 생긴다.
-    const entryId = `rm-open-${rawItemId}`;
-    const material = opening.name.split("/")[0].trim() || opening.name;
-    try {
-      await setDoc(
-        doc(db, "rawMaterialLedger", entryId),
-        {
-          id: entryId,
-          material,
-          //  **열쇠를 같이 박는다** — 이 줄은 이 품목의 로트가 처음 서면서 생긴 것이다.
-          //  이름으로 되짚게 두면 이름이 바뀌는 순간 원장에서 떨어져 나간다.
-          rawItemId,
-          companyId: opening.companyId,
-          date: today(),
-          received: opening.kg,
-          used: 0,
-          note: "기초이월 (로트 도입 전 재고)",
-          type: "manual",
-          unit: "kg",
-          createdAt: new Date().toISOString(),
-        },
-        { merge: true },
-      );
-    } catch (e) {
-      // 원장 기록이 실패해도 로트 변경은 이미 커밋됐다 — 조용히 삼키지 말고 남긴다.
-      console.error("[기초이월] 실제 원장 기록 실패:", rawItemId, e);
-    }
-  }
   return next;
 };
 

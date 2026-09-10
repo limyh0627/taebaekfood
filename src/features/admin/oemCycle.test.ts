@@ -49,7 +49,10 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     expect(adds.find(a => a.c === 'purchaseOrders')!.d).toMatchObject({ poType: 'oem', status: 'invoiced' });
   });
 
-  it('② 가공입고: 완제품 재고만 오르고, 반제품 재고는 0인 채 원장에 kg이 들어온다', async () => {
+  it('② 가공입고: 완제품 재고만 오르고, **실제 원장에는 안 쓴다**(2026-09-10 원자화 5단계)', async () => {
+    //  예전엔 서류용 kg 을 `rm-oem-...` 로 실제 원장에 남겼는데, 재고 코어가 원료 이동으로
+    //  오해했다(설계 §11·§12). 완포장은 완제품 재고·로트로만 잡히고 서류(원료수불부)는
+    //  판매·완제품 로트를 후처리해 만든다.
     const { deps, rawCalls, updates, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
     const po = { id: 'oem-1', poType: 'oem', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
@@ -70,11 +73,9 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     expect(rawCalls).toHaveLength(0);
     expect(updates.some(u => u.id === 'wip-볶음참깨')).toBe(false);
 
-    // 원장에는 볶음참깨가 kg으로 입고된다
+    //  실제 원장에는 완포장 kg 이 안 들어간다.
     const led = adds.filter(a => a.c === 'rawMaterialLedger').map(a => a.d);
-    expect(led).toHaveLength(1);
-    expect(led[0]).toMatchObject({ material: '볶음참깨', received: 1415, used: 0, type: 'auto', unit: 'kg' });
-    expect(led[0].id).toBe('rm-oem-oem-1-볶음참깨');
+    expect(led).toHaveLength(0);
   });
 
   it('②-b 벌크로 받은 몫은 원료 홀더 로트에 쌓인다 — 소분 품목이 여기서 빼간다', async () => {
@@ -96,10 +97,9 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     expect(rawCalls[0]).toMatchObject({ material: '볶음참깨', rawItemId: 'wip-볶음참깨', deltaKg: 1300 });
     // 완포장분만 완제품 재고가 오른다
     expect(updates.filter(u => u.c === 'items').map(u => u.id)).toEqual(['nakgae']);
-    // 원장 입고는 완포장분만 여기서 쓴다(벌크는 adjustRawLots가 이미 남겼다 — 두 번 잡히면 안 됨)
+    //  실제 원장은 벌크(adjustRawLots)만 남긴다. 완포장 서류용 kg 은 안 쓴다(2026-09-10).
     const led = adds.filter(a => a.c === 'rawMaterialLedger').map(a => a.d);
-    expect(led).toHaveLength(1);
-    expect(led[0]).toMatchObject({ material: '볶음참깨', received: 100 });
+    expect(led).toHaveLength(0);
   });
 
   it('②-c 벌크만 받아도 된다', async () => {

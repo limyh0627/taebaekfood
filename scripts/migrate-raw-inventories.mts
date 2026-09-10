@@ -19,7 +19,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs';
 import { baseRawName } from '../src/constants/formula';
 import { ledgerBalanceKg } from '../src/shared/rawLedgerBalance';
 import { inventoryDocId, DEPLETED_RETENTION } from '../src/shared/rawInventoryCore';
@@ -45,6 +45,9 @@ if (UNDO) {
     await deleteDoc(doc(db, 'rawInventories', id));
     console.log(`  지움 ${id}`);
   }
+  const kept = `${BACKUP}.undone-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  renameSync(BACKUP, kept);
+  console.log(`백업 보존 → ${kept}`);
   console.log('\n✅ 되돌렸다.\n');
   process.exit(0);
 }
@@ -88,10 +91,15 @@ for (const h of holders) {
     id: inventoryDocId(companyId, h.id),
     companyId, rawItemId: h.id, materialSnapshot: material,
     stockKg, activeLots: active, recentDepletedLots: depleted,
-    ...(last ? { lastStocktakeDate: String(last.date), lastStocktakeOperationId: String(last.id) } : {}),
-    //  version 0 = 아직 이 문서로는 아무 작업도 안 먹었다. 첫 명령이 1 로 올린다.
-    version: 0,
-    updatedAt: now,
+    ...(last ? { stocktakeAnchor: {
+      // 옛 실사는 시각이 없으므로 그날 끝으로 둔다. 새 실사부터 버튼을 누른 순간을 쓴다.
+      effectiveAt: `${String(last.date)}T23:59:59.999+09:00`,
+      operationId: String((last as any).operationId ?? last.id),
+      sequence: 0,
+    } } : {}),
+    // revision 0 = 아직 새 상태 문서로는 아무 명령도 안 먹었다. 첫 명령이 1 로 올린다.
+    revision: 0,
+    lastProcessedAt: now,
   });
 
   const 크기 = JSON.stringify(문서[문서.length - 1]).length;
@@ -111,6 +119,9 @@ if (!APPLY) {
   console.log('\n미리보기만 했다. 실제로 만들려면 --apply 를 붙여라.\n');
   process.exit(0);
 }
+
+// 같은 백업 이름을 덮으면 첫 실행 전 상태를 잃는다. undo 뒤에는 위에서 시각 붙인 이름으로 보존한다.
+if (existsSync(BACKUP)) throw new Error(`기존 백업이 있다. 먼저 --undo 하거나 백업을 확인하라: ${BACKUP}`);
 
 writeFileSync(BACKUP, JSON.stringify({
   적은때: now,

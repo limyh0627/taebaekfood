@@ -12,8 +12,9 @@ import type { RawInventoryMovement } from '../rawInventoryCore';
 
 const 이력 = (o: Partial<RawInventoryMovement> = {}): RawInventoryMovement => ({
   id: 'op-1', operationId: 'op-1',
+  commandHash: 'hash-1',
   companyId: 'taebaek', rawItemId: 'raw-참깨', materialSnapshot: '참깨',
-  effectiveDate: '2026-09-10', recordedAt: '2026-09-10T00:00:00.000Z',
+  effectiveAt: '2026-09-10T09:00:00+09:00', recordedAt: '2026-09-10T00:00:00.000Z',
   sequence: 1, kind: 'receive',
   reportedDeltaKg: 100, appliedDeltaKg: 100, balanceAfterKg: 100,
   lotChanges: [], source: { type: 'purchase', id: 'po-1' },
@@ -71,7 +72,7 @@ describe('옛 원장 화면이 읽는 칸을 같이 채운다', () => {
   });
 
   it('열쇠가 언제나 실린다 — 이름으로 되짚지 않는다', () => {
-    for (const kind of ['receive', 'consume', 'stocktake', 'delete-lot', 'reverse', 'opening'] as const) {
+    for (const kind of ['receive', 'consume', 'stocktake', 'deplete-lot', 'reverse', 'opening'] as const) {
       const d = toLedgerDoc(이력({ kind }));
       expect(d.rawItemId, kind).toBe('raw-참깨');
       expect(d.companyId, kind).toBe('taebaek');

@@ -2070,13 +2070,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                  * 소급 입력(마지막 실사보다 앞선 날짜) 판정도 명령 안에서 한다 —
                  * 화면이 들고 있는 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
                  */
-                const 홀더 = rawHolderByName(allItems, entry.material);
+                const 홀더 = rawHolderByName(allItems, entry.material, entry.companyId ?? companyId);
                 if (!홀더) return { ok: false, reason: `원료 홀더를 못 찾았다: ${entry.material}` };
 
                 const 공통 = {
                   ...rawLedgerKeys(홀더),
                   materialSnapshot: entry.material,
-                  effectiveDate: entry.date,
+                  effectiveAt: entry.targetKg != null
+                    ? new Date().toISOString()
+                    : (entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`),
                   ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
                 };
                 const 옛칸 = {
@@ -2102,7 +2104,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const r = await executeRawInventoryCommand(명령, {
                   newLotId: `lot-${entry.id}`, carryOverLotId: `carry-${entry.id}`, legacy: 옛칸,
                 });
-                if (r.status === 'rejected') return { ok: false, reason: r.reason };
+                if (r.status === 'rejected') return { ok: false, reason: r.message };
+                if (r.status === 'conflict') return { ok: false, reason: '같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.' };
                 const applied = r.status === 'applied' ? r.movement.appliedDeltaKg : 0;
 
                 /**
@@ -2113,14 +2116,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if ((entry.used ?? 0) > 0 && yieldRules[entry.material] && entry.type !== 'correction' && applied !== 0) {
                   const { product, rate } = yieldRules[entry.material];
                   const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
-                  const 파생홀더 = rawHolderByName(allItems, product);
+                  const 파생홀더 = rawHolderByName(allItems, product, companyOf(홀더));
                   if (파생홀더 && derivedKg > 0) {
                     const 파생id = `yield:${entry.id}`;
                     const dr = await executeRawInventoryCommand({
                       operationId: 파생id,
                       ...rawLedgerKeys(파생홀더),
                       materialSnapshot: product,
-                      effectiveDate: entry.date,
+                      effectiveAt: entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`,
                       ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
                       source: { type: 'manual', id: entry.id },
                       kind: 'receive',
@@ -2135,39 +2138,49 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       },
                     });
                     //  파생이 실패해도 본 사용은 이미 들어갔다. 조용히 넘기지 않고 알린다(§14).
-                    if (dr.status === 'rejected') {
-                      alert(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${dr.reason}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
+                    if (dr.status === 'rejected' || dr.status === 'conflict') {
+                      const 이유 = dr.status === 'rejected' ? dr.message : '같은 작업 번호의 내용이 다릅니다.';
+                      alert(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${이유}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
                     }
                   }
                 }
                 return { ok: true, appliedKg: applied };
               }}
               onDeleteRawMaterialEntry={async (id) => {
+                /**
+                 * **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9, 2026-09-10 원자화 5단계).
+                 *
+                 * 예전엔 `adjustRawLots` 로 로트를 손으로 되돌리고 `deleteItem` 으로 원장 줄을
+                 * 지웠다 — 감사가 사라지고 서로 다른 취소가 원본을 두 번 되돌릴 수 있었다.
+                 * 이제 원본 `operationId` 에 `reverse` 명령을 보내면 서비스가 `ReversalGuard` 로
+                 * 두 번째 취소를 막고, 이력·상태·품목을 한 트랜잭션에 갱신한다.
+                 */
                 const entry = mergedRawMaterialLedger.find(e => e.id === id);
-                const ordered = sortLedger(mergedRawMaterialLedger.filter(e => e.material === entry?.material));
-                const at = ordered.findIndex(e => e.id === id);
-                const anchoredLater = at >= 0 && ordered.slice(at + 1).some(e => e.targetKg != null);
-                if (entry && !anchoredLater) {
-                  const deltaKg = (entry.used ?? 0) - (entry.received ?? 0);   // 지우면 반대 방향으로
-                  const holder = resolveRawHolder(allItems, { rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId });
-                  if (holder && Math.abs(deltaKg) > 0.0001) {
-                    try {
-                      await adjustRawLots({
-                        material: entry.material, rawItemId: holder.id, deltaKg,
-                        date: today(),
-                        note: `원장 기록 삭제 되돌림 (${entry.note ?? ''})`.trim(),
-                        addedBy: currentUser?.name,
-                        ledger: false,   // 원장 줄은 아래에서 지운다 — 여기서 또 쓰면 지운 자리에 새 줄이 생긴다
-                      });
-                    } catch (e) {
-                      // 로트를 못 되돌렸으면 원장도 그대로 둔다 — 지웠다간 둘이 갈린다
-                      console.error('[원장 삭제] 로트 되돌리기 실패 — 삭제를 중단합니다:', id, e);
-                      alert('로트를 되돌리지 못해 기록을 삭제하지 않았습니다.\n재고가 어긋나는 것을 막기 위한 것입니다. 잠시 후 다시 시도해 주세요.');
-                      return;
-                    }
-                  }
-                }
-                await deleteItem('rawMaterialLedger', id);
+                if (!entry) return;
+                const original = (entry as { operationId?: string }).operationId;
+                if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
+                const holder = resolveRawHolder(allItems, {
+                  rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
+                });
+                if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
+                const opId = `reverse:${original}`;
+                const r = await executeRawInventoryCommand({
+                  operationId: opId,
+                  ...rawLedgerKeys(holder),
+                  materialSnapshot: entry.material,
+                  effectiveAt: new Date().toISOString(),
+                  ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                  source: { type: 'reversal', id: original },
+                  kind: 'reverse', originalOperationId: original,
+                }, {
+                  legacy: {
+                    note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
+                    type: 'correction',
+                    ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
+                  },
+                });
+                if (r.status === 'rejected') { alert(`취소 실패 — ${r.code}: ${r.message}`); return; }
+                if (r.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
                 setLedgerReloadKey(k => k + 1);
               }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
@@ -3550,9 +3563,40 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                       )}
                                       {row.delId && (
                                         <button
-                                          onClick={async () => { if (confirm('삭제할까요?')) { await deleteItem('rawMaterialLedger', row.delId!); setLedgerReloadKey(k => k + 1); } }}
+                                          onClick={async () => {
+                                            //  **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9).
+                                            //  같은 취소가 두 번 눌려도 `ReversalGuard` 가 막는다.
+                                            if (!confirm('이 기록을 취소할까요? (지우지 않고 뒤에 취소 줄이 쌓입니다)')) return;
+                                            const entry = mergedRawMaterialLedger.find(e => e.id === row.delId);
+                                            if (!entry) return;
+                                            const original = (entry as { operationId?: string }).operationId;
+                                            if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
+                                            const holder = resolveRawHolder(allItems, {
+                                              rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
+                                            });
+                                            if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
+                                            const opId = `reverse:${original}`;
+                                            const cr = await executeRawInventoryCommand({
+                                              operationId: opId,
+                                              ...rawLedgerKeys(holder),
+                                              materialSnapshot: entry.material,
+                                              effectiveAt: new Date().toISOString(),
+                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                                              source: { type: 'reversal', id: original },
+                                              kind: 'reverse', originalOperationId: original,
+                                            }, {
+                                              legacy: {
+                                                note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
+                                                type: 'correction',
+                                                ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
+                                              },
+                                            });
+                                            if (cr.status === 'rejected') { alert(`취소 실패 — ${cr.code}: ${cr.message}`); return; }
+                                            if (cr.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
+                                            setLedgerReloadKey(k => k + 1);
+                                          }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors"
-                                        >삭제</button>
+                                        >취소</button>
                                       )}
                                     </div>
                                   </td>
@@ -3604,14 +3648,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                              * 소급 판정(앵커보다 앞선 날짜)도 명령 안에서 한다 — 화면이 든 배열이 아니라
                                              * **트랜잭션에서 읽은 상태**의 실사 정보로 본다(§10).
                                              */
-                                            const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial);
+                                            const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial, companyId);
                                             if (!정정홀더) { alert(`원료 홀더를 못 찾았다: ${rmActiveMaterial}`); return; }
                                             const opId = isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`;
                                             const 공통정정 = {
                                               operationId: opId,
                                               ...rawLedgerKeys(정정홀더),
                                               materialSnapshot: rmActiveMaterial,
-                                              effectiveDate: rmCorrectionForm.date,
+                                              effectiveAt: isStocktake
+                                                ? new Date().toISOString()
+                                                : (rmCorrectionForm.date === today() ? new Date().toISOString() : `${rmCorrectionForm.date}T12:00:00+09:00`),
                                               ...(currentUser?.name ? { actorName: currentUser.name } : {}),
                                             };
                                             const 정정옛칸 = {
@@ -3630,7 +3676,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const cr = await executeRawInventoryCommand(정정명령, {
                                               newLotId: `lot-${opId}`, carryOverLotId: `carry-${opId}`, legacy: 정정옛칸,
                                             });
-                                            if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.reason}`); return; }
+                                            if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.message}`); return; }
+                                            if (cr.status === 'conflict') { alert('정정 실패 — 같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
                                             if (cr.status === 'applied' && cr.movement.backdatedBeforeStocktake) {
                                               alert('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
                                             }
@@ -4405,7 +4452,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4425,7 +4472,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';

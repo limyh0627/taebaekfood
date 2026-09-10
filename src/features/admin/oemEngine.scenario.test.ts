@@ -76,7 +76,10 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
     expect(h.lots[0].note).toContain('푸미푸드');
   });
 
-  it('받을 때 — 완제품 재고가 늘고, 원료수불부엔 **볶음참깨**로 입고된다', async () => {
+  it('받을 때 — 완제품 재고가 늘고, **실제 원장에는 안 쓴다**(원자화 5단계)', async () => {
+    //  예전엔 서류용 kg 을 `rm-oem-...` 로 실제 원장에 남겼는데, 그러면 재고 코어가 그 줄을
+    //  원료 이동으로 오해한다(설계 §11·§12). 완포장은 완제품 로트로만 잡히고, 서류(원료수불부)는
+    //  판매·완제품 로트를 후처리로 만든다.
     const h = harness(items);
     const po = {
       id: 'oem-1', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드',
@@ -92,12 +95,9 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
     expect(loss).toBe(5);                       // 보낸 100 − 받은 95
     expect(h.stocks['PLDhkjOgcPIhO1hhReHm']).toBe(2 + 95);
 
-    // 원료수불부 — 완제품 이름이 아니라 BOM이 가리키는 원료 이름으로 들어와야 한다
-    expect(h.ledger).toHaveLength(1);
-    expect(h.ledger[0]).toMatchObject({ material: '볶음참깨', received: 95, used: 0 });
-    expect(h.ledger[0].note).toContain('푸미푸드');
-
-    // 완포장분은 로트를 안 건드린다 — 재고는 완제품 쪽에 있다
+    // 실제 원장에는 완포장 kg 이 안 들어간다 — 재고 코어가 원료 이동으로 오인하지 않게.
+    expect(h.ledger).toHaveLength(0);
+    // 완포장분은 원료 로트도 안 건드린다 — 재고는 완제품 쪽에 있다
     expect(h.lots).toHaveLength(0);
   });
 
@@ -135,7 +135,8 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
 
     expect(receivedKg).toBe(95);
     expect(h.stocks['PLDhkjOgcPIhO1hhReHm']).toBe(2 + 50);
-    expect(h.ledger).toEqual([expect.objectContaining({ material: '볶음참깨', received: 50 })]);
+    //  완포장분은 원장에 안 남긴다(2026-09-10 원자화 5단계). 벌크만 실제 원장에 붙는다.
+    expect(h.ledger).toEqual([]);
     expect(h.lots).toEqual([expect.objectContaining({ material: '볶음참깨', deltaKg: 45 })]);
   });
 

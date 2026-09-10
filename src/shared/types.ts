@@ -120,6 +120,8 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
 
 export interface Order {
   id: string;
+  /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
+  companyId?: CompanyId;
   /**
    * **주문 카드번호** — `ORD-260901-01`. 전표번호와 같은 규칙(`nextDocNo`)이다.
    *
@@ -152,7 +154,20 @@ export interface Order {
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
-  rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  rawConsumedLots?: {
+    material: string;
+    /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
+    rawItemId?: string;
+    /** 이 로트를 소비한 원자 명령. 취소는 이 명령을 reverse 한다. */
+    operationId?: string;
+    lotId?: string;
+    lotNo?: string;
+    supplierName: string;
+    receivedDate?: string;
+    kg: number;
+  }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  /** 생산 원료 명령의 회차. 재생산 때 이미 취소된 operationId를 다시 쓰지 않게 한다. */
+  rawInventoryAttempt?: number;
   /**
    * 이 주문이 출고한 **완제품 로트** 스냅샷 — 어느 박스 로트가 어느 거래처로 나갔나.
    * 회수는 이걸 거꾸로 읽는다: 로트번호 → 나간 주문 → 거래처.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 import { buildStockUseRows, resolveStockUse, toStockUsePlan } from './stockUseRows';
+import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble';
 
 /**
  * 박스/낱개 재고 차감 — **이미 있는 재고를 먼저 쓰고 부족분만 생산한다.**
@@ -65,12 +66,25 @@ function harness(items: Item[], order: Order) {
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
   for (const i of items) store.stock.set(i.id, i.stock ?? 0);
+  const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
+  const rawLedger = new Map<string, Record<string, any>>();
+  const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: store.stock, ledger: rawLedger });
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
     buildFormula: () => [],                       // 원료식 폴백은 이 테스트의 관심사가 아니다(BOM 경로만 본다)
     createProductionRecordsForOrder: async () => {},
     mutateRawMaterialLots: async (rawItemId, transform) => { transform([], 0); rawUsed[rawItemId] = (rawUsed[rawItemId] ?? 0) + 1; return []; },
+    runRawInventoryJob: async input => {
+      const result = await runRawJob(input);
+      for (const r of result.results) {
+        if (r.result.status === 'applied' && r.input.command.kind === 'consume') {
+          const id = r.input.command.rawItemId;
+          rawUsed[id] = (rawUsed[id] ?? 0) + 1;
+        }
+      }
+      return result;
+    },
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }
       if (col === 'orders') Object.assign(order, data);

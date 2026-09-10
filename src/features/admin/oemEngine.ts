@@ -177,19 +177,12 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     receivedKg = Math.round(receivedKg * 1000) / 1000;
 
-    // 완포장분 = 원료(볶음참깨)가 완제품 안에 들어온 것. 반제품 재고는 안 올리고 수불부에만 kg으로 남긴다.
-    //   (벌크분은 위 adjustRawLots가 이미 원장에 입고를 남겼다 — 여기서 또 쓰면 두 번 잡힌다)
-    for (const [raw, rawKg] of Object.entries(receivedByRaw)) {
-      const id = `rm-oem-${po.id}-${raw.replace(/\s/g, '_')}`;
-      const 홀더 = findRawHolder(items, raw);
-      await addItem('rawMaterialLedger', {
-        id, material: raw, ...(홀더 ? rawLedgerKeys(홀더) : {}), date: input.date,
-        received: Math.round(rawKg * 1000) / 1000, used: 0,
-        note: `OEM 가공입고 ← ${po.partnerName ?? ''}`,
-        type: 'auto', unit: 'kg', createdAt: new Date().toISOString(),
-        ...(input.addedBy ? { addedBy: input.addedBy } : {}),
-      });
-    }
+    //  **완포장 서류용 원장 줄(`rm-oem-...`)은 더 이상 만들지 않는다**(2026-09-10 원자화 5단계).
+    //   `rawMaterialLedger` 는 실제 원료 재고가 움직인 자리만 남긴다. 완포장은 원료 홀더가
+    //   아니라 완제품 로트로 들어오므로 실제 원장에는 근거가 없다 — 실제 재고 없이 서류용으로만
+    //   쌓아 두면 나중에 재고 코어가 그 줄을 원료 이동으로 오해한다(설계 §11·§12).
+    //   서류(원료수불부)는 판매 자료와 실제 원장을 후처리해서 만드는 쪽으로 옮긴다.
+    void receivedByRaw;
     const loss = batchLoss(po.oemSent, receivedKg);
 
     // 전표는 끊지 않는다 — linkedStatementId 없이 두면 '가공비 전표 작성 대기'가 된다.
