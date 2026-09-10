@@ -134,9 +134,6 @@ export function vatOn(supply: number, exempt?: boolean): number {
   return exempt ? 0 : Math.round((Number(supply) || 0) * VAT_RATE);
 }
 
-/** 세금 포함 값을 만드는 곱수 — 면세 원료로 과세품을 만들 때 원가에 얹는 데도 쓴다 */
-export const VAT_UP = 1 + VAT_RATE;
-
 /**
  * **한 줄로 보여줄 단가 딱지** — 과세면 공급가액을 곁들인다.
  *

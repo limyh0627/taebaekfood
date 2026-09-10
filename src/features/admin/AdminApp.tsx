@@ -106,7 +106,6 @@ import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
-import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import { notify, loadNotifyMode } from '../../shared/notify';

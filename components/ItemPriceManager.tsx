@@ -57,7 +57,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
     <div className="space-y-4 animate-in fade-in duration-300">
       <PageHeader
         title="품목 관리"
-        subtitle="품목 추가·수정·삭제 및 원가를 관리합니다. 판매단가는 거래처마다 다릅니다."
+        subtitle="품목 추가·수정·삭제 및 원가를 관리합니다. 원가는 부가세를 뺀 공급가액이고, 판매단가는 거래처마다 다릅니다."
         right={
           <button onClick={onAddItem}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 shadow-sm transition-all">
@@ -93,7 +93,12 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">품목명</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>
-                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
+                {/*  **원가는 공급가액이다** — 전표에 치는 매입단가(세포함)와 다른 숫자다.
+                     표시가 없으면 매입단가를 그대로 옮겨 적어 과세 품목이 10% 부푼다.
+                     밑을 맞추는 셈은 `costOfPurchase` 한 곳뿐이다(인수인계 "원가는 공급가액"). */}
+                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">
+                  원가 <span className="text-slate-300 normal-case">(공급가액)</span>
+                </th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">재고</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
               </tr>
@@ -160,7 +165,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                       {isEditing ? (
                         <input type="number" value={editCost} onChange={e => setEditCost(e.target.value)}
                           className="w-28 text-right border border-emerald-300 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"
-                          placeholder="원가"/>
+                          placeholder="원가(공급가)"/>
                       ) : (
                         <div>
                           <span className="text-sm font-bold text-slate-600">{p.cost ? `${fmt(p.cost)}원` : '-'}</span>
