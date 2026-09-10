@@ -1,5 +1,5 @@
 import type { PartnerItem, Item } from './types';
-import { costOfPurchase } from './lineAmount';
+import { costFromPurchaseLine } from './lineAmount';
 
 /**
  * **전표에 찍힌 단가·계정을 거래처 단가로 되민다.**
@@ -29,6 +29,10 @@ export interface PriceSyncLine {
   price?: number;
   accountCode?: string;
   isTaxExempt?: boolean;
+  /** 그 줄의 수량. 아래 `supply` 와 짝이다. */
+  qty?: number;
+  /** 그 줄의 **공급가액**(부가세 뺀 값). 매입 원가는 이걸 수량으로 나눠 쓴다. */
+  supply?: number;
 }
 
 export interface PriceSyncInput {
@@ -107,11 +111,19 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
     } as PartnerItem);
 
     /*
-     * **원가는 공급가액이다.** 전표 단가는 세금 포함이라 그대로 넣으면 과세 품목 원가가
-     * 10% 부푼다 — 2026-09-06 에 60개를 ÷1.1 로 되돌렸는데 전표를 다시 끊으면 되살아났다.
-     * 밑을 맞추는 셈은 [lineAmount.costOfPurchase](./lineAmount.ts) 한 곳이다.
+     * **원가는 그 전표 줄의 공급가액이다.**
+     *
+     * 2026-09-10 사장님: "매입단가가 항상 과세인 건 아니고, 매입전표의 공급가액을 원가로 넣게 하면 돼."
+     *
+     * 단가에서 다시 세면 과세인지 면세인지를 **여기서 또 판단**해야 하고, 그 판단이 전표와
+     * 어긋나는 순간 원가가 10% 틀어진다. 전표에 찍힌 `supply` 는 사람이 보고 발행한 그 숫자다.
+     * (2026-09-06 에 60개를 되돌렸는데 전표를 다시 끊자 되살아난 게 이 갈림 때문이다)
+     * 셈은 [lineAmount.costFromPurchaseLine](./lineAmount.ts) 한 곳이다.
      */
-    if (type === '매입') out.costUpdates.push({ itemId: product.id, price: costOfPurchase(price, line.isTaxExempt) });
+    if (type === '매입') {
+      const cost = costFromPurchaseLine(line);
+      if (cost != null) out.costUpdates.push({ itemId: product.id, price: cost });
+    }
   }
   return out;
 }

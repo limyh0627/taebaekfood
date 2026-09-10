@@ -57,6 +57,63 @@ describe('전표 단가를 거래처 단가로 되민다', () => {
     expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 3000 }]);
   });
 
+  /**
+   * **원가는 그 전표 줄의 공급가액이다** (2026-09-10 사장님).
+   *
+   * 단가에서 다시 세면 과세/면세를 여기서 또 판단해야 하고, 그 판단이 전표와 어긋나는 순간
+   * 원가가 10% 틀어진다. 전표에 찍힌 `supply` 는 사람이 보고 발행한 그 숫자다.
+   */
+  describe('매입 원가 — 전표의 공급가액을 쓴다', () => {
+    it('과세 11,000원 × 10개를 사면 원가는 10,000원이다', () => {
+      const r = partnerPriceWrites({
+        type: '매입', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 11000, { isTaxExempt: false, qty: 10, supply: 100000 })],
+        items: 품목, partnerItems: [],
+      });
+      //  거래처 단가는 **세포함 그대로**, 원가는 공급가액
+      expect(r.upserts[0].price).toBe(11000);
+      expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 10000 }]);
+    });
+
+    it('면세 11,000원이면 원가도 11,000원이다 — 뗄 세금이 없다', () => {
+      const r = partnerPriceWrites({
+        type: '매입', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 11000, { isTaxExempt: true, qty: 10, supply: 110000 })],
+        items: 품목, partnerItems: [],
+      });
+      expect(r.upserts[0].price).toBe(11000);
+      expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 11000 }]);
+    });
+
+    it('**공급가액이 먼저다** — 줄의 과세 표시와 어긋나도 전표에 찍힌 값을 따른다', () => {
+      //  화면에 보이는 숫자와 원가가 갈리면 사람이 못 믿는다. 전표가 임자다.
+      const r = partnerPriceWrites({
+        type: '매입', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 11000, { isTaxExempt: true, qty: 10, supply: 100000 })],
+        items: 품목, partnerItems: [],
+      });
+      expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 10000 }]);
+    });
+
+    it('수량으로 나눈다 — 줄 합계가 아니라 한 개 값이 원가다', () => {
+      const r = partnerPriceWrites({
+        type: '매입', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 6600, { isTaxExempt: false, qty: 7, supply: 42000 })],
+        items: 품목, partnerItems: [],
+      });
+      expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 6000 }]);
+    });
+
+    it('공급가액이 없는 옛 줄은 단가에서 되돌린다', () => {
+      const r = partnerPriceWrites({
+        type: '매입', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 11000, { isTaxExempt: false })],
+        items: 품목, partnerItems: [],
+      });
+      expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 10000 }]);
+    });
+  });
+
   it('처음 보는 품목이면 id 를 새로 짓는다 — 방향까지 붙여야 매입·매출이 안 겹친다', () => {
     const r = partnerPriceWrites({
       type: '매출', partnerId: 'p1', lines: [줄('들기름 500ml', 9000)],
