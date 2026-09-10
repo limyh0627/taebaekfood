@@ -1,4 +1,4 @@
-import { lineAmountFromSupply } from './lineAmount';
+import { lineAmount } from './lineAmount';
 import { marginFromSupply } from './margin';
 
 /**
@@ -14,7 +14,14 @@ import { marginFromSupply } from './margin';
 export interface QuoteLineLike {
   name?: string;
   qty?: number;
-  /** **공급가 기준**(세별도) 단가 */
+  /**
+   * **판매단가**(부가세 포함) — 사람이 협상하고 기억하는 그 숫자다.
+   *
+   * 2026-09-10 사장님: "단가는 판매단가고 공급가액은 공급가액이지."
+   * 예전엔 이 칸이 세별도였다. 그래서 거래처 단가(세포함)를 가져다 넣으면 부가세를 **또** 얹어
+   * 과세 품목 견적이 10% 비싸게 나갔다 — 18,000원짜리가 19,800원으로 찍혔다.
+   * 한 앱에서 '단가' 가 두 뜻이면 언젠가 또 틀린다. 공급가액은 여기서 **역산해서** 낸다.
+   */
   price?: number;
   cost?: number;
   /** 면세면 부가세를 안 붙인다. **안 정했으면 undefined** */
@@ -47,8 +54,8 @@ export function quoteTotals(lines: readonly QuoteLineLike[]): QuoteTotals {
       continue;
     }
     const qty = Number(l.qty) || 0;
-    //  **단가는 공급가 기준**(세별도) — 셈은 shared/lineAmount 하나다
-    const a = lineAmountFromSupply(qty, Number(l.price) || 0, l.isTaxExempt);
+    //  **단가는 판매단가**(세포함) — 공급가액·세액은 여기서 역산한다. 셈은 shared/lineAmount 하나다.
+    const a = lineAmount(qty, Number(l.price) || 0, l.isTaxExempt);
     supply += a.supply;
     tax += a.tax;
     cost += Math.round(qty * (Number(l.cost) || 0));

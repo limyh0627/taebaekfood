@@ -1,24 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { quoteTotals, type QuoteLineLike } from './quoteTotals';
 
-const 줄 = (o: Partial<QuoteLineLike>): QuoteLineLike => ({ name: '참기름', qty: 1, price: 10000, ...o });
+//  `price` 는 **판매단가**(세포함)다 — 사람이 협상하고 기억하는 숫자(2026-09-10 사장님).
+const 줄 = (o: Partial<QuoteLineLike>): QuoteLineLike => ({ name: '참기름', qty: 1, price: 11000, ...o });
 
 describe('견적 합계', () => {
-  it('과세 줄은 공급가에 10% 를 붙인다 — 단가는 세별도다', () => {
+  it('**과세 줄은 판매단가에서 공급가액을 역산한다** — 얹는 게 아니라 뺀다', () => {
+    //  예전엔 이 칸이 세별도라 11,000 에 부가세를 **또** 얹어 12,100 이 나갔다.
     const t = quoteTotals([줄({ isTaxExempt: false })]);
     expect(t).toMatchObject({ supply: 10000, tax: 1000, total: 11000 });
   });
 
-  it('면세 줄은 세액이 0', () => {
-    expect(quoteTotals([줄({ isTaxExempt: true })])).toMatchObject({ supply: 10000, tax: 0, total: 10000 });
+  it('면세 줄은 판매단가가 곧 공급가액이다 — 뗄 세금이 없다', () => {
+    expect(quoteTotals([줄({ isTaxExempt: true })])).toMatchObject({ supply: 11000, tax: 0, total: 11000 });
   });
 
   it('수량을 곱한다', () => {
     expect(quoteTotals([줄({ qty: 3, isTaxExempt: false })])).toMatchObject({ supply: 30000, tax: 3000 });
   });
 
+  it('거래처 단가를 그대로 적어도 총액이 그 값이다 — 견적과 실제 거래가 안 갈린다', () => {
+    //  모란식품 참기름 18,000원(과세)을 견적에 적으면 총액도 18,000원이어야 한다.
+    expect(quoteTotals([줄({ price: 18000, isTaxExempt: false })]).total).toBe(18000);
+  });
+
   it('마진은 공급가 기준이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다', () => {
-    const t = quoteTotals([줄({ price: 10000, cost: 6000, isTaxExempt: false })]);
+    const t = quoteTotals([줄({ price: 11000, cost: 6000, isTaxExempt: false })]);
     expect(t.cost).toBe(6000);
     expect(t.margin).toBe(4000);
     //  marginRate 는 **비율**이다(0.4 = 40%). 화면은 shared/margin.ratePct 로 % 를 붙인다.

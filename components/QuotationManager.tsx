@@ -5,8 +5,8 @@ import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
-import { marginFromSupply, marginOf } from '../src/shared/margin';
-import { lineAmountFromSupply } from '../src/shared/lineAmount';
+import { marginOf } from '../src/shared/margin';
+import { lineAmount } from '../src/shared/lineAmount';
 import { quoteTotals } from '../src/shared/quoteTotals';
 import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
@@ -344,7 +344,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   {/*  **단가는 공급가 기준이다**(세별도). 원가에 마진을 얹은 값이다.
                        전표·거래명세서의 '단가'는 세포함이라 뜻이 다르다 — 그래서 칸 이름에 박는다.
                        세액과 판매가를 나란히 둬야 손님한테 부를 값이 화면에서 바로 읽힌다. */}
-                  <span className="px-2 py-2 text-right whitespace-nowrap">단가<span className="text-slate-400 font-bold"> 공급가</span></span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">단가<span className="text-slate-400 font-bold"> 판매가</span></span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">마진율</span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">세액</span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">판매가<span className="text-slate-400 font-bold"> 세포함</span></span>
@@ -355,7 +355,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   const lineMargin = l.price - (l.cost ?? 0);
                   const lineRate = l.price > 0 ? lineMargin / l.price : 0;
                   //  줄마다 세액·판매가를 낸다 — 셈은 shared/lineAmount 한 곳이다
-                  const amt = lineAmountFromSupply(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
+                  const amt = lineAmount(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
                   return (
                     <div key={i} className="grid grid-cols-[minmax(150px,1fr)_64px_88px_96px_58px_88px_100px_44px_28px] min-w-[740px] border-t border-slate-100 items-center">
                       <div className="px-3 py-2 min-w-0">
@@ -494,7 +494,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     onClick={() => {
                       setLine(pickIdx, {
                         itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
-                        cost: c, price: p ?? 0,
+                        cost: c,
+                        //  **거래처 판매단가를 그대로 넣는다**(세포함). 단가 칸이 판매단가라
+                        //  변환할 게 없다 — 공급가액은 줄마다 역산해서 낸다(2026-09-10 사장님).
+                        price: p ?? 0,
                         //  거래처 연결에 정해진 게 있으면 그걸 쓰고, 없으면 **비워 둔다** — 고르게 한다
                         isTaxExempt: (() => { const t = saleTaxTypeOf(partnerItems, x.id); return t === undefined ? undefined : t === '면세'; })(),
                       });
