@@ -1209,7 +1209,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //  박스↔낱개, 단가·과세·계정 우선순위, 같은 품목 합치기가 다 거기 있고 시험이 붙어 있다.
   //  여기서는 지금 화면 상태를 넘겨 받아 쓰기만 한다(2026-09-05).
   const lineItems = useMemo((): LineItem[] => {
-    if (manualMode) return manualLines(manualItems, stmtType);
+    if (manualMode) {
+      //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
+      //  안 이으면 `partnerPriceWrites` 가 그 줄을 건너뛰어 단가·과세면세가 조용히 안 저장된다.
+      const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
+      const 연결품목 = allItems
+        //  박스는 뺀다 — 낱개와 이름이 같으면 낱개 단가가 박스에 붙는다(해피유통 300ml 사고).
+        .filter(p => !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
+        .map(p => ({ itemId: p.id, name: p.name }));
+      return manualLines(manualItems, stmtType, 연결품목);
+    }
     if (!selectedOrder) return [];
     return orderLines({
       order: selectedOrder,
