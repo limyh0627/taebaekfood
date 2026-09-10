@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
+import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble';
 
 /**
  * **벌크를 그대로 파는 주문** — 볶음참깨 20kg 자루 같은 것.
@@ -38,6 +39,7 @@ function harness(items: Item[], order: Order) {
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, { ...order });
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
+  const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order], db: {} as any,
     buildFormula: () => [],
@@ -50,6 +52,7 @@ function harness(items: Item[], order: Order) {
       if (computeStock && !(it as any)?.lotsAreTotal) dbx.stock.set(id, computeStock(next as any));
       return next;
     },
+    runRawInventoryJob: runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') { Object.assign(order, data); dbx.orders.set(id, { ...(dbx.orders.get(id) ?? {}), ...data }); }
       return undefined;

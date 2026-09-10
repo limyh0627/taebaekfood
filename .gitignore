@@ -17,5 +17,7 @@ node_modules
 # 기타
 .DS_Stored
 scripts/serviceAccountKey.json
+# 운영 원료 상태 전체가 든 재이관 백업은 이 PC에만 둔다.
+scripts/migrate-raw-inventories-v2-backup.json*
 # 업로드 안 하는 폴더 — 엑셀 서류·일지·일회성 스크립트(Firebase 키 포함)
 로컬전용/

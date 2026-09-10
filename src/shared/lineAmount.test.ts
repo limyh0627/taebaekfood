@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineAmount, lineAmountOf, sumLines, lineAmountFromSupply, priceParts, vatOn, VAT_UP, VAT_RATE } from './lineAmount';
+import { lineAmount, lineAmountOf, sumLines, lineAmountFromSupply, priceParts, vatOn, costOfPurchase, VAT_RATE } from './lineAmount';
 
 /**
  * 이 셈이 아홉 군데로 흩어져 두 갈래로 갈려 있었다. 여기 하나로 모았으니
@@ -155,9 +155,34 @@ describe('vatOn — 공급가액에 붙는 세액', () => {
   });
 });
 
-describe('VAT_UP — 면세 원료가 과세품 원가에 얹히는 곱수', () => {
-  it('1 + 세율이다', () => {
-    expect(VAT_UP).toBe(1 + VAT_RATE);
-    expect(VAT_UP).toBeCloseTo(1.1, 10);
+/**
+ * **매입 원가는 공급가액이다.**
+ *
+ * 전표에 치는 단가는 **세포함**이고 품목 원가는 **공급가액**이다. 둘을 한 필드처럼 복사하면
+ * 과세 품목 원가가 10% 부푼다 — 2026-09-06 에 60개를 되돌렸는데 전표를 다시 끊자 되살아났다.
+ * 밑을 맞추는 셈은 `costOfPurchase` 한 곳뿐이다.
+ *
+ * 여기 있던 `VAT_UP` 시험은 지웠다(2026-09-10). 그 상수는 **앱 코드가 한 번도 안 썼고**,
+ * 인수인계 표에만 "면세 원료가 과세품 원가에 얹는 곱수" 로 남아 "원가는 공급가액" 절과
+ * 서로 어긋나 있었다. 다음 사람이 옛 셈을 되살릴 자리라 상수째 없앴다.
+ */
+describe('매입 원가 — 세포함 단가에서 공급가액을 낸다', () => {
+  it('과세 11,000원을 사면 원가는 10,000원이다', () => {
+    expect(costOfPurchase(11000, false)).toBe(10000);
+  });
+
+  it('면세 11,000원을 사면 원가도 11,000원이다 — 뗄 세금이 없다', () => {
+    expect(costOfPurchase(11000, true)).toBe(11000);
+  });
+
+  it('`exempt` 를 안 넘기면 과세로 본다 — 빠뜨려서 원가가 부푸는 쪽이 아니라 줄어드는 쪽으로', () => {
+    expect(costOfPurchase(11000)).toBe(10000);
+  });
+
+  it('lineAmount 의 공급가액과 같은 값이다 — 셈이 두 벌이면 언젠가 갈린다', () => {
+    for (const price of [1000, 4021, 18000, 135000, 1233780]) {
+      expect(costOfPurchase(price, false)).toBe(lineAmount(1, price, false).supply);
+      expect(costOfPurchase(price, true)).toBe(lineAmount(1, price, true).supply);
+    }
   });
 });

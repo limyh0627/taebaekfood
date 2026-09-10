@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { today } from '../src/shared/day';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
 import { Item, Order, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
-import { mutateRawMaterialLots, updateItem, addItem } from '../src/shared/services/firebaseService';
-import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
+import { updateItem } from '../src/shared/services/firebaseService';
+import { updateRawInventoryLotMetadata } from '../src/shared/services/rawInventoryService';
+import { baseRawName, unitOf, kgToUnit, lotKgRemaining } from '../src/constants/formula';
+import { rawLedgerKeys } from '../src/shared/rawHolder';
+import { executeRawInventoryCommand } from '../src/shared/services/rawInventoryService';
 import RawLedgerList from './RawLedgerList';
 
 interface Props {
+  /** 그 주문에서 이 원료를 쓰는 줄만 골라 준다 — RawLedgerList 로 그대로 넘긴다. */
+  linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
   product: Item;        // 로트가 저장된 원료(raw) 품목
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
@@ -22,7 +26,7 @@ interface Props {
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트 }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -84,17 +88,16 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
     const bId = active[j].id;
     setBusy(true);
     try {
-      await mutateRawMaterialLots(
-        product.id,
-        (cur) => {
+      await updateRawInventoryLotMetadata({
+        ...rawLedgerKeys(product),
+        transform: (cur) => {
           const arr = [...cur];
           const ia = arr.findIndex(l => l.id === aId);
           const ib = arr.findIndex(l => l.id === bId);
           if (ia >= 0 && ib >= 0) { const t = arr[ia]; arr[ia] = arr[ib]; arr[ib] = t; }
           return arr;
         },
-        (lots) => lotStockInUnit(lots, material),
-      );
+      });
     } catch (err) {
       console.error('[로트 순서변경 실패]', err);
     } finally {
@@ -102,38 +105,40 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
     }
   };
 
-  // 로트 삭제 — 잔여 수량이 재고에서 빠짐 (테스트 입고 정리/오입력 정정용, 관리자 전용)
+  /**
+   * 로트 소진 — **`deplete-lot` 공용 명령**으로 상태·이력·품목을 한 트랜잭션에 쓴다(설계 §9).
+   *
+   * 예전엔 `mutateRawMaterialLots` 로 로트를 빼고 `addItem('rawMaterialLedger')` 로 감사 원장을
+   * 따로 남겼다. 뒤가 실패하면 로트만 사라지고 원장에 흔적이 없었다. 이제 이력은 지우지 않고
+   * `deplete-lot` 하나로 표시된다 — 감사·되돌리기가 모두 이력의 `lotSnapshot` 을 근거로 한다.
+   */
   const remove = async (lot: RawMaterialLot) => {
     const remUnit = isOil ? kgToUnit(lot.kgRemaining, material) : lot.kgRemaining;
     if (busy) return;
-    if (!confirm(`[${lot.supplierName}] 로트를 삭제할까요?\n잔여 ${fmt(remUnit)}${unitLabel}가 재고에서 빠집니다. (되돌릴 수 없음)`)) return;
+    if (!confirm(`[${lot.supplierName}] 로트를 소진 처리할까요?\n잔여 ${fmt(remUnit)}${unitLabel}가 재고에서 빠지고 이력에 남습니다.`)) return;
     setBusy(true);
     try {
-      await mutateRawMaterialLots(
-        product.id,
-        (cur) => cur.filter(l => l.id !== lot.id),
-        (lots) => lotStockInUnit(lots, material),
-      );
-      // 감사추적: 로트 삭제도 수불부에 남긴다 (예전엔 흔적 없이 재고가 빠져 원인 추적이 안 됐음)
-      if (lot.kgRemaining > 0) {
-        await addItem('rawMaterialLedger', {
-          id: `rm-lotdel-${Date.now()}`,
-          material,
-          date: today(),
-          received: 0,
-          used: lot.kgRemaining,
+      const opId = `deplete-lot:${product.id}:${lot.id}`;
+      const r = await executeRawInventoryCommand({
+        operationId: opId,
+        ...rawLedgerKeys(product),
+        materialSnapshot: material,
+        effectiveAt: new Date().toISOString(),
+        ...(currentUserName ? { actorName: currentUserName } : {}),
+        source: { type: 'lot-delete', id: lot.id },
+        kind: 'deplete-lot', lotId: lot.id,
+      }, {
+        legacy: {
           note: `로트 삭제: ${lot.supplierName}${lot.lotNo ? ` (${lot.lotNo})` : ''}`,
-          //  이름은 비고에 이어 붙이지 않는다 — '누가'는 addedBy 한 칸이 맡는다.
-          //  글자로 섞어 두면 화면이 그걸 이름으로 못 읽어 '본인' 표시도 안 되고 걸러지지도 않는다.
-          ...(currentUserName ? { addedBy: currentUserName } : {}),
-          createdAt: new Date().toISOString(),
           type: 'correction',
-          unit: 'kg',
-        });
-      }
-      onLotChanged?.();   // 상위(재고관리) 원장 재조회 → 삭제 기록·잔량 즉시 반영
+          ...(currentUserName ? { addedBy: currentUserName } : {}),
+        },
+      });
+      if (r.status === 'rejected') { alert(`로트 소진 거절 — ${r.code}: ${r.message}`); return; }
+      if (r.status === 'conflict') { alert('같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
+      onLotChanged?.();
     } catch (err) {
-      console.error('[로트 삭제 실패]', err);
+      console.error('[로트 소진 실패]', err);
     } finally {
       setBusy(false);
     }
@@ -144,16 +149,15 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
     const v = editVal.trim();
     setBusy(true);
     try {
-      await mutateRawMaterialLots(
-        product.id,
-        (cur) => cur.map(l => {
+      await updateRawInventoryLotMetadata({
+        ...rawLedgerKeys(product),
+        transform: (cur) => cur.map(l => {
           if (l.id !== lot.id) return l;
           if (v) return { ...l, lotNo: v };
           const { lotNo, ...rest } = l; // 빈 값이면 lotNo 키 제거
           return rest as RawMaterialLot;
         }),
-        (lots) => lotStockInUnit(lots, material),
-      );
+      });
       setEditingId(null);
     } catch (err) {
       console.error('[로트번호 저장 실패]', err);
@@ -367,6 +371,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
             <span className="text-[11px] font-black text-slate-600 uppercase tracking-wide">입출고 기록</span>
           </div>
           <RawLedgerList
+            linesUsingRaw={linesUsingRaw}
             entries={ledgerEntries}
             orders={orders}
             isAdmin={isAdmin}

@@ -1,11 +1,13 @@
-import { doc, setDoc, deleteDoc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
 import { today, dateOfLocal } from '../../shared/day';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot, OrderInventorySnapshot, OrderStatusAudit } from '../../shared/types';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot, OrderInventorySnapshot, OrderStatusAudit, companyOf } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
+import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
+import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
@@ -74,6 +76,8 @@ export interface OrderStockEngineDeps {
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
+  /** 시험에서는 인메모리 job을 주입한다. 운영 기본값은 공용 원자화 job 러너다. */
+  runRawInventoryJob?: typeof runRawInventoryJob;
 }
 
 /**
@@ -103,7 +107,8 @@ export const isGoodsItem = (p: Item) =>
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem, claimOrderOperation } = deps;
+    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
+    claimOrderOperation, runRawInventoryJob: runRawJob = runRawInventoryJob } = deps;
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
 
@@ -294,114 +299,160 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 원료 로트 FIFO 차감 + **실제 원장**(rawMaterialLedger) 기록 → 소비 로트 스냅샷 반환 (생산처리).
-  const deductRawLotsForOrder = async (order: Order, rawUsage: Record<string, number>, ledgerOnly: Record<string, number> = {}) => {
+  /**
+   * 원료 차감 — **공용 명령(consume)** 을 원료별로 묶어 [runRawInventoryJob](../../shared/services/rawInventoryJob.ts) 로 실행한다.
+   *
+   * 예전엔 여기서 `mutateRawMaterialLots` 로 로트를 먼저 깎고 `setDoc` 으로 원장을 따로 썼다 —
+   * 뒤가 실패하면 조용히 갈렸다(원장 없이 46건). 이제 원료별 한 트랜잭션이라 그 갈림이 안 난다.
+   *
+   * **임가공(OEM) 원료는 여기서 아무것도 안 쓴다.** 서류 흐름은 판매 자료를 후처리해 만든다
+   * (설계 §11·§12) — `rm-auto-…` 로 재고 없는 원장 줄을 만드는 것을 제거했다.
+   *
+   * `ledgerOnly` 는 되돌리기 스냅샷을 위해 두 번째 인자로 계속 받되, 여기서는 소비하지 않는다.
+   */
+  const deductRawLotsForOrder = async (
+    order: Order, rawUsage: Record<string, number>, attempt: number,
+    _ledgerOnly: Record<string, number> = {},
+  ) => {
+    void _ledgerOnly;
     const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
-    const rawNames = Object.keys(rawUsage);
-    const ledgerOnlyNames = Object.keys(ledgerOnly);
-    if (rawNames.length === 0 && ledgerOnlyNames.length === 0) return consumedLots;
+    const rawNames = Object.keys(rawUsage).filter(r => Math.round(rawUsage[r] * 1000) / 1000 > 0);
+    if (rawNames.length === 0) return consumedLots;
     const dateStr = dateOfLocal(order.deliveredAt) || today();
     const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
+    const effectiveAt = `${dateStr}T12:00:00+09:00`;
 
-    // 임가공(OEM) 원료 — 우리 로트로 들고 있지 않으니 재고·로트는 건드리지 않고 수불부에만 남긴다.
-    for (const raw of ledgerOnlyNames) {
-      const usedKg = Math.round(ledgerOnly[raw] * 1000) / 1000;
-      if (usedKg <= 0) continue;
-      const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
-      await setDoc(doc(db, 'rawMaterialLedger', entryId), {
-        id: entryId, material: raw, date: dateStr, received: 0, used: usedKg,
-        note: `자동: ${customerName}`, createdAt: new Date().toISOString(), type: 'auto', unit: 'kg', orderId: order.id,
-        ...작성자,
-      }, { merge: true });
-    }
+    const orderCompany = companyOf(order);
+    const jobId = `production:${order.id}:a${attempt}`;
+    const commands: JobCommandInput[] = [];
+    const holderByRaw = new Map<string, Item>();
 
     for (const raw of rawNames) {
       const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
-      // 원료 홀더 = raw, 또는 wip 벌크 반제품(unit≠'개'). phantom(무재고)은 이미 전개돼 여기 오지 않음.
-      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === raw);
-      let noteSuffix = '';
-      if (rawItem) {
-        const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
-        let captured: { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number } | null = null;
-        await mutateRawMaterialLots(
-          rawItem.id,
-          (lots, stock) => { const r = deductFromLots(withCarryOverLot(lots, stock, raw), usedKg, mix); captured = r; return r.lots; },
-          (lots) => lotStockInUnit(lots, raw),
-        );
-        if (captured) {
-          const result = captured as { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number };
-          if (result.distribution.length > 0) {
-            noteSuffix = ' ▸ ' + result.distribution.map(d => `${d.supplierName} ${Math.round(d.kg * 10) / 10}kg`).join(' + ');
-            for (const d of result.distribution) consumedLots.push({
-              material: raw, supplierName: d.supplierName, kg: d.kg,
-              ...(d.lotId ? { lotId: d.lotId } : {}), ...(d.lotNo ? { lotNo: d.lotNo } : {}), ...(d.receivedDate ? { receivedDate: d.receivedDate } : {}),
-            });
-          }
-          //  로트 잔량보다 더 쓴 것도 알림을 안 보낸다 — 위 '재고 부족'과 같은 이유다.
-          //  초과분은 이월 로트(미상)로 넘어가 원장에 그대로 남고, 원료재고 화면에서 보인다.
-          if (result.shortageKg > 0) console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
-        }
+      const rawItem = rawHolderByName(allItems, raw, orderCompany);
+      if (!rawItem) {
+        throw new Error(`원료 차감 중단: ${orderCompany} 회사의 '${raw}' 원료 품목을 찾을 수 없다 (주문 ${order.id})`);
       }
-      const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
-      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id, ...작성자 }, { merge: true });
+      holderByRaw.set(raw, rawItem);
+      const opId = `production:${order.id}:a${attempt}:${rawItem.id}`;
+      commands.push({
+        command: {
+          operationId: opId,
+          ...rawLedgerKeys(rawItem),
+          materialSnapshot: raw,
+          effectiveAt,
+          ...(actorName ? { actorName } : {}),
+          source: { type: 'production', id: order.id },
+          kind: 'consume', kg: usedKg,
+          ...(rawItem.mixEnabled ? { mix: { topPercent: rawItem.mixTopPercent ?? 50 } } : {}),
+        },
+        options: {
+          newLotId: `lot-${opId}`,
+          carryOverLotId: `carry-${opId}`,
+          legacy: {
+            note: `자동: ${customerName}`,
+            type: 'auto', orderId: order.id,
+            ...(actorName ? { addedBy: actorName } : {}),
+          },
+        },
+      });
+    }
 
-      /**
-       * **둘 다 쓴 뒤에 되읽어 대조한다.**
-       * 원장과 로트는 따로 쓰기 때문에 한쪽만 성공하면 그대로 갈린다. 쓰는 순서를 바꾸는 걸로는
-       * 못 막는다 — 로트가 실패하면 일은 어차피 날아가고, 다만 조용히 날아갈 뿐이다.
-       * 실패했는지는 되읽어 대조해야만 안다.
-       */
-      if (rawItem) {
-        const gap = await checkLedgerLot(db, rawItem.id, raw, rawItem.density ?? 1);
-        if (gap) {
-          console.warn(`[원장·로트 불일치] ${gapMessage(gap)} (주문 ${order.id})`);
+    if (commands.length === 0) return consumedLots;
+
+    const { job, results } = await runRawJob({
+      jobId, companyId: orderCompany,
+      source: { type: 'production', id: order.id }, commands,
+      options: { db },
+    });
+
+    for (const { input, result } of results) {
+      if (result.status === 'applied' || result.status === 'duplicate') {
+        const mat = input.command.materialSnapshot;
+        for (const ch of result.movement.lotChanges) {
+          if (ch.deltaKg >= 0) continue;   // 되살아난 로트는 스냅샷에 안 담는다
+          consumedLots.push({
+            material: mat, rawItemId: input.command.rawItemId,
+            operationId: input.command.operationId, supplierName: ch.supplierName ?? '',
+            kg: Math.round(-ch.deltaKg * 1000) / 1000,
+            ...(ch.lotId ? { lotId: ch.lotId } : {}),
+            ...(ch.lotNo ? { lotNo: ch.lotNo } : {}),
+            ...(ch.receivedDate ? { receivedDate: ch.receivedDate } : {}),
+          });
+        }
+      } else if (result.status === 'conflict') {
+        throw new Error(`원료 차감 충돌: 같은 작업 번호에 다른 내용이 있다 (${input.command.operationId})`);
+      } else {
+        console.warn(`[생산 차감] 거절 — ${input.command.operationId}: ${result.code} ${result.message}`);
+        //  실사 이후 재고 갈림 같은 사람이 손봐야 하는 경우는 화면 알림으로 남긴다.
+        const rawItem = holderByRaw.get(input.command.materialSnapshot);
+        if (rawItem) {
           await addItem('notifications', {
-            type: 'inventory_shortage', title: '원장·로트 불일치',
-            body: `${gapMessage(gap)} — 주문 ${order.id}(${customerName}) 처리 뒤. 한쪽만 반영됐을 수 있습니다.`,
+            type: 'inventory_shortage', title: '원료 차감 거절',
+            body: `${input.command.materialSnapshot} — ${result.code} ${result.message} (주문 ${order.id}·${customerName})`,
             linkedId: rawItem.id, readBy: [], createdAt: new Date().toISOString(),
           } as Omit<AppNotification, 'id'>);
         }
+        throw new Error(`원료 차감 거절: ${result.code} ${result.message}`);
       }
+    }
+    if (job.status === 'failed') {
+      throw new Error(`원료 차감 업무 실패: ${job.id} ${job.lastError ?? ''}`);
     }
     return consumedLots;
   };
 
-  // 원료 로트 복원 (생산처리 취소) — 소비 스냅샷대로 로트 kg 되돌림 + 수불부 auto 삭제.
+  /**
+   * 원료 로트 복원 — 소비 스냅샷의 각 원료 이력을 `reverse` 명령으로 되돌린다.
+   *
+   * 예전엔 `deleteDoc('rawMaterialLedger/rm-auto-…')` 로 원장을 지우고 로트를 손으로 복원했는데,
+   * 이제 이력은 지우지 않고 `reverse` 를 뒤에 쌓는다(설계 §9).
+   */
   const restoreRawLotsForOrder = async (order: Order) => {
     const consumed = order.rawConsumedLots ?? [];
-    const byMat: Record<string, NonNullable<Order['rawConsumedLots']>> = {};
-    for (const c of consumed) (byMat[c.material] = byMat[c.material] || []).push(c);
-    for (const [material, arr] of Object.entries(byMat)) {
-      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === material);
-      if (rawItem) {
-        await mutateRawMaterialLots(
-          rawItem.id,
-          (lots, stock) => {
-            const next = withCarryOverLot(lots, stock, material).map(l => ({ ...l }));
-            for (const c of arr) {
-              const idx = c.lotId ? next.findIndex(l => l.id === c.lotId) : -1;
-              if (idx >= 0) {
-                next[idx].kgRemaining = Math.round(((next[idx].kgRemaining ?? 0) + c.kg) * 1000) / 1000;
-                if (next[idx].kgRemaining > 0) next[idx].status = 'active';
-              } else {
-                next.push(buildReceiveLot({ material, supplierName: c.supplierName || '복원', qtyIn: 0, kgIn: c.kg, receivedDate: c.receivedDate }));
-              }
-            }
-            return next;
-          },
-          (lots) => lotStockInUnit(lots, material),
-        );
+    if (consumed.length === 0) return;
+    const orderCompany = companyOf(order);
+    const originals = new Map<string, string>();
+    for (const c of consumed) {
+      if (!c.operationId || !c.rawItemId) {
+        throw new Error(`옛 생산 기록은 원자 명령 번호가 없어 자동 취소할 수 없다: 주문 ${order.id}`);
       }
-      await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${material.replace(/\s/g, '_')}`));
+      originals.set(c.operationId, c.rawItemId);
     }
-    // 임가공은 소비 로트 스냅샷이 없다(로트를 안 씀) → 원료식으로 다시 구해 수불부 기록만 지운다.
-    for (const item of order.items) {
-      const product = allItems.find(p => p.id === item.itemId);
-      if (product?.procureType !== '임가공') continue;
-      for (const f of buildFormula(docName(product))) {
-        if (byMat[f.raw]) continue;   // 위에서 이미 지움
-        await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`));
+    const effectiveAt = new Date().toISOString();
+    const commands: JobCommandInput[] = [];
+    for (const [originalOperationId, rawItemId] of originals) {
+      const rawItem = allItems.find(p => p.id === rawItemId);
+      if (!rawItem || companyOf(rawItem) !== orderCompany) {
+        throw new Error(`원료 복원 중단: 주문 회사의 원료 품목을 찾을 수 없다 (${rawItemId})`);
       }
+      const opId = `reverse:${originalOperationId}`;
+      commands.push({
+        command: {
+          operationId: opId,
+          ...rawLedgerKeys(rawItem),
+          materialSnapshot: baseRawName(rawItem.name),
+          effectiveAt,
+          ...(actorName ? { actorName } : {}),
+          source: { type: 'reversal', id: order.id },
+          kind: 'reverse', originalOperationId,
+        },
+        options: { legacy: { type: 'auto', orderId: order.id, ...(actorName ? { addedBy: actorName } : {}) } },
+      });
+    }
+    if (commands.length === 0) return;
+    const { job, results } = await runRawJob({
+      jobId: `production-reversal:${order.id}:a${order.rawInventoryAttempt ?? 0}`,
+      companyId: orderCompany,
+      source: { type: 'production-reversal', id: order.id }, commands,
+      options: { db },
+    });
+    const failed = results.find(r => r.result.status === 'conflict' || r.result.status === 'rejected');
+    if (job.status !== 'complete' || failed) {
+      const detail = failed?.result.status === 'rejected'
+        ? `${failed.result.code} ${failed.result.message}`
+        : failed?.result.status === 'conflict' ? '작업 번호 충돌' : job.lastError ?? '';
+      throw new Error(`원료 복원 실패: 주문 ${order.id} ${detail}`);
     }
   };
 
@@ -419,11 +470,22 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
     await loadFreshStock(order);   // 판정 기준을 DB의 지금 값으로 — 화면 값은 낡는다
     const fresh = await getDoc(doc(db, 'orders', order.id));
-    const already = (fresh.exists() ? (fresh.data().rawConsumedLots as Order['rawConsumedLots']) : undefined) ?? [];
+    const freshOrder = fresh.exists() ? ({ ...order, ...(fresh.data() as Partial<Order>) } as Order) : order;
+    if (freshOrder.producedAt) {
+      return {
+        consumedLots: freshOrder.rawConsumedLots ?? [],
+        autoBuilt: freshOrder.autoBuilt ?? [],
+        producedUnits: freshOrder.producedUnits ?? [],
+        attempt: freshOrder.rawInventoryAttempt ?? 0,
+        alreadyProduced: true,
+      };
+    }
+    const already = freshOrder.rawConsumedLots ?? [];
     if (already.length > 0) {
       console.warn(`[생산 재처리] ${order.id} — 이미 빠진 원료 ${already.length}건을 되돌리고 다시 뺀다`);
-      await restoreRawLotsForOrder({ ...order, rawConsumedLots: already });
+      await restoreRawLotsForOrder(freshOrder);
     }
+    const attempt = (freshOrder.rawInventoryAttempt ?? 0) + 1;
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
@@ -487,10 +549,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       addDelta(deltas, product.id, toProduce); // 완제품 재고 +생산분 (미출고)
       producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
     }
-    const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);
+    const consumedLots = await deductRawLotsForOrder(order, rawUsage, attempt, rawUsageLedgerOnly);
     await createProductionRecordsForOrder(order);
     const producedUnits = [...producedByItem].map(([itemId, qty]) => ({ itemId, qty }));
-    return { consumedLots, autoBuilt, producedUnits };
+    return { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced: false };
   };
 
   // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −(생산분). 먼저 만든 것도 되돌린다.
@@ -636,28 +698,31 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     // 정방향: 생산 → 출고
     if (wantProduced && !order.producedAt) {
       const productionDeltasBefore = new Map(deltas);
-      const { consumedLots, autoBuilt, producedUnits } = await produceOrder(order, deltas, plan);
-      patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
-      // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
-      // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
-      patch.rawConsumedLots = consumedLots;
-      // 생산량도 마찬가지로 항상 쓴다. 빈 배열([])과 없음(undefined)은 뜻이 다르다 —
-      // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
-      patch.producedUnits = producedUnits;
-      if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
-      const productionDeltas = new Map<string, number>();
-      for (const [itemId, value] of deltas) addDelta(productionDeltas, itemId, value - (productionDeltasBefore.get(itemId) ?? 0));
-      patch.inventorySnapshots = {
-        ...order.inventorySnapshots,
-        version: 1,
-        production: {
-          capturedAt: new Date().toISOString(),
-          stockDeltas: deltaRows(productionDeltas),
-          bomLines: bomSnapshotOf(order),
-          rawConsumedLots: consumedLots,
-          rawLedgerIds: [...new Set(consumedLots.map(row => `rm-auto-${order.id}-${row.material.replace(/\s/g, '_')}`))],
-        },
-      };
+      const { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced } = await produceOrder(order, deltas, plan);
+      if (!alreadyProduced) {
+        patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
+        patch.rawInventoryAttempt = attempt;
+        // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
+        // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
+        patch.rawConsumedLots = consumedLots;
+        // 생산량도 마찬가지로 항상 쓴다. 빈 배열([])과 없음(undefined)은 뜻이 다르다 —
+        // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
+        patch.producedUnits = producedUnits;
+        if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
+        const productionDeltas = new Map<string, number>();
+        for (const [itemId, value] of deltas) addDelta(productionDeltas, itemId, value - (productionDeltasBefore.get(itemId) ?? 0));
+        patch.inventorySnapshots = {
+          ...order.inventorySnapshots,
+          version: 1,
+          production: {
+            capturedAt: new Date().toISOString(),
+            stockDeltas: deltaRows(productionDeltas),
+            bomLines: bomSnapshotOf(order),
+            rawConsumedLots: consumedLots,
+            rawLedgerIds: [...new Set(consumedLots.map(row => `rm-auto-${order.id}-${row.material.replace(/\s/g, '_')}`))],
+          },
+        };
+      }
     }
     if (wantShipped && !order.shippedOut) {
       const shipmentDeltasBefore = new Map(deltas);

@@ -1,0 +1,7826 @@
+{
+  "적은때": "2026-09-10T07:12:54.033Z",
+  "설명": "전표 줄에 itemId 를 채움 — 되돌리려면 각 전표의 items 배열을 통째로 되쓴다",
+  "전표": [
+    {
+      "전표id": "stmt-1785747293941",
+      "docNo": "260803-01",
+      "items": [
+        {
+          "qty": 10,
+          "supply": 172727,
+          "accountCode": "800",
+          "price": 19000,
+          "name": "시골향 참기름/특/1750ml",
+          "total": 190000,
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "tax": 17273
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785747327480",
+      "docNo": "260803-02",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 12,
+          "supply": 196364,
+          "price": 18000,
+          "tax": 19636,
+          "accountCode": "800",
+          "total": 216000,
+          "spec": "1800ml",
+          "name": "시골향 참기름/A/1800ml"
+        },
+        {
+          "isTaxExempt": false,
+          "tax": 8073,
+          "price": 7400,
+          "accountCode": "800",
+          "name": "들향기름",
+          "spec": "",
+          "supply": 80727,
+          "qty": 12,
+          "total": 88800
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785747397562",
+      "docNo": "260803-03",
+      "items": [
+        {
+          "price": 16500,
+          "tax": 450000,
+          "name": "참기름/A/가득찬/1800ml",
+          "spec": "1800ml",
+          "supply": 4500000,
+          "isTaxExempt": false,
+          "total": 4950000,
+          "accountCode": "800",
+          "qty": 300
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785747801206",
+      "docNo": "260803-04",
+      "items": [
+        {
+          "total": 2700000,
+          "accountCode": "800",
+          "qty": 600,
+          "supply": 2454545,
+          "tax": 245455,
+          "isTaxExempt": false,
+          "name": "시골향 참기름/병/특/350ml",
+          "price": 4500,
+          "spec": "350ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759146203",
+      "docNo": "260803-05",
+      "items": [
+        {
+          "qty": 20,
+          "supply": 454545,
+          "accountCode": "800",
+          "total": 500000,
+          "isTaxExempt": false,
+          "spec": "1750ml",
+          "tax": 45455,
+          "name": "시골향들기름/1750ML",
+          "price": 25000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759225411",
+      "docNo": "260803-06",
+      "items": [
+        {
+          "total": 420000,
+          "qty": 20,
+          "accountCode": "800",
+          "supply": 381818,
+          "spec": "1800ml",
+          "name": "시골향 참기름/골드/1800ml",
+          "isTaxExempt": false,
+          "price": 21000,
+          "tax": 38182
+        },
+        {
+          "supply": 73091,
+          "tax": 7309,
+          "isTaxExempt": false,
+          "total": 80400,
+          "name": "맛기름",
+          "accountCode": "800",
+          "spec": "",
+          "price": 6700,
+          "qty": 12
+        },
+        {
+          "isTaxExempt": false,
+          "price": 8000,
+          "tax": 17455,
+          "name": "참향기름",
+          "accountCode": "800",
+          "spec": "",
+          "qty": 24,
+          "supply": 174545,
+          "total": 192000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759567931",
+      "docNo": "260804-01",
+      "items": [
+        {
+          "qty": 36,
+          "isTaxExempt": false,
+          "price": 20000,
+          "spec": "1800ml",
+          "name": "참기름/특A/대왕/1800ml",
+          "total": 720000,
+          "accountCode": "800",
+          "tax": 65455,
+          "supply": 654545
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759633337",
+      "docNo": "260803-07",
+      "items": [
+        {
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "total": 2320000,
+          "supply": 2109091,
+          "accountCode": "800",
+          "tax": 210909,
+          "price": 5800,
+          "qty": 400,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759682926",
+      "docNo": "260804-02",
+      "items": [
+        {
+          "accountCode": "800",
+          "supply": 381818,
+          "tax": 38182,
+          "total": 420000,
+          "isTaxExempt": false,
+          "qty": 20,
+          "spec": "1750ml",
+          "name": "시골향 참기름/특A/1750ml",
+          "price": 21000
+        },
+        {
+          "total": 150000,
+          "supply": 150000,
+          "qty": 20,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "시골향 들깨가루(중간)/1kg",
+          "tax": 0,
+          "price": 7500,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759804907",
+      "docNo": "260805-01",
+      "items": [
+        {
+          "qty": 100,
+          "price": 4800,
+          "name": "시골향 참기름/원액/300ml",
+          "spec": "300ml",
+          "accountCode": "800",
+          "total": 480000,
+          "tax": 43636,
+          "supply": 436364,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785759932184",
+      "docNo": "260803-08",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "price": 28000,
+          "tax": 2545,
+          "name": "시골향 들깨가루(고운)/4kg",
+          "spec": "4kg",
+          "accountCode": "800",
+          "qty": 1,
+          "supply": 25455,
+          "total": 28000
+        },
+        {
+          "supply": 29091,
+          "tax": 2909,
+          "isTaxExempt": false,
+          "total": 32000,
+          "name": "시골향 탈피들깨가루/1kg",
+          "spec": "1kg",
+          "price": 8000,
+          "accountCode": "800",
+          "qty": 4
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785760197181",
+      "docNo": "260804-03",
+      "items": [
+        {
+          "qty": 5,
+          "accountCode": "800",
+          "supply": 95455,
+          "price": 21000,
+          "isTaxExempt": false,
+          "total": 105000,
+          "name": "참기름/골드A/모란/1750ml",
+          "spec": "1750ml",
+          "tax": 9545
+        },
+        {
+          "qty": 120,
+          "price": 18000,
+          "name": "참기름/특/모란/1750ml",
+          "spec": "1750ml",
+          "accountCode": "800",
+          "total": 2160000,
+          "isTaxExempt": false,
+          "tax": 196364,
+          "supply": 1963636
+        },
+        {
+          "qty": 200,
+          "price": 4800,
+          "name": "참기름/병/특A/모란/350ml",
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "total": 960000,
+          "accountCode": "800",
+          "tax": 87273,
+          "supply": 872727
+        },
+        {
+          "supply": 681818,
+          "accountCode": "800",
+          "tax": 68182,
+          "total": 750000,
+          "spec": "1750ml",
+          "qty": 30,
+          "name": "들기름/모란/1750ml",
+          "isTaxExempt": false,
+          "price": 25000
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 422727,
+          "qty": 30,
+          "price": 15500,
+          "tax": 42273,
+          "accountCode": "800",
+          "total": 465000,
+          "spec": "1750ml",
+          "name": "참기름/분/모란/1750ml"
+        },
+        {
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "price": 6200,
+          "tax": 67636,
+          "supply": 676364,
+          "accountCode": "800",
+          "qty": 120,
+          "total": 744000,
+          "isTaxExempt": false
+        },
+        {
+          "accountCode": "800",
+          "total": 146000,
+          "supply": 132727,
+          "name": "들깨가루(고운)/모란/1kg",
+          "spec": "1kg",
+          "qty": 20,
+          "isTaxExempt": false,
+          "price": 7300,
+          "tax": 13273
+        },
+        {
+          "spec": "1kg",
+          "name": "탈피들깨가루/모란/1kg",
+          "isTaxExempt": false,
+          "supply": 709091,
+          "total": 780000,
+          "tax": 70909,
+          "qty": 100,
+          "accountCode": "800",
+          "price": 7800
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785760279559",
+      "docNo": "260805-02",
+      "items": [
+        {
+          "name": "시골향참기름1-캔/16.5kg",
+          "spec": "16.5kg",
+          "total": 1760000,
+          "isTaxExempt": false,
+          "tax": 160000,
+          "price": 220000,
+          "supply": 1600000,
+          "qty": 8,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785760542523",
+      "docNo": "260806-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "total": 5400000,
+          "tax": 490909,
+          "name": "생들기름/병/해피유통/300ml",
+          "supply": 4909091,
+          "spec": "300ml",
+          "qty": 900,
+          "accountCode": "800",
+          "price": 6000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785760695776",
+      "docNo": "260804-04",
+      "items": [
+        {
+          "spec": "",
+          "price": 8000,
+          "isTaxExempt": false,
+          "name": "참고소한기름",
+          "tax": 43636,
+          "supply": 436364,
+          "qty": 60,
+          "accountCode": "800",
+          "total": 480000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785760869809",
+      "docNo": "260805-03",
+      "items": [
+        {
+          "qty": 120,
+          "isTaxExempt": false,
+          "price": 5500,
+          "spec": "350ml",
+          "name": "시골향 참기름/병/골드A/350ml",
+          "supply": 600000,
+          "total": 660000,
+          "accountCode": "800",
+          "tax": 60000
+        },
+        {
+          "supply": 472727,
+          "isTaxExempt": false,
+          "qty": 80,
+          "total": 520000,
+          "tax": 47273,
+          "accountCode": "800",
+          "price": 6500,
+          "spec": "350ml",
+          "name": "시골향 들기름/병/특/350ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785761187675",
+      "docNo": "260803-09",
+      "items": [
+        {
+          "name": "들향기름골드",
+          "spec": "",
+          "total": 100000,
+          "supply": 90909,
+          "accountCode": "800",
+          "tax": 9091,
+          "price": 10000,
+          "qty": 10,
+          "isTaxExempt": false
+        },
+        {
+          "supply": 34091,
+          "tax": 3409,
+          "accountCode": "800",
+          "total": 37500,
+          "qty": 5,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "isTaxExempt": false,
+          "price": 7500
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785763230282",
+      "docNo": "260803-10",
+      "items": [
+        {
+          "tax": 545455,
+          "price": 20000,
+          "isTaxExempt": false,
+          "spec": "1800ml",
+          "qty": 300,
+          "name": "참기름/특A(토마토)/1800ml",
+          "supply": 5454545,
+          "total": 6000000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785763416328",
+      "docNo": "260803-11",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 2312727,
+          "tax": 231273,
+          "total": 2544000,
+          "qty": 480,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "price": 5300
+        },
+        {
+          "supply": 132727,
+          "accountCode": "800",
+          "tax": 13273,
+          "total": 146000,
+          "isTaxExempt": false,
+          "name": "시골향 들깨가루(고운)/1kg",
+          "spec": "1kg",
+          "qty": 20,
+          "price": 7300
+        },
+        {
+          "tax": 49091,
+          "total": 540000,
+          "accountCode": "800",
+          "spec": "1750ml",
+          "supply": 490909,
+          "qty": 30,
+          "name": "시골향 참기름/A/1750ml",
+          "price": 18000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785820254171",
+      "docNo": "260803-13",
+      "items": [
+        {
+          "total": 8640000,
+          "qty": 64,
+          "name": "깨분참기름/16.5kg",
+          "isBoxUnit": false,
+          "spec": "개",
+          "isTaxExempt": false,
+          "supply": 7854545,
+          "price": 135000,
+          "tax": 785455,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785828087872",
+      "docNo": "260804-05",
+      "items": [
+        {
+          "tax": 20000,
+          "price": 22000,
+          "isTaxExempt": false,
+          "spec": "1750ml",
+          "name": "시골향 참기름/골드A/1750ml",
+          "qty": 10,
+          "supply": 200000,
+          "accountCode": "800",
+          "total": 220000
+        },
+        {
+          "accountCode": "800",
+          "name": "참고소한기름",
+          "tax": 18545,
+          "total": 204000,
+          "spec": "",
+          "price": 8500,
+          "isTaxExempt": false,
+          "supply": 185455,
+          "qty": 24
+        },
+        {
+          "accountCode": "800",
+          "total": 96000,
+          "supply": 87273,
+          "name": "들향기름",
+          "spec": "",
+          "qty": 12,
+          "isTaxExempt": false,
+          "price": 8000,
+          "tax": 8727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785828128850",
+      "docNo": "260804-06",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 636364,
+          "price": 35000,
+          "tax": 63636,
+          "spec": "1800ml",
+          "name": "시골향 생들기름/1800ml",
+          "qty": 20,
+          "accountCode": "800",
+          "total": 700000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785828247132",
+      "docNo": "260804-07",
+      "items": [
+        {
+          "qty": 12,
+          "total": 102000,
+          "spec": "",
+          "accountCode": "800",
+          "name": "참고소한기름",
+          "supply": 92727,
+          "price": 8500,
+          "tax": 9273,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 20,
+          "price": 5000,
+          "accountCode": "800",
+          "name": "시골향 참기름/병/골드A/350ml",
+          "spec": "350ml",
+          "total": 100000,
+          "isTaxExempt": false,
+          "tax": 9091,
+          "supply": 90909
+        },
+        {
+          "price": 21000,
+          "tax": 19091,
+          "name": "시골향 참기름/골드A/1750ml",
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "total": 210000,
+          "accountCode": "800",
+          "qty": 10,
+          "supply": 190909
+        },
+        {
+          "name": "시골향 들기름/병/350ml",
+          "spec": "350ml",
+          "accountCode": "800",
+          "price": 6000,
+          "tax": 10909,
+          "isTaxExempt": false,
+          "qty": 20,
+          "total": 120000,
+          "supply": 109091
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785828463118",
+      "docNo": "260804-08",
+      "items": [
+        {
+          "name": "참기름/병/원액/해피유통/300ml",
+          "price": 4600,
+          "spec": "300ml",
+          "accountCode": "800",
+          "tax": 418182,
+          "total": 4600000,
+          "qty": 1000,
+          "isTaxExempt": false,
+          "supply": 4181818
+        },
+        {
+          "accountCode": "800",
+          "qty": 1000,
+          "total": 6000000,
+          "tax": 545455,
+          "isTaxExempt": false,
+          "supply": 5454545,
+          "spec": "300ml",
+          "price": 6000,
+          "name": "생들기름/병/해피유통/300ml"
+        },
+        {
+          "spec": "1750ml",
+          "name": "시골향 참기름/특골드/1750ml",
+          "isTaxExempt": false,
+          "total": 660000,
+          "tax": 60000,
+          "price": 22000,
+          "qty": 30,
+          "accountCode": "800",
+          "supply": 600000
+        },
+        {
+          "tax": 68182,
+          "price": 25000,
+          "isTaxExempt": false,
+          "name": "시골향 들기름/특/1750ml",
+          "spec": "1750ml",
+          "supply": 681818,
+          "accountCode": "800",
+          "total": 750000,
+          "qty": 30
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785829132708",
+      "docNo": "260804-09",
+      "items": [
+        {
+          "total": 648000,
+          "qty": 36,
+          "supply": 589091,
+          "isTaxExempt": false,
+          "name": "참기름/A/한신/1800ml",
+          "spec": "1800ml",
+          "accountCode": "800",
+          "price": 18000,
+          "tax": 58909
+        },
+        {
+          "accountCode": "800",
+          "qty": 48,
+          "total": 412800,
+          "tax": 37527,
+          "supply": 375273,
+          "isTaxExempt": false,
+          "price": 8600,
+          "spec": "",
+          "name": "참진한기름"
+        },
+        {
+          "supply": 263636,
+          "tax": 26364,
+          "isTaxExempt": false,
+          "total": 290000,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "price": 5800,
+          "qty": 50,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785859517345",
+      "docNo": "260803-02",
+      "items": [
+        {
+          "total": 29700000,
+          "qty": 10000,
+          "name": "깨분",
+          "spec": "",
+          "accountCode": "500",
+          "price": 2970,
+          "supply": 27000000,
+          "tax": 2700000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785859882927",
+      "docNo": "260804-11",
+      "items": [
+        {
+          "tax": 1950,
+          "price": 14.3,
+          "isTaxExempt": false,
+          "spec": "",
+          "name": "상차비",
+          "accountCode": "500",
+          "total": 21450,
+          "qty": 1500,
+          "supply": 19500
+        },
+        {
+          "accountCode": "500",
+          "total": 6165000,
+          "supply": 6165000,
+          "qty": 1500,
+          "spec": "",
+          "name": "참깨",
+          "tax": 0,
+          "isTaxExempt": true,
+          "price": 4110
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785902869450",
+      "docNo": "260806-02",
+      "items": [
+        {
+          "total": 1800000,
+          "qty": 120,
+          "spec": "1800ml",
+          "name": "시골향 참기름/분/1800ml",
+          "isTaxExempt": false,
+          "supply": 1636364,
+          "price": 15000,
+          "tax": 163636,
+          "accountCode": "800"
+        },
+        {
+          "total": 960000,
+          "qty": 48,
+          "supply": 872727,
+          "name": "참기름/특A/지구/1800ml",
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "price": 20000,
+          "accountCode": "800",
+          "tax": 87273
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785902949782",
+      "docNo": "260805-04",
+      "items": [
+        {
+          "tax": 34036,
+          "accountCode": "800",
+          "total": 374400,
+          "supply": 340364,
+          "qty": 48,
+          "spec": "",
+          "name": "참고소한기름",
+          "isTaxExempt": false,
+          "price": 7800
+        },
+        {
+          "accountCode": "800",
+          "total": 156000,
+          "qty": 24,
+          "name": "맛기름",
+          "spec": "",
+          "isTaxExempt": false,
+          "price": 6500,
+          "tax": 14182,
+          "supply": 141818
+        },
+        {
+          "total": 313200,
+          "qty": 36,
+          "name": "참진한기름",
+          "spec": "",
+          "isTaxExempt": false,
+          "price": 8700,
+          "supply": 284727,
+          "accountCode": "800",
+          "tax": 28473
+        },
+        {
+          "tax": 87273,
+          "isTaxExempt": false,
+          "spec": "1800ml",
+          "name": "시골향 참기름/특A/1800ml",
+          "total": 960000,
+          "price": 20000,
+          "accountCode": "800",
+          "supply": 872727,
+          "qty": 48
+        },
+        {
+          "qty": 60,
+          "isTaxExempt": false,
+          "supply": 409091,
+          "price": 7500,
+          "total": 450000,
+          "tax": 40909,
+          "spec": "1kg",
+          "accountCode": "800",
+          "name": "들깨가루(거친)/거산/1kg"
+        },
+        {
+          "qty": 200,
+          "isTaxExempt": false,
+          "supply": 1363636,
+          "price": 7500,
+          "accountCode": "800",
+          "total": 1500000,
+          "spec": "1kg",
+          "tax": 136364,
+          "name": "들깨가루(중간)/거산/1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785903325068",
+      "docNo": "260810-01",
+      "items": [
+        {
+          "qty": 7,
+          "total": 1428000,
+          "isTaxExempt": false,
+          "supply": 1298182,
+          "name": "참깨",
+          "spec": "",
+          "accountCode": "800",
+          "tax": 129818,
+          "price": 204000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785906311089",
+      "docNo": "260805-05",
+      "items": [
+        {
+          "price": 21000,
+          "qty": 12,
+          "name": "참기름/특A/대왕/1800ml",
+          "spec": "1800ml",
+          "accountCode": "800",
+          "total": 252000,
+          "isTaxExempt": false,
+          "tax": 22909,
+          "supply": 229091
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 10,
+          "price": 7000,
+          "tax": 6364,
+          "accountCode": "800",
+          "total": 70000,
+          "supply": 63636,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785906350707",
+      "docNo": "260805-06",
+      "items": [
+        {
+          "supply": 229091,
+          "price": 21000,
+          "accountCode": "800",
+          "tax": 22909,
+          "name": "참기름/특A/대왕/1800ml",
+          "spec": "1800ml",
+          "qty": 12,
+          "isTaxExempt": false,
+          "total": 252000
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 63636,
+          "tax": 6364,
+          "price": 7000,
+          "spec": "1kg",
+          "qty": 10,
+          "name": "볶음참깨-낱개/1kg",
+          "accountCode": "800",
+          "total": 70000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785906382517",
+      "docNo": "260805-07",
+      "items": [
+        {
+          "tax": 6364,
+          "price": 7000,
+          "accountCode": "800",
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "supply": 63636,
+          "qty": 10,
+          "isTaxExempt": false,
+          "total": 70000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785906496335",
+      "docNo": "260805-08",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 10273,
+          "total": 113000,
+          "spec": "1kg",
+          "qty": 10,
+          "supply": 102727,
+          "name": "검정참깨가루/1kg",
+          "isTaxExempt": false,
+          "price": 11300
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785916298189",
+      "docNo": "260805-09",
+      "items": [
+        {
+          "spec": "개",
+          "name": "맛기름",
+          "total": 360000,
+          "tax": 32727,
+          "accountCode": "501",
+          "qty": 60,
+          "price": 6000,
+          "supply": 327273,
+          "isTaxExempt": false,
+          "isBoxUnit": false
+        },
+        {
+          "name": "들향기름",
+          "tax": 230400,
+          "total": 2534400,
+          "spec": "개",
+          "isTaxExempt": false,
+          "price": 6600,
+          "isBoxUnit": false,
+          "supply": 2304000,
+          "accountCode": "501",
+          "qty": 384
+        },
+        {
+          "qty": 30,
+          "isBoxUnit": false,
+          "accountCode": "501",
+          "supply": 199091,
+          "price": 7300,
+          "isTaxExempt": false,
+          "spec": "개",
+          "tax": 19909,
+          "total": 219000,
+          "name": "들향기름골드"
+        },
+        {
+          "isTaxExempt": false,
+          "total": 2956800,
+          "supply": 2688000,
+          "isBoxUnit": false,
+          "qty": 384,
+          "spec": "개",
+          "name": "참진한기름",
+          "accountCode": "501",
+          "tax": 268800,
+          "price": 7700
+        },
+        {
+          "name": "참향기름",
+          "isTaxExempt": false,
+          "spec": "개",
+          "total": 396000,
+          "isBoxUnit": false,
+          "tax": 36000,
+          "accountCode": "501",
+          "price": 6600,
+          "supply": 360000,
+          "qty": 60
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785916756624",
+      "docNo": "260804-12",
+      "items": [
+        {
+          "total": 1224960,
+          "isBoxUnit": false,
+          "isTaxExempt": false,
+          "qty": 3200,
+          "spec": "개",
+          "name": "300ML-사각병",
+          "tax": 111360,
+          "price": 382.8,
+          "supply": 1113600,
+          "accountCode": "505"
+        },
+        {
+          "name": "350ML-소주병",
+          "spec": "개",
+          "accountCode": "505",
+          "total": 591360,
+          "supply": 537600,
+          "tax": 53760,
+          "price": 231,
+          "isBoxUnit": false,
+          "isTaxExempt": false,
+          "qty": 2560
+        },
+        {
+          "supply": 306000,
+          "qty": 6000,
+          "price": 56.1,
+          "isTaxExempt": false,
+          "isBoxUnit": false,
+          "tax": 30600,
+          "total": 336600,
+          "name": "병캡-빨강",
+          "spec": "개",
+          "accountCode": "505"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785993653756",
+      "docNo": "260806-03",
+      "items": [
+        {
+          "spec": "1800ml",
+          "accountCode": "800",
+          "name": "시골향 참기름/골드/1800ml",
+          "total": 1260000,
+          "supply": 1145455,
+          "tax": 114545,
+          "price": 21000,
+          "qty": 60,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785993896961",
+      "docNo": "260806-04",
+      "items": [
+        {
+          "supply": 190909,
+          "tax": 19091,
+          "isTaxExempt": false,
+          "total": 210000,
+          "name": "시골향 참기름/골드A/1750ml",
+          "spec": "1750ml",
+          "accountCode": "800",
+          "price": 21000,
+          "qty": 10
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785993911094",
+      "docNo": "260806-05",
+      "items": [
+        {
+          "accountCode": "800",
+          "supply": 398182,
+          "qty": 60,
+          "total": 438000,
+          "isTaxExempt": false,
+          "name": "시골향 들깨가루(중간)/1kg",
+          "spec": "1kg",
+          "tax": 39818,
+          "price": 7300
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785994408304",
+      "docNo": "260806-06",
+      "items": [
+        {
+          "qty": 10,
+          "total": 220000,
+          "isTaxExempt": false,
+          "tax": 20000,
+          "supply": 200000,
+          "spec": "1800ml",
+          "price": 22000,
+          "accountCode": "800",
+          "name": "시골향 참기름/골드/1800ml"
+        },
+        {
+          "isTaxExempt": false,
+          "price": 6000,
+          "name": "맛기름",
+          "qty": 12,
+          "spec": "1800ml",
+          "supply": 65455,
+          "total": 72000,
+          "accountCode": "800",
+          "tax": 6545
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785994449309",
+      "docNo": "260806-07",
+      "items": [
+        {
+          "tax": 14182,
+          "price": 6500,
+          "accountCode": "800",
+          "name": "맛기름",
+          "spec": "1800ml",
+          "supply": 141818,
+          "qty": 24,
+          "isTaxExempt": false,
+          "total": 156000
+        },
+        {
+          "accountCode": "800",
+          "qty": 1,
+          "price": 9000,
+          "tax": 818,
+          "isTaxExempt": false,
+          "total": 9000,
+          "supply": 8182,
+          "spec": "",
+          "name": "택배비"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1785994466449",
+      "docNo": "260806-08",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "tax": 17891,
+          "price": 8200,
+          "spec": "1800ml",
+          "qty": 24,
+          "accountCode": "800",
+          "name": "참진한기름",
+          "supply": 178909,
+          "total": 196800
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786083095658",
+      "docNo": "260807-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "price": 21000,
+          "name": "시골향 참기름/골드A/1750ml",
+          "qty": 10,
+          "spec": "1750ml",
+          "total": 210000,
+          "tax": 19091,
+          "accountCode": "800",
+          "supply": 190909
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786083186169",
+      "docNo": "260807-02",
+      "items": [
+        {
+          "name": "시골향 들깨가루(중간)/1kg",
+          "price": 7500,
+          "spec": "1kg",
+          "isTaxExempt": false,
+          "tax": 27273,
+          "supply": 272727,
+          "accountCode": "800",
+          "total": 300000,
+          "qty": 40
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786083210222",
+      "docNo": "260807-03",
+      "items": [
+        {
+          "qty": 12,
+          "price": 25000,
+          "spec": "1800ml",
+          "name": "들기름/대왕/1800ml",
+          "isTaxExempt": false,
+          "total": 300000,
+          "tax": 27273,
+          "accountCode": "800",
+          "supply": 272727
+        },
+        {
+          "name": "참향기름",
+          "spec": "",
+          "total": 88800,
+          "accountCode": "800",
+          "tax": 8073,
+          "price": 7400,
+          "supply": 80727,
+          "qty": 12,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 20,
+          "accountCode": "800",
+          "price": 5800,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "supply": 105455,
+          "total": 116000,
+          "isTaxExempt": false,
+          "tax": 10545
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786083234612",
+      "docNo": "260807-04",
+      "items": [
+        {
+          "total": 840000,
+          "qty": 40,
+          "isTaxExempt": false,
+          "name": "시골향 참기름/골드A/1750ml",
+          "spec": "1750ml",
+          "price": 21000,
+          "supply": 763636,
+          "accountCode": "800",
+          "tax": 76364
+        },
+        {
+          "price": 5000,
+          "qty": 40,
+          "spec": "350ml",
+          "name": "시골향 참기름/병/골드A/350ml",
+          "isTaxExempt": false,
+          "tax": 18182,
+          "total": 200000,
+          "supply": 181818,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786083269240",
+      "docNo": "260807-05",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "spec": "1750ml",
+          "name": "시골향 참기름/골드A/1750ml",
+          "price": 24000,
+          "tax": 4364,
+          "accountCode": "800",
+          "qty": 2,
+          "total": 48000,
+          "supply": 43636
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325210930",
+      "docNo": "260810-02",
+      "items": [
+        {
+          "qty": 400,
+          "price": 16500,
+          "name": "참기름/A/가득찬/1800ml",
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "supply": 6000000,
+          "total": 6600000,
+          "accountCode": "800",
+          "tax": 600000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325222975",
+      "docNo": "260810-03",
+      "items": [
+        {
+          "qty": 30,
+          "isTaxExempt": false,
+          "total": 660000,
+          "supply": 600000,
+          "accountCode": "800",
+          "spec": "1750ml",
+          "name": "시골향 참기름/특골드/1750ml",
+          "tax": 60000,
+          "price": 22000
+        },
+        {
+          "qty": 50,
+          "isTaxExempt": false,
+          "price": 25000,
+          "accountCode": "800",
+          "total": 1250000,
+          "spec": "1750ml",
+          "tax": 113636,
+          "name": "시골향 들기름/특/1750ml",
+          "supply": 1136364
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325260499",
+      "docNo": "260810-04",
+      "items": [
+        {
+          "tax": 57273,
+          "supply": 572727,
+          "isTaxExempt": false,
+          "price": 210000,
+          "name": "시골향참기름1-캔/16.5kg",
+          "spec": "16.5kg",
+          "accountCode": "800",
+          "qty": 3,
+          "total": 630000
+        },
+        {
+          "qty": 100,
+          "price": 29000,
+          "name": "시골향 볶음통들깨/4kg",
+          "spec": "4kg",
+          "isTaxExempt": false,
+          "total": 2900000,
+          "accountCode": "800",
+          "tax": 263636,
+          "supply": 2636364
+        },
+        {
+          "name": "볶음참깨-낱개/1kg",
+          "isTaxExempt": false,
+          "spec": "1kg",
+          "total": 480000,
+          "supply": 436364,
+          "tax": 43636,
+          "accountCode": "800",
+          "price": 6000,
+          "qty": 80
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325558161",
+      "docNo": "260810-05",
+      "items": [
+        {
+          "qty": 20,
+          "isTaxExempt": false,
+          "price": 25000,
+          "tax": 45455,
+          "total": 500000,
+          "supply": 454545,
+          "accountCode": "800",
+          "spec": "1800ml",
+          "name": "들기름/알이네/1800ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325584166",
+      "docNo": "260810-07",
+      "items": [
+        {
+          "name": "참진한기름",
+          "isTaxExempt": false,
+          "spec": "",
+          "price": 9200,
+          "tax": 10036,
+          "accountCode": "800",
+          "total": 110400,
+          "qty": 12,
+          "supply": 100364
+        },
+        {
+          "qty": 36,
+          "total": 313200,
+          "accountCode": "800",
+          "tax": 28473,
+          "supply": 284727,
+          "isTaxExempt": false,
+          "price": 8700,
+          "spec": "",
+          "name": "참고소한기름"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786325948241",
+      "docNo": "260810-09",
+      "items": [
+        {
+          "price": 66,
+          "accountCode": "505",
+          "isBoxUnit": false,
+          "name": "물엿캡-노랑",
+          "spec": "개",
+          "tax": 9000,
+          "supply": 90000,
+          "isTaxExempt": false,
+          "total": 99000,
+          "qty": 1500
+        },
+        {
+          "tax": 20520,
+          "isTaxExempt": false,
+          "price": 495,
+          "supply": 205200,
+          "isBoxUnit": false,
+          "accountCode": "505",
+          "spec": "개",
+          "name": "1800ML-페트병-골드",
+          "qty": 456,
+          "total": 225720
+        },
+        {
+          "total": 338580,
+          "isTaxExempt": false,
+          "qty": 684,
+          "spec": "개",
+          "name": "1800ML-페트병-빨강n",
+          "isBoxUnit": false,
+          "tax": 30780,
+          "price": 495,
+          "supply": 307800,
+          "accountCode": "505"
+        },
+        {
+          "qty": 228,
+          "isTaxExempt": false,
+          "price": 495,
+          "tax": 10260,
+          "isBoxUnit": false,
+          "supply": 102600,
+          "total": 112860,
+          "accountCode": "505",
+          "spec": "개",
+          "name": "1800ML-페트병-노랑n"
+        },
+        {
+          "name": "1750ML-페트병",
+          "spec": "개",
+          "isTaxExempt": false,
+          "total": 573408,
+          "isBoxUnit": false,
+          "tax": 52128,
+          "price": 398.2,
+          "accountCode": "505",
+          "supply": 521280,
+          "qty": 1440
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786326309032",
+      "docNo": "260810-10",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 207273,
+          "price": 19000,
+          "tax": 20727,
+          "spec": "1750ml",
+          "name": "참기름/A/천하1750ml",
+          "qty": 12,
+          "accountCode": "800",
+          "total": 228000
+        },
+        {
+          "qty": 10,
+          "total": 210000,
+          "isTaxExempt": false,
+          "spec": "1800ml",
+          "name": "참기름/골드/대왕/1800ml",
+          "supply": 190909,
+          "price": 21000,
+          "accountCode": "800",
+          "tax": 19091
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 136364,
+          "price": 7500,
+          "tax": 13636,
+          "spec": "1kg",
+          "accountCode": "800",
+          "name": "시골향 들깨가루(중간)/1kg",
+          "qty": 20,
+          "total": 150000
+        },
+        {
+          "qty": 1,
+          "total": 4500,
+          "accountCode": "800",
+          "tax": 409,
+          "supply": 4091,
+          "isTaxExempt": false,
+          "price": 4500,
+          "spec": "",
+          "name": "택배비"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786341481346",
+      "docNo": "260810-11",
+      "items": [
+        {
+          "supply": 523636,
+          "isTaxExempt": false,
+          "total": 576000,
+          "tax": 52364,
+          "name": "시골향 참기름/특골드/1750ml",
+          "spec": "1750ml",
+          "qty": 24,
+          "price": 24000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786341800270",
+      "docNo": "260810-12",
+      "items": [
+        {
+          "isBoxUnit": false,
+          "isTaxExempt": false,
+          "total": 8775000,
+          "qty": 65,
+          "supply": 7977273,
+          "tax": 797727,
+          "accountCode": "500",
+          "price": 135000,
+          "name": "깨분참기름/16.5kg",
+          "spec": "개"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786410042820",
+      "docNo": "260811-01",
+      "items": [
+        {
+          "price": 6200,
+          "qty": 20,
+          "accountCode": "800",
+          "spec": "1kg",
+          "supply": 112727,
+          "name": "볶음참깨-낱개/1kg",
+          "tax": 11273,
+          "total": 124000,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 1,
+          "price": 28000,
+          "name": "시골향 들깨가루(고운)/4kg",
+          "spec": "4kg",
+          "accountCode": "800",
+          "total": 28000,
+          "isTaxExempt": true,
+          "supply": 28000,
+          "tax": 0
+        },
+        {
+          "spec": "1kg",
+          "name": "시골향 탈피들깨가루/1kg",
+          "total": 32000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "qty": 4,
+          "price": 8000,
+          "supply": 32000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786425538393",
+      "docNo": "260814-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 20,
+          "price": 270000,
+          "spec": "16.5kg",
+          "name": "시골향들기름1-캔/16.5kg",
+          "total": 5400000,
+          "accountCode": "800",
+          "tax": 490909,
+          "supply": 4909091
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786425765804",
+      "docNo": "260811-02",
+      "items": [
+        {
+          "accountCode": "800",
+          "name": "시골향 참기름/병/골드A/350ml",
+          "total": 110000,
+          "spec": "350ml",
+          "tax": 10000,
+          "isTaxExempt": false,
+          "price": 5500,
+          "supply": 100000,
+          "qty": 20
+        },
+        {
+          "accountCode": "800",
+          "price": 6000,
+          "qty": 20,
+          "spec": "350ml",
+          "name": "시골향 들기름/병/특/350ml",
+          "total": 120000,
+          "tax": 10909,
+          "isTaxExempt": false,
+          "supply": 109091
+        },
+        {
+          "isTaxExempt": false,
+          "total": 400000,
+          "tax": 36364,
+          "supply": 363636,
+          "name": "시골향 참기름/골드/1800ml",
+          "spec": "1800ml",
+          "qty": 20,
+          "accountCode": "800",
+          "price": 20000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786425996190",
+      "docNo": "260811-03",
+      "items": [
+        {
+          "total": 600000,
+          "qty": 30,
+          "supply": 545455,
+          "spec": "1750ml",
+          "name": "시골향 참기름/골드A/1750ml",
+          "isTaxExempt": false,
+          "price": 20000,
+          "tax": 54545,
+          "accountCode": "800"
+        },
+        {
+          "tax": 22727,
+          "spec": "1750ml",
+          "name": "시골향 들기름/1750ML",
+          "total": 250000,
+          "accountCode": "800",
+          "price": 25000,
+          "supply": 227273,
+          "qty": 10,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786426253445",
+      "docNo": "260811-04",
+      "items": [
+        {
+          "supply": 909091,
+          "tax": 90909,
+          "isTaxExempt": false,
+          "total": 1000000,
+          "spec": "350ml",
+          "name": "시골향 참기름/병/원액/350ml",
+          "qty": 200,
+          "price": 5000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786427504889",
+      "docNo": "260811-05",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "total": 220000,
+          "tax": 0,
+          "name": "시골향 볶음검정참(벌크)/20kg",
+          "supply": 220000,
+          "spec": "20kg",
+          "qty": 1,
+          "price": 220000,
+          "accountCode": "800"
+        },
+        {
+          "price": 114000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "spec": "20kg",
+          "qty": 1,
+          "name": "볶음참깨(벌크)/20kg",
+          "supply": 114000,
+          "total": 114000,
+          "accountCode": "800"
+        },
+        {
+          "price": 4500,
+          "tax": 0,
+          "isTaxExempt": true,
+          "spec": "",
+          "name": "택배비",
+          "accountCode": "800",
+          "total": 9000,
+          "qty": 2,
+          "supply": 9000
+        },
+        {
+          "accountCode": "800",
+          "supply": 20000,
+          "qty": 1,
+          "total": 20000,
+          "isTaxExempt": true,
+          "name": "시골향 참기름/골드/1800ml",
+          "spec": "1800ml",
+          "tax": 0,
+          "price": 20000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786431264114",
+      "docNo": "260811-08",
+      "items": [
+        {
+          "qty": 600,
+          "price": 880,
+          "spec": "개",
+          "accountCode": "505",
+          "name": "5-1호박스",
+          "total": 528000,
+          "isBoxUnit": false,
+          "isTaxExempt": false,
+          "tax": 48000,
+          "supply": 480000
+        },
+        {
+          "isBoxUnit": false,
+          "accountCode": "505",
+          "qty": 600,
+          "price": 880,
+          "name": "5-2호박스",
+          "spec": "개",
+          "supply": 480000,
+          "total": 528000,
+          "isTaxExempt": false,
+          "tax": 48000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786445647246",
+      "docNo": "260811-09",
+      "items": [
+        {
+          "spec": "",
+          "name": "참깨",
+          "supply": 9236250,
+          "total": 9236250,
+          "tax": 0,
+          "accountCode": "500",
+          "qty": 2250,
+          "price": 4105,
+          "isTaxExempt": true
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 29250,
+          "price": 14.3,
+          "tax": 2925,
+          "spec": "",
+          "name": "상차비",
+          "qty": 2250,
+          "accountCode": "500",
+          "total": 32175
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786445725668",
+      "docNo": "260811-10",
+      "items": [
+        {
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 3078750,
+          "supply": 3078750,
+          "name": "참깨",
+          "spec": "",
+          "price": 4105,
+          "accountCode": "500",
+          "qty": 750
+        },
+        {
+          "total": 10725,
+          "qty": 750,
+          "spec": "",
+          "isTaxExempt": false,
+          "name": "상차비",
+          "tax": 975,
+          "price": 14.3,
+          "supply": 9750,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786494303273",
+      "docNo": "260812-01",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "total": 2250000,
+          "qty": 300,
+          "supply": 2250000,
+          "tax": 0,
+          "accountCode": "800",
+          "name": "들깨가루(중간)/거산/1kg",
+          "price": 7500,
+          "spec": "1kg"
+        },
+        {
+          "accountCode": "800",
+          "total": 450000,
+          "name": "들깨가루(거친)/거산/1kg",
+          "spec": "1kg",
+          "qty": 60,
+          "isTaxExempt": true,
+          "price": 7500,
+          "supply": 450000,
+          "tax": 0
+        },
+        {
+          "name": "시골향탈피들깨가루/1kg",
+          "spec": "1kg",
+          "total": 480000,
+          "supply": 480000,
+          "accountCode": "800",
+          "tax": 0,
+          "price": 8000,
+          "qty": 60,
+          "isTaxExempt": true
+        },
+        {
+          "accountCode": "800",
+          "name": "참진한기름",
+          "tax": 47455,
+          "spec": "",
+          "total": 522000,
+          "isTaxExempt": false,
+          "price": 8700,
+          "supply": 474545,
+          "qty": 60
+        },
+        {
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "price": 5600,
+          "accountCode": "800",
+          "tax": 0,
+          "total": 336000,
+          "isTaxExempt": true,
+          "qty": 60,
+          "supply": 336000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786496726758",
+      "docNo": "260811-11",
+      "items": [
+        {
+          "accountCode": "800",
+          "supply": 150000,
+          "price": 7500,
+          "tax": 0,
+          "spec": "1kg",
+          "name": "시골향 들깨가루(중간)/1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "total": 150000
+        },
+        {
+          "supply": 116000,
+          "price": 5800,
+          "tax": 0,
+          "accountCode": "800",
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "qty": 20,
+          "total": 116000,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786497178293",
+      "docNo": "260812-03",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 0,
+          "total": 290000,
+          "supply": 290000,
+          "spec": "1kg",
+          "qty": 50,
+          "name": "볶음참깨-낱개/1kg",
+          "isTaxExempt": true,
+          "price": 5800
+        },
+        {
+          "isTaxExempt": false,
+          "tax": 8073,
+          "supply": 80727,
+          "price": 7400,
+          "accountCode": "800",
+          "spec": "",
+          "name": "참향기름",
+          "qty": 12,
+          "total": 88800
+        },
+        {
+          "name": "들향기름골드",
+          "spec": "",
+          "total": 82000,
+          "isTaxExempt": false,
+          "tax": 7455,
+          "price": 8200,
+          "qty": 10,
+          "supply": 74545,
+          "accountCode": "800"
+        },
+        {
+          "supply": 196364,
+          "accountCode": "800",
+          "price": 18000,
+          "tax": 19636,
+          "name": "시골향참기름/A/1800ml",
+          "spec": "1800ml",
+          "qty": 12,
+          "isTaxExempt": false,
+          "total": 216000
+        },
+        {
+          "isTaxExempt": true,
+          "tax": 0,
+          "total": 150000,
+          "qty": 20,
+          "supply": 150000,
+          "spec": "1kg",
+          "name": "시골향 들깨가루(중간)/1kg",
+          "accountCode": "800",
+          "price": 7500
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786519415039",
+      "docNo": "260812-05",
+      "items": [
+        {
+          "tax": 259091,
+          "isTaxExempt": false,
+          "total": 2850000,
+          "supply": 2590909,
+          "spec": "1800ml",
+          "name": "참기름/골드/반석/1800ml",
+          "price": 19000,
+          "qty": 150,
+          "accountCode": "800"
+        },
+        {
+          "spec": "1kg",
+          "name": "시골향 볶음참깨가루/1kg",
+          "price": 6300,
+          "tax": 0,
+          "accountCode": "800",
+          "qty": 40,
+          "total": 252000,
+          "isTaxExempt": true,
+          "supply": 252000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786519822953",
+      "docNo": "260812-07",
+      "items": [
+        {
+          "price": 231,
+          "tax": 107520,
+          "isTaxExempt": false,
+          "spec": "개",
+          "name": "350ML-소주병",
+          "accountCode": "505",
+          "total": 1182720,
+          "isBoxUnit": false,
+          "qty": 5120,
+          "supply": 1075200
+        },
+        {
+          "isBoxUnit": false,
+          "total": 336600,
+          "qty": 6000,
+          "isTaxExempt": false,
+          "supply": 306000,
+          "tax": 30600,
+          "price": 56.1,
+          "name": "병캡-빨강",
+          "accountCode": "505",
+          "spec": "개"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786584120031",
+      "docNo": "260813-01",
+      "items": [
+        {
+          "total": 230000,
+          "isTaxExempt": false,
+          "name": "시골향 참기름/골드A/1750ml",
+          "spec": "1750ml",
+          "qty": 10,
+          "accountCode": "800",
+          "price": 23000,
+          "supply": 209091,
+          "tax": 20909
+        },
+        {
+          "tax": 4091,
+          "price": 7500,
+          "isTaxExempt": false,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 6,
+          "supply": 40909,
+          "accountCode": "800",
+          "total": 45000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786584392144",
+      "docNo": "260813-02",
+      "items": [
+        {
+          "total": 500000,
+          "qty": 20,
+          "spec": "1750ml",
+          "name": "시골향 들기름/1750ML",
+          "isTaxExempt": false,
+          "supply": 454545,
+          "price": 25000,
+          "tax": 45455,
+          "accountCode": "800"
+        },
+        {
+          "isTaxExempt": true,
+          "price": 28000,
+          "tax": 0,
+          "name": "시골향 들깨가루(고운)/4kg",
+          "spec": "4kg",
+          "qty": 1,
+          "supply": 28000,
+          "accountCode": "800",
+          "total": 28000
+        },
+        {
+          "qty": 4,
+          "isTaxExempt": true,
+          "price": 8000,
+          "spec": "1kg",
+          "name": "시골향 탈피들깨가루/1kg",
+          "total": 32000,
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 32000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786585686146",
+      "docNo": "260813-03",
+      "items": [
+        {
+          "qty": 12,
+          "isTaxExempt": false,
+          "price": 21000,
+          "total": 252000,
+          "spec": "1800ml",
+          "tax": 22909,
+          "supply": 229091,
+          "name": "참기름/특A/대왕/1800ml",
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786586239427",
+      "docNo": "260814-02",
+      "items": [
+        {
+          "qty": 1800,
+          "total": 7200000,
+          "supply": 6545455,
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "name": "참기름/병/특/알찬/350ml",
+          "price": 4000,
+          "tax": 654545,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786586847109",
+      "docNo": "260813-04",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 176364,
+          "qty": 20,
+          "total": 194000,
+          "accountCode": "800",
+          "name": "들향기름골드",
+          "spec": "",
+          "tax": 17636,
+          "price": 9700
+        },
+        {
+          "price": 6200,
+          "tax": 33818,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "supply": 338182,
+          "accountCode": "800",
+          "total": 372000,
+          "qty": 60,
+          "isTaxExempt": false
+        },
+        {
+          "total": 186000,
+          "accountCode": "800",
+          "name": "시골향 참기름/분/1800ml",
+          "qty": 12,
+          "spec": "1800ml",
+          "price": 15500,
+          "supply": 169091,
+          "tax": 16909,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 60,
+          "accountCode": "800",
+          "price": 8700,
+          "tax": 47455,
+          "spec": "1800ml",
+          "total": 522000,
+          "name": "참진한기름",
+          "supply": 474545,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786602091402",
+      "docNo": "260814-03",
+      "items": [
+        {
+          "name": "진참기름/특A/1500ML",
+          "spec": "1500ml",
+          "total": 324000,
+          "isTaxExempt": false,
+          "tax": 29455,
+          "price": 18000,
+          "supply": 294545,
+          "qty": 18,
+          "accountCode": "800"
+        },
+        {
+          "total": 648000,
+          "qty": 36,
+          "name": "진참기름/A/1750ml",
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "price": 18000,
+          "supply": 589091,
+          "accountCode": "800",
+          "tax": 58909
+        },
+        {
+          "name": "진들기름",
+          "spec": "1800ml",
+          "price": 25000,
+          "isTaxExempt": false,
+          "tax": 40909,
+          "total": 450000,
+          "qty": 18,
+          "accountCode": "800",
+          "supply": 409091
+        },
+        {
+          "qty": 18,
+          "total": 414000,
+          "accountCode": "800",
+          "supply": 376364,
+          "name": "진들기름/1500ml",
+          "spec": "1500ml",
+          "tax": 37636,
+          "isTaxExempt": false,
+          "price": 23000
+        },
+        {
+          "accountCode": "800",
+          "supply": 545455,
+          "tax": 54545,
+          "total": 600000,
+          "isTaxExempt": false,
+          "name": "참기름/특A/알이네/1800ml",
+          "spec": "1800ml",
+          "price": 20000,
+          "qty": 30
+        },
+        {
+          "qty": 10,
+          "isTaxExempt": false,
+          "price": 25000,
+          "spec": "1800ml",
+          "total": 250000,
+          "supply": 227273,
+          "name": "들기름/알이네/1800ml",
+          "tax": 22727,
+          "accountCode": "800"
+        },
+        {
+          "qty": 80,
+          "accountCode": "800",
+          "price": 15500,
+          "spec": "1800ml",
+          "total": 1240000,
+          "tax": 112727,
+          "name": "참기름/분/알이네/1800ml",
+          "supply": 1127273,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786609029021",
+      "docNo": "260813-06",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 24,
+          "price": 8200,
+          "accountCode": "800",
+          "name": "참진한기름",
+          "total": 196800,
+          "supply": 178909,
+          "spec": "",
+          "tax": 17891
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786684442251",
+      "docNo": "260814-04",
+      "items": [
+        {
+          "total": 900000,
+          "isTaxExempt": false,
+          "supply": 818182,
+          "name": "시골향 참기름/병/특/350ml",
+          "qty": 200,
+          "spec": "350ml",
+          "accountCode": "800",
+          "price": 4500,
+          "tax": 81818
+        },
+        {
+          "tax": 56364,
+          "price": 6200,
+          "supply": 563636,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 100,
+          "isTaxExempt": false,
+          "total": 620000
+        },
+        {
+          "name": "시골향 참기름/A/1800ml",
+          "total": 1296000,
+          "tax": 117818,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "price": 18000,
+          "supply": 1178182,
+          "accountCode": "800",
+          "qty": 72
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787032406164",
+      "docNo": "260814-05",
+      "items": [
+        {
+          "total": 180000,
+          "qty": 10,
+          "spec": "1750ml * 1",
+          "isTaxExempt": true,
+          "name": "시골향 참기름/A/흰정사각/1750ml",
+          "supply": 180000,
+          "price": 18000,
+          "tax": 0,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787032511417",
+      "docNo": "260818-02",
+      "items": [
+        {
+          "supply": 1000000,
+          "isTaxExempt": true,
+          "price": 20000,
+          "qty": 50,
+          "tax": 0,
+          "total": 1000000,
+          "accountCode": "800",
+          "name": "시골향 참기름/특A/흰정사각/1750ml",
+          "spec": "1750ml * 1"
+        },
+        {
+          "qty": 10,
+          "accountCode": "800",
+          "price": 18000,
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/A/흰정사각/1750ml",
+          "supply": 180000,
+          "total": 180000,
+          "isTaxExempt": true,
+          "tax": 0
+        },
+        {
+          "supply": 230000,
+          "accountCode": "800",
+          "total": 230000,
+          "qty": 10,
+          "isTaxExempt": true,
+          "tax": 0,
+          "name": "시골향 들기름/1750ML",
+          "price": 23000,
+          "spec": "1750ml * 1"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787038647762",
+      "docNo": "260814-06",
+      "items": [
+        {
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "total": 36000,
+          "supply": 32727,
+          "accountCode": "800",
+          "tax": 3273,
+          "price": 7200,
+          "qty": 5,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039438302",
+      "docNo": "260818-03",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 12,
+          "supply": 98182,
+          "price": 9000,
+          "tax": 9818,
+          "accountCode": "800",
+          "total": 108000,
+          "spec": "",
+          "name": "참고소한기름"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039512307",
+      "docNo": "260818-04",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 48,
+          "price": 19000,
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/특/1750ml",
+          "total": 912000,
+          "isTaxExempt": false,
+          "tax": 82909,
+          "supply": 829091
+        },
+        {
+          "total": 108000,
+          "supply": 98182,
+          "qty": 12,
+          "name": "참진한기름",
+          "spec": "",
+          "accountCode": "800",
+          "price": 9000,
+          "tax": 9818,
+          "isTaxExempt": false
+        },
+        {
+          "tax": 8182,
+          "price": 7500,
+          "accountCode": "800",
+          "name": "들향기름",
+          "spec": "",
+          "supply": 81818,
+          "total": 90000,
+          "isTaxExempt": false,
+          "qty": 12
+        },
+        {
+          "supply": 127273,
+          "qty": 20,
+          "accountCode": "800",
+          "total": 140000,
+          "isTaxExempt": false,
+          "spec": "350ml * 1",
+          "tax": 12727,
+          "name": "시골향 들기름/병/350ml",
+          "price": 7000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039551117",
+      "docNo": "260818-05",
+      "items": [
+        {
+          "total": 116000,
+          "supply": 116000,
+          "isTaxExempt": true,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "qty": 20,
+          "price": 5800,
+          "tax": 0,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039566415",
+      "docNo": "260818-06",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "tax": 22909,
+          "total": 252000,
+          "qty": 12,
+          "supply": 229091,
+          "spec": "1800ml * 1",
+          "name": "참기름/특A/대왕/1800ml",
+          "accountCode": "800",
+          "price": 21000
+        },
+        {
+          "total": 140000,
+          "qty": 20,
+          "isTaxExempt": false,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "accountCode": "800",
+          "price": 7000,
+          "supply": 127273,
+          "tax": 12727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039608372",
+      "docNo": "260818-07",
+      "items": [
+        {
+          "tax": 18000,
+          "price": 22000,
+          "accountCode": "800",
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/골드A/1750ml",
+          "supply": 180000,
+          "isTaxExempt": false,
+          "total": 198000,
+          "qty": 9
+        },
+        {
+          "accountCode": "800",
+          "price": 27000,
+          "tax": 2455,
+          "name": "시골향 들기름/1750ML",
+          "spec": "1750ml * 1",
+          "qty": 1,
+          "isTaxExempt": false,
+          "supply": 24545,
+          "total": 27000
+        },
+        {
+          "supply": 19091,
+          "tax": 1909,
+          "accountCode": "800",
+          "total": 21000,
+          "isTaxExempt": false,
+          "spec": "1kg * 1",
+          "name": "볶음참깨-낱개/1kg",
+          "price": 7000,
+          "qty": 3
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039891905",
+      "docNo": "260818-08",
+      "items": [
+        {
+          "supply": 218182,
+          "isTaxExempt": false,
+          "total": 240000,
+          "qty": 12,
+          "tax": 21818,
+          "accountCode": "800",
+          "name": "참기름/특A/대왕/1800ml",
+          "price": 20000,
+          "spec": "1800ml * 1"
+        },
+        {
+          "price": 5800,
+          "qty": 10,
+          "isTaxExempt": true,
+          "spec": "1kg * 1",
+          "supply": 58000,
+          "name": "볶음참깨-낱개/1kg",
+          "tax": 0,
+          "total": 58000,
+          "accountCode": "800"
+        },
+        {
+          "tax": 0,
+          "accountCode": "800",
+          "price": 11000,
+          "isTaxExempt": true,
+          "spec": "1kg * 1",
+          "name": "볶음검정참깨/1kg",
+          "qty": 5,
+          "supply": 55000,
+          "total": 55000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039942788",
+      "docNo": "260818-09",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 209091,
+          "qty": 10,
+          "total": 230000,
+          "accountCode": "800",
+          "name": "시골향 참기름/골드A/1750ml",
+          "spec": "1750ml * 1",
+          "tax": 20909,
+          "price": 23000
+        },
+        {
+          "accountCode": "800",
+          "price": 26000,
+          "name": "시골향 들기름/1750ML",
+          "qty": 2,
+          "spec": "1750ml * 1",
+          "isTaxExempt": false,
+          "total": 52000,
+          "tax": 4727,
+          "supply": 47273
+        },
+        {
+          "isTaxExempt": false,
+          "tax": 1364,
+          "price": 7500,
+          "accountCode": "800",
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "supply": 13636,
+          "qty": 2,
+          "total": 15000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787039980270",
+      "docNo": "260818-10",
+      "items": [
+        {
+          "supply": 8713636,
+          "isTaxExempt": false,
+          "price": 135000,
+          "tax": 871364,
+          "name": "깨분참기름/16.5kg",
+          "spec": "개",
+          "qty": 71,
+          "isBoxUnit": false,
+          "accountCode": "500",
+          "total": 9585000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787040171979",
+      "docNo": "260818-11",
+      "items": [
+        {
+          "qty": 5220,
+          "price": 429,
+          "name": "깻묵",
+          "spec": "",
+          "supply": 2035800,
+          "isTaxExempt": false,
+          "total": 2239380,
+          "accountCode": "800",
+          "tax": 203580
+        },
+        {
+          "accountCode": "800",
+          "total": 137500,
+          "qty": 1,
+          "supply": 125000,
+          "tax": 12500,
+          "isTaxExempt": false,
+          "price": 137500,
+          "name": "화물비",
+          "spec": ""
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787040685115",
+      "docNo": "260818-15",
+      "items": [
+        {
+          "qty": 100,
+          "isTaxExempt": false,
+          "total": 700000,
+          "supply": 636364,
+          "accountCode": "800",
+          "spec": "300ml * 1",
+          "tax": 63636,
+          "name": "시골향 생들기름/병/300ml",
+          "price": 7000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787040731070",
+      "docNo": "260817-01",
+      "items": [
+        {
+          "tax": 31818,
+          "price": 3500,
+          "spec": "180ml * 1",
+          "isTaxExempt": false,
+          "name": "참기름/병/원액/엘생명/180ml",
+          "accountCode": "800",
+          "total": 350000,
+          "qty": 100,
+          "supply": 318182
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 540,
+          "supply": 1374545,
+          "total": 1512000,
+          "accountCode": "800",
+          "spec": "180ml * 1",
+          "tax": 137455,
+          "name": "참기름/병/분/엘생명/180ml",
+          "price": 2800
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787119944504",
+      "docNo": "260819-01",
+      "items": [
+        {
+          "supply": 3763636,
+          "total": 4140000,
+          "accountCode": "800",
+          "qty": 900,
+          "tax": 376364,
+          "isTaxExempt": false,
+          "price": 4600,
+          "spec": "300ml * 1",
+          "name": "참기름/병/원액/해피유통/300ml"
+        },
+        {
+          "price": 6000,
+          "name": "생들기름/병/해피유통/300ml",
+          "tax": 490909,
+          "spec": "300ml * 1",
+          "accountCode": "800",
+          "total": 5400000,
+          "isTaxExempt": false,
+          "supply": 4909091,
+          "qty": 900
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787119963089",
+      "docNo": "260819-02",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 19091,
+          "total": 210000,
+          "supply": 190909,
+          "spec": "1750ml * 1",
+          "qty": 10,
+          "name": "시골향 참기름/골드A/1750ml",
+          "isTaxExempt": false,
+          "price": 21000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122476195",
+      "docNo": "260819-04",
+      "items": [
+        {
+          "total": 195000,
+          "accountCode": "800",
+          "name": "시골향 참기름/골드/1800ml",
+          "spec": "1800ml * 1",
+          "qty": 10,
+          "isTaxExempt": true,
+          "price": 19500,
+          "supply": 195000,
+          "tax": 0
+        },
+        {
+          "supply": 110000,
+          "name": "볶음검정참깨/1kg",
+          "tax": 0,
+          "isTaxExempt": true,
+          "spec": "1kg * 1",
+          "total": 110000,
+          "price": 11000,
+          "accountCode": "800",
+          "qty": 10
+        },
+        {
+          "total": 55000,
+          "accountCode": "800",
+          "supply": 55000,
+          "qty": 10,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "isTaxExempt": true,
+          "price": 5500,
+          "tax": 0
+        },
+        {
+          "isTaxExempt": true,
+          "total": 78000,
+          "tax": 0,
+          "name": "시골향 탈피들깨가루/1kg",
+          "supply": 78000,
+          "accountCode": "800",
+          "spec": "1kg * 1",
+          "qty": 10,
+          "price": 7800
+        },
+        {
+          "isTaxExempt": true,
+          "supply": 72000,
+          "price": 6000,
+          "tax": 0,
+          "name": "맛기름",
+          "spec": "",
+          "accountCode": "800",
+          "qty": 12,
+          "total": 72000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122543124",
+      "docNo": "260819-05",
+      "items": [
+        {
+          "qty": 12,
+          "price": 9000,
+          "spec": "",
+          "name": "참진한기름",
+          "accountCode": "800",
+          "total": 108000,
+          "tax": 9818,
+          "isTaxExempt": false,
+          "supply": 98182
+        },
+        {
+          "qty": 12,
+          "accountCode": "800",
+          "price": 8500,
+          "total": 102000,
+          "tax": 9273,
+          "isTaxExempt": false,
+          "spec": "",
+          "name": "참고소한기름",
+          "supply": 92727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122575677",
+      "docNo": "260819-06",
+      "items": [
+        {
+          "total": 1160000,
+          "supply": 1160000,
+          "qty": 200,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "isTaxExempt": true,
+          "price": 5800,
+          "accountCode": "800",
+          "tax": 0
+        },
+        {
+          "tax": 0,
+          "price": 11300,
+          "supply": 226000,
+          "accountCode": "800",
+          "spec": "1kg * 1",
+          "name": "검정참깨가루/1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "total": 226000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122859221",
+      "docNo": "260819-08",
+      "items": [
+        {
+          "tax": 0,
+          "spec": "350ml * 1",
+          "name": "참기름/병/특A(금빛)/350ml",
+          "total": 2400000,
+          "accountCode": "800",
+          "price": 4000,
+          "supply": 2400000,
+          "qty": 600,
+          "isTaxExempt": true
+        },
+        {
+          "tax": 0,
+          "total": 16000,
+          "accountCode": "800",
+          "name": "5-2박스",
+          "supply": 16000,
+          "spec": "간지미포함",
+          "qty": 20,
+          "price": 800,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122987059",
+      "docNo": "260819-09",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "total": 3600000,
+          "qty": 240,
+          "accountCode": "800",
+          "supply": 3272727,
+          "tax": 327273,
+          "price": 15000,
+          "name": "시골향 참기름/분/1800ml",
+          "spec": "1800ml * 1"
+        },
+        {
+          "price": 5600,
+          "accountCode": "800",
+          "qty": 80,
+          "spec": "1kg * 1",
+          "name": "볶음참깨-낱개/1kg",
+          "total": 448000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "supply": 448000
+        },
+        {
+          "supply": 750000,
+          "tax": 0,
+          "accountCode": "800",
+          "total": 750000,
+          "isTaxExempt": true,
+          "spec": "1kg * 1",
+          "name": "들깨가루(중간)/거산/1kg",
+          "price": 7500,
+          "qty": 100
+        },
+        {
+          "supply": 280800,
+          "isTaxExempt": true,
+          "price": 7800,
+          "tax": 0,
+          "name": "참고소한기름",
+          "spec": "1.8l",
+          "qty": 36,
+          "accountCode": "800",
+          "total": 280800
+        },
+        {
+          "price": 11000,
+          "accountCode": "800",
+          "qty": 20,
+          "spec": "1kg * 1",
+          "name": "볶음검정참깨/1kg",
+          "tax": 0,
+          "total": 220000,
+          "isTaxExempt": true,
+          "supply": 220000
+        },
+        {
+          "total": -154000,
+          "isTaxExempt": false,
+          "name": "볶음검정참깨/1kg",
+          "qty": -14,
+          "spec": "1kg * 1",
+          "price": 11000,
+          "tax": -14000,
+          "supply": -140000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787123227525",
+      "docNo": "260819-10",
+      "items": [
+        {
+          "supply": 75000,
+          "tax": 0,
+          "total": 75000,
+          "accountCode": "800",
+          "spec": "1kg * 1",
+          "name": "탈피들깨가루/1kg",
+          "qty": 10,
+          "price": 7500,
+          "isTaxExempt": true
+        },
+        {
+          "qty": 10,
+          "price": 6000,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg * 1",
+          "isTaxExempt": true,
+          "total": 60000,
+          "tax": 0,
+          "supply": 60000,
+          "accountCode": "800"
+        },
+        {
+          "accountCode": "800",
+          "total": 550000,
+          "qty": 100,
+          "supply": 550000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "price": 5500,
+          "name": "시골향 참기름/병/골드A/350ml",
+          "spec": "350ml * 1"
+        },
+        {
+          "price": 6000,
+          "qty": 80,
+          "name": "시골향 들기름/병/특/350ml",
+          "spec": "350ml * 1",
+          "supply": 480000,
+          "isTaxExempt": true,
+          "total": 480000,
+          "tax": 0,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787203656453",
+      "docNo": "260818-16",
+      "items": [
+        {
+          "isBoxUnit": false,
+          "tax": 0,
+          "price": 4111,
+          "spec": "kg",
+          "name": "참깨",
+          "isTaxExempt": true,
+          "total": 9249750,
+          "qty": 2250,
+          "supply": 9249750,
+          "accountCode": "500"
+        },
+        {
+          "price": 14.3,
+          "qty": 3000,
+          "spec": "kg",
+          "isTaxExempt": false,
+          "supply": 39000,
+          "name": "상차비",
+          "tax": 3900,
+          "total": 42900,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787204814437",
+      "docNo": "260820-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "tax": 19091,
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/골드A/1750ml",
+          "total": 210000,
+          "price": 21000,
+          "accountCode": "800",
+          "supply": 190909,
+          "qty": 10
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210349769",
+      "docNo": "260820-04",
+      "items": [
+        {
+          "qty": 60,
+          "supply": 1145455,
+          "isTaxExempt": false,
+          "price": 21000,
+          "name": "시골향 참기름/골드/1800ml",
+          "total": 1260000,
+          "spec": "1800ml * 1",
+          "tax": 114545,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210540940",
+      "docNo": "260820-05",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 900,
+          "supply": 4909091,
+          "price": 6000,
+          "isTaxExempt": false,
+          "tax": 490909,
+          "total": 5400000,
+          "spec": "300ml * 1",
+          "name": "생들기름/병/해피유통/300ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210586884",
+      "docNo": "260820-06",
+      "items": [
+        {
+          "qty": 60,
+          "isTaxExempt": true,
+          "price": 5000,
+          "accountCode": "800",
+          "total": 300000,
+          "spec": "350ml * 1",
+          "tax": 0,
+          "name": "시골향 참기름/병/골드A/350ml",
+          "supply": 300000
+        },
+        {
+          "accountCode": "800",
+          "price": 23000,
+          "qty": 20,
+          "isTaxExempt": true,
+          "tax": 0,
+          "total": 460000,
+          "supply": 460000,
+          "name": "시골향 들기름/1750ML",
+          "spec": "1750ml * 1"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210634315",
+      "docNo": "260820-07",
+      "items": [
+        {
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/골드A/1750ml",
+          "isTaxExempt": false,
+          "total": 800000,
+          "tax": 72727,
+          "qty": 40,
+          "price": 20000,
+          "supply": 727273,
+          "accountCode": "800"
+        },
+        {
+          "total": 3100000,
+          "qty": 200,
+          "name": "시골향 참기름/분/1750ml",
+          "spec": "1750ml * 1",
+          "isTaxExempt": false,
+          "price": 15500,
+          "supply": 2818182,
+          "accountCode": "800",
+          "tax": 281818
+        },
+        {
+          "qty": 100,
+          "isTaxExempt": false,
+          "price": 19000,
+          "spec": "1750ml * 1",
+          "name": "시골향 참기름/특A/1750ml",
+          "supply": 1727273,
+          "total": 1900000,
+          "accountCode": "800",
+          "tax": 172727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210646977",
+      "docNo": "260820-08",
+      "items": [
+        {
+          "qty": 400,
+          "supply": 6000000,
+          "total": 6600000,
+          "isTaxExempt": false,
+          "spec": "1800ml * 1",
+          "tax": 600000,
+          "name": "참기름/A/가득찬/1800ml",
+          "accountCode": "800",
+          "price": 16500
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210863909",
+      "docNo": "260820-09",
+      "items": [
+        {
+          "price": 8200,
+          "tax": 8945,
+          "spec": "1.8l",
+          "name": "들향기름",
+          "accountCode": "800",
+          "total": 98400,
+          "qty": 12,
+          "isTaxExempt": false,
+          "supply": 89455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210918033",
+      "docNo": "260820-10",
+      "items": [
+        {
+          "total": 2449920,
+          "accountCode": "505",
+          "qty": 6400,
+          "supply": 2227200,
+          "isBoxUnit": false,
+          "tax": 222720,
+          "price": 382.8,
+          "name": "300ML-사각병",
+          "isTaxExempt": false,
+          "spec": "개"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787210996756",
+      "docNo": "260820-11",
+      "items": [
+        {
+          "spec": "16.5kg",
+          "name": "수입들기름",
+          "price": 189200,
+          "isBoxUnit": false,
+          "tax": 344000,
+          "accountCode": "500",
+          "qty": 20,
+          "total": 3784000,
+          "isTaxExempt": false,
+          "supply": 3440000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787211981240",
+      "docNo": "260814-07",
+      "items": [
+        {
+          "tax": 21818,
+          "accountCode": "800",
+          "price": 20000,
+          "spec": "1800ml * 1",
+          "qty": 12,
+          "name": "참기름/특A/대왕/1800ml",
+          "supply": 218182,
+          "isTaxExempt": false,
+          "total": 240000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787285987697",
+      "docNo": "260821-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 278182,
+          "tax": 27818,
+          "price": 8500,
+          "qty": 36,
+          "spec": "",
+          "name": "참고소한기름",
+          "accountCode": "800",
+          "total": 306000
+        },
+        {
+          "tax": 8727,
+          "supply": 87273,
+          "spec": "",
+          "name": "들향기름",
+          "total": 96000,
+          "accountCode": "800",
+          "price": 8000,
+          "qty": 12,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787286089524",
+      "docNo": "260821-02",
+      "items": [
+        {
+          "supply": 1090909,
+          "isTaxExempt": false,
+          "total": 1200000,
+          "qty": 60,
+          "tax": 109091,
+          "accountCode": "800",
+          "name": "참기름/특A/청우/1800ml",
+          "price": 20000,
+          "spec": "1800ml * 1"
+        },
+        {
+          "isTaxExempt": false,
+          "tax": 8182,
+          "price": 4500,
+          "supply": 81818,
+          "accountCode": "800",
+          "name": "참기름/병/특A/청우/350ml",
+          "spec": "350ml * 1",
+          "qty": 20,
+          "total": 90000
+        },
+        {
+          "name": "들기름/병/특/청우/350ml",
+          "spec": "350ml * 1",
+          "total": 130000,
+          "isTaxExempt": false,
+          "tax": 11818,
+          "price": 6500,
+          "qty": 20,
+          "supply": 118182,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787286202693",
+      "docNo": "260821-03",
+      "items": [
+        {
+          "qty": 20,
+          "total": 110000,
+          "spec": "350ml * 1",
+          "name": "시골향참기름/병/골드A/350ml",
+          "isTaxExempt": true,
+          "supply": 110000,
+          "price": 5500,
+          "tax": 0,
+          "accountCode": "800"
+        },
+        {
+          "tax": 0,
+          "isTaxExempt": true,
+          "supply": 124000,
+          "spec": "350ml * 1",
+          "name": "시골향들기름/병/350ml",
+          "total": 124000,
+          "accountCode": "800",
+          "price": 6200,
+          "qty": 20
+        },
+        {
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 132000,
+          "supply": 132000,
+          "name": "볶음참깨/500g",
+          "spec": "500g * 1",
+          "accountCode": "800",
+          "price": 3300,
+          "qty": 40
+        },
+        {
+          "accountCode": "800",
+          "qty": 40,
+          "price": 6300,
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 252000,
+          "supply": 252000,
+          "spec": "1kg * 1",
+          "name": "볶음참깨-낱개/1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787293762852",
+      "docNo": "260821-05",
+      "items": [
+        {
+          "supply": 9545455,
+          "accountCode": "800",
+          "total": 10500000,
+          "qty": 50,
+          "isTaxExempt": false,
+          "tax": 954545,
+          "price": 210000,
+          "spec": "16.5kg * 1",
+          "name": "시골향참기름1-캔/16.5kg"
+        },
+        {
+          "total": 2600000,
+          "supply": 2363636,
+          "accountCode": "800",
+          "name": "시골향들기름1-캔/16.5kg",
+          "spec": "16.5kg * 1",
+          "qty": 10,
+          "price": 260000,
+          "tax": 236364,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787296530919",
+      "docNo": "260821-06",
+      "items": [
+        {
+          "price": 5500,
+          "accountCode": "800",
+          "qty": 5,
+          "name": "시골향참기름/병/원액/350ml",
+          "supply": 25000,
+          "spec": "350ml * 1",
+          "total": 27500,
+          "tax": 2500,
+          "isTaxExempt": false
+        },
+        {
+          "supply": 196364,
+          "tax": 19636,
+          "accountCode": "800",
+          "total": 216000,
+          "qty": 12,
+          "spec": "1800ml * 1",
+          "name": "시골향참기름/분/1800ml",
+          "price": 18000,
+          "isTaxExempt": false
+        },
+        {
+          "accountCode": "800",
+          "tax": 0,
+          "total": 580000,
+          "supply": 580000,
+          "spec": "1kg * 1",
+          "qty": 100,
+          "name": "볶음참깨-낱개/1kg",
+          "isTaxExempt": true,
+          "price": 5800
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787297403232",
+      "docNo": "260821-07",
+      "items": [
+        {
+          "price": 135000,
+          "tax": 846818,
+          "spec": "개",
+          "accountCode": "500",
+          "name": "깨분참기름/16.5kg",
+          "isTaxExempt": false,
+          "total": 9315000,
+          "isBoxUnit": false,
+          "qty": 69,
+          "supply": 8468182
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787299477651",
+      "docNo": "260821-08",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "price": 7500,
+          "qty": 40,
+          "accountCode": "800",
+          "tax": 0,
+          "total": 300000,
+          "supply": 300000,
+          "name": "시골향들깨가루(중간)/1kg",
+          "spec": "1kg * 1"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787302555618",
+      "docNo": "260804-13",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "qty": 1500,
+          "price": 4112,
+          "tax": 0,
+          "accountCode": "500",
+          "supply": 6168000,
+          "total": 6168000,
+          "spec": "",
+          "name": "참깨"
+        },
+        {
+          "accountCode": "500",
+          "total": 21450,
+          "qty": 1500,
+          "supply": 19500,
+          "isTaxExempt": false,
+          "tax": 1950,
+          "price": 14.3,
+          "name": "상차비",
+          "spec": ""
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787302720988",
+      "docNo": "260804-01",
+      "items": [
+        {
+          "price": 14.3,
+          "tax": 1950,
+          "spec": "",
+          "name": "상차비",
+          "isTaxExempt": false,
+          "supply": 19500,
+          "total": 21450,
+          "qty": 1500,
+          "accountCode": "500"
+        },
+        {
+          "isTaxExempt": true,
+          "price": 4112,
+          "name": "참깨",
+          "qty": 1500,
+          "spec": "",
+          "accountCode": "500",
+          "total": 6168000,
+          "tax": 0,
+          "supply": 6168000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787302786848",
+      "docNo": "260811-02",
+      "items": [
+        {
+          "supply": 3078750,
+          "name": "참깨",
+          "tax": 0,
+          "total": 3078750,
+          "spec": "",
+          "accountCode": "500",
+          "price": 4105,
+          "isTaxExempt": true,
+          "qty": 750
+        },
+        {
+          "total": 10725,
+          "qty": 750,
+          "accountCode": "500",
+          "supply": 9750,
+          "name": "상차비",
+          "spec": "",
+          "price": 14.3,
+          "isTaxExempt": false,
+          "tax": 975
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787302836963",
+      "docNo": "260818-03",
+      "items": [
+        {
+          "spec": "",
+          "name": "상차비",
+          "supply": 9750,
+          "total": 10725,
+          "isTaxExempt": false,
+          "tax": 975,
+          "price": 14.3,
+          "qty": 750,
+          "accountCode": "500"
+        },
+        {
+          "supply": 3078750,
+          "accountCode": "500",
+          "tax": 0,
+          "total": 3078750,
+          "name": "참깨",
+          "spec": "",
+          "isTaxExempt": true,
+          "qty": 750,
+          "price": 4105
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787543159366",
+      "docNo": "260810-15",
+      "items": [
+        {
+          "tax": 65455,
+          "isTaxExempt": false,
+          "price": 6000,
+          "supply": 654545,
+          "accountCode": "501",
+          "spec": "",
+          "name": "맛기름",
+          "qty": 120,
+          "total": 720000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787543241686",
+      "docNo": "260824-01",
+      "items": [
+        {
+          "supply": 370909,
+          "qty": 60,
+          "total": 408000,
+          "isBoxUnit": false,
+          "accountCode": "501",
+          "name": "참고소(연한)",
+          "spec": "개",
+          "tax": 37091,
+          "price": 6800,
+          "isTaxExempt": false
+        },
+        {
+          "total": 2611200,
+          "qty": 384,
+          "spec": "개",
+          "name": "참고소한기름",
+          "accountCode": "501",
+          "tax": 237382,
+          "isBoxUnit": false,
+          "price": 6800,
+          "supply": 2373818,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787551517911",
+      "docNo": "2026-08-0216",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": -630000,
+          "tax": -63000,
+          "total": -693000,
+          "accountCode": "500",
+          "spec": "1kg",
+          "name": "볶음검정참깨",
+          "price": 11550,
+          "qty": -60
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787552125852",
+      "docNo": "2026-08-0215",
+      "items": [
+        {
+          "supply": 6327273,
+          "tax": 632727,
+          "isTaxExempt": false,
+          "price": 120000,
+          "qty": 58,
+          "spec": "16.5kg",
+          "name": "깨분참기름/16.5kg",
+          "accountCode": "500",
+          "total": 6960000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787552826296",
+      "docNo": "2026-08-0216",
+      "items": [
+        {
+          "supply": 560000,
+          "qty": 400,
+          "total": 616000,
+          "accountCode": "505",
+          "name": "1호박스",
+          "spec": "개",
+          "isTaxExempt": false,
+          "tax": 56000,
+          "price": 1540,
+          "isBoxUnit": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787558865659",
+      "docNo": "260824-02",
+      "items": [
+        {
+          "tax": 8073,
+          "isTaxExempt": false,
+          "total": 88800,
+          "supply": 80727,
+          "spec": "",
+          "name": "들향기름",
+          "qty": 12,
+          "price": 7400,
+          "accountCode": "800"
+        },
+        {
+          "qty": 10,
+          "price": 5800,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "supply": 58000,
+          "total": 58000,
+          "isTaxExempt": true,
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787558883025",
+      "docNo": "260824-03",
+      "items": [
+        {
+          "spec": "1kg",
+          "price": 8000,
+          "name": "시골향탈피들깨가루/1kg",
+          "tax": 0,
+          "isTaxExempt": true,
+          "supply": 32000,
+          "qty": 4,
+          "total": 32000,
+          "accountCode": "800"
+        },
+        {
+          "isTaxExempt": true,
+          "tax": 0,
+          "supply": 28000,
+          "price": 28000,
+          "qty": 1,
+          "spec": "4kg",
+          "name": "시골향들깨가루(고운)/4kg",
+          "accountCode": "800",
+          "total": 28000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787558901775",
+      "docNo": "260824-04",
+      "items": [
+        {
+          "qty": 10,
+          "total": 230000,
+          "supply": 209091,
+          "spec": "1750ml",
+          "name": "시골향참기름/골드A/1750ml",
+          "accountCode": "800",
+          "price": 23000,
+          "tax": 20909,
+          "isTaxExempt": false
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 23636,
+          "price": 26000,
+          "qty": 1,
+          "tax": 2364,
+          "accountCode": "800",
+          "total": 26000,
+          "name": "시골향들기름/1750ML",
+          "spec": "1750ml"
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 34091,
+          "tax": 3409,
+          "total": 37500,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "price": 7500,
+          "qty": 5
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787558955878",
+      "docNo": "260824-05",
+      "items": [
+        {
+          "total": 440000,
+          "name": "시골향참기름/특골드/1750ml",
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "qty": 20,
+          "price": 22000,
+          "supply": 400000,
+          "tax": 40000,
+          "accountCode": "800"
+        },
+        {
+          "total": 500000,
+          "isTaxExempt": false,
+          "qty": 20,
+          "name": "시골향들기름/특/1750ml",
+          "spec": "1750ml",
+          "accountCode": "800",
+          "price": 25000,
+          "tax": 45455,
+          "supply": 454545
+        },
+        {
+          "total": 2208000,
+          "qty": 480,
+          "supply": 2007273,
+          "accountCode": "800",
+          "spec": "300ml",
+          "name": "참기름/병/원액/해피유통/300ml",
+          "price": 4600,
+          "tax": 200727,
+          "isTaxExempt": false
+        },
+        {
+          "accountCode": "800",
+          "price": 6200,
+          "tax": 270545,
+          "name": "들기름/병/특/해피유통/300ml",
+          "isTaxExempt": false,
+          "spec": "300ml",
+          "qty": 480,
+          "supply": 2705455,
+          "total": 2976000
+        },
+        {
+          "qty": 1000,
+          "accountCode": "800",
+          "price": 6000,
+          "spec": "300ml",
+          "name": "생들기름/병/해피유통/300ml",
+          "supply": 5454545,
+          "total": 6000000,
+          "isTaxExempt": false,
+          "tax": 545455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787559074295",
+      "docNo": "260824-06",
+      "items": [
+        {
+          "name": "고춧가루 1kg",
+          "price": 7500,
+          "spec": "1kg",
+          "accountCode": "501",
+          "supply": 300000,
+          "tax": 0,
+          "total": 300000,
+          "qty": 40,
+          "isTaxExempt": true
+        },
+        {
+          "accountCode": "501",
+          "supply": 1200000,
+          "tax": 0,
+          "price": 7500,
+          "spec": "5kg",
+          "isTaxExempt": true,
+          "qty": 160,
+          "name": "고춧가루 5kg",
+          "total": 1200000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787559096462",
+      "docNo": "260824-07",
+      "items": [
+        {
+          "accountCode": "800",
+          "price": 2800,
+          "qty": 1458,
+          "spec": "180ml",
+          "name": "참기름/병/분/엘생명/180ml",
+          "supply": 3711273,
+          "isTaxExempt": false,
+          "tax": 371127,
+          "total": 4082400
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787559112974",
+      "docNo": "260824-08",
+      "items": [
+        {
+          "tax": 42545,
+          "price": 7800,
+          "supply": 425455,
+          "isTaxExempt": false,
+          "name": "참고소(연한)",
+          "spec": "",
+          "accountCode": "800",
+          "qty": 60,
+          "total": 468000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787559127036",
+      "docNo": "260824-09",
+      "items": [
+        {
+          "supply": 190909,
+          "isTaxExempt": false,
+          "total": 210000,
+          "qty": 10,
+          "accountCode": "800",
+          "tax": 19091,
+          "name": "시골향참기름/골드/1800ml",
+          "price": 21000,
+          "spec": "1800ml"
+        },
+        {
+          "spec": "",
+          "name": "맛기름",
+          "accountCode": "800",
+          "total": 80400,
+          "tax": 7309,
+          "qty": 12,
+          "price": 6700,
+          "supply": 73091,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787559493243",
+      "docNo": "260824-10",
+      "items": [
+        {
+          "qty": 24,
+          "supply": 178909,
+          "accountCode": "800",
+          "total": 196800,
+          "isTaxExempt": false,
+          "spec": "",
+          "tax": 17891,
+          "name": "참진한기름",
+          "price": 8200
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787634286335",
+      "docNo": "260825-01",
+      "items": [
+        {
+          "price": 4111,
+          "accountCode": "800",
+          "qty": 2250,
+          "name": "참깨",
+          "spec": "kg",
+          "total": 9249750,
+          "isTaxExempt": true,
+          "tax": 0,
+          "supply": 9249750
+        },
+        {
+          "isTaxExempt": false,
+          "price": 14.3,
+          "qty": 2250,
+          "spec": "kg",
+          "name": "상차비",
+          "accountCode": "800",
+          "tax": 2925,
+          "total": 32175,
+          "supply": 29250
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787634617969",
+      "docNo": "260825-01",
+      "items": [
+        {
+          "accountCode": "500",
+          "tax": 0,
+          "price": 4111,
+          "isTaxExempt": true,
+          "name": "참깨",
+          "spec": "kg",
+          "supply": 9249750,
+          "qty": 2250,
+          "total": 9249750
+        },
+        {
+          "accountCode": "500",
+          "price": 14.3,
+          "name": "상차비",
+          "qty": 2250,
+          "spec": "kg",
+          "isTaxExempt": false,
+          "total": 32175,
+          "tax": 2925,
+          "supply": 29250
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643196783",
+      "docNo": "260825-03",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 1800,
+          "price": 4000,
+          "accountCode": "800",
+          "name": "참기름/병/특/알찬/350ml",
+          "total": 7200000,
+          "spec": "350ml",
+          "supply": 6545455,
+          "tax": 654545
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643228780",
+      "docNo": "260825-04",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 454545,
+          "price": 5000,
+          "qty": 100,
+          "tax": 45455,
+          "total": 500000,
+          "accountCode": "800",
+          "name": "시골향참기름/병/원액/350ml",
+          "spec": "350ml"
+        },
+        {
+          "isTaxExempt": false,
+          "name": "참기름/A/가득찬/1800ml",
+          "tax": 450000,
+          "total": 4950000,
+          "spec": "1800ml",
+          "price": 16500,
+          "accountCode": "800",
+          "supply": 4500000,
+          "qty": 300
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643244660",
+      "docNo": "260825-05",
+      "items": [
+        {
+          "total": 500000,
+          "accountCode": "800",
+          "qty": 200,
+          "supply": 454545,
+          "name": "볶음참깨/200g",
+          "spec": "200g",
+          "isTaxExempt": false,
+          "price": 2500,
+          "tax": 45455
+        },
+        {
+          "tax": 43636,
+          "accountCode": "800",
+          "price": 4800,
+          "isTaxExempt": false,
+          "spec": "300ml",
+          "name": "시골향참기름/원액/300ml",
+          "supply": 436364,
+          "qty": 100,
+          "total": 480000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643259164",
+      "docNo": "260825-06",
+      "items": [
+        {
+          "spec": "350ml",
+          "name": "참기름/병/분/전통/350ml",
+          "total": 3500000,
+          "accountCode": "800",
+          "supply": 3181818,
+          "tax": 318182,
+          "price": 3500,
+          "qty": 1000,
+          "isTaxExempt": false
+        },
+        {
+          "spec": "300ml",
+          "name": "생들기름/병/해피유통/300ml",
+          "price": 6000,
+          "tax": 545455,
+          "accountCode": "800",
+          "qty": 1000,
+          "total": 6000000,
+          "isTaxExempt": false,
+          "supply": 5454545
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643302320",
+      "docNo": "260825-07",
+      "items": [
+        {
+          "name": "참진한기름",
+          "spec": "1800ml",
+          "total": 522000,
+          "supply": 474545,
+          "isTaxExempt": false,
+          "tax": 47455,
+          "price": 8700,
+          "qty": 60,
+          "accountCode": "800"
+        },
+        {
+          "price": 8000,
+          "isTaxExempt": false,
+          "qty": 60,
+          "spec": "1800ml",
+          "name": "참고소한기름",
+          "total": 480000,
+          "tax": 43636,
+          "accountCode": "800",
+          "supply": 436364
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643337342",
+      "docNo": "260825-08",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 20,
+          "price": 6000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 120000,
+          "supply": 120000,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787643906200",
+      "docNo": "260825-09",
+      "items": [
+        {
+          "price": 4111,
+          "isTaxExempt": false,
+          "qty": 2250,
+          "spec": "kg",
+          "name": "참깨",
+          "tax": 840886,
+          "total": 9249750,
+          "accountCode": "500",
+          "supply": 8408864
+        },
+        {
+          "tax": 2925,
+          "isTaxExempt": false,
+          "total": 32175,
+          "supply": 29250,
+          "name": "상차비",
+          "spec": "kg",
+          "price": 14.3,
+          "accountCode": "500",
+          "qty": 2250
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787725176094",
+      "docNo": "260826-02",
+      "items": [
+        {
+          "supply": 79636,
+          "accountCode": "800",
+          "tax": 7964,
+          "price": 7300,
+          "spec": "",
+          "qty": 12,
+          "name": "들향기름",
+          "isTaxExempt": false,
+          "total": 87600
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787728511072",
+      "docNo": "260826-03",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "spec": "250*340",
+          "name": "시골향볶음참깨",
+          "supply": 3720750,
+          "total": 4092825,
+          "tax": 372075,
+          "qty": 22550,
+          "accountCode": "505",
+          "price": 181.5
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787729845718",
+      "docNo": "260825-15",
+      "items": [
+        {
+          "total": 4171800,
+          "supply": 4171800,
+          "isBoxUnit": false,
+          "qty": 1020,
+          "isTaxExempt": true,
+          "spec": "kg",
+          "name": "참깨",
+          "tax": 0,
+          "price": 4090,
+          "accountCode": "500"
+        },
+        {
+          "spec": "16.5kg",
+          "name": "통깨참기름",
+          "total": 4950120,
+          "isTaxExempt": true,
+          "tax": 0,
+          "isBoxUnit": false,
+          "qty": 30,
+          "price": 165004,
+          "supply": 4950120,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730004591",
+      "docNo": "260826-05",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "price": 5500,
+          "name": "시골향참기름/병/골드A/350ml",
+          "spec": "350ml",
+          "qty": 20,
+          "supply": 100000,
+          "accountCode": "800",
+          "total": 110000,
+          "tax": 10000
+        },
+        {
+          "price": 25000,
+          "qty": 20,
+          "name": "시골향들기름/1750ML",
+          "accountCode": "800",
+          "spec": "1750ml",
+          "total": 500000,
+          "isTaxExempt": false,
+          "supply": 454545,
+          "tax": 45455
+        },
+        {
+          "accountCode": "800",
+          "tax": 36364,
+          "supply": 363636,
+          "price": 20000,
+          "qty": 20,
+          "spec": "1750ml",
+          "name": "시골향참기름/골드A/1750ml",
+          "isTaxExempt": false,
+          "total": 400000
+        },
+        {
+          "total": 130000,
+          "qty": 20,
+          "accountCode": "800",
+          "supply": 118182,
+          "spec": "350ml",
+          "name": "시골향들기름/병/350ml",
+          "isTaxExempt": false,
+          "price": 6500,
+          "tax": 11818
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730027957",
+      "docNo": "260826-06",
+      "items": [
+        {
+          "accountCode": "800",
+          "total": 248000,
+          "qty": 40,
+          "isTaxExempt": false,
+          "supply": 225455,
+          "tax": 22545,
+          "price": 6200,
+          "name": "볶음참깨/모란/1kg",
+          "spec": "1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730039497",
+      "docNo": "260826-07",
+      "items": [
+        {
+          "tax": 14545,
+          "supply": 145455,
+          "price": 8000,
+          "accountCode": "800",
+          "name": "시골향탈피들깨가루/1kg",
+          "spec": "1kg",
+          "isTaxExempt": false,
+          "qty": 20,
+          "total": 160000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730052428",
+      "docNo": "260826-08",
+      "items": [
+        {
+          "supply": 181818,
+          "accountCode": "800",
+          "qty": 10,
+          "total": 200000,
+          "isTaxExempt": false,
+          "name": "참기름/특A/알이네/1800ml",
+          "spec": "1800ml",
+          "tax": 18182,
+          "price": 20000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730065314",
+      "docNo": "260826-09",
+      "items": [
+        {
+          "total": 48000,
+          "qty": 2,
+          "accountCode": "800",
+          "spec": "1750ml",
+          "name": "시골향참기름/골드A/1750ml",
+          "tax": 4364,
+          "price": 24000,
+          "supply": 43636,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730218191",
+      "docNo": "260826-10",
+      "items": [
+        {
+          "accountCode": "800",
+          "total": 640000,
+          "qty": 100,
+          "supply": 581818,
+          "isTaxExempt": false,
+          "tax": 58182,
+          "price": 6400,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg"
+        },
+        {
+          "name": "시골향탈피들깨가루/1kg",
+          "spec": "1kg",
+          "total": 160000,
+          "supply": 160000,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 8000,
+          "qty": 20,
+          "isTaxExempt": true
+        },
+        {
+          "name": "참고소한기름",
+          "spec": "",
+          "supply": 2082545,
+          "total": 2290800,
+          "tax": 208255,
+          "isTaxExempt": false,
+          "price": 8300,
+          "qty": 276,
+          "accountCode": "800"
+        },
+        {
+          "supply": 115455,
+          "tax": 11545,
+          "price": 12700,
+          "isTaxExempt": false,
+          "spec": "1kg",
+          "qty": 10,
+          "name": "볶음검정참깨/1kg",
+          "total": 127000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787730841169",
+      "docNo": "260826-11",
+      "items": [
+        {
+          "tax": 41818,
+          "isTaxExempt": false,
+          "total": 460000,
+          "supply": 418182,
+          "name": "시골향참기름/골드A/1750ml",
+          "accountCode": "800",
+          "spec": "1750ml",
+          "price": 23000,
+          "qty": 20
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787812445882",
+      "docNo": "260827-01",
+      "items": [
+        {
+          "total": 776160,
+          "qty": 3360,
+          "isTaxExempt": false,
+          "supply": 705600,
+          "tax": 70560,
+          "accountCode": "505",
+          "spec": "350ml",
+          "price": 231,
+          "name": "350ML-소주병"
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 3888,
+          "supply": 1477440,
+          "price": 418,
+          "accountCode": "505",
+          "total": 1625184,
+          "name": "180ml-사각병",
+          "spec": "180ml",
+          "tax": 147744
+        },
+        {
+          "qty": 3888,
+          "accountCode": "505",
+          "supply": 274882,
+          "price": 77.77,
+          "total": 302370,
+          "spec": "개",
+          "isTaxExempt": false,
+          "name": "180ml캡-골드",
+          "tax": 27488
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787812662935",
+      "docNo": "260827-02",
+      "items": [
+        {
+          "price": 231,
+          "qty": 7680,
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "name": "350ML-소주병",
+          "tax": 161280,
+          "total": 1774080,
+          "accountCode": "505",
+          "supply": 1612800
+        },
+        {
+          "accountCode": "505",
+          "qty": 16000,
+          "price": 382.8,
+          "tax": 556800,
+          "isTaxExempt": false,
+          "supply": 5568000,
+          "total": 6124800,
+          "name": "300ML-사각병",
+          "spec": "300ml"
+        },
+        {
+          "qty": 15000,
+          "supply": 765000,
+          "accountCode": "505",
+          "total": 841500,
+          "isTaxExempt": false,
+          "tax": 76500,
+          "spec": "",
+          "name": "병캡-빨강",
+          "price": 56.1
+        },
+        {
+          "accountCode": "505",
+          "tax": 138600,
+          "price": 69.3,
+          "isTaxExempt": false,
+          "name": "이중캡-골드",
+          "spec": "",
+          "supply": 1386000,
+          "qty": 22000,
+          "total": 1524600
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787812881978",
+      "docNo": "260826-13",
+      "items": [
+        {
+          "spec": "1750ml",
+          "name": "1750ML-페트병",
+          "total": 286704,
+          "supply": 260640,
+          "isTaxExempt": false,
+          "tax": 26064,
+          "qty": 720,
+          "price": 398.2,
+          "accountCode": "505"
+        },
+        {
+          "qty": 1710,
+          "isTaxExempt": false,
+          "price": 495,
+          "accountCode": "505",
+          "total": 846450,
+          "name": "1800ML-페트병-빨강n",
+          "spec": "1800ml",
+          "supply": 769500,
+          "tax": 76950
+        },
+        {
+          "price": 66,
+          "isTaxExempt": false,
+          "name": "물엿캡-파랑",
+          "qty": 1500,
+          "spec": "",
+          "total": 99000,
+          "tax": 9000,
+          "accountCode": "505",
+          "supply": 90000
+        },
+        {
+          "supply": 95040,
+          "isTaxExempt": false,
+          "qty": 528,
+          "total": 104544,
+          "accountCode": "505",
+          "name": "조미료캡",
+          "spec": "",
+          "tax": 9504,
+          "price": 198
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787812973237",
+      "docNo": "260827-03",
+      "items": [
+        {
+          "total": 3784000,
+          "qty": 20,
+          "name": "수입들기름",
+          "accountCode": "500",
+          "spec": "16.5kg",
+          "price": 189200,
+          "supply": 3440000,
+          "isTaxExempt": false,
+          "tax": 344000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787813062566",
+      "docNo": "260827-04",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 200,
+          "price": 5400,
+          "name": "볶음참깨",
+          "spec": "",
+          "supply": 981818,
+          "accountCode": "500",
+          "total": 1080000,
+          "tax": 98182
+        },
+        {
+          "qty": 100,
+          "isTaxExempt": false,
+          "price": 10500,
+          "spec": "",
+          "name": "볶음검정참깨",
+          "supply": 954545,
+          "total": 1050000,
+          "accountCode": "500",
+          "tax": 95455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787841956804",
+      "docNo": "260827-05",
+      "items": [
+        {
+          "qty": 30,
+          "isTaxExempt": false,
+          "price": 7300,
+          "spec": "개",
+          "name": "들향기름골드",
+          "total": 219000,
+          "isBoxUnit": false,
+          "accountCode": "501",
+          "tax": 19909,
+          "supply": 199091
+        },
+        {
+          "qty": 384,
+          "supply": 2688000,
+          "isTaxExempt": false,
+          "isBoxUnit": false,
+          "price": 7700,
+          "total": 2956800,
+          "tax": 268800,
+          "spec": "개",
+          "name": "참진한기름",
+          "accountCode": "501"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787845315543",
+      "docNo": "260827-06",
+      "items": [
+        {
+          "total": 420000,
+          "qty": 60,
+          "accountCode": "800",
+          "name": "시골향생들기름/병/300ml",
+          "spec": "300ml",
+          "supply": 381818,
+          "price": 7000,
+          "isTaxExempt": false,
+          "tax": 38182
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787845545593",
+      "docNo": "260827-07",
+      "items": [
+        {
+          "accountCode": "800",
+          "supply": 1227273,
+          "price": 4500,
+          "qty": 300,
+          "isTaxExempt": false,
+          "tax": 122727,
+          "total": 1350000,
+          "name": "시골향참기름/병/특/350ml",
+          "spec": "350ml"
+        },
+        {
+          "accountCode": "800",
+          "qty": 30,
+          "price": 18000,
+          "spec": "1750ml",
+          "name": "시골향참기름/A/1750ml",
+          "total": 540000,
+          "isTaxExempt": false,
+          "tax": 49091,
+          "supply": 490909
+        },
+        {
+          "price": 25000,
+          "qty": 10,
+          "name": "시골향들기름/1750ML",
+          "spec": "1750ml",
+          "accountCode": "800",
+          "total": 250000,
+          "isTaxExempt": false,
+          "tax": 22727,
+          "supply": 227273
+        },
+        {
+          "total": 186000,
+          "qty": 30,
+          "name": "볶음참깨-낱개/1kg",
+          "accountCode": "800",
+          "spec": "1kg",
+          "price": 6200,
+          "supply": 169091,
+          "isTaxExempt": false,
+          "tax": 16909
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787845667892",
+      "docNo": "260827-08",
+      "items": [
+        {
+          "tax": 368182,
+          "supply": 3681818,
+          "spec": "350ml",
+          "total": 4050000,
+          "name": "시골향참기름/병/특/350ml",
+          "accountCode": "800",
+          "price": 4500,
+          "qty": 900,
+          "isTaxExempt": false
+        },
+        {
+          "price": 6300,
+          "qty": 60,
+          "spec": "350ml",
+          "name": "시골향들기름/병/특/350ml",
+          "accountCode": "800",
+          "total": 378000,
+          "tax": 34364,
+          "supply": 343636,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 100,
+          "supply": 545455,
+          "isTaxExempt": false,
+          "price": 6000,
+          "tax": 54545,
+          "total": 600000,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "accountCode": "800"
+        },
+        {
+          "qty": 40,
+          "price": 8500,
+          "isTaxExempt": false,
+          "spec": "1kg ",
+          "name": "고춧가루 1kg",
+          "total": 340000,
+          "accountCode": "800",
+          "tax": 30909,
+          "supply": 309091
+        },
+        {
+          "qty": 32,
+          "isTaxExempt": false,
+          "price": 42500,
+          "spec": "5kg",
+          "name": "고춧가루 5kg",
+          "supply": 1236364,
+          "total": 1360000,
+          "accountCode": "800",
+          "tax": 123636
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787845945282",
+      "docNo": "260827-09",
+      "items": [
+        {
+          "supply": 4181818,
+          "isTaxExempt": false,
+          "tax": 418182,
+          "total": 4600000,
+          "spec": "300ml",
+          "qty": 1000,
+          "name": "참기름/병/원액/해피유통/300ml",
+          "price": 4600,
+          "accountCode": "800"
+        },
+        {
+          "spec": "300ml",
+          "name": "들기름/병/특/해피유통/300ml",
+          "price": 6200,
+          "tax": 281818,
+          "isTaxExempt": false,
+          "qty": 500,
+          "total": 3100000,
+          "supply": 2818182,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787845991726",
+      "docNo": "260827-10",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 654545,
+          "price": 4000,
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "name": "참기름/병/특/알찬/350ml",
+          "qty": 1800,
+          "supply": 6545455,
+          "total": 7200000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846005429",
+      "docNo": "260827-11",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 300,
+          "price": 16500,
+          "spec": "1800ml",
+          "name": "참기름/A/가득찬/1800ml",
+          "supply": 4500000,
+          "total": 4950000,
+          "accountCode": "800",
+          "tax": 450000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846302670",
+      "docNo": "260827-12",
+      "items": [
+        {
+          "price": 20000,
+          "name": "참기름/특A/대왕/1800ml",
+          "tax": 65455,
+          "spec": "1800ml",
+          "supply": 654545,
+          "accountCode": "800",
+          "total": 720000,
+          "isTaxExempt": false,
+          "qty": 36
+        },
+        {
+          "qty": 20,
+          "accountCode": "800",
+          "supply": 200000,
+          "price": 11000,
+          "spec": "1kg",
+          "total": 220000,
+          "tax": 20000,
+          "isTaxExempt": false,
+          "name": "볶음검정참깨/1kg"
+        },
+        {
+          "qty": 12,
+          "total": 103200,
+          "isTaxExempt": false,
+          "supply": 93818,
+          "name": "참진한기름",
+          "accountCode": "800",
+          "spec": "",
+          "tax": 9382,
+          "price": 8600
+        },
+        {
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "supply": 105455,
+          "total": 116000,
+          "tax": 10545,
+          "isTaxExempt": false,
+          "qty": 20,
+          "price": 5800,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846329860",
+      "docNo": "260827-13",
+      "items": [
+        {
+          "qty": 5,
+          "accountCode": "800",
+          "supply": 34091,
+          "total": 37500,
+          "isTaxExempt": false,
+          "spec": "1kg",
+          "tax": 3409,
+          "name": "볶음참깨-낱개/1kg",
+          "price": 7500
+        },
+        {
+          "accountCode": "800",
+          "spec": "",
+          "name": "들향기름골드",
+          "total": 100000,
+          "tax": 9091,
+          "isTaxExempt": false,
+          "price": 10000,
+          "qty": 10,
+          "supply": 90909
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846387997",
+      "docNo": "260828-01",
+      "items": [
+        {
+          "qty": 60,
+          "isTaxExempt": false,
+          "total": 1260000,
+          "supply": 1145455,
+          "accountCode": "800",
+          "spec": "1800ml",
+          "tax": 114545,
+          "name": "시골향참기름/골드/1800ml",
+          "price": 21000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846490863",
+      "docNo": "260828-02",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "total": 3600000,
+          "qty": 240,
+          "tax": 327273,
+          "supply": 3272727,
+          "accountCode": "800",
+          "price": 15000,
+          "spec": "1800ml",
+          "name": "시골향참기름/분/1800ml"
+        },
+        {
+          "tax": 0,
+          "price": 5600,
+          "isTaxExempt": true,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 80,
+          "supply": 448000,
+          "accountCode": "800",
+          "total": 448000
+        },
+        {
+          "qty": 300,
+          "price": 7500,
+          "name": "들깨가루(중간)/거산/1kg",
+          "spec": "1kg",
+          "accountCode": "800",
+          "supply": 2250000,
+          "total": 2250000,
+          "tax": 0,
+          "isTaxExempt": true
+        },
+        {
+          "isTaxExempt": true,
+          "total": 750000,
+          "tax": 0,
+          "name": "들깨가루(고운)/거산/1kg",
+          "supply": 750000,
+          "spec": "1kg",
+          "qty": 100,
+          "price": 7500,
+          "accountCode": "800"
+        },
+        {
+          "spec": "1kg",
+          "accountCode": "800",
+          "name": "시골향탈피들깨가루/1kg",
+          "total": 320000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "price": 8000,
+          "qty": 40,
+          "supply": 320000
+        },
+        {
+          "qty": 12,
+          "accountCode": "800",
+          "supply": 85091,
+          "total": 93600,
+          "isTaxExempt": false,
+          "spec": "",
+          "tax": 8509,
+          "name": "참고소한기름",
+          "price": 7800
+        },
+        {
+          "qty": 72,
+          "price": 8700,
+          "name": "참진한기름",
+          "spec": "",
+          "isTaxExempt": false,
+          "supply": 569455,
+          "total": 626400,
+          "tax": 56945,
+          "accountCode": "800"
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 163636,
+          "qty": 24,
+          "price": 7500,
+          "tax": 16364,
+          "accountCode": "800",
+          "total": 180000,
+          "spec": "",
+          "name": "참향기름"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846724938",
+      "docNo": "260826-14",
+      "items": [
+        {
+          "supply": 200000,
+          "total": 200000,
+          "isTaxExempt": true,
+          "qty": 10,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 20000,
+          "name": "시골향참기름/특A/흰정사각/1750ml",
+          "spec": "1750ml"
+        },
+        {
+          "qty": 20,
+          "accountCode": "800",
+          "supply": 360000,
+          "price": 18000,
+          "total": 360000,
+          "spec": "1750ml",
+          "isTaxExempt": true,
+          "name": "시골향참기름/A/흰정사각/1750ml",
+          "tax": 0
+        },
+        {
+          "qty": 20,
+          "isTaxExempt": true,
+          "price": 23000,
+          "spec": "1750ml",
+          "name": "시골향들기름/1750ML",
+          "supply": 460000,
+          "total": 460000,
+          "accountCode": "800",
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787846867738",
+      "docNo": "260828-03",
+      "items": [
+        {
+          "price": 4000,
+          "name": "참기름/병/특/알찬/350ml",
+          "accountCode": "800",
+          "spec": "350ml",
+          "qty": 1800,
+          "total": 7200000,
+          "tax": 654545,
+          "isTaxExempt": false,
+          "supply": 6545455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787875473525",
+      "docNo": "가공260828-01",
+      "items": [
+        {
+          "accountCode": "540",
+          "qty": 712.5,
+          "price": 550,
+          "isTaxExempt": false,
+          "name": "볶음참깨-낱개/1kg",
+          "total": 391875,
+          "supply": 356250,
+          "spec": "1kg",
+          "tax": 35625
+        },
+        {
+          "price": 1000,
+          "name": "볶음참깨/1kg",
+          "qty": 41,
+          "isTaxExempt": false,
+          "spec": "1kg * 10",
+          "supply": 37273,
+          "total": 41000,
+          "tax": 3727,
+          "accountCode": "540"
+        },
+        {
+          "name": "볶음참깨/1kg",
+          "isTaxExempt": false,
+          "spec": "1kg * 20",
+          "supply": 17727,
+          "total": 19500,
+          "tax": 1773,
+          "accountCode": "540",
+          "price": 1300,
+          "qty": 15
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787875675972",
+      "docNo": "260827-14",
+      "items": [
+        {
+          "accountCode": "800",
+          "total": 576000,
+          "tax": 52364,
+          "name": "시골향참기름/분/1800ml",
+          "supply": 523636,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "qty": 36,
+          "price": 16000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787885930133",
+      "docNo": "260828-04",
+      "items": [
+        {
+          "accountCode": "800",
+          "price": 28000,
+          "tax": 0,
+          "name": "시골향들깨가루(고운)/4kg",
+          "spec": "4kg",
+          "isTaxExempt": true,
+          "qty": 1,
+          "supply": 28000,
+          "total": 28000
+        },
+        {
+          "total": 32000,
+          "supply": 32000,
+          "accountCode": "800",
+          "name": "시골향탈피들깨가루/1kg",
+          "spec": "1kg",
+          "qty": 4,
+          "price": 8000,
+          "tax": 0,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787886019361",
+      "docNo": "260828-05",
+      "items": [
+        {
+          "name": "볶음검정참깨/1kg",
+          "price": 11000,
+          "spec": "1kg",
+          "accountCode": "800",
+          "supply": 220000,
+          "tax": 0,
+          "total": 220000,
+          "qty": 20,
+          "isTaxExempt": true
+        },
+        {
+          "price": 8000,
+          "accountCode": "800",
+          "name": "시골향탈피들깨가루/1kg",
+          "qty": 20,
+          "spec": "1kg",
+          "total": 160000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "supply": 160000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787886156231",
+      "docNo": "260828-06",
+      "items": [
+        {
+          "accountCode": "800",
+          "price": 8200,
+          "qty": 36,
+          "isTaxExempt": false,
+          "tax": 26836,
+          "total": 295200,
+          "supply": 268364,
+          "name": "참고소한기름",
+          "spec": ""
+        },
+        {
+          "qty": 36,
+          "accountCode": "800",
+          "price": 6700,
+          "name": "맛기름",
+          "total": 241200,
+          "isTaxExempt": false,
+          "spec": "",
+          "supply": 219273,
+          "tax": 21927
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787886764795",
+      "docNo": "260828-07",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 500000,
+          "price": 5000,
+          "isTaxExempt": true,
+          "name": "시골향들기름/병/350ml",
+          "spec": "350ml",
+          "qty": 100,
+          "total": 500000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787888429322",
+      "docNo": "260820-17",
+      "items": [
+        {
+          "total": 1080000,
+          "isTaxExempt": false,
+          "name": "볶음참깨",
+          "qty": 200,
+          "spec": "",
+          "price": 5400,
+          "tax": 98182,
+          "supply": 981818,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787888503232",
+      "docNo": "260818-17",
+      "items": [
+        {
+          "price": 120000,
+          "tax": 632727,
+          "accountCode": "500",
+          "name": "깨분참기름/16.5kg",
+          "spec": "16.5kg",
+          "qty": 58,
+          "supply": 6327273,
+          "total": 6960000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787888536905",
+      "docNo": "260811-12",
+      "items": [
+        {
+          "total": 1620000,
+          "isTaxExempt": false,
+          "name": "볶음참깨",
+          "qty": 300,
+          "spec": "",
+          "price": 5400,
+          "supply": 1472727,
+          "tax": 147273,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787888839973",
+      "docNo": "260806-09",
+      "items": [
+        {
+          "name": "깨분참기름/16.5kg",
+          "spec": "16.5kg",
+          "total": 6780000,
+          "tax": 616364,
+          "accountCode": "500",
+          "price": 120000,
+          "supply": 6163636,
+          "qty": 56.5,
+          "isTaxExempt": false
+        },
+        {
+          "accountCode": "500",
+          "total": 5000,
+          "qty": 1,
+          "supply": 4545,
+          "isTaxExempt": false,
+          "tax": 455,
+          "price": 5000,
+          "name": "기타",
+          "spec": ""
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787913261508",
+      "docNo": "260828-08",
+      "items": [
+        {
+          "name": "깨분참기름/16.5kg",
+          "price": 135000,
+          "spec": "개",
+          "accountCode": "500",
+          "supply": 7486364,
+          "tax": 748636,
+          "total": 8235000,
+          "qty": 61,
+          "isBoxUnit": false,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788011524530",
+      "docNo": "260828-09",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 600000,
+          "price": 20000,
+          "qty": 30,
+          "spec": "1750ml",
+          "isTaxExempt": true,
+          "name": "시골향참기름/특A/흰정사각/1750ml",
+          "total": 600000
+        },
+        {
+          "accountCode": "800",
+          "supply": 230000,
+          "price": 23000,
+          "qty": 10,
+          "isTaxExempt": true,
+          "tax": 0,
+          "total": 230000,
+          "name": "시골향들기름/1750ML",
+          "spec": "1750ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788015720554",
+      "docNo": "260827-15",
+      "items": [
+        {
+          "tax": 110909,
+          "isTaxExempt": false,
+          "total": 1220000,
+          "spec": "",
+          "qty": 200,
+          "supply": 1109091,
+          "name": "볶음참깨",
+          "accountCode": "800",
+          "price": 6100
+        },
+        {
+          "isTaxExempt": false,
+          "name": "볶음검정참깨",
+          "supply": 220000,
+          "total": 242000,
+          "tax": 22000,
+          "spec": "",
+          "price": 12100,
+          "accountCode": "800",
+          "qty": 20
+        },
+        {
+          "price": 7500,
+          "name": "시골향들깨가루(중간)/1kg",
+          "qty": 20,
+          "accountCode": "800",
+          "spec": "1kg",
+          "supply": 136364,
+          "total": 150000,
+          "tax": 13636,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788162137334",
+      "docNo": "260831-02",
+      "items": [
+        {
+          "supply": 8363636,
+          "tax": 836364,
+          "isTaxExempt": false,
+          "total": 9200000,
+          "name": "참기름/병/원액/해피유통/300ml",
+          "spec": "300ml",
+          "price": 4600,
+          "accountCode": "800",
+          "qty": 2000
+        },
+        {
+          "spec": "1750ml",
+          "name": "시골향들기름/특/1750ml",
+          "total": 500000,
+          "supply": 454545,
+          "tax": 45455,
+          "accountCode": "800",
+          "qty": 20,
+          "price": 25000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788162157985",
+      "docNo": "260831-03",
+      "items": [
+        {
+          "supply": 1145455,
+          "isTaxExempt": false,
+          "qty": 84,
+          "total": 1260000,
+          "tax": 114545,
+          "accountCode": "800",
+          "price": 15000,
+          "spec": "1800ml",
+          "name": "시골향참기름/분/1800ml"
+        },
+        {
+          "isTaxExempt": false,
+          "price": 20000,
+          "qty": 36,
+          "tax": 65455,
+          "accountCode": "800",
+          "total": 720000,
+          "supply": 654545,
+          "name": "참기름/특A/지구/1800ml",
+          "spec": "1800ml"
+        },
+        {
+          "accountCode": "800",
+          "supply": 272727,
+          "tax": 27273,
+          "price": 25000,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "qty": 12,
+          "name": "들기름/지구/1800ml",
+          "total": 300000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788162302780",
+      "docNo": "260831-04",
+      "items": [
+        {
+          "spec": "1750ml",
+          "name": "시골향참기름/특/1750ml",
+          "price": 19000,
+          "tax": 17273,
+          "supply": 172727,
+          "accountCode": "800",
+          "qty": 10,
+          "total": 190000,
+          "isTaxExempt": false
+        },
+        {
+          "tax": 0,
+          "price": 8000,
+          "supply": 160000,
+          "isTaxExempt": true,
+          "spec": "1kg",
+          "name": "시골향탈피들깨가루/1kg",
+          "qty": 20,
+          "accountCode": "800",
+          "total": 160000
+        },
+        {
+          "tax": 28473,
+          "supply": 284727,
+          "price": 8700,
+          "accountCode": "800",
+          "spec": "",
+          "name": "참고소한기름",
+          "qty": 36,
+          "total": 313200,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788188807483",
+      "docNo": "260828-11",
+      "items": [
+        {
+          "price": 5800,
+          "isTaxExempt": true,
+          "qty": 60,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "supply": 348000,
+          "total": 348000,
+          "tax": 0,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788190529204",
+      "docNo": "260828-12",
+      "items": [
+        {
+          "supply": 5091100,
+          "price": 7273,
+          "accountCode": "500",
+          "tax": 509110,
+          "name": "깨분참기름",
+          "spec": "벌크",
+          "qty": 770,
+          "total": 5600210,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270141318",
+      "docNo": "260901-01",
+      "items": [
+        {
+          "supply": 2863636,
+          "price": 3500,
+          "tax": 286364,
+          "accountCode": "800",
+          "name": "참기름/병/분/전통/350ml",
+          "spec": "350ml",
+          "qty": 900,
+          "total": 3150000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270161295",
+      "docNo": "260901-02",
+      "items": [
+        {
+          "supply": 2109091,
+          "tax": 210909,
+          "isTaxExempt": false,
+          "total": 2320000,
+          "name": "볶음참깨-낱개/1kg",
+          "accountCode": "800",
+          "spec": "1kg",
+          "price": 5800,
+          "qty": 400
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270287197",
+      "docNo": "260901-03",
+      "items": [
+        {
+          "supply": 65130,
+          "tax": 6513,
+          "accountCode": "500",
+          "total": 71643,
+          "name": "상차비",
+          "spec": "",
+          "price": 14.3,
+          "isTaxExempt": false,
+          "qty": 5010
+        },
+        {
+          "price": 4021,
+          "name": "참깨",
+          "qty": 5010,
+          "spec": "벌크",
+          "accountCode": "500",
+          "total": 20145210,
+          "tax": 0,
+          "supply": 20145210,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270379844",
+      "docNo": "260901-04",
+      "items": [
+        {
+          "supply": 181818,
+          "isTaxExempt": false,
+          "price": 5000,
+          "qty": 40,
+          "tax": 18182,
+          "total": 200000,
+          "accountCode": "800",
+          "name": "시골향참기름/병/원액/350ml",
+          "spec": "350ml"
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 900000,
+          "tax": 90000,
+          "price": 16500,
+          "qty": 60,
+          "spec": "1800ml",
+          "name": "참기름/A/가득찬/1800ml(빨강)",
+          "accountCode": "800",
+          "total": 990000
+        },
+        {
+          "supply": 218182,
+          "price": 6000,
+          "tax": 21818,
+          "accountCode": "800",
+          "name": "들기름/병/특/가득찬/350ml",
+          "spec": "350ml",
+          "qty": 40,
+          "total": 240000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270455928",
+      "docNo": "260901-05",
+      "items": [
+        {
+          "name": "참기름/A/가득찬/1800ml",
+          "tax": 510000,
+          "spec": "1800ml",
+          "total": 5610000,
+          "isTaxExempt": false,
+          "price": 16500,
+          "supply": 5100000,
+          "accountCode": "800",
+          "qty": 340
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270534377",
+      "docNo": "260901-06",
+      "items": [
+        {
+          "qty": 24,
+          "accountCode": "800",
+          "supply": 414545,
+          "price": 19000,
+          "isTaxExempt": false,
+          "name": "참기름/A/천하1750ml",
+          "total": 456000,
+          "spec": "1750ml",
+          "tax": 41455
+        },
+        {
+          "price": 5800,
+          "qty": 20,
+          "isTaxExempt": false,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "total": 116000,
+          "accountCode": "800",
+          "tax": 10545,
+          "supply": 105455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270582595",
+      "docNo": "260901-07",
+      "items": [
+        {
+          "spec": "1750ml",
+          "name": "시골향참기름/특A/1750ml",
+          "price": 21000,
+          "isTaxExempt": false,
+          "tax": 19091,
+          "qty": 10,
+          "total": 210000,
+          "accountCode": "800",
+          "supply": 190909
+        },
+        {
+          "spec": "1kg",
+          "name": "시골향들깨가루(고운)/1kg",
+          "accountCode": "800",
+          "total": 150000,
+          "tax": 0,
+          "qty": 20,
+          "price": 7500,
+          "isTaxExempt": true,
+          "supply": 150000
+        },
+        {
+          "name": "시골향들깨가루(중간)/1kg",
+          "spec": "1kg",
+          "total": 150000,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 7500,
+          "supply": 150000,
+          "qty": 20,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270608614",
+      "docNo": "260901-08",
+      "items": [
+        {
+          "supply": 4261091,
+          "price": 2800,
+          "tax": 426109,
+          "accountCode": "800",
+          "name": "참기름/병/분/엘생명/180ml",
+          "spec": "180ml",
+          "qty": 1674,
+          "total": 4687200,
+          "isTaxExempt": false
+        },
+        {
+          "qty": 270,
+          "price": 3500,
+          "spec": "180ml",
+          "name": "참기름/병/원액/엘생명/180ml",
+          "accountCode": "800",
+          "total": 945000,
+          "tax": 85909,
+          "supply": 859091,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270647090",
+      "docNo": "260901-09",
+      "items": [
+        {
+          "supply": 281818,
+          "isTaxExempt": false,
+          "tax": 28182,
+          "total": 310000,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg",
+          "qty": 50,
+          "accountCode": "800",
+          "price": 6200
+        },
+        {
+          "isTaxExempt": false,
+          "total": 417600,
+          "qty": 48,
+          "supply": 379636,
+          "tax": 37964,
+          "accountCode": "800",
+          "name": "참진한기름",
+          "price": 8700,
+          "spec": ""
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270732127",
+      "docNo": "260901-10",
+      "items": [
+        {
+          "name": "시골향참기름/골드A/1750ml",
+          "price": 22000,
+          "spec": "1750ml",
+          "accountCode": "800",
+          "tax": 20000,
+          "total": 220000,
+          "qty": 10,
+          "isTaxExempt": false,
+          "supply": 200000
+        },
+        {
+          "supply": 160000,
+          "price": 8000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "name": "시골향들깨가루(중간)/1kg",
+          "spec": "1kg",
+          "qty": 20,
+          "accountCode": "800",
+          "total": 160000
+        },
+        {
+          "accountCode": "800",
+          "tax": 0,
+          "total": 150000,
+          "isTaxExempt": true,
+          "supply": 150000,
+          "name": "시골향탈피들깨가루/1kg",
+          "spec": "1kg",
+          "price": 7500,
+          "qty": 20
+        },
+        {
+          "tax": 9273,
+          "spec": "",
+          "total": 102000,
+          "name": "참고소한기름",
+          "isTaxExempt": false,
+          "price": 8500,
+          "supply": 92727,
+          "qty": 12,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788270818027",
+      "docNo": "260901-11",
+      "items": [
+        {
+          "qty": 201,
+          "isTaxExempt": false,
+          "price": 5000,
+          "spec": "350ml",
+          "accountCode": "800",
+          "total": 1005000,
+          "tax": 91364,
+          "name": "시골향참기름/병/원액/350ml",
+          "supply": 913636
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788271163498",
+      "docNo": "260901-12",
+      "items": [
+        {
+          "supply": 255273,
+          "total": 280800,
+          "isTaxExempt": false,
+          "qty": 36,
+          "tax": 25527,
+          "accountCode": "800",
+          "name": "참고소한기름",
+          "price": 7800,
+          "spec": ""
+        },
+        {
+          "total": 234000,
+          "qty": 36,
+          "supply": 212727,
+          "name": "맛기름",
+          "spec": "",
+          "isTaxExempt": false,
+          "price": 6500,
+          "tax": 21273,
+          "accountCode": "800"
+        },
+        {
+          "spec": "1800ml",
+          "accountCode": "800",
+          "name": "시골향참기름/특A/1800ml",
+          "total": 960000,
+          "tax": 87273,
+          "isTaxExempt": false,
+          "price": 20000,
+          "qty": 48,
+          "supply": 872727
+        },
+        {
+          "price": 7500,
+          "name": "들깨가루(중간)/거산/1kg",
+          "qty": 100,
+          "spec": "1kg",
+          "accountCode": "800",
+          "total": 750000,
+          "tax": 68182,
+          "supply": 681818,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788314067783",
+      "docNo": "260831-08",
+      "items": [
+        {
+          "accountCode": "800",
+          "total": 88800,
+          "qty": 12,
+          "isTaxExempt": false,
+          "tax": 8073,
+          "supply": 80727,
+          "price": 7400,
+          "spec": "",
+          "name": "참향기름"
+        },
+        {
+          "supply": 116000,
+          "accountCode": "800",
+          "price": 5800,
+          "tax": 0,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "total": 116000
+        },
+        {
+          "total": 200000,
+          "accountCode": "800",
+          "qty": 10,
+          "spec": "1750ml",
+          "name": "시골향참기름/특A/다싸다마트/1750ml",
+          "isTaxExempt": false,
+          "price": 20000,
+          "supply": 181818,
+          "tax": 18182
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788314656273",
+      "docNo": "260902-01",
+      "items": [
+        {
+          "total": 1080000,
+          "qty": 60,
+          "accountCode": "800",
+          "supply": 981818,
+          "name": "참기름/A/한신/1800ml",
+          "spec": "1800ml",
+          "price": 18000,
+          "isTaxExempt": false,
+          "tax": 98182
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788314807584",
+      "docNo": "260902-02",
+      "items": [
+        {
+          "qty": 24,
+          "price": 8200,
+          "spec": "",
+          "name": "참진한기름",
+          "accountCode": "800",
+          "total": 196800,
+          "tax": 17891,
+          "isTaxExempt": false,
+          "supply": 178909
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788333835277",
+      "docNo": "260902-03",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "price": 5000,
+          "name": "시골향참기름/병/골드A/350ml",
+          "qty": 120,
+          "spec": "350ml",
+          "supply": 600000,
+          "total": 600000,
+          "accountCode": "800",
+          "tax": 0
+        },
+        {
+          "isTaxExempt": true,
+          "qty": 20,
+          "supply": 120000,
+          "price": 6000,
+          "tax": 0,
+          "accountCode": "800",
+          "total": 120000,
+          "spec": "350ml",
+          "name": "시골향들기름/병/350ml"
+        },
+        {
+          "isTaxExempt": true,
+          "name": "시골향참기름/골드A/1750ml",
+          "spec": "1750ml",
+          "total": 630000,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 21000,
+          "supply": 630000,
+          "qty": 30
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788333991053",
+      "docNo": "260902-04",
+      "items": [
+        {
+          "tax": 68182,
+          "price": 25000,
+          "isTaxExempt": false,
+          "spec": "1750ml",
+          "qty": 30,
+          "name": "시골향들기름/특/1750ml",
+          "supply": 681818,
+          "accountCode": "800",
+          "total": 750000
+        },
+        {
+          "total": 9200000,
+          "qty": 2000,
+          "isTaxExempt": false,
+          "supply": 8363636,
+          "spec": "300ml",
+          "name": "참기름/병/원액/해피유통/300ml",
+          "price": 4600,
+          "accountCode": "800",
+          "tax": 836364
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788334023308",
+      "docNo": "260902-05",
+      "items": [
+        {
+          "spec": "350ml",
+          "name": "참기름/병/분/전통/350ml",
+          "price": 3500,
+          "accountCode": "800",
+          "tax": 318182,
+          "qty": 1000,
+          "total": 3500000,
+          "isTaxExempt": false,
+          "supply": 3181818
+        },
+        {
+          "supply": 6364,
+          "qty": 2,
+          "total": 7000,
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "accountCode": "800",
+          "tax": 636,
+          "name": "참기름/병/분/전통/350ml",
+          "price": 3500
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788335946486",
+      "docNo": "260902-07",
+      "items": [
+        {
+          "supply": 338182,
+          "isTaxExempt": false,
+          "qty": 60,
+          "total": 372000,
+          "tax": 33818,
+          "accountCode": "800",
+          "spec": "1kg",
+          "price": 6200,
+          "name": "볶음참깨-낱개/1kg"
+        },
+        {
+          "accountCode": "800",
+          "total": 110000,
+          "qty": 10,
+          "supply": 110000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "name": "볶음검정참깨/1kg",
+          "price": 11000,
+          "spec": "1kg"
+        },
+        {
+          "qty": 10,
+          "price": 8000,
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 80000,
+          "total": 80000,
+          "spec": "1kg",
+          "isTaxExempt": true,
+          "name": "시골향탈피들깨가루/1kg"
+        },
+        {
+          "tax": 0,
+          "total": 150000,
+          "isTaxExempt": true,
+          "supply": 150000,
+          "spec": "1kg",
+          "qty": 20,
+          "name": "시골향들깨가루(중간)/1kg",
+          "price": 7500,
+          "accountCode": "800"
+        },
+        {
+          "supply": 1423636,
+          "qty": 180,
+          "total": 1566000,
+          "isTaxExempt": false,
+          "spec": "",
+          "accountCode": "800",
+          "tax": 142364,
+          "name": "참진한기름",
+          "price": 8700
+        },
+        {
+          "spec": "",
+          "price": 7700,
+          "name": "들향기름",
+          "accountCode": "800",
+          "tax": 8400,
+          "qty": 12,
+          "total": 92400,
+          "isTaxExempt": false,
+          "supply": 84000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788336385864",
+      "docNo": "260902-08",
+      "items": [
+        {
+          "spec": "개",
+          "name": "깨분참기름/16.5kg",
+          "total": 16080000,
+          "supply": 14618182,
+          "tax": 1461818,
+          "isTaxExempt": false,
+          "qty": 120,
+          "price": 134000,
+          "isBoxUnit": false,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788392649425",
+      "docNo": "260903-01",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 114545,
+          "price": 21000,
+          "isTaxExempt": false,
+          "name": "시골향참기름/골드/1800ml",
+          "spec": "1800ml",
+          "supply": 1145455,
+          "qty": 60,
+          "total": 1260000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788394461640",
+      "docNo": "260903-02",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "tax": 0,
+          "price": 20000,
+          "accountCode": "800",
+          "spec": "1750ml",
+          "name": "시골향참기름/특A/흰정사각/1750ml",
+          "supply": 400000,
+          "qty": 20,
+          "total": 400000
+        },
+        {
+          "accountCode": "800",
+          "qty": 10,
+          "total": 230000,
+          "supply": 230000,
+          "isTaxExempt": true,
+          "name": "시골향들기름/1750ML",
+          "spec": "1750ml",
+          "price": 23000,
+          "tax": 0
+        },
+        {
+          "qty": 12,
+          "isTaxExempt": true,
+          "price": 28000,
+          "spec": "4kg",
+          "name": "시골향들깨가루(고운4kg)",
+          "total": 336000,
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 336000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788394523786",
+      "docNo": "260903-03",
+      "items": [
+        {
+          "qty": 640,
+          "accountCode": "800",
+          "price": 4000,
+          "total": 2560000,
+          "name": "참깨",
+          "spec": "350ml",
+          "supply": 2560000,
+          "isTaxExempt": true,
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788394633916",
+      "docNo": "260901-15",
+      "items": [
+        {
+          "total": 684000,
+          "qty": 36,
+          "name": "시골향참기름/특A/1800ml",
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "supply": 621818,
+          "price": 19000,
+          "tax": 62182,
+          "accountCode": "800"
+        },
+        {
+          "qty": 24,
+          "accountCode": "800",
+          "price": 7500,
+          "total": 180000,
+          "name": "들향기름",
+          "isTaxExempt": false,
+          "spec": "",
+          "supply": 163636,
+          "tax": 16364
+        },
+        {
+          "price": 8700,
+          "isTaxExempt": false,
+          "qty": 60,
+          "tax": 47455,
+          "supply": 474545,
+          "total": 522000,
+          "name": "참진한기름",
+          "accountCode": "800",
+          "spec": ""
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 20,
+          "price": 18000,
+          "spec": "1750ml",
+          "name": "시골향참기름/A/1750ml",
+          "accountCode": "800",
+          "total": 360000,
+          "tax": 32727,
+          "supply": 327273
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788394959054",
+      "docNo": "260903-04",
+      "items": [
+        {
+          "supply": 1260000,
+          "qty": 84,
+          "total": 1386000,
+          "isTaxExempt": false,
+          "name": "참기름/A/가득찬/1800ml(빨강)",
+          "spec": "1800ml",
+          "accountCode": "800",
+          "price": 16500,
+          "tax": 126000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788396605595",
+      "docNo": "260903-05",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 24545,
+          "price": 4500,
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "name": "참기름/병/특/양념나라/350ml",
+          "qty": 60,
+          "supply": 245455,
+          "total": 270000
+        },
+        {
+          "total": 2160000,
+          "accountCode": "800",
+          "name": "참기름/A/양념나라/1750ml",
+          "qty": 120,
+          "spec": "1750ml",
+          "price": 18000,
+          "tax": 196364,
+          "supply": 1963636,
+          "isTaxExempt": false
+        },
+        {
+          "tax": 68182,
+          "price": 25000,
+          "accountCode": "800",
+          "spec": "1750ml",
+          "name": "들기름/양념나라/1750ml",
+          "supply": 681818,
+          "qty": 30,
+          "total": 750000,
+          "isTaxExempt": false
+        },
+        {
+          "total": 300000,
+          "qty": 40,
+          "spec": "1kg",
+          "isTaxExempt": true,
+          "name": "시골향들깨가루(중간)/1kg",
+          "price": 7500,
+          "supply": 300000,
+          "accountCode": "800",
+          "tax": 0
+        },
+        {
+          "qty": 40,
+          "supply": 312000,
+          "isTaxExempt": true,
+          "total": 312000,
+          "accountCode": "800",
+          "spec": "1kg",
+          "tax": 0,
+          "name": "시골향탈피들깨가루/1kg",
+          "price": 7800
+        },
+        {
+          "accountCode": "800",
+          "supply": 732727,
+          "qty": 130,
+          "price": 6200,
+          "tax": 73273,
+          "isTaxExempt": false,
+          "total": 806000,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788396671969",
+      "docNo": "260903-06",
+      "items": [
+        {
+          "supply": 420000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 420000,
+          "name": "시골향참기름1-캔/16.5kg",
+          "spec": "16.5kg",
+          "price": 210000,
+          "accountCode": "800",
+          "qty": 2
+        },
+        {
+          "isTaxExempt": true,
+          "supply": 600000,
+          "price": 6000,
+          "qty": 100,
+          "tax": 0,
+          "accountCode": "800",
+          "total": 600000,
+          "name": "볶음참깨-낱개/1kg",
+          "spec": "1kg"
+        },
+        {
+          "qty": 100,
+          "accountCode": "800",
+          "supply": 2900000,
+          "price": 29000,
+          "isTaxExempt": true,
+          "name": "시골향볶음통들깨/4kg",
+          "total": 2900000,
+          "spec": "4kg",
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788396764994",
+      "docNo": "260903-07",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 140,
+          "price": 5500,
+          "spec": "350ml",
+          "name": "시골향참기름/병/골드A/350ml",
+          "total": 770000,
+          "isTaxExempt": false,
+          "tax": 70000,
+          "supply": 700000
+        },
+        {
+          "qty": 60,
+          "price": 6500,
+          "name": "시골향들기름/병/특/350ml",
+          "spec": "350ml",
+          "accountCode": "800",
+          "total": 390000,
+          "isTaxExempt": false,
+          "tax": 35455,
+          "supply": 354545
+        },
+        {
+          "total": 360000,
+          "supply": 360000,
+          "accountCode": "800",
+          "name": "고춧가루 1kg",
+          "qty": 40,
+          "spec": "1kg",
+          "tax": 0,
+          "price": 9000,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788396938812",
+      "docNo": "260903-08",
+      "items": [
+        {
+          "accountCode": "800",
+          "price": 15500,
+          "name": "참기름/분/알이네/1800ml",
+          "qty": 40,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "total": 620000,
+          "tax": 56364,
+          "supply": 563636
+        },
+        {
+          "tax": 36364,
+          "price": 20000,
+          "accountCode": "800",
+          "spec": "1800ml",
+          "name": "참기름/특A/알이네/1800ml",
+          "supply": 363636,
+          "qty": 20,
+          "isTaxExempt": false,
+          "total": 400000
+        },
+        {
+          "accountCode": "800",
+          "qty": 10,
+          "price": 6500,
+          "isTaxExempt": false,
+          "tax": 5909,
+          "total": 65000,
+          "supply": 59091,
+          "spec": "350ml",
+          "name": "들기름/병/특/알이네/350ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788401002579",
+      "docNo": "260904-01",
+      "items": [
+        {
+          "qty": 900,
+          "isTaxExempt": false,
+          "supply": 2863636,
+          "price": 3500,
+          "accountCode": "800",
+          "total": 3150000,
+          "spec": "350ml",
+          "tax": 286364,
+          "name": "참기름/병/분/전통/350ml"
+        },
+        {
+          "spec": "350ml",
+          "name": "참기름/병/특/알찬/350ml",
+          "price": 4000,
+          "accountCode": "800",
+          "tax": 654545,
+          "qty": 1800,
+          "isTaxExempt": false,
+          "total": 7200000,
+          "supply": 6545455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788401268978",
+      "docNo": "260903-10",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 48,
+          "price": 19000,
+          "tax": 82909,
+          "isTaxExempt": false,
+          "supply": 829091,
+          "total": 912000,
+          "spec": "1750ml",
+          "name": "시골향참기름/특/1750ml"
+        },
+        {
+          "spec": "350ml",
+          "name": "시골향들기름/병/350ml",
+          "total": 140000,
+          "supply": 127273,
+          "tax": 12727,
+          "accountCode": "800",
+          "qty": 20,
+          "price": 7000,
+          "isTaxExempt": false
+        },
+        {
+          "price": 6500,
+          "name": "맛기름",
+          "tax": 14182,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "total": 156000,
+          "accountCode": "800",
+          "qty": 24,
+          "supply": 141818
+        },
+        {
+          "supply": 98182,
+          "tax": 9818,
+          "accountCode": "800",
+          "total": 108000,
+          "spec": "1800ml",
+          "isTaxExempt": false,
+          "name": "참진한기름",
+          "price": 9000,
+          "qty": 12
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788422598521",
+      "docNo": "260903-11",
+      "items": [
+        {
+          "tax": 161280,
+          "accountCode": "505",
+          "price": 231,
+          "name": "350ML-소주병",
+          "isTaxExempt": false,
+          "spec": "350ml",
+          "supply": 1612800,
+          "qty": 7680,
+          "total": 1774080
+        },
+        {
+          "supply": 1477440,
+          "isTaxExempt": false,
+          "tax": 147744,
+          "total": 1625184,
+          "spec": "180ml",
+          "name": "180ml-사각병",
+          "qty": 3888,
+          "accountCode": "505",
+          "price": 418
+        },
+        {
+          "tax": 9750,
+          "isTaxExempt": false,
+          "price": 71.5,
+          "accountCode": "505",
+          "spec": "",
+          "name": "180ml캡-골드",
+          "qty": 1500,
+          "supply": 97500,
+          "total": 107250
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788422642483",
+      "docNo": "260903-12",
+      "items": [
+        {
+          "accountCode": "500",
+          "supply": 3440000,
+          "price": 189200,
+          "qty": 20,
+          "tax": 344000,
+          "isTaxExempt": false,
+          "total": 3784000,
+          "name": "수입들기름",
+          "spec": "16.5"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788422672634",
+      "docNo": "260903-13",
+      "items": [
+        {
+          "tax": 98182,
+          "accountCode": "500",
+          "total": 1080000,
+          "supply": 981818,
+          "name": "볶음참깨",
+          "spec": "벌크",
+          "price": 5400,
+          "qty": 200,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788709917183",
+      "docNo": "260907-001",
+      "items": [
+        {
+          "supply": 62727,
+          "tax": 6273,
+          "price": 23000,
+          "accountCode": "800",
+          "spec": "1800ml",
+          "qty": 3,
+          "name": "시골향참기름/골드/1800ml",
+          "isTaxExempt": false,
+          "total": 69000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788709967122",
+      "docNo": "260907-002",
+      "items": [
+        {
+          "total": 84000,
+          "name": "들향기름",
+          "spec": "",
+          "isTaxExempt": false,
+          "qty": 12,
+          "price": 7000,
+          "tax": 7636,
+          "supply": 76364,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788710232325",
+      "docNo": "260907-003",
+      "items": [
+        {
+          "total": 100000,
+          "isTaxExempt": true,
+          "qty": 20,
+          "name": "시골향참기름/병/골드A/350ml",
+          "spec": "350ml",
+          "accountCode": "800",
+          "price": 5000,
+          "supply": 100000,
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788710479143",
+      "docNo": "260907-004",
+      "items": [
+        {
+          "name": "1800ML-페트병-빨강n",
+          "price": 495,
+          "spec": "1800ml",
+          "supply": 769500,
+          "isTaxExempt": false,
+          "tax": 76950,
+          "total": 846450,
+          "qty": 1710,
+          "accountCode": "505"
+        },
+        {
+          "total": 169290,
+          "supply": 153900,
+          "isTaxExempt": false,
+          "qty": 342,
+          "name": "1800ML-페트병-골드",
+          "spec": "1800ml",
+          "tax": 15390,
+          "price": 495,
+          "accountCode": "505"
+        },
+        {
+          "total": 95568,
+          "name": "1750ML-페트병",
+          "qty": 240,
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "price": 398.2,
+          "tax": 8688,
+          "supply": 86880,
+          "accountCode": "505"
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 1500,
+          "price": 66,
+          "spec": "",
+          "name": "물엿캡-빨강",
+          "supply": 90000,
+          "accountCode": "505",
+          "total": 99000,
+          "tax": 9000
+        },
+        {
+          "total": 99000,
+          "qty": 1500,
+          "accountCode": "505",
+          "supply": 90000,
+          "spec": "",
+          "name": "물엿캡-파랑",
+          "isTaxExempt": false,
+          "price": 66,
+          "tax": 9000
+        },
+        {
+          "tax": 11250,
+          "isTaxExempt": false,
+          "price": 123750,
+          "accountCode": "505",
+          "spec": "",
+          "name": "필터",
+          "qty": 1,
+          "supply": 112500,
+          "total": 123750
+        },
+        {
+          "supply": 94512,
+          "isTaxExempt": false,
+          "tax": 9451,
+          "total": 103963,
+          "spec": "",
+          "name": "조미료용기대",
+          "qty": 264,
+          "accountCode": "505",
+          "price": 393.8
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788710576880",
+      "docNo": "260904-002",
+      "items": [
+        {
+          "price": 880,
+          "qty": 2000,
+          "isTaxExempt": false,
+          "spec": "",
+          "name": "5-1호박스",
+          "supply": 1600000,
+          "tax": 160000,
+          "total": 1760000,
+          "accountCode": "505"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788712464904",
+      "docNo": "260907-001",
+      "items": [
+        {
+          "price": 2970,
+          "tax": 1350000,
+          "name": "깨분",
+          "spec": "벌크",
+          "isTaxExempt": false,
+          "total": 14850000,
+          "accountCode": "500",
+          "supply": 13500000,
+          "qty": 5000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788712954075",
+      "docNo": "260903-014",
+      "items": [
+        {
+          "supply": 190909,
+          "total": 210000,
+          "isTaxExempt": false,
+          "qty": 10,
+          "tax": 19091,
+          "price": 21000,
+          "name": "시골향참기름/골드A/1750ml",
+          "accountCode": "800",
+          "spec": "1750ml"
+        },
+        {
+          "price": 6200,
+          "accountCode": "800",
+          "qty": 20,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "total": 124000,
+          "tax": 11273,
+          "isTaxExempt": false,
+          "supply": 112727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788713629672",
+      "docNo": "260904-004",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 10,
+          "price": 23000,
+          "tax": 20909,
+          "accountCode": "800",
+          "total": 230000,
+          "supply": 209091,
+          "name": "시골향참기름/골드A/1750ml",
+          "spec": "1750ml"
+        },
+        {
+          "total": 26000,
+          "qty": 1,
+          "name": "시골향들기름/1750ML",
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "price": 26000,
+          "supply": 23636,
+          "accountCode": "800",
+          "tax": 2364
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788713676092",
+      "docNo": "260904-005",
+      "items": [
+        {
+          "supply": 220000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "total": 220000,
+          "name": "볶음검정참깨/1kg",
+          "spec": "1kg",
+          "qty": 20,
+          "accountCode": "800",
+          "price": 11000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788713871068",
+      "docNo": "260904-006",
+      "items": [
+        {
+          "total": 150000,
+          "supply": 150000,
+          "name": "시골향들깨가루(중간)/1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "spec": "1kg",
+          "price": 7500,
+          "tax": 0,
+          "accountCode": "800"
+        },
+        {
+          "price": 18000,
+          "tax": 19636,
+          "spec": "1800ml",
+          "name": "시골향참기름/분/1800ml",
+          "accountCode": "800",
+          "total": 216000,
+          "qty": 12,
+          "isTaxExempt": false,
+          "supply": 196364
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 12,
+          "price": 20000,
+          "accountCode": "800",
+          "total": 240000,
+          "name": "참기름/특A/대왕/1800ml",
+          "supply": 218182,
+          "spec": "1800ml",
+          "tax": 21818
+        },
+        {
+          "supply": 12273,
+          "isTaxExempt": false,
+          "tax": 1227,
+          "total": 13500,
+          "name": "택배비",
+          "spec": "",
+          "qty": 3,
+          "accountCode": "800",
+          "price": 4500
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788714104474",
+      "docNo": "260907-006",
+      "items": [
+        {
+          "supply": 900000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "total": 900000,
+          "spec": "1750ml",
+          "name": "참기름/A/우리식품/1750ml",
+          "qty": 50,
+          "accountCode": "800",
+          "price": 18000
+        },
+        {
+          "qty": 30,
+          "price": 23000,
+          "spec": "1750ml",
+          "accountCode": "800",
+          "name": "들기름/우리식품/1750ml",
+          "supply": 690000,
+          "total": 690000,
+          "isTaxExempt": true,
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788714499465",
+      "docNo": "260907-008",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "tax": 31818,
+          "price": 35000,
+          "accountCode": "800",
+          "spec": "1800ml",
+          "name": "시골향생들기름/1800ml",
+          "supply": 318182,
+          "qty": 10,
+          "total": 350000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788715145688",
+      "docNo": "260907-010",
+      "items": [
+        {
+          "total": 900000,
+          "name": "선물세트(300ml) 5호",
+          "isTaxExempt": false,
+          "spec": "",
+          "qty": 60,
+          "price": 15000,
+          "tax": 81818,
+          "supply": 818182,
+          "accountCode": "800"
+        },
+        {
+          "qty": 40,
+          "isTaxExempt": false,
+          "total": 180000,
+          "supply": 163636,
+          "accountCode": "800",
+          "name": "참기름/병/특A/청우/350ml",
+          "spec": "350ml",
+          "tax": 16364,
+          "price": 4500
+        },
+        {
+          "tax": 11818,
+          "spec": "350ml",
+          "isTaxExempt": false,
+          "total": 130000,
+          "name": "들기름/병/특/청우/350ml",
+          "price": 6500,
+          "supply": 118182,
+          "accountCode": "800",
+          "qty": 20
+        },
+        {
+          "isTaxExempt": true,
+          "qty": 1000,
+          "total": 30000,
+          "supply": 30000,
+          "accountCode": "800",
+          "name": "선물세트-300ML-2구",
+          "spec": "",
+          "tax": 0,
+          "price": 30
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788738181868",
+      "docNo": "260907-011",
+      "items": [
+        {
+          "price": 135000,
+          "name": "깨분참기름/16.5kg",
+          "tax": 859091,
+          "spec": "16.5kg",
+          "supply": 8590909,
+          "isTaxExempt": false,
+          "total": 9450000,
+          "qty": 70,
+          "accountCode": "500"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788741337850",
+      "docNo": "260907-013",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "supply": 523636,
+          "price": 24000,
+          "tax": 52364,
+          "name": "시골향참기름/특골드/1750ml",
+          "accountCode": "800",
+          "spec": "1750ml",
+          "qty": 24,
+          "total": 576000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788744329960",
+      "docNo": "260907-014",
+      "items": [
+        {
+          "price": 5000,
+          "name": "시골향참기름/병/원액/350ml",
+          "tax": 0,
+          "spec": "350ml",
+          "isTaxExempt": true,
+          "total": 1000000,
+          "supply": 1000000,
+          "accountCode": "800",
+          "qty": 200
+        },
+        {
+          "supply": 1300000,
+          "qty": 200,
+          "accountCode": "800",
+          "total": 1300000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "price": 6500,
+          "spec": "350ml",
+          "name": "시골향들기름/병/350ml"
+        },
+        {
+          "tax": 0,
+          "accountCode": "800",
+          "supply": 1160000,
+          "spec": "1kg",
+          "total": 1160000,
+          "name": "볶음참깨-낱개/1kg",
+          "price": 5800,
+          "isTaxExempt": true,
+          "qty": 200
+        },
+        {
+          "spec": "1kg",
+          "name": "시골향탈피들깨가루/1kg",
+          "total": 240000,
+          "supply": 240000,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 8000,
+          "qty": 30,
+          "isTaxExempt": true
+        },
+        {
+          "isTaxExempt": true,
+          "supply": 220000,
+          "price": 11000,
+          "tax": 0,
+          "name": "볶음검정참깨/1kg",
+          "spec": "1kg",
+          "accountCode": "800",
+          "qty": 20,
+          "total": 220000
+        },
+        {
+          "isTaxExempt": false,
+          "total": 210000,
+          "tax": 19091,
+          "name": "시골향참기름/골드/1800ml",
+          "supply": 190909,
+          "spec": "1800ml",
+          "qty": 10,
+          "accountCode": "800",
+          "price": 21000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788755245784",
+      "docNo": "260907-020",
+      "items": [
+        {
+          "supply": 300000,
+          "accountCode": "800",
+          "tax": 0,
+          "total": 300000,
+          "name": "시골향생들기름/병/300ml",
+          "spec": "300ml",
+          "qty": 40,
+          "isTaxExempt": true,
+          "price": 7500
+        },
+        {
+          "qty": 60,
+          "accountCode": "800",
+          "total": 360000,
+          "isTaxExempt": true,
+          "supply": 360000,
+          "spec": "400g",
+          "tax": 0,
+          "name": "탈피(400g)",
+          "price": 6000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788755274642",
+      "docNo": "260907-021",
+      "items": [
+        {
+          "tax": 82473,
+          "accountCode": "800",
+          "total": 907200,
+          "supply": 824727,
+          "name": "참기름/병/분/엘생명/180ml",
+          "spec": "180ml",
+          "price": 2800,
+          "qty": 324,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788755342052",
+      "docNo": "260908-001",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 500,
+          "supply": 3181818,
+          "price": 7000,
+          "accountCode": "800",
+          "tax": 318182,
+          "total": 3500000,
+          "spec": "300ml",
+          "name": "시골향생들기름/병/300ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788755400006",
+      "docNo": "260908-002",
+      "items": [
+        {
+          "qty": 5,
+          "supply": 95455,
+          "accountCode": "800",
+          "price": 21000,
+          "total": 105000,
+          "name": "참기름/골드A/모란/1750ml",
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "tax": 9545
+        },
+        {
+          "isTaxExempt": false,
+          "qty": 120,
+          "supply": 1963636,
+          "price": 18000,
+          "accountCode": "800",
+          "tax": 196364,
+          "total": 2160000,
+          "spec": "1750ml",
+          "name": "참기름/A/모란/1750ml"
+        },
+        {
+          "qty": 100,
+          "accountCode": "800",
+          "price": 4800,
+          "spec": "350ml",
+          "name": "참기름/병/특/모란/350ml",
+          "total": 480000,
+          "isTaxExempt": false,
+          "tax": 43636,
+          "supply": 436364
+        },
+        {
+          "price": 25000,
+          "name": "들기름/모란/1750ml",
+          "tax": 45455,
+          "spec": "1750ml",
+          "supply": 454545,
+          "isTaxExempt": false,
+          "total": 500000,
+          "qty": 20,
+          "accountCode": "800"
+        },
+        {
+          "accountCode": "800",
+          "supply": 422727,
+          "qty": 30,
+          "total": 465000,
+          "tax": 42273,
+          "isTaxExempt": false,
+          "spec": "1750ml",
+          "price": 15500,
+          "name": "참기름/분/모란/1750ml"
+        },
+        {
+          "spec": "1kg",
+          "price": 6200,
+          "name": "볶음참깨/모란/1kg",
+          "accountCode": "800",
+          "tax": 78909,
+          "supply": 789091,
+          "qty": 140,
+          "isTaxExempt": false,
+          "total": 868000
+        },
+        {
+          "tax": 0,
+          "supply": 146000,
+          "spec": "1kg",
+          "accountCode": "800",
+          "total": 146000,
+          "name": "들깨가루(중간)/모란/1kg",
+          "price": 7300,
+          "isTaxExempt": true,
+          "qty": 20
+        },
+        {
+          "isTaxExempt": true,
+          "supply": 146000,
+          "qty": 20,
+          "total": 146000,
+          "accountCode": "800",
+          "name": "들깨가루(고운)/모란/1kg",
+          "spec": "1kg",
+          "tax": 0,
+          "price": 7300
+        },
+        {
+          "name": "탈피들깨가루/모란/1kg",
+          "spec": "1kg",
+          "supply": 780000,
+          "total": 780000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "price": 7800,
+          "qty": 100,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788771964886",
+      "docNo": "260907-022",
+      "items": [
+        {
+          "price": 24000,
+          "tax": 4364,
+          "spec": "1750ml",
+          "name": "시골향참기름/골드A/1750ml",
+          "isTaxExempt": false,
+          "total": 48000,
+          "qty": 2,
+          "supply": 43636,
+          "accountCode": "800"
+        },
+        {
+          "qty": 5,
+          "accountCode": "800",
+          "price": 7200,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "total": 36000,
+          "isTaxExempt": false,
+          "tax": 3273,
+          "supply": 32727
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788797281899",
+      "docNo": "260908-003",
+      "items": [
+        {
+          "price": 3800,
+          "qty": 900,
+          "isTaxExempt": false,
+          "tax": 310909,
+          "supply": 3109091,
+          "total": 3420000,
+          "name": "참기름/병/특/알찬/300ml",
+          "spec": "300ml",
+          "accountCode": "800"
+        },
+        {
+          "qty": 900,
+          "price": 4600,
+          "accountCode": "800",
+          "name": "참기름/병/원액/해피유통/300ml",
+          "spec": "300ml",
+          "total": 4140000,
+          "isTaxExempt": false,
+          "tax": 376364,
+          "supply": 3763636
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788797362181",
+      "docNo": "260907-023",
+      "items": [
+        {
+          "spec": "1kg",
+          "price": 7500,
+          "name": "시골향탈피들깨가루/1kg",
+          "tax": 0,
+          "supply": 75000,
+          "isTaxExempt": true,
+          "qty": 10,
+          "total": 75000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788797456180",
+      "docNo": "260908-004",
+      "items": [
+        {
+          "price": 21000,
+          "tax": 22909,
+          "spec": "1800ml",
+          "name": "참기름/특A/대왕/1800ml",
+          "supply": 229091,
+          "accountCode": "800",
+          "total": 252000,
+          "qty": 12,
+          "isTaxExempt": false
+        },
+        {
+          "price": 7000,
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 10,
+          "supply": 63636,
+          "spec": "1kg",
+          "isTaxExempt": false,
+          "total": 70000,
+          "tax": 6364,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788797503218",
+      "docNo": "260908-005",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "total": 110000,
+          "qty": 20,
+          "supply": 100000,
+          "name": "시골향참기름/병/골드A/350ml",
+          "spec": "350ml",
+          "accountCode": "800",
+          "price": 5500,
+          "tax": 10000
+        },
+        {
+          "supply": 109091,
+          "price": 6000,
+          "isTaxExempt": false,
+          "tax": 10909,
+          "name": "시골향들기름/병/특/350ml",
+          "spec": "350ml",
+          "qty": 20,
+          "total": 120000,
+          "accountCode": "800"
+        },
+        {
+          "tax": 54545,
+          "accountCode": "800",
+          "price": 20000,
+          "spec": "1800ml",
+          "name": "시골향참기름/골드/1800ml",
+          "supply": 545455,
+          "isTaxExempt": false,
+          "qty": 30,
+          "total": 600000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788797756575",
+      "docNo": "260908-006",
+      "items": [
+        {
+          "spec": "300ml",
+          "name": "생들기름/병/해피유통/300ml",
+          "total": 5400000,
+          "isTaxExempt": false,
+          "tax": 490909,
+          "qty": 900,
+          "price": 6000,
+          "supply": 4909091,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788798230767",
+      "docNo": "260907-024",
+      "items": [
+        {
+          "isTaxExempt": true,
+          "price": 5800,
+          "qty": 20,
+          "spec": "1kg",
+          "name": "볶음참깨-낱개/1kg",
+          "total": 116000,
+          "tax": 0,
+          "accountCode": "800",
+          "supply": 116000
+        },
+        {
+          "isTaxExempt": false,
+          "supply": 35455,
+          "total": 39000,
+          "qty": 6,
+          "accountCode": "800",
+          "tax": 3545,
+          "name": "맛기름",
+          "price": 6500,
+          "spec": ""
+        },
+        {
+          "name": "시골향들깨가루(중간)/1kg",
+          "accountCode": "800",
+          "spec": "1kg",
+          "total": 15000,
+          "tax": 0,
+          "price": 7500,
+          "supply": 15000,
+          "isTaxExempt": true,
+          "qty": 2
+        },
+        {
+          "spec": "1kg",
+          "name": "탈피들깨가루/1kg",
+          "price": 7500,
+          "accountCode": "800",
+          "tax": 0,
+          "supply": 15000,
+          "qty": 2,
+          "total": 15000,
+          "isTaxExempt": true
+        },
+        {
+          "total": 210000,
+          "isTaxExempt": false,
+          "name": "참기름/골드/대왕/1800ml",
+          "qty": 10,
+          "spec": "1800ml",
+          "accountCode": "800",
+          "price": 21000,
+          "tax": 19091,
+          "supply": 190909
+        },
+        {
+          "qty": 2,
+          "supply": 8182,
+          "accountCode": "800",
+          "price": 4500,
+          "name": "택배비",
+          "total": 9000,
+          "spec": "",
+          "isTaxExempt": false,
+          "tax": 818
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788798535517",
+      "docNo": "260908-007",
+      "items": [
+        {
+          "price": 21000,
+          "accountCode": "800",
+          "name": "시골향참기름/골드A/1750ml",
+          "supply": 420000,
+          "qty": 20,
+          "spec": "1750ml",
+          "total": 420000,
+          "isTaxExempt": true,
+          "tax": 0
+        },
+        {
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 200000,
+          "supply": 200000,
+          "spec": "350ml",
+          "name": "시골향참기름/병/골드A/350ml",
+          "price": 5000,
+          "qty": 40,
+          "accountCode": "800"
+        },
+        {
+          "accountCode": "800",
+          "price": 6000,
+          "tax": 0,
+          "name": "시골향들기름/병/350ml",
+          "isTaxExempt": true,
+          "spec": "350ml",
+          "qty": 20,
+          "supply": 120000,
+          "total": 120000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788799166485",
+      "docNo": "260910-001",
+      "items": [
+        {
+          "qty": 600,
+          "accountCode": "800",
+          "supply": 2454545,
+          "price": 4500,
+          "isTaxExempt": false,
+          "total": 2700000,
+          "spec": "350ml",
+          "name": "시골향참기름/병/특/350ml",
+          "tax": 245455
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788799888041",
+      "docNo": "260908-008",
+      "items": [
+        {
+          "total": 5800000,
+          "isTaxExempt": true,
+          "qty": 1000,
+          "name": "볶음들깨",
+          "spec": "벌크",
+          "tax": 0,
+          "price": 5800,
+          "supply": 5800000,
+          "accountCode": "800"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788799993122",
+      "docNo": "260904-007",
+      "items": [
+        {
+          "price": 4000,
+          "qty": 1000,
+          "accountCode": "800",
+          "spec": "벌크",
+          "name": "참깨",
+          "tax": 0,
+          "total": 4000000,
+          "isTaxExempt": true,
+          "supply": 4000000
+        },
+        {
+          "tax": 0,
+          "isTaxExempt": true,
+          "total": 24000,
+          "supply": 24000,
+          "name": "박스",
+          "spec": "",
+          "price": 800,
+          "accountCode": "800",
+          "qty": 30
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-260828-08",
+      "docNo": "260828-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "qty": 61,
+          "price": 135000,
+          "name": "깨분참기름/16.5kg",
+          "spec": "개",
+          "supply": 7486364,
+          "total": 8235000,
+          "accountCode": "800",
+          "tax": 748636,
+          "isBoxUnit": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1785820254171",
+      "docNo": "260803-01",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "tax": 785455,
+          "isBoxUnit": false,
+          "total": 8640000,
+          "supply": 7854545,
+          "accountCode": "800",
+          "name": "깨분참기름/16.5kg",
+          "spec": "개",
+          "price": 135000,
+          "qty": 64
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1786341800270",
+      "docNo": "260810-01",
+      "items": [
+        {
+          "supply": 7977273,
+          "qty": 65,
+          "total": 8775000,
+          "accountCode": "800",
+          "tax": 797727,
+          "price": 135000,
+          "spec": "개",
+          "isBoxUnit": false,
+          "isTaxExempt": false,
+          "name": "깨분참기름/16.5kg"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1786445725668",
+      "docNo": "260811-01",
+      "items": [
+        {
+          "price": 4105,
+          "isTaxExempt": true,
+          "tax": 0,
+          "spec": "",
+          "name": "참깨",
+          "supply": 3078750,
+          "accountCode": "800",
+          "total": 3078750,
+          "qty": 750
+        },
+        {
+          "name": "상차비",
+          "tax": 975,
+          "total": 10725,
+          "spec": "",
+          "isTaxExempt": false,
+          "price": 14.3,
+          "supply": 9750,
+          "accountCode": "800",
+          "qty": 750
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1787039980270",
+      "docNo": "260818-01",
+      "items": [
+        {
+          "isBoxUnit": false,
+          "tax": 871364,
+          "isTaxExempt": false,
+          "supply": 8713636,
+          "price": 135000,
+          "spec": "개",
+          "accountCode": "800",
+          "name": "깨분참기름/16.5kg",
+          "qty": 71,
+          "total": 9585000
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1787297403232",
+      "docNo": "260821-01",
+      "items": [
+        {
+          "tax": 846818,
+          "supply": 8468182,
+          "spec": "개",
+          "accountCode": "800",
+          "total": 9315000,
+          "name": "깨분참기름/16.5kg",
+          "price": 135000,
+          "isTaxExempt": false,
+          "qty": 69,
+          "isBoxUnit": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1787302555618",
+      "docNo": "260804-02",
+      "items": [
+        {
+          "supply": 6168000,
+          "accountCode": "800",
+          "total": 6168000,
+          "qty": 1500,
+          "isTaxExempt": true,
+          "tax": 0,
+          "name": "참깨",
+          "price": 4112,
+          "spec": ""
+        },
+        {
+          "tax": 1950,
+          "supply": 19500,
+          "spec": "",
+          "accountCode": "800",
+          "total": 21450,
+          "name": "상차비",
+          "price": 14.3,
+          "isTaxExempt": false,
+          "qty": 1500
+        }
+      ]
+    }
+  ]
+}

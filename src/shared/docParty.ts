@@ -13,7 +13,7 @@ import type { Partner, CompanyInfo } from './types';
  *
  * 전화번호도 어긋나 있었다 — 인쇄는 `phone` 만 봤는데 거래처 313곳 중 `phone` 이
  * 찬 것은 **18곳뿐**이고, 실제 번호는 `tel`(108곳)·`mobile`(78곳)에 들어 있다.
- * 그래서 전화가 거의 안 찍혔다. 세 칸을 차례로 본다.
+ * 거래처관리 화면과 같은 `tel → mobile → phone` 순서로 본다.
  *
  * **업태·종목은 거래처에 칸이 없다.** 우리 회사만 있다. 거래처 쪽은 빈칸으로 둔다 —
  * 없는 값을 지어내는 것보다 빈칸이 낫다.
@@ -53,8 +53,8 @@ export function partyOfPartner(p: Partner | undefined, 이름대신?: string): D
     //  거래처에는 업태·종목 칸이 없다
     bizType: '',
     bizItem: '',
-    //  `phone` 만 보던 탓에 전화가 거의 안 찍혔다 — 세 칸을 차례로 본다
-    tel: 글자(p.tel) || 글자(p.phone) || 글자(p.mobile),
+    // 거래처관리 화면과 순서가 다르면 같은 거래처가 화면과 서류에서 다른 번호로 보인다
+    tel: 글자(p.tel) || 글자(p.mobile) || 글자(p.phone),
     fax: 글자(p.fax),
   };
 }
@@ -84,4 +84,27 @@ export function 서류당사자(
   const 우리 = partyOfCompany(ci);
   const 상대 = partyOfPartner(partner, 거래처이름);
   return isSale ? { sup: 우리, buy: 상대 } : { sup: 상대, buy: 우리 };
+}
+
+export interface DocPartiesByIdInput {
+  isSale: boolean;
+  companyInfo?: CompanyInfo | null;
+  partners: readonly Partner[];
+  partnerId?: string;
+  /** 거래처 문서를 못 찾은 옛 전표도 상호만은 표시하기 위한 저장 당시 이름 */
+  partnerName?: string;
+}
+
+/**
+ * 거래처관리 원본을 ID로 찾아 서류 당사자를 만든다.
+ *
+ * 문서 화면마다 거래처를 다시 찾으면 한쪽은 ID, 다른 쪽은 이름을 쓰게 된다. 동명이인을
+ * 잘못 고르는 일을 막기 위해 조회까지 이 함수 한 곳에서 맡고, 이름은 조회 조건이 아니라
+ * 삭제된 거래처나 옛 전표의 상호 표시용으로만 쓴다.
+ */
+export function 서류당사자ById({
+  isSale, companyInfo, partners, partnerId, partnerName,
+}: DocPartiesByIdInput): { sup: DocParty; buy: DocParty } {
+  const partner = partnerId ? partners.find(p => p.id === partnerId) : undefined;
+  return 서류당사자(isSale, companyInfo ?? undefined, partner, partnerName);
 }

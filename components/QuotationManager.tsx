@@ -5,9 +5,10 @@ import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
-import { marginFromSupply, marginOf } from '../src/shared/margin';
-import { lineAmountFromSupply } from '../src/shared/lineAmount';
-import { isSaleTaxExempt } from '../src/shared/partnerPrice';
+import { marginOf } from '../src/shared/margin';
+import { lineAmount } from '../src/shared/lineAmount';
+import { quoteTotals } from '../src/shared/quoteTotals';
+import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
@@ -31,8 +32,11 @@ export interface QuotationLine {
   price: number;
   /** 낼 때의 원가 — 나중에 원료값이 바뀌어도 그때 얼마로 셈했는지 남는다 */
   cost?: number;
-  /** 면세면 부가세를 안 붙인다 */
-  isTaxExempt: boolean;
+  /**
+   * 면세면 부가세를 안 붙인다. **안 정했으면 `undefined`** —
+   * 과세를 기본으로 두면 안 고르고 그냥 지나간다(2026-09-09 사장님).
+   */
+  isTaxExempt?: boolean;
   note?: string;
 }
 
@@ -89,24 +93,9 @@ function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
   return `${head}${String(max + 1).padStart(2, '0')}`;
 }
 
-/** 줄들의 공급가·세액·합계·원가. 면세 줄은 세액이 0이다. */
-export function quoteTotals(lines: QuotationLine[]) {
-  let supply = 0, tax = 0, cost = 0;
-  for (const l of lines) {
-    const qty = Number(l.qty) || 0;
-    //  **단가는 공급가 기준**(세별도) — 셈은 shared/lineAmount 하나다
-    const a = lineAmountFromSupply(qty, Number(l.price) || 0, l.isTaxExempt);
-    supply += a.supply;
-    tax += a.tax;
-    cost += Math.round(qty * (Number(l.cost) || 0));
-  }
-  //  마진은 **공급가 기준**이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
-  //  셈은 shared/margin 한 곳에 있다. 여기는 줄마다 세액을 따로 셌으니 공급가를 그대로 넘긴다.
-  const m = marginFromSupply(supply, cost);
-  return { supply, tax, total: supply + tax, cost, margin: m.margin, marginRate: m.marginRate };
-}
-
-const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0, isTaxExempt: false });
+//  **과세를 기본으로 두지 않는다** — 안 고른 줄은 저장이 막힌다(2026-09-09 사장님).
+//  합계 셈은 [shared/quoteTotals](../src/shared/quoteTotals.ts) 하나다.
+const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 });
 
 export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, costOf }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
@@ -177,6 +166,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     if (!form.partnerId) { alert('거래처를 고르세요.'); return; }
     const lines = form.lines.filter(l => l.name.trim() && Number(l.qty) > 0);
     if (!lines.length) { alert('품목을 한 줄 이상 넣으세요.'); return; }
+    //  과세·면세를 안 고르면 세액이 정해지지 않는다 — 값이 틀린 견적서가 나가면 안 된다
+    const 미정 = quoteTotals(lines).undecided;
+    if (미정 > 0) { alert(`과세·면세를 안 고른 줄이 ${미정}개 있습니다.
+'—' 칸을 눌러 골라 주세요.`); return; }
     if (saving) return;
     setSaving(true);
     try {
@@ -351,7 +344,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   {/*  **단가는 공급가 기준이다**(세별도). 원가에 마진을 얹은 값이다.
                        전표·거래명세서의 '단가'는 세포함이라 뜻이 다르다 — 그래서 칸 이름에 박는다.
                        세액과 판매가를 나란히 둬야 손님한테 부를 값이 화면에서 바로 읽힌다. */}
-                  <span className="px-2 py-2 text-right whitespace-nowrap">단가<span className="text-slate-400 font-bold"> 공급가</span></span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">단가<span className="text-slate-400 font-bold"> 판매가</span></span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">마진율</span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">세액</span>
                   <span className="px-2 py-2 text-right whitespace-nowrap">판매가<span className="text-slate-400 font-bold"> 세포함</span></span>
@@ -362,7 +355,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   const lineMargin = l.price - (l.cost ?? 0);
                   const lineRate = l.price > 0 ? lineMargin / l.price : 0;
                   //  줄마다 세액·판매가를 낸다 — 셈은 shared/lineAmount 한 곳이다
-                  const amt = lineAmountFromSupply(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
+                  const amt = lineAmount(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
                   return (
                     <div key={i} className="grid grid-cols-[minmax(150px,1fr)_64px_88px_96px_58px_88px_100px_44px_28px] min-w-[740px] border-t border-slate-100 items-center">
                       <div className="px-3 py-2 min-w-0">
@@ -386,9 +379,15 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                         {amt.tax ? fmt(amt.tax) : '—'}
                       </span>
                       <span className="px-2 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(amt.gross)}</span>
-                      <button onClick={() => setLine(i, { isTaxExempt: !l.isTaxExempt })}
-                        className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
-                        {l.isTaxExempt ? '면세' : '과세'}
+                      {/*  안 고른 줄은 '-' 다. 한 번 고르면 과세↔면세로만 오간다 —
+                           실수로 '모름' 으로 되돌아가지 않게. */}
+                      <button onClick={() => setLine(i, { isTaxExempt: l.isTaxExempt === undefined ? false : !l.isTaxExempt })}
+                        title={l.isTaxExempt === undefined ? '눌러서 과세·면세를 고르세요' : undefined}
+                        className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${
+                          l.isTaxExempt === undefined ? 'bg-amber-50 text-amber-600 border-amber-300 animate-pulse'
+                          : l.isTaxExempt ? 'bg-indigo-600 text-white border-indigo-500'
+                          : 'bg-white text-slate-500 border-slate-200'}`}>
+                        {l.isTaxExempt === undefined ? '—' : l.isTaxExempt ? '면세' : '과세'}
                       </button>
                       <button onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, k) => k !== i) }))}
                         className="text-slate-300 hover:text-rose-500 justify-self-center"><Trash2 size={13} /></button>
@@ -495,8 +494,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     onClick={() => {
                       setLine(pickIdx, {
                         itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
-                        cost: c, price: p ?? 0,
-                        isTaxExempt: isSaleTaxExempt(partnerItems, x.id),
+                        cost: c,
+                        //  **거래처 판매단가를 그대로 넣는다**(세포함). 단가 칸이 판매단가라
+                        //  변환할 게 없다 — 공급가액은 줄마다 역산해서 낸다(2026-09-10 사장님).
+                        price: p ?? 0,
+                        //  거래처 연결에 정해진 게 있으면 그걸 쓰고, 없으면 **비워 둔다** — 고르게 한다
+                        isTaxExempt: (() => { const t = saleTaxTypeOf(partnerItems, x.id); return t === undefined ? undefined : t === '면세'; })(),
                       });
                       setPickIdx(null);
                     }}

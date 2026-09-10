@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
+import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble';
 
 /**
  * **같은 주문은 원료를 한 번만 뺀다.**
@@ -49,14 +50,15 @@ const 병 = (): Item => ({
 
 const 주문 = (qty: number): Order => ({
   id: 'o1', partnerName: '해피유통(포천)', status: OrderStatus.PENDING,
-  items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: qty } as any],
+  items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: qty, checked: true } as any],
 } as unknown as Order);
 
 /** 엔진 한 벌. items·order는 앱의 리렌더를 흉내내 그 자리에서 고쳐진다. */
-function harness(items: Item[], order: Order) {
+function harness(items: Item[], order: Order, runnerOverride?: any) {
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, { ...order });
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
+  const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
@@ -70,6 +72,7 @@ function harness(items: Item[], order: Order) {
       if (computeStock) dbx.stock.set(id, computeStock(next as any));
       return next;
     },
+    runRawInventoryJob: runnerOverride ?? runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }
       if (col === 'orders') {
@@ -130,10 +133,13 @@ describe('같은 주문을 두 번 생산 처리해도 원료는 한 번만 빠�
 
     // 900병으로 고쳐서 다시 처리 → 249.48kg만 나가야 한다 (277.2가 남아 있으면 안 된다)
     const fixed = { ...order, producedAt: '', items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: 900 }] } as unknown as Order;
+    dbx.orders.set(order.id, { ...fixed });
     await engine.reconcileOrderStock(fixed, OrderStatus.DISPATCHED);
 
     expect(lotKg('oil')).toBe(Math.round((LOT_IN - 249.48) * 1000) / 1000);
-    expect(원장줄()[0].used).toBe(249.48);
+    const 마지막차감 = 원장줄().filter(x => x.kind === 'consume').at(-1);
+    expect(마지막차감?.used).toBe(249.48);
+    expect(dbx.orders.get(order.id)?.rawInventoryAttempt).toBe(2);
   });
 
   it('세 번을 눌러도 한 번과 같다', async () => {
@@ -145,5 +151,27 @@ describe('같은 주문을 두 번 생산 처리해도 원료는 한 번만 빠�
     }
     expect(lotKg('oil')).toBe(Math.round((LOT_IN - 277.2) * 1000) / 1000);
     expect(원장줄()).toHaveLength(1);
+  });
+
+  it('원료 명령 하나라도 거절되면 주문을 작업완료로 저장하지 않는다', async () => {
+    const items = [기름(), 병()];
+    const order = 주문(1000);
+    const 실패Job = async (input: any) => ({
+      job: {
+        id: input.jobId, companyId: input.companyId, source: input.source,
+        expectedOperationIds: input.commands.map((x: any) => x.command.operationId),
+        status: 'failed', createdAt: '', lastError: 'STOCK_MISMATCH',
+      },
+      results: [{
+        input: input.commands[0],
+        result: { status: 'rejected', code: 'STOCK_MISMATCH', message: '재고 불일치' },
+      }],
+    });
+    const { engine } = harness(items, order, 실패Job);
+
+    await expect(engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED))
+      .rejects.toThrow('원료 차감 거절');
+    expect(dbx.orders.get(order.id)?.status).toBe(OrderStatus.PENDING);
+    expect(dbx.orders.get(order.id)?.producedAt).toBeUndefined();
   });
 });

@@ -17,12 +17,14 @@ import {
   Paperclip,
   Loader2,
   Download,
-  ArrowLeft
+  ArrowLeft,
+  Pin
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, ChatRoom, ChatMessage } from '../types';
 import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTION_ADMIN_ID } from '../src/shared/mention';
-import { uploadChatFile, fileFromPaste, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
+import { uploadChatFile, filesFromPaste, messageImages, imagePatch, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
+import { canPin, pinPatch, unpinPatch, noticeOf, noticeLine, isPinned } from '../src/shared/roomNotice';
 import { consumeSharedText } from '../src/shared/shareTarget';
 import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
 import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
@@ -99,11 +101,20 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   //  카톡처럼 사진·파일은 + 뒤에 숨긴다 — 입력칸이 좁아지는 걸 막는다(2026-09-03 사장님)
   const [attachOpen, setAttachOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  //  여러 장 올릴 때 '3장 중 1장' 을 보이려고 센다
+  const [uploadCount, setUploadCount] = useState({ done: 0, total: 0 });
   //  **카톡·문자에서 공유해 들어온 글**(2026-09-03 사장님).
   //  들어올 땐 대화방이 안 정해져 있다. 방을 고를 때까지 들고 있다가 입력칸에 넣는다.
   const [pendingShare, setPendingShare] = useState<string>(() => consumeSharedText());
-  //  사진을 눌렀을 때 — 전에는 새 탭으로 보내서 앱 밖으로 나가 버렸다(2026-09-03 사장님)
-  const [viewImage, setViewImage] = useState<string | null>(null);
+  //  사진을 눌렀을 때 — 전에는 새 탭으로 보내서 앱 밖으로 나가 버렸다(2026-09-03 사장님).
+  //  여러 장을 묶어 보낼 수 있게 되면서(2026-09-09) **그 말의 사진 전부**를 들고 다닌다 —
+  //  크게 띄운 채로 옆으로 넘길 수 있어야 한 장씩 닫았다 열 일이 없다.
+  const [viewer, setViewer] = useState<{ urls: string[]; at: number } | null>(null);
+  //  공지를 펼쳐 뒀나. 방을 옮기면 다시 접는다 — 앞 방에서 펼친 채로 넘어가면 남의 공지가 길게 뜬다
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const viewImage = viewer ? viewer.urls[viewer.at] : null;
+  const 넘기기 = (걸음: number) => setViewer(v =>
+    v ? { ...v, at: (v.at + 걸음 + v.urls.length) % v.urls.length } : v);
   const prevRoomTimestamps = useRef<Record<string, string>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(notifyPermission);
   const [notifMode, setNotifMode] = useState<NotifyMode>(loadNotifyMode);
@@ -140,6 +151,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setLocalMessages([]);
     setFirestoreError(null);
 
+    setNoticeOpen(false);
     if (!activeRoomId) return;
 
     // 방 열릴 때 읽음 처리
@@ -243,9 +255,18 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     inputRef.current?.focus();
   }, [pendingShare, activeRoomId]);
 
-  const handleSendMessage = async (e?: React.FormEvent, attach?: ChatAttachment) => {
+  /**
+   * @param attach 사진 아닌 첨부(문서·엑셀) 하나
+   * @param photos 사진 여럿을 묶어 보낼 때 — 어느 칸에 실을지는 [imagePatch](../src/shared/chatUpload.ts) 가 정한다
+   */
+  const handleSendMessage = async (
+    e?: React.FormEvent,
+    attach?: ChatAttachment,
+    photos?: Pick<ChatMessage, 'imageUrl' | 'images'>,
+  ) => {
     e?.preventDefault();
-    if ((!messageText.trim() && !attach) || !activeRoomId || isSending) return;
+    const 사진있음 = !!(photos?.imageUrl || photos?.images?.length);
+    if ((!messageText.trim() && !attach && !사진있음) || !activeRoomId || isSending) return;
 
     //  누가 불렸나 — 이름 겹침·@관리자까지 shared/mention 이 혼자 판단한다
     const mentions = mentionedIds(messageText, employees);
@@ -259,6 +280,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       createdAt: new Date().toISOString(),
       ...(attach?.isImage ? { imageUrl: attach.url } : {}),
       ...(attach && !attach.isImage ? { fileUrl: attach.url, fileName: attach.name, fileSize: attach.size } : {}),
+      ...(photos ?? {}),
       ...(mentions.length > 0 ? { mentions } : {}),
       //  답장이면 그때 보인 글을 같이 담는다 — 원본이 지워져도 무엇에 답한 건지 남는다
       ...(replyTo ? { replyTo: replySnippet(replyTo) } : {}),
@@ -282,40 +304,62 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   //  사진·파일 한 길 — Storage 에 올리고 주소만 메시지에 싣는다.
   //  base64 로 글자에 실으면 Firestore 1MB 한계에 걸려 폰 사진은 아예 안 갔다.
   //  **고르든 붙여넣든 여기 하나를 지난다.**
-  const sendFile = async (file: File) => {
-    if (!activeRoomId) return;
+  /**
+   * **여러 장이면 한 말로 묶는다**(2026-09-09 사장님). 사진 다섯 장이 다섯 줄로 오면 대화가 밀린다.
+   *
+   * 사진이 아닌 것(문서·엑셀)은 말 하나에 한 개만 실을 수 있어서 **따로 보낸다** —
+   * 묶어 봐야 첫 장 말고는 표시할 자리가 없다.
+   * 한 장이라도 실패하면 그 장만 건너뛰고 나머지는 보낸다. 통째로 버리는 게 더 나쁘다.
+   */
+  const sendFiles = async (files: File[]) => {
+    if (!activeRoomId || files.length === 0) return;
+    const 사진 = files.filter(f => (f.type || '').startsWith('image/'));
+    const 그밖 = files.filter(f => !(f.type || '').startsWith('image/'));
     setUploading(true);
+    setUploadCount({ done: 0, total: files.length });
+    const 실패: string[] = [];
+    const 올리기 = async (f: File) => {
+      try { return await uploadChatFile(activeRoomId, f); }
+      catch (err: any) { 실패.push(`${f.name}: ${err?.message || '네트워크 오류'}`); return null; }
+      finally { setUploadCount(c => ({ ...c, done: c.done + 1 })); }
+    };
     try {
-      const attach = await uploadChatFile(activeRoomId, file);
-      await handleSendMessage(undefined, attach);
-    } catch (err: any) {
-      setFirestoreError(`첨부 실패: ${err?.message || '네트워크 오류'}`);
+      if (사진.length > 0) {
+        const urls = (await Promise.all(사진.map(올리기))).filter(Boolean).map(a => a!.url);
+        if (urls.length > 0) await handleSendMessage(undefined, undefined, imagePatch(urls));
+      }
+      for (const f of 그밖) {
+        const a = await 올리기(f);
+        if (a) await handleSendMessage(undefined, a);
+      }
+      if (실패.length > 0) setFirestoreError(`${실패.length}개를 못 보냈습니다 — ${실패[0]}`);
     } finally {
       setUploading(false);
+      setUploadCount({ done: 0, total: 0 });
     }
   };
 
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';           // 같은 파일을 다시 골라도 다시 올라가게
-    if (file) await sendFile(file);
+    await sendFiles(files);
   };
 
   /**
    * **Ctrl+V 로 사진을 붙인다**(2026-09-07 사장님) — 캡처해서 바로 보내는 길.
    *
-   * 클립보드에서 파일을 꺼내는 건 [chatUpload.fileFromPaste](../src/shared/chatUpload.ts) 가 안다.
-   * **글자면 null 이 오고, 그때는 아무것도 안 한다** — 여기서 preventDefault 를 해버리면
+   * 클립보드에서 파일을 꺼내는 건 [chatUpload.filesFromPaste](../src/shared/chatUpload.ts) 가 안다.
+   * **글자면 빈 배열이 오고, 그때는 아무것도 안 한다** — 여기서 preventDefault 를 해버리면
    * 글자 붙여넣기가 통째로 죽는다.
    *
    * 파일은 **기다리기 전에** 꺼내야 한다. await 를 지나면 브라우저가 클립보드를 놓아 버린다.
    */
   const 붙여넣기 = (data: DataTransfer | null, prevent: () => void): boolean => {
     if (!activeRoomId) return false;
-    const file = fileFromPaste(data);
-    if (!file) return false;
+    const files = filesFromPaste(data);
+    if (files.length === 0) return false;
     prevent();
-    void sendFile(file);
+    void sendFiles(files);
     return true;
   };
 
@@ -374,7 +418,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     cancelLongPress();
     longPressRef.current = setTimeout(() => {
       longPressRef.current = null;
-      if (actionsFor({ msg, me: currentUser, isAdmin }).length === 0) return;   // 지운 말
+      if (actionsFor({ msg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, msg) }).length === 0) return;   // 지운 말
       setActionMsg(msg);
       navigator.vibrate?.(15);
     }, 450);
@@ -400,6 +444,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       //  폰이 공유 시트를 열어 준다. 없으면(PC) 복사로 물러선다.
       if (navigator.share) { try { await navigator.share({ text: msg.text }); } catch { /* 사람이 닫음 */ } return; }
       try { await navigator.clipboard.writeText(msg.text); 알리기('공유를 못 써서 복사했습니다'); } catch { /* 무시 */ }
+      return;
+    }
+    if (act === '공지 등록' || act === '공지 내리기') {
+      if (!activeRoomId) return;
+      if (act === '공지 내리기') { onUpdateRoom(activeRoomId, unpinPatch()); 알리기('공지를 내렸습니다'); return; }
+      //  글이 없는 말은 띠에 그릴 게 없다. 창에도 안 뜨지만 한 번 더 막는다.
+      if (!canPin(msg)) { 알리기('글이 있는 말만 공지가 됩니다'); return; }
+      onUpdateRoom(activeRoomId, pinPatch(msg, currentUser));
+      setNoticeOpen(false);
+      알리기('공지로 올렸습니다');
       return;
     }
     if (act === '나에게') {
@@ -683,6 +737,43 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               </div>
             </div>
 
+            {/*  **공지 띠**(2026-09-09 사장님) — 카톡처럼 방 맨 위에 붙어 있는다.
+                 접혀 있을 땐 한 줄만, 누르면 전문이 펼쳐진다. 여러 줄 공지가 띠를 세 겹으로
+                 만들면 대화가 밀리기 때문이다. 방마다 하나뿐이라 새로 붙이면 앞의 것이 물러난다. */}
+            {(() => {
+              const 공지 = noticeOf(activeRoom);
+              if (!공지) return null;
+              return (
+                <div className="shrink-0 border-b border-slate-100 bg-white">
+                  <div className="flex items-start gap-2 px-4 py-2">
+                    <Pin size={13} className="shrink-0 mt-0.5 text-slate-400" />
+                    <button
+                      onClick={() => setNoticeOpen(v => !v)}
+                      className="flex-1 min-w-0 text-left"
+                      title={noticeOpen ? '접기' : '펼치기'}
+                    >
+                      <p className={`text-[11px] font-bold text-slate-700 ${noticeOpen ? 'whitespace-pre-wrap' : 'truncate'}`}>
+                        {noticeOpen ? 공지.text : noticeLine(공지)}
+                      </p>
+                      {noticeOpen && (
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">
+                          {공지.byName} · {new Date(공지.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => onUpdateRoom(activeRoom.id, unpinPatch())}
+                      aria-label="공지 내리기"
+                      title="공지 내리기"
+                      className="shrink-0 p-1 text-slate-300 hover:text-slate-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Messages List */}
             <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-0.5 custom-scrollbar bg-slate-50/30">
               {firestoreError && (
@@ -733,27 +824,52 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                           //  글자를 긁어 뒀으면 브라우저 메뉴를 그대로 둔다 — 거기 '복사'가 있다
                           if (!window.getSelection()?.isCollapsed) return;
                           e.preventDefault(); cancelLongPress();
-                          if (actionsFor({ msg, me: currentUser, isAdmin }).length) setActionMsg(msg);
+                          if (actionsFor({ msg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, msg) }).length) setActionMsg(msg);
                         }}
                         title={isDeleted(msg) ? undefined : '꾹 누르기 (PC는 우클릭 · 긁어서 복사도 됩니다)'}
                         className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group msg-bubble ${
+                        //  지금 공지로 걸린 말은 테두리로 표시한다 — 위 띠가 어느 말에서 온 건지 보인다
+                        isPinned(activeRoom, msg) ? 'ring-2 ring-slate-300 ' : ''}${
                         isDeleted(msg)
                           ? 'bg-slate-50 text-slate-400 border border-dashed border-slate-200 italic'
                           : isMine
                           ? 'bg-indigo-600 text-white rounded-tr-none active:scale-[0.99] transition-transform'
                           : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none active:scale-[0.99] transition-transform'
                       }`}>
-                        {msg.imageUrl && !isDeleted(msg) && (
-                          <div className="mb-2 rounded-xl overflow-hidden border border-white/10">
-                            <img 
-                              src={msg.imageUrl} 
-                              alt="Uploaded" 
-                              className="max-w-full max-h-48 lg:max-h-64 w-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform"
-                              referrerPolicy="no-referrer"
-                              onClick={(e) => { e.stopPropagation(); setViewImage(msg.imageUrl!); }}
-                            />
-                          </div>
-                        )}
+                        {/*  **사진 — 한 장이든 여러 장이든 messageImages 한 곳을 지난다.**
+                             한 장은 예전처럼 크게, 여러 장은 정사각 격자로 묶는다(카톡과 같다).
+                             두 장·네 장은 2칸, 셋 이상 홀수는 3칸이 덜 허전하다. */}
+                        {(() => {
+                          if (isDeleted(msg)) return null;
+                          const 사진들 = messageImages(msg);
+                          if (사진들.length === 0) return null;
+                          if (사진들.length === 1) return (
+                            <div className="mb-2 rounded-xl overflow-hidden border border-white/10">
+                              <img
+                                src={사진들[0]}
+                                alt=""
+                                className="max-w-full max-h-48 lg:max-h-64 w-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform"
+                                referrerPolicy="no-referrer"
+                                onClick={(e) => { e.stopPropagation(); setViewer({ urls: 사진들, at: 0 }); }}
+                              />
+                            </div>
+                          );
+                          const 칸 = 사진들.length === 2 || 사진들.length === 4 ? 'grid-cols-2' : 'grid-cols-3';
+                          return (
+                            <div className={`mb-2 grid ${칸} gap-1 w-[200px] lg:w-[260px]`}>
+                              {사진들.map((u, i) => (
+                                <img
+                                  key={`${u}-${i}`}
+                                  src={u}
+                                  alt=""
+                                  className="aspect-square w-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                  referrerPolicy="no-referrer"
+                                  onClick={(e) => { e.stopPropagation(); setViewer({ urls: 사진들, at: i }); }}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })()}
                         {msg.fileUrl && !isDeleted(msg) && (
                           <a
                             href={msg.fileUrl}
@@ -867,12 +983,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               {uploading && (
                 <div className="absolute -top-8 left-3 sm:left-6 flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 text-white rounded-full">
                   <Loader2 size={12} className="animate-spin" />
-                  <span className="text-[10px] font-black">올리는 중…</span>
+                  <span className="text-[10px] font-black">
+                    {uploadCount.total > 1 ? `${uploadCount.total}장 중 ${uploadCount.done}장…` : '올리는 중…'}
+                  </span>
                 </div>
               )}
               <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                <input type="file" ref={fileInputRef} onChange={handleFilePick} accept="image/*" className="hidden" />
-                <input type="file" ref={docInputRef} onChange={handleFilePick} className="hidden" />
+                {/*  multiple — 여러 장을 골라 한 말로 묶어 보낸다(2026-09-09 사장님) */}
+                <input type="file" multiple ref={fileInputRef} onChange={handleFilePick} accept="image/*" className="hidden" />
+                <input type="file" multiple ref={docInputRef} onChange={handleFilePick} className="hidden" />
 
                 {/*  **+ 하나로 접었다**(2026-09-03 사장님) — 사진·클립이 나와 있으면
                      폰에서 입력칸이 두 글자 폭이 된다. 카톡처럼 눌러야 펴진다. */}
@@ -1110,7 +1229,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <p className="text-[10px] font-black text-slate-400">{actionMsg.senderName}</p>
               <p className="text-xs font-bold text-slate-600 line-clamp-2 whitespace-pre-wrap">{actionMsg.text || '(사진·파일)'}</p>
             </div>
-            {actionsFor({ msg: actionMsg, me: currentUser, isAdmin }).map(act => (
+            {actionsFor({ msg: actionMsg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, actionMsg) }).map(act => (
               <button key={act} onClick={() => doAction(act, actionMsg)}
                 className={`w-full px-5 py-3.5 text-left text-sm font-black border-b border-slate-50 last:border-0 transition-colors ${
                   act === '삭제' ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}>
@@ -1130,13 +1249,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         </div>
       )}
 
-      {/*  사진 크게 보기 — 아무 데나 누르면 닫힌다 */}
-      {viewImage && (
+      {/*  사진 크게 보기 — 아무 데나 누르면 닫힌다. 여러 장이면 옆으로 넘긴다. */}
+      {viewer && viewImage && (
         <div
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setViewImage(null)}
+          onClick={() => setViewer(null)}
         >
           <img src={viewImage} alt="" className="max-w-full max-h-full object-contain" referrerPolicy="no-referrer" />
+          {viewer.urls.length > 1 && (
+            <>
+              {/*  화살표는 사진 위에 겹친다 — 눌러도 닫히면 안 되니 전파를 막는다 */}
+              <button onClick={(e) => { e.stopPropagation(); 넘기기(-1); }} aria-label="이전 사진"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/15 text-white rounded-full flex items-center justify-center text-2xl font-black active:scale-95">‹</button>
+              <button onClick={(e) => { e.stopPropagation(); 넘기기(1); }} aria-label="다음 사진"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/15 text-white rounded-full flex items-center justify-center text-2xl font-black active:scale-95">›</button>
+              <span className="absolute top-5 left-1/2 -translate-x-1/2 px-3 py-1 bg-white/15 text-white rounded-full text-[11px] font-black tabular-nums">
+                {viewer.at + 1} / {viewer.urls.length}
+              </span>
+            </>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); saveImage(viewImage); }}
             className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-2.5 bg-white/15 text-white rounded-full text-xs font-black active:scale-95 transition-transform"
@@ -1144,7 +1275,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             <Download size={16} /> 저장
           </button>
           <button
-            onClick={() => setViewImage(null)}
+            onClick={() => setViewer(null)}
             aria-label="닫기"
             className="absolute top-4 right-4 w-10 h-10 bg-white/15 text-white rounded-full flex items-center justify-center"
           >

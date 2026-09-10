@@ -4,6 +4,7 @@ import { Employee } from '../src/shared/types';
 import {
   notify, notifySupported, notifyPermission, askNotifyPermission, notifyDiagnose,
   loadNotifyMode, saveNotifyMode, NotifyMode,
+  loadNotifyVolume, saveNotifyVolume, NotifyVolume, playChime,
 } from '../src/shared/notify';
 import { canEnterAdmin } from '../src/shared/adminAccess';
 import { registerPush, pushSupported } from '../src/shared/push';
@@ -29,6 +30,7 @@ const MyPage: React.FC<{
   const [perm, setPerm] = useState<NotificationPermission>(notifyPermission);
   const [시험, set시험] = useState<{ ok: boolean; msg: string } | null>(null);
   const [mode, setMode] = useState<NotifyMode>(loadNotifyMode);
+  const [volume, setVolume] = useState<NotifyVolume>(loadNotifyVolume);
 
   //  다른 탭이나 브라우저 설정에서 권한이 바뀌었을 수 있다 — 돌아올 때 다시 읽는다
   useEffect(() => {
@@ -38,6 +40,8 @@ const MyPage: React.FC<{
   }, []);
 
   const pickMode = (m: NotifyMode) => { setMode(m); saveNotifyMode(m); };
+  /** 크기를 고르면 **바로 들려준다** — 귀로 확인 못 하면 고를 수가 없다 */
+  const pickVolume = (v: NotifyVolume) => { setVolume(v); saveNotifyVolume(v); playChime(v); };
 
   //  앱을 완전히 닫아도 알림이 오게 — 이 폰의 표를 받아 직원 기록에 담는다(shared/push)
   const [푸시, set푸시] = useState<'모름' | '켜짐' | '안됨'>('모름');
@@ -132,6 +136,38 @@ const MyPage: React.FC<{
                 </button>
               ))}
             </div>
+
+            {/*  **소리 크기**(2026-09-09 사장님). 고르면 바로 들려준다 —
+                 귀로 확인 못 하면 고를 수가 없다. 소리를 안 쓰는 모드면 안 띄운다. */}
+            {mode !== 'vibration' && (
+              <>
+                <p className="text-[10px] font-black text-slate-400 mt-3 mb-1.5">소리 크기</p>
+                <div className="flex gap-1.5">
+                  {([
+                    { value: 'off',  label: '무음' },
+                    { value: 'low',  label: '작게' },
+                    { value: 'mid',  label: '보통' },
+                    { value: 'high', label: '크게' },
+                  ] as const).map(({ value, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => pickVolume(value)}
+                      className={`flex-1 py-2 rounded-xl text-[11px] font-black border transition-all ${
+                        volume === value
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/*  앱을 닫았을 때 나는 소리는 폰이 울리는 것이라 여기서 못 만진다 — 헛기대를 막는다 */}
+                <p className="text-[10px] font-bold text-slate-300 mt-1.5">
+                  앱을 켜 둔 동안 나는 소리입니다. 앱을 닫았을 때는 폰 알림음으로 울립니다.
+                </p>
+              </>
+            )}
 
             <button
               onClick={async () => set시험(await notifyDiagnose())}

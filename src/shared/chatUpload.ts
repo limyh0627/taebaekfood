@@ -1,5 +1,6 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
+import type { ChatMessage } from './types';
 
 //  **오피스톡 첨부는 Storage 를 지난다.**
 //  전에는 사진을 base64 로 바꿔 메시지 글자에 실어 Firestore 에 넣었다. Firestore 문서는
@@ -39,13 +40,14 @@ export async function uploadChatFile(roomId: string, file: File): Promise<ChatAt
 }
 
 /**
- * **붙여넣기(Ctrl+V)에 담긴 파일 하나** — 없으면 null.
+ * **붙여넣기(Ctrl+V)에 담긴 파일들** — 없으면 빈 배열.
  *
  * 2026-09-07 사장님: "오피스톡에 왜 사진 붙여넣기가 안돼".
  * 첨부는 `+` 로 골라서 올리는 길밖에 없었다. 화면을 캡처해서 바로 보내는 게
  * 제일 잦은 길인데 그게 막혀 있었다.
+ * 2026-09-09 에 여러 장을 한 번에 붙일 수 있게 배열로 바꿨다.
  *
- * **글자만 들어 있으면 null 을 돌려준다** — 그때는 브라우저가 알아서 넣게 둬야 한다.
+ * **글자만 들어 있으면 빈 배열이다** — 그때는 브라우저가 알아서 넣게 둬야 한다.
  * 여기서 preventDefault 를 하면 글자 붙여넣기가 통째로 죽는다.
  *
  * 캡처는 이름이 `image.png` 이거나 아예 비어 있다. 그대로 두면 Storage 에 같은 이름이
@@ -62,24 +64,51 @@ const 붙인이름 = (t: Date) => {
   return `붙여넣기-${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}`;
 };
 
-export function fileFromPaste(data: PasteLike | null | undefined, now = new Date()): File | null {
-  let file: File | null = null;
+export function filesFromPaste(data: PasteLike | null | undefined, now = new Date()): File[] {
+  const out: File[] = [];
   //  items 를 먼저 본다 — 글자와 그림이 같이 담긴 붙여넣기(웹에서 복사)는 files 가 비어 있을 수 있다
   const items = data?.items;
   if (items) {
     for (let i = 0; i < items.length; i++) {
       if (items[i]?.kind !== 'file') continue;
       const f = items[i].getAsFile();
-      if (f) { file = f; break; }
+      if (f) out.push(f);
     }
   }
-  if (!file) file = data?.files?.[0] ?? null;
-  if (!file) return null;
+  //  items 가 비면 files 로 물러선다 — 브라우저마다 담기는 자리가 다르다
+  if (out.length === 0 && data?.files) {
+    for (let i = 0; i < data.files.length; i++) out.push(data.files[i]);
+  }
 
-  //  이름이 없거나 브라우저가 지어 준 'image.png' 면 우리가 다시 짓는다
-  if (file.name && !/^image\.\w+$/i.test(file.name)) return file;
-  const ext = (file.type.split('/')[1] || 'png').replace(/^jpeg$/, 'jpg');
-  return new File([file], `${붙인이름(now)}.${ext}`, { type: file.type });
+  //  이름이 없거나 브라우저가 지어 준 'image.png' 면 우리가 다시 짓는다.
+  //  여러 장이면 뒤에 번호를 붙인다 — 같은 이름이 겹치면 Storage 에서 서로를 덮는다.
+  return out.map((file, i) => {
+    if (file.name && !/^image\.\w+$/i.test(file.name)) return file;
+    const ext = (file.type.split('/')[1] || 'png').replace(/^jpeg$/, 'jpg');
+    const 꼬리 = out.length > 1 ? `-${i + 1}` : '';
+    return new File([file], `${붙인이름(now)}${꼬리}.${ext}`, { type: file.type });
+  });
+}
+
+/**
+ * **이 말에 붙은 사진들** — 한 장이든 여러 장이든 여기 하나를 지난다.
+ *
+ * 옛 말은 `imageUrl` 한 칸에만 있고, 여러 장은 `images` 에 있다. 화면마다 두 칸을 따로 풀면
+ * 한쪽을 빠뜨려 사진이 안 보이거나 두 번 뜬다.
+ */
+export const messageImages = (msg: Pick<ChatMessage, 'imageUrl' | 'images'>): string[] =>
+  msg.images?.length ? msg.images.filter(Boolean) : (msg.imageUrl ? [msg.imageUrl] : []);
+
+/**
+ * 여러 장을 보낼 때 말에 실을 칸.
+ * **한 장이면 `imageUrl` 그대로 쓴다** — 옛 화면·알림이 그 칸을 보고 있어서, 한 장까지
+ * `images` 로 옮기면 그쪽이 조용히 빈칸이 된다.
+ */
+export function imagePatch(urls: readonly string[]): Pick<ChatMessage, 'imageUrl' | 'images'> {
+  const u = urls.filter(Boolean);
+  if (u.length === 0) return {};
+  if (u.length === 1) return { imageUrl: u[0] };
+  return { imageUrl: u[0], images: [...u] };
 }
 
 /** 사람이 읽는 크기 — 1.2MB 처럼. */

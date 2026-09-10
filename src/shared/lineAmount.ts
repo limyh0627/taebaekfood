@@ -51,6 +51,44 @@ export interface LineAmount {
 export const VAT_RATE = 0.1;
 
 /**
+ * **매입 단가(세포함) → 품목 원가(공급가액).**
+ *
+ * 거래처 매입단가와 품목 원가는 **밑이 다르다.** 전표에 치는 단가는 세금 포함이고
+ * (`lineAmount` 의 price 가 그렇다), 품목 원가는 공급가액이다
+ * ([인수인계](../../인수인계.md) "원가는 공급가액으로만 본다").
+ *
+ * 두 값을 한 칸처럼 복사하다 2026-09-06 에 품목 60개 원가가 10% 부풀었고,
+ * `scripts/fix-cost-supply-basis.mts` 로 ÷1.1 해서 되돌렸다. 그런데 전표를 다시 끊으면
+ * 그대로 되살아났다(2026-09-09) — 복사하는 자리가 그냥 남아 있었기 때문이다.
+ *
+ * **매입 단가를 원가로 옮길 때는 언제나 이 함수를 지난다.** 면세는 세금이 없어 그대로다.
+ */
+export const costOfPurchase = (price: number, exempt?: boolean): number =>
+  lineAmount(1, price, exempt).supply;
+
+/**
+ * **매입 전표 한 줄 → 품목 원가.** 전표가 이미 낸 **공급가액을 수량으로 나눈다.**
+ *
+ * 2026-09-10 사장님: "매입단가가 항상 과세인 건 아니고, 매입전표의 공급가액을 원가로 넣게 하면 돼."
+ *
+ * 단가에서 다시 세면(`costOfPurchase`) **과세인지 면세인지를 여기서 또 판단해야 한다.**
+ * 그 판단이 전표와 어긋나는 순간 원가가 10% 틀어진다 — 면세 품목을 과세로 보면 값을 깎고,
+ * 과세를 면세로 보면 부풀린다. 전표에 찍힌 `supply` 는 **사람이 보고 발행한 그 숫자**라
+ * 그걸 그대로 쓰면 화면과 원가가 어긋날 수가 없다.
+ *
+ * `supply` 나 `qty` 가 없는 옛 줄만 단가에서 되돌린다.
+ */
+export function costFromPurchaseLine(line: {
+  qty?: number; supply?: number; price?: number; isTaxExempt?: boolean;
+}): number | null {
+  const qty = Number(line.qty ?? 0);
+  const supply = Number(line.supply ?? NaN);
+  if (qty > 0 && Number.isFinite(supply)) return Math.round(supply / qty);
+  const price = Number(line.price ?? 0);
+  return price > 0 ? costOfPurchase(price, line.isTaxExempt) : null;
+}
+
+/**
  * @param qty      수량. 반품이면 음수다.
  * @param price    **세금 포함** 단가
  * @param exempt   면세면 true
@@ -117,9 +155,6 @@ export function lineAmountFromSupply(qty: number, supply: number, exempt?: boole
 export function vatOn(supply: number, exempt?: boolean): number {
   return exempt ? 0 : Math.round((Number(supply) || 0) * VAT_RATE);
 }
-
-/** 세금 포함 값을 만드는 곱수 — 면세 원료로 과세품을 만들 때 원가에 얹는 데도 쓴다 */
-export const VAT_UP = 1 + VAT_RATE;
 
 /**
  * **한 줄로 보여줄 단가 딱지** — 과세면 공급가액을 곁들인다.

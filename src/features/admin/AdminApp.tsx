@@ -24,7 +24,10 @@ import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
+import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
+import { orderLinesUsingRaw } from '../../shared/rawUsers';
+import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -95,6 +98,8 @@ import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
+import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
+import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
@@ -108,7 +113,6 @@ import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
-import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import { notify, loadNotifyMode } from '../../shared/notify';
@@ -168,7 +172,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -612,6 +616,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 배합식 전개(재귀)는 순수 도메인 모듈(bom.ts)로 분리. 여기선 현재 데이터로 얇게 감싸 호출.
   const buildFormula = (prodKey: string) => buildFormulaBom(prodKey, itemFormulas, allItems);
 
+  /**
+   * 원장의 "어디 쓰였나" 칸에 **이 원료를 쓰는 줄만** 적기 위한 필터.
+   *
+   * 2026-09-10 사장님: "왜 볶음참깨 외 품목들이 보이냐". 원장 줄은 `orderId` 만 들고 있어
+   * 그 주문에 담긴 품목을 통째로 적고 있었다 — 한 주문에 참기름과 들깨가루가 같이 있으면
+   * 볶음참깨 줄에도 들깨가루가 떴다. 배합식으로 걸러 준다([rawUsers](../../shared/rawUsers.ts)).
+   */
+  const linesUsingRaw = useMemo(() => {
+    const deps = { allItems, bomOf, buildFormula: (k: string) => buildFormulaBom(k, itemFormulas, allItems), baseRawName };
+    return (order: Order, material: string) => orderLinesUsingRaw(order.items, material, deps);
+  }, [allItems, itemFormulas]);
+
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
     () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems), formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas) }).effective,
@@ -748,8 +764,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!ds) continue;
       for (const item of o.items) {
         const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-        //  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
-        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+        /*  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
+         *  **수량은 stockUnits 를 지난다**(2026-09-09 사장님: "전표는 쓰고 재고는 안 쓸 수가 있나").
+         *  docUnpack 이 박스를 낱개로 푸는데, 박스 수가 아니라 낱개 수를 주면 **또 풀어서 열 배**가 된다.
+         *  재고·전표와 같은 함수를 지나야 세 숫자가 안 갈린다. */
+        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
           const kg = docOilKg(line.spec, line.qty);
           if (kg <= 0) continue;
           (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
@@ -797,43 +816,91 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [ledgerTab, setLedgerTab] = useState<'cash' | 'partner'>('cash');
 
 
-  // 완료/반려 후 1일 지난 확인사항 자동 삭제
-  useEffect(() => {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    adjustmentRequests.forEach(r => {
-      if ((r.status === 'processed' || r.status === 'rejected') && r.processedAt && r.processedAt < oneDayAgo) {
-        deleteItem('adjustmentRequests', r.id);
-      }
-    });
-  }, [adjustmentRequests]);
+  /**
+   * **하루 지난 것은 목록에서 감춘다 — 지우지 않는다.**
+   *
+   * 예전엔 이 자리에 `deleteItem` 을 부르는 effect 가 둘 있었다. 완료·반려된 확인사항과
+   * 전표가 끊긴 선입고 이력을 **하루 뒤에 영구 삭제**했다.
+   *
+   * 목적은 "목록 누적 방지" 였다 — **안 보이게 하는 것**이지 없애는 게 아니었다.
+   * 그런데 지워 버리니 —
+   *   · 감사 근거가 사라진다. "그 발주 언제 들어왔지" 를 되짚을 수가 없다.
+   *   · 화면을 **연 사람의 브라우저**가 지운다. 직원 앱도 결국 이걸 그리므로 관리자만의
+   *     일이 아니고, 여러 기기가 같은 삭제를 되풀이한다.
+   *   · 삭제 실패는 아무도 안 본다.
+   *
+   * 그래서 **읽는 쪽에서 거른다.** 데이터는 남고 화면은 그대로 깨끗하다.
+   */
+  const 하루전 = Date.now() - 24 * 60 * 60 * 1000;
 
-  // 전표 발행된 선입고 이력은 발행 1일 뒤 자동 삭제 (목록 누적 방지 — 발행 시엔 유지)
-  //   OEM 배치는 제외 — 보낸 원료·받은 완제품·로스(수율) 이력을 계속 들고 있어야 한다.
-  useEffect(() => {
-    const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
-    receivedOrders.forEach(po => {
-      if (po.poType === 'oem') return;
-      if (!po.linkedStatementId) return;
-      const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
-      if (at && new Date(at).getTime() < oneDayAgoMs) deleteItem('purchaseOrders', po.id);
-    });
-  }, [receivedOrders, issuedStatements]);
+  //  완료·반려하고 하루 지난 확인사항은 안 보인다.
+  const 보이는확인사항 = useMemo(() => adjustmentRequests.filter(r => {
+    const 끝났나 = r.status === 'processed' || r.status === 'rejected';
+    if (!끝났나 || !r.processedAt) return true;
+    return new Date(r.processedAt).getTime() >= 하루전;
+  }), [adjustmentRequests, 하루전]);
 
-  // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
-  // Firestore에 초기화 날짜를 저장해 모든 기기에서 하루 1회만 실행
+  //  전표가 끊기고 하루 지난 선입고 이력은 안 보인다.
+  //  OEM 배치는 계속 보인다 — 보낸 원료·받은 완제품·로스(수율)를 들고 있어야 한다.
+  const 보이는입고이력 = useMemo(() => receivedOrders.filter(po => {
+    if (po.poType === 'oem' || !po.linkedStatementId) return true;
+    const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
+    return !at || new Date(at).getTime() >= 하루전;
+  }), [receivedOrders, issuedStatements, 하루전]);
+
+  /**
+   * 날짜가 바뀐 뒤 첫 접속에 작업순서를 비운다(주문 자료는 그대로).
+   *
+   * **다 지운 뒤에만 날짜를 적는다.** 예전엔 `Promise.all` 을 기다리지 않고 곧바로
+   * `lastResetDate` 를 오늘로 썼다. 일부가 안 지워져도 그날은 **다시 시도하지 않아**
+   * 어제 작업순서가 남은 채 하루를 갔다.
+   *
+   * **한 기기만 돌게 트랜잭션으로 자리를 잡는다.** 여러 기기가 같이 열면 셋 다 같은 삭제를
+   * 되풀이했다. 날짜 도장을 트랜잭션에서 먼저 찍고, 찍은 기기만 지운다.
+   * 지우다 실패하면 도장을 되돌려 다음 기기가 이어받는다.
+   */
   useEffect(() => {
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
     const resetRef = doc(db, 'appMeta', 'workOrderReset');
-    getDoc(resetRef).then(snap => {
-      const lastReset = snap.exists() ? snap.data().date : null;
-      if (lastReset !== today) {
-        getDocs(collection(db, 'workOrderItems')).then(snap => {
-          Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+    (async () => {
+      try {
+        const 내차례 = await runTransaction(db, async (tx: Transaction) => {
+          const snap = await tx.get(resetRef);
+          if ((snap.exists() ? snap.data().date : null) === today) return false;
+          tx.set(resetRef, { date: today });
+          return true;
         });
-        setDoc(resetRef, { date: today });
+        if (!내차례) return;
+        const snap = await getDocs(collection(db, 'workOrderItems'));
+        await Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+      } catch (e) {
+        //  못 지웠으면 도장을 물러 다음 기기가 이어받게 한다. 조용히 넘기면 어제 것이 하루 남는다.
+        console.error('[작업순서 초기화] 실패 — 도장을 되돌린다:', e);
+        try { await setDoc(resetRef, { date: '' }); } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
       }
-    });
+    })();
   }, []);
+
+  /**
+   * **앱을 열 때 이 폰의 푸시 표를 받아 둔다.**
+   *
+   * 전에는 마이페이지에서만 받았다. 그래서 **마이페이지를 한 번도 안 연 사람은 표가 없어
+   * 앱을 닫으면 알림이 아예 안 왔다** — 실제로 10명 중 4명이 표가 없었고, 그중 이은경 상무는
+   * 새 주문 알림을 받아야 하는 사람이었다(2026-09-09 확인).
+   *
+   * 권한이 이미 켜져 있을 때만 받는다 — **여기서 권한을 묻지 않는다.** 묻는 자리는
+   * 마이페이지 하나다(자동으로 물으면 그냥 닫아 버려 'default' 로 남고 매번 다시 뜬다).
+   *
+   * 표는 가끔 바뀐다(앱 재설치·기기 초기화). 열 때마다 받아 두면 저절로 갱신된다 —
+   * 같은 표를 또 담아도 `arrayUnion` 이 한 번만 넣는다.
+   */
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    pushSupported()
+      .then(ok => { if (ok) return registerPush(currentUser.id); })
+      .catch(() => { /* 알림이 안 되는 브라우저 — 앱은 그대로 굴러가야 한다 */ });
+  }, [currentUser?.id]);
 
   /*  **새 주문이 들어오면 폰으로 알린다**(2026-09-03 사장님).
    *  주문 문서를 직접 본다 — 알림 문서(`notifications`)는 관리자 앱이 넣을 때만 쓰이고,
@@ -971,10 +1038,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
 
     // 원료 홀더(벌크·1kg포 등) 부족 체크 — 원료식 kg 기준 (로트 합계 우선)
-    const isRawHolderItem = (i: Item) => isBulkItem(i);
     const round1 = (n: number) => Math.round(n * 10) / 10;
     for (const [material, neededKg] of Object.entries(rawUsageKg)) {
-      const holder = allItems.find(i => isRawHolderItem(i) && baseRawName(i.name) === material);
+      const holder = rawHolderByName(allItems, material);
       if (!holder) continue;
       const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
       if (neededKg <= stockKg) continue;
@@ -1276,9 +1342,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
-    const holder = allItems.find(i => !i.phantom && !i.archived
-      && isBulkItem(i)
-      && baseRawName(i.name) === material);
+    const holder = rawHolderByName(allItems, material);
     if (!holder) return 0;
     return holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
   };
@@ -1455,7 +1519,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   };
 
+  /**
+   * 주문 품목 고치기.
+   *
+   * **재고가 이미 움직인 주문은 막는다**(2026-09-09). 전에는 `items` 만 덮어썼고
+   * 재고·로트는 손도 안 댔다 — 그래서 200으로 출고된 뒤 20으로 고치면 로트에서는
+   * 200이 빠진 채 남았다(무경유통 볶음참깨, 2,000kg). 아무 표시도 안 났다.
+   *
+   * 여기서 차이를 계산해 재고를 손보지 않는다 — 되돌리기(reconcileOrderStock)와 두 벌이 되고
+   * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
+   */
   const handleUpdateItems = (orderId: string, items: OrderItem[]) => {
+    const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
+    if (!canEditItems(o)) { alert(editBlockMessage(o)); return; }
     updateItem('orders', orderId, { items });
   };
 
@@ -2060,97 +2136,138 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setCurrentView('trade-statement');
               }}
               rawMaterialLedger={mergedRawMaterialLedger}
+              linesUsingRaw={linesUsingRaw}
               
               onAddRawMaterialEntry={async (entry) => {
-                await addItem('rawMaterialLedger', entry);
-                // 수율 파생 입고 자동 추가 — 규칙은 item_formula 데이터(yieldRules)에서 읽음(하드코딩 폴백).
-                //   참깨/들깨/깨분: 압착 사용 시 파생 오일 자동 생성. 볶음(볶음참깨/볶음들깨)은 수동 입력.
-                // 수율 자동입고는 '실제 사용(압착)'에만 — 재고실사/조정/로트삭제 등 correction은 제외.
-                //   (예전엔 note==='재고실사정정'만 막아 다른 note의 실사조정이 phantom 입고를 만들었음)
-                if (entry.used > 0 && yieldRules[entry.material] && entry.type !== 'correction') {
-                  const { product, rate } = yieldRules[entry.material];
-                  // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
-                  const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
-                  await addItem('rawMaterialLedger', {
-                    id: `rm-yield-${Date.now()}`,
-                    material: product,
-                    date: entry.date,
-                    received: derivedKg,
-                    used: 0,
-                    note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
-                    createdAt: new Date().toISOString(),
-                    //  파생입고는 원본 사용 줄을 넣은 사람이 만든 것이다 — 이름을 물려준다
-                    ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
-                    type: 'auto', // 자동 파생 — 수불부 표시 파생행과 이중계상 방지 판별에도 사용
-                    unit: 'kg', // canonical
-                  });
-                  // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
-                  const derivedRaw = allItems.find(i => isBulkItem(i) && baseRawName(i.name) === product);
-                  if (derivedRaw && derivedKg > 0) {
-                    const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
-                    try {
-                      await mutateRawMaterialLots(
-                        derivedRaw.id,
-                        (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, product), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }]),
-                        (lots) => lotStockInUnit(lots, product),
-                      );
-                    } catch (err) {
-                      console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
-                    }
-                    /**
-                     * **쓰고 나서 되읽어 대조한다.** 위 catch는 던져진 실패만 잡고 콘솔에만 찍는다 —
-                     * 아무도 안 보고, 원장만 늘어난 채로 몇 주 뒤에 "왜 안 맞냐"로 만난다.
-                     * 순서를 바꾸는 걸로는 못 막는다(로트가 실패하면 일은 어차피 날아간다).
-                     */
-                    const gap = await checkLedgerLot(db, derivedRaw.id, product, derivedRaw.density ?? 1);
-                    if (gap) {
-                      console.warn(`[원장·로트 불일치] ${gapMessage(gap)}`);
-                      alert(`⚠ ${gapMessage(gap)}
+                /**
+                 * **손입력·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+                 *
+                 * 예전엔 여기서 원장만 쓰고, 로트는 부르는 화면(ItemList)이 **따로** 썼다.
+                 * 로트 쓰기가 실패하면 `catch` 가 삼키고 토스트만 띄웠다 — 원장만 남았다.
+                 * 이제 둘이 같이 성공하거나 같이 실패한다.
+                 *
+                 * **작업 id 는 `entry.id`** 다. 모달이 한 번 만든 값이라 재시도해도 같고,
+                 * 그래서 같은 저장을 두 번 눌러도 수량은 한 번만 움직인다(§7).
+                 *
+                 * 소급 입력(마지막 실사보다 앞선 날짜) 판정도 명령 안에서 한다 —
+                 * 화면이 들고 있는 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
+                 */
+                const 홀더 = rawHolderByName(allItems, entry.material, entry.companyId ?? companyId);
+                if (!홀더) return { ok: false, reason: `원료 홀더를 못 찾았다: ${entry.material}` };
 
-압착 입고가 한쪽에만 반영됐을 수 있습니다. 실사로 맞춰 주세요.`);
+                const 공통 = {
+                  ...rawLedgerKeys(홀더),
+                  materialSnapshot: entry.material,
+                  effectiveAt: entry.targetKg != null
+                    ? new Date().toISOString()
+                    : (entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`),
+                  ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
+                };
+                const 옛칸 = {
+                  ...(entry.note ? { note: entry.note } : {}),
+                  ...(entry.type ? { type: entry.type } : {}),
+                  ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
+                  ...(entry.canSize ? { canSize: entry.canSize, canCount: entry.canCount } : {}),
+                  ...(entry.canSizeTag ? { canSizeTag: entry.canSizeTag } : {}),
+                  ...(entry.originalAmount != null ? { originalAmount: entry.originalAmount } : {}),
+                  ...(entry.originalUnit ? { originalUnit: entry.originalUnit } : {}),
+                };
+
+                //  실사(targetKg)가 먼저다 — 잔량을 그 값으로 다시 잡는 앵커라 입고·사용과 다르다.
+                const 명령 = entry.targetKg != null
+                  ? { ...공통, operationId: entry.id, source: { type: 'stocktake' as const, id: entry.id }, kind: 'stocktake' as const, targetKg: entry.targetKg }
+                  : (entry.received ?? 0) > 0
+                    ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'receive' as const, kg: entry.received, lot: { supplierName: entry.note?.trim() || '직접입고', qtyIn: entry.canCount ?? 0, packageKg: entry.canSize, packageType: entry.canSizeTag } }
+                    : (entry.used ?? 0) > 0
+                      ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume' as const, kg: entry.used, ...(홀더.mixEnabled ? { mix: { topPercent: 홀더.mixTopPercent ?? 50 } } : {}) }
+                      : null;
+                if (!명령) return { ok: false, reason: '수량이 0이다' };
+
+                const r = await executeRawInventoryCommand(명령, {
+                  newLotId: `lot-${entry.id}`, carryOverLotId: `carry-${entry.id}`, legacy: 옛칸,
+                });
+                if (r.status === 'rejected') return { ok: false, reason: r.message };
+                if (r.status === 'conflict') return { ok: false, reason: '같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.' };
+                const applied = r.status === 'applied' ? r.movement.appliedDeltaKg : 0;
+
+                /**
+                 * 수율 파생 입고 — 압착하면 기름이 나온다. 규칙은 `item_formula`(yieldRules).
+                 * **실제 사용(압착)에만** 붙인다. 실사·정정(correction)은 실물이 안 움직인 것이라 뺀다.
+                 * 소급이라 재고가 안 움직였으면(applied 0) 기름도 안 나온다.
+                 */
+                if ((entry.used ?? 0) > 0 && yieldRules[entry.material] && entry.type !== 'correction' && applied !== 0) {
+                  const { product, rate } = yieldRules[entry.material];
+                  const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
+                  const 파생홀더 = rawHolderByName(allItems, product, companyOf(홀더));
+                  if (파생홀더 && derivedKg > 0) {
+                    const 파생id = `yield:${entry.id}`;
+                    const dr = await executeRawInventoryCommand({
+                      operationId: 파생id,
+                      ...rawLedgerKeys(파생홀더),
+                      materialSnapshot: product,
+                      effectiveAt: entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`,
+                      ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
+                      source: { type: 'manual', id: entry.id },
+                      kind: 'receive',
+                      kg: derivedKg,
+                      lot: { supplierName: `${entry.material} 압착`, qtyIn: 0 },
+                    }, {
+                      newLotId: `lot-${파생id}`,
+                      legacy: {
+                        note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
+                        type: 'auto',
+                        ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
+                      },
+                    });
+                    //  파생이 실패해도 본 사용은 이미 들어갔다. 조용히 넘기지 않고 알린다(§14).
+                    if (dr.status === 'rejected' || dr.status === 'conflict') {
+                      const 이유 = dr.status === 'rejected' ? dr.message : '같은 작업 번호의 내용이 다릅니다.';
+                      alert(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${이유}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
                     }
                   }
                 }
-                setLedgerReloadKey(k => k + 1);   // 전역 구독 제거 → 원장 화면 재조회로 반영
+                return { ok: true, appliedKg: applied };
               }}
-              // 실제 원장 줄을 지우면 **로트도 같이 되돌린다.** 한쪽만 지우면 잔량과 로트가 그만큼 영구히 벌어진다.
-              //  (주문 되돌리기는 restoreRawLotsForOrder가 이미 둘을 같이 처리한다 — 손입력 줄만 빠져 있었다)
-              //  실사(targetKg) 줄도 마찬가지다 — targetKg는 잔량 앵커지만 그 줄의 received/used는
-              //  로트를 실제로 움직인 양이다. 앵커라고 건너뛰면 로트만 조정된 채 남아 또 벌어진다.
-              //  단, 그 줄 **뒤에 실사(앵커)가 있으면 로트를 건드리지 않는다.** 실사가 로트를 그 값으로
-              //  이미 덮어썼으니, 그보다 앞선 움직임을 이제 와서 되돌리면 이중으로 반영된다.
-              //  잔량도 앵커에 묶여 안 바뀌므로, 로트를 그대로 두는 쪽이 둘을 같이 유지한다.
               onDeleteRawMaterialEntry={async (id) => {
+                /**
+                 * **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9, 2026-09-10 원자화 5단계).
+                 *
+                 * 예전엔 `adjustRawLots` 로 로트를 손으로 되돌리고 `deleteItem` 으로 원장 줄을
+                 * 지웠다 — 감사가 사라지고 서로 다른 취소가 원본을 두 번 되돌릴 수 있었다.
+                 * 이제 원본 `operationId` 에 `reverse` 명령을 보내면 서비스가 `ReversalGuard` 로
+                 * 두 번째 취소를 막고, 이력·상태·품목을 한 트랜잭션에 갱신한다.
+                 */
                 const entry = mergedRawMaterialLedger.find(e => e.id === id);
-                const ordered = sortLedger(mergedRawMaterialLedger.filter(e => e.material === entry?.material));
-                const at = ordered.findIndex(e => e.id === id);
-                const anchoredLater = at >= 0 && ordered.slice(at + 1).some(e => e.targetKg != null);
-                if (entry && !anchoredLater) {
-                  const deltaKg = (entry.used ?? 0) - (entry.received ?? 0);   // 지우면 반대 방향으로
-                  const holder = allItems.find(i => isBulkItem(i) && !i.phantom && baseRawName(i.name) === entry.material);
-                  if (holder && Math.abs(deltaKg) > 0.0001) {
-                    try {
-                      await adjustRawLots({
-                        material: entry.material, rawItemId: holder.id, deltaKg,
-                        date: today(),
-                        note: `원장 기록 삭제 되돌림 (${entry.note ?? ''})`.trim(),
-                        addedBy: currentUser?.name,
-                        ledger: false,   // 원장 줄은 아래에서 지운다 — 여기서 또 쓰면 지운 자리에 새 줄이 생긴다
-                      });
-                    } catch (e) {
-                      // 로트를 못 되돌렸으면 원장도 그대로 둔다 — 지웠다간 둘이 갈린다
-                      console.error('[원장 삭제] 로트 되돌리기 실패 — 삭제를 중단합니다:', id, e);
-                      alert('로트를 되돌리지 못해 기록을 삭제하지 않았습니다.\n재고가 어긋나는 것을 막기 위한 것입니다. 잠시 후 다시 시도해 주세요.');
-                      return;
-                    }
-                  }
-                }
-                await deleteItem('rawMaterialLedger', id);
+                if (!entry) return;
+                const original = (entry as { operationId?: string }).operationId;
+                if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
+                const holder = resolveRawHolder(allItems, {
+                  rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
+                });
+                if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
+                const opId = `reverse:${original}`;
+                const r = await executeRawInventoryCommand({
+                  operationId: opId,
+                  ...rawLedgerKeys(holder),
+                  materialSnapshot: entry.material,
+                  effectiveAt: new Date().toISOString(),
+                  ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                  source: { type: 'reversal', id: original },
+                  kind: 'reverse', originalOperationId: original,
+                }, {
+                  legacy: {
+                    note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
+                    type: 'correction',
+                    ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
+                  },
+                });
+                if (r.status === 'rejected') { alert(`취소 실패 — ${r.code}: ${r.message}`); return; }
+                if (r.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
                 setLedgerReloadKey(k => k + 1);
               }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              receivedOrders={receivedOrders}
+              receivedOrders={보이는입고이력}
               returnBadge={returnRequests.filter(r => r.status === 'pending').length}
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
@@ -2455,10 +2572,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'admin-checklist' && (
             <AdminChecklist
               leaveRequests={leaveRequests}
-              adjustmentRequests={adjustmentRequests}
+              adjustmentRequests={보이는확인사항}
               employees={employees}
               returnRequests={returnRequests}
-              receivedOrders={receivedOrders}
+              receivedOrders={보이는입고이력}
               partners={partners}
               issuedStatements={issuedStatements}
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
@@ -2952,7 +3069,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   order.items.forEach(item => {
                                     const p = allItems.find(pr => pr.id === item.itemId);
                                     // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                                    for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                                    for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
                                       if (line.품목 !== cat) continue;
                                       if (!dayMap[day]) dayMap[day] = [];
                                       const existing = dayMap[day].find(r => r.spec === line.spec);
@@ -3363,7 +3480,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       }
                       g.currentBalance = balance;           // 그 묶음 마지막 잔량
                       //  누가·어디는 재고 원장 화면(RawLedgerList)과 **같은 함수**가 푼다
-                      const tr = ledgerTrace(e, orderById);
+                      const tr = ledgerTrace(e, orderById, linesUsingRaw);
                       if (tr.note) g.notes.push(tr.note);
                       if (tr.who) g.who.add(tr.who);
                       if (tr.where) g.wheres.add(tr.where);
@@ -3528,9 +3645,40 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                       )}
                                       {row.delId && (
                                         <button
-                                          onClick={async () => { if (confirm('삭제할까요?')) { await deleteItem('rawMaterialLedger', row.delId!); setLedgerReloadKey(k => k + 1); } }}
+                                          onClick={async () => {
+                                            //  **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9).
+                                            //  같은 취소가 두 번 눌려도 `ReversalGuard` 가 막는다.
+                                            if (!confirm('이 기록을 취소할까요? (지우지 않고 뒤에 취소 줄이 쌓입니다)')) return;
+                                            const entry = mergedRawMaterialLedger.find(e => e.id === row.delId);
+                                            if (!entry) return;
+                                            const original = (entry as { operationId?: string }).operationId;
+                                            if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
+                                            const holder = resolveRawHolder(allItems, {
+                                              rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
+                                            });
+                                            if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
+                                            const opId = `reverse:${original}`;
+                                            const cr = await executeRawInventoryCommand({
+                                              operationId: opId,
+                                              ...rawLedgerKeys(holder),
+                                              materialSnapshot: entry.material,
+                                              effectiveAt: new Date().toISOString(),
+                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                                              source: { type: 'reversal', id: original },
+                                              kind: 'reverse', originalOperationId: original,
+                                            }, {
+                                              legacy: {
+                                                note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
+                                                type: 'correction',
+                                                ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
+                                              },
+                                            });
+                                            if (cr.status === 'rejected') { alert(`취소 실패 — ${cr.code}: ${cr.message}`); return; }
+                                            if (cr.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
+                                            setLedgerReloadKey(k => k + 1);
+                                          }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors"
-                                        >삭제</button>
+                                        >취소</button>
                                       )}
                                     </div>
                                   </td>
@@ -3573,58 +3721,47 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
                                             const baseNote = rmCorrectionForm.note
                                               || (isStocktake ? '수불부 실사정정' : `정정 (원본: ${row.id})`);
-                                            await addItem('rawMaterialLedger', {
-                                              id: isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`,
-                                              material: rmActiveMaterial,
-                                              date: rmCorrectionForm.date,
-                                              received: 0,
-                                              // 실사는 잔량을 targetKg로 리셋(앵커)하므로 used는 0 — 입고·사용 합계도 안 건드린다.
-                                              used: isStocktake ? 0 : correctionUsed,
-                                              ...(isStocktake ? { targetKg: amtKg } : {}),
+                                            /**
+                                             * **정정·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+                                             *
+                                             * 예전엔 원장 줄을 먼저 쓰고 `mutateRawMaterialLots` 로 로트를 따로 맞췄다.
+                                             * 뒤가 실패하면 원장만 남았다. 이제 둘이 같이 성공하거나 같이 실패한다.
+                                             *
+                                             * 소급 판정(앵커보다 앞선 날짜)도 명령 안에서 한다 — 화면이 든 배열이 아니라
+                                             * **트랜잭션에서 읽은 상태**의 실사 정보로 본다(§10).
+                                             */
+                                            const 정정홀더 = rawHolderByName(allItems, rmActiveMaterial, companyId);
+                                            if (!정정홀더) { alert(`원료 홀더를 못 찾았다: ${rmActiveMaterial}`); return; }
+                                            const opId = isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`;
+                                            const 공통정정 = {
+                                              operationId: opId,
+                                              ...rawLedgerKeys(정정홀더),
+                                              materialSnapshot: rmActiveMaterial,
+                                              effectiveAt: isStocktake
+                                                ? new Date().toISOString()
+                                                : (rmCorrectionForm.date === today() ? new Date().toISOString() : `${rmCorrectionForm.date}T12:00:00+09:00`),
+                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
+                                            };
+                                            const 정정옛칸 = {
                                               note: baseNote + inputTag,
-                                              createdAt: new Date().toISOString(),
+                                              type: 'correction' as const,
                                               ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
-                                              type: 'correction',
-                                              unit: 'kg',
                                               originalAmount: amt,
-                                              originalUnit: inputUnit,
+                                              originalUnit: inputUnit as 'kg' | 'L',
+                                            };
+                                            //  실사는 목표 절대값으로 맞추는 앵커, 정정은 그 수량만큼 증감(used 양수 = 재고 감소).
+                                            const 정정명령 = isStocktake
+                                              ? { ...공통정정, source: { type: 'stocktake' as const, id: opId }, kind: 'stocktake' as const, targetKg: amtKg }
+                                              : correctionUsed > 0
+                                                ? { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'consume' as const, kg: correctionUsed }
+                                                : { ...공통정정, source: { type: 'adjustment' as const, id: opId }, kind: 'receive' as const, kg: -correctionUsed, lot: { supplierName: '정정', qtyIn: 0 } };
+                                            const cr = await executeRawInventoryCommand(정정명령, {
+                                              newLotId: `lot-${opId}`, carryOverLotId: `carry-${opId}`, legacy: 정정옛칸,
                                             });
-                                            // 원장(rawMaterialLedger)과 로트는 한 몸이다 — 갈라지면 안 된다.
-                                            // 여기서 정정·실사를 찍으면 로트도 같은 값으로 맞춘다.
-                                            // (서류인 원료수불부만 따로 굴러간다 — 수율 파생·등급 분리는 표시 단계에서 처리)
-                                            const rawHolder = allItems.find(i =>
-                                              isBulkItem(i)
-                                              && baseRawName(i.name) === rmActiveMaterial);
-                                            // 앵커 이전 날짜의 '정정'은 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 이중차감이 된다.
-                                            //   (실사는 앵커를 새로 박는 것이므로 이 규칙에서 뺀다)
-                                            //   rawLedgerBalance.ts의 latestAnchorDate 주석 참고.
-                                            const matLedger = mergedRawMaterialLedger.filter(e => e.material === rmActiveMaterial);
-                                            const skipLots = !isStocktake && isBackdated(matLedger, rmCorrectionForm.date);
-                                            if (skipLots) {
-                                              alert(`${latestAnchorDate(matLedger)} 실사 이전 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.`);
-                                            }
-                                            if (rawHolder && !skipLots) {
-                                              await mutateRawMaterialLots(
-                                                rawHolder.id,
-                                                (lots, stock) => {
-                                                  const withCarry = withCarryOverLot(lots, stock, rmActiveMaterial);
-                                                  // 실사 = 목표 절대값으로 맞춤 / 정정 = 그 수량만큼 증감
-                                                  const deltaKg = isStocktake
-                                                    ? Math.round((amtKg - lotKgRemaining(withCarry)) * 1000) / 1000
-                                                    : -correctionUsed;   // used 양수 = 재고 감소
-                                                  if (deltaKg > 0.001) {
-                                                    const lot = buildReceiveLot({
-                                                      material: rmActiveMaterial,
-                                                      supplierName: isStocktake ? '실사조정' : '정정',
-                                                      qtyIn: 0, kgIn: deltaKg, receivedDate: rmCorrectionForm.date,
-                                                    });
-                                                    return settleCarryOver([...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }]);
-                                                  }
-                                                  if (deltaKg < -0.001) return deductFromLots(withCarry, -deltaKg).lots;
-                                                  return withCarry;
-                                                },
-                                                (lots) => lotStockInUnit(lots, rmActiveMaterial),
-                                              );
+                                            if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.message}`); return; }
+                                            if (cr.status === 'conflict') { alert('정정 실패 — 같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
+                                            if (cr.status === 'applied' && cr.movement.backdatedBeforeStocktake) {
+                                              alert('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
                                             }
                                             setRmCorrectionTargetId(null);
                                             setLedgerReloadKey(k => k + 1);
@@ -3686,7 +3823,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       order.items.forEach(item => {
                         const p = allItems.find(pr => pr.id === item.itemId);
                         // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
                           if (line.품목 !== productionWorkCat) continue;
                           if (!dayMap[day]) dayMap[day] = [];
                           const existing = dayMap[day].find(r => r.spec === line.spec);
@@ -4425,7 +4562,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4445,7 +4582,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4559,13 +4696,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
             } catch (e) {
               if ((e as Error).message !== '__skip_bom__') console.error('[품목 저장] item_bom 동기화 실패:', e);
             }
-            // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
-            try {
-              await setProductClients(p.id, p.partnerIds ?? []);
-            } catch (e) {
-              console.error('[품목 저장] 거래처 매핑 저장 실패 (품목 자체는 저장됨):', e);
-              alert('품목은 저장됐지만, 거래처 연결 저장은 실패했습니다 (읽기 한도 등).\n거래처 연결은 잠시 후 다시 시도해 주세요.');
-            }
+            // 매출 거래처 연결은 품목관리의 연결/해제 동작만 고친다.
+            // 품목 모달 payload에는 옛 partnerIds가 없어서 여기서 전체 동기화하면
+            // 이름·규격만 저장해도 기존 partner_item(out)이 전부 삭제된다.
             setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 

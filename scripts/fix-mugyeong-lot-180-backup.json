@@ -1,0 +1,65 @@
+{
+  "적은날": "2026-09-09T07:23:09.111Z",
+  "item": {
+    "id": "p-1785907900413",
+    "stock": -163,
+    "lots": [
+      {
+        "material": "볶음참깨",
+        "qtyIn": 21,
+        "status": "active",
+        "kgIn": 210,
+        "receivedDate": "2026-08-28",
+        "qtyRemaining": -158,
+        "createdAt": "2026-08-28T00:02:10.496Z",
+        "unitKg": 10,
+        "kgRemaining": -1580,
+        "supplierName": "이월",
+        "id": "lot-carry-볶음참깨-1787875330496"
+      },
+      {
+        "supplierId": "c-1775615990718",
+        "lotNo": "260828-02",
+        "unitKg": 10,
+        "material": "볶음참깨",
+        "createdAt": "2026-08-28T00:02:10.496Z",
+        "status": "depleted",
+        "supplierName": "푸미푸드",
+        "qtyIn": 41,
+        "receivedDate": "2026-08-28",
+        "poId": "oem-1787120076171",
+        "kgIn": 410,
+        "kgRemaining": 0,
+        "id": "lot-p-1785907900413-1787875330496-uiij",
+        "qtyRemaining": 0
+      }
+    ]
+  },
+  "order": {
+    "id": "ORD-1788478345603",
+    "productConsumedLots": [
+      {
+        "itemId": "p-1785907900413",
+        "qty": 4,
+        "receivedDate": "2026-08-28",
+        "material": "볶음참깨",
+        "lotId": "lot-carry-볶음참깨-1787875330496"
+      },
+      {
+        "lotNo": "260828-02",
+        "itemId": "p-1785907900413",
+        "receivedDate": "2026-08-28",
+        "material": "볶음참깨",
+        "lotId": "lot-p-1785907900413-1787875330496-uiij",
+        "qty": 41
+      },
+      {
+        "receivedDate": "2026-08-28",
+        "lotId": "lot-carry-볶음참깨-1787875330496",
+        "itemId": "p-1785907900413",
+        "qty": 155,
+        "material": "볶음참깨"
+      }
+    ]
+  }
+}

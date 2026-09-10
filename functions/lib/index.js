@@ -294,10 +294,18 @@ exports.notifyNewOrder = (0, firestore_1.onDocumentCreated)({ region: REGION, do
         .filter(d => d.id !== 넣은사람)
         .map(d => { var _a; return ({ id: d.id, tokens: ((_a = d.data().fcmTokens) !== null && _a !== void 0 ? _a : []) }); })
         .filter(x => x.tokens.length);
+    /*
+     *  **주문마다 따로 쌓인다**(2026-09-09 사장님). 전에는 `tag` 가 다 `'new-order'` 라
+     *  뒤에 온 알림이 앞의 것을 **덮어썼다** — 앱을 닫아 둔 사이 3건이 들어와도
+     *  폰에는 마지막 1건만 남고, 3건이었다는 것도 알 수 없었다.
+     *
+     *  주문 하나하나가 따로 처리할 일이라 따로 남아야 한다.
+     *  (오피스톡은 그대로 방마다 하나다 — 같은 방 이야기는 묶이는 게 맞다)
+     */
     await 밀기(받을, {
         title: '🧾 신규 주문',
         body: `${(_c = order.partnerName) !== null && _c !== void 0 ? _c : '거래처'} 주문이 들어왔습니다.`,
-        tag: 'new-order', view: 'orders',
+        tag: `new-order:${event.params.orderId}`, view: 'orders',
     }, 'notifyNewOrder');
 });
 // ─────────────────────────────────────────────────────────────────────────

@@ -15,10 +15,11 @@ import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/cos
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf, CategoryChip } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { priceParts } from '../src/shared/lineAmount';
+import { marginFromSupply, ratePct } from '../src/shared/margin';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import FilterRow from '../src/shared/ui/FilterRow';
-import { partnersOfItem, isLinkedToPartner } from '../src/shared/partnerPrice';
+import { partnersOfItem, isLinkedToPartner, partnerNamesByItem } from '../src/shared/partnerPrice';
 
 interface ItemManagerProps {
   items: Item[];
@@ -383,6 +384,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
   const selectedClient = selectedClientId ? partners.find(c => c.id === selectedClientId) : null;
 
+  /*  **거래처 이름 표를 미리 만든다** — 검색은 이 표만 본다.
+   *  전에는 한 글자마다 품목×거래처×거래처단가(2억 번)를 돌아서 타이핑이 밀렸다. */
+  const 거래처이름표 = useMemo(
+    () => partnerNamesByItem(partnerItems, partners), [partnerItems, partners]);
+
   const filteredItems = useMemo(() => {
     const isByClientPurchase = mainView === 'by-partner' && partnerScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
@@ -408,7 +414,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       if (mainView === 'flat') {
         result = result.filter(p =>
           p.name.toLowerCase().includes(term) ||
-          partners.some(c => isLinkedToPartner(partnerItems, c.id, p.id) && c.name.toLowerCase().includes(term))
+          (거래처이름표.get(p.id) ?? '').includes(term)
         );
       } else {
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
@@ -420,7 +426,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       const d = catOrder(categoryOf(a)) - catOrder(categoryOf(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
-  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
+  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -693,7 +699,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             {pagedItems.length === 0 ? (
               <p className="py-16 text-center text-slate-400 font-medium text-sm">이 거래처에 연결된 품목이 없습니다.</p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              //  **한 행에 하나만 둔다**(2026-09-09 사장님). 셋씩 늘어놓으면 카드가 좁아져
+              //  원가·공급가·판매단가가 서로 밀려 붙는다 — 견주려고 나란히 둔 값들인데.
+              <div className="grid grid-cols-1 gap-2">
                 {(() => {
                   // 낱개 + 그 박스들을 한 카드로 묶는다(주문 생성과 같은 방식).
                   //   · 박스만 연결돼 있으면 그 박스가 앵커가 된다
@@ -741,9 +749,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-50 flex-wrap">
                         {/* 원가 · 판매단가 — 표에서 쓰던 것과 같은 동작(관리자만) */}
                         <div className="flex items-center gap-1.5 min-w-0">
+                          {/*  **셋의 글씨 크기를 맞춘다**(2026-09-09 사장님) — 서로 견주는 값이라
+                               크기가 다르면 어느 게 큰 값인지 눈이 먼저 속는다. 이름표만 옅게 둔다. */}
                           {isAdmin && (
                             <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
-                              원가 {item.cost != null ? item.cost.toLocaleString() : '-'}
+                              <span className="text-slate-300">원가</span> {item.cost != null ? item.cost.toLocaleString() : '-'}
                             </span>
                           )}
                           {isAdmin && partnerScopeTab === 'sales' && (() => {
@@ -767,14 +777,31 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 {/*  **원가 › 공급가 › 판매단가** 차례로 둔다(2026-09-06 사장님).
                                      왼쪽 원가와 곧바로 견줄 값이 공급가라 그 둘이 붙어야 읽힌다 —
                                      판매단가는 세포함이라 원가와 나란히 두면 마진이 부풀어 보인다. */}
+                                {/*  **원가 › 공급가 (마진율) › 판매단가** 차례다(2026-09-09 사장님).
+                                     마진은 원가와 공급가를 견준 값이라 그 둘 사이에 있어야 읽힌다 —
+                                     판매단가는 세포함이라 원가와 나란히 두면 마진이 부풀어 보인다. */}
                                 {(() => {
                                   if (curPrice == null) return null;
                                   const pp = priceParts(curPrice, psOut?.taxType === '면세');
-                                  return pp.showSupply
-                                    ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
-                                    : null;
+                                  const m = item.cost != null && item.cost > 0
+                                    ? marginFromSupply(pp.supply, item.cost) : null;
+                                  return (
+                                    <>
+                                      {pp.showSupply && (
+                                        <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
+                                          <span className="text-slate-300">공급가</span> {pp.supply.toLocaleString()}
+                                        </span>
+                                      )}
+                                      {m && (
+                                        <span className={`text-[11px] font-black whitespace-nowrap ${
+                                          m.marginRate < 0 ? 'text-rose-500' : m.marginRate < 0.1 ? 'text-amber-500' : 'text-emerald-600'}`}>
+                                          {ratePct(m.marginRate, 0)}
+                                        </span>
+                                      )}
+                                    </>
+                                  );
                                 })()}
-                                <span className={curPrice != null ? 'text-slate-700' : 'text-slate-300'}>
+                                <span className={`text-[11px] ${curPrice != null ? 'text-slate-700' : 'text-slate-300'}`}>
                                   {curPrice != null ? Number(curPrice).toLocaleString() : '미설정'}
                                 </span>
                                 <Edit size={11} className="text-slate-400 shrink-0" />

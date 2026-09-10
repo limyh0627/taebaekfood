@@ -4,6 +4,8 @@ import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { RotateCcw } from 'lucide-react';
 import {
+  Link2,
+  Unlink,
   Plus,
   Clock,
   CalendarDays,
@@ -48,6 +50,9 @@ import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { CHIP_NEUTRAL as SUB_CHIP_NEUTRAL, subChipClass } from '../src/shared/submaterialStyle';
+import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
+import { itemIndexOf } from '../src/shared/workItemLine';
+import { clusterByGroup } from '../src/shared/rowGroup';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -266,8 +271,8 @@ interface OrdersListProps {
   onHighlightClear?: () => void;
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
-  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[]) => void;
+  workOrderItems?: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void;
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
   ordersMonths?: number;
@@ -724,66 +729,61 @@ export const OrderCard = memo<OrderCardProps>(({
               //  박스로 주문할 수 있느냐는 **개입수가 있느냐**로 정한다 —
               //  박스 품목은 BOM 이, 향미유·고춧가루는 포장 환산표가 답한다.
               //  예전엔 '향미유·고춧가루면'으로 갈래를 박아 둬서 다른 품목은 아예 못 골랐다.
-              const isOil = unitsPerBoxOf(editProductInfo) > 0;
+              /*
+               *  **낱개↔박스 토글은 없앴다**(2026-09-09 사장님: "수정화면에는 토글이 없이
+               *  그냥 박스면 박스다 낱개면 낱개다가 맞다").
+               *
+               *  박스로 받을지는 **주문을 넣을 때** 정해지는 것이지 나중에 뒤집을 일이 아니다.
+               *  끄는 쪽이 반쪽이라 사고가 났다 — 박스 20으로 넣은 뒤 낱개로 끄면 `isBoxUnit` 만
+               *  꺼지고 `quantity` 는 낱개(200)로 남아, 재고가 200을 박스로 읽었다(무경유통 2,000kg).
+               *  단위를 바꿔야 하면 줄을 지우고 다시 담는다.
+               */
               // 주문에 박힌 값 → 품목이 아는 개입수(BOM 아니면 포장 환산표)
               const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
-              const toggleBoxUnit = () => {
-                const newItems = [...order.items];
-                if (item.isBoxUnit) {
-                  newItems[idx] = { ...item, isBoxUnit: false, boxQuantity: undefined };
-                } else {
-                  const bq = qtyPerBox ? Math.max(1, Math.round(item.quantity / qtyPerBox)) : item.quantity;
-                  newItems[idx] = { ...item, isBoxUnit: true, boxQuantity: bq, unitsPerBox: qtyPerBox, quantity: qtyPerBox ? bq * qtyPerBox : bq };
-                }
-                onUpdateItems?.(order.id, newItems);
-              };
+              //  개입수를 아는 품목(박스 품목·향미유·고춧가루)에는 제조일자 칸을 안 띄운다
+              const 개입수있음 = unitsPerBoxOf(editProductInfo) > 0;
               return (
-                /* 보기 모드와 같은 '제목 열 + 값' 구조를 그대로 쓴다 — 값이 입력칸으로만 바뀐 것처럼 보여야
-                   편집에 들어갔을 때 어디가 무엇인지 다시 찾지 않는다. 전엔 라벨이 없어 날짜칸이
-                   '연도-월-일'로만 떠 무슨 날짜인지 알 수 없었다. */
-                <div key={idx} className="flex flex-col border-b border-slate-100 pb-3 last:border-0">
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-slate-800 text-sm md:text-xs font-bold leading-snug break-keep break-words flex-1 min-w-0">{editProductInfo && !editProductInfo.archived ? editProductInfo.name : item.name}</span>
-                    <button title="품목 빼기" onClick={() => handleRemoveItem(idx)} className="shrink-0 p-0.5 text-rose-400 hover:bg-rose-50 rounded transition-all"><Trash2 size={12} /></button>
-                  </div>
-                  <div className="mt-1 pl-[20px] flex flex-col gap-1">
-                    <div className="flex items-center gap-1">
-                      <span className={CARD_ROW_LABEL}>주문</span>
-                      {/* 향미유·고춧가루: 낱개/박스 토글 */}
-                      {isOil && (
-                        <button
-                          onClick={() => toggleBoxUnit()}
-                          className={`text-[10px] font-black ${CARD_CHIP} transition-all shrink-0 ${item.isBoxUnit ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : CHIP_NEUTRAL}`}
-                        >
-                          {item.isBoxUnit ? '박스' : '낱개'}
-                        </button>
-                      )}
-                      {item.isBoxUnit ? (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <input type="number" value={item.boxQuantity ?? 1} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
-                            className="w-10 text-center text-[10px] bg-white border border-slate-300 rounded-md outline-none focus:ring-1 focus:ring-indigo-300 font-black py-0.5" />
-                          <span className="text-[10px] font-bold text-slate-500">박스</span>
-                          {qtyPerBox ? <span className="text-[10px] font-bold text-slate-500">= {item.quantity}개</span> : null}
-                        </div>
-                      ) : (
+                <div key={idx} className="flex flex-col gap-1 text-[10px] font-bold border-b border-slate-50 pb-2 last:border-0">
+                  {/* **이름 → 규격 → 수량**을 한 줄에. 수량을 아래로 내리면 품목마다 두 줄이 되고,
+                      규격이 없으면 어느 규격의 수량인지 눈으로 안 갈린다. */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-800 text-[11px] leading-snug break-words min-w-0 flex-1">{item.name}</span>
+                    {/* 규격 — 벌크는 규격이 없다(자루째 kg으로 센다). spec에 '1kg'을 넣으면
+                        코드가 그걸 낱개 용량·개입수로 읽어 박스 계산이 어긋나므로 넣으면 안 된다.
+                        대신 '벌크'라고 적어 준다. 단위는 수량칸 옆에 따로 붙는다. */}
+                    {(editProductInfo?.spec || (editProductInfo && isBulkItem(editProductInfo))) && (
+                      <span className="text-[9px] font-bold text-slate-400 shrink-0">
+                        {editProductInfo?.spec || '벌크'}
+                      </span>
+                    )}
+                    {/*  박스로 받은 줄임을 **보여주기만** 한다 — 여기서 못 바꾼다.
+                         박스 품목은 품목 자체가 박스라 이 딱지가 안 붙는다. */}
+                    {item.isBoxUnit && (
+                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded border bg-indigo-100 border-indigo-300 text-indigo-700 shrink-0">
+                        박스
+                      </span>
+                    )}
+                    {item.isBoxUnit ? (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <input type="number" value={item.boxQuantity ?? 1} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                          className="w-8 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
+                        <span className="text-[8px] font-bold text-slate-400">박스</span>
+                        {qtyPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-0.5 shrink-0">
                         <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
-                          className="w-12 text-center text-[10px] bg-white border border-slate-300 rounded-md outline-none focus:ring-1 focus:ring-indigo-300 font-black py-0.5 shrink-0" />
-                      )}
-                    </div>
-                    {!isOil && (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className={CARD_ROW_LABEL}>제조일</span>
-                        <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
-                          className="text-[10px] bg-white border border-slate-300 rounded-md font-bold py-0.5 px-1.5 text-slate-700 outline-none focus:ring-1 focus:ring-indigo-300 cursor-pointer" />
-                        {/* 입력하는 자리에서 결과(소비기한)를 바로 보여준다 — 제조일 +365일 */}
-                        {item.mfgDate
-                          ? <span className="text-[10px] font-bold text-slate-500 tabular-nums">
-                              → 소비기한 {fmtYYMMDD(expiryFromMfgDate(item.mfgDate))}
-                            </span>
-                          : <span className="text-[10px] font-bold text-amber-600">-</span>}
+                          className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
+                        {/* 단위는 칸 **바깥**에 — 안에 넣으면 숫자와 겹쳐 읽힌다 */}
+                        <span className="text-[8px] font-bold text-slate-400">{editProductInfo?.unit || '개'}</span>
                       </div>
                     )}
+                    <button onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
+                  {!개입수있음 && (
+                    <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
+                      className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 cursor-pointer" />
+                  )}
                 </div>
               );
             })}
@@ -1580,13 +1580,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [activeDateFrom, setActiveDateFrom] = useState(() => `${seoulDateInput().slice(0, 7)}-01`);
   const [activeDateTo, setActiveDateTo] = useState(() => seoulDateInput());
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; };
+  type WorkItem = { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
     onSetWorkOrderItems?.(resolved);
   };
   const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
+  /** 같이 만들 것으로 고른 줄들 — 두 개 이상 골라야 묶을 수 있다 */
+  const [workGroupPick, setWorkGroupPick] = useState<string[]>([]);
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(() => new Set(['work-order']));
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
@@ -2058,10 +2060,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
           return o.items
             .map((item, idx) => ({
-              key: `${o.id}-${idx}`,
+              /*  **열쇠에 자리를 안 넣는다**(2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데").
+               *  이 줄은 Firestore 에 저장되는 **사본**이라, 주문에서 앞 품목을 지우면
+               *  자리 번호가 다른 품목을 가리킨다. 되찾는 이름은 **주문 쪽이 만든다** —
+               *  같은 품목이 두 줄이면 `참기름#1`·`참기름#2` 로 갈라진다(orderLine.lineKeyAt). */
+              key: `${o.id}-${lineKeyAt(o.items, idx)}`,
               orderId: o.id,
               itemId: item.itemId,
-              itemName: item.name,
+              lineKey: lineKeyAt(o.items, idx),
+              //  같은 품목이 두 줄이면 이름 뒤에 -1 · -2 가 붙는다. 주문카드와 같은 글자다.
+              itemName: `${item.name}${lineSuffix(o.items, idx)}`,
               partnerName,
               qty: item.quantity,
               category: items.find(p => p.id === item.itemId)?.category || '미분류',
@@ -2072,12 +2080,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const orderItemOf = (workItem: WorkItem) => {
           const order = workOrderOf(workItem);
           if (!order) return undefined;
-          const suffix = workItem.key.startsWith(`${workItem.orderId}-`)
-            ? workItem.key.slice(workItem.orderId.length + 1)
-            : '';
-          const itemIndex = Number(suffix);
-          if (Number.isInteger(itemIndex) && order.items[itemIndex]) return order.items[itemIndex];
-          return order.items.find(item => item.itemId === workItem.itemId && item.name === workItem.itemName);
+          const itemIndex = itemIndexOf(workItem, order);
+          return itemIndex >= 0 ? order.items[itemIndex] : undefined;
         };
         const isWorkComplete = (workItem: WorkItem) => orderItemOf(workItem)?.checked === true;
         const isWorkProcessing = (workItem: WorkItem) => !isWorkComplete(workItem) && workOrderOf(workItem)?.status === OrderStatus.PROCESSING;
@@ -2091,6 +2095,31 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const today = new Date(`${seoulDateInput()}T00:00:00`).getTime();
           const due = new Date(`${deliveryDate}T00:00:00`).getTime();
           return Number.isFinite(due) && due - today <= 24 * 60 * 60 * 1000;
+        };
+        /* 같은 품목 카테고리 안에서 함께 만들기로 지정한 줄을 붙여 세운다. */
+        const 묶음찾기 = (key: string) => {
+          const wi = validWorkItems.find(x => x.key === key);
+          return wi?.groupId ? { id: wi.groupId, name: wi.groupName } : undefined;
+        };
+
+        /** 고른 줄들을 한 묶음으로 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */
+        const toggleWorkGroupPick = (key: string) => {
+          const wi = validWorkItems.find(x => x.key === key);
+          if (wi?.groupId) {
+            const 남는수 = validWorkItems.filter(x => x.groupId === wi.groupId).length - 1;
+            setWorkItems(prev => prev.map(x =>
+              //  한 명만 남으면 그 묶음도 없앤다 — 혼자는 묶음이 아니다
+              (x.key === key || (남는수 < 2 && x.groupId === wi.groupId))
+                ? { ...x, groupId: undefined, groupName: undefined } : x));
+            return;
+          }
+          setWorkGroupPick(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key]);
+        };
+        const confirmWorkGroup = () => {
+          if (workGroupPick.length < 2) return;
+          const gid = `wg-${Date.now()}`;
+          setWorkItems(prev => prev.map(x => workGroupPick.includes(x.key) ? { ...x, groupId: gid } : x));
+          setWorkGroupPick([]);
         };
 
         const workCategories = [...new Set(validWorkItems.map(workCategoryOf))].sort((a, b) => {
@@ -2109,21 +2138,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const activeMobileWorkCategory = workCategories.includes(mobileWorkCategory) ? mobileWorkCategory : workCategories[0];
 
         const orderedSectionItems = (category: string) => {
-          const categoryItems = visibleWorkItems.filter(workItem => workCategoryOf(workItem) === category);
-          if (workSort !== 'dueDate') return categoryItems;
+          const categoryItems = [...visibleWorkItems.filter(workItem => workCategoryOf(workItem) === category)];
           const time = (value?: string) => value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
-          return categoryItems.sort((a, b) => {
-            const aOrder = workOrderOf(a);
-            const bOrder = workOrderOf(b);
-            return Number(isWorkProcessing(b)) - Number(isWorkProcessing(a))
-              || time(aOrder?.deliveryDate) - time(bOrder?.deliveryDate)
-              || time(aOrder?.createdAt) - time(bOrder?.createdAt);
-          });
+          if (workSort === 'dueDate') {
+            categoryItems.sort((a, b) => {
+              const aOrder = workOrderOf(a);
+              const bOrder = workOrderOf(b);
+              return Number(isWorkProcessing(b)) - Number(isWorkProcessing(a))
+                || time(aOrder?.deliveryDate) - time(bOrder?.deliveryDate)
+                || time(aOrder?.createdAt) - time(bOrder?.createdAt);
+            });
+          }
+          return clusterByGroup(categoryItems, workItem => workItem.key, 묶음찾기);
         };
 
         const renderItemRow = (wi: WorkItem, sectionItems: WorkItem[]) => {
           const sectionIdx = sectionItems.findIndex(x => x.key === wi.key);
           const order = workOrderOf(wi);
+          const lineIdx = itemIndexOf(wi, order);
           const completed = isWorkComplete(wi);
           const processing = isWorkProcessing(wi);
           const dueSoon = isDueSoon(wi);
@@ -2166,7 +2198,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  그래서 cursor-grab은 카드 전체가 아니라 손잡이에만 준다 — 전엔 카드 전체에 걸려 있어
                  아무 데나 잡아도 되는 것처럼 보였지만 실제로는 안 끌렸다. */
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
-              className={`grid min-h-[64px] grid-cols-[1.5rem_minmax(0,1fr)_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${blocked ? 'opacity-30' : ''}`}
+              className={`grid min-h-[64px] grid-cols-[1.5rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
               <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
               <button
@@ -2174,7 +2206,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
               >
                 <p className={`truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</p>
-                <p className="mt-0.5 truncate text-[11px] font-bold text-slate-500">{wi.partnerName} · {wi.qty}개</p>
+                {/*  **단위를 품목에서 읽는다**(2026-09-09 사장님: "여기 단위가 다 개야").
+                     박스 품목이면 '박스' 다 — '개' 로 박아 두면 50박스가 50개로 읽힌다. */}
+                <p className="mt-0.5 truncate text-[11px] font-bold text-slate-500">{wi.partnerName} · {wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</p>
               </button>
               <div className="text-right">
                 <div className="mb-1 flex flex-wrap justify-end gap-1">
@@ -2193,6 +2227,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <GripVertical size={16} />
                 </span>
               </div>
+              {/*  같이 만들 것끼리 묶기 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */}
+              <button
+                onClick={e => { e.stopPropagation(); toggleWorkGroupPick(wi.key); }}
+                aria-label={wi.groupId ? '묶음에서 빼기' : '같이 만들 것 고르기'}
+                className={`shrink-0 transition-colors ${workGroupPick.includes(wi.key) ? 'text-violet-500' : 'text-slate-200 hover:text-violet-400'}`}
+              >{wi.groupId ? <Unlink size={13} /> : <Link2 size={13} />}</button>
             </div>
           );
         };
@@ -2971,6 +3011,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               ))}
                             </div>
                             {activeMobileWorkCategory && <div id="work-category-panel" role="tabpanel" aria-labelledby={`work-tab-${activeMobileWorkCategory}`} tabIndex={0}>{renderWorkCategory(activeMobileWorkCategory)}</div>}
+                            {workGroupPick.length >= 2 && (
+                              <button onClick={confirmWorkGroup}
+                                className="mt-2 w-full rounded-xl bg-indigo-600 py-2 text-[10px] font-black text-white transition-colors hover:bg-indigo-700">
+                                고른 {workGroupPick.length}건 같이 만들 것으로 묶기
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -3041,7 +3087,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     {isSelected ? sectionPos : ''}
                                   </div>
                                   <span className="flex-1 text-sm font-bold text-slate-700 truncate">{wi.itemName}</span>
-                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}개</span>
+                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                                 </div>
                               );
                             })}

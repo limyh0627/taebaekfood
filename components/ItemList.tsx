@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
   Package,
@@ -50,17 +51,15 @@ import RawLedgerList from './RawLedgerList';
 import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
-import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
+import { RM_LIST, unitOf, baseRawName, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
 import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume, categoryOf, CategoryChip } from '../src/shared/productChip';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
-import { checkLedgerLot, gapMessage } from '../src/shared/ledgerLotCheck';
-import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection, adjustItemStock } from '../src/shared/services/firebaseService';
+import { addItem, subscribeToCollection, fetchCollection, adjustItemStock } from '../src/shared/services/firebaseService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage, db } from '../src/shared/firebase';
-import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
-import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
+import { storage } from '../src/shared/firebase';
+import { lotQtyRemaining } from '../src/shared/lotUtils';
 import FilterRow from '../src/shared/ui/FilterRow';
 import { partnersOfItem } from '../src/shared/partnerPrice';
 
@@ -185,11 +184,14 @@ interface ItemListProps {
   partners?: { id: string; name: string; partnerType?: string }[];
   partnerItems?: PartnerItem[];
   rawMaterialLedger: RawMaterialEntry[];
+  /** 그 주문에서 **이 원료를 쓰는 줄만** 골라 준다 — 원장 목록이 "어디 쓰였나"를 적을 때 쓴다. */
+  linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
   /** 로트 탭 — 어느 박스 로트가 어느 거래처로 나갔는지 거꾸로 읽는다(회수·클레임) */
   orders?: Order[];
   onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
-  onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
+  /** 원료 손입력·실사 — 로트·원장·품목재고를 **한 트랜잭션**에 넣는다(AdminApp 이 명령을 부른다). */
+  onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string }>;
   onDeleteRawMaterialEntry: (id: string) => void;
   onLedgerChanged?: () => void;   // 원장 쓰기 후 상위(AdminApp) 재조회 트리거
   currentUser?: { name: string; id: string } | null;
@@ -264,7 +266,8 @@ type TopTab = string;
 
 // 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
 //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
-const isRawHolder = (p: any): boolean => isBulkItem(p);
+//  홀더 판정·고르기는 [rawHolder](../src/shared/rawHolder.ts) 하나가 안다.
+//  여기 있던 `isRawHolder` 는 그쪽 것과 같은 판정이라 그대로 가져다 쓴다.
 
 // #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계, 그 외는 stock 필드.
 //   저장은 전부 kg이므로, 밀도가 있는 품목(기름)만 나눠서 L로 보여준다.
@@ -299,7 +302,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onAddAdjustmentRequest,
   inboundPartners,
   partners = [],
-  rawMaterialLedger,
+  rawMaterialLedger, linesUsingRaw,
   orders,
   onRequestPurchaseInvoice,
   issuedStatements = [],
@@ -713,33 +716,19 @@ const ItemList: React.FC<ItemListProps> = ({
       if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
       const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
-      let adjustKg = 0;
-      await mutateRawMaterialLots(
-        product.id,
-        (lots, stock) => {
-          const withCarry = withCarryOverLot(lots, stock, material);
-          adjustKg = Math.round((targetKg - lotKgRemaining(withCarry)) * 1000) / 1000;
-          if (adjustKg > 0.001) {
-            const lot = buildReceiveLot({ material, supplierName: '실사조정', qtyIn: 0, kgIn: adjustKg, receivedDate: today() });
-            return settleCarryOver([...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }]);
-          }
-          if (adjustKg < -0.001) return deductFromLots(withCarry, -adjustKg).lots;
-          return withCarry;
-        },
-        (lots) => lotStockInUnit(lots, material),
-      );
-      // 원장에도 같은 실사를 남긴다 — targetKg를 실어야 원장 잔량이 로트와 같은 값으로 맞춰진다.
-      // type='correction' 이라 수율 파생입고(압착)는 타지 않는다.
-      //
-      // **로트가 안 움직여도(adjustKg=0) 반드시 쓴다.** 로트는 이미 실물과 맞는데 원장 잔량만
-      // 틀어져 있는 경우가 있는데, 예전엔 이때 원장 줄을 건너뛰어 실사를 해도 잔량이 안 고쳐졌다.
-      // received/used가 0이어도 targetKg가 실려 있으면 잔량이 그 값으로 앵커된다.
-      await onAddRawMaterialEntry({
+      /**
+       * **로트·원장·재고를 한 번에 맞춘다.**
+       *
+       * 예전엔 여기서 `mutateRawMaterialLots` 로 로트를 먼저 맞추고 원장 줄을 따로 남겼다.
+       * 뒤가 실패하면 로트만 움직인 채 조용히 끝났다. 이제 명령 하나가 한 트랜잭션으로 쓴다.
+       * 얼마나 움직였는지(`appliedKg`)는 명령이 알려 준다 — 여기서 미리 셀 필요가 없다.
+       */
+      const r = await onAddRawMaterialEntry({
         id: `rm-stocktake-${Date.now()}`,
         material,
         date: today(),
-        received: adjustKg > 0 ? adjustKg : 0,
-        used: adjustKg < 0 ? -adjustKg : 0,
+        received: 0,
+        used: 0,
         targetKg,
         note: `재고실사 (${val}${unitLabel}로 맞춤)`,
         createdAt: new Date().toISOString(),
@@ -747,6 +736,8 @@ const ItemList: React.FC<ItemListProps> = ({
         unit: 'kg',
         addedBy: currentUser?.name,
       } as RawMaterialEntry);
+      if (!r.ok) { setToast({ message: `${product.name} 실사 실패 — ${r.reason}` }); return; }
+      const adjustKg = Math.round((r.appliedKg ?? 0) * 1000) / 1000;
       setToast({
         message: Math.abs(adjustKg) > 0.001
           ? `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영`
@@ -1647,6 +1638,7 @@ const ItemList: React.FC<ItemListProps> = ({
                              박스 로트를 판 안에 끼워 넣어 기록 앞에 세운다. */}
                         {raw ? (
                           <RawMaterialLotPanel
+                            linesUsingRaw={linesUsingRaw}
                             product={raw}
                             isAdmin={isAdmin}
                             ledgerEntries={rawMaterialLedger.filter(e => e.material === material)}
@@ -1771,7 +1763,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
                   const lotRaw = isRawHolder(product)
                     ? product
-                    : items.find(i => isRawHolder(i) && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
+                    : rawHolderByName(items, product.rawMaterialName || product.name);
                   // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
                   // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
                   const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.type !== 'product')
@@ -2987,75 +2979,26 @@ const ItemList: React.FC<ItemListProps> = ({
         currentUserName={currentUser?.name}
         onClose={() => setRawEntryModal(null)}
         onSubmit={async (entry) => {
-          // 원료수불부에 기록 (kg canonical)
-          await onAddRawMaterialEntry(entry);
-          const rawTarget = items.find((i) => isRawHolder(i) && baseRawName(i.name) === entry.material);
-          // 실사 앵커보다 앞선 날짜면 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 또 빼면 이중차감이다.
-          //   원장 줄은 위에서 이미 남겼다(사용량이 서류에 잡혀야 하고, 잔량은 앵커가 잡는다).
-          //   자세한 이유는 rawLedgerBalance.ts의 latestAnchorDate 주석 참고.
-          const matEntries = rawMaterialLedger.filter(e => e.material === entry.material);
-          if (rawTarget && isBackdated(matEntries, entry.date)) {
-            setToast({ message: `${entry.material} — ${latestAnchorDate(matEntries)} 실사 이전 날짜라 기록만 남기고 재고는 그대로 둡니다` });
-            return;   // 모달은 스스로 닫힌다 (아래 catch의 return과 같은 처리)
+          /**
+           * **로트·원장·재고가 한 트랜잭션에서 같이 움직인다**(설계 §6, 이관 5단계).
+           *
+           * 예전엔 여기가 셋을 손으로 갈랐다 — 원장을 먼저 쓰고, 입고/사용/정정을 나눠
+           * `mutateRawMaterialLots` 를 부르고, 실패하면 `catch` 로 삼켜 토스트만 띄우고,
+           * 그러고도 못 미더워 `checkLedgerLot` 으로 되읽어 대조했다.
+           * 이제 명령 하나가 다 한다 — 한쪽만 써질 수가 없으니 대조도 필요 없다.
+           *
+           * 소급 입력(마지막 실사보다 앞선 날짜) 판정도 명령 안에서 한다 —
+           * 화면이 든 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
+           */
+          const r = await onAddRawMaterialEntry(entry);
+          if (!r.ok) {
+            setToast({ message: `${entry.material} 기록 실패 — ${r.reason}` });
+            return;
           }
-          if (rawTarget) {
-            try {
-            if ((entry.received ?? 0) > 0) {
-              // 입고: 거래처 입고와 동일하게 로트 생성(+기존재고 이월 보존). stock은 로트 합계로 산정.
-              const lot = buildReceiveLot({
-                material: entry.material,
-                supplierName: entry.note?.trim() || '직접입고',
-                qtyIn: entry.canCount ?? 0,
-                kgIn: entry.received,
-                packageKg: entry.canSize,
-                packageType: entry.canSizeTag,
-                receivedDate: entry.date,
-              });
-              await mutateRawMaterialLots(
-                rawTarget.id,
-                (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, entry.material), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }]),
-                (lots) => lotStockInUnit(lots, entry.material),
-              );
-            } else if ((entry.used ?? 0) > 0) {
-              // 사용: 로트 FIFO(혼합 시 비율) 차감 — 기존재고 이월 보존 후 차감. stock은 로트 합계로 산정
-              // (직접 stock만 줄이면 다음 로트연산 때 stock=로트합계로 덮어써져 사용분이 사라지므로 반드시 로트에서 차감)
-              const mix = rawTarget.mixEnabled ? { topPercent: rawTarget.mixTopPercent ?? 50 } : undefined;
-              await mutateRawMaterialLots(
-                rawTarget.id,
-                (lots, stock) => deductFromLots(withCarryOverLot(lots, stock, entry.material), entry.used, mix).lots,
-                (lots) => lotStockInUnit(lots, entry.material),
-              );
-            } else {
-              // 그 외(정정): stock 직접 X → 로트로 delta 반영 (수불부는 위 onAddRawMaterialEntry로 이미 기록)
-              const delta = (entry.received ?? 0) - (entry.used ?? 0);
-              if (Math.abs(delta) > 0.0001) {
-                await mutateRawMaterialLots(
-                  rawTarget.id,
-                  (lots, stock) => {
-                    const carried = withCarryOverLot(lots, stock, entry.material);
-                    if (delta >= 0) {
-                      const lot = buildReceiveLot({ material: entry.material, supplierName: '정정', qtyIn: 0, kgIn: delta, receivedDate: entry.date });
-                      return settleCarryOver([...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }]);
-                    }
-                    return deductFromLots(carried, -delta).lots;
-                  },
-                  (lots) => lotStockInUnit(lots, entry.material),
-                );
-              }
-            }
-            } catch (err) {
-              // 로트/재고 반영 실패(읽기 한도 외 네트워크 오류 등) — 수불부 기록은 이미 저장됨.
-              // 예전엔 여기서 throw되어 모달이 안 닫히고 재시도 시 수불부 중복 기록이 생겼다.
-              console.error('[원료 기록] 로트/재고 반영 실패:', err);
-              setToast({ message: `${entry.material} 기록은 저장됐지만 재고 반영에 실패했습니다. 네트워크/재고를 확인하세요.` });
-              return; // 성공 토스트 생략 (모달은 정상 종료)
-            }
-            /**
-             * **쓰고 나서 되읽어 대조한다.** 위 catch는 던져진 실패만 잡는다 — 조용히 한쪽만
-             * 써진 경우(부분 성공·다른 탭의 겹친 쓰기)는 못 잡는다. 실패했는지는 대조해야 안다.
-             */
-            const gap = await checkLedgerLot(db, rawTarget.id, entry.material, rawTarget.density ?? 1);
-            if (gap) setToast({ message: `⚠ ${gapMessage(gap)} — 한쪽만 반영됐을 수 있습니다. 실사로 맞춰 주세요.` });
+          if (r.appliedKg === 0 && (entry.received > 0 || entry.used > 0)) {
+            //  실사 앵커보다 앞선 날짜라 재고를 안 움직였다. 원장 줄은 남는다(서류가 본다).
+            setToast({ message: `${entry.material} — 마지막 실사 이전 날짜라 기록만 남기고 재고는 그대로 둡니다` });
+            return;
           }
           // 저장 완료 토스트
           const amt = entry.received > 0 ? entry.received : Math.abs(entry.used);
@@ -3797,6 +3740,7 @@ const ItemList: React.FC<ItemListProps> = ({
               (없으면 부모 overflow-hidden에 잘려 목록 몇 줄과 페이지네이션이 안 보인다) */}
           <div className="p-4 flex-1 min-h-0 overflow-y-auto">
             <RawLedgerList
+              linesUsingRaw={linesUsingRaw}
               entries={entries}
               allEntries={rawMaterialLedger}
               orders={orders}

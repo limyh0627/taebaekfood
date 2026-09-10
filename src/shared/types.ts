@@ -124,6 +124,8 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
 
 export interface Order {
   id: string;
+  /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
+  companyId?: CompanyId;
   /**
    * **주문 카드번호** — `ORD-260901-01`. 전표번호와 같은 규칙(`nextDocNo`)이다.
    *
@@ -158,7 +160,20 @@ export interface Order {
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
-  rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  rawConsumedLots?: {
+    material: string;
+    /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
+    rawItemId?: string;
+    /** 이 로트를 소비한 원자 명령. 취소는 이 명령을 reverse 한다. */
+    operationId?: string;
+    lotId?: string;
+    lotNo?: string;
+    supplierName: string;
+    receivedDate?: string;
+    kg: number;
+  }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  /** 생산 원료 명령의 회차. 재생산 때 이미 취소된 operationId를 다시 쓰지 않게 한다. */
+  rawInventoryAttempt?: number;
   /**
    * 이 주문이 출고한 **완제품 로트** 스냅샷 — 어느 박스 로트가 어느 거래처로 나갔나.
    * 회수는 이걸 거꾸로 읽는다: 로트번호 → 나간 주문 → 거래처.
@@ -592,6 +607,13 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   imageUrl?: string;
+  /**
+   * **여러 장을 한 말로 보낼 때** — 주소를 순서대로 담는다(2026-09-09 사장님).
+   *
+   * 한 장이면 `imageUrl` 그대로다. 옛 말은 전부 그쪽에만 있다.
+   * **읽는 쪽은 `messageImages()` 한 곳을 지난다** — 두 칸을 화면마다 따로 풀면 갈린다.
+   */
+  images?: string[];
   createdAt: string;
   mentions?: string[]; // Array of mentioned user IDs
   /** 사진이 아닌 첨부(문서·엑셀 등) — Storage 주소만 싣는다 */
@@ -624,6 +646,26 @@ export interface ChatRoom {
   lastUpdatedAt: string;
   isGroup: boolean;
   lastReadBy?: Record<string, string>; // userId → ISO timestamp
+  /**
+   * **방 위에 붙여 둔 공지** — 카톡과 같다(2026-09-09 사장님). 방마다 하나뿐이다.
+   *
+   * 말을 지워도 공지는 남는다 — 그래서 그때 글을 통째로 담는다(`replyTo` 와 같은 규칙).
+   * 내리면 `null` 로 둔다(칸을 지우지 않는다 — Firestore 에서 지운 칸과 없는 칸은 다르게 굴러서
+   * 구독하는 쪽이 옛 값을 들고 있을 수 있다).
+   */
+  notice?: RoomNotice | null;
+}
+
+/** 방 위에 붙은 공지 한 줄 */
+export interface RoomNotice {
+  /** 어느 말에서 왔나 — 눌러서 그 자리로 갈 때 쓴다 */
+  messageId: string;
+  text: string;
+  /** 붙인 사람 */
+  by: string;
+  byName: string;
+  /** 붙인 때 ISO */
+  at: string;
 }
 
 
@@ -980,7 +1022,19 @@ export interface RawMaterialEntry {
   id: string;
   /** 어느 회사 창고에서 일어난 일인가. 없으면 태백(옛 기록 전부). [[Item.companyId]]와 같은 규칙. */
   companyId?: CompanyId;
-  material: string;  // 원료명
+  /**
+   * **어느 품목의 줄인가 — 이게 열쇠다.**
+   *
+   * 예전엔 `material` 이름밖에 없었다. 이름은 바뀌면 연결이 끊기고, 겹치면 남의 회사 것을
+   * 집는다(참깨·깻묵이 태백·풍회에 다 있다). 실제로 검정참깨 줄 하나가 이름이 안 맞아
+   * 원장에서 떨어져 나가 −80kg 으로 갈려 있었다.
+   *
+   * 2026-09-09 에 726줄 전부 채웠다(`scripts/fix-raw-ledger-keys.mts`).
+   * 새 줄은 [rawLedgerKeys](rawHolder.ts) 로 반드시 같이 박는다.
+   */
+  rawItemId?: string;
+  /** 원료명 — **보여주기용 스냅샷이다.** 대상을 찾는 열쇠로 쓰지 마라(`rawItemId` 를 써라). */
+  material: string;
   date: string;
   received: number;  // 입고량
   used: number;      // 사용량 (정정은 음수)

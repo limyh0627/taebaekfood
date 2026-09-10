@@ -27,6 +27,9 @@ import PageHeader from './PageHeader';
 import CalendarDayCountBadge from './CalendarDayCountBadge';
 import OrderEditModalShell from './OrderEditModalShell';
 import ConfirmModal from './ConfirmModal';
+import DeliveryDayList from './DeliveryDayList';
+import { boxCountOf } from '../src/shared/orderUnits';
+import type { DayRow } from '../src/shared/deliveryPlan';
 
 import { OrderItem } from '../types';
 
@@ -119,7 +122,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
       case 'address': return [[partner?.address, partner?.addressDetail].filter(Boolean).join(' ')];
       case 'completion': return order.items.map(item => item.checked ? '완료' : '미완료');
       case 'item': return order.items.map(item => item.name);
-      case 'quantity': return order.items.map(item => item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`);
+      case 'quantity': return order.items.map(item => item.isBoxUnit ? `${boxCountOf(item)}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`);
       case 'label': return order.items.map(item => item.labelType && item.labelType !== '대기' ? item.labelType : '-');
       case 'packaging': return order.items.map(item => item.boxType || '-');
       case 'pallet': return (order.pallets ?? []).map(pallet => `${palletStocks.find(stock => stock.id === pallet.type)?.name || pallet.type} ${pallet.quantity}개`);
@@ -1223,6 +1226,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
         const 완료 = deliveredSchedules[dayModal] || [];
         const d = new Date(dayModal + 'T00:00:00');
         const 제목 = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayLabels[d.getDay()]})`;
+        const 진행Rows: DayRow[] = 진행.map(order => ({
+          orderId: order.id,
+          auto: !deliveryOrdering.includes(order.id),
+          slot: deliveryTimeSlots[order.id] || '오전',
+          done: order.status === OrderStatus.SHIPPED,
+        }));
         const 줄 = (order: Order, done: boolean) => {
           return (
             <button key={order.id} type="button"
@@ -1254,7 +1263,18 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
                 {진행.length === 0 && 완료.length === 0 && (
                   <p className="py-12 text-center text-sm font-bold text-slate-300">이 날은 배송이 없습니다.</p>
                 )}
-                {진행.map(o => 줄(o, false))}
+                {진행Rows.length > 0 && (
+                  <DeliveryDayList
+                    rows={진행Rows}
+                    orders={orders}
+                    partners={partners}
+                    dateStr={dayModal}
+                    on={{
+                      open: order => { setDayModal(null); handleOrderClick(order); },
+                      toggleDone: id => onToggleShipmentComplete?.(id, orders.find(order => order.id === id)?.status !== OrderStatus.SHIPPED),
+                    }}
+                  />
+                )}
                 {완료.length > 0 && (
                   <>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-3 pb-1">이전 배송</p>

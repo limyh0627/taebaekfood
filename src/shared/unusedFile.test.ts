@@ -38,8 +38,22 @@ const 불린이름 = (() => {
   return s;
 })();
 
+/**
+ * **아직 안 붙인 것 — 왜 안 붙였는지 여기 적는다.**
+ *
+ * 이 표는 "지워도 된다"는 뜻이 **아니다.** 붙일 차례가 아직 안 왔다는 뜻이고,
+ * 이유가 없으면 못 올린다. 이유가 해결되면 붙이고 여기서 지운다.
+ */
+const 아직안붙임: Record<string, string> = {
+  'src/shared/services/rawInventoryService.ts':
+    '원료 재고 원자화 3단계. 호출부 교체(5단계)는 이관 스크립트(4단계)가 먼저다 — ' +
+    '지금 갈려 있는 원료 7개(2,719kg)는 어느 숫자가 맞는지 사장님이 정해야 옮길 수 있다. ' +
+    'docs/원료실제원장-로트-원자화-설계.md §15',
+};
+
 /** 이 파일을 누군가 import 하나 */
 const 쓰이나 = (file: string): boolean => {
+  if (아직안붙임[file]) return true;
   //  진입점과 설정은 아무도 import 하지 않는 게 정상이다
   if (/^(apps\/|src\/(firebase|index|vite-env)|src\/config\/)/.test(file)) return true;
   if (file.endsWith('main.tsx') || file.endsWith('index.ts')) return true;

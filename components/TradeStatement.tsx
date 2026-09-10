@@ -17,9 +17,10 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { withDocNames } from '../src/shared/docName';
-import { 서류당사자 } from '../src/shared/docParty';
+import { 서류당사자ById } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,
@@ -1208,7 +1209,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //  박스↔낱개, 단가·과세·계정 우선순위, 같은 품목 합치기가 다 거기 있고 시험이 붙어 있다.
   //  여기서는 지금 화면 상태를 넘겨 받아 쓰기만 한다(2026-09-05).
   const lineItems = useMemo((): LineItem[] => {
-    if (manualMode) return manualLines(manualItems, stmtType);
+    if (manualMode) {
+      //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
+      //  안 이으면 `partnerPriceWrites` 가 그 줄을 건너뛰어 단가·과세면세가 조용히 안 저장된다.
+      const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
+      const 연결품목 = allItems
+        //  박스는 뺀다 — 낱개와 이름이 같으면 낱개 단가가 박스에 붙는다(해피유통 300ml 사고).
+        .filter(p => !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
+        .map(p => ({ itemId: p.id, name: p.name }));
+      return manualLines(manualItems, stmtType, 연결품목);
+    }
     if (!selectedOrder) return [];
     return orderLines({
       order: selectedOrder,
@@ -1253,13 +1263,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const applyPriceSync = useCallback(async (type: string) => {
     if (!onUpsertPartnerItem) return;
+    /*
+     * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
+     * 거래처 단가는 "지금 파는 값"이라, 6월 전표의 오타를 고쳤다고 오늘 값이 6월로
+     * 돌아가면 안 된다. 지금 고치는 게 그 거래처의 마지막 거래일 때만 되민다.
+     */
+    const 이번전표 = { id: editingStmt?.id, partnerId: selectedClientId, type, tradeDate };
     const { upserts, costUpdates } = partnerPriceWrites({
-      type, partnerId: selectedClientId, lines: lineItems, items: allItems,
+      type, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+      isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
     });
     for (const u of upserts) await onUpsertPartnerItem(u);
     for (const c of costUpdates) await onUpdateItemCost?.(c.itemId, c.price);
-  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds]);
+  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (): Promise<IssuedStatement | null> => {
@@ -1446,8 +1463,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  다 안 들어가냐"). 전에는 거래처 쪽이 이름과 전화만이었고 사업자번호·대표자·
     //  주소·팩스가 빈 문자열로 박혀 있었다. shared/docParty 가 양쪽을 같은 규칙으로 낸다.
     //  거래처는 **id 로 찾는다** — 이름으로 찾으면 같은 이름이 둘일 때 엉뚱한 곳이 걸린다.
-    const 상대 = partners.find(c => c.id === partnerIdStr) ?? partners.find(c => c.name === partner);
-    const { sup: 파는쪽, buy: 사는쪽 } = 서류당사자(isSale, ci ?? undefined, 상대, partner);
+    const { sup: 파는쪽, buy: 사는쪽 } = 서류당사자ById({
+      isSale, companyInfo: ci, partners, partnerId: partnerIdStr, partnerName: partner,
+    });
     const supName = 파는쪽.name, supCeo = 파는쪽.ceo, supBizNo = 파는쪽.bizNo;
     const supBizType = 파는쪽.bizType, supBizItem = 파는쪽.bizItem;
     const supAddr = 파는쪽.addr, supPhone = 파는쪽.tel, supFax = 파는쪽.fax;
@@ -1674,129 +1692,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
     const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId);
     printViaIframe(html, `${stmt.type}전표`);
-  };
-
-  const handleTaxInvoice = () => {
-    const ci = companyInfo;
-    const isSale = stmtType === '매출';
-    const partnerObj = selectedClient;
-    const taxableItems = lineItems.filter(i => !i.isTaxExempt);
-    const exemptItems  = lineItems.filter(i => i.isTaxExempt);
-    const taxSupply = taxableItems.reduce((s,i)=>s+i.supply, 0);
-    const taxAmt    = taxableItems.reduce((s,i)=>s+i.tax, 0);
-    const exSupply  = exemptItems.reduce((s,i)=>s+i.supply, 0);
-
-    //  거래명세서와 **같은 규칙**으로 양쪽 칸을 낸다(shared/docParty).
-    //  여기는 더 나빴다 — 거래처 등록번호가 빈 문자열이었고, 주소는 `address` 가 아니라
-    //  `region`(시·도)이었다. 세금계산서에 등록번호가 비면 서류 구실을 못 한다.
-    const { sup: 공급자, buy: 공급받는자 } = 서류당사자(isSale, ci ?? undefined, partnerObj ?? undefined);
-    const supName = 공급자.name, supBizNo = 공급자.bizNo, supCeo = 공급자.ceo;
-    const supAddr = 공급자.addr, supBizType = 공급자.bizType, supBizItem = 공급자.bizItem;
-    const buyName = 공급받는자.name, buyBizNo = 공급받는자.bizNo, buyCeo = 공급받는자.ceo;
-    const buyAddr = 공급받는자.addr, buyBizType = 공급받는자.bizType, buyBizItem = 공급받는자.bizItem;
-
-    const d = new Date(tradeDate+'T00:00:00');
-    const yyyy = d.getFullYear(), mm = d.getMonth()+1, dd = d.getDate();
-
-    const fmt2 = (n:number) => n.toLocaleString('ko-KR');
-
-    const makeInfoTable = (title: string, bizNo: string, name: string, ceo: string, addr: string, bizType: string, bizItem: string) => `
-<table style="border-collapse:collapse;width:100%;font-size:8px;">
-  <tr>
-    <td rowspan="4" style="border:1px solid #000;padding:2px 4px;font-weight:bold;text-align:center;width:16px;writing-mode:vertical-rl;letter-spacing:2px;">${title}</td>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">등록번호</td>
-    <td colspan="3" style="border:1px solid #000;padding:1px 4px;font-weight:bold;letter-spacing:2px;">${bizNo}</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">상&nbsp;&nbsp;&nbsp;호</td>
-    <td style="border:1px solid #000;padding:1px 4px;width:30%;">${name}</td>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">성&nbsp;&nbsp;&nbsp;명</td>
-    <td style="border:1px solid #000;padding:1px 4px;">${ceo}</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">사업장주소</td>
-    <td colspan="3" style="border:1px solid #000;padding:1px 4px;">${addr}</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">업&nbsp;&nbsp;&nbsp;태</td>
-    <td style="border:1px solid #000;padding:1px 4px;">${bizType}</td>
-    <td style="border:1px solid #000;padding:1px 4px;background:#f0f0f0;font-weight:bold;white-space:nowrap;">종&nbsp;&nbsp;&nbsp;목</td>
-    <td style="border:1px solid #000;padding:1px 4px;">${bizItem}</td>
-  </tr>
-</table>`;
-
-    const itemRows = lineItems.map(item => `
-<tr>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${mm}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${dd}</td>
-  <td style="border:1px solid #000;padding:1px 3px;">${item.name}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${item.spec||''}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.qty)}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.price)}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.supply)}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isTaxExempt?'면세':fmt2(item.tax)}</td>
-  <td style="border:1px solid #000;padding:1px 3px;"></td>
-</tr>`).join('');
-
-    const emptyRows = Math.max(0, 9 - lineItems.length);
-    const blankRows = Array(emptyRows).fill(`<tr>${Array(9).fill('<td style="border:1px solid #000;height:14px;"></td>').join('')}</tr>`).join('');
-
-    const makePage = (copyLabel: string) => `
-<div style="page-break-after:always;padding:6mm;font-family:'맑은 고딕',sans-serif;font-size:8px;color:#000;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2mm;">
-    <div style="font-size:7px;">※ 이 계산서는 부가가치세법 제32조 규정에 의하여 작성한 것입니다.</div>
-    <div style="font-size:18px;font-weight:900;letter-spacing:6px;">세&nbsp;금&nbsp;계&nbsp;산&nbsp;서</div>
-    <div style="font-size:9px;font-weight:bold;border:1px solid #000;padding:2px 8px;">${copyLabel}</div>
-  </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1mm;font-size:8px;">
-    <span>작성일자: <strong>${yyyy}년 ${mm}월 ${dd}일</strong></span>
-    <span>공급가액: <strong style="font-size:10px;">${fmt2(taxSupply+exSupply)}</strong>원</span>
-    <span>세&nbsp;&nbsp;&nbsp;&nbsp;액: <strong style="font-size:10px;">${fmt2(taxAmt)}</strong>원</span>
-    <span>전표No: <strong>${docNo}</strong></span>
-  </div>
-  <div style="display:flex;gap:4mm;margin-bottom:2mm;">
-    <div style="flex:1;">${makeInfoTable('공급자', supBizNo, supName, supCeo, supAddr, supBizType, supBizItem)}</div>
-    <div style="flex:1;">${makeInfoTable('공급받는자', buyBizNo, buyName, buyCeo, buyAddr, buyBizType, buyBizItem)}</div>
-  </div>
-  <table style="border-collapse:collapse;width:100%;font-size:8px;">
-    <thead>
-      <tr style="background:#f0f0f0;">
-        <th style="border:1px solid #000;padding:2px 3px;width:18px;">월</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:18px;">일</th>
-        <th style="border:1px solid #000;padding:2px 3px;">품&nbsp;&nbsp;&nbsp;&nbsp;목</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:50px;">규격</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:35px;">수량</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:60px;">단가</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:70px;">공급가액</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:60px;">세액</th>
-        <th style="border:1px solid #000;padding:2px 3px;width:50px;">비고</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${itemRows}${blankRows}
-    </tbody>
-    <tfoot>
-      <tr style="background:#f0f0f0;font-weight:bold;">
-        <td colspan="2" style="border:1px solid #000;padding:2px 3px;text-align:center;">합계</td>
-        <td style="border:1px solid #000;"></td>
-        <td style="border:1px solid #000;"></td>
-        <td style="border:1px solid #000;padding:2px 3px;text-align:right;">${fmt2(lineItems.reduce((s,i)=>s+i.qty,0))}</td>
-        <td style="border:1px solid #000;"></td>
-        <td style="border:1px solid #000;padding:2px 3px;text-align:right;">${fmt2(taxSupply+exSupply)}</td>
-        <td style="border:1px solid #000;padding:2px 3px;text-align:right;">${fmt2(taxAmt)}</td>
-        <td style="border:1px solid #000;"></td>
-      </tr>
-    </tfoot>
-  </table>
-  <div style="margin-top:2mm;display:flex;justify-content:space-between;font-size:8px;">
-    <span>합계금액(공급가액+세액): <strong style="font-size:11px;">${fmt2(taxSupply+exSupply+taxAmt)}</strong>원</span>
-    ${exSupply>0?`<span style="color:#555;">면세공급가액: ${fmt2(exSupply)}원 포함</span>`:''}
-    <span style="color:#888;">※ 국세청 홈택스(www.hometax.go.kr) 전자세금계산서 발급 시 이 서류를 참고하세요</span>
-  </div>
-</div>`;
-
-    const html = makePage('공급자 보관용') + makePage('공급받는자 보관용');
-    printViaIframe(html, '세금계산서');   // 출력만 — 발행은 '저장'에서만
   };
 
   const handleReceipt = () => {

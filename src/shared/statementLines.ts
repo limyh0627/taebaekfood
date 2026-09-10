@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem, PartnerItem } from './types';
 import { lineAmount } from './lineAmount';
-import { unpackComponent, boxDerivedUnitPrice } from './orderUnits';
+import { unpackComponent, boxDerivedUnitPrice, boxCountOf } from './orderUnits';
 
 /**
  * **전표 품목 줄을 세우는 셈.**
@@ -48,11 +48,43 @@ export interface LineItem {
 /** 매출이면 기본 계정이 800(일반매출)이다. 매입은 줄마다 골라야 한다. */
 const 기본계정 = (t: StatementType) => (t === '매출' ? '800' : undefined);
 
-/** 손으로 적은 줄 → 전표 줄. 이름이 빈 줄은 아직 안 적은 것이라 버린다. */
-export function manualLines(rows: readonly ManualRow[], stmtType: StatementType): LineItem[] {
+/**
+ * **이름이 정확히 맞으면 그 품목으로 본다** — 그 거래처에 **연결된 품목** 안에서만.
+ *
+ * 2026-09-10 사장님: "이름을 직접 쳤는데 그게 거래처에 등록된 품목인 경우에는 기록이 남아야지."
+ *
+ * 손입력 칸은 이름을 치면 아래 드롭다운이 뜨고, 거기서 **고르면** `itemId` 가 붙는다.
+ * 그런데 이름을 다 치고 **안 고른 채 넘어가면** 붙지 않는다. 그러면 `partnerPriceWrites` 가
+ * 그 줄을 통째로 건너뛰어 **거래처 단가도 과세/면세도 저장되지 않는다.** 조용히.
+ *
+ * 그래서 저장 직전에 한 번 더 이어 준다. **이름으로 짐작하는 게 아니다** —
+ *   · 찾는 곳이 **그 거래처에 연결된 품목**뿐이다(전체 품목이 아니다).
+ *   · **글자가 정확히 같아야** 한다(부분 일치·비슷한 것 안 본다).
+ *   · 같은 이름이 **둘 이상이면 안 붙인다** — 어느 것인지 모르면 그냥 둔다.
+ * 이 셋을 지키면 "같은 이름의 박스에 낱개 단가가 붙는" 사고(해피유통 300ml)가 안 난다.
+ */
+export function itemIdByExactName(
+  name: string, linked: readonly { itemId: string; name: string }[] | undefined,
+): string | undefined {
+  const 찾는이름 = String(name ?? '').trim();
+  if (!찾는이름 || !linked?.length) return undefined;
+  const hits = linked.filter(l => String(l.name ?? '').trim() === 찾는이름);
+  return hits.length === 1 ? hits[0].itemId : undefined;
+}
+
+/**
+ * 손으로 적은 줄 → 전표 줄. 이름이 빈 줄은 아직 안 적은 것이라 버린다.
+ *
+ * @param linked 그 거래처에 **연결된 품목**. 넘기면 이름이 정확히 같은 줄에 `itemId` 를 이어 준다.
+ */
+export function manualLines(
+  rows: readonly ManualRow[], stmtType: StatementType,
+  linked?: readonly { itemId: string; name: string }[],
+): LineItem[] {
   return rows
     .filter(i => i.name.trim())
     .map((item, idx) => {
+      const itemId = item.itemId ?? itemIdByExactName(item.name, linked);
       const qty = parseFloat(item.qty) || 0;
       const price = parseFloat(item.price) || 0;
       /**
@@ -62,7 +94,7 @@ export function manualLines(rows: readonly ManualRow[], stmtType: StatementType)
        */
       const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
       return {
-        ...(item.itemId ? { itemId: item.itemId } : {}),
+        ...(itemId ? { itemId } : {}),
         key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec,
         qty, price, supply, tax, total: supply + tax,
         isTaxExempt: item.isTaxExempt, side: item.side,
@@ -100,7 +132,9 @@ export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): Re
   if (uc) {
     const loose = allItems.find(p => p.id === uc.itemId);
     if (loose) {
-      const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
+      //  몇 박스인가는 **orderUnits.boxCountOf 한 곳**이 답한다 — 재고 차감(stockUnits)과 같은 답이라야
+      //  전표에 찍힌 낱개 수와 재고에서 빠진 양이 안 갈린다.
+      const boxCount = boxCountOf(item);
       product = loose;
       qty = boxCount * uc.count;
       perBox = uc.count;

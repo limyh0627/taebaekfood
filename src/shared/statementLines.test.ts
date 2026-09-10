@@ -10,6 +10,55 @@ const 낱개 = 품목({ id: 'loose', name: '참기름/1750ml', spec: '1750ml', u
 const 박스 = 품목({ id: 'box', name: '참기름/1750ml 박스', unit: '박스', unpackTo: { itemId: 'loose', count: 10 } });
 const 목록 = [낱개, 박스];
 
+/**
+ * **이름을 직접 쳐도 그 거래처 품목이면 기록이 남아야 한다**(2026-09-10 사장님).
+ *
+ * 표 안의 `제품명...` 칸은 치면 드롭다운이 뜨고, **고르면** `itemId` 가 붙는다.
+ * 그런데 다 치고 **안 고른 채 넘어가면** 안 붙는다. 그러면 `partnerPriceWrites` 가 그 줄을
+ * 통째로 건너뛰어 **거래처 단가도 과세/면세도 조용히 저장되지 않는다.**
+ * (9월 전표 줄 182개 중 `itemId` 있는 줄이 25개뿐이었다)
+ */
+describe('이름이 정확히 맞으면 그 품목으로 잇는다', () => {
+  const 연결 = [
+    { itemId: 'p-1', name: '참기름/A/모란/1750ml' },
+    { itemId: 'p-2', name: '들기름/모란/1750ml' },
+  ];
+  const 줄 = (name: string, over: Record<string, unknown> = {}) =>
+    ({ name, spec: '', qty: '10', price: '18000', isTaxExempt: false, ...over });
+
+  it('연결된 품목과 글자가 같으면 itemId 를 이어 준다', () => {
+    const r = manualLines([줄('참기름/A/모란/1750ml')], '매출', 연결);
+    expect(r[0].itemId).toBe('p-1');
+  });
+
+  it('앞뒤 빈칸은 무시한다 — 사람이 치면 붙는다', () => {
+    expect(manualLines([줄('  참기름/A/모란/1750ml  ')], '매출', 연결)[0].itemId).toBe('p-1');
+  });
+
+  it('**부분만 같으면 안 잇는다** — 비슷한 이름이 널렸다', () => {
+    expect(manualLines([줄('참기름')], '매출', 연결)[0].itemId).toBeUndefined();
+    expect(manualLines([줄('참기름/A/모란/1750ml 특')], '매출', 연결)[0].itemId).toBeUndefined();
+  });
+
+  it('**연결 안 된 품목은 안 잇는다** — 연결할지는 품목 선택에서 묻는다', () => {
+    expect(manualLines([줄('고춧가루 1kg')], '매출', 연결)[0].itemId).toBeUndefined();
+  });
+
+  it('**같은 이름이 둘이면 안 잇는다** — 어느 것인지 모르면 그냥 둔다', () => {
+    const 겹침 = [...연결, { itemId: 'p-3', name: '참기름/A/모란/1750ml' }];
+    expect(manualLines([줄('참기름/A/모란/1750ml')], '매출', 겹침)[0].itemId).toBeUndefined();
+  });
+
+  it('이미 고른 줄은 그 itemId 를 그대로 쓴다 — 이름이 뭐든', () => {
+    const r = manualLines([줄('아무거나', { itemId: 'p-9' })], '매출', 연결);
+    expect(r[0].itemId).toBe('p-9');
+  });
+
+  it('연결 목록을 안 넘기면 예전 그대로다', () => {
+    expect(manualLines([줄('참기름/A/모란/1750ml')], '매출')[0].itemId).toBeUndefined();
+  });
+});
+
 describe('manualLines — 손으로 적은 줄', () => {
   it('이름이 빈 줄은 버린다 — 아직 안 적은 것이다', () => {
     expect(manualLines([{ name: '', spec: '', qty: '5', price: '1000', isTaxExempt: false }], '매출')).toEqual([]);

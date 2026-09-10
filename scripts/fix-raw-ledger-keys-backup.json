@@ -1,0 +1,4362 @@
+{
+  "적은때": "2026-09-09T12:40:40.512Z",
+  "설명": "원장에 companyId·rawItemId 채우기 — 적용 전 원본(바꾼 줄만)",
+  "before": [
+    {
+      "id": "rm-adj-1786002424904-ppy7",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-adj-1787120076096-wqv7",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-anchor-깻묵-20260901",
+      "material": "깻묵",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-anchor-볶음들깨-20260827",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-anchor-탈피들깨가루-20260831",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-anchor-통깨참기름-20260831",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-anchor-통들깨들기름-20260831",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-box-p-104-20-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-box-p-1777506850191-10-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-box-p-1777506850191-10-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-box-p-20-20-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-box-p-20-20-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-FIX-보정-p-1775086496028-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712782954-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712782954-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785712873405-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785714183042-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785714183042-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785714889166-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785714889166-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785719627606-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785719627606-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785720647038-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785720647038-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785720647038-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785720795574-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785720795574-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785721146053-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785721146053-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785728183401-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785729318800-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785729424259-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785729424259-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785729424259-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785729424259-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785730483186-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785730483186-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802394338-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802394338-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802409561-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802441912-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802441912-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802493857-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802493857-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802493857-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802546408-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802546408-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802546408-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802546408-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785802585888-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785806299312-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785806299312-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785808209341-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785808209341-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785816038865-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785816038865-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785816038865-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785816822908-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785816822908-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830191902-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830191902-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830191902-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830191902-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830191902-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830730345-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830730345-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830866346-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830866346-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830866346-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830866346-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830984717-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785830984717-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785887863984-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785887863984-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785887876250-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785887876250-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906043826-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906043826-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906043826-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906067915-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906067915-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906067915-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906101038-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785906424229-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785912941897-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785912941897-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785912941897-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785973510836-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785973535308-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785974742500-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785974742500-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785975441283-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785975441283-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785993789822-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785993789822-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785994142963-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785994168175-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1785994168175-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786001299618-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786001729128-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786001729128-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786001729128-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059724213-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059724213-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059772086-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059772086-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059826792-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059826792-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786059826792-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786064394854-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786064394854-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786064394854-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786064394854-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786067983238-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786067983238-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786082392514-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786319795727-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786319795727-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786319816884-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786319878838-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786319878838-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320336175-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320336175-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320336175-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320336175-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320406153-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320406153-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320510666-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320510666-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320533446-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786320533446-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786326423201-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786326423201-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786326423201-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786332842495-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786339884412-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786339884412-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786349895864-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786349928351-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786349928351-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786349928351-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405340788-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405373074-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405413538-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405413538-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405486183-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405486183-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405565045-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405645013-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786405645013-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786409963576-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786409963576-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786409963576-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786430165162-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786431682838-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786431682838-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786431682838-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786431682838-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492396660-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492396660-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492501044-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492664559-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492664559-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492664559-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786492847819-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786507262755-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786507369829-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786510380611-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786518746828-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786519315533-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786519315533-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786578696999-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786578696999-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786578833123-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786578833123-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579136201-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579136201-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579136201-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579278972-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579278972-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579328243-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786579328243-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786584254948-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786584254948-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786584254948-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786584254948-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786601878683-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786601878683-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786601878683-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786601878683-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786608238513-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786641131384-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786664133036-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672491933-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672516487-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672516487-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672516487-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672516487-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786672516487-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786674416669-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786684260630-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786684260630-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786684260630-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786686208018-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1786797950069-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787009703226-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787009703226-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787009703226-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787009983607-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787011019983-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787011036948-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787011053292-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787011053292-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787018811386-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787033784100-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787033784100-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787033784100-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787033784100-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787035079003-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787035079003-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787035079003-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787035079003-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787040664712-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787042128510-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787042128510-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787042128510-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787042128510-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787042128510-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787096934549-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787097166919-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787097166919-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787097166919-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787106822002-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787106822002-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787110580556-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787110580556-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787115449014-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787115449014-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787183644391-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787183678322-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787183678322-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787192433189-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787193115318-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787193115318-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201394234-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201394234-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201394234-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201394234-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201394234-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787201535512-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787204536189-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787204536189-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787204536189-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787204536189-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787204536189-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787210510117-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787270876571-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787270876571-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787270914562-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787270914562-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787270914562-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787272222475-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787272222475-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787293526253-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787293526253-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787293526253-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787296467189-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787296467189-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529241766-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529304641-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529304641-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529535988-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529617937-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529617937-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529617937-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529617937-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529617937-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529686725-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529686725-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787529703964-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787532916448-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787532916448-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787534487637-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787534487637-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543451361-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543451361-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543469060-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543469060-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543689411-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787543689411-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787615209353-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787615333378-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787615407358-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787615407358-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632505282-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632647751-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632647751-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632647751-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632764904-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632809834-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632809834-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632809834-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632809834-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787632872235-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701554769-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701554769-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701656854-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701656854-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701656854-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701656854-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701675341-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701717546-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701717546-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701797520-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787701797520-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787709426261-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787709639652-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787709639652-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787724514779-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787724751532-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787724751532-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787724837237-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787724837237-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787725107370-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787725107370-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787729963250-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787729963250-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731039463-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731039463-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731071098-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731071098-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731071098-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787731071098-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787789151483-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787789151483-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787789198499-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787818788854-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787819105308-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787819171979-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873823116-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873823116-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873823116-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873823116-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873836337-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787873836337-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787875710027-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787875710027-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787875710027-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787875710027-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787885899705-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1787885899705-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788014828528-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788014828528-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133481266-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133630342-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133644574-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133655935-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133655935-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133675489-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788133675489-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136437180-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136437180-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136489250-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136489250-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136554837-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136554837-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136593919-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136593919-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136647359-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136647359-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136694366-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136812057-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136812057-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136812057-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136896147-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788136896147-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143529009-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143529009-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143529009-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143714789-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143714789-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143714789-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143714789-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143739917-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788143739917-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788145575811-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788145575811-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788145575811-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221333967-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221333967-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221431834-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221431834-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221463847-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788221463847-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788228204035-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232006202-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232123025-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232123025-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788232123025-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788236097085-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788236097085-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788236097085-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788236097085-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242548326-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242548326-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242548326-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242548326-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242627456-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242627456-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242771748-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242771748-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242771748-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242771748-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788242856336-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788244046888-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788251650885-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788305729739-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788305729739-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788305760847-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306059412-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306059412-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306166024-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306191012-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306191012-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306191012-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788306191012-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788314931384-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788314931384-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318457325-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318457325-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318457325-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318457325-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318510763-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318510763-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788318510763-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788319164934-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788333650975-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788333650975-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788333718869-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788333718869-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788391990571-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788391990571-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788392003893-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788392016857-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788392016857-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788394342946-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788394342946-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788394342946-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788395541504-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788400170002-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788400170002-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788401718283-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788401718283-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420544395-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420586560-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788420586560-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788422759763-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478207531-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478207531-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478207531-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478207531-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478223654-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478223654-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478345603-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478885281-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788478885281-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788483401130-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788483401130-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788491245590-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788504669084-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788663037891-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788663037891-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788663037891-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788663037891-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788663037891-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788714775027-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788714775027-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788714775027-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788733733890-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788733733890-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788733853010-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788733853010-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788734692430-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788734692430-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788734692430-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788734692430-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738316017-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738316017-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738344131-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738386533-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738386533-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738549728-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738549728-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788738549728-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788760973452-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788760973452-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761380201-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761380201-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761380201-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761439291-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761439291-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761572546-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761572546-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761572546-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761572546-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761572546-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761724100-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761724100-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761851569-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761851569-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761851569-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788761851569-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768673611-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768673611-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768673611-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768791245-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768791245-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788768791245-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769243192-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769372540-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769372540-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769372540-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769372540-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788769372540-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824203477-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824203477-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824213504-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824213504-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824321546-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824321546-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824321546-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824321546-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824398395-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788824398395-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788850503740-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788850503740-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788854748769-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788854748769-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788884270181-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788884270181-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788884270181-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788908640337-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910403127-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910415043-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910415043-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910435879-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910435879-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910448115-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788910448115-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788941725127-깨분참기름",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-auto-ORD-1788941725127-통깨참기름",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-fix-생들기름-수입대체-20260827",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-fix-수입들기름-20260827",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-oem-oem-1786002424981-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-oem-oem-1787120076171-볶음참깨",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1785819446634-4980",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1785819920050-3xal",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786002454697-78qi",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786002454804-khj5",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786084196458-u9q3",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786324499279-byhi",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786431086384-tv3y",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786516467679-qxlv",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786516469215-r2et",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786516535990-mu9g",
+      "material": "깨분",
+      "companyId": "punghoe",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1786674297808-1vvi",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787014885353-6mc8",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787120156660-weat",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787203490177-oxsg",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787203874680-xgxb",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787210948143-9l1t",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787290531629-o6ob",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787551543155-xtvv",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787551543295-u5n0",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787714769092-tsdf",
+      "material": "참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787714769967-2g0d",
+      "material": "참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787714771452-ybqi",
+      "material": "깨분참기름",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787729679482-magl",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787729679664-xu6n",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787819367333-cmyu",
+      "material": "볶음참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787819367421-4pi8",
+      "material": "볶음검정참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787889208280-syyb",
+      "material": "깨분참기름",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1787899615928-23xl",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788305764761-om8l",
+      "material": "참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788336300695-n8iv",
+      "material": "깨분참기름",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788336344731-qtrb",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788423191458-j7j7",
+      "material": "볶음참깨",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788704576507-790g",
+      "material": "수입들기름",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-rcv-1788768974531-so41",
+      "material": "깨분참기름",
+      "companyId": "taebaek",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785741010595",
+      "material": "들깨가루(고운)",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785741727510",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785741788210",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785741796153",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785741813490",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785742027748",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785742163347",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785742241746",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785742259409",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785742288439",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1785744133049",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786087347245",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786087908599",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786088418418",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786088675021",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786090460452",
+      "material": "검정깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786093175950",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713456-참깨",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713512-볶음검정참깨",
+      "material": "볶음검정참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713581-볶음들깨",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713605-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713625-탈피들깨가루",
+      "material": "탈피들깨가루",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786267713654-통들깨들기름",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786334304835",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786334446010",
+      "material": "깻묵",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786664525686",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786665586926",
+      "material": "깨분참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1786679856480",
+      "material": "들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1787188964887",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1787421822500",
+      "material": "깨분",
+      "companyId": "punghoe",
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1787426861796",
+      "material": "볶음참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1787470001042",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1788704827197-raw-수입들기름",
+      "material": "수입들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-stocktake-1788704827245-raw-생들기름",
+      "material": "생들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1785802751133",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1785832165563",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786063503359",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786063535790",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786091756874",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786333099920",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786430668839",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786431527709",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786508841809",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786522295503",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786522491145",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786609670381",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786695694374",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1786772112475",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787050153018",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787188732253",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787204085718",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787204178877",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787213869020",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787295420697",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787379857324",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787465646851",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787558482954",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787558609400",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787622634553",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787647447824",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787803259516",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787819195558",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787906714315",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1787987936933",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788219291394",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788251290935",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788395939738",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788503025292",
+      "material": "볶음들깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788591167679",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788653167834",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788741897785",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788742087152",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788769574943",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788909984370",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-use-1788943853795",
+      "material": "참깨",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1785802751221",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1785832165654",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786063503441",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786063535874",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786091760237",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786333100007",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786430668951",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786430718932",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786431527974",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786493943037",
+      "material": "통들깨들기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786522491236",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786609670510",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786695695015",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1786772112939",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787050153131",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787188732347",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787204085810",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787204178930",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787213869109",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787295431118",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787379857417",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787465646950",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787558483044",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787647448117",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787803259651",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787819195648",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787906714623",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1787987937000",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788219291491",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788251292181",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788395939830",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788578724744",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788591168234",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788653167919",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788741897842",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788742087254",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788769576054",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788909984476",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    },
+    {
+      "id": "rm-yield-1788943854060",
+      "material": "통깨참기름",
+      "companyId": null,
+      "rawItemId": null
+    }
+  ]
+}
