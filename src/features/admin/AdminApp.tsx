@@ -1,3 +1,6 @@
+import ConfirmModal from '../../shared/components/ConfirmModal';
+import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
+import { statusLabel } from '../../shared/orderStatusStyle';
 ﻿
 // ============================================================
 // [ADMIN APP 경계 — 미래 분리 안내]
@@ -71,10 +74,13 @@ import {
   FolderOpen,
   BookOpen,
   ChevronDown,
+  Plus,
+  ClipboardPaste,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
+import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
@@ -99,6 +105,7 @@ import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
+import OrderRollbackApprovalModal from '../../../components/OrderRollbackApprovalModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
@@ -114,7 +121,7 @@ import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
 import { selectBellNotifications } from '../../shared/bellNotifications';
 import { roomNameFor } from '../../shared/roomName';
 import { leaveStatusPatch } from '../../shared/leave';
-import AccountMenu from '../../../components/AccountMenu';
+import AccountMenu, { accountProfileImageUrl } from '../../../components/AccountMenu';
 const MyPage = React.lazy(() => import('../../../components/MyPage'));
 import AdminChecklist from '../../../components/AdminChecklist';
 import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
@@ -161,6 +168,7 @@ import {
   mutateRawMaterialLots,
   adjustItemStock,
   markNotificationForUser,
+  claimOrderInventoryOperation,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -515,8 +523,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 모바일 감지
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth < 768) {
+      setIsMobile(window.innerWidth < 1280);
+      if (window.innerWidth < 1280) {
         setIsSidebarCollapsed(true); // 모바일에서는 기본적으로 사이드바 숨김
       }
     };
@@ -797,13 +805,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
+  const [isOrderCreateChooserOpen, setIsOrderCreateChooserOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
   const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Item | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 768);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 1280);
   const [ledgerTab, setLedgerTab] = useState<'cash' | 'partner'>('cash');
 
 
@@ -1274,43 +1283,57 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
-  const { changeOrderStatus } = createOrderStockEngine({
+  const { changeOrderStatus, prepareOrderStatusChange } = createOrderStockEngine({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
+    claimOrderOperation: claimOrderInventoryOperation,
   });
 
   // 작업완료 진입점 — 쓸 수 있는 재고가 있으면 모달로 사용량을 먼저 받는다(없으면 그대로 진행).
   //  드롭다운으로 바꾸든 품목 전체 체크로 자동 이동하든 여기 하나를 지난다.
-  const [stockUseAsk, setStockUseAsk] = useState<{ orderId: string; partnerName: string; rows: StockUseRow[] } | null>(null);
-  const requestOrderStatus = async (id: string, status: OrderStatus) => {
-    const cur = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+  const [stockUseAsk, setStockUseAsk] = useState<{ orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order> } | null>(null);
+  const [rollbackAsk, setRollbackAsk] = useState<{ order: Order; targetStatus: OrderStatus; plan: ReturnType<typeof buildRollbackPlan>; orderPatch?: Partial<Order> } | null>(null);
+  const [rollbackSaving, setRollbackSaving] = useState(false);
+  const requestOrderStatus = async (id: string, status: OrderStatus, orderPatch?: Partial<Order>) => {
+    const prepared = await prepareOrderStatusChange(id, status);
+    const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
+    const nextItems = orderPatch?.items ?? cur?.items ?? [];
+    if (cur && requiresCompleteItemsForStatusChange(cur.status, status) && !hasCompleteOrderItems(nextItems)) {
+      alert('모든 주문 품목의 작업완료 여부를 확인한 뒤 상태를 변경해 주세요.');
+      return;
+    }
     // 작업완료 이후 → 대기중/작업중으로 되돌리면 품목 체크를 전부 푼다.
     //  OrdersList가 '전부 체크됨'을 보면 카드가 다시 그려질 때마다 작업완료로 자동 이동시켜서,
     //  체크를 남겨두면 되돌리는 즉시 원위치돼 되돌리기가 아예 안 되는 것처럼 보인다.
-    const DONE = [OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED];
-    const BACK = [OrderStatus.PENDING, OrderStatus.PROCESSING];
+    const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
+      ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
+    const isInventoryRollback = !!cur && stockStage(status) < stockStage(cur.status);
     /**
      * **되돌리기는 재고를 조용히 움직인다** — 출고취소로 완제품이 다시 채워지고, 생산취소로
      * BOM 구성품·원료 로트가 복원되며 원료수불부 줄이 지워진다. 눌러 놓고 나중에
      * "왜 재고가 늘었지"로 만나면 되짚기 어렵다. 무엇이 움직이는지 적어 보여주고 확인을 받는다.
      */
-    if (cur && DONE.includes(cur.status) && BACK.includes(status)) {
-      const plan = buildRollbackPlan(cur, allItems, cur.status, status);
-      if (!window.confirm(plan.text)) return;
-    }
-    if (cur && DONE.includes(cur.status) && BACK.includes(status) && cur.items.some(i => i.checked)) {
-      await updateItem('orders', id, {
-        items: cur.items.map(({ checkedBy: _drop, ...rest }) => ({ ...rest, checked: false })),
+    if (cur && isInventoryRollback) {
+      const shouldClearChecks = status === OrderStatus.PENDING || status === OrderStatus.PROCESSING;
+      const clearedItems = shouldClearChecks
+        ? cur.items.map(({ checkedBy: _dropBy, checkedAt: _dropAt, ...rest }) => ({ ...rest, checked: false }))
+        : cur.items;
+      setRollbackAsk({
+        order: cur,
+        targetStatus: status,
+        plan: prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status),
+        orderPatch: { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) },
       });
+      return;
     }
 
-    if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status);
+    if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
     const order = cur;
-    if (!order || order.producedAt) return changeOrderStatus(id, status);   // 이미 생산됨 — 물을 것 없다
+    if (!order || order.producedAt) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
     const rows = buildStockUseRows(order, allItems);
-    if (rows.length === 0) return changeOrderStatus(id, status);            // 쓸 재고가 없다 → 전량 생산
-    setStockUseAsk({ orderId: id, partnerName: order.partnerName, rows });
+    if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
+    setStockUseAsk({ orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
@@ -1443,35 +1466,57 @@ const AdminApp: React.FC<AdminAppProps> = ({
     setLedgerReloadKey(k => k + 1);   // 입고확정으로 쓴 원료수불부 반영
   };
 
+  const [completionAsk, setCompletionAsk] = useState<{ message: string; subMessage: string; onConfirm: () => void } | null>(null);
+  const completionSaving = React.useRef(new Set<string>());
   const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    const newItems = [...order.items];
-    const isChecking = !newItems[itemIdx].checked;
-    const { checkedBy: _old, ...baseItem } = newItems[itemIdx];
-    newItems[itemIdx] = isChecking
-      ? { ...baseItem, checked: true, ...(checkedBy ? { checkedBy } : {}) }
-      : { ...baseItem, checked: false };
-    const allChecked = newItems.every(i => i.checked);
-    const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
-    // 체크는 언제나 먼저 저장한다 — 아래에서 뭘 고르든 체크한 사실은 남아야 한다.
-    await updateItem('orders', orderId, { items: newItems });
-    if (allChecked && wasNotDispatched) {
-      /**
-       * 다 체크했다고 **바로 넘기지 않는다.** 작업완료는 생산처리(원료·부자재 차감,
-       * 완제품 재고 +생산분)를 부르는 되돌리기 어려운 일이라, 마지막 체크를 잘못 눌렀거나
-       * 확인차 체크만 해둔 경우까지 재고가 움직이면 곤란하다.
-       * 안 보내면 체크만 다 된 채로 남고, 나중에 상태를 직접 바꾸면 그때 생산처리된다.
-       */
-      const name = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '';
-      const ok = window.confirm(
-        `${name ? name + ' — ' : ''}품목을 모두 체크했습니다.
+    const order = allOrders.find(o => o.id === orderId);
+    if (!order || completionSaving.current.has(orderId)) return;
+    const plan = planOrderItemToggle(order, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
+    if (!plan) return;
+    const save = async () => {
+      if (completionSaving.current.has(orderId)) return;
+      completionSaving.current.add(orderId);
+      try {
+        if (plan.status !== order.status) await requestOrderStatus(orderId, plan.status, { items: plan.items });
+        else await updateItem('orders', orderId, { items: plan.items });
+        setCompletionAsk(null);
+      } catch (error) {
+        console.error('작업 확인 저장 실패', error);
+        alert('작업 확인을 저장하지 못했습니다. 다시 시도해 주세요.');
+      } finally { completionSaving.current.delete(orderId); }
+    };
+    if (plan.status === order.status) return save();
+    const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
+      ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
+    const isRollback = stockStage(plan.status) < stockStage(order.status);
+    // 역행은 일반 상태 확인창을 먼저 띄우지 않는다. DB 최신값과 재고 증감을 보여주는
+    // 공통 원복 승인창 하나에서 체크 해제까지 함께 승인한다.
+    if (isRollback) return requestOrderStatus(orderId, plan.status, { items: plan.items });
+    // 승인 전에는 체크도 상태도 저장하지 않는다. 생산은 기존 재고 사용 승인 경로만 호출한다.
+    setCompletionAsk({
+      message: '해당 거래처를 ' + statusLabel(plan.status) + ' 상태로 변경할까요?',
+      subMessage: (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
+      onConfirm: () => { void save(); },
+    });
+  };
 
-작업완료로 보낼까요?
-(보내면 원료·부자재가 차감되고 완제품 재고가 늘어납니다)`
-      );
-      if (ok) await requestOrderStatus(orderId, OrderStatus.DISPATCHED);
+  const handleToggleShipmentComplete = async (orderId: string, completed: boolean) => {
+    const order = allOrders.find(candidate => candidate.id === orderId);
+    if (!order || (completed ? order.status !== OrderStatus.DISPATCHED : order.status !== OrderStatus.SHIPPED)) return;
+
+    if (completed) {
+      await requestOrderStatus(orderId, OrderStatus.SHIPPED, {
+        shipmentConfirmedBy: currentUser?.name || '미기록',
+        shipmentConfirmedAt: new Date().toISOString(),
+      });
+      return;
     }
+
+    // 출고 취소는 이미 생산된 주문의 출고만 되돌린다. 생산 승인 창을 다시 열지 않는다.
+    await requestOrderStatus(orderId, OrderStatus.DISPATCHED, {
+      shipmentConfirmedBy: null,
+      shipmentConfirmedAt: null,
+    });
   };
 
   /**
@@ -1619,7 +1664,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
-        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 xl:hidden ${
           isMobile && !isSidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={() => setIsSidebarCollapsed(true)}
@@ -1694,39 +1739,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
 
           {/* 직원 뷰 전환 버튼 (관리자 전용) */}
-          {isAdmin && onPreviewStaff && (
-            <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-              {isSidebarCollapsed ? (
-                <button onClick={onPreviewStaff} title="직원 뷰로 보기"
-                  className="w-9 h-9 rounded-xl bg-cyan-50 hover:bg-cyan-100 flex items-center justify-center transition-colors">
-                  <ExternalLink size={15} className="text-cyan-600" />
+          {(isAdmin && onPreviewStaff || !isAdmin && onExitPreview) && (
+            isSidebarCollapsed ? (
+              <div className="mb-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => { isAdmin ? onPreviewStaff?.() : onExitPreview?.(); }}
+                  aria-label={isAdmin ? '직원 뷰로 전환' : '관리자 뷰로 전환'}
+                  title={isAdmin ? '현재 관리자 뷰 · 직원 뷰로 전환' : '현재 직원 뷰 · 관리자 뷰로 전환'}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                >
+                  {isAdmin ? <ShieldCheck size={18} aria-hidden="true" /> : <UserCheck size={18} aria-hidden="true" />}
                 </button>
-              ) : (
-                <button onClick={onPreviewStaff}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-xs font-bold transition-colors">
-                  <ExternalLink size={13} />
-                  직원 뷰로 보기
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* 직원 뷰 미리보기 종료 배너 */}
-          {!isAdmin && onExitPreview && (
-            <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
-              {isSidebarCollapsed ? (
-                <button onClick={onExitPreview} title="관리자로 돌아가기"
-                  className="w-9 h-9 rounded-xl bg-amber-50 hover:bg-amber-100 flex items-center justify-center transition-colors">
-                  <ShieldCheck size={15} className="text-amber-600" />
-                </button>
-              ) : (
-                <button onClick={onExitPreview}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-xs font-bold transition-colors">
-                  <ShieldCheck size={13} />
-                  관리자로 돌아가기
-                </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="mb-2 flex gap-0.5 rounded-xl bg-slate-100 p-0.5" role="group" aria-label="계정 뷰 선택">
+                <button type="button" aria-pressed={isAdmin} onClick={() => { if (!isAdmin) onExitPreview?.(); }} className={`min-h-10 flex-1 rounded-[10px] px-2 text-[11px] font-bold transition-colors ${isAdmin ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>관리자 뷰</button>
+                <button type="button" aria-pressed={!isAdmin} onClick={() => { if (isAdmin) onPreviewStaff?.(); }} className={`min-h-10 flex-1 rounded-[10px] px-2 text-[11px] font-bold transition-colors ${!isAdmin ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}>직원 뷰</button>
+              </div>
+            )
           )}
 
           {/*  계정 메뉴 — 알림 권한·소리설정·로그아웃이 다 여기 있다.
@@ -1863,21 +1894,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       <main className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`} style={{ height: '100dvh' }}>
         {/* 모바일 헤더 */}
-        <header className="md:hidden bg-white border-b border-slate-200 px-3 flex items-center gap-2" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
+        <header className="xl:hidden bg-white border-b border-slate-200 px-3 flex items-center gap-2" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
           <button
             onClick={() => setIsSidebarCollapsed(false)}
+            aria-label="메뉴 열기"
             className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
           >
             <Menu size={22} />
           </button>
-          <button onClick={() => switchCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek')}
-            title={`${company.name} — 눌러서 회사 전환`}
-            className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-black ${
-              companyId === 'taebaek' ? 'bg-indigo-600 text-white' : 'bg-orange-500 text-white'}`}>
-            {company.short}
-          </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-slate-800 truncate">
+            <p className="text-[15px] font-black text-slate-800 truncate">
               {(({
                 'dashboard': '비즈니스 현황', 'ai-consultant': 'AI 인사이트',
                 'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
@@ -1894,6 +1920,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'inbound-returns': '입고 / 반품', 'sanitation-checklist': '작업장 위생점검표',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <button type="button" aria-label="알림" onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setNotifPanelPos({ top: rect.bottom + 8, left: Math.max(8, window.innerWidth - 368) }); setShowNotifPanel(prev => !prev); }} className="relative flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">
+              <Bell size={20} aria-hidden="true" />
+              {appNotifications.some(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id)) && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500" />}
+            </button>
+            <div className="flex h-11 w-11 items-center justify-center" title={currentUser.name}>
+              <img
+                src={accountProfileImageUrl(currentUser.id)}
+                alt={`${currentUser.name} 프로필`}
+                className="h-8 w-8 rounded-full bg-slate-100 object-cover shadow-sm"
+              />
+            </div>
           </div>
         </header>
         
@@ -1973,13 +2012,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'shipping' && (
             <DeliveryManager
-              currentUserName={currentUser?.name}
               orders={orders}
               partners={partners}
               items={allItems}
+              partnerItems={partnerItems}
+              palletStocks={pallets}
+
+              itemBoms={itemBoms}
+              currentUserName={currentUser?.name}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
+              onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
+              onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              onToggleShipmentComplete={handleToggleShipmentComplete}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
                 const o = orders.find(x => x.id === id);
@@ -2004,8 +2050,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
                 deleteItem('orders', id);
               }}
-              onAddClick={() => setIsAddOrderOpen(true)}
-              onPasteClick={() => setIsPasteOrderOpen(true)}
+              onAddClick={() => setIsOrderCreateChooserOpen(true)}
               title="주문 관리"
               subtitle="전체 주문 현황"
               groupBy="status" 
@@ -2025,11 +2070,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
               onSetWorkOrderItems={async (items) => {
-                // 기존 항목 전체 삭제 후 새 항목 저장
-                await Promise.all(workOrderItems.map(w => deleteItem('workOrderItems', w.id)));
-                await Promise.all(items.map((item, idx) =>
-                  addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx })
-                ));
+                // 남아 있는 항목은 순번(sortIndex)만 고친다.
+                // 전엔 전체 삭제 후 전체 재생성이라, 구독이 '빈 목록 → 다시 채워짐'을 그대로 받아
+                // 순서만 바꿔도 화면이 깜빡였고 문서 id가 매번 새로 생겨 목록 전체가 다시 그려졌다.
+                // (목록은 useAppData에서 sortIndex로 정렬해 구독하므로 순번만 바꿔도 순서가 반영된다.)
+                const prevByKey = new Map(workOrderItems.map(w => [w.key, w]));
+                const nextKeys = new Set(items.map(i => i.key));
+                const writes: Promise<unknown>[] = [];
+                workOrderItems.forEach(w => {
+                  if (!nextKeys.has(w.key)) writes.push(deleteItem('workOrderItems', w.id));
+                });
+                items.forEach((item, idx) => {
+                  const prev = prevByKey.get(item.key);
+                  if (!prev) writes.push(addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx }));
+                  else if (prev.sortIndex !== idx) writes.push(updateItem('workOrderItems', prev.id, { sortIndex: idx }));
+                });
+                await Promise.all(writes);
               }}
             />
           )}
@@ -2595,7 +2651,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const calcExpiry = (mfgDate: string) => {
               if (!mfgDate) return '';
               const d = new Date(mfgDate);
-              d.setFullYear(d.getFullYear() + 1);
+              d.setDate(d.getDate() + 365);
               return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
             };
 
@@ -2845,15 +2901,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   // **여기서 고른 날짜(docDate)가 네 서류의 공통 기준일이다.**
                   //   deliveredAt에 그 날짜를 박으면 원료수불부·작업기록부 1·2가 같은 날에 잡힌다(docDateOf).
                   //   시각은 언제나 00:00:00.000Z — '처리한 순간'이 아니라 '어느 날짜 서류에 실렸나'를 담는다.
-                  //   먼저 박아 둬야 changeOrderStatus가 '지금 시각'으로 덮어쓰지 않는다
-                  //   (거기선 deliveredAt이 비었을 때만 new Date()를 넣는다).
+                  //   상태·재고·로트·수불부와 같은 작업 단위의 마지막 주문 패치에서 함께 저장한다.
                   //   예전엔 새벽에 뽑으면 서류는 8/10인데 deliveredAt은 8/11로 찍혀 하루씩 갈렸다.
-                  await updateItem('orders', o.id, { deliveredAt: `${docDate}T00:00:00.000Z` });
-                  await changeOrderStatus(o.id, OrderStatus.DELIVERED);
+                  await changeOrderStatus(o.id, OrderStatus.DELIVERED, undefined, {
+                    approvedBy: currentUser?.name,
+                    orderPatch: { deliveredAt: `${docDate}T00:00:00.000Z` },
+                  });
                 } catch (e) {
                   console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
                   deductFailures.push(o.partnerName || o.id);
-                  await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: `${docDate}T00:00:00.000Z` });
                 }
               }
               // 참고: 향미유/고춧가루만 있는 출고 주문도 위 shippedOrders 루프가 이미 처리한다
@@ -2861,7 +2917,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // 과거에는 SUB_ONLY_CATS에 향미유가 포함돼 별도 루프가 필요했으나, 영문 카테고리
               // 전환(e237fc4) 이후 중복 차감을 유발해 제거함.
               if (deductFailures.length > 0) {
-                alert(`주문 ${deductFailures.length}건은 이력으로 이동했지만 재고/원료 차감 중 오류가 발생했습니다:\n${[...new Set(deductFailures)].join(', ')}\n\n해당 품목의 재고/원료 로트를 확인해 주세요.`);
+                alert(`주문 ${deductFailures.length}건은 재고/원료 처리 오류로 이력 이동이 중단되었습니다:\n${[...new Set(deductFailures)].join(', ')}\n\n상태는 변경되지 않았습니다. 해당 주문의 재고·원료 로트·수불부를 확인해 주세요.`);
               }
             };
 
@@ -3750,7 +3806,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const calcExpiry = (mfgDate: string) => {
                     if (!mfgDate) return '';
                     const d = new Date(mfgDate);
-                    d.setFullYear(d.getFullYear() + 1);
+                    d.setDate(d.getDate() + 365);
                     return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
                   };
                   const [wy, wm] = productionWorkMonth.split('-').map(Number);
@@ -4471,14 +4527,42 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal items={allItems} orders={allOrders} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isOrderCreateChooserOpen && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={() => setIsOrderCreateChooserOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="order-create-method-title" className="w-full max-w-md overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl md:rounded-2xl" onClick={event => event.stopPropagation()}>
+            <OrderCreationModalHeader
+              onClose={() => setIsOrderCreateChooserOpen(false)}
+            />
+            <div className="grid gap-3 p-4 md:p-5">
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><Plus size={19} /></span>
+                <span className="min-w-0">
+                  <strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">직접 선택</strong>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">거래처와 주문 품목을 직접 선택합니다.</span>
+                </span>
+              </button>
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setIsPasteOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><ClipboardPaste size={19} /></span>
+                <span className="min-w-0">
+                  <strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">주문 내역 붙여넣기</strong>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">문자나 메신저로 받은 주문 내용을 붙여넣습니다.</span>
+                </span>
+              </button>
+            </div>
+            <div className="flex justify-end border-t border-slate-200 px-5 py-3">
+              <button type="button" onClick={() => setIsOrderCreateChooserOpen(false)} className="rounded-lg px-4 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isAddOrderOpen && <AddOrderModal items={allItems} orders={allOrders} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onBack={() => { setIsAddOrderOpen(false); setIsOrderCreateChooserOpen(true); }} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4491,14 +4575,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
           alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
         }
       }} />}
-      {isPasteOrderOpen && <PasteOrderModal items={allItems} partners={partners} partnerItems={partnerItems} onClose={() => setIsPasteOrderOpen(false)} onSave={async (o) => {
+      {isPasteOrderOpen && <PasteOrderModal items={allItems} partners={partners} partnerItems={partnerItems} palletStocks={pallets} onClose={() => setIsPasteOrderOpen(false)} onBack={() => { setIsPasteOrderOpen(false); setIsOrderCreateChooserOpen(true); }} onSave={async (o) => {
         try {
           console.log('[PasteOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4622,6 +4706,35 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
 
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
+      {completionAsk && <ConfirmModal {...completionAsk} confirmText="변경하기" onCancel={() => setCompletionAsk(null)} />}
+      {rollbackAsk && (
+        <OrderRollbackApprovalModal
+          order={rollbackAsk.order}
+          targetStatus={rollbackAsk.targetStatus}
+          plan={rollbackAsk.plan}
+          saving={rollbackSaving}
+          onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
+          onConfirm={async () => {
+            if (rollbackSaving) return;
+            setRollbackSaving(true);
+            try {
+              await changeOrderStatus(rollbackAsk.order.id, rollbackAsk.targetStatus, undefined, {
+                approvedBy: currentUser?.name,
+                approvedAt: new Date().toISOString(),
+                approvedPlan: rollbackAsk.plan,
+                approvedFromStatus: rollbackAsk.order.status,
+                orderPatch: rollbackAsk.orderPatch,
+              });
+              setRollbackAsk(null);
+            } catch (error) {
+              console.error('주문 상태 원복 실패', error);
+              alert(error instanceof Error ? error.message : '원복을 완료하지 못했습니다. 재고 작업 이력을 확인해 주세요.');
+            } finally {
+              setRollbackSaving(false);
+            }
+          }}
+        />
+      )}
       {stockUseAsk && (
         <StockUseModal
           partnerName={stockUseAsk.partnerName}
@@ -4630,7 +4743,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onConfirm={async (plan: StockUsePlan) => {
             const { orderId } = stockUseAsk;
             setStockUseAsk(null);
-            await changeOrderStatus(orderId, OrderStatus.DISPATCHED, plan);
+            await changeOrderStatus(orderId, OrderStatus.DISPATCHED, plan, { approvedBy: currentUser?.name, orderPatch: stockUseAsk.orderPatch });
           }}
         />
       )}
