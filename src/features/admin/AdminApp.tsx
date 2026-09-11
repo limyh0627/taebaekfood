@@ -2054,9 +2054,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   "캘린더는 배송관리쪽꺼 쓰고 나머지 리스트랑 보드는 주문관리쪽꺼 쓸거고").
                   탭바·검색·금일 작업순서는 주문 쪽 그대로 두고 캘린더만 갈아 끼운다 —
                   오전·오후 시간대, 배송 순서 번호, 주소까지 배송 쪽 기능이 다 따라온다. */
-              calendarSlot={
+              calendarSlot={sort => (
                 <DeliveryManager
                   calendarOnly
+                  sortMode={sort}
                   orders={orders}
                   partners={partners}
                   items={allItems}
@@ -2072,7 +2073,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onToggleShipmentComplete={handleToggleShipmentComplete}
                   onToggleItemChecked={handleToggleItemChecked}
                 />
-              }
+              )}
               orders={allOrders}
               partners={partners}
               items={allItems}

@@ -291,7 +291,12 @@ interface OrdersListProps {
    * 주문·배송을 한 화면으로 합치면서, 탭바·검색·금일 작업순서는 이쪽(주문) 것을 그대로 쓰고
    * **캘린더 자리만** 배송 캘린더로 바꿔 끼운다. 탭바가 둘이 되지 않게 하려는 것이다.
    */
-  calendarSlot?: React.ReactNode;
+  /**
+   * 안 주면 이 파일의 `CalendarView` 를 그린다. **지금 고른 정렬을 넘겨 준다** —
+   * 검색조건 안의 고르개가 캘린더에서도 들어야 한다(2026-09-11 사장님:
+   * "검색조건이랑 붙어다니게 해야지 코드가").
+   */
+  calendarSlot?: (_sort: 'delivery' | 'order' | 'stock') => React.ReactNode;
 }
 
 interface OrderCardProps {
@@ -1381,6 +1386,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [columnUnits, setColumnUnits] = useState<Record<string, number>>(defaultUnits);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  //  이력은 **한 쪽에 15줄**(2026-09-11 사장님). 검색조건을 바꾸면 첫 쪽으로 돌아간다.
+  const [historyPage, setHistoryPage] = useState(1);
   const [historySearch, setHistorySearch] = useState('');
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
@@ -1467,6 +1474,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   useEffect(() => {
     setListPage(1);
   }, [listStatusTab, listFilterField, listFilterValue, searchTerm, activeDateFrom, activeDateTo, listSort, includeLegacyHistory]);
+  //  이력도 조건이 바뀌면 첫 쪽으로 — 3쪽을 보다가 조건을 좁히면 빈 쪽이 뜬다.
+  useEffect(() => { setHistoryPage(1); }, [searchTerm, activeDateFrom, activeDateTo]);
 
   // 조회만으로 운영 주문을 수정하지 않는다. 상태 이동은 사용자 조작의 승인 경로에서만 한다.
 
@@ -1608,6 +1617,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
     });
     setWorkSort(mode);
   };
+
+  /**
+   * **정렬 셈은 이 하나뿐이다** — 보드·리스트·배송 캘린더·이력이 다 이걸 지난다
+   * (2026-09-11 사장님: "보드 리스트 배송캘린더 이력에서 정렬 다 공용으로 쓰게 해").
+   *
+   * 전에는 리스트만 정렬하고 보드는 거르기만 했다. 검색조건 안에 있는 고르개가
+   * 한 화면에서만 듣는 건 말이 안 된다.
+   *
+   *   출고예정일 임박 순 (기본) · 주문일 최신 순 · 재고 여유 순
+   *
+   * 재고 여유는 "재고 − 주문량"이 적은 것부터다 — 모자랄 것 같은 주문을 먼저 본다.
+   */
+  const stockSlackOf = (order: Order) => Math.min(...order.items.map(item => {
+    const product = items.find(candidate => candidate.id === item.itemId);
+    return product ? (product.stock ?? 0) - item.quantity : Number.POSITIVE_INFINITY;
+  }));
+  const 정렬 = (rows: readonly Order[]): Order[] => [...rows].sort((a, b) => {
+    if (listSort === 'order') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (listSort === 'stock') return stockSlackOf(a) - stockSlackOf(b);
+    return new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime();
+  });
 
   const filteredOrders = useMemo(() => {
     if (!searchTerm.trim()) return orders;
@@ -1802,7 +1832,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </label>
               {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
                    조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
-              <label className="order-3 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              {/*  정렬은 **한 줄 아래**로 내린다(2026-09-11 사장님) — 위 줄이 날짜·필드로 이미 빽빽하다. */}
+              <span className="order-3 h-0 basis-full" aria-hidden="true" />
+              <label className="order-4 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 정렬
                 <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
                   <option value="delivery">출고예정일 임박 순</option>
@@ -1810,7 +1842,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <option value="stock">재고 여유 순</option>
                 </select>
               </label>
-              <label className="order-3 flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
+              <label className="order-4 flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
                 전체 검색
                 <span className="relative block">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
@@ -2178,9 +2210,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
         };
 
         const renderCol = (col: typeof activeConfigs[0] | typeof historyConfig) => {
-          const allColOrders = activeViewOrders.filter(o =>
-            col.statusFilter.includes(o.status)
-          );
+          //  보드 칸도 같은 정렬을 지난다 — 리스트에서 고른 차례가 여기서도 그대로 보인다.
+          const allColOrders = 정렬(activeViewOrders.filter(o => col.statusFilter.includes(o.status)));
           const units = activeView === 'list' ? 1 : (columnUnits[col.id] ?? defaultUnits[col.id] ?? 1);
           const colMax = maxUnits[col.id] ?? 2;
           const Icon = col.icon;
@@ -2340,15 +2371,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
             return product ? (product.stock ?? 0) - item.quantity : Number.POSITIVE_INFINITY;
           }));
           const searchConditionMatchedListOrders = searchMatchedListOrders.filter(matchesListFilter);
-          const listOrders = (embeddedListOnly || listStatusTab === 'all'
+          const listOrders = 정렬(embeddedListOnly || listStatusTab === 'all'
             ? searchConditionMatchedListOrders
-            : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab)).sort((a, b) => {
-            //  **주문일 최신 순** — 오늘 들어온 주문이 맨 위다(2026-09-11 사장님).
-            //  전에는 오래된 것이 위로 올라와, 새로 들어온 주문을 보려면 끝까지 내려야 했다.
-            if (listSort === 'order') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-            if (listSort === 'stock') return stockSlackForOrder(a) - stockSlackForOrder(b);
-            return new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime();
-          });
+            : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab));
           const listPageSize = 20;
           const listPageCount = Math.max(1, Math.ceil(listOrders.length / listPageSize));
           const currentListPage = Math.min(listPage, listPageCount);
@@ -2999,7 +3024,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             {!embeddedListOnly && <div className="order-2">{renderOrderManagementControls()}</div>}
             {activeView === 'calendar' && (
               <div className="order-4">
-                {calendarSlot ?? (
+                {calendarSlot?.(listSort) ?? (
                   <CalendarView
                     orders={activeViewOrders}
                     onUpdateDeliveryDate={onUpdateDeliveryDate}
@@ -3170,19 +3195,31 @@ const OrdersList: React.FC<OrdersListProps> = ({
             **기간의 기준은 완료일**이다 — 이력에서 찾는 건 "언제 나갔나"지 "언제 주문했나"가 아니다. */
         const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).sort(byDeliveryThenId);
         const 완료일 = (o: Order) => dateOfLocal(o.deliveredAt || o.deliveryDate || o.createdAt);
-        const filteredHistoryOrders = allColOrders.filter(o => {
+        const filteredHistoryBase = allColOrders.filter(o => {
           const dateStr = 완료일(o);
           if (activeDateFrom && dateStr < activeDateFrom) return false;
           if (activeDateTo && dateStr > activeDateTo) return false;
           return true;
-        }).sort((a, b) => {
-          //  **완료일이 최신인 것이 위로.** 같으면 주문번호로 갈라 순서가 흔들리지 않게 한다.
-          const da = a.deliveredAt || a.deliveryDate || a.createdAt || '';
-          const db = b.deliveredAt || b.deliveryDate || b.createdAt || '';
-          return db.localeCompare(da) || (b.id || '').localeCompare(a.id || '');
         });
+        /*  이력도 **같은 정렬 고르개**를 쓴다(2026-09-11 사장님). 다만 아무것도 안 고른
+            기본값(출고예정일 임박 순)일 때는 이력답게 **완료일 최신순**으로 둔다 —
+            지나간 것을 볼 때 제일 최근이 위로 오는 게 맞다. */
+        const 이력정렬 = listSort === 'delivery'
+          ? [...filteredHistoryBase].sort((a, b) => {
+              const da = a.deliveredAt || a.deliveryDate || a.createdAt || '';
+              const db = b.deliveredAt || b.deliveryDate || b.createdAt || '';
+              //  같으면 주문번호로 갈라 순서가 흔들리지 않게 한다.
+              return db.localeCompare(da) || (b.id || '').localeCompare(a.id || '');
+            })
+          : 정렬(filteredHistoryBase);
+        const filteredHistoryOrders = 이력정렬;
         const hasHistoryFilter = !!(searchTerm || activeDateFrom || activeDateTo);
-        const colOrders = hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW));
+        //  **한 쪽에 15줄**(2026-09-11 사장님: "주문 이력 한페이지에 15개만 보여주고 나머진 페이지로 넘겨라").
+        //  전에는 5줄만 보이고 '더 보기'로 통째로 펴는 방식이라, 많이 쌓이면 한없이 길어졌다.
+        const HISTORY_PAGE_SIZE = 15;
+        const historyPageCount = Math.max(1, Math.ceil(filteredHistoryOrders.length / HISTORY_PAGE_SIZE));
+        const currentHistoryPage = Math.min(historyPage, historyPageCount);
+        const colOrders = filteredHistoryOrders.slice((currentHistoryPage - 1) * HISTORY_PAGE_SIZE, currentHistoryPage * HISTORY_PAGE_SIZE);
         const Icon = col.icon;
         const groupedOrders: Record<OrderSource, Order[]> = {
           '스마트스토어': colOrders.filter(o => o.source === '스마트스토어'),
@@ -3194,7 +3231,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             <div className="p-5 border-b border-white/50 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
-                <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({colOrders.length}/{allColOrders.length})</h3>
+                <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({filteredHistoryOrders.length}건)</h3>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -3218,10 +3255,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 })}
               </div>
               {colOrders.length === 0 && <div className="flex flex-col items-center justify-center py-20 opacity-20"><Inbox size={48} /><p className="text-xs font-bold mt-2">주문이 없습니다</p></div>}
-              {!hasHistoryFilter && filteredHistoryOrders.length > HISTORY_PREVIEW && (
-                <button onClick={() => setShowAllHistory(v => !v)} className="w-full py-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 hover:bg-white/60 rounded-xl transition-all">
-                  {showAllHistory ? '▲ 접기' : `▼ 더 보기 (${filteredHistoryOrders.length - HISTORY_PREVIEW}건 더)`}
-                </button>
+              {historyPageCount > 1 && (
+                <nav className="flex items-center justify-center gap-2 py-3" aria-label="주문 이력 페이지">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPage(page => Math.max(1, page - 1))}
+                    disabled={currentHistoryPage === 1}
+                    className="flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >이전</button>
+                  <span className="min-w-16 text-center text-[11px] font-bold tabular-nums text-slate-500">
+                    <strong className="text-indigo-600">{currentHistoryPage}</strong> / {historyPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPage(page => Math.min(historyPageCount, page + 1))}
+                    disabled={currentHistoryPage === historyPageCount}
+                    className="flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >다음</button>
+                </nav>
               )}
             </div>
           </div>
