@@ -2291,18 +2291,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   );
                 })()}
               </button>
-              <div className="text-right">
-                <div className="mb-1 flex flex-wrap justify-end gap-1">
-                  {dueSoon && <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-black text-rose-600"><AlertTriangle size={11} aria-hidden="true" />출고 임박</span>}
-                  {legacy && <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700"><AlertTriangle size={11} aria-hidden="true" />품목 카테고리 누락</span>}
-                </div>
-                <p className={`whitespace-nowrap text-[11px] font-black tabular-nums ${dueSoon ? 'text-rose-600' : 'text-slate-600'}`}>
-                  {order?.deliveryDate ? fmtYYMMDD(new Date(order.deliveryDate)) : '-'}
-                </p>
+              {/*  **날짜와 상태 딱지는 뺐다**(2026-09-12 사장님: "금일작업순서에 날짜랑 대기중
+                   없애라니까", "대기중 작업중 상태 표시를 없애라고").
+                   오늘 할 일만 세운 칸이라 날짜가 줄마다 붙을 이유가 없고, 다 한 것은 왼쪽
+                   체크로 이미 보인다. 경고 딱지(출고 임박·카테고리 누락)는 남긴다 — 그건 상태가
+                   아니라 **손을 봐야 한다는 신호**다. */}
+              <div className="flex flex-wrap justify-end gap-1">
+                {dueSoon && <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-black text-rose-600"><AlertTriangle size={11} aria-hidden="true" />출고 임박</span>}
+                {legacy && <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700"><AlertTriangle size={11} aria-hidden="true" />품목 카테고리 누락</span>}
               </div>
-              <span className={`inline-flex justify-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-black ${completed ? 'bg-slate-200 text-slate-600' : processing ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>
-                {completed ? '완료' : processing ? '작업중' : '대기중'}
-              </span>
               <div className="flex items-center gap-0.5">
                 <span title={workSort === null ? '끌어서 순서 바꾸기' : '직접 정렬을 선택하면 이동할 수 있습니다'} className={`rounded p-1 transition-colors ${workSort === null ? 'cursor-grab text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 active:cursor-grabbing' : 'cursor-not-allowed text-slate-300'}`}>
                   <GripVertical size={16} />
