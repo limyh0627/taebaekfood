@@ -1358,6 +1358,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock'>('delivery');
   const [listStatusTab, setListStatusTab] = useState<'all' | OrderStatus>('all');
   const [listPage, setListPage] = useState(1);
+  //  거래처 거르개 — 검색필드와 따로 논다(2026-09-11 사장님).
+  const [listPartnerFilter, setListPartnerFilter] = useState('');
   const [listFilterField, setListFilterField] = useState<'source' | 'invoicePrinted' | 'partner' | 'completion' | 'item' | 'quantity' | 'manufacturing' | 'label' | 'packaging' | 'pallet' | 'orderDate' | 'deliveryDate' | ''>('');
   const [listFilterValue, setListFilterValue] = useState('');
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
@@ -1799,7 +1801,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="active-view-query-title">
             <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
               <h3 id="active-view-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-              <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
+              <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
             </div>
             <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
               <label className="order-1 flex flex-col gap-1 text-[10px] font-bold text-slate-500">
@@ -1821,14 +1823,39 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 검색 필드
                 <select value={listFilterField} onChange={event => { setListFilterField(event.target.value as typeof listFilterField); setListFilterValue(''); }} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                  <option value="">필드 선택</option><option value="source">출고 방식</option><option value="invoicePrinted">송장</option><option value="partner">거래처</option><option value="completion">작업완료 여부</option><option value="item">주문 품목</option><option value="quantity">주문 수량</option><option value="manufacturing">품목명</option><option value="label">라벨 작업</option><option value="packaging">포장</option><option value="pallet">팔레트</option><option value="orderDate">주문일</option><option value="deliveryDate">출고예정일</option>
+                  {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
+                       거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
+                  <option value="">필드 선택</option><option value="source">출고 방식</option><option value="invoicePrinted">송장</option><option value="completion">작업완료 여부</option><option value="item">주문 품목</option><option value="manufacturing">품목명</option><option value="label">라벨 작업</option><option value="deliveryDate">출고예정일</option>
                 </select>
+              </label>
+              {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처 필터는 따로 꺼내서
+                   검색필드랑 같은 행에 둬봐"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
+                   두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
+              <label className="order-2 flex w-40 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                거래처
+                <input
+                  type="search" list="list-partner-names" value={listPartnerFilter}
+                  onChange={event => setListPartnerFilter(event.target.value)}
+                  placeholder="전체 · 쳐서 찾기"
+                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none placeholder:font-medium placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                />
+                <datalist id="list-partner-names">
+                  {[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b, 'ko'))
+                    .map(name => <option key={name} value={name} />)}
+                </datalist>
               </label>
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 조건 값
-                <select value={listFilterValue} onChange={event => setListFilterValue(event.target.value)} disabled={!listFilterField} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                  <option value="">전체</option>{activeViewFilterValues.map(value => <option key={value} value={value}>{value}</option>)}
-                </select>
+                {/*  **쳐서 찾는다**(2026-09-11 사장님: "드롭다운 길어서 찾기 힘들다").
+                     목록은 그대로 달려 있고(`datalist`), 글자를 치면 좁혀진다. 비우면 전체다. */}
+                <input
+                  type="search" list="list-filter-values" value={listFilterValue}
+                  onChange={event => setListFilterValue(event.target.value)}
+                  disabled={!listFilterField} placeholder="전체 · 쳐서 찾기"
+                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none placeholder:font-medium placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                />
+                <datalist id="list-filter-values">{activeViewFilterValues.map(value => <option key={value} value={value} />)}</datalist>
               </label>
               {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
                    조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
@@ -2375,7 +2402,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
             const product = items.find(candidate => candidate.id === item.itemId);
             return product ? (product.stock ?? 0) - item.quantity : Number.POSITIVE_INFINITY;
           }));
-          const searchConditionMatchedListOrders = searchMatchedListOrders.filter(matchesListFilter);
+          //  거래처 거르개는 검색필드와 **따로** 먹는다 — 둘을 같이 걸 수 있어야 쓸모가 있다.
+          const searchConditionMatchedListOrders = searchMatchedListOrders
+            .filter(matchesListFilter)
+            .filter(order => !listPartnerFilter
+              || (order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '') === listPartnerFilter);
           const listOrders = 정렬(embeddedListOnly || listStatusTab === 'all'
             ? searchConditionMatchedListOrders
             : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab));
