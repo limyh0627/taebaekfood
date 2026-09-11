@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Plus } from 'lucide-react';
+import { isDeliveryChannel } from '../src/shared/channelStyle';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -34,6 +35,13 @@ import type { DayRow } from '../src/shared/deliveryPlan';
 import { OrderItem } from '../types';
 
 interface DeliveryManagerProps {
+  /**
+   * **캘린더만 그린다** — 주문·배송을 한 화면으로 합칠 때 쓴다(2026-09-11 사장님).
+   *
+   * 껍데기(제목·탭바·검색조건·상태필터)와 리스트·보드는 주문 쪽(`OrdersList`)이 맡고,
+   * 이 컴포넌트는 **금일 배송순서 + 배송 캘린더**만 내놓는다. 탭바가 둘이 되지 않게 한다.
+   */
+  calendarOnly?: boolean;
   orders: Order[];
   partners: Partner[];
   items: Item[];
@@ -45,7 +53,8 @@ interface DeliveryManagerProps {
   onUpdateStatus?: (_id: string, _status: OrderStatus) => void;
   onUpdateItems?: (_id: string, _items: OrderItem[]) => void;
   onUpdatePallets?: (_id: string, _pallets: OrderPallet[]) => void;
-  onToggleInvoicePrinted?: (_id: string, _value: boolean) => void;
+  //  송장은 세 단계다 — 뜻은 OrdersList 의 같은 props 주석 참고.
+  onToggleInvoicePrinted?: (_id: string, _value: boolean | 'printed' | 'attached' | undefined) => void;
   onToggleShipmentComplete?: (_id: string, _value: boolean) => void;
   onToggleItemChecked?: (_orderId: string, _itemIdx: number) => void;
   onDeleteOrder?: (_id: string) => void;
@@ -67,7 +76,7 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false, orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -80,8 +89,28 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [showAddProductSelect, setShowAddProductSelect] = useState<string | null>(null);
   const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>([]);
+  /**
+   * **주문 끌어오기 창** — 금일 배송순서에 어떤 주문을 담을지 고른다.
+   *
+   * 2026-09-11 사장님: "금일배송순서랑 금일작업순서 내에 주문, 품목을 추가할 방법이 없다".
+   * 맞다 — 예전엔 패널 머리에 `+ 추가` 가 있었는데(`306986e` 587줄) **병합(`a08a811`) 때
+   * 통째로 사라졌다.** 상태 변수까지 없어져서 되살린다.
+   *
+   * 저장은 지금 방식(`settings/deliveryOrdering` 한 문서)을 그대로 쓴다 — 옛 코드의
+   * 날짜별 `savePlan` 은 이제 없다.
+   */
+  const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
+  const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>({});
-  const [deliverySortMode, setDeliverySortMode] = useState<'recommended' | 'manual'>('recommended');
+  /**
+   * 금일 배송순서의 정렬 — **기본은 직접 정렬**(2026-09-11 사장님:
+   * "금일배송순서랑 금일작업순서는 직접정렬이 디폴트로").
+   *
+   * 추천이 기본이면 카드가 `draggable={false}` 라 **끌어도 아무 일이 안 난다.** 게다가 그 토글은
+   * 접히는 패널 안에 있어서, 왜 안 끌리는지 알아내려면 패널을 펴고 '직접 정렬'을 먼저 눌러야 했다.
+   * 순서는 결국 사람이 정하는 것이니 끌리는 쪽을 기본으로 둔다. 추천은 눌러서 쓴다.
+   */
+  const [deliverySortMode, setDeliverySortMode] = useState<'recommended' | 'manual'>('manual');
   const [showCompletedDeliveryOrders, setShowCompletedDeliveryOrders] = useState(false);
 
   useEffect(() => {
@@ -687,12 +716,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-      <PageHeader
+      {!calendarOnly && <PageHeader
         title="배송 관리"
         subtitle="배송 일정과 출고 진행 상태를 관리합니다."
-      />
+      />}
 
-      <div className="order-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6">
+      {!calendarOnly && <div className="order-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6">
         <h2 className="text-lg font-black text-slate-900">전체 배송 관리</h2>
         <div className="flex items-center rounded-2xl bg-slate-100 p-1" aria-label="배송 보기 방식">
           {([
@@ -709,9 +738,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
             );
           })}
         </div>
-      </div>
+      </div>}
 
-      <section className="order-3 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
+      {!calendarOnly && <section className="order-3 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
         <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
           <h3 id="delivery-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
           <button type="button" onClick={() => { setQueryDateFrom(`${todayKey.slice(0, 7)}-01`); setQueryDateTo(todayKey); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
@@ -755,9 +784,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
             </span>
           </label>
         </div>
-      </section>
+      </section>}
 
-      <div className="order-4 flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="배송 상태 필터">
+      {!calendarOnly && <div className="order-4 flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="배송 상태 필터">
         {[
           { value: 'all' as const, label: '전체', count: deliveryQueryOrders.length },
           { value: OrderStatus.DISPATCHED, label: '작업완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.DISPATCHED).length },
@@ -767,9 +796,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
             <span>{status.label}</span><span className={`text-[9px] tabular-nums ${queryStatus === status.value ? 'text-indigo-500' : 'text-slate-400'}`}>{status.count}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
-      {deliveryTab === '리스트' && (
+      {!calendarOnly && deliveryTab === '리스트' && (
         <div className="order-5">
         <OrdersList
           title="배송 목록"
@@ -916,7 +945,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
 
         return (
           <>
-              {/* 금일 배송순서 패널 */}
+              {/*  **금일 배송순서는 캘린더 탭 위에만 둔다**(2026-09-11 사장님:
+                   "금일 배송순서는 캘린더 쪽 상단으로 이동시켜").
+                   리스트·보드에서는 그날 도는 순서를 볼 일이 없고, 늘 붙어 있으면 화면만 길어진다.
+                   주문 쪽 금일 작업순서와 두 덩이가 겹쳐 쌓이는 것도 막는다. */}
+              {(calendarOnly || deliveryTab === '캘린더') && (
               <div className="order-1 flex w-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
                   <button type="button" className="flex min-h-11 items-center gap-2 text-left" onClick={() => toggleMobileCollapse('delivery-order')} aria-expanded={!mobileCollapsed.has('delivery-order')}>
@@ -925,6 +958,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
                     <ChevronDown size={14} className={`text-slate-400 transition-transform ${mobileCollapsed.has('delivery-order') ? '' : 'rotate-180'}`} />
                   </button>
                   <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setPickerDeliveryOrdering(visibleIds); setShowDeliveryPicker(true); }}
+                      className="flex min-h-8 items-center gap-1 rounded-lg bg-indigo-50 px-2.5 text-[11px] font-black text-indigo-600 transition-colors hover:bg-indigo-100"
+                    ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
                     <p className="text-xs font-bold text-slate-500">
                       출고 미완료 <strong className="font-black text-rose-600">{todayIncompleteCount}건</strong>
                       <span className="mx-1.5 text-slate-300">·</span>
@@ -949,34 +987,76 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
                     <p className="py-6 text-center text-xs font-bold text-slate-400">배송순서에 표시할 주문이 없습니다.</p>
                   ) : (
                     <>
-                      <div
-                        className="px-1 pt-1 text-[10px] font-black text-amber-600"
-                        onDragOver={event => deliverySortMode === 'manual' && event.preventDefault()}
-                        onDrop={() => {
-                          if (deliverySortMode !== 'manual' || dragDeliveryId === null) return;
-                          const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오전' };
-                          saveTimeSlots(next);
-                          setDragDeliveryId(null);
-                        }}
-                      >오전</div>
-                      {morningIds.length === 0 ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p> : morningIds.map(id => renderDeliveryRow(id, '오전'))}
-                      <div
-                        className="px-1 pt-2 text-[10px] font-black text-indigo-600"
-                        onDragOver={event => deliverySortMode === 'manual' && event.preventDefault()}
-                        onDrop={() => {
-                          if (deliverySortMode !== 'manual' || dragDeliveryId === null) return;
-                          const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오후' };
-                          saveTimeSlots(next);
-                          setDragDeliveryId(null);
-                        }}
-                      >오후</div>
-                      {afternoonIds.length === 0 ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p> : afternoonIds.map(id => renderDeliveryRow(id, '오후'))}
+                      {/*  **묶음은 택배와 일반 둘이다**(2026-09-11 사장님: "배송순서에서는
+                           택배(택배, 스마트스토어)랑 일반으로 분류"). 택배는 송장을 붙여 넘기고
+                           일반은 우리 차가 돌기 때문에 챙기는 일이 다르다 — 섞여 있으면 순서를 못 짠다.
+                           스마트스토어도 택배로 나가므로 같은 묶음이다(`isDeliveryChannel`).
+                           오전·오후는 줄마다 달린 딱지로 그대로 고른다. */}
+                      {([
+                        { key: '택배' as const, tone: 'text-pink-600', ids: visibleIds.filter(id => isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
+                        { key: '일반' as const, tone: 'text-indigo-600', ids: visibleIds.filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
+                      ]).map(묶음 => (
+                        <div key={묶음.key} className="flex flex-col gap-1">
+                          <div className={`px-1 pt-1 text-[10px] font-black ${묶음.tone}`}>{묶음.key} <span className="tabular-nums opacity-60">{묶음.ids.length}</span></div>
+                          {묶음.ids.length === 0
+                            ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p>
+                            : 묶음.ids.map(id => renderDeliveryRow(id, deliveryTimeSlots[id] === '오후' ? '오후' : '오전'))}
+                        </div>
+                      ))}
                     </>
                   )}
                 </div>
               </div>
+              )}
 
-            {deliveryTab === '보드' && <div className="order-5 md:overflow-x-auto no-scrollbar">
+            {/*  **주문 끌어오기 창** — 금일 배송순서에 담을 주문을 고른다.
+                 후보는 지금 운영 중인 배송 대상(작업중·작업완료·출고완료) 전부다.
+                 누른 차례가 곧 배송 순서라 동그라미에 번호를 보여 준다. */}
+            {showDeliveryPicker && (
+              <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowDeliveryPicker(false)}>
+                <div className="flex max-h-[70vh] w-full max-w-sm flex-col rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <h3 className="font-black text-slate-900">금일 배송순서에 담기</h3>
+                    <button type="button" onClick={() => setShowDeliveryPicker(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={16} /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {visibleDeliverySequenceOrders.length === 0 ? (
+                      <p className="py-10 text-center text-sm text-slate-400">담을 주문이 없습니다.</p>
+                    ) : visibleDeliverySequenceOrders.map(order => {
+                      const 이름 = partners.find(partner => partner.id === order.partnerId)?.name || order.partnerName || '';
+                      const 골랐나 = pickerDeliveryOrdering.includes(order.id);
+                      const 번호 = pickerDeliveryOrdering.indexOf(order.id) + 1;
+                      return (
+                        <button
+                          key={order.id}
+                          type="button"
+                          onClick={() => setPickerDeliveryOrdering(현재 => 골랐나 ? 현재.filter(id => id !== order.id) : [...현재, order.id])}
+                          className={`flex w-full items-center gap-3 border-b border-slate-50 px-5 py-3 text-left transition-colors hover:bg-slate-50 ${골랐나 ? 'bg-indigo-50/70' : ''}`}
+                        >
+                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${골랐나 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>{골랐나 ? 번호 : ''}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-sm font-bold text-slate-700">{이름}</span>
+                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
+                            </span>
+                            <span className="block truncate text-[10px] text-slate-400">{order.items.map(item => item.name).join(', ')}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="border-t border-slate-100 p-4">
+                    <button
+                      type="button"
+                      onClick={() => { saveDeliveryOrdering(pickerDeliveryOrdering); setDeliverySortMode('manual'); setShowDeliveryPicker(false); }}
+                      className="w-full rounded-2xl bg-indigo-600 py-3 font-black text-white transition-colors hover:bg-indigo-700"
+                    >고른 {pickerDeliveryOrdering.length}건으로 순서 정하기</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!calendarOnly && deliveryTab === '보드' && <div className="order-5 md:overflow-x-auto no-scrollbar">
               <div className="flex flex-col gap-4 pb-1 md:min-w-max md:flex-row md:items-start">
               {/* 작업완료 컬럼 (2열) */}
               <div
@@ -1154,7 +1234,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders: sourceOrders,
       })()}
 
       {/* Calendar (Weekly / Monthly toggle) */}
-      {deliveryTab === '캘린더' && (
+      {(calendarOnly || deliveryTab === '캘린더') && (
         <div className="order-5 mb-10 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {/* 공통 헤더 — 뷰 토글 + 현재 뷰 내비게이션 */}
           <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">

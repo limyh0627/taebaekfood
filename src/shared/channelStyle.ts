@@ -17,6 +17,12 @@ export interface ChannelStyle {
   icon: LucideIcon;
   /** 이름표 — 거래처를 만들 때 고르는 자리가 쓴다 */
   label: string;
+  /**
+   * **좁은 칸에 찍는 짧은 이름** — 표의 딱지처럼 자리가 없는 곳이 쓴다.
+   * 2026-09-11 사장님: "스마트스토어는 일단 스마트 세글자만 보이게 해놔봐 너무 길다".
+   * 짧게 줄이는 규칙을 화면마다 따로 적으면 어디는 '스마트', 어디는 '스마트스'가 된다.
+   */
+  short: string;
   /** 배경 + 글자를 한 덩어리로 (`bg-indigo-100 text-indigo-600`) */
   chip: string;
   /** 글자색만 */
@@ -26,14 +32,14 @@ export interface ChannelStyle {
 }
 
 const 표: Record<ChannelKey, ChannelStyle> = {
-  '일반':         { icon: User,  label: '일반 거래처',   chip: 'bg-indigo-100 text-indigo-600', fg: 'text-indigo-600', bg: 'bg-indigo-50' },
-  '택배':         { icon: Truck, label: '택배사/대행',   chip: 'bg-pink-100 text-pink-600',     fg: 'text-pink-600',   bg: 'bg-pink-50' },
-  '스마트스토어': { icon: Store, label: '스마트스토어',  chip: 'bg-lime-100 text-lime-600',     fg: 'text-lime-600',   bg: 'bg-lime-50' },
+  '일반':         { icon: User,  label: '일반 거래처',   short: '일반',   chip: 'bg-indigo-100 text-indigo-600', fg: 'text-indigo-600', bg: 'bg-indigo-50' },
+  '택배':         { icon: Truck, label: '택배사/대행',   short: '택배',   chip: 'bg-pink-100 text-pink-600',     fg: 'text-pink-600',   bg: 'bg-pink-50' },
+  '스마트스토어': { icon: Store, label: '스마트스토어',  short: '스마트', chip: 'bg-lime-100 text-lime-600',     fg: 'text-lime-600',   bg: 'bg-lime-50' },
 };
 
 /** 모르는 채널 — 옛 거래처에 채널이 안 적힌 것이 있다 */
 const 기본: ChannelStyle = {
-  icon: LayoutGrid, label: '기타',
+  icon: LayoutGrid, label: '기타', short: '기타',
   chip: 'bg-slate-100 text-slate-600', fg: 'text-slate-600', bg: 'bg-slate-50',
 };
 

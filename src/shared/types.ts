@@ -155,6 +155,15 @@ export interface Order {
   region?: string;
   deliveryBoxes?: DeliveryBox[];
   invoicePrinted?: boolean;
+  /**
+   * **송장 단계** — `-`(안 함) · `printed`(출력) · `attached`(부착).
+   * 2026-09-11 사장님: "송장은 - ,출력, 부착 세가지 옵션으로 뜨고".
+   *
+   * 옛 `invoicePrinted`(참/거짓)는 **그대로 둔다** — 그걸 읽는 자리가 여럿이라(출고완료 묶음,
+   * 리스트 필터, 배송 화면) 한꺼번에 못 옮긴다. 대신 이 칸을 쓸 때 둘을 같이 적어
+   * `printed`·`attached` 면 `invoicePrinted: true` 가 되게 맞춘다.
+   */
+  invoiceStage?: 'printed' | 'attached';
   shipmentConfirmedBy?: string | null; // 출고 완료 확인자
   shipmentConfirmedAt?: string | null; // 출고 완료 확인 시각
   deliveredAt?: string; // 주문이력으로 이동한 날짜

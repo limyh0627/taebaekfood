@@ -1468,6 +1468,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const [completionAsk, setCompletionAsk] = useState<{ message: string; subMessage: string; onConfirm: () => void } | null>(null);
   const completionSaving = React.useRef(new Set<string>());
+  /**
+   * **송장 칸 한 번 누름 → 저장할 값.**
+   *
+   * 세 단계(`-`·출력·부착)를 새 칸 `invoiceStage` 에 적되, 옛 `invoicePrinted`(참/거짓)도
+   * 같이 맞춰 쓴다 — 그 값을 읽는 자리가 여럿이라(출고완료 묶음·리스트 필터·배송 화면)
+   * 한꺼번에 못 옮긴다. 둘이 어긋나면 같은 주문이 화면마다 다르게 보인다.
+   */
+  const invoicePatch = (value: boolean | 'printed' | 'attached' | undefined) =>
+    typeof value === 'boolean'
+      ? { invoicePrinted: value, invoiceStage: value ? 'printed' : null }
+      : { invoicePrinted: value !== undefined, invoiceStage: value ?? null };
+
   const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
     const order = allOrders.find(o => o.id === orderId);
     if (!order || completionSaving.current.has(orderId)) return;
@@ -1857,8 +1869,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <nav className="space-y-1">
                     <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />
                     <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
-                    <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('shipping')} />
-                    <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders')} />
+                    {/*  **주문·배송은 한 칸이다**(2026-09-11 사장님: "메뉴는 하나로 줄일거고").
+                         화면이 거의 같았다 — 캘린더만 배송 쪽 것을 쓰고 리스트·보드는 주문 쪽 것을 쓴다.
+                         `shipping` 권한이 있는 사람도 이 칸으로 들어온다. */}
+                    <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
                     <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />
@@ -1906,7 +1920,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <p className="text-[15px] font-black text-slate-800 truncate">
               {(({
                 'dashboard': '비즈니스 현황', 'ai-consultant': 'AI 인사이트',
-                'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
+                'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
                 'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)',
@@ -2024,7 +2038,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
               onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
-              onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
               onToggleShipmentComplete={handleToggleShipmentComplete}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
@@ -2036,6 +2050,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'orders' && (
             <OrdersList
+              /*  **캘린더 자리는 배송 캘린더가 채운다**(2026-09-11 사장님:
+                  "캘린더는 배송관리쪽꺼 쓰고 나머지 리스트랑 보드는 주문관리쪽꺼 쓸거고").
+                  탭바·검색·금일 작업순서는 주문 쪽 그대로 두고 캘린더만 갈아 끼운다 —
+                  오전·오후 시간대, 배송 순서 번호, 주소까지 배송 쪽 기능이 다 따라온다. */
+              calendarSlot={
+                <DeliveryManager
+                  calendarOnly
+                  orders={orders}
+                  partners={partners}
+                  items={allItems}
+                  partnerItems={partnerItems}
+                  palletStocks={pallets}
+                  itemBoms={itemBoms}
+                  currentUserName={currentUser?.name}
+                  onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
+                  onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
+                  onUpdateItems={handleUpdateItems}
+                  onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
+                  onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
+                  onToggleShipmentComplete={handleToggleShipmentComplete}
+                  onToggleItemChecked={handleToggleItemChecked}
+                />
+              }
               orders={allOrders}
               partners={partners}
               items={allItems}
@@ -2062,7 +2099,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onToggleItemChecked={handleToggleItemChecked}
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
-              onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
               currentUserName={currentUser?.name}
               highlightOrderId={highlightOrderId}
               onHighlightClear={() => setHighlightOrderId(null)}

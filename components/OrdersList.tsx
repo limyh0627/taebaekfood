@@ -260,7 +260,12 @@ interface OrdersListProps {
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
-  onToggleInvoicePrinted?: (id: string, value: boolean) => void;
+  /**
+   * 송장 칸을 바꾼다. `boolean` 은 옛 뜻(출력 했나/안 했나)이고,
+   * `'printed' | 'attached' | undefined` 는 **세 단계**다(2026-09-11 사장님).
+   * 받는 쪽이 둘을 같이 저장해 옛 화면과 어긋나지 않게 한다.
+   */
+  onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
   onToggleShipmentComplete?: (id: string, value: boolean) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
@@ -278,6 +283,14 @@ interface OrdersListProps {
   ordersMonths?: number;
   onChangeOrdersMonths?: (n: number) => void;
   embeddedListOnly?: boolean;
+  /**
+   * **캘린더 탭에 끼워 넣을 화면.** 안 주면 이 파일의 `CalendarView` 를 그린다.
+   *
+   * 2026-09-11 사장님: "캘린더는 배송관리쪽꺼 쓰고 나머지 리스트랑 보드는 주문관리쪽꺼 쓸거고".
+   * 주문·배송을 한 화면으로 합치면서, 탭바·검색·금일 작업순서는 이쪽(주문) 것을 그대로 쓰고
+   * **캘린더 자리만** 배송 캘린더로 바꿔 끼운다. 탭바가 둘이 되지 않게 하려는 것이다.
+   */
+  calendarSlot?: React.ReactNode;
 }
 
 interface OrderCardProps {
@@ -295,7 +308,12 @@ interface OrderCardProps {
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
-  onToggleInvoicePrinted?: (id: string, value: boolean) => void;
+  /**
+   * 송장 칸을 바꾼다. `boolean` 은 옛 뜻(출력 했나/안 했나)이고,
+   * `'printed' | 'attached' | undefined` 는 **세 단계**다(2026-09-11 사장님).
+   * 받는 쪽이 둘을 같이 저장해 옛 화면과 어긋나지 않게 한다.
+   */
+  onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
@@ -329,7 +347,12 @@ interface OrderSourceGroupProps {
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
-  onToggleInvoicePrinted?: (id: string, value: boolean) => void;
+  /**
+   * 송장 칸을 바꾼다. `boolean` 은 옛 뜻(출력 했나/안 했나)이고,
+   * `'printed' | 'attached' | undefined` 는 **세 단계**다(2026-09-11 사장님).
+   * 받는 쪽이 둘을 같이 저장해 옛 화면과 어긋나지 않게 한다.
+   */
+  onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
@@ -365,59 +388,57 @@ const byDeliveryThenId = (a: Order, b: Order) =>
   || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
   || String(a.id).localeCompare(String(b.id));
 
+/**
+ * **주문 카드 — 보드·리스트 공용.**
+ *
+ * 2026-09-11 사장님: "보드 카드 UI 형태만 전에 걸로 가져와". 병합(`a08a811`)으로 들어온
+ * 새 카드 대신 **그 전에 쓰던 카드 모양**을 그대로 되돌린다 — 줄마다 제조·라벨·포장·팔레트를
+ * 펼치고 부자재를 색 딱지로 찍던 그 카드다.
+ *
+ * `OrderCardProps` 는 **새것을 그대로 둔다** — 호출부가 넘기는 `onEditOrder`·`onOpenMemo`·
+ * `tintedHeader` 같은 새 props 를 이 본문은 안 쓰고 흘려보낸다. 인터페이스까지 되돌리면
+ * 그걸 넘기는 자리가 전부 타입 오류가 난다.
+ */
 export const OrderCard = memo<OrderCardProps>(({
   order, partners, items, partnerItems,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
-  onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets, onToggleInvoicePrinted,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isListView = false, tintedHeader = false, readOnly = false, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [],
-  onEditOrder, onOpenMemo,
+  onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
 }) => {
   // Compute derived variables
   const products = items;
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
-  // 제조 모달 실험은 비활성화했다. 상태는 기존 JSX와의 안전한 호환을 위해 유지한다.
-  const [manufacturingInfo, setManufacturingInfo] = useState<{
-    itemName: string;
-    rows: { id: string; name: string; qty: number; components: string[] }[];
-  } | null>(null);
   const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
   const [addItemQuery, setAddItemQuery] = useState('');   // 품목 추가 패널 검색어
 
+  // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
-  // 헤더 진행률은 화면에 표시되는 실제 주문 품목 전체를 기준으로 계산한다.
-  const progressItems = order.items;
-  const totalItems = progressItems.length || 1;
-  const completedItems = progressItems.filter(i => i.checked).length;
+  const nonHyangmiyuItems = order.items.filter(item => {
+    const p = items.find(p => p.id === item.itemId);
+    return !isSecondary(p?.type);
+  });
+  const totalItems = nonHyangmiyuItems.length || 1;
+  const completedItems = nonHyangmiyuItems.filter(i => i.checked).length;
   const progress = Math.round((completedItems / totalItems) * 100);
   const isFullyDone = progress === 100;
-  const firstMemoItemIndex = order.items.findIndex(item => !!item.note?.trim());
-  const memoItemIndex = firstMemoItemIndex >= 0 ? firstMemoItemIndex : 0;
-  const hasMemo = firstMemoItemIndex >= 0;
-  const workConfirmerRecords: Array<{ name: string; checkedAt?: string; index: number }> = [];
-  progressItems.forEach((item, index) => {
-    const name = item.checkedBy?.trim();
-    if (name) workConfirmerRecords.push({ name, index, ...(item.checkedAt ? { checkedAt: item.checkedAt } : {}) });
-  });
-  workConfirmerRecords.sort((a, b) => {
-    const aTime = a.checkedAt ? Date.parse(a.checkedAt) : Number.NaN;
-    const bTime = b.checkedAt ? Date.parse(b.checkedAt) : Number.NaN;
-    if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
-    if (Number.isFinite(aTime) !== Number.isFinite(bTime)) return Number.isFinite(aTime) ? 1 : -1;
-    return a.index - b.index;
-  });
-  const latestWorkConfirmer = workConfirmerRecords[workConfirmerRecords.length - 1]?.name;
-  const workConfirmerText = !isFullyDone
-    ? '-'
-    : latestWorkConfirmer || '미기록';
+  const allNonHyangmiyuDone = nonHyangmiyuItems.length > 0 && nonHyangmiyuItems.every(i => i.checked);
 
   // 접힘 상태: DISPATCHED/SHIPPED 카드는 초기에 접힘
   const [isCollapsed, setIsCollapsed] = useState(
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showPalletPicker, setShowPalletPicker] = useState(false);
+
+  useEffect(() => {
+    if (!showStatusPicker) return;
+    const close = () => setShowStatusPicker(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showStatusPicker]);
 
   useEffect(() => {
     if (!showPalletPicker) return;
@@ -435,44 +456,12 @@ export const OrderCard = memo<OrderCardProps>(({
    * 작업완료는 원료를 차감하는 되돌리기 어려운 일이라 더 그렇다.
    */
   useEffect(() => {
-    if (isFullyDone) setIsCollapsed(true);
-  }, [isFullyDone]);
-  useEffect(() => {
-    if (isCollapsed) setExpandedItemBom(new Set());
-  }, [isCollapsed]);
+    if (allNonHyangmiyuDone) setIsCollapsed(true);
+  }, [allNonHyangmiyuDone]);
+
   const partner = partners.find(c => c.id === order.partnerId);
   const rawName = order.partnerName || partner?.name || '이름 없음';
   const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
-  const isJinboTablePilot = displayName === '진보반찬';
-  const partnerNameTextSize = tintedHeader ? 'text-sm xl:text-[15px]' : 'text-sm sm:text-[15px] xl:text-base';
-  const orderItemNameTextSize = tintedHeader
-    ? 'text-[13px] md:text-xs'
-    : (isJinboTablePilot ? 'text-base md:text-sm' : 'text-sm md:text-xs');
-  const orderQuantityTextSize = tintedHeader ? 'text-[13px] md:text-xs' : 'text-sm md:text-xs';
-  const detailTextSize = isJinboTablePilot ? 'text-xs md:text-[11px]' : 'text-[11px] md:text-[10px]';
-  const rowLabelClass = isJinboTablePilot
-    ? 'w-10 md:w-9 shrink-0 text-xs md:text-[11px] font-black text-slate-500'
-    : CARD_ROW_LABEL;
-  const selectedPallets = (order.pallets ?? [])
-    .filter(pallet => pallet.quantity > 0)
-    .map(pallet => ({
-      ...pallet,
-      name: palletStocks.find(stock => stock.id === pallet.type)?.name || pallet.type,
-    }));
-  const palletSummaryText = selectedPallets
-    .map(pallet => `${pallet.name} · ${pallet.quantity}개`)
-    .join(' / ');
-  const firstDetailedItemIndex = order.items.findIndex(orderItem => {
-    const product = items.find(candidate => candidate.id === orderItem.itemId);
-    return !isSecondary(product?.category);
-  });
-  const showInvoiceInCardFooter = isCollapsed || firstDetailedItemIndex < 0;
-  // 보드 카드는 상태와 무관하게 일정 → 품목 → 배송 정보 순으로 읽는다.
-  const showMetaFirst = !!tintedHeader;
-  const isParcelOrder = order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined;
-
-  const resolveOrderProduct = (orderItem: OrderItem): Item | undefined =>
-    items.find(product => product.id === orderItem.itemId && !product.archived);
 
   const handleDirectQtyChange = (idx: number, value: string) => {
     const qty = parseInt(value) || 0;
@@ -494,11 +483,6 @@ export const OrderCard = memo<OrderCardProps>(({
     const newItems = [...order.items];
     newItems[idx] = { ...newItems[idx], mfgDate: value };
     onUpdateItems?.(order.id, newItems);
-  };
-
-  const handleItemCompletedToggle = (idx: number) => {
-    if (readOnly) return;
-    onToggleItemChecked?.(order.id, idx, currentUserName);
   };
 
   const handleRemoveItem = (idx: number) => {
@@ -523,199 +507,85 @@ export const OrderCard = memo<OrderCardProps>(({
     setShowAddProductSelect(null);
   };
 
-  const renderInvoicePrintedField = (compact = false) => isParcelOrder && onToggleInvoicePrinted ? (
-    <div className={compact ? 'flex items-center gap-0.5' : (tintedHeader ? 'flex min-w-0 items-center justify-start gap-1' : 'grid grid-cols-[72px_auto] items-center gap-1.5')}>
-      <span className={compact ? 'whitespace-nowrap text-[11px] font-bold text-slate-500' : (tintedHeader ? rowLabelClass : 'whitespace-nowrap text-[11px] font-bold text-slate-500')}>송장</span>
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={!!order.invoicePrinted}
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggleInvoicePrinted(order.id, !order.invoicePrinted);
-        }}
-        className={`flex min-h-7 w-fit items-center whitespace-nowrap rounded-md text-[11px] font-bold transition-colors ${compact ? 'gap-1 px-1' : 'gap-1.5 px-1.5'} ${order.invoicePrinted ? 'text-emerald-700 hover:bg-emerald-50' : 'text-rose-600 hover:bg-rose-50'}`}
-      >
-        <span className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${order.invoicePrinted ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'}`}>
-          {order.invoicePrinted && <Check size={11} className="text-white" />}
-        </span>
-        {order.invoicePrinted ? '출력 완료' : '미출력'}
-      </button>
-    </div>
-  ) : null;
-  const invoicePrintedField = renderInvoicePrintedField();
-  const compactInvoicePrintedField = renderInvoicePrintedField(true);
-
-  const renderPalletField = (emptyText = '팔레트', popupAlign: 'left' | 'right' = 'right') => palletStocks.length > 0 && onUpdatePallets ? (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setShowPalletPicker(p => !p); }}
-        disabled={readOnly}
-        className={`inline-flex items-center gap-1 whitespace-nowrap ${detailTextSize} font-bold ${CARD_CHIP} ${SUB_CHIP_NEUTRAL} transition-colors hover:bg-slate-100`}
-        title={palletSummaryText || '팔레트 선택'}
-        aria-label={palletSummaryText ? `팔레트 수정: ${palletSummaryText}` : '팔레트 선택'}
-      >
-        <Layers size={12} />
-        <span>{palletSummaryText || emptyText}</span>
-      </button>
-      {showPalletPicker && (
-        <div
-          className={`absolute bottom-full z-50 mb-1 flex min-w-[160px] max-w-[calc(100vw-32px)] flex-col gap-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-xl ${popupAlign === 'left' ? 'left-0' : 'right-0'}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <p className="text-[10px] font-black text-slate-500 px-1 tracking-widest">팔레트</p>
-          {palletStocks.map(ps => {
-            const entry = order.pallets?.find(p => p.type === ps.id);
-            const qty = entry?.quantity ?? 0;
-            const isEx = entry?.isExchange ?? false;
-            const updatePallet = (newQty: number, exchange: boolean) => {
-              const filtered = (order.pallets ?? []).filter(p => p.type !== ps.id);
-              const next = newQty > 0 ? [...filtered, { type: ps.id, quantity: newQty, ...(exchange ? { isExchange: true } : {}) }] : filtered;
-              onUpdatePallets(order.id, next);
-            };
-            return (
-              <div key={ps.id} className="flex flex-col gap-1 border-b border-slate-50 pb-1.5 last:border-0 last:pb-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold text-slate-700 truncate">{ps.name}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button type="button" onClick={() => updatePallet(Math.max(0, qty - 1), isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 text-slate-500 hover:bg-slate-200 font-black text-xs">−</button>
-                    <span className="w-5 text-center text-[10px] font-black text-slate-800">{qty}</span>
-                    <button type="button" onClick={() => updatePallet(qty + 1, isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-violet-100 text-violet-600 hover:bg-violet-200 font-black text-xs">+</button>
-                  </div>
-                </div>
-                <div className="mt-1 flex min-h-7 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => updatePallet(qty, !isEx)}
-                    disabled={qty <= 0}
-                    className={`inline-flex min-h-7 items-center rounded-md px-2.5 text-[10px] font-black transition-colors disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300 ${isEx ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-700'}`}
-                  >
-                    {isEx ? '교환 (차감안함)' : '교환'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updatePallet(0, false)}
-                    disabled={qty <= 0}
-                    className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-[10px] font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-                  >
-                    <RotateCcw size={11} aria-hidden="true" />
-                    초기화
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  ) : null;
-  const palletField = renderPalletField();
-  const inlinePalletField = renderPalletField('-', 'left');
-  const showPalletInCardFooter = isCollapsed || firstDetailedItemIndex < 0;
-
   return (
     <div
       id={`order-card-${order.id}`}
-      /* 편집 진입은 헤더의 연필 버튼으로만 한다 — 전엔 '카드의 품목이 아닌 아무 곳'을 눌러야 했는데
-         눈에 보이는 단서가 없어 알 수 없었고, 스치듯 눌러도 카드가 편집 모드로 바뀌어 놀라게 했다. */
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : `border-slate-100 hover:shadow-md hover:border-indigo-100 ${tintedHeader ? '' : 'cursor-pointer'}`} ${isListView ? 'p-4 flex flex-col md:grid md:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-5' : 'p-3 flex flex-col'}`}
+      draggable={!readOnly && !isEditing}
+      onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
+      onClick={() => { if (!readOnly && !isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
-      {/* 세로 간격은 '뒤따르는 블록'이 mt로만 책임진다 — 헤더가 mb를 갖고 푸터가 mt를 가지면
-          둘이 더해져 구분선 위(14px)와 아래(8px)가 어긋난다(접힌 카드에서 특히 티가 났다). */}
-      <div className={`order-0 flex items-center justify-between gap-1 ${tintedHeader ? `-mx-3 -mt-3 rounded-t-2xl border-b px-3 py-0.5 ${CARD_HEADER_COLOR[order.status] || CARD_HEADER_COLOR.DELIVERED}` : ''} ${isListView ? 'md:col-start-1 md:row-start-1' : ''}`}>
-        <div className="flex min-w-0 flex-1 items-center gap-0.5">
-          <h4 title={displayName} className={`min-w-0 truncate whitespace-nowrap font-bold leading-tight text-slate-800 ${partnerNameTextSize}`}>{displayName}</h4>
-          {/* 거래처명과 수정 진입점을 한 묶음으로 둔다. 긴 이름만 줄어들고 아이콘은 바로 옆 자리를 지킨다. */}
-          {!readOnly && onEditOrder ? (
+      {/* 머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다 */}
+      <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
+        isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          {/* 색을 안 준다 — 머리 띠의 상태 글자색을 그대로 물려받아 상태와 같은 색이 된다 */}
+          <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
+          {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onEditOrder(order.id); }}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-all md:h-7 md:w-7 ${tintedHeader ? 'text-slate-700 hover:bg-white/50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
-              title="주문 수정"
-              aria-label={`${order.partnerName || '거래처'} 주문 수정`}
+              onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
+              className="text-[12px] font-black shrink-0 transition-all hover:opacity-70 opacity-80"
             >
-              <Edit2 size={14} aria-hidden="true" />
-            </button>
-          ) : !readOnly && (isEditing ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setEditingOrderId(null); setShowAddProductSelect(null); }}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white transition-all md:h-8 md:w-8"
-              title="편집 완료"
-              aria-label={`${displayName} 편집 완료`}
-            >
-              <Check size={14} aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setEditingOrderId(order.id); setShowAddProductSelect(null); }}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all md:h-8 md:w-8 ${tintedHeader ? 'text-slate-700 hover:bg-white/50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
-              title="수량·제조일자 편집"
-              aria-label={`${displayName} 수량·제조일자 편집`}
-            >
-              <Edit2 size={14} aria-hidden="true" />
-            </button>
-          ))}
-          {!readOnly && tintedHeader && onOpenMemo && order.items.length > 0 && (
-            <button
-              type="button"
-              onClick={(event) => { event.stopPropagation(); onOpenMemo(order.id, memoItemIndex); }}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors md:h-7 md:w-7 ${hasMemo ? 'bg-white/45 text-indigo-700 hover:bg-white/70' : 'text-slate-700 hover:bg-white/50'}`}
-              title={hasMemo ? '메모 확인 및 수정' : '메모 추가'}
-              aria-label={`${displayName} ${hasMemo ? '메모 확인 및 수정' : '메모 추가'}`}
-            >
-              <NotepadText size={14} aria-hidden="true" />
+              {completedItems}/{totalItems}
             </button>
           )}
         </div>
-        {/* 상태는 조회 정보다. 보드의 수동 변경은 우측 더보기 메뉴에만 둔다. */}
-        {!tintedHeader && (
-          <span className={`hidden h-8 shrink-0 items-center rounded-lg px-2 text-[10px] font-black whitespace-nowrap sm:inline-flex ${STATUS_COLOR[order.status] || STATUS_COLOR.DELIVERED}`}>
-            {STATUS_LABEL[order.status] ?? order.status}
-          </span>
-        )}
-        {!readOnly && tintedHeader && !isEditing && (
+        {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
+            드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
+        <div className="relative shrink-0">
+          {readOnly ? (
+            <span className="text-[12px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
+              className="text-[12px] font-black transition-all hover:opacity-70 opacity-80"
+            >
+              {STATUS_LABEL[order.status] ?? order.status}
+            </button>
+          )}
+          {!readOnly && showStatusPicker && (
+            <div
+              className="absolute top-full right-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {([
+                [OrderStatus.PENDING,    statusLabel(OrderStatus.PENDING),    'hover:bg-amber-50 text-amber-700'],
+                [OrderStatus.PROCESSING, statusLabel(OrderStatus.PROCESSING), 'hover:bg-sky-50 text-sky-700'],
+                [OrderStatus.DISPATCHED, statusLabel(OrderStatus.DISPATCHED), 'hover:bg-emerald-50 text-emerald-700'],
+              ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateStatus(order.id, st);
+                    setShowStatusPicker(false);
+                  }}
+                  className={`px-3 py-2 text-[10px] font-black text-left transition-all ${cls} ${order.status === st ? 'opacity-40 cursor-default' : ''}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {isEditing && (
           <button
-            type="button"
-            draggable
-            onClick={(event) => event.stopPropagation()}
-            onDragStart={(event) => {
-              event.stopPropagation();
-              event.dataTransfer.setData('orderId', order.id);
-              event.dataTransfer.effectAllowed = 'move';
-            }}
-            className="hidden h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/50 active:cursor-grabbing md:flex"
-            title="카드 이동"
-            aria-label={`${displayName} 카드 이동`}
+            onClick={(e) => { e.stopPropagation(); setEditingOrderId(null); setShowAddProductSelect(null); }}
+            className="p-1.5 rounded-lg transition-all bg-indigo-600 text-white shrink-0"
+            title="편집 완료"
           >
-            <GripVertical size={15} aria-hidden="true" />
-          </button>
-        )}
-        {progressItems.length > 0 && (
-          /* 진행률 숫자와 화살표 전체를 한 버튼으로 묶어 작은 화면에서도 쉽게 누를 수 있게 한다. */
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-            title={isCollapsed ? '품목 펼치기' : '품목 접기'}
-            aria-expanded={!isCollapsed}
-            aria-label={`${completedItems}/${totalItems} 완료, ${isCollapsed ? '품목 펼치기' : '품목 접기'}`}
-            className="flex h-9 min-w-[60px] shrink-0 items-center justify-center rounded-lg px-1 text-[10px] font-black tabular-nums transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/40 md:h-8 md:min-w-[58px]"
-          >
-            <span className={`flex h-6 w-full items-center justify-center gap-1 rounded-md border px-2 transition-colors md:h-7 ${isFullyDone ? 'border-slate-800 bg-slate-800 text-white hover:bg-slate-900' : CHIP_NEUTRAL}`}>
-              {completedItems}/{totalItems}
-              {isCollapsed ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronUp size={13} aria-hidden="true" />}
-            </span>
+            <Check size={14} />
           </button>
         )}
       </div>
 
-      {/* 접기·펼치기 모두 같은 품목 행을 쓰고 상세 블록만 숨긴다. */}
-      <div className={`mt-2 flex-1 ${showMetaFirst ? 'order-2' : ''} ${isListView ? 'md:col-start-2 md:row-start-1 md:row-span-3 md:mt-0 md:border-l md:border-slate-200 md:pl-5' : ''}`}>
+      <div className={isCollapsed ? '' : 'mb-3 flex-1'}>
         {isEditing ? (
           /* 편집 모드: 기존 행별 레이아웃 유지 */
-          <div className="space-y-3">
+          <div className="space-y-2">
             {order.items.map((item, idx) => {
               const opts = ['대기', '날인', '부착'] as const;
               const current = item.labelType ?? '대기';
@@ -790,299 +660,254 @@ export const OrderCard = memo<OrderCardProps>(({
           </div>
         ) : (
           /* 보기 모드 */
-          <div className={isJinboTablePilot && !isCollapsed ? 'flex flex-col border border-slate-300 rounded-xl overflow-hidden divide-y divide-slate-300' : 'flex flex-col gap-3'}>
-            {/* 펼쳐도 주문 배열의 원래 순서를 유지하고, 상세는 해당 품목 행 내부에만 붙인다. */}
-            {order.items.map((item, idx) => {
-              const categoryProduct = items.find(p => p.id === item.itemId);
-              if (isSecondary(categoryProduct?.category)) {
-                const isItemChecked = !!item.checked;
-                const product = resolveOrderProduct(item);
-                const quantityByBox = !!item.isBoxUnit;
-                const quantity = quantityByBox ? (item.boxQuantity ?? item.quantity) : item.quantity;
-                const unit = quantityByBox ? '박스' : (product?.unit || '개');
-                const perBox = quantityByBox ? (item.unitsPerBox ?? unitsPerBoxOf(product)) : null;
-                return (
-                  <div key={idx} className={`flex w-full items-start gap-1.5 ${isJinboTablePilot ? 'bg-white px-2.5 py-2.5' : 'px-1.5 pb-1'} ${isItemChecked ? 'opacity-50' : ''}`}>
-                    <div className="flex min-w-0 flex-1 cursor-pointer select-none items-start gap-1.5" onClick={(e) => { e.stopPropagation(); handleItemCompletedToggle(idx); }}>
-                      <div className="shrink-0 text-slate-400">
-                        {isItemChecked ? <CheckSquare className="w-4 h-4 md:w-[14px] md:h-[14px]" /> : <Square className="w-4 h-4 md:w-[14px] md:h-[14px]" />}
-                      </div>
-                      <span title={item.name} className={`min-w-0 flex-1 break-keep break-words font-bold ${orderItemNameTextSize} ${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
-                    </div>
-                    <span className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className={`flex shrink-0 flex-col items-end font-black leading-none tabular-nums ${orderQuantityTextSize} ${isItemChecked ? 'text-slate-400' : 'text-indigo-600'}`}>
-                      <span>{quantity}{unit}</span>
-                      {perBox && <span className="mt-1 whitespace-nowrap text-[10px] font-bold text-slate-500">{perBox}개입/박스</span>}
-                    </span>
-                  </div>
-                );
-              }
+          <div className="space-y-2.5">
+            {/* 접힌 상태: 완료 요약만 표시 */}
+            {/* 일반 품목 (완제품): 펼쳐진 상태에서만 표시 */}
+            {!isCollapsed && order.items.filter(item => {
+              const p = items.find(p => p.id === item.itemId);
+              return !isSecondary(p?.type);
+            }).map((item, _) => {
+              const idx = order.items.indexOf(item);
               const isItemChecked = !!item.checked;
-              const hideLabelInCollapsedSummary = isCollapsed && (
-                isItemChecked
-                || order.status === OrderStatus.DISPATCHED
-                || order.status === OrderStatus.SHIPPED
-                || order.status === OrderStatus.DELIVERED
-              );
-              const productInfo = resolveOrderProduct(item);
-              const displayedItemName = readOnly
-                ? item.name
-                : (productInfo && !productInfo.archived ? productInfo.name : item.name);
-              // 레거시 주문은 낱개 itemId를, 신규 주문은 박스 상품 itemId를 저장한다.
-              // 어느 쪽으로 저장됐든 두 부모의 BOM을 함께 확인해야 제조 품목이 빠지지 않는다.
-              const bomParentIds = new Set([item.itemId, productInfo?.id].filter((id): id is string => !!id));
+              const productInfo = items.find(p => p.id === item.itemId);
               const opts = ['대기', '날인', '부착'] as const;
               const current = item.labelType ?? '대기';
+              const next = opts[(opts.indexOf(current) + 1) % opts.length];
               const colorMap: Record<string, string> = {
-                '대기': 'bg-red-50 text-red-600',
-                '날인': 'bg-yellow-50 text-yellow-600',
-                '부착': 'bg-emerald-50 text-emerald-600',
+                '대기': 'bg-red-50 border-red-200 text-red-600',
+                '날인': 'bg-yellow-50 border-yellow-200 text-yellow-600',
+                '부착': 'bg-emerald-50 border-emerald-300 text-emerald-600',
               };
               const abbrev = (name: string) => name
                 .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
-
-              // 구성은 최신 BOM만 읽는다. 이름이 비슷한 다른 SKU나 삭제된 스냅샷을 끼워 넣지 않는다.
-              const productPackCount = inventoryBoxPackCount(productInfo);
-              const isBoxProd = productPackCount !== undefined;
-              const isShipPkg = (p: Item) => ['박스', '테이프', 'Tape'].includes(p.category || '');
-              const isVisibleWorkItem = (p: Item) => !p.archived;
-              const bomProducts = bomOf(item.itemId)
-                .filter(line => line.child && !line.child.archived && ['product','goods','wip'].includes(line.child.type) && !isBulkItem(line.child))
-                .map(line => ({p: line.child!, qty: line.qty}));
-              if (!bomProducts.length && productInfo && !isBulkItem(productInfo)) bomProducts.push({p: productInfo, qty: 1});
-              const allSubs = bomOf(item.itemId)
-                .filter(line => line.child && !line.child.archived && line.child.type === 'submaterial' && isShipPkg(line.child))
-                .map(line => ({id: line.childId, name: line.child!.name}));
-              const rowKey = `${order.id}-${idx}`;
-              const open = expandedItemBom.has(rowKey);
-              const quantityByBox = isBoxProd || !!item.isBoxUnit;
-              const displayedQuantity = quantityByBox ? (item.boxQuantity ?? item.quantity) : item.quantity;
-              const displayedUnit = quantityByBox ? '박스' : (productInfo?.unit || '개');
-              const displayedPerBox = quantityByBox
-                ? (productPackCount ?? item.unitsPerBox ?? unitsPerBoxOf(productInfo))
-                : null;
-
               return (
-                <div key={idx} className={`flex flex-col cursor-pointer select-none ${isJinboTablePilot ? 'px-2.5 py-2.5 bg-white' : 'px-1.5 pb-1'}`} onClick={(e) => { e.stopPropagation(); handleItemCompletedToggle(idx); }}>
-                  {/* 1줄 = 무엇을 · 얼마나. 카드를 훑을 때 필요한 건 이 둘뿐이라 한 줄에 둔다.
-                      나머지 값(제조·포장)은 아래 제목 열로 내린다. */}
-                  <div className="flex items-start gap-1.5">
-                    <div className="mt-0.5 shrink-0 text-slate-400">
-                      {isItemChecked
-                        ? <CheckSquare className={isJinboTablePilot ? 'w-5 h-5 md:w-[18px] md:h-[18px]' : 'w-4 h-4 md:w-[14px] md:h-[14px]'} />
-                        : <Square className={isJinboTablePilot ? 'w-5 h-5 md:w-[18px] md:h-[18px]' : 'w-4 h-4 md:w-[14px] md:h-[14px]'} />}
+                <div key={idx} className="flex flex-col border-b border-slate-100 pb-2.5 last:border-0 last:pb-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
+                  <div className="flex items-center text-[12px] font-bold">
+                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                      {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
-                    <button type="button"
-                      title={displayedItemName}
-                      aria-expanded={open && !isCollapsed}
-                      aria-label={`${displayedItemName}, ${open && !isCollapsed ? '상세 접기' : '상세 보기'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isCollapsed) setIsCollapsed(false);
-                        setExpandedItemBom(prev => {
-                          const next = new Set(prev);
-                          if (isCollapsed) next.add(rowKey);
-                          else if (next.has(rowKey)) next.delete(rowKey);
-                          else next.add(rowKey);
-                          return next;
-                        });
-                      }}
-                      className={`flex min-w-0 flex-1 items-start justify-start text-left ${isItemChecked ? 'text-slate-400' : 'text-slate-700'}`}>
-                      <span className="flex min-w-0 max-w-full flex-col">
-                        <span className="flex min-w-0 items-center gap-0.5">
-                          <span className={`${orderItemNameTextSize} min-w-0 truncate font-bold ${isItemChecked ? 'line-through' : ''}`}>
-                            {displayedItemName}
-                          </span>
-                          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform md:h-[14px] md:w-[14px] ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                    {/* 규격 — 품목과 **같은 크기, 색 없이**. 칩으로 칠해 두면 품목보다 눈에 먼저 띈다. */}
+                    {(() => {
+                      const sp = productInfo ? (specText(productInfo.spec) || splitNameVolume(productInfo).vol) : '';
+                      return sp ? <span className={`ml-1.5 shrink-0 ${isItemChecked ? 'text-emerald-800 opacity-50' : 'text-slate-400'}`}>{sp}</span> : null;
+                    })()}
+                    {/* 주문수량 — 배지 없이 오른쪽 끝에. 수량은 굵게, 단위는 얇게. 카드에서 제일 먼저 읽는 값이다. */}
+                    {(() => {
+                      const box = item.isBoxUnit && item.boxQuantity;
+                      const qty = box ? item.boxQuantity! : item.quantity;
+                      const unit = box ? '박스' : (productInfo?.unit || '개');
+                      const sub = box && item.unitsPerBox ? `${item.quantity}개` : '';
+                      return (
+                        <span className={`ml-auto pl-1.5 shrink-0 whitespace-nowrap ${isItemChecked ? 'opacity-50' : ''}`}>
+                          <span className={`text-base font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
+                          <span className="text-[12px] font-normal text-slate-400 ml-0.5">{unit}</span>
+                          {sub && <span className="text-[12px] font-normal text-slate-300 ml-1">{sub}</span>}
                         </span>
-                        {isJinboTablePilot && (
-                          <span
-                            className={`mt-1 flex cursor-default items-baseline gap-1.5 ${isItemChecked ? 'text-slate-400' : ''}`}
-                            onClick={event => event.stopPropagation()}
-                          >
-                            <span className={`flex items-baseline gap-0.5 font-black tabular-nums ${orderQuantityTextSize} ${isItemChecked ? '' : 'text-indigo-600'}`}>
-                              <span className="tabular-nums">{displayedQuantity}</span>
-                              <span>{displayedUnit}</span>
-                            </span>
-                            {displayedPerBox && <span className="text-xs md:text-[11px] font-bold text-slate-500">· {displayedPerBox}개입/박스</span>}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                    {!isJinboTablePilot && (
-                      <span
-                        className={`flex shrink-0 cursor-default flex-col items-end leading-none ${isItemChecked ? 'text-slate-400' : 'text-indigo-600'}`}
-                        onClick={event => event.stopPropagation()}
-                      >
-                        <span className={`flex items-baseline gap-0.5 font-black tabular-nums ${orderQuantityTextSize}`}>
-                          <span>{displayedQuantity}</span>
-                          <span>{displayedUnit}</span>
-                        </span>
-                        {displayedPerBox && <span className="mt-1 text-[10px] md:text-[9px] font-bold text-slate-500 whitespace-nowrap">{displayedPerBox}개입/박스</span>}
-                      </span>
-                    )}
+                      );
+                    })()}
                   </div>
-                  {/* 값은 전부 '제목 열 + 값' 한 체계로 통일한다(ProductCard와 같은 원칙, productChip.tsx:146).
-                      주문량만 위 제목줄로 뺐다 — 훑어볼 때 이름과 붙어 있어야 하는 값이라 제목이 필요 없다.
-                      전엔 아예 제목이 없어 '350ml * 20'이 포장 사양인지 주문량인지 알 수 없었다. */}
-                  <div
-                    className={`${isCollapsed ? 'hidden' : 'flex'} mt-2 cursor-default flex-col gap-1.5 md:mt-1.5 md:gap-1 ${isJinboTablePilot ? 'border-t border-slate-200 pt-1.5' : 'pl-[20px]'}`}
-                    onClick={event => event.stopPropagation()}
-                  >
-                    {/* 제조는 품목 화살표를 열었을 때만 보이고, 기본 흐름은 라벨부터 시작한다. */}
-                    {!hideLabelInCollapsedSummary && (!isJinboTablePilot || open) && (
-                    <div className={`order-2 flex flex-wrap items-center gap-1 min-w-0 py-0.5 ${isJinboTablePilot ? 'pl-[20px] border-b border-slate-200 pb-1.5 last:border-b-0' : ''}`}>
-                      <span className={rowLabelClass}>라벨</span>
-                      {/* 라벨 부착 상태 — 유일하게 누르는 칩이라 신호등 색을 남겨 뒀다 */}
-                      <div className={`relative inline-flex min-w-[42px] shrink-0 items-center justify-center gap-0.5 border-transparent ${CARD_CHIP} ${detailTextSize} font-black hover:brightness-95 transition-all ${colorMap[current]}`}>
-                        <span>{current === '대기' ? '-' : current}</span>
-                        <ChevronDown size={12} className="shrink-0" />
-                        <select
-                          title="라벨 상태 펼치기"
-                          disabled={readOnly}
-                          aria-label={`${item.name} 라벨 상태`}
-                          value={current}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => {
-                            e.stopPropagation();
-                            const ni = [...order.items];
-                            ni[idx] = { ...ni[idx], labelType: e.target.value as typeof opts[number] };
-                            onUpdateItems?.(order.id, ni);
-                          }}
-                          className="absolute inset-0 h-full w-full cursor-pointer appearance-none text-[10px] opacity-0"
-                        >
-                          {opts.map(option => <option key={option} value={option}>{option === '대기' ? '-' : option}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {/* 기록 묶음 — 값 앞에 무슨 값인지 적는다. 전엔 이름과 날짜만 덩그러니 있어
-                            '태백식품'이 누구인지, '~27-08-21'이 무슨 날짜인지 알 수 없었다. */}
-                        {item.mfgDate && (
-                          <CardDatePickerButton
-                            label={`${item.name} 제조일 수정`}
-                            value={item.mfgDate}
-                            disabled={readOnly}
-                            onChange={value => {
-                              const ni = [...order.items];
-                              ni[idx] = { ...ni[idx], mfgDate: value };
-                              onUpdateItems?.(order.id, ni);
-                            }}
-                            className={`flex items-center rounded px-1 py-0.5 ${detailTextSize} font-bold tabular-nums text-indigo-600 transition-colors hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400`}
-                          >
-                            <span className="text-indigo-500 mr-0.5">소비기한</span>
-                            {fmtYYMMDD(expiryFromMfgDate(item.mfgDate))}
-                          </CardDatePickerButton>
-                        )}
-                        {!item.mfgDate && (
-                          <CardDatePickerButton
-                            label={`${item.name} 제조일 설정`}
-                            disabled={readOnly}
-                            onChange={value => {
-                              const ni = [...order.items];
-                              ni[idx] = { ...ni[idx], mfgDate: value };
-                              onUpdateItems?.(order.id, ni);
-                            }}
-                            className={`flex items-center gap-0.5 rounded px-1 py-0.5 ${detailTextSize} font-bold text-rose-600 transition-colors hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400`}
-                          >
-                            <Edit2 size={9} />소비기한
-                          </CardDatePickerButton>
-                        )}
-                        {productInfo?.oil && <span className="text-[10px] font-bold text-slate-500">{productInfo.oil}</span>}
-                      </div>
-                    </div>
+                  {/* 라벨 상태·소비기한 — **품목명 바로 밑**. 부자재보다 먼저 챙기는 정보라 위로 올린다.
+                      소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 pl-[20px]">
+                    {/*  이름표·잠금은 읽기전용(주문 고르기 창)에서 눌리면 안 되는 것들이라 명시한다. */}
+                    <button type="button" aria-label={`${item.name} 라벨 상태`} disabled={readOnly}
+                      onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
+                      className={`text-[11px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 disabled:opacity-60 ${colorMap[current]}`}>{current}</button>
+                    {/* 눌러서 제조일을 고르면 1년 뒤로 소비기한이 잡힌다.
+                        날짜 입력을 글자 위에 투명하게 얹어 네이티브 달력이 뜨게 한다. */}
+                    <span className="relative inline-flex items-center text-[11px] font-bold text-slate-400 shrink-0 hover:text-slate-600"
+                      title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
+                      소비기한&nbsp;{item.mfgDate
+                        ? <span className="text-slate-600">~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}</span>
+                        : <span className="text-slate-300 underline decoration-dotted underline-offset-2">미설정</span>}
+                      <input type="date" value={item.mfgDate || ''}
+                        aria-label={`${item.name} 제조일 설정`} disabled={readOnly}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default" />
+                    </span>
+                    {item.checked && item.checkedBy && (
+                      <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
                     )}
-                    {idx === firstDetailedItemIndex && invoicePrintedField && (
-                      <div className={`order-3 flex min-w-0 items-center py-0.5 ${isJinboTablePilot ? 'pl-[20px] border-b border-slate-200 pb-1.5 last:border-b-0' : ''}`} onClick={event => event.stopPropagation()}>
-                        {invoicePrintedField}
-                      </div>
-                    )}
-                    {/* 제조 — 품목명을 눌러 펼쳤을 때만 실제 하위 제조 구성품을 표시한다. */}
-                    {open && !isCollapsed && (
-                      <div className={`order-1 flex items-start gap-1 py-0.5 ${isJinboTablePilot ? 'pl-[20px] border-b border-slate-200 pb-1.5 last:border-b-0' : ''}`} onClick={e => e.stopPropagation()}>
-                        <span className={rowLabelClass}>제조</span>
-                        <div className="flex flex-col gap-1 min-w-0 flex-1">
-                          {(() => {
-                            // BOM 자식이 주문 품목과 같은 이름이면 완제품명·포장 수량이므로 다시 표시하지 않는다.
-                            const same = bomProducts.find(({ p }) => p.name === item.name);
-                            const rest = bomProducts.filter(({ p }) => p.name !== item.name);
-                            // 낱개의 부자재 — 벌크는 여기서도 뺀다
-                            const subsOf = (p: Item) => bomOf(p.id).filter(line => line.child && !line.child.archived && line.child.type === 'submaterial' && !isShipPkg(line.child) && !isBulkItem(line.child)).map(line => ({id: line.childId, name: line.child!.name}));
-                            const subChips = (p: Item) => subsOf(p).map((cs, i) => {
-                              const ci = items.find(x => x.id === cs.id);
-                              const material = ci ?? { name: cs.name };
-                              return (
-                                <span key={i} className={`inline-flex items-center gap-1 ${detailTextSize} font-bold ${CARD_CHIP} ${subChipClass(material)}`}>
-                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${subDotClass(material)}`} aria-hidden="true" />
-                                  <span>{ci?.name ?? cs.name}</span>
-                                </span>
-                              );
-                            });
-                            return (
-                              <>
-                                {/* 줄이지 않은 전체 품목명 — 용량(1kg·1800ml)이 여기 들어 있다.
-                                    윗줄 이름은 훑어보기용으로 줄여 쓰므로(abbrev + 용량 제거) 정확한 값은 여기 있어야 한다.
-                                    전엔 이 칩이 '제조' 줄에도 따로 있어 같은 값이 두 번 떴다. */}
-                                {same && (
-                                  <div className="flex flex-wrap items-center gap-1 min-w-0">
-                                    <span className={`${CARD_CHIP} ${detailTextSize} font-bold break-keep break-words ${SUB_CHIP_NEUTRAL}`}>
-                                      {item.name}
-                                    </span>
-                                    {subChips(same.p)}
-                                  </div>
-                                )}
-                                {/* 이름이 다른 낱개(볶음참깨/1kg 안에 볶음참깨-낱개/1kg)는 별도 줄로 남긴다 */}
-                                {rest.map(({ p, qty }) => (
-                                  <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 min-w-0">
-                                    <span className={`${CARD_CHIP} ${detailTextSize} font-bold break-keep break-words ${SUB_CHIP_NEUTRAL}`}>
-                                      {p.name}{!isBoxProd && qty > 1 ? `×${qty}` : ''}
-                                    </span>
-                                    {subsOf(p).length === 0
-                                      ? <span className={`${detailTextSize} text-slate-500`}>부자재 없음</span>
-                                      : subChips(p)}
-                                  </div>
-                                ))}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                    {/* 포장 구성품이 있을 때만 행을 노출한다. */}
-                    {allSubs.length > 0 && (!isJinboTablePilot || open) && (
-                    <div className={`order-4 flex items-start gap-1 py-0.5 ${isJinboTablePilot ? 'pl-[20px] border-b border-slate-200 pb-1.5 last:border-b-0' : ''}`} onClick={e => e.stopPropagation()}>
-                      <span className={rowLabelClass}>포장</span>
-                      <div className="flex flex-wrap items-center gap-1 min-w-0 flex-1">
+                    {productInfo?.oil && <span className="text-[11px] text-indigo-500 font-bold shrink-0">{productInfo.oil}</span>}
+                  </div>
+                  {(() => {
+                    // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
+                    const isBoxProd = isBoxStockItem(productInfo);
+                    const isShipPkg = (p: Item) => p.type === 'box' || p.category === '박스' || p.category === '테이프';
+                    // 1. item_bom 기반 구성품 (submaterial 카테고리만) — 낱개는 박스/테이프 제외
+                    const bomSubs = itemBoms
+                      .filter(b => b.parent_id === item.itemId)
+                      .map(b => items.find(p => p.id === b.child_id))
+                      .filter((p): p is Item => !!p && p.type === 'submaterial' && (isBoxProd || !isShipPkg(p)));
+                    const bomSubIds = new Set(bomSubs.map(p => p.id));
+
+                    //  옛 품목 구성품 스냅샷(Item.submaterials)으로 라벨을 보완하던 자리 — 그 필드를 없앴다.
+                    //  라벨은 item_bom에만 있고, BOM이 지워진 품목을 가리키면 BomIntegrityPanel이 잡는다.
+                    const snapLabels: { id: string; name: string }[] = [];
+
+                    // 2. 박스/테이프: 박스 품목만. 낱개(비박스)는 출고 카톤·테이프 표시 안 함.
+                    const packagingSubs: { id: string; name: string }[] = [];
+                    if (isBoxProd) {
+                      // 겉박스·테이프는 박스 품목 BOM에 들어 있다(위 bomSubs). 주문에 박아 둔 boxSubId만 보탠다.
+                      const boxId = item.boxSubId;
+                      if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
+                    }
+
+                    // 3. 완제품/반제품 구성품 (박스의 낱개 등) — 펼치면 그 완제품의 부자재까지
+                    //    벌크(kg·L로 재는 원료·반제품)는 뺀다 — 작업자가 챙길 물건이 아니라 통에서 나오는 것이다.
+                    const bomProducts = itemBoms
+                      .filter(b => b.parent_id === item.itemId)
+                      .map(b => ({ qty: b.quantity, p: items.find(p => p.id === b.child_id) }))
+                      .filter((r): r is { qty: number; p: Item } =>
+                        !!r.p && !isBulkItem(r.p) && (r.p.type === 'product' || r.p.type === 'wip' || r.p.type === '완제품'));
+
+                    const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...snapLabels, ...packagingSubs];
+                    if (allSubs.length === 0 && bomProducts.length === 0) return null;
+                    const rowKey = `${order.id}-${idx}`;
+                    const open = expandedItemBom.has(rowKey);
+                    return (
+                      <>
+                      {/* 칩이던 시절엔 폭이 넓어 2칸 그리드로 눌러 담았는데, 점 표기라 짧아졌다.
+                          그냥 흐르게 두면 모바일에서 완제품이 혼자 줄바꿈되지 않는다. */}
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
+                        {/* 부자재 — 칩으로 칠하면 배경이 글자보다 먼저 읽힌다. 이름 앞에 점만 찍는다: ● 테이프-빨강 */}
                         {allSubs.map(sm => {
-                          const material = items.find(p => p.id === sm.id) ?? { name: sm.name };
+                          const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
                           return (
-                            <span key={sm.id}
-                              className={`inline-flex items-center gap-1 ${detailTextSize} font-bold ${CARD_CHIP} ${subChipClass(material)}`}>
-                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${subDotClass(material)}`} aria-hidden="true" />
-                              <span>{sm.name}</span>
+                            <span key={sm.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(_s)}`} />
+                              {sm.name}
                             </span>
                           );
                         })}
                       </div>
-                    </div>
-                    )}
-                    {idx === firstDetailedItemIndex && inlinePalletField && (
-                      <div className={`order-5 flex min-w-0 items-center gap-1 py-0.5 ${isJinboTablePilot ? 'pl-[20px] border-b border-slate-200 pb-1.5 last:border-b-0' : ''}`} onClick={event => event.stopPropagation()}>
-                        <span className={rowLabelClass}>팔레트</span>
-                        {inlinePalletField}
-                      </div>
-                    )}
-                  </div>
+                      {/* 구성품 완제품(박스 안의 낱개)은 **줄을 따로 쓴다.** 부자재와 급이 달라
+                          같은 줄에 섞이면 어디까지가 부자재인지 흐려진다.
+                          눌러서 그 낱개의 부자재를 펼친다 — 화살표 없이 점만 두고 색으로 구분한다. */}
+                      {bomProducts.length > 0 && (
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
+                          {bomProducts.map(({ p, qty }) => (
+                            <button key={p.id} type="button"
+                              onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
+                              className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${open ? 'bg-indigo-600' : 'bg-indigo-300'}`} />
+                              {abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {open && bomProducts.map(({ p }) => {
+                        // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
+                        const cSubs = bomOf(p.id).filter(l => {
+                          const ci = l.child;
+                          return ci?.type === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
+                        });
+                        return (
+                          <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
+                            {/* 어느 낱개인지는 방금 누른 점이 말해 준다 — 이름을 또 적으면 줄만 길어진다.
+                                구성 낱개가 둘 이상일 때만 어느 것인지 밝힌다. */}
+                            {bomProducts.length > 1 && (
+                              <span className="text-[9px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
+                            )}
+                            {cSubs.length === 0
+                              ? <span className="text-[9px] text-slate-300">부자재 없음</span>
+                              : cSubs.map((l, i) => (
+                                  <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
+                                    {l.child?.name ?? l.childId}
+                                  </span>
+                                ))}
+                          </div>
+                        );
+                      })}
+                      </>
+                    );
+                  })()}
                 </div>
               );
             })}
+            {/* 향미유·고춧가루: 카테고리별 구분 표시 */}
+            {(() => {
+              const abbrev = (name: string) => name
+                .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
+                .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
+                .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
+              const hyangmiyuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.type === '향미유');
+              const gochuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.type === '고춧가루');
+              if (hyangmiyuItems.length === 0 && gochuItems.length === 0) return null;
+              return (
+                <div className="space-y-1 pt-1.5 border-t-2 border-dashed border-slate-200 mt-1.5">
+                  {hyangmiyuItems.length > 0 && (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                      <span className="text-[8px] font-black text-teal-500 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">향미유</span>
+                      {hyangmiyuItems.map((item) => {
+                        const idx = order.items.indexOf(item);
+                        const isItemChecked = !!item.checked;
+                        return (
+                          <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
+                            <div className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx); }}>
+                              <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                              </div>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}{lineSuffix(order.items, idx)}</span>
+                              {(() => {
+                                const _p = items.find(p => p.id === item.itemId);
+                                const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
+                                return sp ? <span className="ml-1.5 shrink-0 text-slate-400">{sp}</span> : null;
+                              })()}
+                            </div>
+                            <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
+                              {item.isBoxUnit && item.boxQuantity
+                                ? `${item.boxQuantity}B`
+                                : `${item.quantity}${items.find(p => p.id === item.itemId)?.unit || '개'}`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {gochuItems.length > 0 && (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                      <span className="text-[8px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded shrink-0">고춧가루</span>
+                      {gochuItems.map((item) => {
+                        const idx = order.items.indexOf(item);
+                        const isItemChecked = !!item.checked;
+                        return (
+                          <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
+                            <div className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx); }}>
+                              <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                              </div>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{baseName(item.name)}{lineSuffix(order.items, idx)}</span>
+                              {(() => {
+                                const _p = items.find(p => p.id === item.itemId);
+                                const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
+                                return sp ? <span className="ml-1.5 shrink-0 text-slate-400">{sp}</span> : null;
+                              })()}
+                            </div>
+                            <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
+                              {item.isBoxUnit && item.boxQuantity
+                                ? `${item.boxQuantity}B`
+                                : `${item.quantity}${items.find(p => p.id === item.itemId)?.unit || '개'}`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
 
       {isEditing && (
-        <div className={`mt-2 mb-3 ${showMetaFirst ? 'order-3' : ''} ${isListView ? 'md:col-start-2 md:pl-5' : ''}`}>
+        <div className="mt-2 mb-3">
           {showAddProductSelect === order.id ? (
             <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
               {(() => {
@@ -1173,7 +998,7 @@ export const OrderCard = memo<OrderCardProps>(({
             </div>
           ) : (
             <button onClick={() => setShowAddProductSelect(order.id)}
-              className="w-full py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-500 hover:border-slate-400 hover:text-slate-700 transition-all flex items-center justify-center space-x-1"
+              className="w-full py-2 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center space-x-1"
             >
               <Plus size={12} /><span>품목 추가</span>
             </button>
@@ -1181,68 +1006,88 @@ export const OrderCard = memo<OrderCardProps>(({
         </div>
       )}
 
-      {/* 대기중·작업중 카드는 날짜를 먼저 보여주되, 실제 배송 조작은 품목 아래 한 영역에 묶는다. */}
-      {!isEditing && tintedHeader && showMetaFirst && ((showInvoiceInCardFooter && invoicePrintedField) || (showPalletInCardFooter && palletField)) && (
-        <div className={`order-3 flex flex-wrap items-center justify-start gap-1.5 rounded-lg pl-[26px] pr-2.5 ${isCollapsed ? 'mt-0 min-h-8 py-1' : 'mt-2 min-h-9 py-1.5'}`}>
-          {showInvoiceInCardFooter && compactInvoicePrintedField && (
-            <div className="flex items-center">
-              {compactInvoicePrintedField}
-            </div>
-          )}
-          {showPalletInCardFooter && palletField}
+
+      {/*  카드번호 — 주문일자·배송기한 윗줄. 화면끼리 이 카드를 가리킬 이름이다
+           (전표 만들 때 고른 주문이 어느 카드인지 확인하려면 있어야 한다). */}
+      {cardNoLabel(order) && (
+        <div className="pt-2 border-t border-slate-50 mt-2 -mb-1">
+          <span className="text-[9px] font-black text-slate-400 tabular-nums">{cardNoLabel(order)}</span>
         </div>
       )}
-
-      <div className={`${tintedHeader ? 'order-1 mt-2 flex flex-col items-stretch gap-2 rounded-lg bg-slate-50 px-2.5 py-2' : 'mt-2 flex items-center justify-between border-t border-slate-200 pt-2'} ${isListView ? 'md:col-start-1 md:row-start-2 md:self-start md:border-b-0 md:pr-1' : ''}`}>
+      <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-500">출고예정일 수정</span>
+            <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한 수정</span>
             <input type="date" value={order.deliveryDate.split('T')[0]}
               onChange={(e) => onUpdateDeliveryDate(order.id, new Date(e.target.value).toISOString())}
-              className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 outline-none rounded-md px-1.5 focus:ring-1 focus:ring-slate-300"
+              className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border-none outline-none rounded px-1 focus:ring-1 focus:ring-indigo-300"
             />
-            {invoicePrintedField}
           </div>
         ) : (
           <>
-            {/* 일정과 작업 확인자는 모든 보드 카드에서 같은 위치·같은 세 열로 보여준다. */}
-            {tintedHeader ? (
-              <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.05fr)_minmax(0,1.05fr)] gap-2">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="whitespace-nowrap text-[10px] font-bold text-slate-500">주문일</span>
-                  <span className="whitespace-nowrap text-[11px] font-bold tabular-nums text-slate-700">{fmtYYMMDD(new Date(order.createdAt))}</span>
-                </div>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="whitespace-nowrap text-[10px] font-bold text-slate-500">출고예정일</span>
-                  <span className="whitespace-nowrap text-[11px] font-black tabular-nums text-slate-800">{fmtYYMMDD(new Date(order.deliveryDate))}</span>
-                </div>
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="whitespace-nowrap text-[10px] font-bold text-slate-500">작업확인자</span>
-                  <span
-                    className={`truncate whitespace-nowrap text-[11px] font-black ${isFullyDone ? 'text-indigo-700' : 'text-slate-400'}`}
-                    title={workConfirmerText}
+            <div className="flex flex-col">
+              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">주문일자</span>
+              <span className="text-[9px] font-bold text-slate-400">
+                {(() => { const d = new Date(order.createdAt); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
+              <span className="text-[9px] font-bold text-slate-500">{(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}</span>
+            </div>
+            <div className="flex flex-col items-center gap-0.5">
+              {palletStocks.length > 0 && onUpdatePallets && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowPalletPicker(p => !p); }}
+                    className="flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded transition-all bg-violet-500 text-white hover:bg-violet-600"
                   >
-                    {workConfirmerText}
-                  </span>
+                    <Layers size={8} />
+                    <span>{(order.pallets?.reduce((s, p) => s + p.quantity, 0) ?? 0) > 0 ? order.pallets!.reduce((s, p) => s + p.quantity, 0) + '개' : '팔레트'}</span>
+                  </button>
+                  {showPalletPicker && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 flex flex-col min-w-[160px] p-2 gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <p className="text-[9px] font-black text-slate-400 px-1 uppercase tracking-widest">팔레트</p>
+                      {palletStocks.map(ps => {
+                        const entry = order.pallets?.find(p => p.type === ps.id);
+                        const qty = entry?.quantity ?? 0;
+                        const isEx = entry?.isExchange ?? false;
+                        const updatePallet = (newQty: number, exchange: boolean) => {
+                          const filtered = (order.pallets ?? []).filter(p => p.type !== ps.id);
+                          const next = newQty > 0 ? [...filtered, { type: ps.id, quantity: newQty, ...(exchange ? { isExchange: true } : {}) }] : filtered;
+                          onUpdatePallets(order.id, next);
+                        };
+                        return (
+                          <div key={ps.id} className="flex flex-col gap-1 border-b border-slate-50 pb-1.5 last:border-0 last:pb-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-700 truncate">{ps.name}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button type="button" onClick={() => updatePallet(Math.max(0, qty - 1), isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 text-slate-500 hover:bg-slate-200 font-black text-xs">−</button>
+                                <span className="w-5 text-center text-[10px] font-black text-slate-800">{qty}</span>
+                                <button type="button" onClick={() => updatePallet(qty + 1, isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-violet-100 text-violet-600 hover:bg-violet-200 font-black text-xs">+</button>
+                              </div>
+                            </div>
+                            {qty > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => updatePallet(qty, !isEx)}
+                                className={`text-[9px] font-black px-2 py-0.5 rounded self-start transition-all ${isEx ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
+                              >
+                                {isEx ? '교환 (차감안함)' : '교환'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                <div className="grid grid-cols-[72px_auto] items-center gap-1.5">
-                  <span className="whitespace-nowrap text-[11px] font-bold text-slate-500">주문일자</span>
-                  <span className="whitespace-nowrap text-[11px] font-bold tabular-nums text-slate-600">{fmtYYMMDD(new Date(order.createdAt))}</span>
-                </div>
-                <div className="grid grid-cols-[72px_auto] items-center gap-1.5">
-                  <span className="whitespace-nowrap text-[11px] font-bold text-slate-500">출고예정일</span>
-                  <span className="whitespace-nowrap text-[11px] font-black tabular-nums text-slate-700">{fmtYYMMDD(new Date(order.deliveryDate))}</span>
-                </div>
-                {invoicePrintedField}
-              </div>
-            )}
-            <div className={tintedHeader ? (showMetaFirst ? 'hidden' : 'flex min-h-7 flex-wrap items-center justify-start gap-1.5') : 'flex shrink-0 flex-col items-end gap-1'}>
-              {tintedHeader && !showMetaFirst && invoicePrintedField}
-              {(!tintedHeader || !showMetaFirst) && palletField}
-              {!tintedHeader && <span className="text-[10px] font-black text-slate-400 text-center">{order.source}</span>}
+              )}
+              <span className="text-[9px] font-black text-slate-400 uppercase text-center">{order.source}</span>
             </div>
           </>
         )}
@@ -1273,54 +1118,6 @@ export const OrderCard = memo<OrderCardProps>(({
           >
             <Trash2 size={14} />
           </button>
-        </div>
-      )}
-      {manufacturingInfo && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-950/35 p-0 md:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${manufacturingInfo.itemName} 제조 정보`}
-          onClick={() => setManufacturingInfo(null)}
-        >
-          <div
-            className="w-full md:max-w-md bg-white rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black text-slate-500">제조 정보</p>
-                <h3 className="mt-0.5 text-base font-bold text-slate-800 break-keep break-words">{manufacturingInfo.itemName}</h3>
-              </div>
-              <button
-                type="button"
-                aria-label="제조 정보 닫기"
-                onClick={() => setManufacturingInfo(null)}
-                className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-4 divide-y divide-slate-200">
-              {manufacturingInfo.rows.map(row => (
-                <div key={row.id} className="py-3 first:pt-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm font-bold text-slate-800 break-keep break-words">{row.name}</span>
-                    {row.qty > 1 && <span className="shrink-0 text-xs font-black text-indigo-600 tabular-nums">×{row.qty}</span>}
-                  </div>
-                  {row.components.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {row.components.map((component, componentIdx) => (
-                        <span key={`${row.id}-${componentIdx}`} className={`${CARD_CHIP} ${SUB_CHIP_NEUTRAL} text-[10px] font-bold`}>
-                          {component}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
       {confirmModal && (
@@ -1537,12 +1334,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
   ordersMonths,
   onChangeOrdersMonths,
   embeddedListOnly = false,
+  calendarSlot,
 }) => {
   // Compute derived variables
   const products = items;
   const [activeTab, setActiveTab] = useState<TabType>('active');
   // 배송 관리에 삽입되는 목록은 외부의 '리스트' 선택 결과이므로 내부 기본 뷰도 리스트여야 한다.
-  const [activeView, setActiveView] = useState<'calendar' | 'list' | 'kanban'>(embeddedListOnly ? 'list' : 'calendar');
+  /*  **보기 축에 '이력'이 하나 더 있다**(2026-09-11 사장님: "보드 우측에 이력 탭 추가하고
+    전처럼 예전 주문은 이력 탭에서 확인할거고").
+
+    이력 화면 자체는 진작 만들어져 있었는데(주문 한 건 = 한 행, 완료일 최신순) 그걸 여는
+    탭바가 `hidden` 이라 **들어갈 길이 없었다.** 숨은 축(`activeTab`)을 쓰지 않고 보기 축에
+    붙여, 배송 캘린더·리스트·보드와 같은 줄에서 고르게 한다. */
+  const [activeView, setActiveView] = useState<'calendar' | 'list' | 'kanban' | 'history'>(embeddedListOnly ? 'list' : 'kanban');
   const [showListDetailColumns, setShowListDetailColumns] = useState(false);
   const [showListCompletionColumns, setShowListCompletionColumns] = useState(false);
   const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock'>('delivery');
@@ -1557,10 +1361,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const listTopScrollRef = React.useRef<HTMLDivElement>(null);
   const listBodyScrollRef = React.useRef<HTMLDivElement>(null);
   const [listColumnWidths, setListColumnWidths] = useState<Record<string, number>>({
-    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 140, address: 220, completion: 112, confirmer: 90, confirmedAt: 90,
+    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 112, confirmer: 90, confirmedAt: 90,
     item: 180, quantity: 100, manufacturing: 145, bottle: 120, cap: 120, componentLabel: 135,
     label: 150, packaging: 135, pallet: 140,
     note: 150, orderDate: 90, deliveryDate: 90,
+    //  합친 칸 — 날짜 두 줄(dates)과 출고방식을 얹은 거래처(partner)
+    dates: 104,
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [includeLegacyHistory, setIncludeLegacyHistory] = useState(false);
@@ -1674,15 +1480,28 @@ const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   // 최신 품목 카테고리를 사용한다. 비어 있으면 임의의 이름 추정 대신 미분류로 표시한다.
-  const workCategoryOf = (workItem: WorkItem) => {
+  /**
+   * **작업순서의 묶음 — 기름 · 깨 · 미분류 셋뿐이다**(2026-09-11 사장님).
+   *
+   * 전에는 품목에 적힌 분류를 그대로 썼다(`참기름`·`들기름`·`들깨`·`탈피들깨`·`검정참깨`…).
+   * 그러면 **짜는 설비가 같은데 칸이 갈려서** 한 번에 짤 것을 두세 번에 나눠 보게 된다.
+   *   기름 : 참기름 · 들기름 · 생들기름 — 짜는 일
+   *   깨   : 참깨 · 들깨 · 검정깨와 그 가루 — 볶고 빻는 일
+   * 둘 중 어디에도 안 걸리면 미분류다. 운영 데이터의 완제품 분류는 지금 일곱 가지뿐이고
+   * (참기름 160 · 들기름 74 · 들깨 33 · 참깨 15 · 탈피들깨 10 · 검정참깨 9 · 빈칸 12)
+   * 그게 전부 이 셋으로 들어간다.
+   */
+  const workCategoryOf = (workItem: WorkItem): string => {
     const product = items.find(item => item.id === workItem.itemId);
     const savedCategory = String(product?.category || workItem.category || '').trim();
     const typeValues = new Set(['product', 'goods', 'wip', 'raw', 'submaterial', 'giftset', 'shipping']);
-    return savedCategory && !typeValues.has(savedCategory)
-      ? savedCategory
-      : '미분류';
+    const 분류 = savedCategory && !typeValues.has(savedCategory) ? savedCategory : '';
+    //  이름으로 가르지 않고 **분류값**으로 가른다 — 품목 이름은 사람이 자주 고친다.
+    if (/기름/.test(분류)) return '기름';
+    if (/깨/.test(분류)) return '깨';
+    return '미분류';
   };
-  const WORK_CATEGORY_ORDER = ['참기름', '들기름', '참깨류', '볶음참깨', '들깨가루', '향미유', '고춧가루', '선물세트·기타', '미분류'];
+  const WORK_CATEGORY_ORDER = ['기름', '깨', '미분류'];
 
   /**
    * 작업순서 보기 = 1depth(무엇으로 묶나) + 2depth(그 묶음을 어떤 순서로 두나).
@@ -1702,7 +1521,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
    * 드래그로 직접 옮겨 더는 어떤 정렬 기준과도 맞지 않는 상태.
    * 이걸 표시하지 않으면 '둘 중 뭐가 켜진 거지?'를 알 수 없다.
    */
-  const [workSort, setWorkSort] = useState<string | null>('dueDate');
+  /**
+   * 금일 작업순서의 정렬 — `null` 이 **직접 정렬**이고 그게 **기본**이다
+   * (2026-09-11 사장님: "금일배송순서랑 금일작업순서는 직접정렬이 디폴트로").
+   * 추천(`dueDate`)이 기본이면 줄이 `draggable={false}` 라 끌어도 아무 일이 안 난다.
+   */
+  const [workSort, setWorkSort] = useState<string | null>(null);
   const [showCompletedWorkItems, setShowCompletedWorkItems] = useState(false);
   const [mobileWorkCategory, setMobileWorkCategory] = useState('');
   /** 지금 끌고 있는 항목 — 기름↔가루는 설비가 달라 순서를 못 섞으므로, 끌 수 없는 칸을 미리 흐리게 만든다. */
@@ -1770,15 +1594,30 @@ const OrdersList: React.FC<OrdersListProps> = ({
       .filter(order => order.status === OrderStatus.PENDING || order.status === OrderStatus.PROCESSING)
       .flatMap(order => {
         const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름없음';
+        /*  **열쇠는 `주문id-lineKey` 다** — 자리 번호를 쓰면 안 된다.
+         *
+         *  2026-09-11 사장님: "이미 목록에 들어가서 설정돼 있는 애들이 표시가 안되네".
+         *  맞다 — 여기는 `${order.id}-${index}` 로, 고르는 창(`allPickableItems`)은
+         *  `${o.id}-${lineKeyAt(...)}` 로 열쇠를 만들고 있었다. **두 글자가 달라 영영 안 맞으니**
+         *  창을 열면 이미 담긴 것들이 하나도 체크되지 않았다(확인 건수만 맞고 칸은 다 비어 있었다).
+         *
+         *  맞춰야 할 쪽은 이쪽이다 — 자리 번호는 앞 품목을 지우면 다른 품목을 가리킨다
+         *  (2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데"). 이름도 같은 규칙으로 갈라 적는다. */
+        /*  **상품은 작업순서에 안 세운다**(2026-09-11 사장님: "상품은 작업순서에서 빼 사오는거니까").
+            사 오는 물건이라 우리가 만들 일이 없다 — 줄만 늘어난다. */
         return order.items.map((item, index) => ({
-          key: `${order.id}-${index}`,
+          key: `${order.id}-${lineKeyAt(order.items, index)}`,
           orderId: order.id,
           itemId: item.itemId,
-          itemName: item.name,
+          lineKey: lineKeyAt(order.items, index),
+          itemName: `${item.name}${lineSuffix(order.items, index)}`,
           partnerName,
           qty: item.quantity,
           category: items.find(product => product.id === item.itemId)?.category || '미분류',
-        }));
+        }))
+        //  **거르기는 열쇠를 만든 뒤에** — 먼저 거르면 `index` 가 원래 자리와 어긋나
+        //  `lineKeyAt` 이 엉뚱한 줄을 가리킨다.
+        .filter(workItem => items.find(product => product.id === workItem.itemId)?.type !== 'goods');
       });
     const savedPosition = new Map(workItems.map((item, index) => [item.key, index]));
     return liveItems.sort((a, b) => (savedPosition.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (savedPosition.get(b.key) ?? Number.MAX_SAFE_INTEGER));
@@ -1872,9 +1711,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
         <h2 className="text-lg font-black text-slate-900">전체 주문 관리</h2>
           <div className="flex items-center rounded-2xl bg-slate-100 p-1" aria-label="주문 보기 방식">
             {([
-              { value: 'calendar' as const, label: '캘린더', icon: CalendarDays },
-              { value: 'list' as const, label: '리스트', icon: ListOrdered },
+              //  보기 순서는 사장님이 정한다(2026-09-11): 보드 → 리스트 → 배송 캘린더 → 이력.
               { value: 'kanban' as const, label: '보드', icon: LayoutDashboard },
+              { value: 'list' as const, label: '리스트', icon: ListOrdered },
+              { value: 'calendar' as const, label: '배송 캘린더', icon: CalendarDays },
+              { value: 'history' as const, label: '이력', icon: History },
             ]).map(view => {
               const Icon = view.icon;
               return <button key={view.value} type="button" onClick={() => setActiveView(view.value)} aria-pressed={activeView === view.value} className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-black transition-all ${activeView === view.value ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><Icon size={13} /><span>{view.label}</span></button>;
@@ -1900,10 +1741,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   </span>
                 </span>
               </label>
-              <label className="order-1 flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs font-medium text-slate-600">
-                <input type="checkbox" checked={includeLegacyHistory} onChange={event => { setIncludeLegacyHistory(event.target.checked); if (event.target.checked) setListStatusTab('all'); }} className="h-4 w-4 rounded border-slate-300 accent-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500" />
-                예전 주문 이력 포함
-              </label>
+              {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
+                   섞어 보여 주던 길을 두면 같은 것을 두 군데서 보게 되고, 어느 쪽이 맞는지 헷갈린다. */}
               <span className="order-2 h-0 basis-full" aria-hidden="true" />
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 검색 필드
@@ -1926,8 +1765,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </label>
             </div>
           </section>
-          {legacyHistoryEnabled && <p className="text-xs text-slate-600">예전 주문은 선택한 주문일 범위 내에서 전체 탭에만 표시됩니다. 현재 출고완료 건수에는 포함되지 않습니다.</p>}
-          <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="주문 상태 선택">
+          {/*  이력 탭에는 상태 고르개를 안 둔다(2026-09-11 사장님) — 거긴 예전 주문 하나뿐이라 고를 게 없다. */}
+          <div className={`items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1 ${activeView === 'history' ? 'hidden' : 'flex'}`} aria-label="주문 상태 선택">
             {[{ value: 'all' as const, label: '전체', count: activeKanbanOrders.length }, ...visibleActiveConfigs.map(config => ({ value: config.targetStatus, label: config.label, count: activeKanbanOrders.filter(order => order.status === config.targetStatus).length }))].map(tab => (
               <button key={tab.value} type="button" onClick={() => setListStatusTab(tab.value)} className={`flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-black transition-colors ${listStatusTab === tab.value ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}>
                 <span>{tab.label}</span><span className={`text-[9px] tabular-nums ${listStatusTab === tab.value ? 'text-indigo-500' : 'text-slate-400'}`}>{tab.count}</span>
@@ -1945,16 +1784,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
-      {!embeddedListOnly && <PageHeader
-        title={title}
-        subtitle={subtitle}
-      />}
-
-      {!embeddedListOnly && <div className="flex flex-wrap items-center justify-end gap-2">
-        <button onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-md bg-indigo-600 px-4 text-xs font-black text-white transition-colors hover:bg-indigo-700">
-          <Plus size={13} /><span>주문 생성</span>
-        </button>
-      </div>}
+      {/*  **최상단 헤더는 없앴다**(2026-09-11 사장님: "주문배송 메뉴의 최상단 헤더도 중복되니까
+           제거하고"). 바로 아래에 '전체 주문 관리' 제목이 또 있어 같은 말이 두 번 나왔다.
+           `주문 생성` 단추는 금일 작업순서 밑으로 내렸다(아래 `order-3`). */}
 
       {!embeddedListOnly && <div className="hidden" aria-label="이전 주문 구분">
         {(['delivery','active','history'] as const).map((tab, index) => (
@@ -1974,7 +1806,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0 md:ml-auto">
-          {activeTab === 'history' && onChangeOrdersMonths && (
+          {activeView === 'history' && onChangeOrdersMonths && (
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
               <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
               <select
@@ -2198,9 +2030,23 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  그래서 cursor-grab은 카드 전체가 아니라 손잡이에만 준다 — 전엔 카드 전체에 걸려 있어
                  아무 데나 잡아도 되는 것처럼 보였지만 실제로는 안 끌렸다. */
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
-              className={`grid min-h-[64px] grid-cols-[1.5rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
+              className={`grid min-h-[64px] grid-cols-[1.5rem_1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
               <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
+              {/*  **다 한 것 체크** — 배송순서 줄(DeliveryDayList)과 같은 모양·같은 뜻이다.
+                   2026-09-11 사장님: "여긴 체크 박스가 없어". 상태 딱지로 '완료'라고 보여주기만 하고
+                   여기서 끄고 켤 수가 없어, 체크하려면 주문을 열고 들어가야 했다. */}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
+                disabled={lineIdx < 0}
+                aria-label={completed ? '작업 완료 취소' : '작업 완료'}
+                aria-pressed={completed}
+                title={completed ? '작업 완료 취소' : '작업 완료'}
+                className={`h-5 w-5 shrink-0 rounded-md border-2 flex items-center justify-center transition-colors disabled:opacity-40 ${completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 hover:border-emerald-400'}`}
+              >
+                {completed && <span className="text-[10px]">✓</span>}
+              </button>
               <button
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
                 className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
@@ -2301,8 +2147,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
         const renderListTable = () => {
           const allActiveListOrders = embeddedListOnly ? activeOperationOrders : activePeriodOrders;
+          /*  **네 열을 둘로 합친다**(2026-09-11 사장님: "주문일 출고예정일은 합쳐서 위아래 두줄로
+              놔 출고방식 열은 거래처에 합치고"). 가로로 길어 좌우로 밀어 보던 표를 줄인다 —
+              날짜 둘은 한 칸에서 위아래로, 출고방식은 거래처 이름 위에 얹는다. */
           const visibleListColumns = [
-            'orderDate', 'deliveryDate', 'source', 'partner',
+            'dates', 'partner',
             ...(embeddedListOnly ? ['address'] : []),
             ...(embeddedListOnly ? ['shipmentComplete'] : []),
             'completion',
@@ -2310,7 +2159,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
             'item',
             ...(showListDetailColumns ? ['manufacturing', 'bottle', 'cap', 'componentLabel'] : []),
             'quantity',
-            'label', 'invoicePrinted', 'packaging', 'pallet', 'note',
+            //  포장이 송장보다 앞이다(2026-09-11 사장님) — 싸고 나서 송장을 붙인다.
+            'label', 'packaging', 'invoicePrinted', 'pallet', 'note',
           ];
           const listGridTemplate = visibleListColumns.map(column => `${listColumnWidths[column]}px`).join(' ');
           const listMinWidth = visibleListColumns.reduce((total, column) => total + listColumnWidths[column], 0);
@@ -2417,7 +2267,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const listOrders = (embeddedListOnly || listStatusTab === 'all'
             ? searchConditionMatchedListOrders
             : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab)).sort((a, b) => {
-            if (listSort === 'order') return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+            //  **주문일 최신 순** — 오늘 들어온 주문이 맨 위다(2026-09-11 사장님).
+            //  전에는 오래된 것이 위로 올라와, 새로 들어온 주문을 보려면 끝까지 내려야 했다.
+            if (listSort === 'order') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             if (listSort === 'stock') return stockSlackForOrder(a) - stockSlackForOrder(b);
             return new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime();
           });
@@ -2517,7 +2369,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <span className="text-[11px] font-black text-slate-500">정렬</span>
                 <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="delivery">출고예정일 임박 순</option>
-                  <option value="order">주문일 빠른 순</option>
+                  <option value="order">주문일 최신 순</option>
                   <option value="stock">재고 여유 순</option>
                 </select>
                 <span className="h-0 basis-full sm:hidden" aria-hidden="true" />
@@ -2563,7 +2415,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <span>정렬</span>
                     <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
                       <option value="delivery">출고예정일 임박 순</option>
-                      <option value="order">주문일 빠른 순</option>
+                      <option value="order">주문일 최신 순</option>
                       <option value="stock">재고 여유 순</option>
                     </select>
                   </label>
@@ -2580,9 +2432,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </div>
               <div ref={listBodyScrollRef} onScroll={event => { if (listTopScrollRef.current && listTopScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listTopScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="no-scrollbar overflow-x-auto overflow-y-hidden rounded-b-lg" role="table" aria-label="주문 리스트">
                 <div role="row" style={listGridStyle} className="sticky top-0 z-10 grid border-b-2 border-slate-400 bg-slate-100 text-[11px] font-black text-slate-600">
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문일{resizeHandle('orderDate')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고예정일{resizeHandle('deliveryDate')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고 방식{resizeHandle('source')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 flex-col justify-center border-r border-slate-300 px-3 leading-tight">
+                    <span>주문일</span><span className="text-[10px] font-bold text-slate-400">출고예정일</span>{resizeHandle('dates')}
+                  </div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">거래처{resizeHandle('partner')}</div>
                   {embeddedListOnly && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주소{resizeHandle('address')}</div>}
                   {embeddedListOnly && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고완료 여부{resizeHandle('shipmentComplete')}</div>}
@@ -2620,8 +2472,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   ) : null}
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문 수량{resizeHandle('quantity')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">라벨 작업{resizeHandle('label')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">송장{resizeHandle('invoicePrinted')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">포장{resizeHandle('packaging')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">송장{resizeHandle('invoicePrinted')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">팔레트{resizeHandle('pallet')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center px-3">비고{resizeHandle('note')}</div>
                 </div>
@@ -2640,18 +2492,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         style={listGridStyle}
                         className={`grid min-h-10 border-b border-slate-300 text-[10px] text-slate-700 transition-colors ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
                       >
-                        <div role="cell" className="flex items-center border-r border-slate-300 px-3 font-bold tabular-nums text-slate-600">{fmtYYMMDD(new Date(order.createdAt))}</div>
-                        <div role="cell" className="flex items-center border-r border-slate-300 px-1.5">
+                        {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
+                        <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-1.5 py-1">
+                          <span className="px-1.5 font-bold tabular-nums text-slate-500">{fmtYYMMDD(new Date(order.createdAt))}</span>
                           <EditableDeliveryDate
                             label={`${partnerName} 출고예정일`}
                             value={order.deliveryDate}
                             onChange={date => onUpdateDeliveryDate(order.id, new Date(date).toISOString())}
                           />
-                        </div>
-                        <div role="cell" className="flex items-center justify-center border-r border-slate-300 px-2">
-                          <span className={`inline-flex min-h-7 w-full items-center justify-center rounded-md px-2 text-[10px] font-black ${channelStyle(order.source).chip}`}>
-                            {order.source}
-                          </span>
                         </div>
                         <div role="cell" className="flex items-center border-r border-slate-300 p-1.5">
                           <button
@@ -2661,7 +2509,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             className="group flex min-h-8 w-full min-w-0 items-center justify-between gap-1 rounded-md px-1.5 text-left font-black text-slate-800 transition-colors enabled:hover:bg-indigo-50 enabled:hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-default"
                             aria-label={`${partnerName} 주문 수정`}
                           >
-                            <span className="min-w-0" title={partnerName}><span className="block truncate">{partnerName}</span>{order.status === OrderStatus.DELIVERED && <span className="mt-1 block w-fit rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">예전 주문</span>}</span>
+                            {/*  출고 방식을 거래처 이름 **앞에** 붙여 한 줄로 읽는다
+                                 (2026-09-11 사장님: "거래처에 > 일반 거래처명이게 낫겠다").
+                                 두 줄로 쌓으면 줄 높이가 두 배가 되어 한 화면에 덜 들어왔다. */}
+                            <span className="flex min-w-0 items-center gap-1.5" title={`${order.source} · ${partnerName}`}>
+                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${channelStyle(order.source).chip}`} title={order.source}>{channelStyle(order.source).short}</span>
+                              <span className="min-w-0 truncate">{partnerName}</span>
+                              {order.status === OrderStatus.DELIVERED && <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">예전</span>}
+                            </span>
                             {!embeddedListOnly && <Edit2 size={12} className="shrink-0 text-slate-300 group-hover:text-indigo-500" aria-hidden="true" />}
                           </button>
                         </div>
@@ -2795,20 +2650,35 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                 </div>
                               </div>)}</div>
                             </div>
+                            <div role="cell" className="border-r border-slate-300">
+                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.packaging.join(', ')}>{detail.packaging.join(', ')}</span></div>)}</div>
+                            </div>
+                        {/*  **송장은 세 단계다** — `-` → 출력 → 부착 → `-` 로 돌아간다
+                             (2026-09-11 사장님: "송장은 - ,출력, 부착 세가지 옵션으로 뜨고").
+                             택배·스마트스토어처럼 송장이 붙는 주문에만 고를 수 있다. */}
                         <div role="cell" className="flex items-center border-r border-slate-300 px-2">
                           {(order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) && onToggleInvoicePrinted ? (
-                            <CompletionStatusControl
-                              completed={!!order.invoicePrinted}
-                              ariaLabel={`${partnerName} 송장`}
-                              onChange={value => onToggleInvoicePrinted(order.id, value)}
-                            />
+                            (() => {
+                              const 단계 = order.invoiceStage ?? (order.invoicePrinted ? 'printed' : undefined);
+                              const 다음: Record<string, 'printed' | 'attached' | undefined> = { undefined: 'printed', printed: 'attached', attached: undefined };
+                              const 글자 = 단계 === 'attached' ? '부착' : 단계 === 'printed' ? '출력' : '-';
+                              const 색 = 단계 === 'attached' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 단계 === 'printed' ? 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                                : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500';
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => onToggleInvoicePrinted(order.id, 다음[String(단계)])}
+                                  aria-label={`${partnerName} 송장 ${글자}`}
+                                  title="눌러서 - → 출력 → 부착"
+                                  className={`flex min-h-8 w-full items-center justify-center rounded-md px-2 text-[10px] font-black transition-colors ${색}`}
+                                >{글자}</button>
+                              );
+                            })()
                           ) : (
                             <span className="w-full text-center text-slate-300">-</span>
                           )}
                         </div>
-                            <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.packaging.join(', ')}>{detail.packaging.join(', ')}</span></div>)}</div>
-                            </div>
                             <div role="cell" className="relative flex min-h-full items-center border-r border-slate-300 px-1.5 font-bold text-slate-600">
                               <button
                                 type="button"
@@ -2946,8 +2816,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <span className="text-[11px] font-bold text-slate-500">{activeOperationOrders.length}건</span>
             </div>
             </section>
-            {/* 금일 작업순서 패널 */}
-            <div className={`order-1 w-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm ${embeddedListOnly ? 'hidden' : 'flex'}`}>
+            {/*  **금일 작업순서 — 금일 배송순서와 같은 자리에 둔다**(2026-09-11 사장님:
+                 "금일작업순서도 금일배송순서랑 같은 위치에 두고 배송캘린더 일때는 배송순서만
+                 보이고 나머지에서는 작업순서만 보이게").
+
+                 배송순서는 배송 캘린더(`calendarSlot`) 안에서 본문 맨 위에 뜬다. 그래서 이쪽도
+                 `order-3` 으로 내려 **검색 아래·본문 위**에 세운다 — 둘이 같은 자리에서 갈아 끼워진다.
+                 캘린더 탭에서는 배송순서가 그 자리를 쓰므로 이건 감춘다. */}
+            <div className={`order-3 w-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm ${embeddedListOnly || activeView === 'calendar' || activeView === 'history' ? 'hidden' : 'flex'}`}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
                 <button className="flex min-h-11 items-center gap-2 text-left" onClick={() => toggleMobileCollapse('work-order')} aria-expanded={!mobileCollapsed.has('work-order')}>
                   <div className="rounded-xl bg-indigo-600 p-1.5 text-white"><ListOrdered size={16} /></div>
@@ -2955,6 +2831,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <ChevronDown size={14} className={`text-slate-400 transition-transform ${mobileCollapsed.has('work-order') ? '' : 'rotate-180'}`} />
                 </button>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/*  **주문 끌어오기** — 작업순서에 어떤 품목을 세울지 고른다.
+                       창(`작업순서 설정`)은 살아 있었는데 **여는 단추가 통째로 없어져** 못 들어갔다
+                       (2026-09-11 사장님). 여는 순간 `pickerOrdering` 에 **지금 목록을 채워 넣는다** —
+                       이게 빠져 있어서 이미 담긴 것들이 체크가 안 된 채로 떴다. */}
+                  <button
+                    type="button"
+                    onClick={() => { setPickerOrdering(validWorkItems.map(workItem => workItem.key)); setShowWorkOrderPicker(true); }}
+                    className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 transition-colors hover:bg-violet-100"
+                  ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
                   <p className="text-xs font-bold text-slate-500">
                     대기중 <strong className="font-black text-rose-600">{pendingWorkCount}건</strong>
                     <span className="mx-1.5 text-slate-300">·</span>
@@ -3025,14 +2910,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 )}
               </div>
             </div>
+            {/*  주문 생성은 금일 작업순서 바로 밑에 둔다 — 같은 `order-3` 이고 DOM 에서 패널 다음이다.
+                 캘린더·이력에서는 패널이 숨어도 단추는 남는다(주문은 어느 화면에서나 만든다). */}
+            {/*  주문 생성은 **보드·리스트에만**(2026-09-11 사장님) — 배송 캘린더는 일정 보는 자리고
+                 이력은 지나간 것을 보는 자리라, 거기서 새 주문을 만들 일이 없다. */}
+            {!embeddedListOnly && (activeView === 'kanban' || activeView === 'list') && (
+              <div className="order-3 flex flex-wrap items-center justify-end gap-2">
+                <button onClick={onAddClick} className="flex h-9 items-center gap-1.5 rounded-md bg-indigo-600 px-4 text-xs font-black text-white transition-colors hover:bg-indigo-700">
+                  <Plus size={13} /><span>주문 생성</span>
+                </button>
+              </div>
+            )}
             {!embeddedListOnly && <div className="order-2">{renderOrderManagementControls()}</div>}
             {activeView === 'calendar' && (
               <div className="order-4">
-                <CalendarView
-                  orders={activeViewOrders}
-                  onUpdateDeliveryDate={onUpdateDeliveryDate}
-                  onOrderClick={openOrderEditor}
-                />
+                {calendarSlot ?? (
+                  <CalendarView
+                    orders={activeViewOrders}
+                    onUpdateDeliveryDate={onUpdateDeliveryDate}
+                    onOrderClick={openOrderEditor}
+                  />
+                )}
               </div>
             )}
             {/* 상태별 칸반 컬럼 — 이제 화면 전체 폭을 쓴다 */}
@@ -3118,22 +3016,28 @@ const OrdersList: React.FC<OrdersListProps> = ({
         );
       })()}
 
-      {/* ── 주문이력 탭: 예전주문이력 전체 폭 ── */}
-      {activeTab === 'history' && (() => {
+      {/* ── 이력 탭: 예전 주문. 한 건 = 한 행, 완료일 최신순 ── */}
+      {activeView === 'history' && (() => {
         const col = historyConfig;
+        /*  **이력도 위의 검색조건을 그대로 쓴다**(2026-09-11 사장님: "이력 자체에 붙어있던
+            날짜 필터링은 제거하고 상단에 있는 검색조건을 함께 쓸거야").
+            거래처 검색은 `searchTerm`(전체 검색)이 이미 `filteredOrders` 에서 걸러 주고,
+            기간은 여기서 `activeDateFrom~activeDateTo` 로 본다.
+            **기간의 기준은 완료일**이다 — 이력에서 찾는 건 "언제 나갔나"지 "언제 주문했나"가 아니다. */
         const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).sort(byDeliveryThenId);
+        const 완료일 = (o: Order) => dateOfLocal(o.deliveredAt || o.deliveryDate || o.createdAt);
         const filteredHistoryOrders = allColOrders.filter(o => {
-          if (historySearch && !((o.partnerName || '').includes(historySearch))) return false;
-          const dateStr = dateOfLocal(o.deliveredAt || o.deliveryDate || o.createdAt);
-          if (historyDateFrom && dateStr < historyDateFrom) return false;
-          if (historyDateTo && dateStr > historyDateTo) return false;
+          const dateStr = 완료일(o);
+          if (activeDateFrom && dateStr < activeDateFrom) return false;
+          if (activeDateTo && dateStr > activeDateTo) return false;
           return true;
         }).sort((a, b) => {
+          //  **완료일이 최신인 것이 위로.** 같으면 주문번호로 갈라 순서가 흔들리지 않게 한다.
           const da = a.deliveredAt || a.deliveryDate || a.createdAt || '';
           const db = b.deliveredAt || b.deliveryDate || b.createdAt || '';
-          return db.localeCompare(da);
+          return db.localeCompare(da) || (b.id || '').localeCompare(a.id || '');
         });
-        const hasHistoryFilter = !!(historySearch || historyDateFrom || historyDateTo);
+        const hasHistoryFilter = !!(searchTerm || activeDateFrom || activeDateTo);
         const colOrders = hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW));
         const Icon = col.icon;
         const groupedOrders: Record<OrderSource, Order[]> = {
@@ -3148,29 +3052,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
                 <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({colOrders.length}/{allColOrders.length})</h3>
               </div>
-            </div>
-            <div className="px-5 py-3 border-b border-white/50 flex flex-col gap-2">
-              <input type="text" placeholder="거래처 검색" value={historySearch} onChange={e => setHistorySearch(e.target.value)}
-                className="w-full text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-slate-400" />
-              <div className="flex items-center gap-1">
-                <input type="date" value={historyDateFrom} onChange={e => setHistoryDateFrom(e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
-                <span className="text-[10px] text-slate-400">~</span>
-                <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
-                {hasHistoryFilter && <button onClick={() => { setHistorySearch(''); setHistoryDateFrom(''); setHistoryDateTo(''); }} className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✕</button>}
-              </div>
-              {onLoadHistoricalOrders && (
-                <button
-                  onClick={() => {
-                    const from = historyDateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-                    const to = historyDateTo || today();
-                    onLoadHistoricalOrders(from, to);
-                  }}
-                  disabled={isLoadingHistoricalOrders}
-                  className="w-full py-1.5 rounded-xl text-[11px] font-black bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 transition-all"
-                >
-                  {isLoadingHistoricalOrders ? '불러오는 중…' : `📂 이력 불러오기 (${historyDateFrom || '30일 전'} ~ ${historyDateTo || '오늘'})`}
-                </button>
-              )}
             </div>
             <div className="overflow-x-auto">
               <div className="min-w-[850px]">
