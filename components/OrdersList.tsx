@@ -1390,8 +1390,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const listTopScrollRef = React.useRef<HTMLDivElement>(null);
   const listBodyScrollRef = React.useRef<HTMLDivElement>(null);
   const [listColumnWidths, setListColumnWidths] = useState<Record<string, number>>({
-    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 112, confirmer: 90, confirmedAt: 90,
-    item: 180, quantity: 100, manufacturing: 145, bottle: 120, cap: 120, componentLabel: 135,
+    //  작업완료 여부·주문 수량은 글자가 짧아 자리가 남았다 — 좁힌다(2026-09-11 사장님).
+    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 84, confirmer: 90, confirmedAt: 90,
+    item: 180, quantity: 76, manufacturing: 145, bottle: 120, cap: 120, componentLabel: 135,
     label: 150, packaging: 135, pallet: 140,
     note: 150, orderDate: 90, deliveryDate: 90,
     //  합친 칸 — 날짜 두 줄(dates)과 출고방식을 얹은 거래처(partner)
@@ -2719,7 +2720,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         {/*  **주문번호(위) · 상태(아래)** — 주문을 짚어 말할 때 쓰는 번호와
                              지금 어디까지 왔는지를 한 칸에 둔다(2026-09-11 사장님). */}
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-2 py-1">
-                          <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{cardNoLabel(order) || order.id.replace(/^ORD-/, '')}</span>
+                          {/*  `ORD-` 는 전부 붙는 머리라 읽을 정보가 없다 — 떼고 숫자만 보여 준다
+                               (2026-09-11 사장님). 원래 번호는 마우스를 올리면 나온다. */}
+                          <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{(cardNoLabel(order) || order.id).replace(/^ORD-/, '')}</span>
                           <span className={`w-fit rounded-md px-1.5 py-0.5 text-[9px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
                         </div>
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
