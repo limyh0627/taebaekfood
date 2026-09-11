@@ -690,28 +690,17 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               )}
             </div>
           </div>
-          {/*  **월간도 주간과 같은 카드다** — 공용 `DeliveryDayList` 한 벌.
-               2026-09-09 사장님("금일만 다는게 아니라 캘린더 쪽에도 달아야 돼")에 맞춰 뒀던 것이
-               병합(`a08a811`) 때 **평범한 목록으로 되돌아가 있었다** — 순서 번호·오전/오후·완료 체크·
-               묶음 띠가 다 사라졌었다. 카드만 되살린다(날짜별 계획 시스템은 지금 구조가 아니다). */}
+          {/*  **월간도 주간과 같은 카드다**(2026-09-12 사장님: "배송캘린더 월간 카드는 왜 통일
+               안됐어"). 주간만 고치고 월간은 `DeliveryDayList` 를 그대로 뒀더니 캘린더 안에서
+               또 두 가지 카드가 보였다. 당일 칸이 쓰던 흰 카드 한 벌(`renderDeliveryCard`)로 모은다.
+
+               **완료 체크는 카드에서 빠진다** — 그 체크는 `DeliveryDayList` 것이라 주간·당일에는
+               원래 없었다. 출고완료 처리는 금일 배송순서 판과 날짜 상세 창에서 한다. */}
           {dayOrders.length > 0 && (
-            <div className="mt-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
-              <DeliveryDayList
-                compact
-                rows={dayOrders.map(order => ({
-                  orderId: order.id,
-                  auto: !deliveryOrdering.includes(order.id),
-                  slot: (deliveryTimeSlots[order.id] || '오전') as '오전' | '오후',
-                  done: order.status === OrderStatus.SHIPPED,
-                }))}
-                orders={orders}
-                partners={partners}
-                dateStr={dateStr}
-                on={{
-                  open: order => handleOrderClick(order),
-                  toggleDone: id => onToggleShipmentComplete?.(id, orders.find(order => order.id === id)?.status !== OrderStatus.SHIPPED),
-                }}
-              />
+            <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
+              {dayOrders.map(order => renderDeliveryCard(order, {
+                drag: { draggable: true, onDragStart: e => handleDragStart(e, order.id) },
+              }))}
             </div>
           )}
           {showDelivered && deliveredOrders.length > 0 && (
