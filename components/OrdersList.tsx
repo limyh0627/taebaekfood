@@ -53,6 +53,7 @@ import { CHIP_NEUTRAL as SUB_CHIP_NEUTRAL, subChipClass } from '../src/shared/su
 import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
 import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
+import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -1386,7 +1387,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [activeDateFrom, setActiveDateFrom] = useState(() => `${seoulDateInput().slice(0, 7)}-01`);
   const [activeDateTo, setActiveDateTo] = useState(() => seoulDateInput());
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string; };
+  /**
+   * `workGroup` = **작업 그룹**(2026-09-11 사장님: "기름 깨 미분류가 세 개의 그룹이 되는거지").
+   * 화면의 큰 칸을 가르는 이름이고, 사장님이 만들고 고치고 지운다.
+   * `groupId`/`groupName` 은 그것과 **다른 것** — 그 칸 안에서 '같이 만들 것끼리 묶기'다.
+   */
+  type WorkItem = { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; workGroup?: string; groupId?: string; groupName?: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
@@ -1395,9 +1401,38 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
   /** 같이 만들 것으로 고른 줄들 — 두 개 이상 골라야 묶을 수 있다 */
   const [workGroupPick, setWorkGroupPick] = useState<string[]>([]);
+  /**
+   * **작업 그룹 이름과 차례** — `settings/workGroups` 한 문서에 둔다.
+   * 처음에는 여태 쓰던 세 갈래(기름·깨·미분류)로 시작한다. 사장님이 고치면 그때부터 그 이름이다.
+   */
+  const [workGroups, setWorkGroups] = useState<string[]>(['기름', '깨', '미분류']);
+  useEffect(() => {
+    if (embeddedListOnly) return;
+    return subscribeToDocument<{ names: string[] }>('settings', 'workGroups', doc => {
+      if (doc?.names?.length) setWorkGroups(doc.names);
+    });
+  }, [embeddedListOnly]);
+  const saveWorkGroups = (names: string[]) => {
+    setWorkGroups(names);
+    void setDocument('settings', 'workGroups', { names });
+  };
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(() => new Set(['work-order']));
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
+  /**
+   * **끌어오기 창의 그룹 작업판.**
+   *
+   * 2026-09-11 사장님: "주문 끌어오기할 때 아예 그룹 추가하고 그 그룹 클릭 한다음에 주문
+   * 선택하면 그 그룹내에서만 순서 따로 들어가게 하고 그룹이름 변경하거나 삭제하는 것도 가능하게".
+   *
+   * 창에서 고친 것은 **확인을 눌러야** 저장된다 — 그 전에는 여기 셋만 바뀐다.
+   *   `pickerGroups` 그룹 이름과 차례 · `pickerAssign` 줄이 어느 그룹인지 · `pickerGroup` 지금 고른 그룹
+   * 줄의 차례는 `pickerOrdering` 하나로 두고, 그룹 안 번호는 그걸 걸러서 센다 —
+   * 그룹마다 배열을 따로 두면 줄 하나가 두 그룹에 남는 일이 생긴다.
+   */
+  const [pickerGroups, setPickerGroups] = useState<string[]>([]);
+  const [pickerAssign, setPickerAssign] = useState<Record<string, string>>({});
+  const [pickerGroup, setPickerGroup] = useState('');
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
@@ -1491,17 +1526,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
    * (참기름 160 · 들기름 74 · 들깨 33 · 참깨 15 · 탈피들깨 10 · 검정참깨 9 · 빈칸 12)
    * 그게 전부 이 셋으로 들어간다.
    */
+  /**
+   * **이 줄이 어느 그룹인가.**
+   *
+   * 사장님이 지정한 그룹(`workGroup`)이 있으면 그것이다. 아직 안 정한 줄은 품목 분류로
+   * 갈라 첫 자리를 잡아 준다(기름·깨·미분류) — 그래야 그룹을 쓰기 시작해도 화면이 안 빈다.
+   * 지워진 그룹에 남아 있던 줄은 목록의 **맨 끝 그룹**으로 흘려 보낸다.
+   */
   const workCategoryOf = (workItem: WorkItem): string => {
+    const 정한것 = String(workItem.workGroup ?? '').trim();
+    if (정한것) return workGroups.includes(정한것) ? 정한것 : (workGroups[workGroups.length - 1] ?? 정한것);
     const product = items.find(item => item.id === workItem.itemId);
     const savedCategory = String(product?.category || workItem.category || '').trim();
     const typeValues = new Set(['product', 'goods', 'wip', 'raw', 'submaterial', 'giftset', 'shipping']);
     const 분류 = savedCategory && !typeValues.has(savedCategory) ? savedCategory : '';
     //  이름으로 가르지 않고 **분류값**으로 가른다 — 품목 이름은 사람이 자주 고친다.
-    if (/기름/.test(분류)) return '기름';
-    if (/깨/.test(분류)) return '깨';
-    return '미분류';
+    const 짐작 = /기름/.test(분류) ? '기름' : /깨/.test(분류) ? '깨' : '미분류';
+    return workGroups.includes(짐작) ? 짐작 : (workGroups[workGroups.length - 1] ?? 짐작);
   };
-  const WORK_CATEGORY_ORDER = ['기름', '깨', '미분류'];
 
   /**
    * 작업순서 보기 = 1depth(무엇으로 묶나) + 2depth(그 묶음을 어떤 순서로 두나).
@@ -1614,6 +1656,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
           partnerName,
           qty: item.quantity,
           category: items.find(product => product.id === item.itemId)?.category || '미분류',
+          //  저장된 그룹을 이어받는다 — 없으면 workCategoryOf 가 품목 분류로 짐작한다.
+          workGroup: workItems.find(saved => saved.key === `${order.id}-${lineKeyAt(order.items, index)}`)?.workGroup,
         }))
         //  **거르기는 열쇠를 만든 뒤에** — 먼저 거르면 `index` 가 원래 자리와 어긋나
         //  `lineKeyAt` 이 엉뚱한 줄을 가리킨다.
@@ -1725,7 +1769,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           <section className="overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="active-view-query-title">
             <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
               <h3 id="active-view-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-              <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setSearchTerm(''); setIncludeLegacyHistory(false); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
+              <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
             </div>
             <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
               <label className="order-1 flex flex-col gap-1 text-[10px] font-bold text-slate-500">
@@ -1754,6 +1798,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 조건 값
                 <select value={listFilterValue} onChange={event => setListFilterValue(event.target.value)} disabled={!listFilterField} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
                   <option value="">전체</option>{activeViewFilterValues.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
+              {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
+                   조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
+              <label className="order-3 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                정렬
+                <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
+                  <option value="delivery">출고예정일 임박 순</option>
+                  <option value="order">주문일 최신 순</option>
+                  <option value="stock">재고 여유 순</option>
                 </select>
               </label>
               <label className="order-3 flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
@@ -1954,12 +2008,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
           setWorkGroupPick([]);
         };
 
-        const workCategories = [...new Set(validWorkItems.map(workCategoryOf))].sort((a, b) => {
-          const ai = WORK_CATEGORY_ORDER.indexOf(a);
-          const bi = WORK_CATEGORY_ORDER.indexOf(b);
-          return (ai === -1 ? WORK_CATEGORY_ORDER.length : ai) - (bi === -1 ? WORK_CATEGORY_ORDER.length : bi)
-            || a.localeCompare(b, 'ko');
-        });
+        //  **빈 그룹도 보여 준다** — 만들어 놓고 아직 안 담은 그룹이 사라지면 담을 데가 없다.
+        const workCategories = [...new Set([...workGroups, ...validWorkItems.map(workCategoryOf)])]
+          .sort((a, b) => {
+            const ai = workGroups.indexOf(a); const bi = workGroups.indexOf(b);
+            return (ai === -1 ? workGroups.length : ai) - (bi === -1 ? workGroups.length : bi) || a.localeCompare(b, 'ko');
+          });
 
         // 순서 이동은 같은 품목 카테고리 안에서만 허용한다.
         const getSection = (workItem: WorkItem) => workCategoryOf(workItem);
@@ -2051,10 +2105,23 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
                 className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
               >
-                <p className={`truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</p>
-                {/*  **단위를 품목에서 읽는다**(2026-09-09 사장님: "여기 단위가 다 개야").
-                     박스 품목이면 '박스' 다 — '개' 로 박아 두면 50박스가 50개로 읽힌다. */}
-                <p className="mt-0.5 truncate text-[11px] font-bold text-slate-500">{wi.partnerName} · {wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</p>
+                {/*  **거래처 → 품목 → 수량 → 라벨** 차례로 읽는다(2026-09-11 사장님:
+                     "작업순서 한 행이: 거래처명 품목명 수량 (라벨 날인,부착 상태)").
+                     현장은 "어디 갈 것인지"부터 보므로 거래처가 맨 앞이다.
+                     **단위는 품목에서 읽는다**(2026-09-09) — 박스 품목이면 '박스' 다.
+                     라벨은 `대기`면 안 적는다 — 아직 안 한 것까지 적으면 한 줄이 딱지로 덮인다. */}
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <span className={`shrink-0 text-[11px] font-black ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{wi.partnerName}</span>
+                  <span className={`min-w-0 truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</span>
+                </p>
+                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[11px] font-bold text-slate-500">
+                  <span>{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
+                  {(() => {
+                    const 라벨 = lineIdx >= 0 ? (order?.items?.[lineIdx]?.labelType ?? '대기') : '대기';
+                    if (라벨 === '대기') return null;
+                    return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${라벨 === '부착' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>라벨 {라벨}</span>;
+                  })()}
+                </p>
               </button>
               <div className="text-right">
                 <div className="mb-1 flex flex-wrap justify-end gap-1">
@@ -2083,14 +2150,23 @@ const OrdersList: React.FC<OrdersListProps> = ({
           );
         };
 
+        /*  **묶음마다 색을 달리한다**(2026-09-11 사장님: "작업순서 기름 깨 미분류는 색 좀 다르게").
+            셋이 다 회색이라 어디가 어디인지 제목을 읽어야 알았다. 색은 하는 일에 맞춘다 —
+            기름은 짜는 것(호박), 깨는 볶고 빻는 것(초록), 미분류는 아직 안 정한 것(회색). */
+        const 묶음색 = (category: string) => category === '기름'
+          ? { 테두리: 'border-amber-200', 바탕: 'bg-amber-50/70', 글자: 'text-amber-800', 셈: 'text-amber-500' }
+          : category === '깨'
+            ? { 테두리: 'border-emerald-200', 바탕: 'bg-emerald-50/70', 글자: 'text-emerald-800', 셈: 'text-emerald-500' }
+            : { 테두리: 'border-slate-200', 바탕: 'bg-slate-50/70', 글자: 'text-slate-800', 셈: 'text-slate-400' };
         const renderWorkCategory = (category: string) => {
           const sectionItems = orderedSectionItems(category);
           const totalCount = validWorkItems.filter(workItem => workCategoryOf(workItem) === category).length;
+          const 색 = 묶음색(category);
           return (
-            <section key={category} className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5" aria-label={`${category} 작업순서`}>
+            <section key={category} className={`min-w-0 rounded-2xl border p-2.5 ${색.테두리} ${색.바탕}`} aria-label={`${category} 작업순서`}>
               <div className="mb-2 flex items-center justify-between px-1">
-                <h4 className="text-xs font-black text-slate-800">{category}</h4>
-                <span className="text-[10px] font-bold text-slate-400">{sectionItems.length}/{totalCount}</span>
+                <h4 className={`text-xs font-black ${색.글자}`}>{category}</h4>
+                <span className={`text-[10px] font-bold ${색.셈}`}>{sectionItems.length}/{totalCount}</span>
               </div>
               <div className="space-y-1.5">
                 {sectionItems.length > 0
@@ -2410,16 +2486,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <section className="space-y-2" aria-labelledby="list-results-title">
                 <div className="flex items-center justify-between gap-3 px-1">
                   <h3 id="list-results-title" className="text-sm font-black text-slate-900">조회 결과 <span className="text-indigo-600">{listOrders.length}건</span></h3>
-                  <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
-                    <span>정렬</span>
-                    <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                      <option value="delivery">출고예정일 임박 순</option>
-                      <option value="order">주문일 최신 순</option>
-                      <option value="stock">재고 여유 순</option>
-                    </select>
-                  </label>
-                  </div>
                 </div>
               <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${showListDetailColumns ? 'w-full' : 'w-fit max-w-full'}`}>
                 <div
@@ -2490,7 +2556,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         key={order.id}
                         role="row"
                         style={listGridStyle}
-                        className={`grid min-h-10 border-b border-slate-300 text-[10px] text-slate-700 transition-colors ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
+                        /*  **주문과 주문 사이를 진하게 가른다**(2026-09-11 사장님).
+                            한 주문이 품목 수만큼 세로로 늘어나는데 줄 경계가 옅어, 어디까지가 한 주문인지
+                            눈으로 못 끊었다. 주문 경계만 굵고 진하게 두고 품목 줄은 옅게 둔다. */
+                        className={`grid min-h-10 border-b-2 border-slate-400 text-[10px] text-slate-700 transition-colors ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
                       >
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-1.5 py-1">
@@ -2837,7 +2906,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        이게 빠져 있어서 이미 담긴 것들이 체크가 안 된 채로 떴다. */}
                   <button
                     type="button"
-                    onClick={() => { setPickerOrdering(validWorkItems.map(workItem => workItem.key)); setShowWorkOrderPicker(true); }}
+                    onClick={() => {
+                      setPickerOrdering(validWorkItems.map(workItem => workItem.key));
+                      setPickerAssign(Object.fromEntries(validWorkItems.map(workItem => [workItem.key, workCategoryOf(workItem)])));
+                      setPickerGroups(workGroups);
+                      setPickerGroup(workGroups[0] ?? '');
+                      setShowWorkOrderPicker(true);
+                    }}
                     className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 transition-colors hover:bg-violet-100"
                   ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
                   <p className="text-xs font-bold text-slate-500">
@@ -2953,6 +3028,59 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <h3 className="font-black text-slate-900">작업순서 설정</h3>
                     <button onClick={() => setShowWorkOrderPicker(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={16} /></button>
                   </div>
+
+                  {/*  **그룹 줄** — 고른 그룹에 주문이 담긴다. 이름 고치기·지우기·새로 만들기가 여기 있다. */}
+                  <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-5 py-3">
+                    {pickerGroups.map(name => {
+                      const 고름 = pickerGroup === name;
+                      const 담긴수 = pickerOrdering.filter(k => pickerAssign[k] === name).length;
+                      return (
+                        <span key={name} className={`flex items-center gap-1 rounded-xl border px-2 py-1 text-[11px] font-black transition-colors ${고름 ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500'}`}>
+                          <button type="button" onClick={() => setPickerGroup(name)} className="min-h-6">
+                            {name} <span className="tabular-nums opacity-60">{담긴수}</span>
+                          </button>
+                          <button
+                            type="button" aria-label={`${name} 이름 바꾸기`} title="이름 바꾸기"
+                            onClick={() => {
+                              const 새이름 = window.prompt('그룹 이름', name)?.trim();
+                              if (!새이름 || 새이름 === name) return;
+                              if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
+                              setPickerGroups(prev => prev.map(x => x === name ? 새이름 : x));
+                              //  담긴 줄도 같이 따라간다 — 이름만 바꾸고 줄을 두면 그 줄이 갈 곳을 잃는다.
+                              setPickerAssign(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, v === name ? 새이름 : v])));
+                              setPickerGroup(현재 => 현재 === name ? 새이름 : 현재);
+                            }}
+                            className="text-slate-300 hover:text-violet-500"
+                          ><Edit2 size={11} /></button>
+                          <button
+                            type="button" aria-label={`${name} 지우기`} title="지우기"
+                            onClick={() => {
+                              if (pickerGroups.length <= 1) { alert('그룹은 하나는 남아 있어야 합니다.'); return; }
+                              if (담긴수 > 0 && !window.confirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
+                              const 남은 = pickerGroups.filter(x => x !== name);
+                              setPickerGroups(남은);
+                              //  지운 그룹에 담겼던 줄은 **목록에서도 뺀다** — 갈 곳 없는 줄을 남기지 않는다.
+                              setPickerOrdering(prev => prev.filter(k => pickerAssign[k] !== name));
+                              setPickerGroup(현재 => 현재 === name ? (남은[0] ?? '') : 현재);
+                            }}
+                            className="text-slate-300 hover:text-rose-500"
+                          ><X size={11} /></button>
+                        </span>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const 새이름 = window.prompt('새 그룹 이름')?.trim();
+                        if (!새이름) return;
+                        if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
+                        setPickerGroups(prev => [...prev, 새이름]);
+                        setPickerGroup(새이름);
+                      }}
+                      className="flex min-h-7 items-center gap-1 rounded-xl bg-violet-50 px-2 text-[11px] font-black text-violet-600 hover:bg-violet-100"
+                    ><Plus size={11} />그룹 추가</button>
+                  </div>
+
                   <div className="flex-1 overflow-y-auto">
                     {allPickableItems.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
@@ -2970,21 +3098,32 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           <div className="space-y-1">
                             {orderItems.map(wi => {
                               const isSelected = pickerOrdering.includes(wi.key);
-                              // 섹션별 독립 번호
-                              const sectionOrder = pickerOrdering.filter(k => {
-                                const it = allPickableItems.find(x => x.key === k);
-                                return it && workCategoryOf(it) === workCategoryOf(wi);
-                              });
-                              const sectionPos = sectionOrder.indexOf(wi.key) + 1;
+                              const 담긴그룹 = pickerAssign[wi.key];
+                              //  **번호는 그 그룹 안에서만 센다**(사장님: "그 그룹내에서만 순서 따로").
+                              const sectionPos = pickerOrdering.filter(k => pickerAssign[k] === 담긴그룹).indexOf(wi.key) + 1;
                               return (
                                 <div key={wi.key}
-                                  onClick={() => setPickerOrdering(prev => isSelected ? prev.filter(k => k !== wi.key) : [...prev, wi.key])}
+                                  onClick={() => {
+                                    if (!pickerGroup) { alert('먼저 담을 그룹을 고르세요.'); return; }
+                                    if (isSelected && 담긴그룹 === pickerGroup) {
+                                      //  같은 그룹에 담긴 것을 다시 누르면 뺀다.
+                                      setPickerOrdering(prev => prev.filter(k => k !== wi.key));
+                                      setPickerAssign(prev => { const { [wi.key]: _뺌, ...남은 } = prev; return 남은; });
+                                      return;
+                                    }
+                                    //  안 담겼거나 **다른 그룹**에 담긴 것이면 지금 그룹으로 옮긴다(끝에 붙는다).
+                                    setPickerOrdering(prev => [...prev.filter(k => k !== wi.key), wi.key]);
+                                    setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
+                                  }}
                                   className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-violet-50' : 'hover:bg-slate-50'}`}
                                 >
                                   <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-all ${isSelected ? 'bg-violet-600 border-violet-600 text-white' : 'border-slate-300 text-transparent'}`}>
                                     {isSelected ? sectionPos : ''}
                                   </div>
-                                  <span className="flex-1 text-sm font-bold text-slate-700 truncate">{wi.itemName}</span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-bold text-slate-700">{wi.itemName}</span>
+                                    {isSelected && 담긴그룹 && <span className="text-[10px] font-black text-violet-500">{담긴그룹}</span>}
+                                  </span>
                                   <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                                 </div>
                               );
@@ -2998,9 +3137,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <button onClick={() => setShowWorkOrderPicker(false)} className="flex-1 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">취소</button>
                     <button
                       onClick={() => {
-                        const newItems = pickerOrdering
+                        //  **그룹 차례대로 줄을 늘어놓는다** — 저장되는 순번(sortIndex)이 곧 화면 차례라,
+                        //  섞어 저장하면 칸 안의 순서가 흔들린다.
+                        const newItems = pickerGroups.flatMap(group => pickerOrdering
+                          .filter(key => pickerAssign[key] === group)
                           .map(key => allPickableItems.find(wi => wi.key === key))
-                          .filter((wi): wi is WorkItem => wi !== undefined);
+                          .filter((wi): wi is WorkItem => wi !== undefined)
+                          .map(wi => ({ ...wi, workGroup: group })));
+                        saveWorkGroups(pickerGroups);
                         setWorkItems(newItems);
                         setShowWorkOrderPicker(false);
                       }}

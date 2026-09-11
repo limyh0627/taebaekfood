@@ -2119,8 +2119,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 });
                 items.forEach((item, idx) => {
                   const prev = prevByKey.get(item.key);
-                  if (!prev) writes.push(addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx }));
-                  else if (prev.sortIndex !== idx) writes.push(updateItem('workOrderItems', prev.id, { sortIndex: idx }));
+                  if (!prev) { writes.push(addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx })); return; }
+                  /*
+                   * **순번만 쓰던 것을 고친다**(2026-09-11 사장님: "작업순서에서 묶으면 뭐가
+                   * 되는거냐 아무 변화도 없는 거 같아").
+                   *
+                   * 맞다 — 여기가 `sortIndex` 가 바뀐 줄만 저장했다. 묶기(`groupId`)는 자리를
+                   * 안 바꾸는 일이라(이미 붙어 있는 둘을 묶으면 순번이 그대로다) **아무것도 안 쓰이고**
+                   * 새로고침하면 묶음이 사라졌다. 작업 그룹(`workGroup`)도 같은 함정에 걸린다.
+                   * 달라진 칸을 모아서 쓴다.
+                   */
+                  const patch: Record<string, unknown> = {};
+                  if (prev.sortIndex !== idx) patch.sortIndex = idx;
+                  for (const 칸 of ['groupId', 'groupName', 'workGroup'] as const) {
+                    const 전 = (prev as unknown as Record<string, unknown>)[칸] ?? null;
+                    const 후 = (item as unknown as Record<string, unknown>)[칸] ?? null;
+                    //  Firestore 는 undefined 를 못 쓴다 — 지울 때는 null 로 적는다.
+                    if (전 !== 후) patch[칸] = 후;
+                  }
+                  if (Object.keys(patch).length > 0) writes.push(updateItem('workOrderItems', prev.id, patch));
                 });
                 await Promise.all(writes);
               }}

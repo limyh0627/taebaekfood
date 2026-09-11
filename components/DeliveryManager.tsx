@@ -657,28 +657,28 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               )}
             </div>
           </div>
+          {/*  **월간도 주간과 같은 카드다** — 공용 `DeliveryDayList` 한 벌.
+               2026-09-09 사장님("금일만 다는게 아니라 캘린더 쪽에도 달아야 돼")에 맞춰 뒀던 것이
+               병합(`a08a811`) 때 **평범한 목록으로 되돌아가 있었다** — 순서 번호·오전/오후·완료 체크·
+               묶음 띠가 다 사라졌었다. 카드만 되살린다(날짜별 계획 시스템은 지금 구조가 아니다). */}
           {dayOrders.length > 0 && (
-            <div className="mt-1 space-y-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
-              {dayOrders.map(order => {
-                return (
-                  <div
-                    key={order.id}
-                    onClick={() => handleOrderClick(order)}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, order.id)}
-                    className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
-                  >
-                    <span className="min-w-[32px] flex-1">
-                      <span className="block truncate">{order.partnerName}</span>
-                      {calendarLocationOf(order) && <span className="mt-0.5 flex items-center gap-0.5 truncate text-[8px] font-medium text-slate-500"><MapPin size={8} className="shrink-0" />{calendarLocationOf(order)}</span>}
-                    </span>
-                    <span className="ml-1 flex shrink-0 flex-col items-end text-[9px] font-black">
-                      <span>{DELIVERY_STATUS_LABEL[order.status]}</span>
-                      <WorkCheckWarning order={order} className="text-[8px]" />
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="mt-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
+              <DeliveryDayList
+                compact
+                rows={dayOrders.map(order => ({
+                  orderId: order.id,
+                  auto: !deliveryOrdering.includes(order.id),
+                  slot: (deliveryTimeSlots[order.id] || '오전') as '오전' | '오후',
+                  done: order.status === OrderStatus.SHIPPED,
+                }))}
+                orders={orders}
+                partners={partners}
+                dateStr={dateStr}
+                on={{
+                  open: order => handleOrderClick(order),
+                  toggleDone: id => onToggleShipmentComplete?.(id, orders.find(order => order.id === id)?.status !== OrderStatus.SHIPPED),
+                }}
+              />
             </div>
           )}
           {showDelivered && deliveredOrders.length > 0 && (
@@ -834,9 +834,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         const onHoldOrders = orders.filter(o => o.status === OrderStatus.ON_HOLD && o.partnerName !== '생산기록');
         const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록');
         // 금일 배송순서는 아래 조회 결과의 상태 탭/검색조건과 독립적으로 운영 대상 전체를 본다.
+        /*  **금일 배송순서는 오늘 나갈 것만 본다**(2026-09-11 사장님: "목록이 오늘 출고
+            예정인것만 보여야 하는데?"). 전에는 운영 중인 배송 대상을 날짜와 무관하게 다 담아서,
+            머리의 건수(오늘 기준)와 목록이 안 맞았다. **목록 쪽을 오늘로 좁힌다.** */
         const deliverySequenceOrders = sourceOrders.filter(order =>
           order.partnerName !== '생산기록'
           && [OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED].includes(order.status)
+          && queryDateKey(order.deliveryDate) === todayKey
         );
         const visibleDeliverySequenceOrders = deliverySequenceOrders.filter(order =>
           showCompletedDeliveryOrders || order.status !== OrderStatus.SHIPPED
@@ -865,9 +869,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         const visibleIds = deliverySortMode === 'recommended'
           ? recommendedOrders.map(order => order.id)
           : manualIds;
-        const todayDeliveryOrders = deliverySequenceOrders.filter(order => queryDateKey(order.deliveryDate) === todayKey);
-        const todayIncompleteCount = todayDeliveryOrders.filter(order => order.status !== OrderStatus.SHIPPED).length;
-        const todayCompleteCount = todayDeliveryOrders.filter(order => order.status === OrderStatus.SHIPPED).length;
+        /*  **세는 것과 보여 주는 것이 같아야 한다**(2026-09-11 사장님: "출고완료 n건
+            출고미완료 n건이 실제 금일배송순서에 있는 주문 개수랑 안 맞는거 같어").
+            맞다 — 숫자는 **오늘 출고예정일인 것만** 세는데 목록은 날짜와 무관하게 운영 중인
+            배송 대상을 다 보여 준다. 그래서 목록엔 13건이 있는데 숫자는 몇 건으로 떴다.
+            고친 뒤로는 목록도 오늘 것만 담으므로(위 `deliverySequenceOrders`) 둘이 같은 것을 센다.
+            '완료 포함'을 꺼도 완료 건수는 보여야 하므로 완료는 숨기기 전 목록에서 센다. */
+        const todayIncompleteCount = deliverySequenceOrders.filter(order => order.status !== OrderStatus.SHIPPED).length;
+        const todayCompleteCount = deliverySequenceOrders.filter(order => order.status === OrderStatus.SHIPPED).length;
 
         const saveDeliveryOrdering = (next: string[], slots?: Record<string, '오전' | '오후'>) => {
           setDeliveryOrdering(next);
@@ -907,22 +916,28 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           const partnerName = partner?.name || order.partnerName || '거래처 미지정';
           const location = calendarLocationOf(order);
           const completionRate = completionRateOf(order);
-          const sequenceNumber = visibleIds.indexOf(id) + 1;
+          /*  **택배는 순서가 없다**(2026-09-11 사장님: "배송순서에 택배는 순서랄게 없어").
+              기사가 와서 실어 가는 것이라 우리가 도는 차례를 정할 게 없다 — 번호도 손잡이도 안 단다.
+              일반(우리 차가 도는 것)만 번호와 끌기를 둔다. */
+          const 택배인가 = isDeliveryChannel(order.source);
+          //  번호는 **일반 것들 안에서만** 센다 — 택배가 사이에 끼어 번호가 건너뛰면 안 된다.
+          const sequenceNumber = visibleIds.filter(x => !isDeliveryChannel(orders.find(o => o.id === x)?.source)).indexOf(id) + 1;
+          const 끌수있나 = deliverySortMode === 'manual' && !택배인가;
           const slotTone = slot === '오전' ? 'amber' : 'indigo';
           return (
             <div
               key={id}
-              draggable={deliverySortMode === 'manual'}
+              draggable={끌수있나}
               onDragStart={() => {
-                if (deliverySortMode !== 'manual') return;
+                if (!끌수있나) return;
                 setDragDeliveryIdx(manualIds.indexOf(id));
                 setDragDeliveryId(id);
               }}
-              onDragOver={event => deliverySortMode === 'manual' && event.preventDefault()}
-              onDrop={() => moveDeliveryOrder(id, slot)}
-              className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 shadow-sm ${slotTone === 'amber' ? 'border-amber-100' : 'border-indigo-100'} ${deliverySortMode === 'manual' ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              onDragOver={event => 끌수있나 && event.preventDefault()}
+              onDrop={() => { if (끌수있나) moveDeliveryOrder(id, slot); }}
+              className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 shadow-sm ${slotTone === 'amber' ? 'border-amber-100' : 'border-indigo-100'} ${끌수있나 ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
-              <span className={`text-center text-[11px] font-black tabular-nums ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}>{sequenceNumber}</span>
+              <span className={`text-center text-[11px] font-black tabular-nums ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}>{택배인가 ? '' : sequenceNumber}</span>
               <button type="button" onClick={() => setPreviewDeliveryOrderId(id)} className="min-w-0 text-left hover:opacity-75">
                 <span className="flex min-w-0 items-center gap-2">
                   <strong className="truncate text-xs font-black text-slate-800">{partnerName}</strong>
@@ -937,7 +952,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               </button>
               <div className="flex items-center gap-1.5">
                 <button type="button" onClick={() => toggleTimeSlot(id)} className={`min-h-7 rounded-md px-2 text-[10px] font-black ${slotTone === 'amber' ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>{slot}</button>
-                {deliverySortMode === 'manual' && <GripVertical size={14} className="text-slate-300" aria-label="순서 이동" />}
+                {끌수있나 && <GripVertical size={14} className="text-slate-300" aria-label="순서 이동" />}
               </div>
             </div>
           );
@@ -1000,7 +1015,32 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                           <div className={`px-1 pt-1 text-[10px] font-black ${묶음.tone}`}>{묶음.key} <span className="tabular-nums opacity-60">{묶음.ids.length}</span></div>
                           {묶음.ids.length === 0
                             ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p>
-                            : 묶음.ids.map(id => renderDeliveryRow(id, deliveryTimeSlots[id] === '오후' ? '오후' : '오전'))}
+                            : 묶음.key === '택배'
+                              //  택배는 도는 차례가 없으니 오전·오후로도 안 가른다.
+                              ? 묶음.ids.map(id => renderDeliveryRow(id, deliveryTimeSlots[id] === '오후' ? '오후' : '오전'))
+                              /*  **일반은 오전·오후로 한 번 더 가른다**(2026-09-11 사장님: "배송순서 쪽에
+                                  오전 오후가 없어졌냐"). 택배/일반로 묶으면서 이 구분이 빠져 있었다 —
+                                  줄마다 달린 오전·오후 딱지는 그대로였지만 칸이 안 갈려 언제 나가는지
+                                  한눈에 안 들어왔다. 끌어서 칸에 놓으면 그 시간대로 옮겨 가는 것도 그대로다. */
+                              : (['오전', '오후'] as const).map(slot => {
+                                  const 칸ids = 묶음.ids.filter(id => (deliveryTimeSlots[id] || '오전') === slot);
+                                  return (
+                                    <div key={slot} className="flex flex-col gap-1">
+                                      <div
+                                        className={`px-1 pt-1 text-[10px] font-black ${slot === '오전' ? 'text-amber-600' : 'text-indigo-500'}`}
+                                        onDragOver={event => deliverySortMode === 'manual' && event.preventDefault()}
+                                        onDrop={() => {
+                                          if (deliverySortMode !== 'manual' || dragDeliveryId === null) return;
+                                          saveTimeSlots({ ...deliveryTimeSlots, [dragDeliveryId]: slot });
+                                          setDragDeliveryId(null);
+                                        }}
+                                      >{slot} <span className="tabular-nums opacity-60">{칸ids.length}</span></div>
+                                      {칸ids.length === 0
+                                        ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p>
+                                        : 칸ids.map(id => renderDeliveryRow(id, slot))}
+                                    </div>
+                                  );
+                                })}
                         </div>
                       ))}
                     </>
