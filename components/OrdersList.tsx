@@ -54,6 +54,7 @@ import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { matchesSearch } from '../src/shared/hangul';
+import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 
 import ConfirmModal from './ConfirmModal';
@@ -1343,6 +1344,23 @@ const activeConfigs = [
 //  예전 주문 칸은 옮길 데가 없다 — targetStatus 를 비운다
 const historyConfig = { ...칸('history_col', OrderStatus.DELIVERED, History, '예전 주문 이력'), targetStatus: undefined };
 
+//  짧은 목록이라 검색칸이 안 뜬다(SearchableSelect 의 `searchThreshold`) — 전과 똑같이 동작한다.
+const 검색필드목록 = [
+  { value: '', label: '필드 선택' },
+  { value: 'source', label: '출고 방식' },
+  { value: 'invoicePrinted', label: '송장' },
+  { value: 'completion', label: '작업완료 여부' },
+  { value: 'item', label: '주문 품목' },
+  { value: 'manufacturing', label: '품목명' },
+  { value: 'label', label: '라벨 작업' },
+  { value: 'deliveryDate', label: '출고예정일' },
+];
+const 정렬목록 = [
+  { value: 'delivery', label: '출고예정일 임박 순' },
+  { value: 'order', label: '주문일 최신 순' },
+  { value: 'stock', label: '재고 여유 순' },
+];
+
 const OrdersList: React.FC<OrdersListProps> = ({
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
@@ -1863,30 +1881,35 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <span className="order-2 h-0 basis-full" aria-hidden="true" />
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 검색 필드
-                <select value={listFilterField} onChange={event => { setListFilterField(event.target.value as typeof listFilterField); setListFilterValue(''); }} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                  {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
-                       거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
-                  <option value="">필드 선택</option><option value="source">출고 방식</option><option value="invoicePrinted">송장</option><option value="completion">작업완료 여부</option><option value="item">주문 품목</option><option value="manufacturing">품목명</option><option value="label">라벨 작업</option><option value="deliveryDate">출고예정일</option>
-                </select>
+                {/*  포장·팔레트·주문일·주문수량은 뺐다(2026-09-11 사장님) — 이 칸으로 걸러 본 적이 없다.
+                     거래처는 제일 자주 쓰는 것이라 **옆에 따로 꺼내 뒀다.** */}
+                <SearchableSelect
+                  ariaLabel="검색 필드" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  value={listFilterField}
+                  onChange={value => { setListFilterField(value as typeof listFilterField); setListFilterValue(''); }}
+                  options={검색필드목록}
+                />
               </label>
 
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 조건 값
-                <select value={listFilterValue} onChange={event => setListFilterValue(event.target.value)} disabled={!listFilterField} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40">
-                  <option value="">전체</option>
-                  {activeViewFilterValues.map(value => <option key={value} value={value}>{value}</option>)}
-                </select>
+                <SearchableSelect
+                  ariaLabel="조건 값" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  value={listFilterValue} onChange={setListFilterValue} disabled={!listFilterField}
+                  options={[{ value: '', label: '전체' }, ...activeViewFilterValues.map(value => ({ value, label: value }))]}
+                />
               </label>
               {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처필터를 검색필드 조건값 다음으로 옮기고"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
                    두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
-                <select value={listPartnerFilter} onChange={event => setListPartnerFilter(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                  <option value="">전체</option>
-                  {[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
+                <SearchableSelect
+                  ariaLabel="거래처" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  value={listPartnerFilter} onChange={setListPartnerFilter}
+                  options={[{ value: '', label: '전체' }, ...[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
                     .sort((a, b) => a.localeCompare(b, 'ko'))
-                    .map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
+                    .map(name => ({ value: name, label: name }))]}
+                />
               </label>
               {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
                    조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
@@ -1894,11 +1917,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <span className="order-3 h-0 basis-full" aria-hidden="true" />
               <label className="order-4 flex w-44 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 정렬
-                <select value={listSort} onChange={event => setListSort(event.target.value as typeof listSort)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
-                  <option value="delivery">출고예정일 임박 순</option>
-                  <option value="order">주문일 최신 순</option>
-                  <option value="stock">재고 여유 순</option>
-                </select>
+                <SearchableSelect
+                  ariaLabel="정렬" className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  value={listSort} onChange={value => setListSort(value as typeof listSort)}
+                  options={정렬목록}
+                />
               </label>
               <label className="order-4 flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
                 전체 검색
