@@ -60,7 +60,7 @@ import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
-import { CARD_HEADER_COLOR, STATUS_COLOR, STATUS_HEAD, STATUS_LABEL, statusLabel, statusColumn } from '../src/shared/orderStatusStyle';
+import { CARD_HEADER_COLOR, STATUS_COLOR, STATUS_HEAD, STATUS_LABEL, statusLabel, statusChip, statusColumn } from '../src/shared/orderStatusStyle';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -1372,7 +1372,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     label: 150, packaging: 135, pallet: 140,
     note: 150, orderDate: 90, deliveryDate: 90,
     //  합친 칸 — 날짜 두 줄(dates)과 출고방식을 얹은 거래처(partner)
-    dates: 104,
+    dates: 104, orderNo: 120,
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [includeLegacyHistory, setIncludeLegacyHistory] = useState(false);
@@ -2261,6 +2261,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
               놔 출고방식 열은 거래처에 합치고"). 가로로 길어 좌우로 밀어 보던 표를 줄인다 —
               날짜 둘은 한 칸에서 위아래로, 출고방식은 거래처 이름 위에 얹는다. */
           const visibleListColumns = [
+            //  맨 앞은 **주문번호 + 상태**(2026-09-11 사장님) — 어느 주문인지, 지금 어디까지 왔는지.
+            'orderNo',
             'dates', 'partner',
             ...(embeddedListOnly ? ['address'] : []),
             ...(embeddedListOnly ? ['shipmentComplete'] : []),
@@ -2526,6 +2528,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </div>
               <div ref={listBodyScrollRef} onScroll={event => { if (listTopScrollRef.current && listTopScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listTopScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="no-scrollbar overflow-x-auto overflow-y-hidden rounded-b-lg" role="table" aria-label="주문 리스트">
                 <div role="row" style={listGridStyle} className="sticky top-0 z-10 grid border-b-2 border-slate-400 bg-slate-100 text-[11px] font-black text-slate-600">
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문번호{resizeHandle('orderNo')}</div>
                   <div role="columnheader" className="relative flex min-h-10 flex-col justify-center border-r border-slate-300 px-3 leading-tight">
                     <span>주문일</span><span className="text-[10px] font-bold text-slate-400">출고예정일</span>{resizeHandle('dates')}
                   </div>
@@ -2589,6 +2592,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             눈으로 못 끊었다. 주문 경계만 굵고 진하게 두고 품목 줄은 옅게 둔다. */
                         className={`grid min-h-10 border-b-2 border-slate-400 text-[10px] text-slate-700 transition-colors ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
                       >
+                        {/*  **주문번호(위) · 상태(아래)** — 주문을 짚어 말할 때 쓰는 번호와
+                             지금 어디까지 왔는지를 한 칸에 둔다(2026-09-11 사장님). */}
+                        <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-2 py-1">
+                          <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{cardNoLabel(order) || order.id.replace(/^ORD-/, '')}</span>
+                          <span className={`w-fit rounded-md px-1.5 py-0.5 text-[9px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
+                        </div>
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-1.5 py-1">
                           <span className="px-1.5 font-bold tabular-nums text-slate-500">{fmtYYMMDD(new Date(order.createdAt))}</span>
