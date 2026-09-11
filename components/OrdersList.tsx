@@ -1342,6 +1342,24 @@ const activeConfigs = [
   칸('hold_col', OrderStatus.ON_HOLD, PauseCircle),
 ];
 
+/*  **그룹마다 색이 다르다**(2026-09-12 사장님: "그룹별로 색 다르게").
+    작업순서 설정 창에서 칩도 줄도 다 보라라, 어느 줄이 어느 그룹에 담겼는지 **이름을 읽어야**
+    알았다. 그룹 차례대로 색을 돌려 쓴다 — 여섯 번째부터는 처음 색을 다시 쓴다.
+
+    **클래스 이름은 통째로 적는다** — Tailwind 는 글자를 찾아 만들기 때문에
+    `bg-${색}-50` 처럼 이어 붙이면 그 클래스가 아예 안 만들어진다. */
+const 그룹색표 = [
+  { 칩: 'border-violet-400 bg-violet-50 text-violet-700', 줄: 'bg-violet-50', 번호: 'bg-violet-600 border-violet-600', 글자: 'text-violet-500' },
+  { 칩: 'border-amber-400 bg-amber-50 text-amber-700', 줄: 'bg-amber-50', 번호: 'bg-amber-500 border-amber-500', 글자: 'text-amber-600' },
+  { 칩: 'border-emerald-400 bg-emerald-50 text-emerald-700', 줄: 'bg-emerald-50', 번호: 'bg-emerald-600 border-emerald-600', 글자: 'text-emerald-600' },
+  { 칩: 'border-sky-400 bg-sky-50 text-sky-700', 줄: 'bg-sky-50', 번호: 'bg-sky-600 border-sky-600', 글자: 'text-sky-600' },
+  { 칩: 'border-rose-400 bg-rose-50 text-rose-700', 줄: 'bg-rose-50', 번호: 'bg-rose-600 border-rose-600', 글자: 'text-rose-600' },
+];
+const 그룹색 = (groups: readonly string[], name: string | undefined) => {
+  const 자리 = name ? groups.indexOf(name) : -1;
+  return 그룹색표[(자리 < 0 ? 0 : 자리) % 그룹색표.length];
+};
+
 //  예전 주문 칸은 옮길 데가 없다 — targetStatus 를 비운다
 const historyConfig = { ...칸('history_col', OrderStatus.DELIVERED, History, '예전 주문 이력'), targetStatus: undefined };
 
@@ -3258,7 +3276,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       const 고름 = pickerGroup === name;
                       const 담긴수 = pickerOrdering.filter(k => pickerAssign[k] === name).length;
                       return (
-                        <span key={name} className={`flex items-center gap-1 rounded-xl border px-2 py-1 text-[11px] font-black transition-colors ${고름 ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-500'}`}>
+                        <span key={name} className={`flex items-center gap-1 rounded-xl border px-2 py-1 text-[11px] font-black transition-all ${그룹색(pickerGroups, name).칩} ${고름 ? 'ring-2 ring-slate-400' : 'opacity-55'}`}>
                           <button type="button" onClick={() => setPickerGroup(name)} className="min-h-6">
                             {name} <span className="tabular-nums opacity-60">{담긴수}</span>
                           </button>
@@ -3338,14 +3356,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     setPickerOrdering(prev => [...prev.filter(k => k !== wi.key), wi.key]);
                                     setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
                                   }}
-                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-violet-50' : 'hover:bg-slate-50'}`}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${isSelected ? 그룹색(pickerGroups, 담긴그룹).줄 : 'hover:bg-slate-50'}`}
                                 >
-                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-all ${isSelected ? 'bg-violet-600 border-violet-600 text-white' : 'border-slate-300 text-transparent'}`}>
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-all ${isSelected ? `${그룹색(pickerGroups, 담긴그룹).번호} text-white` : 'border-slate-300 text-transparent'}`}>
                                     {isSelected ? sectionPos : ''}
                                   </div>
                                   <span className="min-w-0 flex-1">
                                     <span className="block truncate text-sm font-bold text-slate-700">{wi.itemName}</span>
-                                    {isSelected && 담긴그룹 && <span className="text-[10px] font-black text-violet-500">{담긴그룹}</span>}
+                                    {isSelected && 담긴그룹 && <span className={`text-[10px] font-black ${그룹색(pickerGroups, 담긴그룹).글자}`}>{담긴그룹}</span>}
                                   </span>
                                   <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                                 </div>

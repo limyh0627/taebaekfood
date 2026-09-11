@@ -29,6 +29,8 @@ import CalendarDayCountBadge from './CalendarDayCountBadge';
 import OrderEditModalShell from './OrderEditModalShell';
 import ConfirmModal from './ConfirmModal';
 import DeliveryDayList from './DeliveryDayList';
+import { saveDeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
+import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
 import type { DayRow } from '../src/shared/deliveryPlan';
 
@@ -402,6 +404,58 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
    * 가로 스크롤을 쓰므로, 카드 목록을 숨기면 실제 일정이 없는 것처럼 보인다. */
   const [dayModal, setDayModal] = useState<string | null>(null);
 
+  /**
+   * **배송 카드 한 벌 — 어느 날 칸이든 같은 모양이다.**
+   *
+   * 2026-09-12 사장님: "카드 양식이 당일에 해당하는 바탕색 없는 카드로 통일했으면 좋겠고".
+   * **당일 칸이 쓰던 흰 카드**가 기준이다 — 다른 날 칸은 상태색을 바탕에 통째로 깔아
+   * 같은 캘린더 안에서 두 가지 카드가 보였다.
+   *
+   * 담기는 것 — 번호(있으면) · 거래처 · **주문번호** · 주소 · 상태, 그리고 손잡이.
+   * 출고완료면 **줄이 그어지고 흐려진다**(사장님: "출고완료되면 월간 카드 처럼 줄그어지고
+   * 흐릿해지는 기능"). 카드를 누르면 주문 상세, **주문번호를 누르면 출고일정**이다.
+   */
+  const renderDeliveryCard = (
+    o: Order,
+    opt: { 번호?: number; 띠?: string; 번호색?: string; drag?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean } } = {},
+  ) => {
+    const 이름 = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
+    const 끝났나 = o.status === OrderStatus.SHIPPED;
+    return (
+      <div
+        key={o.id}
+        {...opt.drag}
+        onClick={() => setPreviewDeliveryOrderId(o.id)}
+        className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${opt.띠 ?? 'border-slate-100'} ${끝났나 ? 'opacity-50' : ''} ${statusChip(o.status)}`}
+      >
+        {opt.번호 !== undefined && (
+          <span className={`w-3 shrink-0 text-[9px] font-black ${opt.번호색 ?? 'text-slate-400'}`}>{opt.번호}</span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[10px] font-bold ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
+          {/*  **주문번호를 누르면 출고 일정 수정 창**(2026-09-12 사장님: "주문번호 하나 추가해줘
+               눌러서 출고일정 수정하는 모달 띄우는"). 창은 **이미 있는 것**을 쓴다 —
+               날짜 상세에서 쓰던 `handleOrderClick` 그대로다(시험도 그걸 잠그고 있다).
+               카드를 누르면 주문 상세라, 둘이 겹치지 않게 눌림을 여기서 끊는다. */}
+          <button
+            type="button"
+            title="눌러서 출고일정 수정"
+            aria-label={`${이름} 출고 일정 수정`}
+            onClick={e => { e.stopPropagation(); handleOrderClick(o); }}
+            className="block max-w-full truncate text-left text-[9px] font-black text-indigo-500 tabular-nums hover:underline"
+          >{cardNoLabel(o)}</button>
+          {calendarLocationOf(o) && (
+            <span className="mt-0.5 flex items-center gap-0.5 truncate text-[9px] font-medium text-slate-500">
+              <MapPin size={9} className="shrink-0" />{calendarLocationOf(o)}
+            </span>
+          )}
+        </span>
+        <span className="shrink-0 text-[9px] font-black">{DELIVERY_STATUS_LABEL[o.status]}</span>
+        {opt.drag?.draggable && <GripVertical size={10} className="shrink-0 text-slate-300" />}
+      </div>
+    );
+  };
+
   const renderWeekCalendar = () => {
     const todayStr = toLocalDateStr(new Date());
     //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
@@ -493,74 +547,37 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                 <p className="text-center text-[10px] text-slate-300 font-bold py-4">배송순서 미설정</p>
               ) : (
                 <>
-                  <span className="text-[9px] font-black text-amber-500 px-1">오전</span>
-                  {todayMorningIds.length === 0 && <p className="text-[9px] text-slate-300 text-center py-1">없음</p>}
-                  {todayMorningIds.map((id, idx) => {
-                    const o = orders.find(x => x.id === id);
-                    if (!o) return null;
-                    const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
-                    const globalNum = todayValidDelivery.indexOf(id) + 1;
-                    return (
-                      <div
-                        key={id}
-                        draggable
-                        onDragStart={() => { setDragDeliveryIdx(idx); setDragDeliveryId(id); }}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={() => {
-                          if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
-                          const next = [...todayValidDelivery];
-                          const [moved] = next.splice(dragDeliveryIdx, 1);
-                          next.splice(next.indexOf(id), 0, moved);
-                          saveTodayOrdering(next);
-                          setDragDeliveryIdx(null); setDragDeliveryId(null);
-                        }}
-                        onClick={() => setPreviewDeliveryOrderId(id)}
-                        className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-amber-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
-                      >
-                        <span className="text-[9px] font-black text-amber-500 w-3 shrink-0">{globalNum}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[10px] font-bold">{partnerName}</span>
-                          {calendarLocationOf(o) && <span className="mt-0.5 flex items-center gap-0.5 truncate text-[9px] font-medium text-slate-500"><MapPin size={9} className="shrink-0" />{calendarLocationOf(o)}</span>}
-                        </span>
-                        <span className="shrink-0 text-[9px] font-black">{DELIVERY_STATUS_LABEL[o.status]}</span>
-                        <GripVertical size={10} className="text-slate-300 shrink-0" />
-                      </div>
-                    );
-                  })}
-                  <span className="text-[9px] font-black text-indigo-500 px-1 pt-1">오후</span>
-                  {todayAfternoonIds.length === 0 && <p className="text-[9px] text-slate-300 text-center py-1">없음</p>}
-                  {todayAfternoonIds.map((id, idx) => {
-                    const o = orders.find(x => x.id === id);
-                    if (!o) return null;
-                    const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
-                    const globalNum = todayValidDelivery.indexOf(id) + 1;
-                    return (
-                      <div
-                        key={id}
-                        draggable
-                        onDragStart={() => { setDragDeliveryIdx(idx); setDragDeliveryId(id); }}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={() => {
-                          if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
-                          const next = [...todayValidDelivery];
-                          const [moved] = next.splice(dragDeliveryIdx, 1);
-                          next.splice(next.indexOf(id), 0, moved);
-                          saveTodayOrdering(next);
-                          setDragDeliveryIdx(null); setDragDeliveryId(null);
-                        }}
-                        onClick={() => setPreviewDeliveryOrderId(id)}
-                        className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-indigo-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
-                      >
-                        <span className="text-[9px] font-black text-indigo-500 w-3 shrink-0">{globalNum}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[10px] font-bold">{partnerName}</span>
-                          {calendarLocationOf(o) && <span className="mt-0.5 flex items-center gap-0.5 truncate text-[9px] font-medium text-slate-500"><MapPin size={9} className="shrink-0" />{calendarLocationOf(o)}</span>}
-                        </span>
-                        <span className="shrink-0 text-[9px] font-black">{DELIVERY_STATUS_LABEL[o.status]}</span>
-                        <GripVertical size={10} className="text-slate-300 shrink-0" />
-                      </div>
-                    );
-                  })}
+                  {([
+                    { 때: '오전' as const, ids: todayMorningIds, 띠: 'border-amber-100', 번호색: 'text-amber-500', 글자: 'text-amber-500' },
+                    { 때: '오후' as const, ids: todayAfternoonIds, 띠: 'border-indigo-100', 번호색: 'text-indigo-500', 글자: 'text-indigo-500' },
+                  ]).map(칸 => (
+                    <React.Fragment key={칸.때}>
+                      <span className={`px-1 text-[9px] font-black ${칸.글자} ${칸.때 === '오후' ? 'pt-1' : ''}`}>{칸.때}</span>
+                      {칸.ids.length === 0 && <p className="py-1 text-center text-[9px] text-slate-300">없음</p>}
+                      {칸.ids.map((id, idx) => {
+                        const o = orders.find(x => x.id === id);
+                        if (!o) return null;
+                        return renderDeliveryCard(o, {
+                          번호: todayValidDelivery.indexOf(id) + 1,
+                          띠: 칸.띠,
+                          번호색: 칸.번호색,
+                          drag: {
+                            draggable: true,
+                            onDragStart: () => { setDragDeliveryIdx(idx); setDragDeliveryId(id); },
+                            onDragOver: e => e.preventDefault(),
+                            onDrop: () => {
+                              if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
+                              const next = [...todayValidDelivery];
+                              const [moved] = next.splice(dragDeliveryIdx, 1);
+                              next.splice(next.indexOf(id), 0, moved);
+                              saveTodayOrdering(next);
+                              setDragDeliveryIdx(null); setDragDeliveryId(null);
+                            },
+                          },
+                        });
+                      })}
+                    </React.Fragment>
+                  ))}
                 </>
               )}
               {showDelivered && deliveredOrders.map(order => (
@@ -593,26 +610,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             className="absolute inset-x-0 top-0 z-10 h-14 sm:hidden" aria-label={`${d.getDate()}일 배송 상세 보기`} />
           {dateHeader}
           <div className="flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-            {dayOrders.map(order => {
-              return (
-                <div
-                  key={order.id}
-                  onClick={() => handleOrderClick(order)}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, order.id)}
-                  className={`text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{order.partnerName}</span>
-                    {calendarLocationOf(order) && <span className="mt-0.5 flex items-center gap-0.5 truncate text-[9px] font-medium opacity-75"><MapPin size={9} className="shrink-0" />{calendarLocationOf(order)}</span>}
-                  </span>
-                  <span className="ml-1 flex shrink-0 flex-col items-end text-[9px] font-black">
-                    <span>{DELIVERY_STATUS_LABEL[order.status]}</span>
-                    <WorkCheckWarning order={order} className="text-[8px]" />
-                  </span>
-                </div>
-              );
-            })}
+            {/*  전에는 여기만 상태색을 바탕에 통째로 깔아, 같은 캘린더 안에서 당일 칸과
+                 다른 카드가 보였다. **당일 칸이 쓰던 흰 카드로 맞춘다**(2026-09-12 사장님). */}
+            {dayOrders.map(order => renderDeliveryCard(order, {
+              drag: { draggable: true, onDragStart: e => handleDragStart(e, order.id) },
+            }))}
             {showDelivered && deliveredOrders.map(order => (
               <div
                 key={order.id}
@@ -868,9 +870,16 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         /*  **금일 배송순서는 오늘 나갈 것만 본다**(2026-09-11 사장님: "목록이 오늘 출고
             예정인것만 보여야 하는데?"). 전에는 운영 중인 배송 대상을 날짜와 무관하게 다 담아서,
             머리의 건수(오늘 기준)와 목록이 안 맞았다. **목록 쪽을 오늘로 좁힌다.** */
+        /*  **캘린더 당일 칸과 같은 것을 본다**(2026-09-12 사장님: "금일배송순서가 배송캘린더
+         *  당일에 해당하는거랑 일치해야 하는데 목록이").
+         *
+         *  여기만 `작업중·출고대기·출고완료` 로 좁혀 놔서, 캘린더 오늘 칸에는 뜨는데 이 목록에는
+         *  없는 주문이 생겼다(대기중·보류). 캘린더 쪽 규칙(`배송완료가 아닌 것`)에 맞춘다 —
+         *  대기중도 오늘 나갈 것이면 여기 서야 한다(2026-09-09 사장님: "금일 배송순서에 대기중
+         *  작업중 이 상태가 없네"). 세는 곳이 둘이면 또 갈린다. */
         const deliverySequenceOrders = sourceOrders.filter(order =>
           order.partnerName !== '생산기록'
-          && [OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED].includes(order.status)
+          && order.status !== OrderStatus.DELIVERED
           && queryDateKey(order.deliveryDate) === todayKey
         );
         const visibleDeliverySequenceOrders = deliverySequenceOrders.filter(order =>
