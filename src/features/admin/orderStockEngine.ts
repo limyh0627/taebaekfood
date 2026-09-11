@@ -9,7 +9,7 @@ import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf, unpackQty } from '../../shared/orderUnits';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 
@@ -74,6 +74,42 @@ export const perUnitOilKg = (bomQuantity: number): number => bomQuantity;
 /** 처리 중인 주문 id — 같은 주문의 상태 변경이 겹쳐 들어오는 것을 막는다(중복 차감 방지).
  *  엔진은 렌더마다 새로 만들어지므로 모듈 스코프에 둬야 인스턴스 간에도 공유된다. */
 const inFlightOrders = new Set<string>();
+
+/**
+ * **임가공 완제품 한 줄이 원료수불부에 남길 kg** — 원료별.
+ *
+ * 임가공은 재고도 로트도 안 건드린다(원료는 가공입고 때 이미 나갔고 완제품은 포장돼 돌아온다).
+ * 그래도 서류는 흐름을 봐야 하니 쓴 만큼을 kg 으로 남긴다.
+ *
+ * **박스면 낱개까지 펴고 센다.**
+ *   2026-09-11 사장님: "9월 9일 대왕 볶음참깨 10개입 박스 주문인데 깨는 1kg 밖에 차감이 안 됐네."
+ *   맞다 — `units` 는 **박스 수**(`stockUnits`)인데 `toKg` 는 규격의 **앞부분만** 읽는다
+ *   (`1kg * 10` → 1kg). 그 둘을 그냥 곱하면 한 박스가 한 낱개가 된다. **열 배가 모자랐다.**
+ *
+ *   임가공이 아닌 박스는 `accrueBom` 이 BOM 을 타고 낱개까지 내려가서 안 틀렸다.
+ *   이 가지만 BOM 을 안 밟고 규격 글자로 세느라 혼자 어긋나 있었다.
+ *
+ *   펴는 셈은 **`unpackQty`** 가 이미 갖고 있다(인수인계 "같은 일에는 같은 함수를 쓴다").
+ *   개입수의 임자는 그 안의 **BOM**(`unitsPerBoxOf`)이지 규격 글자가 아니다.
+ *
+ * **따로 꺼내 둔 이유** — 전에는 이 셈이 `produceOrder` 한복판에 박혀 있어서 시험이
+ * 닿질 않았다. 그래서 `oemCycle.test.ts` ③번은 같은 셈을 **베껴 적어** 놓고 통과하고 있었고,
+ * 규격이 `20kg`(개입수 없음)인 가짜 품목만 써서 진짜 데이터(`1kg * 10`)와 어긋난 줄을
+ * 아무도 못 봤다. 꺼내 놨으니 이제 진짜 코드를 지난다.
+ */
+export function oemLedgerKg(
+  product: Pick<Item, 'id' | 'unpackTo' | 'spec'>,
+  units: number,
+  formula: readonly { raw: string; ratio: number }[],
+): Record<string, number> {
+  const 낱개수 = unpackQty(units, product, isBoxStockItem(product));
+  const out: Record<string, number> = {};
+  for (const f of formula) {
+    const kg = toKg(product.spec || '', f.raw, 낱개수) * f.ratio;
+    if (kg > 0) out[f.raw] = Math.round(((out[f.raw] ?? 0) + kg) * 1000) / 1000;
+  }
+  return out;
+}
 
 /** 구성품에 완제품이 있는가 — 박스·세트·재포장. 그 완제품이 자기 원료를 지니므로
  *  이런 품목에 품목 원료식을 또 적용하면 원료가 두 번 빠진다. */
@@ -497,10 +533,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
-        for (const f of buildFormula(docName(product))) {
-          const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
-          if (usedKg > 0) rawUsageLedgerOnly[f.raw] = (rawUsageLedgerOnly[f.raw] ?? 0) + usedKg;
-        }
+        //  셈은 oemLedgerKg 하나다 — 박스면 그 안에서 낱개까지 편다(위 주석 참고).
+        for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)))))
+          rawUsageLedgerOnly[raw] = (rawUsageLedgerOnly[raw] ?? 0) + kg;
         continue;
       }
 
