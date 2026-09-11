@@ -83,3 +83,22 @@ input[type="month"] { min-width: 7rem; }
 /* no-scrollbar */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/**
+ * **폰에서 날짜 칸을 좁힌다.**
+ *
+ * 2026-09-11 사장님: "모바일에서 검색조건에 주문일~오늘 이번주 이번달이 한행에 들어갈 수
+ * 있게 조절해봐". `input[type=date]` 은 크롬이 정한 기본 폭(약 140px)을 들고 있어서
+ * Tailwind 의 `w-[..]`·`min-w-0` 로는 안 줄어든다 — 폭을 정하는 것이 **섀도 DOM 안의
+ * 날짜 편집기**라, 거기 글씨를 같이 줄여야 비로소 좁아진다.
+ *
+ * 넓은 화면은 그대로 둔다.
+ */
+@media (max-width: 639px) {
+  /*  위의 `min-width: 8.75rem` 를 이겨야 하므로 **타입까지 적어** 자세히 짚는다.
+      그 규칙은 '2026. 09. 04.' 가 안 잘리게 하려고 둔 것이라, 여기서는 **글씨를 같이 줄여**
+      잘리지 않는 선을 지킨다 — 10px 글씨면 104px 에 다 들어간다. */
+  input[type="date"].date-narrow { width: 104px; min-width: 0; }
+  input[type="date"].date-narrow::-webkit-datetime-edit { font-size: 10px; padding: 0; }
+  input[type="date"].date-narrow::-webkit-calendar-picker-indicator { padding: 0; margin-left: 1px; }
+}

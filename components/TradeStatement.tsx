@@ -16,6 +16,7 @@ import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
+import { isSignedIn } from '../src/shared/firebase';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
@@ -295,6 +296,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
   // ── 품목명 드롭다운 검색 ──
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
+  /**
+   * **저장이 안 됐을 때 뜻이 통하는 말로 바꾼다.**
+   *
+   * 2026-09-11 사장님이 받은 창에는 `Missing or insufficient permissions.` 만 적혀 있었다.
+   * 그건 **로그인이 풀렸다**는 뜻인데(규칙은 인증만 되면 다 열려 있다) 글만 봐서는 알 수 없어
+   * "왜 실패하는거야" 가 된다. 무엇을 하면 되는지까지 적어 준다.
+   */
+  const 저장실패문구 = (error: any): string => {
+    const 원문 = String(error?.message ?? error ?? '');
+    const 로그인풀림 = /permission|insufficient|unauthenticated/i.test(원문) || !isSignedIn();
+    return 로그인풀림
+      ? [
+          '로그인이 풀려서 저장하지 못했습니다.',
+          '',
+          '입력 내용은 그대로 있습니다. 화면을 새로고침(F5)한 뒤 다시 저장해 주세요.',
+          '계속 이러면 인터넷 연결을 확인해 주세요.',
+        ].join('\n')
+      : ['전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.', 원문].join('\n');
+  };
+
   // ── 주문 불러오기 모드 계정코드 오버라이드 (key → code) ──
   const [accountCodeOverrides, setAccountCodeOverrides] = useState<Record<string, string>>({});
   // ── 자주 쓰는 비용 항목(택배비·상차비·기타) 프리셋 관리 모드 ──
@@ -1404,7 +1425,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       saveBusyRef.current = false;
       closeCreate();
     } catch (e: any) {
-      alert('전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.\n' + (e?.message ?? String(e)));
+      alert(저장실패문구(e));
     } finally {
       saveBusyRef.current = false;
       setIsSaving(false);
@@ -1442,7 +1463,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       closeCreate();
       alert('전표가 수정되었습니다.');
     } catch (e: any) {
-      alert('전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.\n' + (e?.message ?? String(e)));
+      alert(저장실패문구(e));
     } finally {
       saveBusyRef.current = false;
       setIsSaving(false);

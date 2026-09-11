@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
-import { matchesSearch } from '../src/shared/hangul';
 import { RotateCcw } from 'lucide-react';
 import {
   Link2,
@@ -54,6 +53,7 @@ import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
 import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
+import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 
 import ConfirmModal from './ConfirmModal';
@@ -1756,8 +1756,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
    */
   const 거래처이름of = (order: Order) =>
     order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '';
-  const 거래처걸림 = (order: Order) => !listPartnerFilter.trim()
-    || 거래처이름of(order).toLocaleLowerCase('ko-KR').includes(listPartnerFilter.trim().toLocaleLowerCase('ko-KR'));
+  //  **초성으로도 찾는다**(2026-09-11 사장님) — `ㅇㅈ` 로 은진상회가 걸린다.
+  //  판정은 `shared/hangul.matchesSearch` 한 곳이 한다(인수인계 "검색은 어디서나 초성으로 된다").
+  const 거래처걸림 = (order: Order) => matchesSearch(거래처이름of(order), listPartnerFilter);
 
   const activeViewOrders = useMemo(() => {
     const allowed = activeKanbanOrders.filter(order => visibleActiveConfigs.some(config => config.statusFilter.includes(order.status)) || (legacyHistoryEnabled && order.status === OrderStatus.DELIVERED));
@@ -1840,16 +1841,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
             </div>
             <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
-              <label className="order-1 flex flex-col gap-1 text-[10px] font-bold text-slate-500">
+              <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
                 주문일
-                <span className="flex flex-wrap items-center gap-2">
-                  <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
-                  <span className="text-xs text-slate-400">~</span>
-                  <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" />
-                  <span className="flex h-9 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
+                     날짜칸·단추의 여백과 글씨를 좁은 화면에서만 줄인다 — 넓은 화면은 그대로다. */}
+                <span className="flex flex-nowrap items-center gap-1 sm:gap-2">
+                  <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <span className="shrink-0 text-xs text-slate-400">~</span>
+                  <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <span className="flex h-9 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                    {/*  **폰에서는 '오늘·주·달'** — 날짜 칸 둘이 브라우저가 정한 폭(약 140px)을
+                         안 놓아서, 글자를 줄여야 한 행에 들어간다. 넓은 화면은 원래 글자 그대로. */}
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickToday); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickToday && activeDateTo === sharedQuickToday)}`}>오늘</button>
-                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickWeekStart); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickWeekStart && activeDateTo === sharedQuickToday)}`}>이번 주</button>
-                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)}>이번 달</button>
+                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickWeekStart); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickWeekStart && activeDateTo === sharedQuickToday)}`} aria-label="이번 주"><span className="sm:hidden">주</span><span className="hidden sm:inline">이번 주</span></button>
+                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달"><span className="sm:hidden">달</span><span className="hidden sm:inline">이번 달</span></button>
                   </span>
                 </span>
               </label>
@@ -1864,10 +1869,22 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <option value="">필드 선택</option><option value="source">출고 방식</option><option value="invoicePrinted">송장</option><option value="completion">작업완료 여부</option><option value="item">주문 품목</option><option value="manufacturing">품목명</option><option value="label">라벨 작업</option><option value="deliveryDate">출고예정일</option>
                 </select>
               </label>
-              {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처 필터는 따로 꺼내서
-                   검색필드랑 같은 행에 둬봐"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
+
+              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                조건 값
+                {/*  **쳐서 찾는다**(2026-09-11 사장님: "드롭다운 길어서 찾기 힘들다").
+                     목록은 그대로 달려 있고(`datalist`), 글자를 치면 좁혀진다. 비우면 전체다. */}
+                <input
+                  type="search" list="list-filter-values" value={listFilterValue}
+                  onChange={event => setListFilterValue(event.target.value)}
+                  disabled={!listFilterField} placeholder="전체"
+                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                />
+                <datalist id="list-filter-values">{activeViewFilterValues.map(value => <option key={value} value={value} />)}</datalist>
+              </label>
+              {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처필터를 검색필드 조건값 다음으로 옮기고"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
                    두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
-              <label className="order-2 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
                 <input
                   type="search" list="list-partner-names" value={listPartnerFilter}
@@ -1880,18 +1897,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     .sort((a, b) => a.localeCompare(b, 'ko'))
                     .map(name => <option key={name} value={name} />)}
                 </datalist>
-              </label>
-              <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
-                조건 값
-                {/*  **쳐서 찾는다**(2026-09-11 사장님: "드롭다운 길어서 찾기 힘들다").
-                     목록은 그대로 달려 있고(`datalist`), 글자를 치면 좁혀진다. 비우면 전체다. */}
-                <input
-                  type="search" list="list-filter-values" value={listFilterValue}
-                  onChange={event => setListFilterValue(event.target.value)}
-                  disabled={!listFilterField} placeholder="전체"
-                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
-                />
-                <datalist id="list-filter-values">{activeViewFilterValues.map(value => <option key={value} value={value} />)}</datalist>
               </label>
               {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
                    조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
@@ -1929,7 +1934,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const sharedQuickToday = seoulDateInput();
   const sharedQuickWeekStart = seoulWeekStart();
   const sharedQuickMonthStart = `${sharedQuickToday.slice(0, 7)}-01`;
-  const sharedQuickRangeClass = (active: boolean) => `h-full px-3 text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
+  //  폰에서는 여백·글씨를 줄여 '오늘·이번 주·이번 달'이 날짜칸과 한 행에 들어가게 한다.
+  const sharedQuickRangeClass = (active: boolean) => `h-full whitespace-nowrap px-1 text-[9px] sm:px-3 sm:text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
