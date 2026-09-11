@@ -50,7 +50,7 @@ const 병 = (): Item => ({
 
 const 주문 = (qty: number): Order => ({
   id: 'o1', partnerName: '해피유통(포천)', status: OrderStatus.PENDING,
-  items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: qty } as any],
+  items: [{ itemId: 'bottle', name: '생들기름/병/해피유통/300ml', quantity: qty, checked: true } as any],
 } as unknown as Order);
 
 /** 엔진 한 벌. items·order는 앱의 리렌더를 흉내내 그 자리에서 고쳐진다. */

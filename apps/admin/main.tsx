@@ -24,6 +24,7 @@ import { loadStartView, saveView } from '../../src/shared/startView';
 import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
+import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -139,5 +140,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <AdminRoot />
     </ErrorBoundary>
+    <LocalTestBanner />
   </React.StrictMode>
 );

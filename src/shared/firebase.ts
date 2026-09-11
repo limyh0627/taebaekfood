@@ -4,9 +4,10 @@
  * Phase 2 앱 분리 시 이 파일을 shared/ 로 이동하고 양쪽 앱에서 import합니다.
  */
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth, signInAnonymously } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth, signInAnonymously } from "firebase/auth";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
+import { assertLocalEmulatorTarget } from './firebaseEmulatorSafety';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -22,6 +23,16 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+/** 로컬 검수는 demo 프로젝트와 에뮬레이터를 함께 써야만 켜진다. 운영 프로젝트로 우회 연결하지 않는다. */
+export const usingFirebaseEmulators = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
+if (usingFirebaseEmulators) {
+  const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST || '127.0.0.1';
+  assertLocalEmulatorTarget(firebaseConfig.projectId, host);
+  connectFirestoreEmulator(db, host, 8082);
+  connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  connectStorageEmulator(storage, host, 9199);
+}
 
 // authReady: 익명 로그인 완료 후 Firestore 구독 시작
 export const authReady: Promise<void> = signInAnonymously(auth).then(() => {}).catch(console.error) as Promise<void>;

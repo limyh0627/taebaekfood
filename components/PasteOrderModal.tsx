@@ -1,7 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag } from 'lucide-react';
-import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet } from '../types';
+import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays } from 'lucide-react';
+import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
+import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
+import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
@@ -95,14 +97,16 @@ interface PasteOrderModalProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
+  palletStocks: PalletStock[];
   onClose: () => void;
-  onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
+  onBack?: () => void;
+  onSave: (_order: Omit<Order, 'id' | 'status'>) => void;
 }
 
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, partnerItems, onClose, onSave,
+  items, partners, partnerItems, palletStocks, onClose, onBack, onSave,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -118,6 +122,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   const [isDelivery, setIsDelivery] = useState(false);
+  const [orderDate, setOrderDate] = useState(() => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()));
   const [deadline, setDeadline] = useState(() => {
     const d = new Date(Date.now() + 86400000 * 3);
     const day = d.getDay();
@@ -125,7 +132,24 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     else if (day === 0) d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   });
-  const [pallets] = useState<OrderPallet[]>([]);
+  const [pallets, setPallets] = useState<OrderPallet[]>([]);
+
+  const selectClient = (client: Partner) => {
+    setSelectedClient(client);
+    setIsDelivery(client.type === '택배' || client.type === '스마트스토어');
+    setSearchTerm('');
+    setStep('paste');
+  };
+
+  const changeClient = () => {
+    setSelectedClient(null);
+    setPasteText('');
+    setParsedLines([]);
+    setPallets([]);
+    setIsDelivery(false);
+    setSearchTerm('');
+    setStep('partner');
+  };
 
   // 거래처별 품목 풀 — 거래처에 연결된 품목만 포함
   /**
@@ -146,13 +170,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
-    return items.filter(p => {
-      if (p.archived) return false;
-      if (p.type !== 'product' && p.type !== 'goods') return false;
-      if (partnerOutIds.has(p.id)) return true;
-      if (selectedClient.type === '스마트스토어' && isSmartStoreItem(p)) return true;
-      return false;
-    });
+    const catalog = items.filter(p => !p.archived && ['product', 'goods', 'wip', 'raw', 'submaterial'].includes(p.type));
+    const linked = catalog.filter(p => partnerOutIds.has(p.id) || (selectedClient.type === '스마트스토어' && isSmartStoreItem(p)));
+    return linked.length ? linked : catalog;
   }, [items, partnerOutIds, selectedClient]);
 
   const filteredClients = useMemo(() => {
@@ -177,6 +197,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setParsedLines(lines.map(l => parseLine(l, productPool)));
     setStep('review');
   };
+  const matchedLineCount = parsedLines.filter(line => !!line.selectedProductId).length;
+  const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
   const getBoxConfig = (itemId: string) => {
     const pc = partnerOut.find(p => p.itemId === itemId && p.partnerId === selectedClient?.id);
@@ -187,7 +209,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   };
 
   const handleSubmit = () => {
-    if (!selectedClient) return;
+    if (!orderDate || !deadline || !selectedClient) return;
     const validLines = parsedLines.filter(l => l.selectedProductId && l.qty > 0);
     const orderItems: OrderItem[] = validLines.flatMap(line => {
       const product = items.find(p => p.id === line.selectedProductId);
@@ -213,6 +235,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       partnerId: selectedClient.id,
       partnerName: selectedClient.name,
       email: selectedClient.email || '',
+      createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
       items: orderItems,
       totalAmount,
       deliveryDate: new Date(deadline).toISOString(),
@@ -226,49 +249,86 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   //  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
   const typeConfig = (type: string) => ({ ...channelStyle(type), color: channelStyle(type).chip });
 
+  const renderOrderSchedule = () => (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 text-slate-700"><CalendarDays size={16} /><h3 className="text-sm font-black">주문 일정</h3></div>
+        <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
+        <span className="text-xs font-medium text-slate-500">주문일과 출고예정일은 자동 설정되며 수정할 수 있습니다.</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-slate-600">주문일</span>
+          <input type="date" required value={orderDate} onChange={event => setOrderDate(event.target.value)}
+            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-bold text-slate-600">출고예정일</span>
+          <input type="date" required min={orderDate} value={deadline} onChange={event => setDeadline(event.target.value)}
+            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+        </label>
+      </div>
+    </section>
+  );
+
+  const clientSectionHeading = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 text-slate-700"><User size={16} /><h3 className="text-sm font-black">거래처</h3></div>
+      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
+    </div>
+  );
+
+  const renderSelectedClient = () => {
+    if (!selectedClient) return null;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-black text-indigo-900">{selectedClient.name}</span>
+              <span className="shrink-0 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black text-white">{selectedClient.type}</span>
+            </div>
+            {selectedClient.region && <span className="text-[10px] font-medium text-indigo-500">{selectedClient.region}</span>}
+          </div>
+          <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
+            <button type="button" onClick={() => setIsDelivery(false)} aria-pressed={!isDelivery}
+              className={`min-h-8 rounded-md px-2.5 text-[11px] font-bold transition-colors ${!isDelivery ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>일반</button>
+            <button type="button" onClick={() => setIsDelivery(true)} aria-pressed={isDelivery}
+              className={`flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[11px] font-bold transition-colors ${isDelivery ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+              <Truck size={12} aria-hidden="true" />택배
+            </button>
+          </div>
+        </div>
+        <button type="button" onClick={changeClient}
+          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+          <User size={14} aria-hidden="true" />
+          거래처 다시 선택
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col h-[85vh] max-h-[860px] animate-in zoom-in-95 duration-300">
 
         {/* 헤더 */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between rounded-t-3xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-violet-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-violet-100">
-              <ClipboardPaste size={20} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">복사 주문</h3>
-              <p className="text-xs text-slate-400">
-                {step === 'partner' ? '거래처를 선택하세요' : step === 'paste' ? '주문 내용을 붙여넣으세요' : '매칭 결과를 확인하세요'}
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-all">
-            <X size={20} />
-          </button>
-        </div>
+        <OrderCreationModalHeader
+          currentLabel="주문 내역 붙여넣기"
+          onBack={onBack}
+          onClose={onClose}
+        />
 
         {/* 스텝 인디케이터 */}
-        <div className="px-6 pt-4 flex items-center gap-2">
-          {(['partner', 'paste', 'review'] as Step[]).map((s, i) => (
-            <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 text-[11px] font-black ${step === s ? 'text-violet-600' : i < ['partner','paste','review'].indexOf(step) ? 'text-emerald-500' : 'text-slate-300'}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${step === s ? 'bg-violet-600 text-white' : i < ['partner','paste','review'].indexOf(step) ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-300'}`}>
-                  {i + 1}
-                </div>
-                {s === 'partner' ? '거래처' : s === 'paste' ? '입력' : '확인'}
-              </div>
-              {i < 2 && <div className={`flex-1 h-0.5 rounded ${i < ['partner','paste','review'].indexOf(step) ? 'bg-emerald-300' : 'bg-slate-100'}`} />}
-            </React.Fragment>
-          ))}
-        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {renderOrderSchedule()}
 
           {/* ── STEP 1: 거래처 선택 ── */}
           {step === 'partner' && (
             <div className="space-y-4">
+              {clientSectionHeading}
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input type="text" placeholder="거래처명 검색..." value={searchTerm}
@@ -277,8 +337,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                 {filteredClients.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 overflow-hidden max-h-60 overflow-y-auto">
                     {filteredClients.map(c => (
-                      <button key={c.id} onClick={() => { setSelectedClient(c); setIsDelivery(c.type === '택배' || c.type === '스마트스토어'); setSearchTerm(''); setStep('paste'); }}
-                        className="w-full px-5 py-3 text-left hover:bg-violet-50 flex items-center justify-between">
+                      <button key={c.id} onClick={() => selectClient(c)}
+                        className={`w-full px-5 py-3 text-left flex items-center justify-between transition-colors ${selectedClient?.id === c.id ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50'}`}>
                         <p className="font-bold text-slate-800 text-sm">{c.name}</p>
                         <ArrowRight size={16} className="text-slate-300" />
                       </button>
@@ -293,8 +353,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                     const Icon = cfg.icon;
                     return (
                       <button key={c.id}
-                        onClick={() => { setSelectedClient(c); setIsDelivery(c.type === '택배' || c.type === '스마트스토어'); setStep('paste'); }}
-                        className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-violet-100 p-3 text-left transition-all">
+                        onClick={() => selectClient(c)}
+                        className={`rounded-2xl border p-3 text-left transition-all ${selectedClient?.id === c.id ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-2">
                           <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${cfg.color}`}><Icon size={16} /></div>
                           <span className="text-xs font-bold text-slate-900 truncate">{c.name}</span>
@@ -310,19 +370,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
           {/* ── STEP 2: 붙여넣기 ── */}
           {step === 'paste' && selectedClient && (
             <div className="space-y-4">
-              {/* 선택된 거래처 */}
-              <div className="bg-violet-50 border border-violet-100 px-4 py-2.5 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-black text-violet-900 text-sm">{selectedClient.name}</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[8px] font-black">{selectedClient.type}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
-                    className="text-[10px] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1.5 outline-none" />
-                  <button onClick={() => { setSelectedClient(null); setStep('partner'); }}
-                    className="text-[10px] font-bold text-violet-400 hover:text-violet-600 underline">변경</button>
-                </div>
-              </div>
+              {clientSectionHeading}
+              {renderSelectedClient()}
 
               <div>
                 <p className="text-xs font-black text-slate-500 mb-2">주문 내용 붙여넣기</p>
@@ -340,50 +389,77 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
           {/* ── STEP 3: 확인 ── */}
           {step === 'review' && (
-            <div className="space-y-3">
+            <div className="space-y-5">
+              {clientSectionHeading}
+              {renderSelectedClient()}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <ShoppingBag size={16} />
+                  <h3 className="text-sm font-black">주문 품목</h3>
+                  <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
+                </div>
+                <button type="button" onClick={() => setStep('paste')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                  <ClipboardPaste size={14} aria-hidden="true" />
+                  주문 내용 다시 입력
+                </button>
+              </div>
+              <div className={`rounded-xl border px-3 py-3 ${unmatchedLineCount === 0 ? 'border-emerald-200 bg-emerald-50' : matchedLineCount === 0 ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'}`} role="status">
+                <div className="flex items-start gap-2.5">
+                  {unmatchedLineCount === 0 ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <AlertCircle size={18} className={`mt-0.5 shrink-0 ${matchedLineCount === 0 ? 'text-rose-600' : 'text-amber-600'}`} aria-hidden="true" />}
+                  <div className="min-w-0">
+                    <p className={`text-xs font-black ${unmatchedLineCount === 0 ? 'text-emerald-800' : matchedLineCount === 0 ? 'text-rose-800' : 'text-amber-800'}`}>
+                      {unmatchedLineCount === 0 ? '모든 주문 품목을 분석했습니다.' : matchedLineCount === 0 ? '자동으로 매칭된 품목이 없습니다.' : '일부 품목의 확인이 필요합니다.'}
+                    </p>
+                    <p className={`mt-0.5 text-[11px] font-medium ${unmatchedLineCount === 0 ? 'text-emerald-700' : matchedLineCount === 0 ? 'text-rose-700' : 'text-amber-700'}`}>
+                      전체 {parsedLines.length}건 · 성공 {matchedLineCount}건 · 확인 필요 {unmatchedLineCount}건
+                      {unmatchedLineCount > 0 && ' — 확인이 필요한 행에서 품목을 직접 선택해주세요.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
               {parsedLines.map((line, idx) => {
                 const matched = line.selectedProductId
                   ? productPool.find(p => p.id === line.selectedProductId) : null;
                 return (
-                  <div key={idx} className={`rounded-2xl border p-3 space-y-2 ${line.selectedProductId ? 'bg-white border-slate-100' : 'bg-rose-50 border-rose-200'}`}>
+                  <div key={idx} className={`space-y-3 rounded-xl border p-4 ${line.selectedProductId ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
                     {/* 원문 + 상태 */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-slate-400 font-medium truncate">"{line.rawText}"</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${line.selectedProductId ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>
-                        {line.selectedProductId ? '매칭됨' : '미매칭'}
+                      <span className="min-w-0 truncate text-xs font-medium text-slate-500">"{line.rawText}"</span>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-none ${line.selectedProductId ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {line.selectedProductId ? '분석 성공' : '확인 필요'}
                       </span>
                     </div>
                     {/* 품목 선택 + 수량 */}
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
+                    <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="relative min-w-0">
                         <select
                           value={line.selectedProductId ?? ''}
                           onChange={e => {
                             const val = e.target.value || null;
                             setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val } : l));
                           }}
-                          className="w-full appearance-none bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-400 pr-7"
+                          className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-4 pr-10 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         >
                           <option value="">— 제외 —</option>
                           {productPool.map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
-                        <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex shrink-0 items-center gap-2">
                         <input type="number" min={1} value={line.qty}
                           onChange={e => {
                             const qty = Math.max(1, parseInt(e.target.value) || 1);
                             setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty } : l));
                           }}
-                          className="w-14 text-center bg-slate-50 border border-slate-200 rounded-xl py-2 text-xs font-black outline-none focus:ring-2 focus:ring-violet-400"
+                          className="h-11 w-20 rounded-xl border border-slate-200 bg-slate-50 px-2 text-center text-sm font-black text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         />
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex h-11 items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
                           {(['박스', '개'] as const).map(unit => (
                             <button key={unit} type="button"
                               onClick={() => setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스' } : l))}
-                              className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition-all ${(unit === '박스') === line.isBox ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-400 border-slate-200'}`}
+                              className={`h-9 min-w-12 rounded-lg px-2.5 text-xs font-bold transition-colors ${(unit === '박스') === line.isBox ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                             >{unit}</button>
                           ))}
                         </div>
@@ -402,11 +478,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                         .map(l => l.child!.name);
                       const subs = [...pcSubs.map(s => s.name), ...legacySubs];
                       return (
-                        <div className="flex flex-wrap items-center gap-1">
-                          <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
-                          <span className="text-[10px] font-bold text-emerald-700">{matched.name} · {line.qty}{line.isBox ? '박스' : '개'}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2">
+                          <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />
+                          <span className="text-xs font-bold text-slate-700">{matched.name} · {line.qty}{line.isBox ? '박스' : '개'}</span>
                           {subs.map((name, i) => (
-                            <span key={i} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{name}</span>
+                            <span key={i} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">{name}</span>
                           ))}
                         </div>
                       );
@@ -421,35 +497,69 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   <p className="text-[11px] text-slate-300 mt-1">드롭다운에서 직접 선택해주세요</p>
                 </div>
               )}
+
+              {palletStocks.length > 0 && (
+                <section className="space-y-3 border-t border-slate-200 pt-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2 text-slate-700"><Layers size={16} /><h3 className="text-sm font-black">팔레트</h3></div>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">선택</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {palletStocks
+                      .filter(stock => !stock.hidden)
+                      .sort((a, b) => (a.name.toLowerCase().includes('kpp') ? 0 : 1) - (b.name.toLowerCase().includes('kpp') ? 0 : 1) || a.name.localeCompare(b.name, 'ko'))
+                      .map(stock => {
+                        const current = pallets.find(pallet => pallet.type === stock.id)?.quantity ?? 0;
+                        const update = (quantity: number) => {
+                          const next = Math.max(0, quantity);
+                          setPallets(previous => {
+                            const rest = previous.filter(pallet => pallet.type !== stock.id);
+                            return next > 0 ? [...rest, { type: stock.id, quantity: next }] : rest;
+                          });
+                        };
+                        return (
+                          <div key={stock.id} className={`flex items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${current > 0 ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 bg-white'}`}>
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-bold text-slate-800">{stock.name}</p>
+                              {current > 0 && <p className="mt-0.5 text-[10px] font-bold text-indigo-500">{current}개 선택</p>}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button type="button" onClick={() => update(current - 1)} aria-label={`${stock.name} 수량 줄이기`} className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm font-black text-slate-600 hover:bg-slate-200">−</button>
+                              <span className="w-8 text-center text-xs font-black text-slate-800">{current}</span>
+                              <button type="button" onClick={() => update(current + 1)} aria-label={`${stock.name} 수량 늘리기`} className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm font-black text-slate-600 hover:bg-slate-200">+</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </section>
+              )}
             </div>
           )}
         </div>
 
         {/* 하단 버튼 */}
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl">
+        <div className="rounded-b-3xl">
           {step === 'partner' && (
-            <button onClick={onClose} className="w-full py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>
+            <ModalActionFooter
+              onCancel={onClose}
+            />
           )}
           {step === 'paste' && (
-            <div className="flex gap-3">
-              <button onClick={() => setStep('partner')} className="flex-1 py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">이전</button>
-              <button onClick={analyze} disabled={!pasteText.trim()}
-                className="flex-1 py-3.5 rounded-2xl font-black text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 transition-all">
-                분석하기
-              </button>
-            </div>
+            <ModalActionFooter
+              onCancel={onClose}
+              onPrimary={analyze}
+              primaryLabel="분석하기"
+              primaryDisabled={!orderDate || !deadline || !pasteText.trim()}
+            />
           )}
           {step === 'review' && (
-            <div className="flex gap-3">
-              <button onClick={() => setStep('paste')} className="flex-1 py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">다시 입력</button>
-              <button
-                onClick={handleSubmit}
-                disabled={!parsedLines.some(l => l.selectedProductId && l.qty > 0)}
-                className="flex-1 py-3.5 rounded-2xl font-black text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 transition-all"
-              >
-                주문 생성 ({parsedLines.filter(l => l.selectedProductId).length}건)
-              </button>
-            </div>
+            <ModalActionFooter
+              onCancel={onClose}
+              onPrimary={handleSubmit}
+              primaryLabel={`주문 생성 (${parsedLines.filter(line => line.selectedProductId).length}건)`}
+              primaryDisabled={!orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}
+            />
           )}
         </div>
       </div>

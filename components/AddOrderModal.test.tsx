@@ -71,14 +71,14 @@ describe('신규 주문 창의 거래처 진행 주문', () => {
 
     const progress = screen.getByRole('region', { name: '현재 진행 주문' });
     expect(within(progress).getAllByTestId(/^active-client-order-/)).toHaveLength(4);
-    for (const label of ['대기중', '작업중', '작업완료', '출고']) {
+    for (const label of ['대기중', '작업중', '작업완료', '출고완료']) {
       expect(within(progress).getByLabelText(`상태 ${label}`)).toBeInTheDocument();
     }
     expect(within(progress).queryByText('ORD-260909-05')).not.toBeInTheDocument();
     expect(within(progress).queryByText('ORD-260909-06')).not.toBeInTheDocument();
     expect(within(progress).queryByText('ORD-260909-07')).not.toBeInTheDocument();
 
-    const itemHeading = screen.getByText('주문 품목 선택');
+    const itemHeading = screen.getByRole('heading', { name: '주문 품목' });
     expect(progress.compareDocumentPosition(itemHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const firstOrder = within(progress).getByTestId('active-client-order-260909-01');

@@ -37,11 +37,11 @@ const 주문 = (id: string, partnerId: string, status: OrderStatus): Order => ({
 });
 
 describe('주간 배송 캘린더', () => {
-  it('예전 주문 건수를 누르면 목록이 열리고 현재 건수가 옆에 보인다', () => {
+  it('캘린더를 기본 뷰로 열고 배송 대상 상태만 집계한다', () => {
     render(
       <DeliveryManager
         orders={[
-          주문('260909-01', 'p1', OrderStatus.PROCESSING),
+          주문('260909-01', 'p1', OrderStatus.DISPATCHED),
           주문('260909-02', 'p2', OrderStatus.DISPATCHED),
           주문('260908-01', 'old', OrderStatus.DELIVERED),
         ]}
@@ -50,31 +50,25 @@ describe('주간 배송 캘린더', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '배송캘린더' }));
-    const oldCount = screen.getByRole('button', { name: '1건' });
-    expect(oldCount.parentElement).toHaveTextContent('2건');
+    expect(screen.getByRole('button', { name: '캘린더' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '전체2' })).toBeInTheDocument();
     expect(screen.queryByText('예전 거래처')).not.toBeInTheDocument();
-
-    fireEvent.click(oldCount);
-    expect(screen.getByText('예전 거래처')).toBeInTheDocument();
-    expect(screen.getByText('ORD-260908-01')).toBeInTheDocument();
   });
 
-  it('주문번호를 누르면 배송일 창에 품목 규격과 수량 단위가 나온다', () => {
+  it('날짜 상세의 주문번호를 누르면 출고 일정 수정 창이 열린다', () => {
     render(
       <DeliveryManager
-        orders={[주문('260909-01', 'p1', OrderStatus.PROCESSING)]}
+        orders={[주문('260909-01', 'p1', OrderStatus.DISPATCHED)]}
         partners={partners}
         items={items}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '배송캘린더' }));
+    fireEvent.click(screen.getByRole('button', { name: `${Number(today().slice(8, 10))}일 배송 상세 보기` }));
     fireEvent.click(screen.getByRole('button', { name: 'ORD-260909-01' }));
 
-    expect(screen.getByText('새 배송 날짜')).toBeInTheDocument();
-    expect(screen.getByText('참기름/병/분/전통')).toBeInTheDocument();
-    expect(screen.getByText('350ml')).toBeInTheDocument();
-    expect(screen.getByText('50병')).toBeInTheDocument();
+    expect(screen.getByText('출고 일정 수정')).toBeInTheDocument();
+    expect(screen.getByLabelText('출고예정일')).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: '출고 시간대' })).toBeInTheDocument();
   });
 });

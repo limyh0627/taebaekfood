@@ -11,6 +11,8 @@ node_modules
 # 빌드 결과물
 /build
 /dist
+.firebase-local-data/
+*-debug.log
 
 # 기타
 .DS_Stored

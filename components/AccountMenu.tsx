@@ -2,6 +2,8 @@ import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Employee } from '../src/shared/types';
 
+export const accountProfileImageUrl = (userId: string) => `https://picsum.photos/seed/${encodeURIComponent(userId)}/64/64`;
+
 /**
  * 사이드바 계정 카드 — 누르면 **마이페이지로 간다**.
  *
@@ -24,13 +26,13 @@ const AccountMenu: React.FC<{
       {collapsed ? (
         <div className={`w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden transition-all ${
           active ? 'ring-2 ring-indigo-400' : 'group-hover:ring-2 group-hover:ring-indigo-300'}`}>
-          <img src={`https://picsum.photos/seed/${currentUser.id}/36/36`} alt="" />
+          <img src={accountProfileImageUrl(currentUser.id)} alt="" className="h-full w-full object-cover" />
         </div>
       ) : (
         <div className={`flex items-center space-x-3 rounded-2xl px-3 py-2.5 border transition-all ${
           active ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 group-hover:bg-slate-100 border-slate-100'}`}>
           <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden shrink-0">
-            <img src={`https://picsum.photos/seed/${currentUser.id}/32/32`} alt="" />
+            <img src={accountProfileImageUrl(currentUser.id)} alt="" className="h-full w-full object-cover" />
           </div>
           <div className="overflow-hidden flex-1 text-left">
             <p className={`text-xs font-bold truncate ${active ? 'text-indigo-700' : 'text-slate-700'}`}>{currentUser.name}</p>

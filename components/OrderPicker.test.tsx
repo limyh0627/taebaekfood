@@ -102,6 +102,8 @@ describe('미발행 주문의 품목·수량', () => {
     const dialog = screen.getByRole('dialog', { name: '주문 카드' });
     expect(within(dialog).getAllByText('해피유통').length).toBeGreaterThan(0);
     expect(within(dialog).getByText('옛 품목명')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('옛 품목명 라벨 상태')).toBeDisabled();
+    expect(within(dialog).getByLabelText('옛 품목명 제조일 설정')).toBeDisabled();
 
     fireEvent.click(within(dialog).getByRole('button', { name: '주문카드 닫기' }));
     expect(screen.queryByRole('dialog', { name: '주문 카드' })).not.toBeInTheDocument();

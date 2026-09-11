@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "npx vite --config vite.admin.config.ts",
     "dev:staff": "npx vite --config vite.staff.config.ts",
+    "dev:local": "npx vite --config vite.admin.config.ts --mode localtest --port 8081 --strictPort",
+    "dev:local:staff": "npx vite --config vite.staff.config.ts --mode localtest --port 8083 --strictPort",
+    "emulators:local": "npx --yes firebase-tools emulators:start --config firebase.local.json --project demo-taebaekfood-local",
+    "seed:local": "node scripts/seed-local-emulator.mts",
     "build": "npm run build:all",
     "build:admin": "npm run fcm:sw && npx vite build --config vite.admin.config.ts",
     "build:staff": "npm run fcm:sw && npx vite build --config vite.staff.config.ts",
