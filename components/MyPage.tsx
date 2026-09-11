@@ -7,7 +7,7 @@ import {
   loadNotifyVolume, saveNotifyVolume, NotifyVolume, playChime,
 } from '../src/shared/notify';
 import { canEnterAdmin } from '../src/shared/adminAccess';
-import { registerPush, pushSupported } from '../src/shared/push';
+import { registerPush, unregisterPush, pushSupported, pushMuted, setPushMuted } from '../src/shared/push';
 
 /**
  * 마이페이지 — 내 계정과 알림 설정.
@@ -44,13 +44,29 @@ const MyPage: React.FC<{
   const pickVolume = (v: NotifyVolume) => { setVolume(v); saveNotifyVolume(v); playChime(v); };
 
   //  앱을 완전히 닫아도 알림이 오게 — 이 폰의 표를 받아 직원 기록에 담는다(shared/push)
-  const [푸시, set푸시] = useState<'모름' | '켜짐' | '안됨'>('모름');
+  const [푸시, set푸시] = useState<'모름' | '켜짐' | '안됨' | '꺼둠'>('모름');
   const [푸시사유, set푸시사유] = useState('');
 
-  const 푸시켜기 = async () => {
+  const 표받기 = async () => {
     const r = await registerPush(currentUser.id);
     set푸시(r.ok ? '켜짐' : '안됨');
     set푸시사유(r.reason ?? '');
+  };
+
+  const 푸시켜기 = async () => { setPushMuted(currentUser.id, false); await 표받기(); };
+
+  /**
+   * **이 폰으로 오는 알림만 끊는다**(2026-09-12 사장님).
+   *
+   * 브라우저 권한은 앱이 못 거둔다 — 폰 설정까지 들어가야 하는데 홈 화면에 추가한
+   * 아이폰 PWA 는 그 목록에서 찾기도 어렵다. 그래서 **표를 빼서 보내는 쪽을 끊는다.**
+   * 다시 누르면 켜진다.
+   */
+  const 푸시끄기 = async () => {
+    setPushMuted(currentUser.id, true);
+    await unregisterPush(currentUser.id);
+    set푸시('꺼둠');
+    set푸시사유('');
   };
 
   const 켜기 = async () => {
@@ -66,7 +82,8 @@ const MyPage: React.FC<{
   //  이미 권한이 켜져 있으면 열 때 표를 갱신한다 — 표는 가끔 바뀐다(앱 재설치·기기 초기화)
   useEffect(() => {
     if (perm !== 'granted') return;
-    pushSupported().then(ok => { if (ok) 푸시켜기(); else set푸시('안됨'); });
+    if (pushMuted(currentUser.id)) { set푸시('꺼둠'); return; }   // 본인이 꺼 뒀으면 도로 켜지 않는다
+    pushSupported().then(ok => { if (ok) 표받기(); else set푸시('안됨'); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perm]);
 
@@ -112,8 +129,10 @@ const MyPage: React.FC<{
           <p className="text-xs font-bold text-slate-400">이 브라우저는 알림을 못 씁니다.</p>
         ) : perm === 'granted' ? (
           <>
-            <p className="flex items-center gap-1.5 text-xs font-black text-emerald-600 mb-3">
-              <Bell size={14} /> 켜짐 — 새 주문 · 오피스톡 메시지
+            <p className={`flex items-center gap-1.5 text-xs font-black mb-3 ${푸시 === '꺼둠' ? 'text-slate-400' : 'text-emerald-600'}`}>
+              {푸시 === '꺼둠'
+                ? <><BellOff size={14} /> 꺼짐 — 이 폰에서 알림을 꺼 두셨습니다</>
+                : <><Bell size={14} /> 켜짐 — 새 주문 · 오피스톡 메시지</>}
             </p>
 
             <p className="text-[10px] font-black text-slate-400 mb-1.5">울리는 방법</p>
@@ -169,12 +188,24 @@ const MyPage: React.FC<{
               </>
             )}
 
-            <button
-              onClick={async () => set시험(await notifyDiagnose())}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-all"
-            >
-              <Bell size={13} /> 알림 시험해 보기
-            </button>
+            <div className="mt-3 flex gap-1.5">
+              <button
+                onClick={async () => set시험(await notifyDiagnose())}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-xs font-black hover:bg-slate-50 transition-all"
+              >
+                <Bell size={13} /> 알림 시험해 보기
+              </button>
+              {/*  폰 설정까지 안 들어가고 여기서 끈다 — 아이폰은 그 목록에서 찾기가 어렵다 */}
+              <button
+                onClick={푸시 === '꺼둠' ? 푸시켜기 : 푸시끄기}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-black transition-all ${
+                  푸시 === '꺼둠'
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                    : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+              >
+                {푸시 === '꺼둠' ? <><Bell size={13} /> 알림 다시 켜기</> : <><BellOff size={13} /> 알림 끄기</>}
+              </button>
+            </div>
           </>
         ) : perm === 'denied' ? (
           <p className="flex items-start gap-2 text-xs font-bold text-amber-700 leading-relaxed bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
@@ -200,6 +231,7 @@ const MyPage: React.FC<{
           <p className={`text-[10px] font-bold mt-3 leading-relaxed ${
             푸시 === '켜짐' ? 'text-emerald-600' : 푸시 === '안됨' ? 'text-amber-600' : 'text-slate-400'}`}>
             {푸시 === '켜짐' ? '📡 앱을 닫아도 알림이 옵니다'
+              : 푸시 === '꺼둠' ? '🔕 이 폰에는 알림을 보내지 않습니다 — 위 [알림 다시 켜기] 로 되돌립니다'
               : 푸시 === '안됨' ? `📡 앱을 닫으면 알림이 안 옵니다 — ${푸시사유}`
               : '📡 확인 중…'}
           </p>

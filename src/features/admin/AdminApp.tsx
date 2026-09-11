@@ -4887,8 +4887,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           if (isMobile) {
             return (
-              <div className="fixed inset-0 z-[1000] bg-white flex flex-col">
-                <div className="flex items-center px-4 py-3 border-b border-slate-100 bg-white">
+              /*  **아이폰에선 안전영역을 비켜야 한다**(2026-09-12 사장님: "알림 화면을 켜면
+               *  ui가 깨져서 거기서 뒤로가기가 안 된다").
+               *
+               *  index.html 이 `viewport-fit=cover` + `apple-mobile-web-app-status-bar-style:
+               *  black-translucent` 라서 `fixed inset-0` 은 **시계·배터리 밑까지 깔린다.**
+               *  머리줄이 통째로 상태바에 묻혀 ← 버튼이 안 보이고 눌리지도 않았다.
+               *  홈 화면에 추가한 PWA 는 브라우저 뒤로가기도 없어서 **나갈 길이 아예 없었다.**
+               *
+               *  사이드바(1690)·모바일 머리줄(1911)은 이미 이렇게 비켜 두고 있다 — 같은 방식이다. */
+              <div
+                className="fixed inset-0 z-[1000] bg-white flex flex-col"
+                style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}
+              >
+                <div
+                  className="flex items-center px-4 py-3 border-b border-slate-100 bg-white"
+                  style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+                >
                   <button
                     onClick={() => setShowNotifPanel(false)}
                     className="p-1 rounded-xl hover:bg-slate-100 transition-colors mr-2"
@@ -4905,7 +4920,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     )}
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
                   {notifList}
                 </div>
               </div>

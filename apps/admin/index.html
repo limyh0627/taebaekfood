@@ -13,9 +13,17 @@
   <link rel="manifest" href="./manifest-admin.webmanifest" />
   <script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
   <script>
+    //  구버전 캐시를 털려고 열 때마다 서비스워커를 지운다(b342f5e).
+    //  **알림 것만은 남긴다** — FCM 표(token)는 이 서비스워커의 푸시 구독에 붙어 있어서,
+    //  지우면 표가 그 자리에서 죽는다. 열 때마다 죽이는 바람에 폰 하나가 열 때마다 새 표를
+    //  받아 한 사람이 32개까지 쌓였다(2026-09-12 확인). 낡은 표로는 알림이 안 간다.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
+        regs.forEach(r => {
+          var sw = r.active || r.waiting || r.installing;
+          if (sw && sw.scriptURL.indexOf('firebase-messaging-sw') !== -1) return;
+          r.unregister();
+        });
       });
     }
   </script>

@@ -31,12 +31,37 @@ export interface PushResult {
 }
 
 /**
+ * **이 폰에서 알림을 꺼 뒀나** — 사람이 직접 끈 것.
+ *
+ * 브라우저 알림 권한은 앱이 거둘 수 없다. 한 번 켜면 폰 설정까지 들어가야 끄는데,
+ * 홈 화면에 추가한 아이폰 PWA 는 그 목록에서 찾기도 어렵다. 그래서 **우리 알림만 끊는
+ * 스위치**를 따로 둔다(마이페이지) — 표를 빼고, 이 표시를 남긴다.
+ *
+ * 표시가 있어야 한다 — 없으면 앱을 열 때마다 [AdminApp](../features/admin/AdminApp.tsx)·
+ * 마이페이지가 표를 도로 담아서 껐다가도 다시 켜진다.
+ * 막는 자리는 `registerPush` 한 곳이다.
+ */
+const 끈표시 = (employeeId: string) => `push:off:${employeeId}`;
+
+export function pushMuted(employeeId: string): boolean {
+  try { return localStorage.getItem(끈표시(employeeId)) === '1'; } catch { return false; }
+}
+
+export function setPushMuted(employeeId: string, muted: boolean): void {
+  try {
+    if (muted) localStorage.setItem(끈표시(employeeId), '1');
+    else localStorage.removeItem(끈표시(employeeId));
+  } catch { /* 사생활 보호 모드 — 끈 것이 안 남는다. 알림은 이번에만 멈춘다 */ }
+}
+
+/**
  * 이 폰의 표를 받아 직원 기록에 담는다.
  *
  * **알림 권한이 이미 켜져 있어야 한다** — 여기서 묻지 않는다(묻는 자리는 마이페이지 하나다).
  * @param employeeId 로그인한 사람
  */
 export async function registerPush(employeeId: string): Promise<PushResult> {
+  if (pushMuted(employeeId)) return { ok: false, reason: '이 폰에서 알림을 꺼 두셨습니다.' };
   if (!VAPID) return { ok: false, reason: '웹 푸시 인증서(VAPID)가 설정돼 있지 않습니다.' };
   if (!(await pushSupported())) return { ok: false, reason: '이 브라우저는 푸시를 못 씁니다. 아이폰은 홈 화면에 추가해야 됩니다.' };
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
