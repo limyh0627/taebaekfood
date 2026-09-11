@@ -238,8 +238,8 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
 // 화면 안의 알림(shared/newOrderAlert)은 앱이 살아 있을 때만 만든다. 최근앱에서
 // 밀어 닫으면 코드가 안 돌아 알릴 방법이 없다. 그래서 **서버가 폰으로 직접 민다.**
 //
-// 규칙은 화면 것과 같게 맞춘다 —
-//   · 관리자 앱을 쓰는 사람에게만 (employees.adminAccess)
+// 규칙 —
+//   · **알림을 켠 사람에게** (employees.fcmTokens 가 있는 사람 = 본인이 직접 켠 사람)
 //   · **넣은 사람 빼고** (내가 넣고 내가 알림받을 일은 없다)
 //   · 표(token)가 죽었으면 지운다 — 안 지우면 계속 쌓여 발송이 느려진다
 // ─────────────────────────────────────────────────────────────────────────
@@ -285,12 +285,23 @@ exports.notifyNewOrder = (0, firestore_1.onDocumentCreated)({ region: REGION, do
         return;
     if (order.partnerName === '생산기록')
         return; // 주문이 아니다
-    //  관리자 앱을 쓰는 사람 = 알림 받을 사람. 사장님 계정(id 'admin')도 포함한다.
+    /*  **알림을 켠 사람 = 받을 사람**(2026-09-12 사장님).
+     *
+     *  전에는 `adminAccess === true` 인 사람에게만 보냈다. 그래서 박은지·남명숙·윤찬호는
+     *  마이페이지에서 '폰 알림 켜기' 를 눌러 표까지 받아 뒀는데도 **한 번도 안 갔다** —
+     *  "알림이 제대로 안 온다"의 정체가 이거였다. 오피스톡은 방 참여자에게 그냥 보내서
+     *  그것만 오니 '가끔 온다' 로 느껴졌다.
+     *
+     *  표가 25·32·7개씩 쌓인 것도 같은 뿌리다 — 안 보내니 죽은 표를 지울 일이 없었다.
+     *
+     *  마이페이지 버튼은 이미 "새 주문과 오피스톡 메시지를 알려드립니다" 라고 약속한다.
+     *  **표가 있다 = 본인이 직접 켰다** 이므로 그게 곧 명단이고, 끄는 것도 본인이 한다
+     *  (마이페이지 '알림 끄기' → 표를 뺀다). 관리자 앱 권한과는 상관없는 이야기다.
+     */
     const emps = await db.collection('employees').get();
-    const 받을사람 = emps.docs.filter(d => d.id === 'admin' || d.data().adminAccess === true);
     //  넣은 사람은 뺀다. 주문에 누가 넣었는지가 없으면(직원 앱) 아무도 안 뺀다.
     const 넣은사람 = String((_b = order.createdBy) !== null && _b !== void 0 ? _b : '');
-    const 받을 = 받을사람
+    const 받을 = emps.docs
         .filter(d => d.id !== 넣은사람)
         .map(d => { var _a; return ({ id: d.id, tokens: ((_a = d.data().fcmTokens) !== null && _a !== void 0 ? _a : []) }); })
         .filter(x => x.tokens.length);
