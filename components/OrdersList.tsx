@@ -1872,31 +1872,21 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 조건 값
-                {/*  **쳐서 찾는다**(2026-09-11 사장님: "드롭다운 길어서 찾기 힘들다").
-                     목록은 그대로 달려 있고(`datalist`), 글자를 치면 좁혀진다. 비우면 전체다. */}
-                <input
-                  type="search" list="list-filter-values" value={listFilterValue}
-                  onChange={event => setListFilterValue(event.target.value)}
-                  disabled={!listFilterField} placeholder="전체"
-                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
-                />
-                <datalist id="list-filter-values">{activeViewFilterValues.map(value => <option key={value} value={value} />)}</datalist>
+                <select value={listFilterValue} onChange={event => setListFilterValue(event.target.value)} disabled={!listFilterField} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-40">
+                  <option value="">전체</option>
+                  {activeViewFilterValues.map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
               </label>
               {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처필터를 검색필드 조건값 다음으로 옮기고"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
                    두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
               <label className="order-3 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
-                <input
-                  type="search" list="list-partner-names" value={listPartnerFilter}
-                  onChange={event => setListPartnerFilter(event.target.value)}
-                  placeholder="전체"
-                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
-                />
-                <datalist id="list-partner-names">
+                <select value={listPartnerFilter} onChange={event => setListPartnerFilter(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300">
+                  <option value="">전체</option>
                   {[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
                     .sort((a, b) => a.localeCompare(b, 'ko'))
-                    .map(name => <option key={name} value={name} />)}
-                </datalist>
+                    .map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
               </label>
               {/*  **정렬도 검색조건 안이다**(2026-09-11 사장님: "정렬을 검색조건에 넣어").
                    조회 결과 머리에 따로 떠 있어서, 조건을 잡는 자리가 두 군데로 갈려 있었다. */}
