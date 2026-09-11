@@ -2249,15 +2249,18 @@ const OrdersList: React.FC<OrdersListProps> = ({
                      현장은 "어디 갈 것인지"부터 보므로 거래처가 맨 앞이다.
                      **단위는 품목에서 읽는다**(2026-09-09) — 박스 품목이면 '박스' 다.
                      라벨은 `대기`면 안 적는다 — 아직 안 한 것까지 적으면 한 줄이 딱지로 덮인다. */}
-                {/*  **수량은 품목명 바로 오른쪽, 같은 줄**(2026-09-11 사장님) — 얼마를 만들지가
-                     품목과 한눈에 붙어 읽힌다. 아래 줄은 라벨 딱지만 남으므로, 라벨이 `대기`면
-                     그 줄 자체가 안 그려져 한 줄로 끝난다. */}
                 <p className="flex min-w-0 items-center gap-1.5">
                   <span className={`shrink-0 text-[11px] font-black ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{wi.partnerName}</span>
                   <span className={`min-w-0 truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</span>
-                  <span className="shrink-0 text-[11px] font-black text-slate-500">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                 </p>
               </button>
+              {/*  **수량은 줄 오른쪽 끝**(2026-09-12 사장님: "수량 더 오른쪽으로 밀어서 품목명 더
+                   길게 나오게"). 품목명 바로 옆에 붙여 뒀더니 긴 이름이 그만큼 먼저 잘렸다.
+                   이름 칸 밖으로 꺼내 `ml-auto` 로 밀어 두면 남는 폭이 전부 이름에 간다.
+                   **단위는 품목에서 읽는다**(2026-09-09) — 박스 품목이면 '박스' 다. */}
+              <span className={`ml-auto shrink-0 whitespace-nowrap text-[11px] font-black ${completed ? 'text-slate-400' : 'text-slate-600'}`}>
+                {wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}
+              </span>
               {/*  **라벨·소비기한은 오른쪽 같은 줄에서 바로 고친다**(2026-09-12 사장님:
                    "라벨대기랑 소비기한 미설정이 한행에서 우측으로 오고", "저기서도 라벨 상태 바꾸고
                    소비기한 설정할 수 있게").
@@ -2320,6 +2323,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <span className="min-w-0 truncate tabular-nums">{줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '-'}</span>
                       </span>
                     </div>
+                    {/*  손잡이·묶기도 이 덩어리에 넣는다 — 폰에서 라벨·소비기한과 **같이** 내려가야
+                         윗줄이 온전히 이름 몫이 된다. 넓은 화면에서는 서던 자리 그대로다. */}
+                    <div className="flex items-center gap-0.5">
+                      <span title={workSort === null ? '끌어서 순서 바꾸기' : '직접 정렬을 선택하면 이동할 수 있습니다'} className={`rounded p-1 transition-colors ${workSort === null ? 'cursor-grab text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 active:cursor-grabbing' : 'cursor-not-allowed text-slate-300'}`}>
+                        <GripVertical size={16} />
+                      </span>
+                    </div>
+                    {/*  같이 만들 것끼리 묶기 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */}
+                    <button
+                      onClick={e => { e.stopPropagation(); toggleWorkGroupPick(wi.key); }}
+                      aria-label={wi.groupId ? '묶음에서 빼기' : '같이 만들 것 고르기'}
+                      className={`shrink-0 transition-colors ${workGroupPick.includes(wi.key) ? 'text-violet-500' : 'text-slate-200 hover:text-violet-400'}`}
+                    >{wi.groupId ? <Unlink size={13} /> : <Link2 size={13} />}</button>
                   </div>
                 );
               })()}
@@ -2332,17 +2348,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 {dueSoon && <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[9px] font-black text-rose-600"><AlertTriangle size={11} aria-hidden="true" />출고 임박</span>}
                 {legacy && <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700"><AlertTriangle size={11} aria-hidden="true" />품목 카테고리 누락</span>}
               </div>
-              <div className="flex items-center gap-0.5">
-                <span title={workSort === null ? '끌어서 순서 바꾸기' : '직접 정렬을 선택하면 이동할 수 있습니다'} className={`rounded p-1 transition-colors ${workSort === null ? 'cursor-grab text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 active:cursor-grabbing' : 'cursor-not-allowed text-slate-300'}`}>
-                  <GripVertical size={16} />
-                </span>
-              </div>
-              {/*  같이 만들 것끼리 묶기 — 이미 묶인 줄을 누르면 그 자리에서 푼다 */}
-              <button
-                onClick={e => { e.stopPropagation(); toggleWorkGroupPick(wi.key); }}
-                aria-label={wi.groupId ? '묶음에서 빼기' : '같이 만들 것 고르기'}
-                className={`shrink-0 transition-colors ${workGroupPick.includes(wi.key) ? 'text-violet-500' : 'text-slate-200 hover:text-violet-400'}`}
-              >{wi.groupId ? <Unlink size={13} /> : <Link2 size={13} />}</button>
             </div>
           );
         };
