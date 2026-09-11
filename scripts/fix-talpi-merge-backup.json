@@ -1,0 +1,131 @@
+{
+  "적은때": "2026-09-10T07:51:30.994Z",
+  "설명": "탈피들깨가루 정리 — 되돌리려면 아래를 그대로 되쓴다",
+  "뗀연결": [
+    {
+      "id": "p-1774849779025_C016_out",
+      "Direction": "out",
+      "itemId": "p-1774849779025",
+      "partnerId": "C016",
+      "Account_Code": "800",
+      "price": 750,
+      "taxType": "면세"
+    },
+    {
+      "id": "p-1774849779025_c-1773564534168_out",
+      "taxType": "면세",
+      "Account_Code": "800",
+      "partnerId": "c-1773564534168",
+      "Direction": "out",
+      "price": 750,
+      "itemId": "p-1774849779025"
+    }
+  ],
+  "옮긴연결": [
+    {
+      "새id": "p-104_C004_out",
+      "partnerId": "C004",
+      "거래처": "강호식품",
+      "price": 7500,
+      "taxType": "면세",
+      "옛id": "p-1774415984653_C004_out"
+    },
+    {
+      "새id": "p-104_C016_out",
+      "partnerId": "C016",
+      "거래처": "대왕푸드",
+      "옛id": "p-1774415984653_C016_out"
+    },
+    {
+      "새id": "p-104_c-1774414344813_out",
+      "partnerId": "c-1774414344813",
+      "거래처": "이룸무역",
+      "옛id": "p-1774415984653_c-1774414344813_out"
+    }
+  ],
+  "지운연결": [],
+  "전표": [
+    {
+      "id": "stmt-1788798230767",
+      "docNo": "260907-024",
+      "items": [
+        {
+          "accountCode": "800",
+          "isTaxExempt": true,
+          "itemId": "PLDhkjOgcPIhO1hhReHm",
+          "supply": 116000,
+          "spec": "1kg",
+          "tax": 0,
+          "total": 116000,
+          "price": 5800,
+          "name": "볶음참깨-낱개/1kg",
+          "qty": 20
+        },
+        {
+          "name": "맛기름",
+          "itemId": "f4",
+          "qty": 6,
+          "accountCode": "800",
+          "tax": 3545,
+          "spec": "",
+          "supply": 35455,
+          "isTaxExempt": false,
+          "price": 6500,
+          "total": 39000
+        },
+        {
+          "price": 7500,
+          "total": 15000,
+          "accountCode": "800",
+          "isTaxExempt": true,
+          "spec": "1kg",
+          "name": "시골향들깨가루(중간)/1kg",
+          "qty": 2,
+          "supply": 15000,
+          "itemId": "p-107",
+          "tax": 0
+        },
+        {
+          "price": 7500,
+          "total": 15000,
+          "spec": "1kg",
+          "name": "탈피들깨가루/1kg",
+          "isTaxExempt": true,
+          "accountCode": "800",
+          "supply": 15000,
+          "qty": 2,
+          "tax": 0
+        },
+        {
+          "supply": 190909,
+          "tax": 19091,
+          "qty": 10,
+          "total": 210000,
+          "itemId": "p-223",
+          "price": 21000,
+          "isTaxExempt": false,
+          "accountCode": "800",
+          "name": "참기름/골드/대왕/1800ml",
+          "spec": "1800ml"
+        },
+        {
+          "spec": "",
+          "isTaxExempt": false,
+          "accountCode": "800",
+          "tax": 818,
+          "total": 9000,
+          "supply": 8182,
+          "price": 4500,
+          "qty": 2,
+          "name": "택배비"
+        }
+      ]
+    }
+  ],
+  "내린품목": [
+    {
+      "id": "p-1774415984653",
+      "archived": false
+    }
+  ]
+}

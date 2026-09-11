@@ -1,0 +1,228 @@
+{
+  "적은때": "2026-09-10T07:27:24.965Z",
+  "설명": "사장님이 짚어 준 매핑으로 전표 줄에 itemId 를 채움 — 되돌리려면 items 배열을 통째로 되쓴다",
+  "전표": [
+    {
+      "전표id": "stmt-1786427504889",
+      "docNo": "260811-05",
+      "items": [
+        {
+          "total": 220000,
+          "name": "시골향 볶음검정참(벌크)/20kg",
+          "accountCode": "800",
+          "spec": "20kg",
+          "qty": 1,
+          "price": 220000,
+          "tax": 0,
+          "isTaxExempt": true,
+          "supply": 220000
+        },
+        {
+          "tax": 0,
+          "accountCode": "800",
+          "supply": 114000,
+          "spec": "20kg",
+          "price": 114000,
+          "name": "볶음참깨(벌크)/20kg",
+          "total": 114000,
+          "isTaxExempt": true,
+          "qty": 1
+        },
+        {
+          "tax": 0,
+          "price": 4500,
+          "accountCode": "800",
+          "total": 9000,
+          "spec": "",
+          "supply": 9000,
+          "name": "택배비",
+          "qty": 2,
+          "isTaxExempt": true
+        },
+        {
+          "supply": 20000,
+          "isTaxExempt": true,
+          "qty": 1,
+          "accountCode": "800",
+          "price": 20000,
+          "name": "시골향 참기름/골드/1800ml",
+          "tax": 0,
+          "itemId": "p-64",
+          "total": 20000,
+          "spec": "1800ml"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1786510141332",
+      "docNo": "260812-04",
+      "items": [
+        {
+          "isTaxExempt": false,
+          "price": 122000,
+          "total": 1098000,
+          "qty": 9,
+          "name": "볶음참깨(벌크)/20kg",
+          "tax": 99818,
+          "accountCode": "800",
+          "spec": "20kg",
+          "supply": 998182
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787040298810",
+      "docNo": "260818-12",
+      "items": [
+        {
+          "spec": "",
+          "tax": 0,
+          "accountCode": "500",
+          "name": "생참깨",
+          "supply": 3078750,
+          "total": 3078750,
+          "isTaxExempt": true,
+          "qty": 750,
+          "price": 4105
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787122859221",
+      "docNo": "260819-08",
+      "items": [
+        {
+          "price": 4000,
+          "isTaxExempt": true,
+          "tax": 0,
+          "supply": 2400000,
+          "total": 2400000,
+          "accountCode": "800",
+          "qty": 600,
+          "spec": "350ml * 1",
+          "itemId": "p-1776730298222",
+          "name": "참기름/병/특A(금빛)/350ml"
+        },
+        {
+          "isTaxExempt": true,
+          "tax": 0,
+          "supply": 16000,
+          "spec": "간지미포함",
+          "accountCode": "800",
+          "price": 800,
+          "name": "5-2박스",
+          "total": 16000,
+          "qty": 20
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787126648824",
+      "docNo": "260819-11",
+      "items": [
+        {
+          "accountCode": "500",
+          "total": 9600000,
+          "qty": 2400,
+          "name": "참깨(기타 페루)",
+          "price": 4000,
+          "supply": 9600000,
+          "spec": "1",
+          "isTaxExempt": true,
+          "tax": 0
+        },
+        {
+          "total": -230000,
+          "qty": 1,
+          "name": "운임비",
+          "price": -230000,
+          "isTaxExempt": true,
+          "spec": "",
+          "tax": 0,
+          "supply": -230000,
+          "accountCode": "605"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1787636435118",
+      "docNo": "260825-02",
+      "items": [
+        {
+          "supply": 14618182,
+          "tax": 1461818,
+          "accountCode": "500",
+          "spec": "16.5kg",
+          "price": 134000,
+          "name": "참기름",
+          "qty": 120,
+          "total": 16080000,
+          "isTaxExempt": false
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788712624153",
+      "docNo": "260907-005",
+      "items": [
+        {
+          "qty": 1,
+          "accountCode": "500",
+          "supply": 1630000,
+          "name": "생참깨",
+          "price": 1630000,
+          "tax": 0,
+          "total": 1630000,
+          "isTaxExempt": true,
+          "spec": "벌크"
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-1788799993122",
+      "docNo": "260904-007",
+      "items": [
+        {
+          "qty": 1000,
+          "total": 4000000,
+          "name": "참깨",
+          "price": 4000,
+          "itemId": "p-1779251176421",
+          "accountCode": "800",
+          "spec": "벌크",
+          "isTaxExempt": true,
+          "tax": 0,
+          "supply": 4000000
+        },
+        {
+          "spec": "",
+          "total": 24000,
+          "tax": 0,
+          "accountCode": "800",
+          "price": 800,
+          "name": "박스",
+          "qty": 30,
+          "supply": 24000,
+          "isTaxExempt": true
+        }
+      ]
+    },
+    {
+      "전표id": "stmt-ph-mirror-stmt-1787040298810",
+      "docNo": "260818-02",
+      "items": [
+        {
+          "spec": "",
+          "tax": 0,
+          "total": 3078750,
+          "name": "생참깨",
+          "accountCode": "800",
+          "supply": 3078750,
+          "price": 4105,
+          "qty": 750,
+          "isTaxExempt": true
+        }
+      ]
+    }
+  ]
+}

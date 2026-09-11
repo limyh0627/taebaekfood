@@ -11,7 +11,11 @@
 // 어떻게 고르나 — **이름이 꼭 맞아야 한다.**
 //   · **공백만 무시한다** — `시골향 참기름/골드A` 와 `시골향참기름/골드A` 는 같은 것이다.
 //     그 밖의 글자는 하나도 안 봐준다(부분 일치·비슷한 것 없음).
-//   · 같은 이름이 여럿이면 **전표의 회사**로 좁힌다. 그래도 여럿이면 **안 채운다.**
+//   · 같은 이름이 여럿이면 **차례로 좁힌다** — 이름만 보고 포기하지 않는다.
+//       ① **전표의 회사** — 태백 것인지 풍회 것인지
+//       ② **그 거래처와 연결된 쪽** — 드롭다운이 연결 품목을 먼저 보여주는 것과 같은 근거
+//       ③ **그 줄의 단가와 맞는 쪽** — 거래처 단가가 그 값인 품목
+//     셋을 거쳐도 하나로 안 좁혀지면 **안 채운다.**
 //   · **박스는 후보에서 뺀다** — 낱개와 이름이 같으면 엉뚱한 데 붙는다(해피유통 300ml 사고).
 //   · 폐기(archived)된 품목도 뺀다.
 //
@@ -30,7 +34,8 @@ const app = initializeApp({ apiKey: 'AIzaSyBOppTpeiRV1lQDU9ijQGVHQRS-zQW-OOE', a
 const db = getFirestore(app);
 await signInAnonymously(getAuth(app));
 const load = async (c: string) => (await getDocs(collection(db, c))).docs.map(d => ({ id: d.id, ...d.data() } as any));
-const [st, items, boms] = await Promise.all([load('issuedStatements'), load('items'), load('item_bom')]);
+const [st, items, boms, partnerItems] = await Promise.all(
+  [load('issuedStatements'), load('items'), load('item_bom'), load('partner_item')]);
 
 console.log(`\n═══ ${APPLY ? '🔴 실제 적용(--apply)' : '🟢 미리보기(dry) — 쓰기 없음'} ═══\n`);
 
@@ -72,6 +77,7 @@ const 여럿목록 = new Map<string, number>();
 for (const s of st) {
   if (s.type !== '매출' && s.type !== '매입') continue;
   const 회사 = 회사of(s);
+  const dir: 'in' | 'out' = s.type === '매입' ? 'in' : 'out';
   const 원본 = (s.items ?? []) as any[];
   const 새줄: any[] = [];
   const 채운줄: { name: string; itemId: string }[] = [];
@@ -81,8 +87,22 @@ for (const s of st) {
     if (l.itemId) { 이미있음++; 새줄.push(l); continue; }
     let hit = 이름별.get(정규(l.name)) ?? [];
     if (hit.length > 1) {
+      //  ① 회사로 좁힌다 — 태백·풍회가 같은 이름을 각자 들고 있다.
       const 회사것 = hit.filter((x: any) => 회사of(x) === 회사);
-      if (회사것.length === 1) hit = 회사것;
+      if (회사것.length >= 1) hit = 회사것;
+    }
+    if (hit.length > 1) {
+      //  ② 그 거래처와 **연결된** 쪽. 화면 드롭다운이 연결 품목을 먼저 보여주는 것과 같은 근거다.
+      const 연결된 = hit.filter((c: any) => partnerItems.some(
+        (pc: any) => pc.itemId === c.id && pc.partnerId === s.partnerId && (pc.Direction ?? 'out') === dir));
+      if (연결된.length >= 1) hit = 연결된;
+    }
+    if (hit.length > 1) {
+      //  ③ **그 줄의 단가**와 맞는 쪽. 같은 이름이라도 거래처 단가는 품목마다 다르다.
+      const 단가맞음 = hit.filter((c: any) => partnerItems.some(
+        (pc: any) => pc.itemId === c.id && pc.partnerId === s.partnerId && (pc.Direction ?? 'out') === dir
+          && Math.abs(Number(pc.price ?? NaN) - Number(l.price ?? NaN)) < 1));
+      if (단가맞음.length === 1) hit = 단가맞음;
     }
     if (hit.length === 1) {
       채움++; 바뀜 = true;

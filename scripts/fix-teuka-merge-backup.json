@@ -1,0 +1,167 @@
+{
+  "적은때": "2026-09-10T07:41:03.332Z",
+  "설명": "특A 파랑마개(p-203)를 빨강마개(p-25)로 합침 — 되돌리려면 아래를 그대로 되쓴다",
+  "전표": [
+    {
+      "id": "stmt-1785759682926",
+      "docNo": "260804-02",
+      "items": [
+        {
+          "accountCode": "800",
+          "qty": 20,
+          "isTaxExempt": false,
+          "price": 21000,
+          "itemId": "p-203",
+          "name": "시골향 참기름/특A/1750ml",
+          "total": 420000,
+          "spec": "1750ml",
+          "tax": 38182,
+          "supply": 381818
+        },
+        {
+          "itemId": "p-107",
+          "qty": 20,
+          "accountCode": "800",
+          "name": "시골향 들깨가루(중간)/1kg",
+          "spec": "1kg",
+          "supply": 150000,
+          "isTaxExempt": true,
+          "price": 7500,
+          "total": 150000,
+          "tax": 0
+        }
+      ]
+    },
+    {
+      "id": "stmt-1786325572698",
+      "docNo": "260810-06",
+      "items": [
+        {
+          "accountCode": "800",
+          "tax": 19091,
+          "name": "시골향 참기름/특A/1750ml",
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "itemId": "p-203",
+          "qty": 10,
+          "total": 210000,
+          "supply": 190909,
+          "price": 21000
+        }
+      ]
+    },
+    {
+      "id": "stmt-1788270582595",
+      "docNo": "260901-07",
+      "items": [
+        {
+          "price": 21000,
+          "total": 210000,
+          "supply": 190909,
+          "itemId": "p-203",
+          "qty": 10,
+          "tax": 19091,
+          "spec": "1750ml",
+          "isTaxExempt": false,
+          "name": "시골향참기름/특A/1750ml",
+          "accountCode": "800"
+        },
+        {
+          "itemId": "p-1775432881153",
+          "supply": 150000,
+          "name": "시골향들깨가루(고운)/1kg",
+          "tax": 0,
+          "spec": "1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "total": 150000,
+          "price": 7500,
+          "accountCode": "800"
+        },
+        {
+          "tax": 0,
+          "total": 150000,
+          "itemId": "p-107",
+          "price": 7500,
+          "accountCode": "800",
+          "spec": "1kg",
+          "name": "시골향들깨가루(중간)/1kg",
+          "qty": 20,
+          "isTaxExempt": true,
+          "supply": 150000
+        }
+      ]
+    }
+  ],
+  "지운단가": [
+    {
+      "id": "box-p-203-10_C013_out",
+      "Account_Code": "800",
+      "Direction": "out",
+      "partnerId": "C013",
+      "itemId": "box-p-203-10",
+      "price": 21000,
+      "taxType": "과세"
+    },
+    {
+      "id": "box-p-203-10_C059_out",
+      "Account_Code": "800",
+      "price": 19000,
+      "partnerId": "C059",
+      "Direction": "out",
+      "taxType": "과세",
+      "itemId": "box-p-203-10"
+    },
+    {
+      "id": "p-203_C013_out",
+      "price": 21000,
+      "taxType": "과세",
+      "Direction": "out",
+      "partnerId": "C013",
+      "Account_Code": "800",
+      "itemId": "p-203"
+    },
+    {
+      "id": "p-203_C052_out",
+      "price": 21000,
+      "itemId": "p-203",
+      "Account_Code": "800",
+      "taxType": "과세",
+      "Direction": "out",
+      "partnerId": "C052"
+    },
+    {
+      "id": "p-203_C059_out",
+      "Account_Code": "800",
+      "itemId": "p-203",
+      "partnerId": "C059",
+      "Direction": "out",
+      "taxType": "과세",
+      "price": 19000
+    }
+  ],
+  "옮긴단가": [
+    {
+      "id": "p-25_C013_out",
+      "거래처": "대농라이스푸드",
+      "price": 21000,
+      "taxType": "과세"
+    },
+    {
+      "id": "p-25_C052_out",
+      "거래처": "유박사칼국수",
+      "price": 21000,
+      "taxType": "과세"
+    }
+  ],
+  "내린품목": [
+    {
+      "id": "p-203",
+      "archived": false
+    },
+    {
+      "id": "box-p-203-10",
+      "archived": false
+    }
+  ]
+}
