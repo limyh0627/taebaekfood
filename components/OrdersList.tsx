@@ -2224,7 +2224,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
             <div key={col.id}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id && col.targetStatus) requestBoardStatusChange(id, col.targetStatus); }}
-              className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm ${activeView === 'kanban' ? 'flex-shrink-0' : 'w-full'}`}
+              /*  **칸 바탕은 흰색이다**(2026-09-11 사장님: "보드 각 컬럼에 바탕색 좀 빼라").
+                  칸마다 색이 깔려 있으면 그 위에 얹힌 주문 카드의 상태 색이 안 읽힌다 —
+                  색으로 알려야 할 것은 카드지 칸이 아니다. 테두리와 머리 아이콘 색은 남긴다. */
+              className={`flex flex-col rounded-3xl border bg-white ${col.borderColor} shadow-sm ${activeView === 'kanban' ? 'flex-shrink-0' : 'w-full'}`}
               style={{
                 ...(activeView === 'kanban' && typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 5)` } : {}),
                 minWidth: activeView === 'kanban' && typeof window !== 'undefined' && window.innerWidth >= 768 ? 320 : undefined,
