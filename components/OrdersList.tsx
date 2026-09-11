@@ -55,6 +55,7 @@ import { clusterByGroup } from '../src/shared/rowGroup';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { matchesSearch } from '../src/shared/hangul';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
+import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 
 import ConfirmModal from './ConfirmModal';
@@ -1404,6 +1405,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
   const [listMemoDraft, setListMemoDraft] = useState('');
   const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[] } | null>(null);
+  /*  배송 오전·오후는 배송순서 화면과 **같은 문서**를 본다(`settings/deliveryOrdering`).
+      읽고 쓰는 길은 [deliveryTimeSlot](../src/shared/deliveryTimeSlot.ts) 하나다. */
+  const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, DeliveryTimeSlot>>({});
+  useEffect(() => subscribeDeliveryOrdering(doc => setDeliveryTimeSlots(doc?.timeSlots ?? {})), []);
   const [listPalletEditorOrderId, setListPalletEditorOrderId] = useState<string | null>(null);
   const listTopScrollRef = React.useRef<HTMLDivElement>(null);
   const listBodyScrollRef = React.useRef<HTMLDivElement>(null);
@@ -3562,9 +3567,31 @@ const OrdersList: React.FC<OrdersListProps> = ({
             <div className="space-y-4">
               <section aria-labelledby="order-schedule-heading">
                 <h4 id="order-schedule-heading" className="mb-1.5 text-xs font-black text-slate-700">출고 일정</h4>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                  <label className="block text-[11px] font-bold leading-4 text-slate-600" htmlFor="order-editor-delivery-date">출고예정일</label>
-                  <input id="order-editor-delivery-date" type="date" value={listOrderEditor.deliveryDate} onChange={event => setListOrderEditor(current => current ? { ...current, deliveryDate: event.target.value } : current)} className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                  <div className="min-w-0 flex-1">
+                    <label className="block text-[11px] font-bold leading-4 text-slate-600" htmlFor="order-editor-delivery-date">출고예정일</label>
+                    <input id="order-editor-delivery-date" type="date" value={listOrderEditor.deliveryDate} onChange={event => setListOrderEditor(current => current ? { ...current, deliveryDate: event.target.value } : current)} className="mt-1 h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+                  </div>
+                  {/*  **오전·오후**(2026-09-12 사장님: "출고예정일 우측에 오전 오후 설정하는것도 둬
+                       미정이면 그냥 -로 뜨게 하고"). 금일 배송순서가 보는 것과 **같은 문서**다 —
+                       여기서 정하면 거기 줄도 같이 옮겨 간다. 누르는 즉시 저장된다(품목과 달리
+                       '변경 저장'을 안 기다린다) — 배송 화면이 곧바로 이 값을 쓰기 때문이다. */}
+                  <div className="shrink-0">
+                    <span className="block text-[11px] font-bold leading-4 text-slate-600">배송 시간</span>
+                    <div className="mt-1 flex h-10 items-center overflow-hidden rounded-lg border border-slate-200 bg-white" role="group" aria-label="배송 시간">
+                      {([null, '오전', '오후'] as const).map(값 => {
+                        const 지금 = deliveryTimeSlots[editorOrder.id] ?? null;
+                        return (
+                          <button
+                            key={값 ?? '미정'} type="button"
+                            onClick={() => saveDeliveryTimeSlot(editorOrder.id, 값)}
+                            aria-pressed={지금 === 값}
+                            className={`h-full px-2.5 text-[11px] transition-colors ${값 === '오후' ? '' : 'border-r border-slate-200'} ${지금 === 값 ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}
+                          >{값 ?? '-'}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </section>
 
@@ -3573,12 +3600,17 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <h4 id="order-items-heading" className="text-xs font-black text-slate-700">주문 품목</h4>
                   <span className="text-[11px] font-bold text-slate-500">{listOrderEditor.items.length}개</span>
                 </div>
-                <div className="mb-2 hidden grid-cols-[minmax(0,1fr)_112px_44px] gap-2 px-2 text-[10px] font-black text-slate-500 sm:grid">
-                  <span>품목명</span><span>주문 수량</span><span className="sr-only">삭제</span>
+                <div className="mb-2 hidden grid-cols-[minmax(0,1fr)_112px] gap-2 px-2 text-[10px] font-black text-slate-500 sm:grid">
+                  <span>품목명</span><span>주문 수량</span>
                 </div>
                 <div className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
                   {listOrderEditor.items.map((orderItem, index) => (
-                    <div key={`${orderItem.itemId}-${index}`} className="grid grid-cols-[minmax(0,1fr)_96px_40px] items-end gap-2 p-2 sm:grid-cols-[minmax(0,1fr)_112px_40px] sm:items-center">
+                    /*  **한 줄이 두 칸이다**(2026-09-12 사장님: "이름 잘리는게 아쉽고 품목명 수량
+                        밑에 줄에 작업완료 여부 라벨상태 소비기한 뜨게 하고").
+                        윗칸은 품목명·수량만 둔다 — 지우개를 아랫줄로 내린 만큼 이름이 길어진다.
+                        아랫칸은 작업완료·라벨·소비기한, 그리고 맨 오른쪽에 지우개다. */
+                    <div key={`${orderItem.itemId}-${index}`} className="space-y-2 p-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_96px] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_112px] sm:items-center">
                       <label className="min-w-0 text-[10px] font-black text-slate-500 sm:contents"><span className="mb-1 block sm:hidden">품목명</span>
                       <select
                         value={orderItem.itemId}
@@ -3610,20 +3642,109 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           {orderItem.isBoxUnit ? '박스' : (items.find(item => item.id === orderItem.itemId)?.unit || '개')}
                         </span>
                       </span></label>
-                      <button
-                        type="button"
-                        onClick={() => setListOrderEditor(current => current ? { ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) } : current)}
-                        disabled={listOrderEditor.items.length === 1}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:text-slate-300"
-                        aria-label={`${orderItem.name} 주문 품목 삭제`}
-                        title={listOrderEditor.items.length === 1 ? '마지막 품목은 주문 전체 삭제를 이용하세요' : '품목 삭제'}
-                      ><Trash2 size={16} /></button>
+                    </div>
+                    {/*  **작업완료·라벨·소비기한** — 작업순서 줄과 같은 부품·같은 셈이다.
+                         라벨·소비기한은 초안이라 '변경 저장'을 눌러야 반영되고(위 안내 문구 그대로),
+                         작업완료만 **바로 저장**한다 — 상태를 옮기는 셈이 `onToggleItemChecked` 안에
+                         있어서 그 길로 가야 한다. 대신 초안에도 같이 적어 둔다. 안 그러면 저장할 때
+                         초안이 옛 값으로 덮어 버린다.
+                         **새로 추가한 줄은 아직 주문에 없으니** 작업완료를 잠근다. */}
+                    {(() => {
+                      const 살아있는 = index < editorOrder.items.length ? editorOrder.items[index] : undefined;
+                      const 완료 = !!(살아있는?.checked ?? orderItem.checked);
+                      const 라벨 = orderItem.labelType ?? '대기';
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="shrink-0">
+                            <CompletionStatusControl
+                              completed={완료}
+                              disabled={!살아있는 || !onToggleItemChecked}
+                              ariaLabel={`${orderItem.name} 작업 완료 전환`}
+                              onChange={() => {
+                                onToggleItemChecked?.(editorOrder.id, index, currentUserName);
+                                updateDraftItem(index, { checked: !완료, checkedBy: !완료 ? currentUserName : undefined });
+                              }}
+                            />
+                          </div>
+                          <div className="relative w-[58px] shrink-0">
+                            <select
+                              value={라벨}
+                              onChange={event => updateDraftItem(index, { labelType: event.target.value as '대기' | '날인' | '부착' })}
+                              aria-label={`${orderItem.name} 라벨 상태`}
+                              className={`h-8 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-red-500 hover:bg-slate-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                            >
+                              <option value="대기">-</option>
+                              <option value="날인">날인</option>
+                              <option value="부착">부착</option>
+                            </select>
+                            <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                          </div>
+                          <div className="relative h-8 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400">
+                            <input
+                              type="date" value={orderItem.mfgDate || ''}
+                              onChange={event => updateDraftItem(index, { mfgDate: event.target.value })}
+                              aria-label={`${orderItem.name} 소비기한 수정용 제조일`}
+                              className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0"
+                            />
+                            <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${orderItem.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                              <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
+                              <span className="min-w-0 truncate tabular-nums">{orderItem.mfgDate ? fmtYYMMDD(expiryFromMfgDate(orderItem.mfgDate)) : '-'}</span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setListOrderEditor(current => current ? { ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) } : current)}
+                            disabled={listOrderEditor.items.length === 1}
+                            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:text-slate-300"
+                            aria-label={`${orderItem.name} 주문 품목 삭제`}
+                            title={listOrderEditor.items.length === 1 ? '마지막 품목은 주문 전체 삭제를 이용하세요' : '품목 삭제'}
+                          ><Trash2 size={16} /></button>
+                        </div>
+                      );
+                    })()}
                     </div>
                   ))}
                 </div>
                 <button type="button" onClick={addDraftItem} className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus size={15} aria-hidden="true" /> 신규 품목 추가</button>
                 <p className="mt-2 text-[10px] font-bold text-slate-500">품목 변경·삭제·추가는 ‘변경 저장’을 눌러야 반영됩니다.</p>
               </section>
+
+              {/*  **팔레트**(2026-09-12 사장님: "주문 전체삭제 위에 팔레트 설정 하는거 두고").
+                   리스트의 팔레트 칸과 **같은 셈**이다 — 수를 올리고 내리고, 교환이면 교환으로 찍는다.
+                   여기는 누르는 즉시 저장된다(`onUpdatePallets`) — 리스트 쪽과 같은 길이라
+                   한쪽만 초안으로 두면 두 화면이 서로 다른 것을 보게 된다. */}
+              {onUpdatePallets && (palletStocks ?? []).some(stock => !stock.hidden) && (
+                <section aria-labelledby="order-pallet-heading">
+                  <h4 id="order-pallet-heading" className="mb-1.5 text-xs font-black text-slate-700">팔레트</h4>
+                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                    {(palletStocks ?? []).filter(stock => !stock.hidden).map(stock => {
+                      const entry = editorOrder.pallets?.find(pallet => pallet.type === stock.id);
+                      const quantity = entry?.quantity ?? 0;
+                      const isExchange = entry?.isExchange ?? false;
+                      const updatePallet = (nextQuantity: number, nextExchange = isExchange) => {
+                        const remaining = (editorOrder.pallets ?? []).filter(pallet => pallet.type !== stock.id);
+                        onUpdatePallets(editorOrder.id, nextQuantity > 0 ? [...remaining, { type: stock.id, quantity: nextQuantity, ...(nextExchange ? { isExchange: true } : {}) }] : remaining);
+                      };
+                      return (
+                        <div key={stock.id} className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-slate-700">{stock.name}</span>
+                          <button type="button" onClick={() => updatePallet(quantity, !isExchange)} disabled={quantity <= 0}
+                            className={`inline-flex h-8 shrink-0 items-center rounded-md px-2.5 text-[10px] font-black transition-colors disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300 ${isExchange ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-white text-slate-500 hover:bg-amber-50 hover:text-amber-700'}`}
+                          >{isExchange ? '교환 · 적용됨' : '교환'}</button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button type="button" onClick={() => updatePallet(Math.max(0, quantity - 1))} aria-label={`${stock.name} 하나 빼기`}
+                              className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-sm font-black text-slate-600 hover:bg-slate-200">−</button>
+                            <span className="w-6 text-center text-xs font-black tabular-nums text-slate-800">{quantity}</span>
+                            <button type="button" onClick={() => updatePallet(quantity + 1)} aria-label={`${stock.name} 하나 더하기`}
+                              className="flex h-8 w-8 items-center justify-center rounded-md bg-indigo-50 text-sm font-black text-indigo-600 hover:bg-indigo-100">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[10px] font-bold text-slate-500">팔레트는 누르는 즉시 저장됩니다.</p>
+                </section>
+              )}
 
               <section aria-label="주문 전체 삭제">
                 <button type="button" onClick={() => setConfirmModal({
