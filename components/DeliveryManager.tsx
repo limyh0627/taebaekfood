@@ -101,6 +101,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
    * 저장은 지금 방식(`settings/deliveryOrdering` 한 문서)을 그대로 쓴다 — 옛 코드의
    * 날짜별 `savePlan` 은 이제 없다.
    */
+  /**
+   * 배송순서에서 지금 보는 갈래 — **택배와 일반을 단추로 갈라 본다**
+   * (2026-09-11 사장님: "택배랑 일반을 상단에서 버튼 눌러서 분리하는 형태로 둬봐").
+   * 둘을 세로로 이어 쌓으면 일반을 보려고 택배를 지나쳐 내려가야 했다.
+   */
+  const [deliveryChannelTab, setDeliveryChannelTab] = useState<'일반' | '택배'>('일반');
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>({});
@@ -876,6 +882,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           || (calendarLocationOf(a) || '\uffff').localeCompare(calendarLocationOf(b) || '\uffff', 'ko')
           || (a.partnerName || '').localeCompare(b.partnerName || '', 'ko')
         );
+        /*  **번호는 완료를 숨겨도 자기 자리를 지킨다**(2026-09-11 사장님: "완료포함이 숨겨져도
+            자기 번호는 계속 들고 있는게 맞지 않나"). 숨겼다고 남은 줄이 1·2·3 으로 다시 매겨지면
+            "3번 다음에 간다"고 말해 둔 것이 다른 집을 가리킨다.
+            그래서 번호는 **숨기기 전 목록**(`numberingIds`)에서 센다. */
+        const numberingIds = [
+          ...deliveryOrdering.filter(id => deliverySequenceOrders.some(order => order.id === id)),
+          ...deliverySequenceOrders.filter(order => !deliveryOrdering.includes(order.id)).map(order => order.id),
+        ].filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source));
         const validIds = new Set(visibleDeliverySequenceOrders.map(order => order.id));
         const manualIds = [
           ...deliveryOrdering.filter(id => validIds.has(id)),
@@ -935,8 +949,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               기사가 와서 실어 가는 것이라 우리가 도는 차례를 정할 게 없다 — 번호도 손잡이도 안 단다.
               일반(우리 차가 도는 것)만 번호와 끌기를 둔다. */
           const 택배인가 = isDeliveryChannel(order.source);
-          //  번호는 **일반 것들 안에서만** 센다 — 택배가 사이에 끼어 번호가 건너뛰면 안 된다.
-          const sequenceNumber = visibleIds.filter(x => !isDeliveryChannel(orders.find(o => o.id === x)?.source)).indexOf(id) + 1;
+          //  번호는 **일반 것들 안에서만**, 그리고 **숨기기 전 목록**에서 센다.
+          const sequenceNumber = numberingIds.indexOf(id) + 1;
           const 끌수있나 = deliverySortMode === 'manual' && !택배인가;
           const slotTone = slot === '오전' ? 'amber' : 'indigo';
           return (
@@ -952,7 +966,37 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               onDrop={() => { if (끌수있나) moveDeliveryOrder(id, slot); }}
               className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 shadow-sm ${slotTone === 'amber' ? 'border-amber-100' : 'border-indigo-100'} ${끌수있나 ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
-              <span className={`text-center text-[11px] font-black tabular-nums ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}>{택배인가 ? '' : sequenceNumber}</span>
+              {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님: "숫자 눌러서 직접 순서 입력해서
+                   바꿀 수 있게 해"). 좁은 카드끼리 끌어 옮기는 것보다 확실하다 —
+                   배송 캘린더의 줄(`DeliveryDayList`)이 진작 쓰던 방식이라 모양을 그대로 맞춘다.
+                   택배는 순서가 없으니 빈칸이다. */}
+              {택배인가 ? (
+                <span className="text-center text-[11px] font-black tabular-nums text-slate-300" />
+              ) : deliverySortMode === 'manual' ? (
+                <select
+                  aria-label={`${partnerName} 배송 순서`}
+                  value={sequenceNumber}
+                  onPointerDown={event => event.stopPropagation()}
+                  onChange={event => {
+                    const 목표 = Number(event.target.value) - 1;
+                    const 지금 = numberingIds.indexOf(id);
+                    if (지금 < 0 || 목표 < 0 || 목표 === 지금) return;
+                    //  **일반 것들의 차례만 바꾼다.** 택배는 순서가 없어 끼어들지 않는다.
+                    const 새차례 = [...numberingIds];
+                    const [옮길것] = 새차례.splice(지금, 1);
+                    새차례.splice(목표, 0, 옮길것);
+                    //  저장하는 목록에는 택배도 들어 있으므로, 일반 자리만 새 차례로 갈아 끼운다.
+                    let n = 0;
+                    saveDeliveryOrdering(manualIds.map(x =>
+                      isDeliveryChannel(orders.find(order => order.id === x)?.source) ? x : 새차례[n++]));
+                  }}
+                  className={`h-7 w-7 shrink-0 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-slate-50 text-center text-xs font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300 ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}
+                >
+                  {numberingIds.map((_, n) => <option key={n} value={n + 1}>{n + 1}</option>)}
+                </select>
+              ) : (
+                <span className={`text-center text-[11px] font-black tabular-nums ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}>{sequenceNumber}</span>
+              )}
               <button type="button" onClick={() => setPreviewDeliveryOrderId(id)} className="min-w-0 text-left hover:opacity-75">
                 <span className="flex min-w-0 items-center gap-2">
                   <strong className="truncate text-xs font-black text-slate-800">{partnerName}</strong>
@@ -1022,12 +1066,31 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                            일반은 우리 차가 돌기 때문에 챙기는 일이 다르다 — 섞여 있으면 순서를 못 짠다.
                            스마트스토어도 택배로 나가므로 같은 묶음이다(`isDeliveryChannel`).
                            오전·오후는 줄마다 달린 딱지로 그대로 고른다. */}
+                      {(() => {
+                        const 갈래 = [
+                          { key: '일반' as const, ids: visibleIds.filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
+                          { key: '택배' as const, ids: visibleIds.filter(id => isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
+                        ];
+                        return (
+                          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5" role="tablist" aria-label="배송 갈래">
+                            {갈래.map(t => (
+                              <button
+                                key={t.key} type="button" role="tab" aria-selected={deliveryChannelTab === t.key}
+                                onClick={() => setDeliveryChannelTab(t.key)}
+                                className={`flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-black transition-colors ${
+                                  deliveryChannelTab === t.key
+                                    ? (t.key === '택배' ? 'bg-pink-600 text-white' : 'bg-indigo-600 text-white')
+                                    : 'text-slate-500 hover:bg-slate-100'}`}
+                              >{t.key} <span className="tabular-nums opacity-70">{t.ids.length}</span></button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       {([
                         { key: '택배' as const, tone: 'text-pink-600', ids: visibleIds.filter(id => isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
                         { key: '일반' as const, tone: 'text-indigo-600', ids: visibleIds.filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
-                      ]).map(묶음 => (
+                      ]).filter(묶음 => 묶음.key === deliveryChannelTab).map(묶음 => (
                         <div key={묶음.key} className="flex flex-col gap-1">
-                          <div className={`px-1 pt-1 text-[10px] font-black ${묶음.tone}`}>{묶음.key} <span className="tabular-nums opacity-60">{묶음.ids.length}</span></div>
                           {묶음.ids.length === 0
                             ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p>
                             : 묶음.key === '택배'

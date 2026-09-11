@@ -53,6 +53,7 @@ import { CHIP_NEUTRAL as SUB_CHIP_NEUTRAL, subChipClass } from '../src/shared/su
 import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
 import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
+import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 
 import ConfirmModal from './ConfirmModal';
@@ -411,6 +412,8 @@ export const OrderCard = memo<OrderCardProps>(({
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
+  //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
+  onEditOrder,
 }) => {
   // Compute derived variables
   const products = items;
@@ -518,15 +521,33 @@ export const OrderCard = memo<OrderCardProps>(({
       id={`order-card-${order.id}`}
       draggable={!readOnly && !isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      onClick={() => { if (!readOnly && !isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
+      /*  **카드 아무 데나 눌러서 편집에 들어가지 않는다**(2026-09-11 사장님: "이름부터 그쪽까지만
+          누르면 수정하는 거고"). 카드 표면 대부분이 체크·수량 같은 조작이라, 아무 데나 눌러도
+          편집이 열리면 누르려던 것과 엉킨다. 여는 자리는 **이름 + 연필**뿐이다. */
       className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       {/* 머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다 */}
       <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          {/* 색을 안 준다 — 머리 띠의 상태 글자색을 그대로 물려받아 상태와 같은 색이 된다 */}
-          <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
+          {/*  **이름 + 연필까지가 '수정' 자리다.** 누르면 리스트에서 쓰는 것과 **같은**
+               `거래처 주문 수정` 창이 뜬다(2026-09-11 사장님: "리스트 쪽에 붙은 거래처 주문 수정
+               모달띄우는걸로 바꿔 기존 방식 버리고"). 카드 안에서 직접 고치던 옛 방식은 버린다 —
+               같은 일을 두 가지 모양으로 하면 어느 쪽이 맞는지 매번 헷갈린다.
+               색을 안 준다 — 머리 띠의 상태 글자색을 물려받아 상태와 같은 색이 된다. */}
+          {onEditOrder && !readOnly ? (
+            <button
+              type="button"
+              onClick={event => { event.stopPropagation(); onEditOrder(order.id); }}
+              aria-label={`${displayName} 주문 수정`}
+              className="flex min-w-0 items-center gap-1 rounded-md px-1 -mx-1 text-left transition-opacity hover:opacity-70"
+            >
+              <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
+              <Edit2 size={13} className="shrink-0 opacity-60" aria-hidden="true" />
+            </button>
+          ) : (
+            <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
+          )}
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
@@ -1724,11 +1745,25 @@ const OrdersList: React.FC<OrdersListProps> = ({
     return [];
   };
   const activeViewFilterValues = useMemo(() => [...new Set(activeKanbanOrders.flatMap(activeViewFilterValuesForOrder).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [activeKanbanOrders, listFilterField, partners, palletStocks]);
+  /**
+   * **거래처 거르개는 이름의 일부만 쳐도 걸린다**(2026-09-11 사장님: "거래처 검색 필터 따로
+   * 뺀게 제대로 작동 안하는거 같은데").
+   *
+   * 두 군데가 틀렸었다 — ① **정확히 같아야** 걸려서, `은진`까지 치는 동안은 결과가 통째로
+   * 사라졌다. ② **리스트에만** 물려 있어서 보드·이력에서는 아무 일도 안 났다.
+   * 담는 것(`대소문자 무시 · 포함`)과 자리(공용 `activeViewOrders`) 둘 다 고친다.
+   */
+  const 거래처이름of = (order: Order) =>
+    order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '';
+  const 거래처걸림 = (order: Order) => !listPartnerFilter.trim()
+    || 거래처이름of(order).toLocaleLowerCase('ko-KR').includes(listPartnerFilter.trim().toLocaleLowerCase('ko-KR'));
+
   const activeViewOrders = useMemo(() => {
     const allowed = activeKanbanOrders.filter(order => visibleActiveConfigs.some(config => config.statusFilter.includes(order.status)) || (legacyHistoryEnabled && order.status === OrderStatus.DELIVERED));
     const statusMatched = listStatusTab === 'all' ? allowed : allowed.filter(order => order.status === listStatusTab);
-    return !listFilterField || !listFilterValue ? statusMatched : statusMatched.filter(order => activeViewFilterValuesForOrder(order).includes(listFilterValue));
-  }, [activeKanbanOrders, visibleActiveConfigs, listStatusTab, listFilterField, listFilterValue, partners, palletStocks, legacyHistoryEnabled]);
+    const fieldMatched = !listFilterField || !listFilterValue ? statusMatched : statusMatched.filter(order => activeViewFilterValuesForOrder(order).includes(listFilterValue));
+    return fieldMatched.filter(거래처걸림);
+  }, [activeKanbanOrders, visibleActiveConfigs, listStatusTab, listFilterField, listFilterValue, listPartnerFilter, partners, palletStocks, legacyHistoryEnabled]);
 
   const deliveryOrders = useMemo(() =>
     filteredOrders
@@ -1831,13 +1866,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
               {/*  **거래처는 따로 꺼낸다**(2026-09-11 사장님: "거래처 필터는 따로 꺼내서
                    검색필드랑 같은 행에 둬봐"). 제일 자주 거르는 것인데 '필드 선택 → 조건 값'
                    두 번을 거쳐야 했다. 고르면 그 거래처만 남는다. */}
-              <label className="order-2 flex w-40 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+              <label className="order-2 flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
                 거래처
                 <input
                   type="search" list="list-partner-names" value={listPartnerFilter}
                   onChange={event => setListPartnerFilter(event.target.value)}
-                  placeholder="전체 · 쳐서 찾기"
-                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none placeholder:font-medium placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  placeholder="전체"
+                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                 />
                 <datalist id="list-partner-names">
                   {[...new Set(activeViewOrders.map(order => order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '').filter(Boolean))]
@@ -1852,8 +1887,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <input
                   type="search" list="list-filter-values" value={listFilterValue}
                   onChange={event => setListFilterValue(event.target.value)}
-                  disabled={!listFilterField} placeholder="전체 · 쳐서 찾기"
-                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none placeholder:font-medium placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                  disabled={!listFilterField} placeholder="전체"
+                  className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-40 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
                 />
                 <datalist id="list-filter-values">{activeViewFilterValues.map(value => <option key={value} value={value} />)}</datalist>
               </label>
@@ -2082,8 +2117,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const processingWorkCount = activeOperationOrders.filter(order => order.status === OrderStatus.PROCESSING).length;
         const activeMobileWorkCategory = workCategories.includes(mobileWorkCategory) ? mobileWorkCategory : workCategories[0];
 
-        const orderedSectionItems = (category: string) => {
-          const categoryItems = [...visibleWorkItems.filter(workItem => workCategoryOf(workItem) === category)];
+        /**
+         * **번호는 자기 자리를 그대로 지닌다**(2026-09-11 사장님: "완료포함이 숨겨져도 자기 번호는
+         * 계속 들고 있는게 맞지 않나"). 맞다 — 완료된 줄을 숨긴다고 남은 줄이 1·2·3 으로 다시
+         * 매겨지면, 현장에서 "3번 하던 중"이라고 말해 둔 것이 다른 줄을 가리킨다.
+         * 그래서 **번호는 완료까지 포함한 목록에서 세고**, 숨기기는 보여 줄 때만 한다.
+         */
+        const sectionItemsAll = (category: string) => {
+          const categoryItems = [...validWorkItems.filter(workItem => workCategoryOf(workItem) === category)];
           const time = (value?: string) => value ? new Date(value).getTime() : Number.MAX_SAFE_INTEGER;
           if (workSort === 'dueDate') {
             categoryItems.sort((a, b) => {
@@ -2096,9 +2137,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
           }
           return clusterByGroup(categoryItems, workItem => workItem.key, 묶음찾기);
         };
+        //  화면에 낼 줄 — 번호는 위(전체)에서 매기고 여기서는 숨기기만 한다.
+        const orderedSectionItems = (category: string) =>
+          sectionItemsAll(category).filter(workItem => showCompletedWorkItems || !isWorkComplete(workItem));
 
         const renderItemRow = (wi: WorkItem, sectionItems: WorkItem[]) => {
-          const sectionIdx = sectionItems.findIndex(x => x.key === wi.key);
+          //  자리 번호는 **숨기기 전 목록**에서 센다 — 완료를 감춰도 번호가 안 흔들린다.
+          void sectionItems;
+          const sectionIdx = sectionItemsAll(workCategoryOf(wi)).findIndex(x => x.key === wi.key);
           const order = workOrderOf(wi);
           const lineIdx = itemIndexOf(wi, order);
           const completed = isWorkComplete(wi);
@@ -2145,7 +2191,34 @@ const OrdersList: React.FC<OrdersListProps> = ({
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
               className={`grid min-h-[64px] grid-cols-[1.5rem_1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
-              <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
+              {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님) — 배송순서·배송 캘린더와
+                   같은 모양이다. 직접 정렬일 때만 고를 수 있다(추천 정렬이면 눌러 봐야 덮인다).
+                   자리는 **그 묶음 안에서만** 옮긴다 — 기름 줄을 깨 칸으로 보내려면 그룹을 바꿔야 한다. */}
+              {workSort === null ? (
+                <select
+                  aria-label={`${wi.itemName} 작업 순서`}
+                  value={sectionIdx + 1}
+                  onPointerDown={event => event.stopPropagation()}
+                  onChange={event => {
+                    const 목표 = Number(event.target.value) - 1;
+                    const 칸 = sectionItemsAll(workCategoryOf(wi));
+                    const 지금 = 칸.findIndex(x => x.key === wi.key);
+                    if (지금 < 0 || 목표 < 0 || 목표 === 지금) return;
+                    const 새칸 = [...칸];
+                    const [옮길것] = 새칸.splice(지금, 1);
+                    새칸.splice(목표, 0, 옮길것);
+                    //  전체 목록에서 **이 묶음 자리만** 새 차례로 갈아 끼운다.
+                    let n = 0;
+                    setWorkItems(validWorkItems.map(x =>
+                      workCategoryOf(x) === workCategoryOf(wi) ? 새칸[n++] : x));
+                  }}
+                  className={`h-7 w-7 shrink-0 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-slate-50 text-center text-xs font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300 ${completed ? 'text-slate-400' : 'text-indigo-600'}`}
+                >
+                  {sectionItemsAll(workCategoryOf(wi)).map((_, n) => <option key={n} value={n + 1}>{n + 1}</option>)}
+                </select>
+              ) : (
+                <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
+              )}
               {/*  **다 한 것 체크** — 배송순서 줄(DeliveryDayList)과 같은 모양·같은 뜻이다.
                    2026-09-11 사장님: "여긴 체크 박스가 없어". 상태 딱지로 '완료'라고 보여주기만 하고
                    여기서 끄고 켤 수가 없어, 체크하려면 주문을 열고 들어가야 했다. */}
@@ -2169,18 +2242,34 @@ const OrdersList: React.FC<OrdersListProps> = ({
                      현장은 "어디 갈 것인지"부터 보므로 거래처가 맨 앞이다.
                      **단위는 품목에서 읽는다**(2026-09-09) — 박스 품목이면 '박스' 다.
                      라벨은 `대기`면 안 적는다 — 아직 안 한 것까지 적으면 한 줄이 딱지로 덮인다. */}
+                {/*  **수량은 품목명 바로 오른쪽, 같은 줄**(2026-09-11 사장님) — 얼마를 만들지가
+                     품목과 한눈에 붙어 읽힌다. 아래 줄은 라벨 딱지만 남으므로, 라벨이 `대기`면
+                     그 줄 자체가 안 그려져 한 줄로 끝난다. */}
                 <p className="flex min-w-0 items-center gap-1.5">
                   <span className={`shrink-0 text-[11px] font-black ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{wi.partnerName}</span>
                   <span className={`min-w-0 truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</span>
+                  <span className="shrink-0 text-[11px] font-black text-slate-500">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                 </p>
-                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-[11px] font-bold text-slate-500">
-                  <span>{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
-                  {(() => {
-                    const 라벨 = lineIdx >= 0 ? (order?.items?.[lineIdx]?.labelType ?? '대기') : '대기';
-                    if (라벨 === '대기') return null;
-                    return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${라벨 === '부착' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>라벨 {라벨}</span>;
-                  })()}
-                </p>
+                {/*  **라벨과 소비기한은 늘 보인다**(2026-09-11 사장님: "작업순서 행에 라벨 날인 부착이랑
+                     소비기한 뜨게 하라니까"). 라벨은 `대기`여도 적는다 — 아직 안 했다는 것도 알아야
+                     한다. 소비기한은 제조일에서 1년 뒤로 잡는다(주문카드와 같은 셈, `expiryFromMfgDate`).
+                     안 정했으면 **빈칸으로 두지 않고 '미설정'** 이라고 적는다 — 비어 있으면 채워 넣을
+                     생각을 못 한다. */}
+                {(() => {
+                  const 줄 = lineIdx >= 0 ? order?.items?.[lineIdx] : undefined;
+                  const 라벨 = 줄?.labelType ?? '대기';
+                  const 라벨색 = 라벨 === '부착' ? 'bg-emerald-100 text-emerald-700'
+                    : 라벨 === '날인' ? 'bg-amber-100 text-amber-700'
+                    : 'bg-slate-100 text-slate-500';
+                  return (
+                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${라벨색}`}>라벨 {라벨}</span>
+                      <span className={`min-w-0 truncate text-[10px] font-bold ${줄?.mfgDate ? 'text-slate-500' : 'text-rose-400'}`}>
+                        소비기한 {줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '미설정'}
+                      </span>
+                    </p>
+                  );
+                })()}
               </button>
               <div className="text-right">
                 <div className="mb-1 flex flex-wrap justify-end gap-1">
@@ -2227,7 +2316,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <h4 className={`text-xs font-black ${색.글자}`}>{category}</h4>
                 <span className={`text-[10px] font-bold ${색.셈}`}>{sectionItems.length}/{totalCount}</span>
               </div>
-              <div className="space-y-1.5">
+              {/*  **다섯 줄까지만 펴 두고 나머지는 스크롤**(2026-09-11 사장님: "작업순서는 상위
+                   다섯개 이후는 스크롤로 바꿔"). 한 칸에 열 줄씩 쌓이면 다른 칸이 화면 밖으로 밀린다.
+                   한 줄이 64px(`min-h-[64px]`)에 사이 간격 6px 이라 다섯 줄 = 344px.
+                   다섯 줄 이하면 높이를 안 잡는다 — 짧은 칸에 빈 자리가 남지 않게. */}
+              <div
+                className="space-y-1.5 overflow-y-auto"
+                style={sectionItems.length > 5 ? { maxHeight: 64 * 5 + 6 * 4, scrollbarWidth: 'thin' } : undefined}
+              >
                 {sectionItems.length > 0
                   ? sectionItems.map(workItem => renderItemRow(workItem, sectionItems))
                   : <p className="py-5 text-center text-[11px] font-bold text-slate-400">표시할 작업이 없습니다</p>}
@@ -2403,10 +2499,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             return product ? (product.stock ?? 0) - item.quantity : Number.POSITIVE_INFINITY;
           }));
           //  거래처 거르개는 검색필드와 **따로** 먹는다 — 둘을 같이 걸 수 있어야 쓸모가 있다.
-          const searchConditionMatchedListOrders = searchMatchedListOrders
-            .filter(matchesListFilter)
-            .filter(order => !listPartnerFilter
-              || (order.partnerName || partners.find(p => p.id === order.partnerId)?.name || '') === listPartnerFilter);
+          const searchConditionMatchedListOrders = searchMatchedListOrders.filter(matchesListFilter).filter(거래처걸림);
           const listOrders = 정렬(embeddedListOnly || listStatusTab === 'all'
             ? searchConditionMatchedListOrders
             : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab));
@@ -3236,7 +3329,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             거래처 검색은 `searchTerm`(전체 검색)이 이미 `filteredOrders` 에서 걸러 주고,
             기간은 여기서 `activeDateFrom~activeDateTo` 로 본다.
             **기간의 기준은 완료일**이다 — 이력에서 찾는 건 "언제 나갔나"지 "언제 주문했나"가 아니다. */
-        const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).sort(byDeliveryThenId);
+        const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).filter(거래처걸림).sort(byDeliveryThenId);
         const 완료일 = (o: Order) => dateOfLocal(o.deliveredAt || o.deliveryDate || o.createdAt);
         const filteredHistoryBase = allColOrders.filter(o => {
           const dateStr = 완료일(o);
@@ -3377,8 +3470,17 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const editorOrder = orders.find(order => order.id === listOrderEditor.orderId);
         if (!editorOrder) return null;
         const partnerName = editorOrder.partnerName || partners.find(partner => partner.id === editorOrder.partnerId)?.name || '이름 없음';
+        /*  **그 거래처에 연결된 품목만 고르게 한다**(2026-09-11 사장님: "품목명 눌러서 나오는
+            드롭다운은 거래처에 연결된 품목만 나오게 바꿔"). 전 품목을 다 띄우면 목록이 500줄이 넘고,
+            그 거래처가 안 사는 것까지 섞여 엉뚱한 품목이 주문에 들어간다.
+            판정은 `isLinkedToPartner` 한 곳이 한다(주문 추가 화면과 같은 근거).
+
+            **지금 이 주문에 들어 있는 품목은 연결이 없어도 남긴다** — 안 그러면 그 줄의
+            드롭다운이 빈칸으로 보이고, 수량만 고치려다 품목이 바뀌어 버린다. */
+        const 이미담긴 = new Set(listOrderEditor.items.map(orderItem => orderItem.itemId));
         const orderableItems = items
           .filter(item => !item.archived && !['raw', 'submaterial', 'shipping', 'box', 'tape', 'container', 'cap', 'label'].includes(item.type))
+          .filter(item => 이미담긴.has(item.id) || isLinkedToPartner(partnerItems, editorOrder.partnerId ?? '', item.id))
           .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
         const updateDraftItem = (index: number, patch: Partial<OrderItem>) => {
           setListOrderEditor(current => current && current.orderId === editorOrder.id
