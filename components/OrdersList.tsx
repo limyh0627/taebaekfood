@@ -3576,22 +3576,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        미정이면 그냥 -로 뜨게 하고"). 금일 배송순서가 보는 것과 **같은 문서**다 —
                        여기서 정하면 거기 줄도 같이 옮겨 간다. 누르는 즉시 저장된다(품목과 달리
                        '변경 저장'을 안 기다린다) — 배송 화면이 곧바로 이 값을 쓰기 때문이다. */}
-                  <div className="shrink-0">
+                  <label className="shrink-0">
                     <span className="block text-[11px] font-bold leading-4 text-slate-600">배송 시간</span>
-                    <div className="mt-1 flex h-10 items-center overflow-hidden rounded-lg border border-slate-200 bg-white" role="group" aria-label="배송 시간">
-                      {([null, '오전', '오후'] as const).map(값 => {
-                        const 지금 = deliveryTimeSlots[editorOrder.id] ?? null;
-                        return (
-                          <button
-                            key={값 ?? '미정'} type="button"
-                            onClick={() => saveDeliveryTimeSlot(editorOrder.id, 값)}
-                            aria-pressed={지금 === 값}
-                            className={`h-full px-2.5 text-[11px] transition-colors ${값 === '오후' ? '' : 'border-r border-slate-200'} ${지금 === 값 ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`}
-                          >{값 ?? '-'}</button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                    <select
+                      value={deliveryTimeSlots[editorOrder.id] ?? ''}
+                      onChange={event => saveDeliveryTimeSlot(editorOrder.id, (event.target.value || null) as DeliveryTimeSlot | null)}
+                      aria-label="배송 시간"
+                      className="mt-1 h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                    >
+                      <option value="">-</option>
+                      <option value="오전">오전</option>
+                      <option value="오후">오후</option>
+                    </select>
+                  </label>
                 </div>
               </section>
 

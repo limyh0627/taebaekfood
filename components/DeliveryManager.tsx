@@ -418,9 +418,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         !deliveryOrdering.includes(o.id)
       )
       .map(o => o.id);
+    /*  **오늘 칸에도 오늘 것만 선다**(2026-09-12 사장님: "왜 중복으로 뜨지").
+     *
+     *  저장해 둔 배송 차례(`deliveryOrdering`)는 **날짜를 안 들고 있다.** 그래서 어제 세워 둔
+     *  줄이 배송완료가 되기 전까지 그대로 남아, 오늘 칸에 어제 것이 또 떴다 — 어제 칸과
+     *  오늘 칸에 같은 거래처가 나란히 보인 까닭이다(9/11·9/12 에 같은 8건).
+     *
+     *  금일 배송순서 목록은 이미 같은 이유로 고쳐 뒀다(`deliverySequenceOrders` —
+     *  "목록이 오늘 출고 예정인것만 보여야 하는데?"). 그때 **캘린더 오늘 칸은 따로 세는 줄
+     *  몰라 안 고쳤다.** 두 곳이 같은 것을 세야 건수도 서로 맞는다. */
     const todayValidDelivery = [
       ...deliveryOrdering.filter(id =>
-        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.partnerName !== '생산기록')
+        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.partnerName !== '생산기록'
+          && o.deliveryDate?.split('T')[0] === todayStr)
       ),
       ...todayCalendarExtra,
     ];
