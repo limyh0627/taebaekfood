@@ -1868,11 +1868,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <span className="shrink-0 text-xs text-slate-400">~</span>
                   <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
                   <span className="flex h-9 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
-                    {/*  **폰에서는 '오늘·주·달'** — 날짜 칸 둘이 브라우저가 정한 폭(약 140px)을
-                         안 놓아서, 글자를 줄여야 한 행에 들어간다. 넓은 화면은 원래 글자 그대로. */}
+                    {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
+                         써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
+                         날짜 칸을 86px 까지 좁히고 나니 제 이름이 다 들어간다. */}
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickToday); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickToday && activeDateTo === sharedQuickToday)}`}>오늘</button>
-                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickWeekStart); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickWeekStart && activeDateTo === sharedQuickToday)}`} aria-label="이번 주"><span className="sm:hidden">주</span><span className="hidden sm:inline">이번 주</span></button>
-                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달"><span className="sm:hidden">달</span><span className="hidden sm:inline">이번 달</span></button>
+                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickWeekStart); setActiveDateTo(sharedQuickToday); }} className={`border-r border-slate-200 ${sharedQuickRangeClass(activeDateFrom === sharedQuickWeekStart && activeDateTo === sharedQuickToday)}`} aria-label="이번 주">이번 주</button>
+                    <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달">이번 달</button>
                   </span>
                 </span>
               </label>
@@ -1948,7 +1949,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const sharedQuickWeekStart = seoulWeekStart();
   const sharedQuickMonthStart = `${sharedQuickToday.slice(0, 7)}-01`;
   //  폰에서는 여백·글씨를 줄여 '오늘·이번 주·이번 달'이 날짜칸과 한 행에 들어가게 한다.
-  const sharedQuickRangeClass = (active: boolean) => `h-full whitespace-nowrap px-1 text-[9px] sm:px-3 sm:text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
+  const sharedQuickRangeClass = (active: boolean) => `h-full whitespace-nowrap px-1.5 text-[9px] sm:px-3 sm:text-[11px] ${active ? 'bg-slate-900 font-black text-white' : 'font-bold text-slate-600 hover:bg-slate-50'}`;
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
@@ -2209,7 +2210,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  그래서 cursor-grab은 카드 전체가 아니라 손잡이에만 준다 — 전엔 카드 전체에 걸려 있어
                  아무 데나 잡아도 되는 것처럼 보였지만 실제로는 안 끌렸다. */
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
-              className={`grid min-h-[48px] grid-cols-[1.5rem_3.5rem_minmax(0,1fr)_auto_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
+              className={`flex min-h-[48px] flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
               {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님) — 배송순서·배송 캘린더와
                    같은 모양이다. 직접 정렬일 때만 고를 수 있다(추천 정렬이면 눌러 봐야 덮인다).
@@ -2237,24 +2238,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   {sectionItemsAll(workCategoryOf(wi)).map((_, n) => <option key={n} value={n + 1}>{n + 1}</option>)}
                 </select>
               ) : (
-                <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
+                <span className={`w-7 shrink-0 text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
               )}
-              {/*  **다 한 것 표시는 리스트 것을 그대로 쓴다**(2026-09-12 사장님: "체크박스 대신에
-                   리스트에서 작업완료 여부 표시하는 그걸로 갖다 쓰자").
-                   같은 일을 두 모양으로 그리지 않는다 — 리스트에서 완료/미완료를 읽던 눈이
-                   여기서도 그대로 읽힌다. 누르면 뒤집히는 것도 같다. */}
-              <div className="min-w-0 shrink-0" onPointerDown={e => e.stopPropagation()}>
-                <CompletionStatusControl
-                  completed={completed}
-                  disabled={lineIdx < 0 || !onToggleItemChecked}
-                  ariaLabel={`${wi.itemName} 작업 완료 전환`}
-                  title={completed ? '작업 완료 취소' : '작업 완료'}
-                  onChange={() => { if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
-                />
-              </div>
               <button
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
-                className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
+                className="min-w-0 flex-1 basis-32 text-left transition-opacity hover:opacity-70"
               >
                 {/*  **거래처 → 품목 → 수량 → 라벨** 차례로 읽는다(2026-09-11 사장님:
                      "작업순서 한 행이: 거래처명 품목명 수량 (라벨 날인,부착 상태)").
@@ -2287,7 +2275,25 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 };
                 const 라벨 = 줄?.labelType ?? '대기';
                 return (
-                  <>
+                  /*  **좁으면 두 줄로 간다**(2026-09-12 사장님: "ㅇㅈㄹ났는데 차라리 두줄로 가던가").
+                      폰에서 한 줄에 다 세웠더니 거래처·품목이 한 글자로 눌렸다. 라벨·소비기한은
+                      폭이 정해진 칸이라 줄어들 수가 없어, 좁을 땐 **통째로 아랫줄**로 내린다
+                      (`order-last w-full`). 넓은 화면은 예전처럼 한 줄이다. */
+                  <div className="order-last flex w-full items-center justify-end gap-2 sm:order-none sm:ml-auto sm:w-auto">
+                    {/*  **다 한 것 표시는 리스트 것을 그대로 쓴다**(2026-09-12 사장님: "체크박스 대신에
+                         리스트에서 작업완료 여부 표시하는 그걸로 갖다 쓰자"). 같은 일을 두 모양으로
+                         그리지 않는다 — 리스트에서 완료/미완료를 읽던 눈이 여기서도 그대로 읽힌다.
+                         라벨·소비기한과 **한 덩어리**다(사장님: "미완료도 한행 내려버려") —
+                         좁으면 셋이 같이 아랫줄로 가고, 넓으면 셋이 같이 오른쪽에 선다. */}
+                    <div className="shrink-0" onPointerDown={e => e.stopPropagation()}>
+                      <CompletionStatusControl
+                        completed={completed}
+                        disabled={lineIdx < 0 || !onToggleItemChecked}
+                        ariaLabel={`${wi.itemName} 작업 완료 전환`}
+                        title={completed ? '작업 완료 취소' : '작업 완료'}
+                        onChange={() => { if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
+                      />
+                    </div>
                     <div className="relative w-[58px] shrink-0" onPointerDown={e => e.stopPropagation()}>
                       <select
                         value={라벨} disabled={못고침}
@@ -2314,7 +2320,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <span className="min-w-0 truncate tabular-nums">{줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '-'}</span>
                       </span>
                     </div>
-                  </>
+                  </div>
                 );
               })()}
               {/*  **날짜와 상태 딱지는 뺐다**(2026-09-12 사장님: "금일작업순서에 날짜랑 대기중
@@ -2341,31 +2347,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
           );
         };
 
-        /*  **묶음마다 색을 달리한다**(2026-09-11 사장님: "작업순서 기름 깨 미분류는 색 좀 다르게").
-            셋이 다 회색이라 어디가 어디인지 제목을 읽어야 알았다. 색은 하는 일에 맞춘다 —
-            기름은 짜는 것(호박), 깨는 볶고 빻는 것(초록), 미분류는 아직 안 정한 것(회색). */
-        const 묶음색 = (category: string) => category === '기름'
-          ? { 테두리: 'border-amber-200', 바탕: 'bg-amber-50/70', 글자: 'text-amber-800', 셈: 'text-amber-500' }
-          : category === '깨'
-            ? { 테두리: 'border-emerald-200', 바탕: 'bg-emerald-50/70', 글자: 'text-emerald-800', 셈: 'text-emerald-500' }
-            : { 테두리: 'border-slate-200', 바탕: 'bg-slate-50/70', 글자: 'text-slate-800', 셈: 'text-slate-400' };
         const renderWorkCategory = (category: string) => {
           const sectionItems = orderedSectionItems(category);
           const totalCount = validWorkItems.filter(workItem => workCategoryOf(workItem) === category).length;
-          const 색 = 묶음색(category);
+          /*  **껍데기와 갈래 이름을 뺐다**(2026-09-12 사장님: "작업순서 그룹 배경 테두리 바탕색
+              없애고 굳이 기름 글자도 없어도 될거 같은디").
+              바로 위 탭이 이미 `기름 14 · 깨 7 · 미분류 1` 을 보여 준다 — 같은 말을 두 번 적을
+              이유가 없고, 테두리·바탕이 빠진 만큼 줄이 좌우로 넓어진다.
+              몇 개 중 몇 개를 보고 있는지(`12/14`)는 남긴다 — 탭의 수는 전체라 '완료 포함'을
+              껐을 때 몇 줄이 숨었는지는 여기서만 알 수 있다. */
           return (
-            <section key={category} className={`min-w-0 rounded-2xl border p-2.5 ${색.테두리} ${색.바탕}`} aria-label={`${category} 작업순서`}>
-              <div className="mb-2 flex items-center justify-between px-1">
-                <h4 className={`text-xs font-black ${색.글자}`}>{category}</h4>
-                <span className={`text-[10px] font-bold ${색.셈}`}>{sectionItems.length}/{totalCount}</span>
+            <section key={category} className="min-w-0" aria-label={`${category} 작업순서`}>
+              <div className="mb-1.5 flex items-center justify-end px-1">
+                <span className="text-[10px] font-bold text-slate-400">{sectionItems.length}/{totalCount}</span>
               </div>
               {/*  **다섯 줄까지만 펴 두고 나머지는 스크롤**(2026-09-11 사장님: "작업순서는 상위
                    다섯개 이후는 스크롤로 바꿔"). 한 칸에 열 줄씩 쌓이면 다른 칸이 화면 밖으로 밀린다.
-                   한 줄이 48px(`min-h-[48px]`)에 사이 간격 6px 이라 다섯 줄 = 264px.
+                   넓은 화면은 한 줄이 48px 이라 다섯 줄 = 264px, 폰은 두 줄이라 404px 로 잡는다.
                    다섯 줄 이하면 높이를 안 잡는다 — 짧은 칸에 빈 자리가 남지 않게. */}
               <div
-                className="space-y-1.5 overflow-y-auto"
-                style={sectionItems.length > 5 ? { maxHeight: 48 * 5 + 6 * 4, scrollbarWidth: 'thin' } : undefined}
+                className={`space-y-1.5 overflow-y-auto ${sectionItems.length > 5 ? 'max-h-[404px] sm:max-h-[264px]' : ''}`}
+                style={sectionItems.length > 5 ? { scrollbarWidth: 'thin' } : undefined}
               >
                 {sectionItems.length > 0
                   ? sectionItems.map(workItem => renderItemRow(workItem, sectionItems))
@@ -3120,19 +3122,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       setShowWorkOrderPicker(true);
                     }}
                     className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 transition-colors hover:bg-violet-100"
-                  ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
-                  <p className="text-xs font-bold text-slate-500">
-                    대기중 <strong className="font-black text-rose-600">{pendingWorkCount}건</strong>
-                    <span className="mx-1.5 text-slate-300">·</span>
-                    작업중 <strong className="font-black text-sky-600">{processingWorkCount}건</strong>
-                  </p>
-                  <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs font-medium text-slate-600">
-                    <input type="checkbox" checked={showCompletedWorkItems} onChange={event => setShowCompletedWorkItems(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500" />
-                    완료 포함
-                  </label>
+                  ><Plus size={12} aria-hidden="true" />주문보기</button>
+                  {/*  **건수와 '완료 포함' 은 늘 한 줄이다**(2026-09-12 사장님: "대기중 오른쪽에
+                       ㅁ 완료 포함이 한줄로 오게"). 따로 놔두면 폭이 좁아질 때 체크만 아랫줄로
+                       떨어져 무엇에 걸린 체크인지 안 읽힌다. 묶어 두면 둘이 같이 내려간다. */}
+                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                    <p className="text-xs font-bold text-slate-500">
+                      대기중 <strong className="font-black text-rose-600">{pendingWorkCount}건</strong>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      작업중 <strong className="font-black text-sky-600">{processingWorkCount}건</strong>
+                    </p>
+                    <label className="flex min-h-11 cursor-pointer items-center gap-1.5 px-1 text-xs font-medium text-slate-600">
+                      <input type="checkbox" checked={showCompletedWorkItems} onChange={event => setShowCompletedWorkItems(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500" />
+                      완료 포함
+                    </label>
+                  </div>
                 </div>
               </div>
-              <div className={`flex flex-col gap-3 p-3 ${mobileCollapsed.has('work-order') ? 'hidden' : ''}`}>
+              <div className={`flex flex-col gap-3 p-2 ${mobileCollapsed.has('work-order') ? 'hidden' : ''}`}>
                 {validWorkItems.length === 0 ? (
                   <div className="flex items-center justify-center py-6">
                     <p className="text-xs font-bold text-slate-400">현재 조회 조건에 해당하는 작업이 없습니다.</p>

@@ -97,8 +97,10 @@ input[type="month"] { min-width: 7rem; }
 @media (max-width: 639px) {
   /*  위의 `min-width: 8.75rem` 를 이겨야 하므로 **타입까지 적어** 자세히 짚는다.
       그 규칙은 '2026. 09. 04.' 가 안 잘리게 하려고 둔 것이라, 여기서는 **글씨를 같이 줄여**
-      잘리지 않는 선을 지킨다 — 10px 글씨면 104px 에 다 들어간다. */
-  input[type="date"].date-narrow { width: 104px; min-width: 0; }
+      잘리지 않는 선을 지킨다 — 10px 글씨면 96px 에 '2026. 09. 01.' 이 다 들어간다(폰은 이 표기라 하이픈보다 넓다).
+      더 좁힌 까닭(2026-09-12 사장님: "주문일도 날짜 가로 크기 좀 줄이고 오른쪽 공간 좀 더
+      써서 오늘 이번주 이번달 안되나") — 남는 폭을 빠른 단추 글자에 준다. */
+  input[type="date"].date-narrow { width: 96px; min-width: 0; }
   input[type="date"].date-narrow::-webkit-datetime-edit { font-size: 10px; padding: 0; }
-  input[type="date"].date-narrow::-webkit-calendar-picker-indicator { padding: 0; margin-left: 1px; }
+  input[type="date"].date-narrow::-webkit-calendar-picker-indicator { padding: 0; margin-left: 0; }
 }
