@@ -656,6 +656,14 @@ export interface ChatRoom {
   isGroup: boolean;
   lastReadBy?: Record<string, string>; // userId → ISO timestamp
   /**
+   * **상단 고정 — 사람마다 따로다**(2026-09-12 사장님). userId → 고정한 때(ISO).
+   *
+   * 방장이 정하는 게 아니다. 내가 자주 보는 방을 내 목록 위에 붙여 두는 것이라
+   * `nameBy` 와 같은 갈래다 — 남의 목록은 안 움직인다.
+   * 때를 적어 두는 건 나중에 '먼저 고정한 방부터' 같은 순서를 쓸 수 있게 하려는 것이다.
+   */
+  pinnedBy?: Record<string, string>;
+  /**
    * **방 위에 붙여 둔 공지** — 카톡과 같다(2026-09-09 사장님). 방마다 하나뿐이다.
    *
    * 말을 지워도 공지는 남는다 — 그래서 그때 글을 통째로 담는다(`replyTo` 와 같은 규칙).

@@ -183,11 +183,22 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   }, [activeRoomId]);
 
 
+  /** 내가 위에 붙여 둔 방인가 — 사람마다 따로다(`pinnedBy`). */
+  const 고정됨 = (room: ChatRoom) => Boolean(room.pinnedBy?.[currentUser.id]);
+
   // Filter rooms where current user is a participant
   const myRooms = useMemo(() => {
+    //  **고정한 방이 늘 위**(2026-09-12 사장님). 고정끼리·나머지끼리는 최근 순 그대로다 —
+    //  고정했다고 순서가 얼어붙으면 새 말이 온 방을 못 찾는다.
+    const 고정때 = (room: ChatRoom) => room.pinnedBy?.[currentUser.id] ?? '';
     return chatRooms
       .filter(room => room.participantIds.includes(currentUser.id))
-      .sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime());
+      .sort((a, b) => {
+        const 가 = 고정때(a);
+        const 나 = 고정때(b);
+        if (Boolean(가) !== Boolean(나)) return 가 ? -1 : 1;
+        return new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime();
+      });
   }, [chatRooms, currentUser.id]);
 
   const activeRoom = useMemo(() => {
@@ -413,6 +424,35 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [알림글, set알림글] = useState('');
 
+  /*  **대화방도 꾹 누르면 창이 뜬다**(2026-09-12 사장님: "데스크톱에선 우클릭 핸드폰에선 꾹 눌러서").
+   *  말풍선과 **같은 방식**이다 — 폰은 꾹, PC 는 우클릭. 마우스로 꾹 누르는 건 안 잡는다.
+   *
+   *  방 줄은 `<button>` 이라 손을 떼면 click 이 따라온다. 창을 띄운 뒤 그 한 번을 흘려야
+   *  **꾹 눌렀는데 방이 열려 버리는** 일이 안 난다. */
+  const 방길게 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 방메뉴로떴다 = useRef(false);
+  const [actionRoom, setActionRoom] = useState<ChatRoom | null>(null);
+
+  const 방길게취소 = () => { if (방길게.current) { clearTimeout(방길게.current); 방길게.current = null; } };
+  const 방길게시작 = (room: ChatRoom) => {
+    방길게취소();
+    방길게.current = setTimeout(() => {
+      방길게.current = null;
+      방메뉴로떴다.current = true;
+      setActionRoom(room);
+      navigator.vibrate?.(15);
+    }, 450);
+  };
+
+  /** 위에 붙이거나 뗀다. 내 칸만 건드린다 — 남의 목록은 안 움직인다. */
+  const 고정토글 = (room: ChatRoom) => {
+    const 다음 = { ...(room.pinnedBy ?? {}) };
+    if (다음[currentUser.id]) delete 다음[currentUser.id];
+    else 다음[currentUser.id] = new Date().toISOString();
+    onUpdateRoom(room.id, { pinnedBy: 다음 });
+    setActionRoom(null);
+  };
+
   const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
   const startLongPress = (msg: ChatMessage) => {
     cancelLongPress();
@@ -596,7 +636,17 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 return (
                 <button
                   key={room.id}
-                  onClick={() => { setActiveRoomId(room.id); markRoomAsRead(room.id); }}
+                  onClick={() => {
+                    //  꾹 눌러 창을 띄운 직후의 click 은 흘린다 — 안 그러면 방이 같이 열린다
+                    if (방메뉴로떴다.current) { 방메뉴로떴다.current = false; return; }
+                    setActiveRoomId(room.id); markRoomAsRead(room.id);
+                  }}
+                  onPointerDown={(e) => { if (e.pointerType !== 'mouse') 방길게시작(room); }}
+                  onPointerUp={방길게취소}
+                  onPointerLeave={방길게취소}
+                  onPointerCancel={방길게취소}
+                  onContextMenu={(e) => { e.preventDefault(); 방길게취소(); setActionRoom(room); }}
+                  title="꾹 누르기 (PC는 우클릭) — 상단 고정"
                   className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all ${
                     activeRoomId === room.id
                       ? 'bg-white shadow-md border border-slate-100'
@@ -613,7 +663,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   </div>
                   <div className="flex-1 text-left overflow-hidden">
                     <div className="flex items-center justify-between mb-1">
-                      <p className={`text-sm truncate ${isUnread && activeRoomId !== room.id ? 'font-black text-slate-900' : 'font-black text-slate-800'}`}>{getRoomName(room)}</p>
+                      <p className={`flex items-center gap-1 text-sm truncate ${isUnread && activeRoomId !== room.id ? 'font-black text-slate-900' : 'font-black text-slate-800'}`}>
+                        {/*  왜 위에 있는지 보여야 한다 — 안 그러면 순서가 뒤죽박죽인 줄 안다 */}
+                        {고정됨(room) && <Pin size={11} className="shrink-0 text-indigo-500 fill-indigo-500" aria-label="상단 고정" />}
+                        <span className="truncate">{getRoomName(room)}</span>
+                      </p>
                       <span className="text-[9px] font-bold text-slate-400 shrink-0 ml-1">
                         {room.lastUpdatedAt ? new Date(room.lastUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
@@ -1237,6 +1291,27 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               </button>
             ))}
             <button onClick={() => setActionMsg(null)}
+              className="w-full px-5 py-3.5 text-sm font-black text-slate-400 bg-slate-50">닫기</button>
+          </div>
+        </div>
+      )}
+
+      {/*  **대화방 꾹 누르기 창**(2026-09-12 사장님). 말풍선 창과 같은 모양이다. */}
+      {actionRoom && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40"
+          onClick={() => setActionRoom(null)}>
+          <div className="w-full sm:w-80 bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-slate-100">
+              <p className="text-[10px] font-black text-slate-400">대화방</p>
+              <p className="text-xs font-bold text-slate-600 line-clamp-1">{getRoomName(actionRoom)}</p>
+            </div>
+            <button onClick={() => 고정토글(actionRoom)}
+              className="w-full flex items-center gap-2 px-5 py-3.5 text-left text-sm font-black text-slate-700 hover:bg-slate-50 transition-colors">
+              <Pin size={15} className={고정됨(actionRoom) ? 'text-slate-400' : 'text-indigo-500'} />
+              {고정됨(actionRoom) ? '상단 고정 해제' : '상단 고정'}
+            </button>
+            <button onClick={() => setActionRoom(null)}
               className="w-full px-5 py-3.5 text-sm font-black text-slate-400 bg-slate-50">닫기</button>
           </div>
         </div>
