@@ -9,7 +9,7 @@ import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf, unpackQty } from '../../shared/orderUnits';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 
@@ -74,6 +74,42 @@ export const perUnitOilKg = (bomQuantity: number): number => bomQuantity;
 /** 처리 중인 주문 id — 같은 주문의 상태 변경이 겹쳐 들어오는 것을 막는다(중복 차감 방지).
  *  엔진은 렌더마다 새로 만들어지므로 모듈 스코프에 둬야 인스턴스 간에도 공유된다. */
 const inFlightOrders = new Set<string>();
+
+/**
+ * **임가공 완제품 한 줄이 원료수불부에 남길 kg** — 원료별.
+ *
+ * 임가공은 재고도 로트도 안 건드린다(원료는 가공입고 때 이미 나갔고 완제품은 포장돼 돌아온다).
+ * 그래도 서류는 흐름을 봐야 하니 쓴 만큼을 kg 으로 남긴다.
+ *
+ * **박스면 낱개까지 펴고 센다.**
+ *   2026-09-11 사장님: "9월 9일 대왕 볶음참깨 10개입 박스 주문인데 깨는 1kg 밖에 차감이 안 됐네."
+ *   맞다 — `units` 는 **박스 수**(`stockUnits`)인데 `toKg` 는 규격의 **앞부분만** 읽는다
+ *   (`1kg * 10` → 1kg). 그 둘을 그냥 곱하면 한 박스가 한 낱개가 된다. **열 배가 모자랐다.**
+ *
+ *   임가공이 아닌 박스는 `accrueBom` 이 BOM 을 타고 낱개까지 내려가서 안 틀렸다.
+ *   이 가지만 BOM 을 안 밟고 규격 글자로 세느라 혼자 어긋나 있었다.
+ *
+ *   펴는 셈은 **`unpackQty`** 가 이미 갖고 있다(인수인계 "같은 일에는 같은 함수를 쓴다").
+ *   개입수의 임자는 그 안의 **BOM**(`unitsPerBoxOf`)이지 규격 글자가 아니다.
+ *
+ * **따로 꺼내 둔 이유** — 전에는 이 셈이 `produceOrder` 한복판에 박혀 있어서 시험이
+ * 닿질 않았다. 그래서 `oemCycle.test.ts` ③번은 같은 셈을 **베껴 적어** 놓고 통과하고 있었고,
+ * 규격이 `20kg`(개입수 없음)인 가짜 품목만 써서 진짜 데이터(`1kg * 10`)와 어긋난 줄을
+ * 아무도 못 봤다. 꺼내 놨으니 이제 진짜 코드를 지난다.
+ */
+export function oemLedgerKg(
+  product: Pick<Item, 'id' | 'unpackTo' | 'spec'>,
+  units: number,
+  formula: readonly { raw: string; ratio: number }[],
+): Record<string, number> {
+  const 낱개수 = unpackQty(units, product, isBoxStockItem(product));
+  const out: Record<string, number> = {};
+  for (const f of formula) {
+    const kg = toKg(product.spec || '', f.raw, 낱개수) * f.ratio;
+    if (kg > 0) out[f.raw] = Math.round(((out[f.raw] ?? 0) + kg) * 1000) / 1000;
+  }
+  return out;
+}
 
 /** 구성품에 완제품이 있는가 — 박스·세트·재포장. 그 완제품이 자기 원료를 지니므로
  *  이런 품목에 품목 원료식을 또 적용하면 원료가 두 번 빠진다. */
@@ -282,24 +318,53 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
    * 예전엔 여기서 `mutateRawMaterialLots` 로 로트를 먼저 깎고 `setDoc` 으로 원장을 따로 썼다 —
    * 뒤가 실패하면 조용히 갈렸다(원장 없이 46건). 이제 원료별 한 트랜잭션이라 그 갈림이 안 난다.
    *
-   * **임가공(OEM) 원료는 여기서 아무것도 안 쓴다.** 서류 흐름은 판매 자료를 후처리해 만든다
-   * (설계 §11·§12) — `rm-auto-…` 로 재고 없는 원장 줄을 만드는 것을 제거했다.
+   * **임가공(OEM) 원료는 로트를 안 깎고 원장에만 적는다.**
    *
-   * `ledgerOnly` 는 되돌리기 스냅샷을 위해 두 번째 인자로 계속 받되, 여기서는 소비하지 않는다.
+   * 2026-09-11 사장님: "들어온만큼 입고 잡히고 나간만큼 차감되면 된다니까 애초에 볶음참깨
+   * 완제품 애들 로트를 따로 넣어뒀잖아 볶음참깨 안에."
+   *
+   * 맞다 — 임가공 완제품(`볶음참깨/1kg` 박스)은 **자기 로트에 kg 을 지고 있다**:
+   *   `lot-p-1785907900413-…`  `qtyIn 41박스 · kgIn 410kg · unitKg 10`
+   * 그 로트는 판매 때 `deductProductLotsForOrder` 가 박스 수로 깎고, kg 도 같이 준다.
+   * 그러니 **원료 홀더(`raw-볶음참깨`) 로트를 또 깎으면 두 번 빼는 것**이고,
+   * 반대로 원장에 안 적으면 나간 kg 이 수불부에서 사라진다. 로트는 완제품 쪽, 원장은 여기.
+   *
+   * 한때 이 줄을 통째로 뺐었다(`04b34d0`, "서류는 판매에서 후처리로 만든다"). 그러면
+   * 원료수불부 화면에서 볶음참깨가 통째로 안 보인다 — 사장님이 보시는 곳이 거기다. 되살린다.
    */
   const deductRawLotsForOrder = async (
     order: Order, rawUsage: Record<string, number>, attempt: number,
-    _ledgerOnly: Record<string, number> = {},
+    ledgerOnly: Record<string, number> = {},
   ) => {
-    void _ledgerOnly;
     const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
     const rawNames = Object.keys(rawUsage).filter(r => Math.round(rawUsage[r] * 1000) / 1000 > 0);
-    if (rawNames.length === 0) return consumedLots;
+    const ledgerOnlyNames = Object.keys(ledgerOnly).filter(r => Math.round(ledgerOnly[r] * 1000) / 1000 > 0);
+    if (rawNames.length === 0 && ledgerOnlyNames.length === 0) return consumedLots;
     const dateStr = dateOfLocal(order.deliveredAt) || today();
     const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
     const effectiveAt = `${dateStr}T12:00:00+09:00`;
 
     const orderCompany = companyOf(order);
+
+    /*
+     * **임가공 몫은 아직 원장에 못 쓴다 — 쓸 명령이 없다.**
+     *
+     * 여기 필요한 것은 "로트는 그대로 두고 수불부에만 kg 을 남기는" 쓰기다. 로트는 완제품
+     * 쪽(`deductProductLotsForOrder`)에서 이미 박스 수와 kg 이 같이 빠졌으니 원료 홀더
+     * 로트를 또 깎으면 두 번 빼는 것이 된다.
+     *
+     * 그런데 원장은 이제 공용 서비스만 쓸 수 있고(`rawWriteGuard.test`), 그 명령은
+     * `receive·consume·stocktake·deplete-lot·reverse·opening` 뿐이라 **전부 로트를 건드린다.**
+     * 명령을 하나 늘리는 것은 원자화 코어(설계 §6)를 손대는 일이라 여기서 몰래 할 일이 아니다.
+     * 가드를 우회해 `setDoc` 을 직접 부르는 길로 되돌아가지 않는다 — 그 길을 없애려고 만든 가드다.
+     *
+     * **그래서 값만 바르게 세어 두고 쓰기는 Codex 설계에 넘긴다**(할일.md).
+     * `ledgerOnly` 의 값 자체는 `oemLedgerKg` 가 박스 개입수까지 반영해 맞게 준다 —
+     * 명령이 생기면 그대로 흘려보내면 된다.
+     */
+    void ledgerOnlyNames;
+    if (rawNames.length === 0) return consumedLots;
+
     const jobId = `production:${order.id}:a${attempt}`;
     const commands: JobCommandInput[] = [];
     const holderByRaw = new Map<string, Item>();
@@ -497,10 +562,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
-        for (const f of buildFormula(docName(product))) {
-          const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
-          if (usedKg > 0) rawUsageLedgerOnly[f.raw] = (rawUsageLedgerOnly[f.raw] ?? 0) + usedKg;
-        }
+        //  셈은 oemLedgerKg 하나다 — 박스면 그 안에서 낱개까지 편다(위 주석 참고).
+        for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)))))
+          rawUsageLedgerOnly[raw] = (rawUsageLedgerOnly[raw] ?? 0) + kg;
         continue;
       }
 
