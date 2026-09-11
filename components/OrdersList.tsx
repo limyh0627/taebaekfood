@@ -2209,7 +2209,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  그래서 cursor-grab은 카드 전체가 아니라 손잡이에만 준다 — 전엔 카드 전체에 걸려 있어
                  아무 데나 잡아도 되는 것처럼 보였지만 실제로는 안 끌렸다. */
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
-              className={`grid min-h-[64px] grid-cols-[1.5rem_1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
+              className={`grid min-h-[48px] grid-cols-[1.5rem_3.5rem_minmax(0,1fr)_auto_auto_auto_auto_auto] items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? 'border-l-4 border-l-violet-400 ' : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
               {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님) — 배송순서·배송 캘린더와
                    같은 모양이다. 직접 정렬일 때만 고를 수 있다(추천 정렬이면 눌러 봐야 덮인다).
@@ -2239,20 +2239,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
               ) : (
                 <span className={`text-center text-xs font-black tabular-nums ${completed ? 'text-slate-400' : 'text-indigo-600'}`}>{sectionIdx + 1}</span>
               )}
-              {/*  **다 한 것 체크** — 배송순서 줄(DeliveryDayList)과 같은 모양·같은 뜻이다.
-                   2026-09-11 사장님: "여긴 체크 박스가 없어". 상태 딱지로 '완료'라고 보여주기만 하고
-                   여기서 끄고 켤 수가 없어, 체크하려면 주문을 열고 들어가야 했다. */}
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
-                disabled={lineIdx < 0}
-                aria-label={completed ? '작업 완료 취소' : '작업 완료'}
-                aria-pressed={completed}
-                title={completed ? '작업 완료 취소' : '작업 완료'}
-                className={`h-5 w-5 shrink-0 rounded-md border-2 flex items-center justify-center transition-colors disabled:opacity-40 ${completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 hover:border-emerald-400'}`}
-              >
-                {completed && <span className="text-[10px]">✓</span>}
-              </button>
+              {/*  **다 한 것 표시는 리스트 것을 그대로 쓴다**(2026-09-12 사장님: "체크박스 대신에
+                   리스트에서 작업완료 여부 표시하는 그걸로 갖다 쓰자").
+                   같은 일을 두 모양으로 그리지 않는다 — 리스트에서 완료/미완료를 읽던 눈이
+                   여기서도 그대로 읽힌다. 누르면 뒤집히는 것도 같다. */}
+              <div className="min-w-0 shrink-0" onPointerDown={e => e.stopPropagation()}>
+                <CompletionStatusControl
+                  completed={completed}
+                  disabled={lineIdx < 0 || !onToggleItemChecked}
+                  ariaLabel={`${wi.itemName} 작업 완료 전환`}
+                  title={completed ? '작업 완료 취소' : '작업 완료'}
+                  onChange={() => { if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
+                />
+              </div>
               <button
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
                 className="min-w-0 flex-1 text-left hover:opacity-70 transition-opacity"
@@ -2270,27 +2269,54 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <span className={`min-w-0 truncate text-xs font-black ${completed ? 'text-slate-500' : 'text-slate-800'}`}>{wi.itemName}</span>
                   <span className="shrink-0 text-[11px] font-black text-slate-500">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                 </p>
-                {/*  **라벨과 소비기한은 늘 보인다**(2026-09-11 사장님: "작업순서 행에 라벨 날인 부착이랑
-                     소비기한 뜨게 하라니까"). 라벨은 `대기`여도 적는다 — 아직 안 했다는 것도 알아야
-                     한다. 소비기한은 제조일에서 1년 뒤로 잡는다(주문카드와 같은 셈, `expiryFromMfgDate`).
-                     안 정했으면 **빈칸으로 두지 않고 '미설정'** 이라고 적는다 — 비어 있으면 채워 넣을
-                     생각을 못 한다. */}
-                {(() => {
-                  const 줄 = lineIdx >= 0 ? order?.items?.[lineIdx] : undefined;
-                  const 라벨 = 줄?.labelType ?? '대기';
-                  const 라벨색 = 라벨 === '부착' ? 'bg-emerald-100 text-emerald-700'
-                    : 라벨 === '날인' ? 'bg-amber-100 text-amber-700'
-                    : 'bg-slate-100 text-slate-500';
-                  return (
-                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${라벨색}`}>라벨 {라벨}</span>
-                      <span className={`min-w-0 truncate text-[10px] font-bold ${줄?.mfgDate ? 'text-slate-500' : 'text-rose-400'}`}>
-                        소비기한 {줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '미설정'}
-                      </span>
-                    </p>
-                  );
-                })()}
               </button>
+              {/*  **라벨·소비기한은 오른쪽 같은 줄에서 바로 고친다**(2026-09-12 사장님:
+                   "라벨대기랑 소비기한 미설정이 한행에서 우측으로 오고", "저기서도 라벨 상태 바꾸고
+                   소비기한 설정할 수 있게").
+                   전에는 읽기만 되고 고치려면 주문을 열어야 했다. 모양·셈은 **리스트 것과 같다** —
+                   라벨은 `-`/날인/부착, 소비기한은 제조일을 고르면 1년 뒤로 잡힌다
+                   (`expiryFromMfgDate`). 끌어서 순서를 바꾸는 줄이라 눌림은 위로 안 넘긴다. */}
+              {(() => {
+                const 줄 = lineIdx >= 0 ? order?.items?.[lineIdx] : undefined;
+                const 못고침 = !order || lineIdx < 0 || !onUpdateItems;
+                const 고치기 = (조각: Partial<OrderItem>) => {
+                  if (!order || lineIdx < 0) return;
+                  const 다음 = [...order.items];
+                  다음[lineIdx] = { ...다음[lineIdx], ...조각 };
+                  onUpdateItems?.(order.id, 다음);
+                };
+                const 라벨 = 줄?.labelType ?? '대기';
+                return (
+                  <>
+                    <div className="relative w-[58px] shrink-0" onPointerDown={e => e.stopPropagation()}>
+                      <select
+                        value={라벨} disabled={못고침}
+                        onChange={e => 고치기({ labelType: e.target.value as '대기' | '날인' | '부착' })}
+                        aria-label={`${wi.itemName} 라벨 상태`}
+                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-red-500 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                      >
+                        <option value="대기">-</option>
+                        <option value="날인">날인</option>
+                        <option value="부착">부착</option>
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                    </div>
+                    <div className="relative h-7 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400"
+                      onPointerDown={e => e.stopPropagation()}>
+                      <input
+                        type="date" value={줄?.mfgDate || ''} disabled={못고침}
+                        onChange={e => 고치기({ mfgDate: e.target.value })}
+                        aria-label={`${wi.itemName} 소비기한 수정용 제조일`}
+                        className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
+                      />
+                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${줄?.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                        <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 truncate tabular-nums">{줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '-'}</span>
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
               {/*  **날짜와 상태 딱지는 뺐다**(2026-09-12 사장님: "금일작업순서에 날짜랑 대기중
                    없애라니까", "대기중 작업중 상태 표시를 없애라고").
                    오늘 할 일만 세운 칸이라 날짜가 줄마다 붙을 이유가 없고, 다 한 것은 왼쪽
@@ -2335,11 +2361,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </div>
               {/*  **다섯 줄까지만 펴 두고 나머지는 스크롤**(2026-09-11 사장님: "작업순서는 상위
                    다섯개 이후는 스크롤로 바꿔"). 한 칸에 열 줄씩 쌓이면 다른 칸이 화면 밖으로 밀린다.
-                   한 줄이 64px(`min-h-[64px]`)에 사이 간격 6px 이라 다섯 줄 = 344px.
+                   한 줄이 48px(`min-h-[48px]`)에 사이 간격 6px 이라 다섯 줄 = 264px.
                    다섯 줄 이하면 높이를 안 잡는다 — 짧은 칸에 빈 자리가 남지 않게. */}
               <div
                 className="space-y-1.5 overflow-y-auto"
-                style={sectionItems.length > 5 ? { maxHeight: 64 * 5 + 6 * 4, scrollbarWidth: 'thin' } : undefined}
+                style={sectionItems.length > 5 ? { maxHeight: 48 * 5 + 6 * 4, scrollbarWidth: 'thin' } : undefined}
               >
                 {sectionItems.length > 0
                   ? sectionItems.map(workItem => renderItemRow(workItem, sectionItems))
