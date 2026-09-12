@@ -58,12 +58,13 @@ export const STATUS_HEAD: Record<string, string> = {
  * 바탕을 칠하지 않으면서 카드를 훑어볼 수 있는 자리가 테두리다.
  */
 export const STATUS_CARD_BORDER: Record<string, string> = {
-  [OrderStatus.PENDING]: 'border-amber-300',
-  [OrderStatus.PROCESSING]: 'border-sky-300',
-  [OrderStatus.DISPATCHED]: 'border-emerald-300',
-  [OrderStatus.SHIPPED]: 'border-indigo-300',
-  [OrderStatus.DELIVERED]: 'border-slate-300',
-  [OrderStatus.ON_HOLD]: 'border-orange-300',
+  //  한 단계 어둡게(2026-09-12 사장님: "테두리색 좀만 어두운 계열로") — 300 은 흰 바탕에서 흐렸다
+  [OrderStatus.PENDING]: 'border-amber-400',
+  [OrderStatus.PROCESSING]: 'border-sky-400',
+  [OrderStatus.DISPATCHED]: 'border-emerald-400',
+  [OrderStatus.SHIPPED]: 'border-indigo-400',
+  [OrderStatus.DELIVERED]: 'border-slate-400',
+  [OrderStatus.ON_HOLD]: 'border-orange-400',
 };
 
 /**
