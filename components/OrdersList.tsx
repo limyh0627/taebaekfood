@@ -41,7 +41,7 @@ import {
   Minimize2,
   Maximize2
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -272,6 +272,8 @@ interface OrdersListProps {
    * 받는 쪽이 둘을 같이 저장해 옛 화면과 어긋나지 않게 한다.
    */
   onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
+  /** 송장 양식(A~E)을 고른다. 안 고름은 `undefined`. */
+  onUpdateInvoiceType?: (id: string, value: InvoiceType | undefined) => void;
   onToggleShipmentComplete?: (id: string, value: boolean) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
@@ -325,6 +327,8 @@ interface OrderCardProps {
    * 받는 쪽이 둘을 같이 저장해 옛 화면과 어긋나지 않게 한다.
    */
   onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
+  /** 송장 양식(A~E)을 고른다. 안 고름은 `undefined`. */
+  onUpdateInvoiceType?: (id: string, value: InvoiceType | undefined) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
@@ -415,6 +419,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
+  onToggleInvoicePrinted, onUpdateInvoiceType,
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
@@ -425,6 +430,8 @@ export const OrderCard = memo<OrderCardProps>(({
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
+  //  줄마다 구성(BOM)을 폈나 — **기본은 접힘**(2026-09-12 사장님: "bom 접었다 펼 수 있게")
+  const [openItemBom, setOpenItemBom] = useState<Set<string>>(new Set());
   const [addItemQuery, setAddItemQuery] = useState('');   // 품목 추가 패널 검색어
 
   // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
@@ -569,17 +576,20 @@ export const OrderCard = memo<OrderCardProps>(({
         </div>
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
-        {/*  **진행도는 상태 밑**(2026-09-12 사장님: "0/1이거는 대기중 작업중 밑으로 들어가게").
-             이름 옆에 붙어 있어 긴 거래처명을 밀어냈다. 눌러서 카드를 접는 것도 그대로다. */}
-        <div className="flex shrink-0 flex-col items-end leading-tight">
+        {/*  **상태와 진행도는 한 줄이다** — `작업중 3/5`
+             (2026-09-12 사장님: "보드에 작업중 3/5 이걸 한줄로 넣자").
+             같은 날 앞서 "0/1이거는 대기중 작업중 밑으로" 하셔서 두 줄로 쌓았는데, 그러면
+             카드 머리가 한 줄 더 높아졌다. 이름은 이미 왼쪽에서 제 자리를 잡으므로
+             오른쪽 두 조각을 옆으로 붙여도 이름을 안 밀어낸다. 눌러서 접는 것도 그대로다. */}
+        <div className="flex shrink-0 items-center gap-1.5 leading-tight">
         <div className="relative shrink-0">
           {readOnly ? (
-            <span className="text-[12px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
+            <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
           ) : (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-              className="text-[12px] font-black transition-all hover:opacity-70 opacity-80"
+              className="text-[11px] font-black transition-all hover:opacity-70 opacity-80"
             >
               {STATUS_LABEL[order.status] ?? order.status}
             </button>
@@ -614,7 +624,7 @@ export const OrderCard = memo<OrderCardProps>(({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className="text-[11px] font-black opacity-70 transition-all hover:opacity-100"
+              className="text-[10px] font-black opacity-70 transition-all hover:opacity-100"
             >
               {completedItems}/{totalItems}
             </button>
@@ -770,46 +780,6 @@ export const OrderCard = memo<OrderCardProps>(({
                       );
                     })()}
                   </div>
-                  {/* 라벨 상태·소비기한 — **품목명 바로 밑**. 부자재보다 먼저 챙기는 정보라 위로 올린다.
-                      소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 pl-[20px]">
-                    {/*  **리스트에서 쓰는 고르개·날짜칸 그대로**(2026-09-12 사장님: "대기 소비기한
-                         설정 저거 리스트에 있는 버튼 모양들로 그대로 대체하고"). 여기만 눌러 돌리는
-                         딱지와 밑줄 글자를 써서, 같은 일을 두 모양으로 하고 있었다.
-                         읽기전용(주문 고르기 창)에서는 잠근다. */}
-                    <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()} onPointerDown={누르는동안끌기끄기}>
-                      <select
-                        value={current} disabled={readOnly}
-                        onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
-                        aria-label={`${item.name} 라벨 상태`}
-                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-slate-700 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
-                      >
-                        <option value="대기">-</option>
-                        <option value="날인">날인</option>
-                        <option value="부착">부착</option>
-                      </select>
-                      <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                    </div>
-                    <div className="relative h-7 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400"
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={누르는동안끌기끄기}
-                      title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
-                      <input
-                        type="date" value={item.mfgDate || ''} disabled={readOnly}
-                        onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
-                        aria-label={`${item.name} 소비기한 수정용 제조일`}
-                        className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
-                      />
-                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
-                        <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
-                        <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
-                      </span>
-                    </div>
-                    {item.checked && item.checkedBy && (
-                      <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
-                    )}
-                    {productInfo?.oil && <span className="text-[11px] text-indigo-500 font-bold shrink-0">{productInfo.oil}</span>}
-                  </div>
                   {(() => {
                     // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
                     const isBoxProd = isBoxStockItem(productInfo);
@@ -845,8 +815,24 @@ export const OrderCard = memo<OrderCardProps>(({
                     if (allSubs.length === 0 && bomProducts.length === 0) return null;
                     const rowKey = `${order.id}-${idx}`;
                     const open = expandedItemBom.has(rowKey);
+                    const 구성폄 = openItemBom.has(rowKey);
+                    const 구성수 = allSubs.length + bomProducts.length;
                     return (
                       <>
+                      {/*  **구성은 접어 둔다**(2026-09-12 사장님: "카드에서 bom 접었다 펼 수 있게
+                           바꾸고"). 부자재·낱개는 만들 때 한 번 보는 참고인데, 늘 펴져 있어
+                           카드마다 두세 줄을 먹고 정작 손대는 라벨·소비기한을 밀어냈다.
+                           몇 개가 들었는지는 접힌 채로도 보이게 수를 적는다. */}
+                      <button
+                        type="button"
+                        onClick={event => { event.stopPropagation(); setOpenItemBom(이전 => { const 다음 = new Set(이전); 다음.has(rowKey) ? 다음.delete(rowKey) : 다음.add(rowKey); return 다음; }); }}
+                        aria-expanded={구성폄}
+                        className="mt-1.5 ml-[20px] inline-flex items-center gap-1 rounded px-1 text-[10px] font-black text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <ChevronDown size={11} className={`transition-transform ${구성폄 ? 'rotate-180' : ''}`} aria-hidden="true" />
+                        구성 <span className="tabular-nums">{구성수}</span>
+                      </button>
+                      {구성폄 && (<>
                       {/* 칩이던 시절엔 폭이 넓어 2칸 그리드로 눌러 담았는데, 점 표기라 짧아졌다.
                           그냥 흐르게 두면 모바일에서 완제품이 혼자 줄바꿈되지 않는다. */}
                       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
@@ -900,9 +886,52 @@ export const OrderCard = memo<OrderCardProps>(({
                           </div>
                         );
                       })}
+                      </>)}
                       </>
                     );
                   })()}
+                  {/*  **라벨 상태·소비기한은 구성(BOM) 아래**(2026-09-12 사장님: "라벨이랑
+                       소비기한이 아래로 내려오게 해 bom보다"). 구성은 접어 두는 참고이고,
+                       이 둘은 **여기서 손대는 것**이라 손이 가는 것을 아래에 둔다.
+                       소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 pl-[20px]">
+                    {/*  **리스트에서 쓰는 고르개·날짜칸 그대로**(2026-09-12 사장님: "대기 소비기한
+                         설정 저거 리스트에 있는 버튼 모양들로 그대로 대체하고"). 여기만 눌러 돌리는
+                         딱지와 밑줄 글자를 써서, 같은 일을 두 모양으로 하고 있었다.
+                         읽기전용(주문 고르기 창)에서는 잠근다. */}
+                    <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()} onPointerDown={누르는동안끌기끄기}>
+                      <select
+                        value={current} disabled={readOnly}
+                        onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
+                        aria-label={`${item.name} 라벨 상태`}
+                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-slate-700 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                      >
+                        <option value="대기">-</option>
+                        <option value="날인">날인</option>
+                        <option value="부착">부착</option>
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                    </div>
+                    <div className="relative h-7 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={누르는동안끌기끄기}
+                      title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
+                      <input
+                        type="date" value={item.mfgDate || ''} disabled={readOnly}
+                        onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
+                        aria-label={`${item.name} 소비기한 수정용 제조일`}
+                        className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
+                      />
+                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
+                        <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
+                      </span>
+                    </div>
+                    {item.checked && item.checkedBy && (
+                      <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
+                    )}
+                    {productInfo?.oil && <span className="text-[11px] text-indigo-500 font-bold shrink-0">{productInfo.oil}</span>}
+                  </div>
                 </div>
               );
             })}
@@ -1109,7 +1138,43 @@ export const OrderCard = memo<OrderCardProps>(({
                    배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`).
                    여기 있던 판매 채널은 거래처명 앞으로 옮겼다. */}
               <span className="text-[9px] font-black text-slate-500">{shipMethodOf(order)}</span>
-              {palletStocks.length > 0 && onUpdatePallets && (
+              {/*  **택배면 송장, 아니면 팔레트**(2026-09-12 사장님: "보드에 카드에도 같은 방식으로
+                   바꾸고"). 리스트의 '출고 방식' 칸과 같은 셈이다 — 택배로 나가면 팔레트가 돌
+                   일이 없고, 우리 차가 돌면 송장이 붙을 일이 없다.
+                   송장은 **양식(A~E)** 과 **세 단계**(`-`→출력→부착)를 나란히 둔다. */}
+              {shipMethodOf(order) === '택배' ? (
+                <div className="flex items-center gap-1">
+                  <select
+                    value={order.invoiceType ?? ''}
+                    onChange={event => { event.stopPropagation(); onUpdateInvoiceType?.(order.id, (event.target.value || undefined) as InvoiceType | undefined); }}
+                    onClick={event => event.stopPropagation()}
+                    disabled={!onUpdateInvoiceType || readOnly}
+                    aria-label="송장 양식"
+                    title="송장 양식"
+                    className="h-5 cursor-pointer rounded bg-slate-100 px-1 text-[8px] font-black text-slate-600 outline-none disabled:cursor-default disabled:text-slate-300"
+                  >
+                    <option value="">-</option>
+                    {INVOICE_TYPES.map(양식 => <option key={양식} value={양식}>{양식}</option>)}
+                  </select>
+                  {(() => {
+                    const 단계 = order.invoiceStage ?? (order.invoicePrinted ? 'printed' : undefined);
+                    const 다음: Record<string, 'printed' | 'attached' | undefined> = { undefined: 'printed', printed: 'attached', attached: undefined };
+                    const 글자 = 단계 === 'attached' ? '부착' : 단계 === 'printed' ? '출력' : '송장';
+                    const 색 = 단계 === 'attached' ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                      : 단계 === 'printed' ? 'bg-sky-500 text-white hover:bg-sky-600'
+                      : 'bg-slate-100 text-slate-400 hover:bg-slate-200';
+                    return (
+                      <button
+                        type="button"
+                        onClick={event => { event.stopPropagation(); onToggleInvoicePrinted?.(order.id, 다음[String(단계)]); }}
+                        disabled={!onToggleInvoicePrinted || readOnly}
+                        title="눌러서 - → 출력 → 부착"
+                        className={`rounded px-1.5 py-0.5 text-[8px] font-black transition-all disabled:cursor-default ${색}`}
+                      >{글자}</button>
+                    );
+                  })()}
+                </div>
+              ) : palletStocks.length > 0 && onUpdatePallets ? (
                 <div className="relative">
                   <button
                     type="button"
@@ -1159,7 +1224,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           </>
         )}
@@ -1458,7 +1523,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
-  onToggleInvoicePrinted, onToggleShipmentComplete, onToggleItemChecked,
+  onToggleInvoicePrinted,
+  onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
@@ -1513,6 +1579,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
     status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 84, confirmer: 90, confirmedAt: 90,
     item: 180, quantity: 76, manufacturing: 145, bottle: 120, cap: 120, componentLabel: 135,
     label: 150, packaging: 135, pallet: 140,
+    //  송장(105) + 팔레트(140) 를 합친 칸 — 한쪽만 뜨므로 둘을 더한 만큼은 필요 없다
+    shipOut: 168,
     note: 150, orderDate: 90, deliveryDate: 90,
     //  합친 칸 — 날짜 두 줄(dates)과 출고방식을 얹은 거래처(partner)
     dates: 104, orderNo: 120,
@@ -1953,7 +2021,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate,
     onUpdateStatus: activeView === 'kanban' ? requestBoardStatusChange : onUpdateStatus,
-    onUpdatePallets, onToggleInvoicePrinted,
+    onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType,
     onToggleItemChecked, onDeleteOrder, currentUserName,
     highlightOrderId,
     onEditOrder: embeddedListOnly ? undefined : openOrderEditor,
@@ -2600,7 +2668,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
             ...(showListDetailColumns ? ['manufacturing', 'bottle', 'cap', 'componentLabel'] : []),
             'quantity',
             //  포장이 송장보다 앞이다(2026-09-11 사장님) — 싸고 나서 송장을 붙인다.
-            'label', 'packaging', 'invoicePrinted', 'pallet', 'note',
+            /*  **송장과 팔레트는 한 칸이다**(2026-09-12 사장님: "송장 팔레트 합쳐서 출고
+                방식으로 바꾸고"). 택배로 나가면 팔레트가 돌 일이 없고, 우리 차가 돌면 송장이
+                붙을 일이 없다 — 늘 한쪽만 쓰던 두 칸이라 자리를 반으로 먹고 있었다. */
+            'label', 'packaging', 'shipOut', 'note',
           ];
           const listGridTemplate = visibleListColumns.map(column => `${listColumnWidths[column]}px`).join(' ');
           const listMinWidth = visibleListColumns.reduce((total, column) => total + listColumnWidths[column], 0);
@@ -2901,8 +2972,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문 수량{resizeHandle('quantity')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">라벨 작업{resizeHandle('label')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">포장{resizeHandle('packaging')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">송장{resizeHandle('invoicePrinted')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">팔레트{resizeHandle('pallet')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고 방식{resizeHandle('shipOut')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center px-3">비고{resizeHandle('note')}</div>
                 </div>
                 {paginatedListOrders.map((order, rowIndex) => {
@@ -3092,11 +3162,30 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             <div role="cell" className="border-r border-slate-300">
                               <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.packaging.join(', ')}>{detail.packaging.join(', ')}</span></div>)}</div>
                             </div>
-                        {/*  **송장은 세 단계다** — `-` → 출력 → 부착 → `-` 로 돌아간다
-                             (2026-09-11 사장님: "송장은 - ,출력, 부착 세가지 옵션으로 뜨고").
-                             택배·스마트스토어처럼 송장이 붙는 주문에만 고를 수 있다. */}
-                        <div role="cell" className="flex items-center border-r border-slate-300 px-2">
-                          {(order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) && onToggleInvoicePrinted ? (
+                        {/*  **출고 방식 한 칸** — 택배면 송장, 아니면 팔레트
+                             (2026-09-12 사장님: "출고 방식이 택배인 애들은 팔레트가 안뜨고 송장만
+                             뜨고 출고방식 택배가 아닌애들은 팔레트가 뜨게").
+                             무엇으로 나가는지는 `shipMethodOf` 하나가 판정한다 — 전에는 이 칸만
+                             채널(`source`)로 따로 따져서, 출고 방식을 택배로 바꿔 놔도 송장이 안 떴다.
+
+                             송장은 **양식(A~E) + 세 단계**다. 세 단계는 `-` → 출력 → 부착 → `-`
+                             (2026-09-11 사장님: "송장은 - ,출력, 부착 세가지 옵션으로 뜨고") — 부착
+                             여부가 여기 들어 있어 그대로 둔다. */}
+                        <div role="cell" className="relative flex min-h-full items-center gap-1 border-r border-slate-300 px-1.5 font-bold text-slate-600">
+                          {shipMethodOf(order) === '택배' ? (
+                          <>
+                          <select
+                            value={order.invoiceType ?? ''}
+                            onChange={event => onUpdateInvoiceType?.(order.id, (event.target.value || undefined) as InvoiceType | undefined)}
+                            disabled={!onUpdateInvoiceType}
+                            aria-label={`${partnerName} 송장 양식`}
+                            title="송장 양식"
+                            className="h-7 w-12 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-1 text-center text-[10px] font-black text-slate-700 outline-none focus:border-slate-400 disabled:cursor-default disabled:text-slate-300"
+                          >
+                            <option value="">-</option>
+                            {INVOICE_TYPES.map(양식 => <option key={양식} value={양식}>{양식}</option>)}
+                          </select>
+                          {onToggleInvoicePrinted ? (
                             (() => {
                               const 단계 = order.invoiceStage ?? (order.invoicePrinted ? 'printed' : undefined);
                               const 다음: Record<string, 'printed' | 'attached' | undefined> = { undefined: 'printed', printed: 'attached', attached: undefined };
@@ -3110,15 +3199,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                   onClick={() => onToggleInvoicePrinted(order.id, 다음[String(단계)])}
                                   aria-label={`${partnerName} 송장 ${글자}`}
                                   title="눌러서 - → 출력 → 부착"
-                                  className={`flex min-h-8 w-full items-center justify-center rounded-md px-2 text-[10px] font-black transition-colors ${색}`}
+                                  className={`flex min-h-8 flex-1 items-center justify-center rounded-md px-2 text-[10px] font-black transition-colors ${색}`}
                                 >{글자}</button>
                               );
                             })()
                           ) : (
-                            <span className="w-full text-center text-slate-300">-</span>
+                            <span className="flex-1 text-center text-slate-300">-</span>
                           )}
-                        </div>
-                            <div role="cell" className="relative flex min-h-full items-center border-r border-slate-300 px-1.5 font-bold text-slate-600">
+                          </>
+                          ) : (
+                          <>
                               <button
                                 type="button"
                                 onClick={event => { event.stopPropagation(); setListPalletEditorOrderId(current => current === order.id ? null : order.id); }}
@@ -3177,7 +3267,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                   </div>
                                 </div>
                               )}
-                            </div>
+                          </>
+                          )}
+                        </div>
                         <div role="cell" className="border-r border-slate-300">
                           <div className="divide-y divide-slate-300">
                             {visibleItemEntries.map(({ item, originalIndex }) => (
@@ -3692,6 +3784,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   onUpdateDeliveryDate={onUpdateDeliveryDate}
                   onUpdateStatus={onUpdateStatus}
                   onToggleInvoicePrinted={onToggleInvoicePrinted}
+                  onUpdateInvoiceType={onUpdateInvoiceType}
                   onToggleItemChecked={onToggleItemChecked}
                   onDeleteOrder={onDeleteOrder}
                   readOnly

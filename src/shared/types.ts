@@ -134,6 +134,14 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
  */
 export type ShipMethod = '배송' | '직접수령' | '택배';
 
+/**
+ * **송장 양식** — 택배사가 주는 A~E 중 어느 것을 쓰는가
+ * (2026-09-12 사장님: "송장은 타입 a b c d e 중에 선택하는 드롭다운").
+ * 안 고른 주문은 이 칸이 없다 — 화면에는 `-` 로 뜬다.
+ */
+export type InvoiceType = 'A' | 'B' | 'C' | 'D' | 'E';
+export const INVOICE_TYPES: InvoiceType[] = ['A', 'B', 'C', 'D', 'E'];
+
 export interface Order {
   id: string;
   /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
@@ -178,6 +186,8 @@ export interface Order {
    * `printed`·`attached` 면 `invoicePrinted: true` 가 되게 맞춘다.
    */
   invoiceStage?: 'printed' | 'attached';
+  /** 송장 양식(A~E). 택배로 나가는 주문에서만 고른다. */
+  invoiceType?: InvoiceType;
   shipmentConfirmedBy?: string | null; // 출고 완료 확인자
   shipmentConfirmedAt?: string | null; // 출고 완료 확인 시각
   deliveredAt?: string; // 주문이력으로 이동한 날짜

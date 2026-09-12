@@ -34,7 +34,7 @@ import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
 import type { DayRow } from '../src/shared/deliveryPlan';
 
-import { OrderItem } from '../types';
+import { OrderItem, InvoiceType } from '../types';
 
 interface DeliveryManagerProps {
   /**
@@ -59,6 +59,8 @@ interface DeliveryManagerProps {
   onUpdatePallets?: (_id: string, _pallets: OrderPallet[]) => void;
   //  송장은 세 단계다 — 뜻은 OrdersList 의 같은 props 주석 참고.
   onToggleInvoicePrinted?: (_id: string, _value: boolean | 'printed' | 'attached' | undefined) => void;
+  /** 송장 양식(A~E) — 안에 끼운 주문 리스트가 쓴다. */
+  onUpdateInvoiceType?: (_id: string, _value: InvoiceType | undefined) => void;
   onToggleShipmentComplete?: (_id: string, _value: boolean) => void;
   onToggleItemChecked?: (_orderId: string, _itemIdx: number) => void;
   onDeleteOrder?: (_id: string) => void;
@@ -80,7 +82,7 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -901,6 +903,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           onUpdatePallets={(id, nextPallets) => onUpdatePallets?.(id, nextPallets)}
           onUpdateItems={(id, nextItems) => onUpdateItems?.(id, nextItems)}
           onToggleInvoicePrinted={(id, value) => onToggleInvoicePrinted?.(id, value)}
+          onUpdateInvoiceType={(id, value) => onUpdateInvoiceType?.(id, value)}
           onToggleShipmentComplete={(id, value) => onToggleShipmentComplete?.(id, value)}
           onToggleItemChecked={onToggleItemChecked}
           onDeleteOrder={id => onDeleteOrder?.(id)}

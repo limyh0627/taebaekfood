@@ -1479,6 +1479,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 같이 맞춰 쓴다 — 그 값을 읽는 자리가 여럿이라(출고완료 묶음·리스트 필터·배송 화면)
    * 한꺼번에 못 옮긴다. 둘이 어긋나면 같은 주문이 화면마다 다르게 보인다.
    */
+  /**
+   * **송장 양식(A~E) 저장** — 안 고름(`-`)은 칸을 지운다.
+   * 빈 글자를 넣어 두면 나중에 `''` 와 `undefined` 둘을 다 따져야 한다.
+   */
+  const invoiceTypePatch = (value?: string) => ({ invoiceType: value ?? null });
+
   const invoicePatch = (value: boolean | 'printed' | 'attached' | undefined) =>
     typeof value === 'boolean'
       ? { invoicePrinted: value, invoiceStage: value ? 'printed' : null }
@@ -2069,6 +2075,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateItems={handleUpdateItems}
               onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
+              onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
               onToggleShipmentComplete={handleToggleShipmentComplete}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
@@ -2100,6 +2107,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateItems={handleUpdateItems}
                   onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
                   onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
+                  onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
                   onToggleShipmentComplete={handleToggleShipmentComplete}
                   onToggleItemChecked={handleToggleItemChecked}
                 />
@@ -2131,6 +2139,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
+              onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
               currentUserName={currentUser?.name}
               highlightOrderId={highlightOrderId}
               onHighlightClear={() => setHighlightOrderId(null)}
