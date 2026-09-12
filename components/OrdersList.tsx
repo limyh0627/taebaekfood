@@ -3438,12 +3438,26 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     ><Plus size={11} />그룹 추가</button>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto">
+                  {/*  **`min-h-0` 가 있어야 스크롤이 먹는다**(2026-09-12 사장님: "스크롤이 안되는건지").
+                       flex 칸은 기본 최소 높이가 '내용만큼'이라, 이게 없으면 목록이 상자를 밀고
+                       늘어나 버려 넘칠 일이 없어진다 — 그래서 스크롤이 안 생겼다. */}
+                  <div className="min-h-0 flex-1 overflow-y-auto">
                     {allPickableItems.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
                     ) : pickableOrders.map(o => {
                       const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
-                      const orderItems = allPickableItems.filter(wi => wi.orderId === o.id);
+                      /*  **그룹끼리 모은다**(2026-09-12 사장님: "왜 그룹별로 안 보이고 같이 보이냐").
+                          한 거래처 줄이 기름·미분류·기름·깨 로 섞여 있어 어느 그룹에 무엇이
+                          담겼는지 한 줄씩 읽어야 했다. 그룹 차례(`pickerGroups`)대로 세우고,
+                          아직 안 담긴 것은 맨 뒤로 보낸다 — 담긴 것부터 보는 게 맞다. */
+                      const 그룹자리 = (key: string) => {
+                        const 그룹 = pickerAssign[key];
+                        const 자리 = 그룹 ? pickerGroups.indexOf(그룹) : -1;
+                        return 자리 < 0 ? pickerGroups.length : 자리;
+                      };
+                      const orderItems = allPickableItems
+                        .filter(wi => wi.orderId === o.id)
+                        .sort((a, b) => 그룹자리(a.key) - 그룹자리(b.key));
                       return (
                         <div key={o.id} className="px-5 py-3 border-b border-slate-50">
                           <div className="flex items-center gap-2 mb-2">
