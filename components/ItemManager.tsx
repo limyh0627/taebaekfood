@@ -1,7 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { matchesSearch } from '../src/shared/hangul';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft, Check, Calculator } from 'lucide-react';
+//  검색조건 칸은 주문·배송과 **같은 부품**을 쓴다 — 한쪽만 고치면 두 화면이 갈린다
+import SearchableSelect from '../src/shared/components/SearchableSelect';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft, Check, Calculator, RotateCcw } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -69,6 +71,9 @@ const matchKo = (name: string, q: string) => matchesSearch(name, q);
  * 필터 드롭다운 하나 — 라벨 + 고른 값 + 펼치면 선택지(한 줄에 하나).
  * 재고관리(ItemList)와 같은 모양이다 — 화면마다 다르게 생기면 같은 일을 두 번 배운다.
  */
+/*  검색조건 칸은 주문·배송과 **같은 모양**이다(인수인계.md "같은 줄에 선 칸은 같은 모양"). */
+const 질의칸 = 'h-9 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300';
+
 const FilterDrop: React.FC<{
   label: string; summary: string; active: boolean; width?: string;
   children: (close: () => void) => React.ReactNode;
@@ -220,6 +225,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     return [...set].sort((a, b) => { const [ka, va] = rank(a), [kb, vb] = rank(b); return ka !== kb ? ka - kb : va - vb; });
   }, [items, activeCategory]);
   const [partnerAllCats, setPartnerAllCats] = useState(true); // 거래처별 뷰: 전체 카테고리(연결된 전 품목) 표시
+  /*  **정렬**(2026-09-12 사장님: "품목관리 쪽에선 정렬에 거래처별 정렬 기능 한번 넣어봐").
+      기본은 카테고리 순 → 이름 순(참기름·들기름·깨류가 실제로 보는 순서다).
+      `거래처`는 **품목에 걸린 거래처 이름**으로 세운다 — 한 거래처 것을 몰아서 볼 때 쓴다.
+      이름이 여럿이면 첫 이름을 쓰고, 없는 것은 맨 뒤로 보낸다(빈칸이 위에 쌓이면 못 읽는다). */
+  const [itemSort, setItemSort] = useState<'기본' | '거래처' | '품목명'>('기본');
   const [searchTerm, setSearchTerm] = useState('');
   const [partnerSearch, setPartnerSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -420,13 +430,27 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
       }
     }
-    // 카테고리 순 → 같은 카테고리 안에서는 이름 순.
+    if (itemSort === '품목명') {
+      return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    }
+    if (itemSort === '거래처') {
+      //  **없는 것은 맨 뒤로.** 빈칸이 위에 쌓이면 목록을 못 읽는다.
+      //  이름은 이미 만들어 둔 표(`거래처이름표`)에서 꺼낸다 — 여기서 다시 훑으면 느려진다.
+      const 첫이름 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
+      return [...result].sort((a, b) => {
+        const 갑 = 첫이름(a.id);
+        const 을 = 첫이름(b.id);
+        if (!갑 !== !을) return 갑 ? -1 : 1;
+        return 갑.localeCompare(을, 'ko') || a.name.localeCompare(b.name, 'ko');
+      });
+    }
+    // 기본 — 카테고리 순 → 같은 카테고리 안에서는 이름 순.
     // 참기름·들기름·깨류 순서가 실제로 보는 순서라 이름 순만으로는 섞여 보인다.
     return [...result].sort((a, b) => {
       const d = catOrder(categoryOf(a)) - catOrder(categoryOf(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
-  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표]);
+  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표, itemSort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -616,79 +640,99 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
               );
             })}
           </div>
-          <div className="relative shrink-0 w-full sm:w-44">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
-            <input
-              type="text"
-              placeholder="품목명 검색..."
-              value={searchTerm}
-              onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-            />
-          </div>
         </div>
 
-        {/* 서브타입 · 카테고리 — 위 단을 골라야 아래 단이 뜬다(분류 관리 순서 그대로) */}
+        {/*  **검색조건 — 주문·배송과 같은 모양**(2026-09-12 사장님: "이 ui 거의 그대로
+             품목관리에도 넣고 품목관리에 서브타입 이랑 몇개 필터 있는것도 지금 거래처 처럼
+             따로 빼놔").
+
+             전에는 필터 단추가 줄줄이 나열되고 검색칸은 탭 옆에 따로 떨어져 있어서, 조건을
+             잡는 자리가 두 군데로 갈려 있었다. 한 상자에 모으고 **칸마다 이름표**를 달아
+             무엇으로 걸렀는지 열어보지 않아도 보이게 한다.
+             고르개는 주문·배송이 쓰는 `SearchableSelect` 그대로다 — 길면 쳐서 찾고 초성도 된다. */}
         {isAdmin && (() => {
           const subs = taxo.subtypesOf(activeCategory);
           const cats = taxo.categoriesOf(activeCategory);
-          if (subs.length === 0 && cats.length === 0 && specOptions.length === 0) return null;
-          //  재고관리와 같은 드롭다운 줄 — 서브타입·분류·용량·등급.
           return (
-            <div className="px-3 py-2 border-b border-slate-100 bg-white flex items-center gap-2 flex-wrap">
-              {subs.length > 0 && (
-                <FilterDrop label="서브타입" active={!!activeSubtype} summary={activeSubtype || '전체'}>
-                  {close => (
-                    <div className="max-h-[280px] overflow-y-auto py-1">
-                      <FilterRow on={!activeSubtype} onClick={() => { pickSubtype(''); close(); }}>전체</FilterRow>
-                      {subs.map(v => (
-                        <FilterRow key={v} on={activeSubtype === v} onClick={() => { pickSubtype(v); close(); }}>{v}</FilterRow>
-                      ))}
-                    </div>
-                  )}
-                </FilterDrop>
-              )}
-              {cats.length > 0 && (
-                <FilterDrop label="분류" active={!!activeItemCat} summary={activeItemCat || '전체'}>
-                  {close => (
-                    <div className="max-h-[280px] overflow-y-auto py-1">
-                      <FilterRow on={!activeItemCat} onClick={() => { setActiveItemCat(''); setPage(1); close(); }}>전체</FilterRow>
-                      {cats.map(v => (
-                        <FilterRow key={v} on={activeItemCat === v} onClick={() => { setActiveItemCat(v); setPage(1); close(); }}>{v}</FilterRow>
-                      ))}
-                    </div>
-                  )}
-                </FilterDrop>
-              )}
-              {specOptions.length > 0 && (
-                <FilterDrop label="용량" active={!!activeSpec} summary={activeSpec || '전체'}>
-                  {close => (
-                    <div className="max-h-[280px] overflow-y-auto py-1">
-                      <FilterRow on={!activeSpec} onClick={() => { setActiveSpec(''); setPage(1); close(); }}>전체</FilterRow>
-                      {specOptions.map(v => (
-                        <FilterRow key={v} on={activeSpec === v} tone="text-sky-600 bg-sky-50"
-                          onClick={() => { setActiveSpec(v); setPage(1); close(); }}><span className="tabular-nums">{v}</span></FilterRow>
-                      ))}
-                    </div>
-                  )}
-                </FilterDrop>
-              )}
-              <FilterDrop label="등급" width="w-[180px]" active={!!activeGrade} summary={activeGrade || '전체'}>
-                {close => (
-                  <div className="py-1">
-                    <FilterRow on={!activeGrade} onClick={() => { setActiveGrade(''); setPage(1); close(); }}>전체</FilterRow>
-                    {GRADES.map(g => (
-                      <FilterRow key={g} on={activeGrade === g} tone="text-amber-600 bg-amber-50"
-                        onClick={() => { setActiveGrade(activeGrade === g ? '' : g); setPage(1); close(); }}>{g}</FilterRow>
-                    ))}
-                  </div>
+            <section className="border-b border-slate-100 bg-white px-3 py-2" aria-labelledby="item-query-title">
+              <div className="flex min-h-9 items-center gap-2">
+                <h3 id="item-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
+                <button
+                  type="button"
+                  onClick={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setSearchTerm(''); setItemSort('기본'); setPage(1); }}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                ><RotateCcw size={12} aria-hidden="true" />초기화</button>
+              </div>
+              <div className="flex flex-wrap items-end gap-2 pb-1 pt-1.5">
+                {subs.length > 0 && (
+                  <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                    서브타입
+                    <SearchableSelect
+                      ariaLabel="서브타입" className={질의칸}
+                      value={activeSubtype}
+                      onChange={value => pickSubtype(value)}
+                      options={[{ value: '', label: '전체' }, ...subs.map(v => ({ value: v, label: v }))]}
+                    />
+                  </label>
                 )}
-              </FilterDrop>
-              {(activeSubtype || activeItemCat || activeSpec || activeGrade) && (
-                <button onClick={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setPage(1); }}
-                  className="px-2.5 py-1.5 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
-              )}
-            </div>
+                {cats.length > 0 && (
+                  <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                    분류
+                    <SearchableSelect
+                      ariaLabel="분류" className={질의칸}
+                      value={activeItemCat}
+                      onChange={value => { setActiveItemCat(value); setPage(1); }}
+                      options={[{ value: '', label: '전체' }, ...cats.map(v => ({ value: v, label: v }))]}
+                    />
+                  </label>
+                )}
+                {specOptions.length > 0 && (
+                  <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                    용량
+                    <SearchableSelect
+                      ariaLabel="용량" className={질의칸}
+                      value={activeSpec}
+                      onChange={value => { setActiveSpec(value); setPage(1); }}
+                      options={[{ value: '', label: '전체' }, ...specOptions.map(v => ({ value: v, label: v }))]}
+                    />
+                  </label>
+                )}
+                <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                  등급
+                  <SearchableSelect
+                    ariaLabel="등급" className={질의칸}
+                    value={activeGrade}
+                    onChange={value => { setActiveGrade(value); setPage(1); }}
+                    options={[{ value: '', label: '전체' }, ...GRADES.map(g => ({ value: g, label: g }))]}
+                  />
+                </label>
+                <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                  정렬
+                  <SearchableSelect
+                    ariaLabel="정렬" className={질의칸}
+                    value={itemSort}
+                    onChange={value => { setItemSort(value as '기본' | '거래처' | '품목명'); setPage(1); }}
+                    options={[
+                      { value: '기본', label: '분류 순' },
+                      { value: '거래처', label: '거래처별' },
+                      { value: '품목명', label: '품목명 순' },
+                    ]}
+                  />
+                </label>
+                <label className="flex min-w-52 flex-1 flex-col gap-1 text-[10px] font-bold text-slate-500 md:max-w-sm">
+                  전체 검색
+                  <span className="relative block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                    <input
+                      type="search" value={searchTerm}
+                      onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
+                      placeholder="품목명 검색"
+                      className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
+                    />
+                  </span>
+                </label>
+              </div>
+            </section>
           );
         })()}
 
