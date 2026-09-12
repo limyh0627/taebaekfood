@@ -451,27 +451,70 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     });
   }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표, itemSort]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const 줄거래처 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
+
+  /**
+   * **거래처별로 볼 때는 쪽도 거래처 단위로 끊는다.**
+   *
+   * 2026-09-12 사장님: "거래처별 품목을 저 뷰로 대체할 수 있을 정도로 거래처 별 구분이
+   * 잘 돼야됨". 줄 수로 자르면 한 거래처 품목이 쪽 경계에서 갈라져, 그 거래처 것을 다 보려면
+   * 쪽을 넘겨야 한다 — 그러면 '거래처별로 본다'가 성립하지 않는다.
+   *
+   * 그래서 **묶음을 통째로** 담되, 한 쪽이 `PAGE_SIZE` 줄을 넘어서면 다음 쪽으로 넘긴다.
+   * 한 거래처가 그보다 크면 그 묶음 하나로 한 쪽을 쓴다(자르지 않는다).
+   * 박스는 제 낱개 밑에 딸린 줄이라 늘 같은 묶음에 있다.
+   */
+  const 거래처쪽들 = useMemo(() => {
+    if (itemSort !== '거래처') return [];
+    /*  **줄마다 제 거래처로 세운다**(2026-09-12 사장님: "나라식품꺼도 숨겨져야 맞음
+     *  거래처별 뷰에서는").
+     *
+     *  `groupLooseBoxRows` 는 박스를 제 낱개 밑에 딸린 줄로 붙이는데, 그러면 **박스가 부모의
+     *  묶음을 따라간다.** 낱개는 가득찬식품 것인데 박스는 나라식품 것인 경우가 있어서,
+     *  가득찬식품 묶음 안에 나라식품 줄이 섞여 보였다.
+     *  거래처로 갈라 보는 화면이니 딸린 줄 관계보다 **거래처가 먼저다** — 낱개·박스를 따로 세운다. */
+    const 전체 = filteredItems.map(item => ({ p: item, isChild: false }));
+    const 묶음: { 이름: string; 줄: typeof 전체 }[] = [];
+    for (const row of 전체) {
+      const 이름 = 줄거래처(row.p.id);
+      const 끝 = 묶음[묶음.length - 1];
+      if (!끝 || 끝.이름 !== 이름) 묶음.push({ 이름, 줄: [row] });
+      else 끝.줄.push(row);
+    }
+    const 쪽들: (typeof 묶음)[] = [];
+    let 지금: typeof 묶음 = [];
+    let 셈 = 0;
+    for (const 한묶음 of 묶음) {
+      if (지금.length > 0 && 셈 + 한묶음.줄.length > PAGE_SIZE) { 쪽들.push(지금); 지금 = []; 셈 = 0; }
+      지금.push(한묶음);
+      셈 += 한묶음.줄.length;
+    }
+    if (지금.length > 0) 쪽들.push(지금);
+    return 쪽들;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredItems, itemSort, 거래처이름표]);
+
+  const totalPages = itemSort === '거래처'
+    ? Math.max(1, 거래처쪽들.length)
+    : Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pagedItems = filteredItems.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   //  박스는 제 낱개 밑에 붙인다. **묶고 나서** 쪽을 나눠야 둘이 다른 쪽으로 안 갈린다.
-  /*  거래처별로 볼 때는 **묶음 머리줄**을 끼워 넣는다(2026-09-12 사장님: "거래처별로
-      그룹핑 됐다는 느낌이 들어야하고 … 거래처랑 거래처 사이에 공간도 두고").
-      한 쪽 안에서 거래처가 바뀌는 자리를 표시해 두면 표가 그 줄을 머리로 그린다. */
-  const 줄거래처 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
   const pagedRows = useMemo(() => {
-    const 쪽 = groupLooseBoxRows(filteredItems).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-    if (itemSort !== '거래처') return 쪽.map(row => ({ ...row, 머리: '' }));
-    let 앞 = '';
-    return 쪽.map(row => {
-      const 지금 = 줄거래처(row.p.id);
-      //  딸린 박스 줄은 머리를 다시 세우지 않는다 — 낱개와 한 덩어리다
-      const 머리 = !row.isChild && 지금 !== 앞 ? 지금 : '';
-      if (머리) 앞 = 지금;
-      return { ...row, 머리 };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredItems, safePage, itemSort, 거래처이름표]);
+    if (itemSort !== '거래처') {
+      return groupLooseBoxRows(filteredItems)
+        .slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+        .map(row => ({ ...row, 머리: '', 묶음수: 0, 묶음끝: false }));
+    }
+    //  머리줄은 묶음의 첫 줄에만. 끝 줄에는 표시를 남겨 아래 여백을 준다.
+    return (거래처쪽들[safePage - 1] ?? []).flatMap(한묶음 =>
+      한묶음.줄.map((row, i) => ({
+        ...row,
+        머리: i === 0 ? 한묶음.이름 : '',
+        묶음수: i === 0 ? 한묶음.줄.length : 0,
+        묶음끝: i === 한묶음.줄.length - 1,
+      })));
+  }, [filteredItems, safePage, itemSort, 거래처쪽들]);
 
   const handleSelectClient = (id: string) => {
     setSelectedClientId(id);
@@ -927,21 +970,23 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   </td>
                 </tr>
               ) : (
-                pagedRows.map(({ p: item, isChild, 머리 }) => (
+                pagedRows.map(({ p: item, isChild, 머리, 묶음수, 묶음끝 }) => (
                   <React.Fragment key={item.id}>
-                  {/*  **거래처 묶음 머리줄** — 위에 빈 칸을 두어 묶음끼리 떨어져 보이게 한다
-                       (2026-09-12 사장님). 첫 묶음은 위 공간을 안 준다 — 표 머리에 붙어야 한다. */}
+                  {/*  **거래처 묶음 머리줄**(2026-09-12 사장님: "거래처별 품목을 저 뷰로 대체할 수
+                       있을 정도로 거래처 별 구분이 잘 돼야됨"). 이름과 **몇 품목인지**를 같이 적고
+                       위에 굵은 선을 둬 묶음이 어디서 시작하는지 한눈에 보이게 한다. */}
                   {머리 && (
-                    <tr>
-                      <td colSpan={isAdmin ? 6 : 5} className="px-3 pb-1.5 pt-5 first:pt-1.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
-                          <User size={12} className="text-slate-400" aria-hidden="true" />{머리}
+                    <tr className="border-t-2 border-indigo-100">
+                      <td colSpan={isAdmin ? 6 : 5} className="bg-indigo-50/40 px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-900">
+                          <User size={13} className="text-indigo-400" aria-hidden="true" />{머리}
+                          <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-black text-indigo-500">{묶음수}품목</span>
                         </span>
                       </td>
                     </tr>
                   )}
                   {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기와 바탕색으로 가른다 */}
-                  <tr className={`transition-colors group ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
+                  <tr className={`transition-colors group ${묶음끝 ? 'border-b-8 border-slate-50' : ''} ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
                     <td className={`px-2 py-3 ${isChild ? 'pl-6' : ''}`}>
                       <CategoryChip item={item} />
                     </td>
