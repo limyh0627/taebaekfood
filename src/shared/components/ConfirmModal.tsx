@@ -33,7 +33,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-slate-900 leading-snug">{message}</p>
             {subMessage && (
-              <p className="mt-1 whitespace-pre-line text-xs font-medium leading-relaxed text-slate-400">{subMessage}</p>
+              <p className="text-xs text-slate-400 font-medium mt-1">{subMessage}</p>
             )}
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 transition-all shrink-0">

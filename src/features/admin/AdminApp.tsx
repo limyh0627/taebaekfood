@@ -1520,23 +1520,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const 상태들 = resolveStockUse(rows);
       const 쓸것 = 상태들.filter(x => x.own + (x.loose?.value ?? 0) > 0);
       if (쓸것.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
-      const 줄 = 쓸것.map(x => {
-        const 낱개 = x.loose?.value ? ` + ${x.loose.value}${x.loose.max >= 0 ? x.row.loose?.unitLabel ?? '개' : ''}` : '';
-        return `· ${x.row.name} — 재고 ${x.own}${x.row.unitLabel}${낱개} 사용`;
-      });
+      /*  **한 문장으로 적는다** — 창 모양은 손대지 않는다(2026-09-12 사장님: "알람 ui는
+          유지하고 내가 말한 기능만 추가해"). 품목마다 줄을 세우면 창이 길어져 모양이 바뀐다.
+          자세한 것은 어차피 다음 창(`StockUseModal`)이 품목별로 보여 준다. */
       const 모자람 = 상태들.some(x => (x.loose ? x.loose.short : x.shortUnits) > 0);
-      return [
-        '있는 재고를 먼저 씁니다.' + (모자람 ? ' 모자란 만큼은 생산합니다.' : ''),
-        ...줄,
-        '다음 창에서 쓸 양을 고칠 수 있습니다.',
-      ].join('\n');
+      return `재고 ${쓸것.length}개 품목을 먼저 씁니다`
+        + (모자람 ? ' (모자란 만큼은 생산).' : '.')
+        + ' 다음 창에서 쓸 양을 고칠 수 있습니다.';
     };
     setCompletionAsk({
       message: '해당 거래처를 ' + statusLabel(plan.status) + ' 상태로 변경할까요?',
       subMessage: [
         (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
         재고안내(),
-      ].filter(Boolean).join('\n'),
+      ].filter(Boolean).join(' '),
       onConfirm: () => { void save(); },
     });
   };
