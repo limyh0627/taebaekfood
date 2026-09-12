@@ -6,7 +6,7 @@ import { cardNoLabel } from '../src/shared/cardNo';
 import { statusColor, statusLabel } from '../src/shared/orderStatusStyle';
 import { dateOfLocal } from '../src/shared/day';
 //  묶음 띠 색은 작업순서 줄과 **같은 것**을 쓴다 — 한쪽만 고치면 같은 묶음이 두 색이 된다
-import { groupStripe } from '../src/shared/groupStripe';
+import { groupStripes } from '../src/shared/groupStripe';
 
 /**
  * **하루치 배송 줄 — 화면 한 벌.**
@@ -59,6 +59,8 @@ const DeliveryDayList: React.FC<Props> = ({ rows, orders, partners, on, compact 
   }
 
   const 차례 = rows.map(r => r.orderId);
+  //  묶음 띠 색 — 지금 이 날 묶음들에 겹치지 않게 나눠 준다
+  const 띠색 = groupStripes(rows.map(r => r.groupId));
   const 놓기 = (movingId: string, onId: string, after: boolean) => {
     if (!movingId || movingId === onId || !on.reorder || !차례.includes(movingId)) { setDragId(null); return; }
     const next = [...차례];
@@ -103,7 +105,7 @@ const DeliveryDayList: React.FC<Props> = ({ rows, orders, partners, on, compact 
               compact ? 'gap-1.5 px-2 py-2' : 'gap-2 px-3 py-2.5'
             } ${r.done ? 'opacity-50' : ''} ${
               //  묶음은 왼쪽 굵은 띠로 잇는다 — 첫 줄만 위, 끝 줄만 아래가 둥글다
-              r.groupId ? `border-l-4 ${groupStripe(r.groupId)} ` : ''
+              r.groupId ? `border-l-4 ${띠색(r.groupId)} ` : ''
             }${고름 ? 'ring-2 ring-indigo-400 border-indigo-200' : 'border-slate-100'} ${
               dragId === r.orderId ? 'opacity-60 ring-2 ring-indigo-300' : ''}`}
           >

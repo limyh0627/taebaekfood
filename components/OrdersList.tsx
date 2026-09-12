@@ -55,7 +55,7 @@ import { clusterByGroup } from '../src/shared/rowGroup';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { matchesSearch } from '../src/shared/hangul';
 import { shipMethodOf } from '../src/shared/channelStyle';
-import { groupStripe } from '../src/shared/groupStripe';
+import { groupStripes } from '../src/shared/groupStripe';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
@@ -2235,6 +2235,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
             return (ai === -1 ? workGroups.length : ai) - (bi === -1 ? workGroups.length : bi) || a.localeCompare(b, 'ko');
           });
 
+        //  묶음 띠 색 — 지금 있는 묶음들에 **겹치지 않게** 나눠 준다
+        const 묶음띠색 = groupStripes(validWorkItems.map(workItem => workItem.groupId));
+
         // 순서 이동은 같은 품목 카테고리 안에서만 허용한다.
         const getSection = (workItem: WorkItem) => workCategoryOf(workItem);
         const visibleWorkItems = validWorkItems.filter(workItem => showCompletedWorkItems || !isWorkComplete(workItem));
@@ -2317,7 +2320,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                  그래서 cursor-grab은 카드 전체가 아니라 손잡이에만 준다 — 전엔 카드 전체에 걸려 있어
                  아무 데나 잡아도 되는 것처럼 보였지만 실제로는 안 끌렸다. */
               title={blocked ? '서로 다른 품목 카테고리 간에는 순서를 바꿀 수 없습니다' : undefined}
-              className={`flex min-h-[48px] flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? `border-l-4 ${groupStripe(wi.groupId)} ` : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
+              className={`flex min-h-[48px] flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-2.5 py-2 transition-all ${completed ? 'border-slate-200 bg-slate-50 text-slate-400' : processing ? 'border-sky-200 bg-sky-50/70 shadow-sm' : 'border-slate-200 bg-white shadow-sm'} ${(wi.groupId ? `border-l-4 ${묶음띠색(wi.groupId)} ` : '')}${workGroupPick.includes(wi.key) ? 'ring-2 ring-violet-400' : ''} ${blocked ? 'opacity-30' : ''}`}
             >
               {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님) — 배송순서·배송 캘린더와
                    같은 모양이다. 직접 정렬일 때만 고를 수 있다(추천 정렬이면 눌러 봐야 덮인다).
