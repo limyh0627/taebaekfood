@@ -63,7 +63,7 @@ import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
-import { CARD_HEADER_COLOR, STATUS_COLOR, STATUS_HEAD, STATUS_LABEL, statusLabel, statusChip, statusColumn } from '../src/shared/orderStatusStyle';
+import { CARD_HEADER_COLOR, STATUS_COLOR, STATUS_HEAD_LINE, STATUS_LABEL, statusLabel, statusChip, statusColumn } from '../src/shared/orderStatusStyle';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -528,8 +528,10 @@ export const OrderCard = memo<OrderCardProps>(({
           편집이 열리면 누르려던 것과 엉킨다. 여는 자리는 **이름 + 연필**뿐이다. */
       className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
-      {/* 머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다 */}
-      <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
+      {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
+           **바탕색은 뺐다**(2026-09-12 사장님) — 상태는 글자색과 **아래 선**으로만 알린다.
+           색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
+      <div className={`flex justify-between items-center rounded-t-2xl border-b-2 ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600 border-slate-300'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
           {/*  **이름 + 연필까지가 '수정' 자리다.** 누르면 리스트에서 쓰는 것과 **같은**
@@ -712,12 +714,24 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
               return (
-                <div key={idx} className="flex flex-col border-b border-slate-100 pb-2.5 last:border-0 last:pb-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
+                /*  **누르면 작업완료가 되는 자리는 체크칸과 품목명뿐이다**(2026-09-12 사장님:
+                    "눌러서 주문 완료 되는 위치는 딱 체크박스랑 품목명 있는 부분으로 해").
+                    전에는 줄 전체가 눌림을 받아, 밑에 달린 라벨·소비기한을 만지려다 완료가
+                    켜졌다 꺼졌다 했다. 규격·수량·부자재 줄은 이제 눌러도 아무 일이 없다. */
+                <div key={idx} className="flex flex-col border-b border-slate-100 pb-2.5 last:border-0 last:pb-0">
                   <div className="flex items-center text-[12px] font-bold">
-                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
-                      {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
-                    </div>
-                    <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                    <button
+                      type="button" disabled={readOnly}
+                      onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}
+                      aria-pressed={isItemChecked}
+                      aria-label={`${item.name} 작업 완료 전환`}
+                      className="flex min-w-0 select-none items-center text-left disabled:cursor-default"
+                    >
+                      <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                        {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
+                      </div>
+                      <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                    </button>
                     {/* 규격 — 품목과 **같은 크기, 색 없이**. 칩으로 칠해 두면 품목보다 눈에 먼저 띈다. */}
                     {(() => {
                       const sp = productInfo ? (specText(productInfo.spec) || splitNameVolume(productInfo).vol) : '';
@@ -741,23 +755,37 @@ export const OrderCard = memo<OrderCardProps>(({
                   {/* 라벨 상태·소비기한 — **품목명 바로 밑**. 부자재보다 먼저 챙기는 정보라 위로 올린다.
                       소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 pl-[20px]">
-                    {/*  이름표·잠금은 읽기전용(주문 고르기 창)에서 눌리면 안 되는 것들이라 명시한다. */}
-                    <button type="button" aria-label={`${item.name} 라벨 상태`} disabled={readOnly}
-                      onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
-                      className={`text-[11px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 disabled:opacity-60 ${colorMap[current]}`}>{current}</button>
-                    {/* 눌러서 제조일을 고르면 1년 뒤로 소비기한이 잡힌다.
-                        날짜 입력을 글자 위에 투명하게 얹어 네이티브 달력이 뜨게 한다. */}
-                    <span className="relative inline-flex items-center text-[11px] font-bold text-slate-400 shrink-0 hover:text-slate-600"
+                    {/*  **리스트에서 쓰는 고르개·날짜칸 그대로**(2026-09-12 사장님: "대기 소비기한
+                         설정 저거 리스트에 있는 버튼 모양들로 그대로 대체하고"). 여기만 눌러 돌리는
+                         딱지와 밑줄 글자를 써서, 같은 일을 두 모양으로 하고 있었다.
+                         읽기전용(주문 고르기 창)에서는 잠근다. */}
+                    <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={current} disabled={readOnly}
+                        onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
+                        aria-label={`${item.name} 라벨 상태`}
+                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-red-500 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                      >
+                        <option value="대기">-</option>
+                        <option value="날인">날인</option>
+                        <option value="부착">부착</option>
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                    </div>
+                    <div className="relative h-7 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400"
+                      onClick={(e) => e.stopPropagation()}
                       title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
-                      소비기한&nbsp;{item.mfgDate
-                        ? <span className="text-slate-600">~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}</span>
-                        : <span className="text-slate-300 underline decoration-dotted underline-offset-2">미설정</span>}
-                      <input type="date" value={item.mfgDate || ''}
-                        aria-label={`${item.name} 제조일 설정`} disabled={readOnly}
-                        onClick={(e) => e.stopPropagation()}
+                      <input
+                        type="date" value={item.mfgDate || ''} disabled={readOnly}
                         onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-default" />
-                    </span>
+                        aria-label={`${item.name} 소비기한 수정용 제조일`}
+                        className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
+                      />
+                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                        <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
+                        <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
+                      </span>
+                    </div>
                     {item.checked && item.checkedBy && (
                       <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
                     )}

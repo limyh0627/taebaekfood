@@ -51,6 +51,21 @@ export const STATUS_HEAD: Record<string, string> = {
   [OrderStatus.ON_HOLD]: 'bg-orange-100 text-orange-800',
 };
 
+/**
+ * 보드 카드 머리 띠 — **바탕을 빼고 테두리로만** 상태를 알린다
+ * (2026-09-12 사장님: "거래처명 위치에 바탕색 빼고 테두리에 색 넣어봐").
+ * 색 띠가 카드마다 통째로 깔려 있어 정작 안의 글씨가 안 읽혔다.
+ * 글자색은 그대로 두고 아래 선만 상태색으로 긋는다.
+ */
+export const STATUS_HEAD_LINE: Record<string, string> = {
+  [OrderStatus.PENDING]: 'text-amber-800 border-amber-300',
+  [OrderStatus.PROCESSING]: 'text-sky-800 border-sky-300',
+  [OrderStatus.DISPATCHED]: 'text-emerald-800 border-emerald-300',
+  [OrderStatus.SHIPPED]: 'text-indigo-800 border-indigo-300',
+  [OrderStatus.DELIVERED]: 'text-slate-600 border-slate-300',
+  [OrderStatus.ON_HOLD]: 'text-orange-800 border-orange-300',
+};
+
 /** 주문 보드의 좁은 헤더 — 상태 색을 유지하면서 본문과 구분한다. */
 export const CARD_HEADER_COLOR: Record<string, string> = {
   [OrderStatus.PENDING]: 'bg-amber-200 border-amber-300',
