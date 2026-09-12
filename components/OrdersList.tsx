@@ -760,7 +760,7 @@ export const OrderCard = memo<OrderCardProps>(({
                          설정 저거 리스트에 있는 버튼 모양들로 그대로 대체하고"). 여기만 눌러 돌리는
                          딱지와 밑줄 글자를 써서, 같은 일을 두 모양으로 하고 있었다.
                          읽기전용(주문 고르기 창)에서는 잠근다. */}
-                    <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative w-[58px] shrink-0" onClick={(e) => e.stopPropagation()} onPointerDown={누르는동안끌기끄기}>
                       <select
                         value={current} disabled={readOnly}
                         onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
@@ -775,6 +775,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     </div>
                     <div className="relative h-7 w-[92px] shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 text-[10px] font-black transition-colors hover:bg-slate-200 focus-within:ring-1 focus-within:ring-indigo-400"
                       onClick={(e) => e.stopPropagation()}
+                      onPointerDown={누르는동안끌기끄기}
                       title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
                       <input
                         type="date" value={item.mfgDate || ''} disabled={readOnly}
@@ -1387,6 +1388,27 @@ const 그룹색표 = [
 const 그룹색 = (groups: readonly string[], name: string | undefined) => {
   const 자리 = name ? groups.indexOf(name) : -1;
   return 그룹색표[(자리 < 0 ? 0 : 자리) % 그룹색표.length];
+};
+
+/**
+ * **끌 수 있는 카드 안의 입력칸을 살린다.**
+ *
+ * 크롬은 `draggable` 인 조상 안에서 입력칸을 누르면 그 눌림을 **끌기로 먹어 버린다** —
+ * 소비기한 달력이 안 열리고 라벨 고르개도 잘 안 잡힌다(2026-09-12 사장님: "달력 안 눌리는거").
+ * 보드 카드는 칸 사이로 끌어 옮기는 것이라 카드째 끌리는 것을 없앨 수 없으니,
+ * **누르는 동안만** 끌기를 꺼 두고 손을 떼면 되돌린다.
+ */
+const 누르는동안끌기끄기 = (event: React.PointerEvent) => {
+  const 카드 = (event.currentTarget as HTMLElement).closest('[draggable="true"]') as HTMLElement | null;
+  if (!카드) return;
+  카드.draggable = false;
+  const 되돌리기 = () => {
+    카드.draggable = true;
+    window.removeEventListener('pointerup', 되돌리기);
+    window.removeEventListener('pointercancel', 되돌리기);
+  };
+  window.addEventListener('pointerup', 되돌리기);
+  window.addEventListener('pointercancel', 되돌리기);
 };
 
 //  예전 주문 칸은 옮길 데가 없다 — targetStatus 를 비운다
@@ -2237,11 +2259,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const blocked = !!dragging && dragging.key !== wi.key
             && getSection(dragging) !== getSection(wi);
           return (
+            /*  **끌 수 있는 것은 손잡이뿐이다**(2026-09-12 사장님: "달력 안 눌리는거 확인했어").
+                줄 전체가 `draggable` 이면 **크롬이 그 안의 입력칸 눌림을 끌기로 먹어 버려서**
+                소비기한 달력이 안 열리고 라벨 고르개도 잘 안 잡힌다.
+                배송 줄(`DeliveryDayList`)이 같은 이유로 진작 손잡이만 끌게 해 뒀다 — 그대로 맞춘다.
+                놓는 자리는 줄 전체 그대로다(좁은 손잡이에만 놓게 하면 옮기기가 어렵다). */
             <div
               key={wi.key}
-              draggable={workSort === null}
-              onDragStart={e => { e.dataTransfer.setData('workItemKey', wi.key); e.dataTransfer.effectAllowed = 'move'; setDraggingWorkKey(wi.key); }}
-              onDragEnd={() => setDraggingWorkKey(null)}
               /* 못 놓는 칸은 preventDefault를 하지 않아 브라우저가 '놓을 수 없음' 커서를 띄우게 둔다 */
               onDragOver={e => { if (blocked) { e.dataTransfer.dropEffect = 'none'; return; } e.preventDefault(); }}
               onDrop={e => {
@@ -2387,7 +2411,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     {/*  손잡이·묶기도 이 덩어리에 넣는다 — 폰에서 라벨·소비기한과 **같이** 내려가야
                          윗줄이 온전히 이름 몫이 된다. 넓은 화면에서는 서던 자리 그대로다. */}
                     <div className="flex items-center gap-0.5">
-                      <span title={workSort === null ? '끌어서 순서 바꾸기' : '직접 정렬을 선택하면 이동할 수 있습니다'} className={`rounded p-1 transition-colors ${workSort === null ? 'cursor-grab text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 active:cursor-grabbing' : 'cursor-not-allowed text-slate-300'}`}>
+                      <span
+                        draggable={workSort === null}
+                        onDragStart={e => { e.dataTransfer.setData('workItemKey', wi.key); e.dataTransfer.effectAllowed = 'move'; setDraggingWorkKey(wi.key); }}
+                        onDragEnd={() => setDraggingWorkKey(null)}
+                        title={workSort === null ? '끌어서 순서 바꾸기' : '직접 정렬을 선택하면 이동할 수 있습니다'}
+                        className={`rounded p-1 transition-colors ${workSort === null ? 'cursor-grab text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 active:cursor-grabbing' : 'cursor-not-allowed text-slate-300'}`}>
                         <GripVertical size={16} />
                       </span>
                     </div>
