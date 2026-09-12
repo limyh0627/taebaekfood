@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { today, addDays, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
-import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown, CalendarDays } from 'lucide-react';
-import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock } from '../types';
+import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown, CalendarDays, Hand, Package } from 'lucide-react';
+import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShipMethod } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -10,7 +10,7 @@ import { VOLUME_CHIP_COLORS, catOrder, renderColoredName } from '../src/shared/p
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
-import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
+import { channelStyle, isDeliveryChannel, defaultShipMethod } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { isActive } from '../src/shared/statementOrders';
@@ -79,6 +79,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     return day === 6 ? addDays(base, 2) : day === 0 ? addDays(base, 1) : base;
   });
   const [source, setSource] = useState<OrderSource>('일반');
+  /*  **배송방식은 판매 채널과 다른 축이다**(2026-09-12 사장님). 거래처를 고르면 그 채널의
+      기본값으로 맞춰 주고(택배·스마트스토어면 택배), 그 뒤로는 사람이 고른다. */
+  const [shipMethod, setShipMethod] = useState<ShipMethod>('배송');
   const [pallets, setPallets] = useState<OrderPallet[]>([]);
   const [isDelivery, setIsDelivery] = useState(false);
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(() => new Set());
@@ -109,6 +112,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   const selectPartner = (partner: Partner) => {
     setSelectedPartner(partner);
     setSource(partner.type as OrderSource);
+    const 기본 = defaultShipMethod(partner.type);
+    setShipMethod(기본);
+    setIsDelivery(기본 === '택배');
     setIsDelivery(partner.type === '택배' || partner.type === '스마트스토어');
     setSearchTerm('');
   };
@@ -118,6 +124,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     setSelectedItems([]);
     setPallets([]);
     setSource('일반');
+    setShipMethod('배송');
     setIsDelivery(false);
     setProductCategoryFilter('전체');
     setVolumeFilter(null);
@@ -564,6 +571,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       source: (isDelivery && source === '일반') ? '택배' : source,
       pallets: pallets.filter(p => p.quantity > 0),
       region: selectedPartner.region || '미지정',
+      shipMethod,
       ...(isDelivery ? { deliveryBoxes: [] } : {}),
     });
   };
@@ -673,33 +681,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                     </div>
                     {selectedPartner.region && <p className="text-[10px] font-medium text-indigo-500">{selectedPartner.region}</p>}
                   </div>
-                  <div className="shrink-0">
-                  <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsDelivery(false);
-                        setSource(current => current === '택배' ? '일반' : current);
-                      }}
-                      aria-pressed={!isDelivery}
-                      className={`min-h-8 rounded-md px-2.5 text-[11px] font-bold transition-colors ${!isDelivery ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
-                    >
-                      일반
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsDelivery(true);
-                        setSource(current => current === '일반' ? '택배' : current);
-                      }}
-                      aria-pressed={isDelivery}
-                      className={`flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[11px] font-bold transition-colors ${isDelivery ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
-                    >
-                      <Truck size={12} aria-hidden="true" />
-                      택배
-                    </button>
-                  </div>
-                  </div>
                 </div>
                 <button
                   type="button"
@@ -709,6 +690,41 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                   <User size={14} aria-hidden="true" />
                   거래처 다시 선택
                 </button>
+                {/*  **배송방식**(2026-09-12 사장님: "일반택배 거래처 다시선택 밑으로 빼고
+                     배송방식이라고 달고 배송 직접수령 택배 세개로 둬봐").
+                     거래처 이름 옆에 작게 붙어 있어서 무엇을 고르는 칸인지 안 읽혔다.
+                     **판매 채널과는 다른 축이다**(사장님: "일반 스마트스토어랑 택배는 판매 채널이고
+                     스마트스토어랑 택배는 배송방식이 기본이 택배"). 채널은 거래처가 들고 있고,
+                     배송방식은 주문마다 고른다 — 다만 택배·스마트스토어 거래처면 택배로 미리 맞춘다.
+                     택배일 때만 `deliveryBoxes` 를 만든다(송장·박스 수를 그때부터 센다). */}
+                <div>
+                  <p className="mb-1.5 text-[11px] font-black text-slate-600">배송방식</p>
+                  <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="배송방식">
+                    {([
+                      { key: '배송' as const, icon: Truck, 색: 'bg-indigo-600' },
+                      { key: '직접수령' as const, icon: Hand, 색: 'bg-teal-600' },
+                      { key: '택배' as const, icon: Package, 색: 'bg-pink-600' },
+                    ]).map(칸 => {
+                      const 골랐나 = shipMethod === 칸.key;
+                      const Icon = 칸.icon;
+                      return (
+                        <button
+                          key={칸.key} type="button"
+                          onClick={() => {
+                            setShipMethod(칸.key);
+                            //  택배로 나갈 때만 송장·박스 수를 센다
+                            setIsDelivery(칸.key === '택배');
+                          }}
+                          aria-pressed={골랐나}
+                          className={`flex min-h-9 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-bold transition-colors ${골랐나 ? `${칸.색} text-white` : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                          <Icon size={12} aria-hidden="true" />
+                          {칸.key}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </section>

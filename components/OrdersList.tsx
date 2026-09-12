@@ -54,6 +54,7 @@ import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 import { matchesSearch } from '../src/shared/hangul';
+import { shipMethodOf } from '../src/shared/channelStyle';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
@@ -1394,7 +1395,11 @@ const historyConfig = { ...칸('history_col', OrderStatus.DELIVERED, History, '�
 //  짧은 목록이라 검색칸이 안 뜬다(SearchableSelect 의 `searchThreshold`) — 전과 똑같이 동작한다.
 const 검색필드목록 = [
   { value: '', label: '필드 선택' },
-  { value: 'source', label: '출고 방식' },
+  /*  **판매 채널과 배송방식은 다른 축이다**(2026-09-12 사장님). 여기 있던 '출고 방식'은
+      거래처 채널(일반·택배·스마트스토어)이라 이름을 `배송채널`로 바로잡고,
+      주문마다 고르는 `배송방식`(배송·직접수령·택배)을 한 줄 더 둔다. */
+  { value: 'source', label: '배송채널' },
+  { value: 'shipMethod', label: '배송방식' },
   { value: 'invoicePrinted', label: '송장' },
   { value: 'completion', label: '작업완료 여부' },
   { value: 'item', label: '주문 품목' },
@@ -1446,7 +1451,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listPage, setListPage] = useState(1);
   //  거래처 거르개 — 검색필드와 따로 논다(2026-09-11 사장님).
   const [listPartnerFilter, setListPartnerFilter] = useState('');
-  const [listFilterField, setListFilterField] = useState<'source' | 'invoicePrinted' | 'partner' | 'completion' | 'item' | 'quantity' | 'manufacturing' | 'label' | 'packaging' | 'pallet' | 'orderDate' | 'deliveryDate' | ''>('');
+  const [listFilterField, setListFilterField] = useState<'source' | 'shipMethod' | 'invoicePrinted' | 'partner' | 'completion' | 'item' | 'quantity' | 'manufacturing' | 'label' | 'packaging' | 'pallet' | 'orderDate' | 'deliveryDate' | ''>('');
   const [listFilterValue, setListFilterValue] = useState('');
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
   const [listMemoDraft, setListMemoDraft] = useState('');
@@ -1802,6 +1807,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   const activeViewFilterValuesForOrder = (order: Order) => {
     if (listFilterField === 'source') return [order.source];
+    if (listFilterField === 'shipMethod') return [shipMethodOf(order)];
     if (listFilterField === 'invoicePrinted') return [order.invoicePrinted ? '출력 완료' : '미출력'];
     if (listFilterField === 'partner') return [order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름 없음'];
     if (listFilterField === 'completion') return order.items.map(item => item.checked ? '완료' : '미완료');
@@ -2568,6 +2574,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             if (listFilterField === 'partner') return [order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름 없음'];
             if (listFilterField === 'completion') return order.items.map(item => item.checked ? '완료' : '미완료');
             if (listFilterField === 'source') return [order.source];
+            if (listFilterField === 'shipMethod') return [shipMethodOf(order)];
             if (listFilterField === 'invoicePrinted') return [(order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '출력 완료' : '미출력') : '-'];
             if (listFilterField === 'item') return order.items.map(item => item.name);
             if (listFilterField === 'quantity') return order.items.map(item => item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`);
@@ -2585,6 +2592,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             if (listFilterField === 'partner') return (order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름 없음') === listFilterValue;
             if (listFilterField === 'completion') return order.items.some(item => (item.checked ? '완료' : '미완료') === listFilterValue);
             if (listFilterField === 'source') return order.source === listFilterValue;
+            if (listFilterField === 'shipMethod') return shipMethodOf(order) === listFilterValue;
             if (listFilterField === 'invoicePrinted') return ((order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '출력 완료' : '미출력') : '-') === listFilterValue;
             if (listFilterField === 'item') return order.items.some(item => item.name === listFilterValue);
             if (listFilterField === 'quantity') return order.items.some(item => (item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`) === listFilterValue);

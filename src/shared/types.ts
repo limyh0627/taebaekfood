@@ -122,6 +122,17 @@ export interface Partner {
 
 export type OrderSource = '스마트스토어' | '택배' | '일반';
 
+/**
+ * **어떻게 나가는가** — 판매 채널(`OrderSource`)과 **다른 축**이다.
+ *
+ * 2026-09-12 사장님: "일반 스마트스토어랑 택배는 판매 채널이고 스마트스토어랑 택배는
+ * 배송방식이 기본이 택배". 그러니까 채널이 무엇이든 배송방식은 따로 고를 수 있고,
+ * 다만 **택배·스마트스토어 채널이면 기본이 택배**다.
+ *
+ * 안 적힌 옛 주문은 채널로 읽는다 — 판정은 `shipMethodOf` 한 곳이 한다.
+ */
+export type ShipMethod = '배송' | '직접수령' | '택배';
+
 export interface Order {
   id: string;
   /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
@@ -154,6 +165,8 @@ export interface Order {
   pallets?: OrderPallet[];
   region?: string;
   deliveryBoxes?: DeliveryBox[];
+  /** 어떻게 나가나 — 안 적혔으면 채널로 읽는다(`shipMethodOf`). */
+  shipMethod?: ShipMethod;
   invoicePrinted?: boolean;
   /**
    * **송장 단계** — `-`(안 함) · `printed`(출력) · `attached`(부착).
