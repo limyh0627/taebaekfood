@@ -230,6 +230,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       `거래처`는 **품목에 걸린 거래처 이름**으로 세운다 — 한 거래처 것을 몰아서 볼 때 쓴다.
       이름이 여럿이면 첫 이름을 쓰고, 없는 것은 맨 뒤로 보낸다(빈칸이 위에 쌓이면 못 읽는다). */
   const [itemSort, setItemSort] = useState<'기본' | '거래처' | '품목명'>('기본');
+  /*  **거래처 필터**(2026-09-12 사장님: "품목관리 검색조건에 거래처가 없어").
+      주문·배송의 거래처 칸과 같은 자리·같은 모양이다 — 쳐서 찾고 초성도 된다.
+      고르면 그 거래처에 걸린 품목만 남는다(`isLinkedToPartner` — 연결 판정은 한 곳이 한다). */
+  const [filterPartnerId, setFilterPartnerId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [partnerSearch, setPartnerSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -399,6 +403,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const 거래처이름표 = useMemo(
     () => partnerNamesByItem(partnerItems, partners), [partnerItems, partners]);
 
+  /*  고를 수 있는 거래처 — **품목에 실제로 걸린 곳만** 세운다.
+      전 거래처를 세우면 골라도 0건인 이름이 절반이라 헛걸음한다. */
+  const 필터거래처들 = useMemo(() => {
+    const 걸린 = new Set(partnerItems.map(link => link.partnerId));
+    return partners
+      .filter(partner => 걸린.has(partner.id))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+  }, [partnerItems, partners]);
+
   const filteredItems = useMemo(() => {
     const isByClientPurchase = mainView === 'by-partner' && partnerScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
@@ -408,6 +421,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
           : items.filter(p => !p.archived && (partnerAllCats || p.type === activeCategory) && isLinkedToPartner(partnerItems, selectedClientId, p.id))
         : [];
+
+    //  **거래처로 좁힌다** — 연결 판정은 `isLinkedToPartner` 한 곳이 한다(주문 화면과 같은 근거).
+    if (filterPartnerId) {
+      result = result.filter(item => isLinkedToPartner(partnerItems, filterPartnerId, item.id));
+    }
 
     if (showNoClient) {
       result = result.filter(p => partnersOfItem(partnerItems, p.id).length === 0);
@@ -449,7 +467,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       const d = catOrder(categoryOf(a)) - catOrder(categoryOf(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
-  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표, itemSort]);
+  }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats, 거래처이름표, itemSort, filterPartnerId]);
 
   const 줄거래처 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
 
@@ -714,7 +732,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 <h3 id="item-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
                 <button
                   type="button"
-                  onClick={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setSearchTerm(''); setItemSort('기본'); setPage(1); }}
+                  onClick={() => { setActiveSubtype(''); setActiveItemCat(''); setActiveSpec(''); setActiveGrade(''); setSearchTerm(''); setItemSort('기본'); setFilterPartnerId(''); setPage(1); }}
                   className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                 ><RotateCcw size={12} aria-hidden="true" />초기화</button>
               </div>
@@ -759,6 +777,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     value={activeGrade}
                     onChange={value => { setActiveGrade(value); setPage(1); }}
                     options={[{ value: '', label: '전체' }, ...GRADES.map(g => ({ value: g, label: g }))]}
+                  />
+                </label>
+                <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
+                  거래처
+                  <SearchableSelect
+                    ariaLabel="거래처" className={질의칸}
+                    value={filterPartnerId}
+                    onChange={value => { setFilterPartnerId(value); setPage(1); }}
+                    options={[{ value: '', label: '전체' }, ...필터거래처들.map(partner => ({ value: partner.id, label: partner.name || '이름 없음' }))]}
                   />
                 </label>
                 <label className="flex w-36 shrink-0 flex-col gap-1 text-[10px] font-bold text-slate-500">
