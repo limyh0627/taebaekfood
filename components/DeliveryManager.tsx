@@ -952,14 +952,20 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           || (calendarLocationOf(a) || '\uffff').localeCompare(calendarLocationOf(b) || '\uffff', 'ko')
           || (a.partnerName || '').localeCompare(b.partnerName || '', 'ko')
         );
-        /*  **번호는 완료를 숨겨도 자기 자리를 지킨다**(2026-09-11 사장님: "완료포함이 숨겨져도
-            자기 번호는 계속 들고 있는게 맞지 않나"). 숨겼다고 남은 줄이 1·2·3 으로 다시 매겨지면
-            "3번 다음에 간다"고 말해 둔 것이 다른 집을 가리킨다.
-            그래서 번호는 **숨기기 전 목록**(`numberingIds`)에서 센다. */
+        /*  **나간 것은 차례에서 빠진다**(2026-09-12 사장님: "완료된애들은 순서에서 빠지는게
+            낫겠다"). 2026-09-11 에는 반대로 "숨겨도 제 번호를 들고 있어야 한다" 하셔서 숨기기
+            전 목록에서 번호를 셌는데, 그 판단을 뒤집으신 것이다.
+            남은 집이 1·2·3 으로 다시 매겨져 **앞으로 몇 집이 남았는지가 번호로 읽힌다.** */
+        /*  차례 밖에 있는 줄 — **택배**(기사가 실어 가니 도는 순서가 없다)와
+            **이미 나간 집**(출고완료). 번호도, 끌기도, 번호 바꾸기도 이 줄들은 건너뛴다. */
+        const 차례밖 = (id: string) => {
+          const order = orders.find(candidate => candidate.id === id);
+          return isDeliveryChannel(order?.source) || order?.status === OrderStatus.SHIPPED;
+        };
         const numberingIds = [
           ...deliveryOrdering.filter(id => deliverySequenceOrders.some(order => order.id === id)),
           ...deliverySequenceOrders.filter(order => !deliveryOrdering.includes(order.id)).map(order => order.id),
-        ].filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source));
+        ].filter(id => !차례밖(id));
         const validIds = new Set(visibleDeliverySequenceOrders.map(order => order.id));
         const manualIds = [
           ...deliveryOrdering.filter(id => validIds.has(id)),
@@ -973,7 +979,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             맞다 — 숫자는 **오늘 출고예정일인 것만** 세는데 목록은 날짜와 무관하게 운영 중인
             배송 대상을 다 보여 준다. 그래서 목록엔 13건이 있는데 숫자는 몇 건으로 떴다.
             고친 뒤로는 목록도 오늘 것만 담으므로(위 `deliverySequenceOrders`) 둘이 같은 것을 센다.
-            '완료 포함'을 꺼도 완료 건수는 보여야 하므로 완료는 숨기기 전 목록에서 센다. */
+            나간 집을 숨겨도 그 건수는 단추에 찍혀야 하므로, 완료는 숨기기 전 목록에서 센다. */
         const todayIncompleteCount = deliverySequenceOrders.filter(order => order.status !== OrderStatus.SHIPPED).length;
         const todayCompleteCount = deliverySequenceOrders.filter(order => order.status === OrderStatus.SHIPPED).length;
 
@@ -1019,9 +1025,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               기사가 와서 실어 가는 것이라 우리가 도는 차례를 정할 게 없다 — 번호도 손잡이도 안 단다.
               일반(우리 차가 도는 것)만 번호와 끌기를 둔다. */
           const 택배인가 = isDeliveryChannel(order.source);
-          //  번호는 **일반 것들 안에서만**, 그리고 **숨기기 전 목록**에서 센다.
+          //  번호는 **차례에 선 집들**(일반 · 아직 안 나간 것) 안에서만 센다.
           const sequenceNumber = numberingIds.indexOf(id) + 1;
-          const 끌수있나 = deliverySortMode === 'manual' && !택배인가;
+          const 끌수있나 = deliverySortMode === 'manual' && !차례밖(id);
           const slotTone = slot === '오전' ? 'amber' : 'indigo';
           return (
             <div
@@ -1040,7 +1046,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                    바꿀 수 있게 해"). 좁은 카드끼리 끌어 옮기는 것보다 확실하다 —
                    배송 캘린더의 줄(`DeliveryDayList`)이 진작 쓰던 방식이라 모양을 그대로 맞춘다.
                    택배는 순서가 없으니 빈칸이다. */}
-              {택배인가 ? (
+              {차례밖(id) ? (
                 <span className="text-center text-[11px] font-black tabular-nums text-slate-300" />
               ) : deliverySortMode === 'manual' ? (
                 <select
@@ -1057,8 +1063,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                     새차례.splice(목표, 0, 옮길것);
                     //  저장하는 목록에는 택배도 들어 있으므로, 일반 자리만 새 차례로 갈아 끼운다.
                     let n = 0;
-                    saveDeliveryOrdering(manualIds.map(x =>
-                      isDeliveryChannel(orders.find(order => order.id === x)?.source) ? x : 새차례[n++]));
+                    //  `numberingIds` 에서 뺀 것과 **똑같은 기준**으로 건너뛴다.
+                    //  한쪽만 빼면 `새차례` 가 모자라 저장된 차례에 `undefined` 가 끼어든다.
+                    saveDeliveryOrdering(manualIds.map(x => 차례밖(x) ? x : 새차례[n++]));
                   }}
                   className={`h-7 w-7 shrink-0 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-slate-50 text-center text-xs font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300 ${slotTone === 'amber' ? 'text-amber-600' : 'text-indigo-600'}`}
                 >
@@ -1109,13 +1116,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                     ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
                     <p className="text-xs font-bold text-slate-500">
                       출고 미완료 <strong className="font-black text-rose-600">{todayIncompleteCount}건</strong>
-                      <span className="mx-1.5 text-slate-300">·</span>
-                      출고 완료 <strong className="font-black text-emerald-600">{todayCompleteCount}건</strong>
                     </p>
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs font-medium text-slate-600">
-                      <input type="checkbox" checked={showCompletedDeliveryOrders} onChange={event => setShowCompletedDeliveryOrders(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500" />
-                      완료 포함
-                    </label>
+                    {/*  나간 집은 차례에서 빠지고, **이 단추를 눌러야** 뒤에 붙어 보인다. */}
+                    <button
+                      type="button"
+                      onClick={() => setShowCompletedDeliveryOrders(현재 => !현재)}
+                      aria-pressed={showCompletedDeliveryOrders}
+                      className={`flex min-h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-colors ${showCompletedDeliveryOrders ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                    >출고 완료 <strong className="font-black">{todayCompleteCount}건</strong></button>
                   </div>
                 </div>
                 <div className={`flex-col gap-3 p-3 ${mobileCollapsed.has('delivery-order') ? 'hidden' : 'flex'}`}>

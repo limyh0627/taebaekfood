@@ -2260,17 +2260,21 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
         // 순서 이동은 같은 품목 카테고리 안에서만 허용한다.
         const getSection = (workItem: WorkItem) => workCategoryOf(workItem);
-        const visibleWorkItems = validWorkItems.filter(workItem => showCompletedWorkItems || !isWorkComplete(workItem));
-        // 금일 작업순서 요약은 하위 품목 수가 아니라 조회 범위의 주문 건수를 센다.
-        const pendingWorkCount = activeOperationOrders.filter(order => order.status === OrderStatus.PENDING).length;
-        const processingWorkCount = activeOperationOrders.filter(order => order.status === OrderStatus.PROCESSING).length;
+        //  머리줄에 적는 수 — **주문이 아니라 줄(품목)** 을 센다(2026-09-12 사장님:
+        //  "작업 미완료 n건 작업 완료 n건"). 이 판은 줄 단위로 보는 자리라, 주문 상태
+        //  건수(대기중·작업중)보다 줄 수가 눈앞의 일과 맞는다.
+        const 완료줄수 = validWorkItems.filter(workItem => isWorkComplete(workItem)).length;
+        const 미완료줄수 = validWorkItems.length - 완료줄수;
         const activeMobileWorkCategory = workCategories.includes(mobileWorkCategory) ? mobileWorkCategory : workCategories[0];
 
         /**
-         * **번호는 자기 자리를 그대로 지닌다**(2026-09-11 사장님: "완료포함이 숨겨져도 자기 번호는
-         * 계속 들고 있는게 맞지 않나"). 맞다 — 완료된 줄을 숨긴다고 남은 줄이 1·2·3 으로 다시
-         * 매겨지면, 현장에서 "3번 하던 중"이라고 말해 둔 것이 다른 줄을 가리킨다.
-         * 그래서 **번호는 완료까지 포함한 목록에서 세고**, 숨기기는 보여 줄 때만 한다.
+         * **차례에 서는 줄 — 아직 안 한 것만.**
+         *
+         * 2026-09-12 사장님: "완료된애들은 순서에서 빠지는게 낫겠다".
+         * 하루 전(2026-09-11)에는 반대로 "완료포함이 숨겨져도 자기 번호는 계속 들고 있는게
+         * 맞지 않나" 하셔서 **숨기기 전 목록에서 번호를 셌는데, 그 판단을 뒤집으신 것이다.**
+         * 다 한 줄이 번호를 물고 있으면 1·2·5·7 처럼 구멍이 나서 몇 개 남았는지가 안 읽혔다.
+         * 이제 남은 것이 1·2·3 으로 이어져 **번호 끝이 곧 남은 일감 수**다.
          */
         const sectionItemsAll = (category: string) => {
           const categoryItems = [...validWorkItems.filter(workItem => workCategoryOf(workItem) === category)];
@@ -2284,14 +2288,22 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 || time(aOrder?.createdAt) - time(bOrder?.createdAt);
             });
           }
-          return clusterByGroup(categoryItems, workItem => workItem.key, 묶음찾기);
+          /*  **다 한 줄은 차례에서 빠진다**(2026-09-12 사장님: "완료된애들은 순서에서 빠지는게
+           *  낫겠다"). 2026-09-11 에는 반대로 "숨겨도 제 번호를 들고 있어야 한다" 하셔서
+           *  숨기기 전 목록에서 번호를 셌는데, 그 판단을 뒤집으신 것이다.
+           *  남은 것이 1·2·3 으로 다시 매겨져 **지금 할 일이 몇 개인지가 번호로 읽힌다.** */
+          return clusterByGroup(categoryItems.filter(workItem => !isWorkComplete(workItem)), workItem => workItem.key, 묶음찾기);
         };
-        //  화면에 낼 줄 — 번호는 위(전체)에서 매기고 여기서는 숨기기만 한다.
+        //  다 한 줄은 '작업 완료 n건' 을 눌렀을 때만 뒤에 붙여 보여 준다(차례에는 안 낀다).
+        const 다한줄 = (category: string) => clusterByGroup(
+          validWorkItems.filter(workItem => workCategoryOf(workItem) === category && isWorkComplete(workItem)),
+          workItem => workItem.key, 묶음찾기);
         const orderedSectionItems = (category: string) =>
-          sectionItemsAll(category).filter(workItem => showCompletedWorkItems || !isWorkComplete(workItem));
+          showCompletedWorkItems ? [...sectionItemsAll(category), ...다한줄(category)] : sectionItemsAll(category);
 
         const renderItemRow = (wi: WorkItem, sectionItems: WorkItem[]) => {
-          //  자리 번호는 **숨기기 전 목록**에서 센다 — 완료를 감춰도 번호가 안 흔들린다.
+          //  자리 번호는 **아직 안 한 줄들** 안에서 센다(`sectionItemsAll`).
+          //  다 한 줄은 그 목록에 없어 -1 이 나오므로, 번호 대신 빈칸을 둔다(아래).
           void sectionItems;
           const sectionIdx = sectionItemsAll(workCategoryOf(wi)).findIndex(x => x.key === wi.key);
           const order = workOrderOf(wi);
@@ -2345,7 +2357,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
               {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님) — 배송순서·배송 캘린더와
                    같은 모양이다. 직접 정렬일 때만 고를 수 있다(추천 정렬이면 눌러 봐야 덮인다).
                    자리는 **그 묶음 안에서만** 옮긴다 — 기름 줄을 깨 칸으로 보내려면 그룹을 바꿔야 한다. */}
-              {workSort === null ? (
+              {/*  **다 한 줄은 번호가 없다** — 차례에서 빠졌기 때문이다.
+                   빈칸이라도 자리(w-7)는 남겨 둬야 아래 줄들과 글자가 어긋나지 않는다.
+                   (안 그러면 고르개의 값이 목록에 없는 0 이 되어 브라우저가 멋대로 1 을 고른다 —
+                   다 한 줄마다 '1' 이 찍혀 첫 줄이 여럿으로 보였다.) */}
+              {completed ? (
+                <span className="w-7 shrink-0" aria-hidden="true" />
+              ) : workSort === null ? (
                 <select
                   aria-label={`${wi.itemName} 작업 순서`}
                   value={sectionIdx + 1}
@@ -2496,8 +2514,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
               없애고 굳이 기름 글자도 없어도 될거 같은디").
               바로 위 탭이 이미 `기름 14 · 깨 7 · 미분류 1` 을 보여 준다 — 같은 말을 두 번 적을
               이유가 없고, 테두리·바탕이 빠진 만큼 줄이 좌우로 넓어진다.
-              몇 개 중 몇 개를 보고 있는지(`12/14`)는 남긴다 — 탭의 수는 전체라 '완료 포함'을
-              껐을 때 몇 줄이 숨었는지는 여기서만 알 수 있다. */
+              몇 개 중 몇 개를 보고 있는지(`12/14`)는 남긴다 — 탭의 수는 전체라, '작업 완료 n건'
+              을 안 눌렀을 때 몇 줄이 빠져 있는지는 여기서만 알 수 있다. */
           return (
             <section key={category} className="min-w-0" aria-label={`${category} 작업순서`}>
               <div className="mb-1.5 flex items-center justify-end px-1">
@@ -3270,16 +3288,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   {/*  **건수와 '완료 포함' 은 늘 한 줄이다**(2026-09-12 사장님: "대기중 오른쪽에
                        ㅁ 완료 포함이 한줄로 오게"). 따로 놔두면 폭이 좁아질 때 체크만 아랫줄로
                        떨어져 무엇에 걸린 체크인지 안 읽힌다. 묶어 두면 둘이 같이 내려간다. */}
+                  {/*  **주문 상태가 아니라 '할 일이 몇 줄 남았나' 를 센다**(2026-09-12 사장님:
+                       "대기중 n건 작업중 n건이 아니라 작업 미완료 n건 작업 완료 n건으로").
+                       이 판은 줄 단위로 보는 자리라 주문 상태보다 줄 수가 맞는 셈이다.
+                       다 한 줄은 차례에서 빠지고, **'작업 완료 n건' 을 눌러야** 뒤에 붙어 보인다. */}
                   <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                     <p className="text-xs font-bold text-slate-500">
-                      대기중 <strong className="font-black text-rose-600">{pendingWorkCount}건</strong>
-                      <span className="mx-1.5 text-slate-300">·</span>
-                      작업중 <strong className="font-black text-sky-600">{processingWorkCount}건</strong>
+                      작업 미완료 <strong className="font-black text-rose-600">{미완료줄수}건</strong>
                     </p>
-                    <label className="flex min-h-11 cursor-pointer items-center gap-1.5 px-1 text-xs font-medium text-slate-600">
-                      <input type="checkbox" checked={showCompletedWorkItems} onChange={event => setShowCompletedWorkItems(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500" />
-                      완료 포함
-                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCompletedWorkItems(현재 => !현재)}
+                      aria-pressed={showCompletedWorkItems}
+                      className={`flex min-h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-colors ${showCompletedWorkItems ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                    >작업 완료 <strong className="font-black">{완료줄수}건</strong></button>
                   </div>
                 </div>
               </div>
