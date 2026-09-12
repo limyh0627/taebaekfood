@@ -102,7 +102,7 @@ import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
-import { buildStockUseRows, StockUseRow } from './stockUseRows';
+import { buildStockUseRows, resolveStockUse, StockUseRow } from './stockUseRows';
 import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
 import OrderRollbackApprovalModal from '../../../components/OrderRollbackApprovalModal';
@@ -1505,9 +1505,38 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 공통 원복 승인창 하나에서 체크 해제까지 함께 승인한다.
     if (isRollback) return requestOrderStatus(orderId, plan.status, { items: plan.items });
     // 승인 전에는 체크도 상태도 저장하지 않는다. 생산은 기존 재고 사용 승인 경로만 호출한다.
+    /*  **작업완료로 넘길 때는 재고를 미리 알려 준다**(2026-09-12 사장님: "재고 있는 경우는
+     *  재고 사용할 수 있게 해주고 재고 없는 경우에는 전량 생산됩니다 알람내용에 같이 포함").
+     *
+     *  재고가 있으면 다음 창(`StockUseModal`)에서 얼마나 쓸지 고르게 되는데, 그 창이 뜨는지
+     *  아닌지를 **누르기 전에는 알 수 없었다.** 쓸 재고가 없으면 그 창 없이 곧바로 전량 생산으로
+     *  넘어간다 — 되돌리기 어려운 쪽이라 미리 말해 주는 게 맞다.
+     *  세는 길은 실제로 쓰는 것과 **같다**(`buildStockUseRows` → `resolveStockUse`). */
+    const 재고안내 = (): string => {
+      if (plan.status !== OrderStatus.DISPATCHED) return '';
+      if (order.producedAt) return '이미 생산된 주문입니다 — 재고를 다시 쓰지 않습니다.';
+      const rows = buildStockUseRows(order, allItems);
+      if (rows.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
+      const 상태들 = resolveStockUse(rows);
+      const 쓸것 = 상태들.filter(x => x.own + (x.loose?.value ?? 0) > 0);
+      if (쓸것.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
+      const 줄 = 쓸것.map(x => {
+        const 낱개 = x.loose?.value ? ` + ${x.loose.value}${x.loose.max >= 0 ? x.row.loose?.unitLabel ?? '개' : ''}` : '';
+        return `· ${x.row.name} — 재고 ${x.own}${x.row.unitLabel}${낱개} 사용`;
+      });
+      const 모자람 = 상태들.some(x => (x.loose ? x.loose.short : x.shortUnits) > 0);
+      return [
+        '있는 재고를 먼저 씁니다.' + (모자람 ? ' 모자란 만큼은 생산합니다.' : ''),
+        ...줄,
+        '다음 창에서 쓸 양을 고칠 수 있습니다.',
+      ].join('\n');
+    };
     setCompletionAsk({
       message: '해당 거래처를 ' + statusLabel(plan.status) + ' 상태로 변경할까요?',
-      subMessage: (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
+      subMessage: [
+        (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
+        재고안내(),
+      ].filter(Boolean).join('\n'),
       onConfirm: () => { void save(); },
     });
   };
