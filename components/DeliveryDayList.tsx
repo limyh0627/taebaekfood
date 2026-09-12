@@ -5,6 +5,8 @@ import type { DayRow } from '../src/shared/deliveryPlan';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { statusColor, statusLabel } from '../src/shared/orderStatusStyle';
 import { dateOfLocal } from '../src/shared/day';
+//  묶음 띠 색은 작업순서 줄과 **같은 것**을 쓴다 — 한쪽만 고치면 같은 묶음이 두 색이 된다
+import { groupStripe } from '../src/shared/groupStripe';
 
 /**
  * **하루치 배송 줄 — 화면 한 벌.**
@@ -48,14 +50,6 @@ interface Props {
   /** 오전 다음 오후처럼 번호를 하루 전체에서 이어 붙인다. */
   positionOffset?: number;
 }
-
-/** 묶음 띠 색 — 묶음 id 로 고르되 **클래스 이름은 통째로 적는다**(Tailwind 가 글자를 찾는다) */
-const 묶음색 = ['border-l-sky-400', 'border-l-emerald-400', 'border-l-violet-400', 'border-l-orange-400', 'border-l-rose-400'];
-const 띠색 = (id: string) => {
-  let n = 0;
-  for (const c of id) n = (n + c.charCodeAt(0)) % 997;
-  return 묶음색[n % 묶음색.length];
-};
 
 const DeliveryDayList: React.FC<Props> = ({ rows, orders, partners, on, compact = false, selected, dateStr, positionOffset = 0 }) => {
   const [dragId, setDragId] = React.useState<string | null>(null);
@@ -109,7 +103,7 @@ const DeliveryDayList: React.FC<Props> = ({ rows, orders, partners, on, compact 
               compact ? 'gap-1.5 px-2 py-2' : 'gap-2 px-3 py-2.5'
             } ${r.done ? 'opacity-50' : ''} ${
               //  묶음은 왼쪽 굵은 띠로 잇는다 — 첫 줄만 위, 끝 줄만 아래가 둥글다
-              r.groupId ? `border-l-4 ${띠색(r.groupId)} ` : ''
+              r.groupId ? `border-l-4 ${groupStripe(r.groupId)} ` : ''
             }${고름 ? 'ring-2 ring-indigo-400 border-indigo-200' : 'border-slate-100'} ${
               dragId === r.orderId ? 'opacity-60 ring-2 ring-indigo-300' : ''}`}
           >
