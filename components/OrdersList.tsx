@@ -530,11 +530,22 @@ export const OrderCard = memo<OrderCardProps>(({
       className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
-           **바탕색은 뺐다**(2026-09-12 사장님) — 상태는 글자색과 **아래 선**으로만 알린다.
+           **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
            색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
-      <div className={`flex justify-between items-center rounded-t-2xl border-b-2 ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600 border-slate-300'} ${
+      <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
-        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <div className="min-w-0 flex-1">
+          {/*  **주문번호는 거래처명 위**(2026-09-12 사장님: "주문 번호는 거래처명 위로 가고").
+               꼬리에 있던 것을 올렸다 — 카드를 가리킬 이름이라 먼저 읽힌다. */}
+          {cardNoLabel(order) && (
+            <p className="text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}</p>
+          )}
+        <div className="flex min-w-0 items-center gap-1.5">
+          {/*  **판매 채널은 거래처명 앞**(사장님: "배송채널은 거래처명 앞으로 가고").
+               꼬리 구석에 작게 적혀 있어 안 읽혔다. 색은 channelStyle 한 곳이 정한다. */}
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-black ${channelStyle(order.source).chip}`}>
+            {channelStyle(order.source).short}
+          </span>
           {/*  **이름 + 연필까지가 '수정' 자리다.** 누르면 리스트에서 쓰는 것과 **같은**
                `거래처 주문 수정` 창이 뜬다(2026-09-11 사장님: "리스트 쪽에 붙은 거래처 주문 수정
                모달띄우는걸로 바꿔 기존 방식 버리고"). 카드 안에서 직접 고치던 옛 방식은 버린다 —
@@ -553,18 +564,13 @@ export const OrderCard = memo<OrderCardProps>(({
           ) : (
             <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
           )}
-          {nonHyangmiyuItems.length > 0 && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className="text-[12px] font-black shrink-0 transition-all hover:opacity-70 opacity-80"
-            >
-              {completedItems}/{totalItems}
-            </button>
-          )}
+        </div>
         </div>
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
+        {/*  **진행도는 상태 밑**(2026-09-12 사장님: "0/1이거는 대기중 작업중 밑으로 들어가게").
+             이름 옆에 붙어 있어 긴 거래처명을 밀어냈다. 눌러서 카드를 접는 것도 그대로다. */}
+        <div className="flex shrink-0 flex-col items-end leading-tight">
         <div className="relative shrink-0">
           {readOnly ? (
             <span className="text-[12px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
@@ -601,6 +607,16 @@ export const OrderCard = memo<OrderCardProps>(({
                 </button>
               ))}
             </div>
+          )}
+        </div>
+          {nonHyangmiyuItems.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
+              className="text-[11px] font-black opacity-70 transition-all hover:opacity-100"
+            >
+              {completedItems}/{totalItems}
+            </button>
           )}
         </div>
         {isEditing && (
@@ -1066,13 +1082,6 @@ export const OrderCard = memo<OrderCardProps>(({
       )}
 
 
-      {/*  카드번호 — 주문일자·배송기한 윗줄. 화면끼리 이 카드를 가리킬 이름이다
-           (전표 만들 때 고른 주문이 어느 카드인지 확인하려면 있어야 한다). */}
-      {cardNoLabel(order) && (
-        <div className="pt-2 border-t border-slate-50 mt-2 -mb-1">
-          <span className="text-[9px] font-black text-slate-400 tabular-nums">{cardNoLabel(order)}</span>
-        </div>
-      )}
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">
@@ -1095,6 +1104,10 @@ export const OrderCard = memo<OrderCardProps>(({
               <span className="text-[9px] font-bold text-slate-500">{(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}</span>
             </div>
             <div className="flex flex-col items-center gap-0.5">
+              {/*  **팔레트 위에 출고 방식**(사장님: "팔레트 위에 출고 방식이 오게 해봐").
+                   배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`).
+                   여기 있던 판매 채널은 거래처명 앞으로 옮겼다. */}
+              <span className="text-[9px] font-black text-slate-500">{shipMethodOf(order)}</span>
               {palletStocks.length > 0 && onUpdatePallets && (
                 <div className="relative">
                   <button
@@ -1146,7 +1159,6 @@ export const OrderCard = memo<OrderCardProps>(({
                   )}
                 </div>
               )}
-              <span className="text-[9px] font-black text-slate-400 uppercase text-center">{order.source}</span>
             </div>
           </>
         )}
