@@ -52,6 +52,21 @@ export const STATUS_HEAD: Record<string, string> = {
 };
 
 /**
+ * **보드 카드 테두리** — 상태를 카드 가장자리로 알린다(2026-09-12 사장님: "카드 테두리에 색 넣어봐").
+ *
+ * 머리 띠의 바탕과 아래 선을 차례로 걷어내고 나니 상태가 글자 하나로만 남아 멀리서 안 보였다.
+ * 바탕을 칠하지 않으면서 카드를 훑어볼 수 있는 자리가 테두리다.
+ */
+export const STATUS_CARD_BORDER: Record<string, string> = {
+  [OrderStatus.PENDING]: 'border-amber-300',
+  [OrderStatus.PROCESSING]: 'border-sky-300',
+  [OrderStatus.DISPATCHED]: 'border-emerald-300',
+  [OrderStatus.SHIPPED]: 'border-indigo-300',
+  [OrderStatus.DELIVERED]: 'border-slate-300',
+  [OrderStatus.ON_HOLD]: 'border-orange-300',
+};
+
+/**
  * 보드 카드 머리 띠 — **글자색으로만** 상태를 알린다.
  *
  * 2026-09-12 사장님이 두 걸음으로 정하셨다: 먼저 "바탕색 빼고 테두리에 색 넣어봐",

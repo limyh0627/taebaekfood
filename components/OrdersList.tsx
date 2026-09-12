@@ -64,7 +64,7 @@ import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
-import { CARD_HEADER_COLOR, STATUS_COLOR, STATUS_HEAD_LINE, STATUS_LABEL, statusLabel, statusChip, statusColumn } from '../src/shared/orderStatusStyle';
+import { CARD_HEADER_COLOR, STATUS_CARD_BORDER, STATUS_COLOR, STATUS_HEAD_LINE, STATUS_LABEL, statusLabel, statusChip, statusColumn } from '../src/shared/orderStatusStyle';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -527,7 +527,7 @@ export const OrderCard = memo<OrderCardProps>(({
       /*  **카드 아무 데나 눌러서 편집에 들어가지 않는다**(2026-09-11 사장님: "이름부터 그쪽까지만
           누르면 수정하는 거고"). 카드 표면 대부분이 체크·수량 같은 조작이라, 아무 데나 눌러도
           편집이 열리면 누르려던 것과 엉킨다. 여는 자리는 **이름 + 연필**뿐이다. */
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : readOnly ? 'border-slate-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : `${STATUS_CARD_BORDER[order.status] ?? 'border-slate-200'}${readOnly ? '' : ' hover:shadow-md cursor-pointer'}`} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
            **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
