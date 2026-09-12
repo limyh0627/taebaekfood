@@ -45,7 +45,7 @@ interface DeliveryManagerProps {
    */
   calendarOnly?: boolean;
   /** 주문 쪽 검색조건에서 고른 정렬 — 캘린더의 날짜별 차례가 이걸 따른다. */
-  sortMode?: 'delivery' | 'order' | 'stock';
+  sortMode?: 'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh';
   orders: Order[];
   partners: Partner[];
   items: Item[];

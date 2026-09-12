@@ -301,7 +301,7 @@ interface OrdersListProps {
    * 검색조건 안의 고르개가 캘린더에서도 들어야 한다(2026-09-11 사장님:
    * "검색조건이랑 붙어다니게 해야지 코드가").
    */
-  calendarSlot?: (_sort: 'delivery' | 'order' | 'stock') => React.ReactNode;
+  calendarSlot?: (_sort: 'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh') => React.ReactNode;
 }
 
 interface OrderCardProps {
@@ -1448,6 +1448,10 @@ const 정렬목록 = [
   { value: 'delivery', label: '출고예정일 임박 순' },
   { value: 'order', label: '주문일 최신 순' },
   { value: 'stock', label: '재고 여유 순' },
+  //  **작업도 = 그 주문에서 체크가 끝난 품목 비율**(2026-09-12 사장님).
+  //  낮은 순은 '아직 손도 안 댄 것'부터, 높은 순은 '조금만 더 하면 끝나는 것'부터 본다.
+  { value: 'workLow', label: '작업도 낮은 순' },
+  { value: 'workHigh', label: '작업도 높은 순' },
 ];
 
 const OrdersList: React.FC<OrdersListProps> = ({
@@ -1483,7 +1487,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [activeView, setActiveView] = useState<'calendar' | 'list' | 'kanban' | 'history'>(embeddedListOnly ? 'list' : 'kanban');
   const [showListDetailColumns, setShowListDetailColumns] = useState(false);
   const [showListCompletionColumns, setShowListCompletionColumns] = useState(false);
-  const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock'>('delivery');
+  const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh'>('delivery');
   const [listStatusTab, setListStatusTab] = useState<'all' | OrderStatus>('all');
   const [listPage, setListPage] = useState(1);
   //  거래처 거르개 — 검색필드와 따로 논다(2026-09-11 사장님).
@@ -1773,9 +1777,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
     const product = items.find(candidate => candidate.id === item.itemId);
     return product ? (product.stock ?? 0) - item.quantity : Number.POSITIVE_INFINITY;
   }));
+  /*  **작업도** — 그 주문에서 체크가 끝난 품목 비율(0~1). 품목이 없으면 0으로 본다
+   *  (나눗셈이 NaN 이 되면 정렬이 뒤죽박죽이 된다). 같은 작업도면 출고예정일이 급한 것부터. */
+  const 작업도 = (order: Order) => order.items.length === 0
+    ? 0
+    : order.items.filter(item => item.checked).length / order.items.length;
+
   const 정렬 = (rows: readonly Order[]): Order[] => [...rows].sort((a, b) => {
     if (listSort === 'order') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     if (listSort === 'stock') return stockSlackOf(a) - stockSlackOf(b);
+    if (listSort === 'workLow' || listSort === 'workHigh') {
+      const 차 = 작업도(a) - 작업도(b);
+      if (차 !== 0) return listSort === 'workLow' ? 차 : -차;
+      return new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime();
+    }
     return new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime();
   });
 
