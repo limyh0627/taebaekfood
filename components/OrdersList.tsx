@@ -1811,18 +1811,29 @@ const OrdersList: React.FC<OrdersListProps> = ({
          *  (2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데"). 이름도 같은 규칙으로 갈라 적는다. */
         /*  **상품은 작업순서에 안 세운다**(2026-09-11 사장님: "상품은 작업순서에서 빼 사오는거니까").
             사 오는 물건이라 우리가 만들 일이 없다 — 줄만 늘어난다. */
-        return order.items.map((item, index) => ({
-          key: `${order.id}-${lineKeyAt(order.items, index)}`,
-          orderId: order.id,
-          itemId: item.itemId,
-          lineKey: lineKeyAt(order.items, index),
-          itemName: `${item.name}${lineSuffix(order.items, index)}`,
-          partnerName,
-          qty: item.quantity,
-          category: items.find(product => product.id === item.itemId)?.category || '미분류',
-          //  저장된 그룹을 이어받는다 — 없으면 workCategoryOf 가 품목 분류로 짐작한다.
-          workGroup: workItems.find(saved => saved.key === `${order.id}-${lineKeyAt(order.items, index)}`)?.workGroup,
-        }))
+        return order.items.map((item, index) => {
+          /*  **저장된 칸을 통째로 이어받는다**(2026-09-12 사장님: "묶기해도 아무런 변화가 없는데").
+           *
+           *  여기가 매번 주문에서 줄을 **새로 만들기** 때문에, 저장된 문서에서 끌어오지 않은 칸은
+           *  화면에서 영영 비어 있다. `workGroup` 만 끌어오고 있어서 **묶음(`groupId`)은 DB 에
+           *  잘 찍히는데도 줄에는 안 붙었다** — 눌러도 띠가 안 생기니 아무 일도 안 한 것처럼 보였다.
+           *  묶음 이름(`groupName`)도 같이 가져온다. */
+          const 저장된 = workItems.find(saved => saved.key === `${order.id}-${lineKeyAt(order.items, index)}`);
+          return {
+            key: `${order.id}-${lineKeyAt(order.items, index)}`,
+            orderId: order.id,
+            itemId: item.itemId,
+            lineKey: lineKeyAt(order.items, index),
+            itemName: `${item.name}${lineSuffix(order.items, index)}`,
+            partnerName,
+            qty: item.quantity,
+            category: items.find(product => product.id === item.itemId)?.category || '미분류',
+            //  저장된 그룹을 이어받는다 — 없으면 workCategoryOf 가 품목 분류로 짐작한다.
+            workGroup: 저장된?.workGroup,
+            groupId: 저장된?.groupId,
+            groupName: 저장된?.groupName,
+          };
+        })
         //  **거르기는 열쇠를 만든 뒤에** — 먼저 거르면 `index` 가 원래 자리와 어긋나
         //  `lineKeyAt` 이 엉뚱한 줄을 가리킨다.
         .filter(workItem => items.find(product => product.id === workItem.itemId)?.type !== 'goods');
