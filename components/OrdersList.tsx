@@ -1493,6 +1493,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
   const [listMemoDraft, setListMemoDraft] = useState('');
   const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[] } | null>(null);
+  /*  주문 수정 창의 팔레트는 **접어 둔다**(2026-09-12 사장님: "팔레트는 좀 접어둬라
+      필요할때 펼치게"). 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
+      창을 닫았다 열면 다시 접힌다. */
+  const [showEditorPallet, setShowEditorPallet] = useState(false);
   /*  배송 오전·오후는 배송순서 화면과 **같은 문서**를 본다(`settings/deliveryOrdering`).
       읽고 쓰는 길은 [deliveryTimeSlot](../src/shared/deliveryTimeSlot.ts) 하나다. */
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, DeliveryTimeSlot>>({});
@@ -1584,6 +1588,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     setPreviewOrderId(null);
     setEditingOrderId(null);
     setShowAddProductSelect(null);
+    setShowEditorPallet(false);   // 열 때는 늘 접힌 채로
     setListOrderEditor({
       orderId: order.id,
       deliveryDate: order.deliveryDate.split('T')[0],
@@ -3826,8 +3831,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
                    한쪽만 초안으로 두면 두 화면이 서로 다른 것을 보게 된다. */}
               {onUpdatePallets && (palletStocks ?? []).some(stock => !stock.hidden) && (
                 <section aria-labelledby="order-pallet-heading">
-                  <h4 id="order-pallet-heading" className="mb-1.5 text-xs font-black text-slate-700">팔레트</h4>
-                  <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                  {/*  **접어 둔다** — 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
+                       담긴 게 있으면 접어 둔 채로도 몇 개인지 보인다. */}
+                  <button
+                    type="button" id="order-pallet-heading"
+                    onClick={() => setShowEditorPallet(현재 => !현재)}
+                    aria-expanded={showEditorPallet}
+                    className="flex min-h-9 w-full items-center gap-1.5 text-left text-xs font-black text-slate-700"
+                  >
+                    팔레트
+                    {(() => {
+                      const 담긴수 = (editorOrder.pallets ?? []).reduce((합, pallet) => 합 + pallet.quantity, 0);
+                      return 담긴수 > 0
+                        ? <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-black text-violet-600">{담긴수}개</span>
+                        : <span className="text-[10px] font-bold text-slate-400">없음</span>;
+                    })()}
+                    <ChevronDown size={13} className={`ml-auto text-slate-400 transition-transform ${showEditorPallet ? 'rotate-180' : ''}`} />
+                  </button>
+                  <div className={`space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 ${showEditorPallet ? '' : 'hidden'}`}>
                     {(palletStocks ?? []).filter(stock => !stock.hidden).map(stock => {
                       const entry = editorOrder.pallets?.find(pallet => pallet.type === stock.id);
                       const quantity = entry?.quantity ?? 0;
@@ -3853,7 +3874,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-[10px] font-bold text-slate-500">팔레트는 누르는 즉시 저장됩니다.</p>
+                  {showEditorPallet && <p className="mt-2 text-[10px] font-bold text-slate-500">팔레트는 누르는 즉시 저장됩니다.</p>}
                 </section>
               )}
 
