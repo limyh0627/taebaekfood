@@ -434,15 +434,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     }
     if (itemSort === '거래처') {
-      //  **없는 것은 맨 뒤로.** 빈칸이 위에 쌓이면 목록을 못 읽는다.
-      //  이름은 이미 만들어 둔 표(`거래처이름표`)에서 꺼낸다 — 여기서 다시 훑으면 느려진다.
+      /*  **거래처 없는 품목은 아예 뺀다**(2026-09-12 사장님: "그 거래처에 포함 안되는
+       *  품목들은 안보이게 하고"). 거래처로 묶어 보는 화면인데 아무 데도 안 걸린 품목이
+       *  섞여 있으면 묶음이 끊겨 보인다.
+       *  이름은 이미 만들어 둔 표(`거래처이름표`)에서 꺼낸다 — 여기서 다시 훑으면 타이핑이 밀린다. */
       const 첫이름 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
-      return [...result].sort((a, b) => {
-        const 갑 = 첫이름(a.id);
-        const 을 = 첫이름(b.id);
-        if (!갑 !== !을) return 갑 ? -1 : 1;
-        return 갑.localeCompare(을, 'ko') || a.name.localeCompare(b.name, 'ko');
-      });
+      return result
+        .filter(item => !!첫이름(item.id))
+        .sort((a, b) => 첫이름(a.id).localeCompare(첫이름(b.id), 'ko') || a.name.localeCompare(b.name, 'ko'));
     }
     // 기본 — 카테고리 순 → 같은 카테고리 안에서는 이름 순.
     // 참기름·들기름·깨류 순서가 실제로 보는 순서라 이름 순만으로는 섞여 보인다.
@@ -456,10 +455,23 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const safePage = Math.min(page, totalPages);
   const pagedItems = filteredItems.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   //  박스는 제 낱개 밑에 붙인다. **묶고 나서** 쪽을 나눠야 둘이 다른 쪽으로 안 갈린다.
-  const pagedRows = useMemo(
-    () => groupLooseBoxRows(filteredItems).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filteredItems, safePage],
-  );
+  /*  거래처별로 볼 때는 **묶음 머리줄**을 끼워 넣는다(2026-09-12 사장님: "거래처별로
+      그룹핑 됐다는 느낌이 들어야하고 … 거래처랑 거래처 사이에 공간도 두고").
+      한 쪽 안에서 거래처가 바뀌는 자리를 표시해 두면 표가 그 줄을 머리로 그린다. */
+  const 줄거래처 = (id: string) => (거래처이름표.get(id) ?? '').split(' ').filter(Boolean)[0] ?? '';
+  const pagedRows = useMemo(() => {
+    const 쪽 = groupLooseBoxRows(filteredItems).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    if (itemSort !== '거래처') return 쪽.map(row => ({ ...row, 머리: '' }));
+    let 앞 = '';
+    return 쪽.map(row => {
+      const 지금 = 줄거래처(row.p.id);
+      //  딸린 박스 줄은 머리를 다시 세우지 않는다 — 낱개와 한 덩어리다
+      const 머리 = !row.isChild && 지금 !== 앞 ? 지금 : '';
+      if (머리) 앞 = 지금;
+      return { ...row, 머리 };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredItems, safePage, itemSort, 거래처이름표]);
 
   const handleSelectClient = (id: string) => {
     setSelectedClientId(id);
@@ -915,8 +927,19 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   </td>
                 </tr>
               ) : (
-                pagedRows.map(({ p: item, isChild }) => (
+                pagedRows.map(({ p: item, isChild, 머리 }) => (
                   <React.Fragment key={item.id}>
+                  {/*  **거래처 묶음 머리줄** — 위에 빈 칸을 두어 묶음끼리 떨어져 보이게 한다
+                       (2026-09-12 사장님). 첫 묶음은 위 공간을 안 준다 — 표 머리에 붙어야 한다. */}
+                  {머리 && (
+                    <tr>
+                      <td colSpan={isAdmin ? 6 : 5} className="px-3 pb-1.5 pt-5 first:pt-1.5">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
+                          <User size={12} className="text-slate-400" aria-hidden="true" />{머리}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                   {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기와 바탕색으로 가른다 */}
                   <tr className={`transition-colors group ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
                     <td className={`px-2 py-3 ${isChild ? 'pl-6' : ''}`}>
