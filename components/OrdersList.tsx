@@ -3292,17 +3292,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        "대기중 n건 작업중 n건이 아니라 작업 미완료 n건 작업 완료 n건으로").
                        이 판은 줄 단위로 보는 자리라 주문 상태보다 줄 수가 맞는 셈이다.
                        다 한 줄은 차례에서 빠지고, **'작업 완료 n건' 을 눌러야** 뒤에 붙어 보인다. */}
-                  <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
-                    <p className="text-xs font-bold text-slate-500">
-                      작업 미완료 <strong className="font-black text-rose-600">{미완료줄수}건</strong>
-                    </p>
+                  {/*  **생긴 것은 전과 똑같다**(2026-09-12 사장님: "생긴건 전이랑 똑같이 해
+                       괜히 바탕색 넣고 색 바꾸지말고"). 전에 쓰던 한 문장 그대로 두고,
+                       **완료 쪽만 눌리게** 했다 — 누르면 다 한 줄이 뒤에 붙는다.
+                       켜진 것은 밑줄로만 알린다. 바탕색을 깔면 머리줄에 없던 덩어리가 생긴다. */}
+                  <p className="flex flex-nowrap items-center whitespace-nowrap text-xs font-bold text-slate-500">
+                    작업 미완료 <strong className="ml-1 font-black text-rose-600">{미완료줄수}건</strong>
+                    <span className="mx-1.5 text-slate-300">·</span>
                     <button
                       type="button"
                       onClick={() => setShowCompletedWorkItems(현재 => !현재)}
                       aria-pressed={showCompletedWorkItems}
-                      className={`flex min-h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-colors ${showCompletedWorkItems ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
-                    >작업 완료 <strong className="font-black">{완료줄수}건</strong></button>
-                  </div>
+                      className={`transition-opacity hover:opacity-70 ${showCompletedWorkItems ? 'underline underline-offset-4' : ''}`}
+                    >작업 완료 <strong className="font-black text-emerald-600">{완료줄수}건</strong></button>
+                  </p>
                 </div>
               </div>
               <div className={`flex flex-col gap-3 p-2 ${mobileCollapsed.has('work-order') ? 'hidden' : ''}`}>

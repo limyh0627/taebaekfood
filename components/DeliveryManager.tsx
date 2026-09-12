@@ -958,8 +958,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             남은 집이 1·2·3 으로 다시 매겨져 **앞으로 몇 집이 남았는지가 번호로 읽힌다.** */
         /*  차례 밖에 있는 줄 — **택배**(기사가 실어 가니 도는 순서가 없다)와
             **이미 나간 집**(출고완료). 번호도, 끌기도, 번호 바꾸기도 이 줄들은 건너뛴다. */
+        /*  주문을 찾을 때 **이 판이 보는 목록**에서 찾는다 — 아래 조회 결과(`orders`)는
+            검색조건·상태탭이 걸려 있어 대기중·작업중이 빠진다. 거기서 찾으면 못 찾은 주문이
+            말없이 '일반'으로 떨어져, 작업중 택배 주문이 일반 칸에 서서 번호까지 받았다. */
+        const 판주문 = (id: string) => deliverySequenceOrders.find(candidate => candidate.id === id);
         const 차례밖 = (id: string) => {
-          const order = orders.find(candidate => candidate.id === id);
+          const order = 판주문(id);
           return isDeliveryChannel(order?.source) || order?.status === OrderStatus.SHIPPED;
         };
         const numberingIds = [
@@ -1114,16 +1118,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                       onClick={() => { setPickerDeliveryOrdering(visibleIds); setShowDeliveryPicker(true); }}
                       className="flex min-h-8 items-center gap-1 rounded-lg bg-indigo-50 px-2.5 text-[11px] font-black text-indigo-600 transition-colors hover:bg-indigo-100"
                     ><Plus size={12} aria-hidden="true" />주문 끌어오기</button>
-                    <p className="text-xs font-bold text-slate-500">
-                      출고 미완료 <strong className="font-black text-rose-600">{todayIncompleteCount}건</strong>
+                    {/*  **생긴 것은 전과 똑같다**(2026-09-12 사장님: "생긴건 전이랑 똑같이 해
+                         괜히 바탕색 넣고 색 바꾸지말고"). 쓰던 문장 그대로 두고 완료 쪽만 눌리게 했다 —
+                         나간 집은 차례에서 빠지고, 눌러야 뒤에 붙어 보인다. 켜진 것은 밑줄로만 알린다. */}
+                    <p className="flex flex-nowrap items-center whitespace-nowrap text-xs font-bold text-slate-500">
+                      출고 미완료 <strong className="ml-1 font-black text-rose-600">{todayIncompleteCount}건</strong>
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowCompletedDeliveryOrders(현재 => !현재)}
+                        aria-pressed={showCompletedDeliveryOrders}
+                        className={`transition-opacity hover:opacity-70 ${showCompletedDeliveryOrders ? 'underline underline-offset-4' : ''}`}
+                      >출고 완료 <strong className="font-black text-emerald-600">{todayCompleteCount}건</strong></button>
                     </p>
-                    {/*  나간 집은 차례에서 빠지고, **이 단추를 눌러야** 뒤에 붙어 보인다. */}
-                    <button
-                      type="button"
-                      onClick={() => setShowCompletedDeliveryOrders(현재 => !현재)}
-                      aria-pressed={showCompletedDeliveryOrders}
-                      className={`flex min-h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-colors ${showCompletedDeliveryOrders ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
-                    >출고 완료 <strong className="font-black">{todayCompleteCount}건</strong></button>
                   </div>
                 </div>
                 <div className={`flex-col gap-3 p-3 ${mobileCollapsed.has('delivery-order') ? 'hidden' : 'flex'}`}>
@@ -1144,31 +1151,61 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                            일반은 우리 차가 돌기 때문에 챙기는 일이 다르다 — 섞여 있으면 순서를 못 짠다.
                            스마트스토어도 택배로 나가므로 같은 묶음이다(`isDeliveryChannel`).
                            오전·오후는 줄마다 달린 딱지로 그대로 고른다. */}
+                      {/*  **갈래 보기는 금일 작업순서와 같은 모양이다**(2026-09-12 사장님:
+                           "왜 배송순서는 작업순서랑 그룹 보기 방식이 다르냐 작업순서 하는대로 하면 되는데").
+                           맞다 — 같은 화면에 나란히 있는 두 판이 묶음을 다르게 보여 줄 이유가 없었다.
+                           작업순서 쪽 품목 카테고리 탭(밑줄 · 옆에 작은 수 · ←/→ 로 넘김)을 그대로 쓴다.
+                           수는 **숨기기 전 전체**를 적고, 지금 몇 줄 보고 있는지는 아래 `n/n` 이 맡는다
+                           — 작업순서가 그렇게 하고 있다. */}
                       {(() => {
-                        const 갈래 = [
-                          { key: '일반' as const, ids: visibleIds.filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
-                          { key: '택배' as const, ids: visibleIds.filter(id => isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
-                        ];
+                        const 갈래목록 = (['일반', '택배'] as const).map(key => {
+                          const 택배묶음 = key === '택배';
+                          return {
+                            key,
+                            ids: visibleIds.filter(id => isDeliveryChannel(판주문(id)?.source) === 택배묶음),
+                            전체: deliverySequenceOrders.filter(order => isDeliveryChannel(order.source) === 택배묶음).length,
+                          };
+                        });
+                        const 키들 = 갈래목록.map(갈래 => 갈래.key);
                         return (
-                          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5" role="tablist" aria-label="배송 갈래">
-                            {갈래.map(t => (
+                          <div className="mb-2 flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" role="tablist" aria-label="배송 갈래">
+                            {갈래목록.map(갈래 => (
                               <button
-                                key={t.key} type="button" role="tab" aria-selected={deliveryChannelTab === t.key}
-                                onClick={() => setDeliveryChannelTab(t.key)}
-                                className={`flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-black transition-colors ${
-                                  deliveryChannelTab === t.key
-                                    ? (t.key === '택배' ? 'bg-pink-600 text-white' : 'bg-indigo-600 text-white')
-                                    : 'text-slate-500 hover:bg-slate-100'}`}
-                              >{t.key} <span className="tabular-nums opacity-70">{t.ids.length}</span></button>
+                                key={갈래.key} id={`delivery-tab-${갈래.key}`} type="button" role="tab"
+                                aria-controls="delivery-channel-panel"
+                                tabIndex={deliveryChannelTab === 갈래.key ? 0 : -1}
+                                aria-selected={deliveryChannelTab === 갈래.key}
+                                onClick={() => setDeliveryChannelTab(갈래.key)}
+                                onKeyDown={event => {
+                                  const index = 키들.indexOf(갈래.key);
+                                  const nextIndex = event.key === 'ArrowRight' ? (index + 1) % 키들.length
+                                    : event.key === 'ArrowLeft' ? (index - 1 + 키들.length) % 키들.length
+                                    : event.key === 'Home' ? 0 : event.key === 'End' ? 키들.length - 1 : -1;
+                                  if (nextIndex < 0) return;
+                                  event.preventDefault();
+                                  const 다음 = 키들[nextIndex];
+                                  setDeliveryChannelTab(다음);
+                                  document.getElementById(`delivery-tab-${다음}`)?.focus();
+                                }}
+                                className={`flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 ${deliveryChannelTab === 갈래.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'}`}>
+                                <span>{갈래.key}</span>
+                                <span className={`text-[9px] tabular-nums ${deliveryChannelTab === 갈래.key ? 'text-indigo-500' : 'text-slate-400'}`}>{갈래.전체}</span>
+                              </button>
                             ))}
                           </div>
                         );
                       })()}
-                      {([
-                        { key: '택배' as const, tone: 'text-pink-600', ids: visibleIds.filter(id => isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
-                        { key: '일반' as const, tone: 'text-indigo-600', ids: visibleIds.filter(id => !isDeliveryChannel(orders.find(order => order.id === id)?.source)) },
-                      ]).filter(묶음 => 묶음.key === deliveryChannelTab).map(묶음 => (
-                        <div key={묶음.key} className="flex flex-col gap-1">
+                      {(['일반', '택배'] as const).map(key => ({
+                        key,
+                        ids: visibleIds.filter(id => isDeliveryChannel(판주문(id)?.source) === (key === '택배')),
+                        전체: deliverySequenceOrders.filter(order => isDeliveryChannel(order.source) === (key === '택배')).length,
+                      })).filter(묶음 => 묶음.key === deliveryChannelTab).map(묶음 => (
+                        <div key={묶음.key} id="delivery-channel-panel" role="tabpanel" aria-labelledby={`delivery-tab-${묶음.key}`} tabIndex={0} className="flex flex-col gap-1">
+                          {/*  몇 집 중 몇 집을 보고 있나 — 탭의 수는 전체라, '출고 완료 n건' 을
+                               안 눌렀을 때 몇 집이 빠져 있는지는 여기서만 알 수 있다(작업순서와 같다). */}
+                          <div className="mb-0.5 flex items-center justify-end px-1">
+                            <span className="text-[10px] font-bold text-slate-400">{묶음.ids.length}/{묶음.전체}</span>
+                          </div>
                           {묶음.ids.length === 0
                             ? <p className="py-1 text-center text-[10px] font-bold text-slate-300">없음</p>
                             : 묶음.key === '택배'
