@@ -580,8 +580,10 @@ export const OrderCard = memo<OrderCardProps>(({
              (2026-09-12 사장님: "보드에 작업중 3/5 이걸 한줄로 넣자").
              같은 날 앞서 "0/1이거는 대기중 작업중 밑으로" 하셔서 두 줄로 쌓았는데, 그러면
              카드 머리가 한 줄 더 높아졌다. 이름은 이미 왼쪽에서 제 자리를 잡으므로
-             오른쪽 두 조각을 옆으로 붙여도 이름을 안 밀어낸다. 눌러서 접는 것도 그대로다. */}
-        <div className="flex shrink-0 items-center gap-1.5 leading-tight">
+             오른쪽 두 조각을 옆으로 붙여도 이름을 안 밀어낸다. 눌러서 접는 것도 그대로다.
+             **글줄 바닥(baseline)으로 맞춘다** — 둘은 글자 크기가 달라(11px·10px) 상자 가운데로
+             맞추면 작은 쪽이 떠 보인다(2026-09-12 사장님: "대기중이랑 정렬이 안맞냐"). */}
+        <div className="flex shrink-0 items-baseline gap-1.5 leading-tight">
         <div className="relative shrink-0">
           {readOnly ? (
             <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
