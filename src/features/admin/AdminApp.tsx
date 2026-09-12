@@ -105,7 +105,6 @@ import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, resolveStockUse, StockUseRow } from './stockUseRows';
 import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
-import OrderRollbackApprovalModal from '../../../components/OrderRollbackApprovalModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
@@ -4793,14 +4792,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
       {completionAsk && <ConfirmModal {...completionAsk} confirmText="변경하기" onCancel={() => setCompletionAsk(null)} />}
-      {rollbackAsk && (
-        <OrderRollbackApprovalModal
-          order={rollbackAsk.order}
-          targetStatus={rollbackAsk.targetStatus}
-          plan={rollbackAsk.plan}
-          saving={rollbackSaving}
-          onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
-          onConfirm={async () => {
+      {/*  **되돌리기 확인창 — 작업완료 확인창과 같은 양식**(2026-09-12 사장님: "Ui만 작업완료
+           알람처럼 깔끔하게 바꿔 같은 양식으로"). 전에는 이 창만 따로 큰 표를 들고 있어,
+           같은 일(상태를 바꿀까요)을 두 가지 모양으로 묻고 있었다.
+           무엇이 얼마나 되돌아가는지는 한 문장으로 적는다 — 자세한 것은 원복 뒤 재고에서 본다. */}
+      {rollbackAsk && (() => {
+        const 것 = rollbackAsk;
+        const 움직임 = 것.plan.adjustments.filter(row => row.delta !== 0);
+        const 안내 = [
+          `${것.order.partnerName || '거래처 미지정'} · ${statusLabel(것.order.status)} → ${statusLabel(것.targetStatus)}`,
+          움직임.length > 0
+            ? `재고 ${움직임.length}건이 되돌아갑니다(로트·원료수불부 포함).`
+            : '되돌릴 재고 변화가 없습니다.',
+          것.plan.legacyEvidenceWarning
+            ? '이 주문은 생산 당시 기록이 없어 지금 구성(BOM)으로 추정해 되돌립니다.'
+            : '',
+        ].filter(Boolean).join(' ');
+        return (
+          <ConfirmModal
+            message="주문 상태와 재고를 원복할까요?"
+            subMessage={안내}
+            confirmText={rollbackSaving ? '원복 중…' : '원복 승인'}
+            onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
+            onConfirm={async () => {
             if (rollbackSaving) return;
             setRollbackSaving(true);
             try {
@@ -4819,8 +4833,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               setRollbackSaving(false);
             }
           }}
-        />
-      )}
+          />
+        );
+      })()}
       {stockUseAsk && (
         <StockUseModal
           partnerName={stockUseAsk.partnerName}
