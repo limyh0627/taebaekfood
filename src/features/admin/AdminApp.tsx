@@ -1315,7 +1315,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
      * "왜 재고가 늘었지"로 만나면 되짚기 어렵다. 무엇이 움직이는지 적어 보여주고 확인을 받는다.
      */
     if (cur && isInventoryRollback) {
-      const shouldClearChecks = status === OrderStatus.PENDING || status === OrderStatus.PROCESSING;
+      /*  부른 쪽이 **체크 상태를 직접 줬으면 그걸 쓴다**(2026-09-12).
+       *  체크를 하나 푸는 길은 이미 '그 하나만 풀린' 목록을 들고 온다 — 여기서 전부 지워 버리면
+       *  나머지 체크까지 날아간다. 전부 푸는 건 **상태를 직접 내릴 때**의 이야기다
+       *  (그때는 목록을 안 들고 오고, 전부 체크된 채로 두면 카드가 도로 작업완료로 올라간다). */
+      const shouldClearChecks = !orderPatch?.items
+        && (status === OrderStatus.PENDING || status === OrderStatus.PROCESSING);
       const clearedItems = shouldClearChecks
         ? cur.items.map(({ checkedBy: _dropBy, checkedAt: _dropAt, ...rest }) => ({ ...rest, checked: false }))
         : cur.items;

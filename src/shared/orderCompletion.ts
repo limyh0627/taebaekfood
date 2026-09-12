@@ -29,8 +29,18 @@ export function planOrderItemToggle(order: Order, index: number, actor: string |
     return item.checked ? { ...rest, checked: false }
       : { ...rest, checked: true, checkedAt: now, ...(actor ? { checkedBy: actor } : {}) };
   });
+  /*  **작업완료도 체크를 풀면 되돌아간다**(2026-09-12 사장님: "작업완료된 주문이 해당 주문에
+   *  주문품목 중 하나가 미완료로 변경 되거나 … 생산되는데 사용된 부자재 등등이 롤백 되도록").
+   *
+   *  전에는 대기중·작업중일 때만 상태를 다시 셈해서, **작업완료 주문의 체크를 풀어도 상태가
+   *  그대로 남았다.** 상태가 안 바뀌니 되돌리기 경로를 안 타고, 생산에 쓴 부자재·원료가
+   *  그대로 빠져 있었다 — 만든 적 없는 것을 만든 걸로 세는 셈이다.
+   *
+   *  출고완료·배송완료는 그대로 둔다. 이미 물건이 나간 뒤라 체크 한 번으로 되돌릴 일이 아니다
+   *  (되돌리려면 상태를 직접 내리는 길로 간다 — 거기엔 원복 승인창이 붙어 있다).
+   *  재고로 덮은 주문이면 생산한 게 없어 되돌릴 것도 없다 — 스냅샷이 비어 있어 저절로 넘어간다. */
   let status = order.status;
-  if (status === OrderStatus.PENDING || status === OrderStatus.PROCESSING) {
+  if (status === OrderStatus.PENDING || status === OrderStatus.PROCESSING || status === OrderStatus.DISPATCHED) {
     const checked = items.filter(item => item.checked).length;
     status = checked === items.length ? OrderStatus.DISPATCHED
       : checked ? OrderStatus.PROCESSING : OrderStatus.PENDING;

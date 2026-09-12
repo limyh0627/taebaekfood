@@ -16,8 +16,18 @@ describe('작업 체크의 승인 전 계획', () => {
     expect(plan.items[0]).not.toHaveProperty('checkedBy');
     expect(plan.items[0]).not.toHaveProperty('checkedAt');
   });
-  it.each([OrderStatus.DISPATCHED,OrderStatus.SHIPPED,OrderStatus.DELIVERED,OrderStatus.ON_HOLD])('이미 넘어간 %s 상태는 체크로 역행시키지 않는다', status => {
+  //  출고완료·배송완료·보류는 그대로 — 물건이 나간 뒤라 체크 한 번으로 되돌릴 일이 아니다.
+  it.each([OrderStatus.SHIPPED,OrderStatus.DELIVERED,OrderStatus.ON_HOLD])('이미 넘어간 %s 상태는 체크로 역행시키지 않는다', status => {
     expect(planOrderItemToggle(make(status,[true]),0,'담당자','지금')?.status).toBe(status);
+  });
+  /*  **작업완료는 되돌아간다**(2026-09-12 사장님) — 상태가 안 바뀌면 되돌리기 경로를 안 타고
+      생산에 쓴 부자재·원료가 빠진 채로 남는다. */
+  it('작업완료에서 체크를 풀면 작업중(하나도 안 남으면 대기중)으로 내려간다', () => {
+    expect(planOrderItemToggle(make(OrderStatus.DISPATCHED,[true,true]),0,'담당자','지금')?.status).toBe(OrderStatus.PROCESSING);
+    expect(planOrderItemToggle(make(OrderStatus.DISPATCHED,[true]),0,'담당자','지금')?.status).toBe(OrderStatus.PENDING);
+  });
+  it('작업완료에서 다시 체크하면 작업완료 그대로', () => {
+    expect(planOrderItemToggle(make(OrderStatus.DISPATCHED,[true,false]),1,'담당자','지금')?.status).toBe(OrderStatus.DISPATCHED);
   });
   it('기록자·시각을 넣되 승인 전 원본은 바꾸지 않는다', () => {
     const order=make(OrderStatus.PENDING,[false]);
