@@ -150,6 +150,21 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     ['shipment', '출고완료 여부'], ['invoice', '송장'], ['note', '비고'],
     ['orderDate', '주문일'], ['deliveryDate', '출고예정일'],
   ];
+  /**
+   * **출고예정일이 어느 날인가 — 한국시간으로 센다.**
+   *
+   * 2026-09-12 사장님: "배송캘린더에서 날짜 옮기는거 아직도 안되는거 같던데 날짜 선택해서
+   * 옮겨도 금일배송순서에만 들어오고 캘린더에서는 변화 없는거 같고".
+   *
+   * 맞다 — **저장과 읽기가 서로 다른 셈을 쓰고 있었다.** 출고 일정 수정 창은 한국시간 자정으로
+   * 적는데(`…T00:00:00+09:00` → 전날 15:00Z), 캘린더 칸은 그 글자를 그냥 `split('T')[0]` 로
+   * 잘라 **UTC 날짜**를 봤다. 9월 18일로 옮기면 캘린더는 9월 17일 칸에 넣었다.
+   * 금일 배송순서는 이 함수(한국시간)를 쓰고 있어서 제 날짜에 떴고 — 그래서 "배송순서에만
+   * 들어온다"로 보였다.
+   *
+   * 공장 기준은 한국시간이다. **읽는 쪽을 모두 이 함수로 모은다** — 글자를 자르면 적은 방식에
+   * 따라 하루가 밀린다. 자정 UTC 로 적힌 옛 주문도 한국시간으로는 같은 날 09:00 이라 그대로다.
+   */
   const queryDateKey = (value: string) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
@@ -212,13 +227,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
   const handleOrderClick = (order: Order) => {
     setEditingOrder(order);
-    setNewDate(order.deliveryDate.split('T')[0]);
+    setNewDate(queryDateKey(order.deliveryDate));
     setEditingTimeSlot(deliveryTimeSlots[order.id] || '오전');
     setScheduleConfirmation(null);
     setScheduleSaveError('');
   };
 
-  const originalScheduleDate = editingOrder?.deliveryDate.split('T')[0] ?? '';
+  const originalScheduleDate = editingOrder ? queryDateKey(editingOrder.deliveryDate) : '';
   const originalTimeSlot = editingOrder ? (deliveryTimeSlots[editingOrder.id] || '오전') : '오전';
   const isScheduleDirty = Boolean(editingOrder) && (newDate !== originalScheduleDate || editingTimeSlot !== originalTimeSlot);
 
@@ -331,7 +346,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     const schedules: Record<string, Order[]> = {};
     orders.forEach(order => {
       if (order.deliveryDate && order.partnerName !== '생산기록' && order.status !== OrderStatus.DELIVERED) {
-        const date = order.deliveryDate.split('T')[0];
+        const date = queryDateKey(order.deliveryDate);
         if (!schedules[date]) schedules[date] = [];
         schedules[date].push(order);
       }
@@ -356,7 +371,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     const schedules: Record<string, Order[]> = {};
     orders.forEach(order => {
       if (order.deliveryDate && order.partnerName !== '생산기록' && order.status === OrderStatus.DELIVERED) {
-        const date = order.deliveryDate.split('T')[0];
+        const date = queryDateKey(order.deliveryDate);
         if (!schedules[date]) schedules[date] = [];
         schedules[date].push(order);
       }
@@ -542,7 +557,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       .filter(o =>
         o.partnerName !== '생산기록' &&
         o.status !== OrderStatus.DELIVERED &&
-        o.deliveryDate?.split('T')[0] === todayStr &&
+        queryDateKey(o.deliveryDate) === todayStr &&
         !deliveryOrdering.includes(o.id)
       )
       .map(o => o.id);
@@ -558,7 +573,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     const todayValidDelivery = [
       ...deliveryOrdering.filter(id =>
         orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.partnerName !== '생산기록'
-          && o.deliveryDate?.split('T')[0] === todayStr)
+          && queryDateKey(o.deliveryDate) === todayStr)
       ),
       ...todayCalendarExtra,
     ];
