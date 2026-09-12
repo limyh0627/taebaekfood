@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, Plus } from 'lucide-react';
-import { isDeliveryChannel } from '../src/shared/channelStyle';
+import { isDeliveryChannel, channelStyle, shipMethodOf } from '../src/shared/channelStyle';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -124,11 +124,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
   const [showCompletedDeliveryOrders, setShowCompletedDeliveryOrders] = useState(false);
 
   useEffect(() => {
-    return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'> }>(
+    return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'>; orderingByDate?: Record<string, string[]> }>(
       'settings', 'deliveryOrdering',
       (data) => {
         setDeliveryOrdering(data?.ordering ?? []);
         setDeliveryTimeSlots(data?.timeSlots ?? {});
+        setOrderingByDate(data?.orderingByDate ?? {});
       }
     );
   }, []);
@@ -143,7 +144,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
   const [queryField, setQueryField] = useState('');
   const [queryValue, setQueryValue] = useState('');
   const queryFields = [
-    ['source', '출고 방식'], ['partner', '거래처'], ['address', '주소'],
+    ['source', '판매 채널'], ['partner', '거래처'], ['address', '주소'],
     ['completion', '작업완료 여부'], ['item', '주문 품목'], ['quantity', '주문 수량'],
     ['label', '라벨 작업'], ['packaging', '포장'], ['pallet', '팔레트'],
     ['shipment', '출고완료 여부'], ['invoice', '송장'], ['note', '비고'],
@@ -404,6 +405,24 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
    * 가로 스크롤을 쓰므로, 카드 목록을 숨기면 실제 일정이 없는 것처럼 보인다. */
   const [dayModal, setDayModal] = useState<string | null>(null);
 
+  /*  **날짜별 배송 차례**(2026-09-12 사장님: "순서 어디갔냐", "주간에서는 드래그 해서 순서
+      바꾸거나 다른 날짜로 넘기는거 왜 안되냐").
+      오늘 것은 금일 배송순서 판과 같은 `ordering` 을 쓰고(둘이 어긋나면 안 된다),
+      **다른 날은 `orderingByDate[날짜]`** 에 따로 담는다 — 전에는 오늘 말고는 차례를
+      담는 데가 없어 번호도 끌기도 없었다. 안 담긴 주문은 뒤에 붙는다. */
+  const [orderingByDate, setOrderingByDate] = useState<Record<string, string[]>>({});
+  const 끄는카드 = React.useRef<{ id: string; date: string } | null>(null);
+
+  const saveDayOrdering = (dateStr: string, next: string[]) => {
+    setOrderingByDate(prev => ({ ...prev, [dateStr]: next }));
+    //  merge 로 쓴다 — 다른 날짜와 `ordering`·`timeSlots` 는 그대로 남는다
+    void setDocument('settings', 'deliveryOrdering', { orderingByDate: { [dateStr]: next } });
+  };
+
+  /** 담긴 차례를 먼저, 안 담긴 것은 뒤에 — 그 날 실제 주문만 남긴다 */
+  const 하루차례 = (dateStr: string, ids: string[], saved: string[]) =>
+    [...saved.filter(id => ids.includes(id)), ...ids.filter(id => !saved.includes(id))];
+
   /**
    * **배송 카드 한 벌 — 어느 날 칸이든 같은 모양이다.**
    *
@@ -432,7 +451,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           <span className={`w-3 shrink-0 text-[9px] font-black ${opt.번호색 ?? 'text-slate-400'}`}>{opt.번호}</span>
         )}
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-[10px] font-bold ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
+          <span className="flex min-w-0 items-center gap-1">
+            <span className={`min-w-0 truncate text-[10px] font-bold ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
+            {/*  **출고 방식**(2026-09-12 사장님: "거래처명 옆에 출고 방식 하나 추가해라") —
+                 배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`). */}
+            <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-black ${channelStyle(shipMethodOf(o) === '배송' ? '일반' : shipMethodOf(o)).chip}`}>
+              {shipMethodOf(o)}
+            </span>
+          </span>
           {/*  **주문번호를 누르면 출고 일정 수정 창**(2026-09-12 사장님: "주문번호 하나 추가해줘
                눌러서 출고일정 수정하는 모달 띄우는"). 창은 **이미 있는 것**을 쓴다 —
                날짜 상세에서 쓰던 `handleOrderClick` 그대로다(시험도 그걸 잠그고 있다).
@@ -454,6 +480,54 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         {opt.drag?.draggable && <GripVertical size={10} className="shrink-0 text-slate-300" />}
       </div>
     );
+  };
+
+  /**
+   * **하루치 배송 줄 — 오전·오후로 가르고 번호를 매긴다.**
+   *
+   * 2026-09-12 사장님: "오전 오후 구분이 없네", "순서 어디갔냐".
+   * 전에는 **오늘 칸에만** 있던 것이라 다른 날은 밋밋한 목록이었다. 어느 날이든 같게 한다.
+   *
+   * 번호는 `오전 → 오후` 로 이어 매긴다. 카드를 끌어 **같은 날 안에서는 차례가 바뀌고**,
+   * 다른 날 칸에 떨어뜨리면 날짜가 바뀐다(바깥 칸이 받는다 — 그래서 여기서 전파를 안 막는다).
+   */
+  const renderDaySequence = (dateStr: string, ids: string[], 저장: (_next: string[]) => void) => {
+    const 오전 = ids.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
+    const 오후 = ids.filter(id => deliveryTimeSlots[id] === '오후');
+    const 이어진 = [...오전, ...오후];
+    const 놓기 = (놓인id: string) => {
+      const 끈것 = 끄는카드.current;
+      끄는카드.current = null;
+      if (!끈것 || 끈것.date !== dateStr || 끈것.id === 놓인id) return;   // 다른 날 → 바깥 칸이 받는다
+      const next = 이어진.filter(id => id !== 끈것.id);
+      next.splice(Math.max(0, next.indexOf(놓인id)), 0, 끈것.id);
+      저장(next);
+    };
+    return ([
+      { 때: '오전' as const, 목록: 오전, 색: 'text-amber-500', 띠: 'border-amber-100', 번호색: 'text-amber-500' },
+      { 때: '오후' as const, 목록: 오후, 색: 'text-indigo-500', 띠: 'border-indigo-100', 번호색: 'text-indigo-500' },
+    ]).map(칸 => (
+      <React.Fragment key={칸.때}>
+        <span className={`px-1 text-[9px] font-black ${칸.색} ${칸.때 === '오후' ? 'pt-1' : ''}`}>{칸.때}</span>
+        {칸.목록.length === 0 && <p className="py-1 text-center text-[9px] text-slate-300">없음</p>}
+        {칸.목록.map(id => {
+          const o = orders.find(x => x.id === id);
+          if (!o) return null;
+          return renderDeliveryCard(o, {
+            번호: 이어진.indexOf(id) + 1,
+            띠: 칸.띠,
+            번호색: 칸.번호색,
+            drag: {
+              draggable: true,
+              onDragStart: e => { 끄는카드.current = { id, date: dateStr }; handleDragStart(e, id); },
+              onDragEnd: () => { 끄는카드.current = null; },
+              onDragOver: e => e.preventDefault(),
+              onDrop: () => 놓기(id),
+            },
+          });
+        })}
+      </React.Fragment>
+    ));
   };
 
   const renderWeekCalendar = () => {
@@ -546,39 +620,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               {todayValidDelivery.length === 0 ? (
                 <p className="text-center text-[10px] text-slate-300 font-bold py-4">배송순서 미설정</p>
               ) : (
-                <>
-                  {([
-                    { 때: '오전' as const, ids: todayMorningIds, 띠: 'border-amber-100', 번호색: 'text-amber-500', 글자: 'text-amber-500' },
-                    { 때: '오후' as const, ids: todayAfternoonIds, 띠: 'border-indigo-100', 번호색: 'text-indigo-500', 글자: 'text-indigo-500' },
-                  ]).map(칸 => (
-                    <React.Fragment key={칸.때}>
-                      <span className={`px-1 text-[9px] font-black ${칸.글자} ${칸.때 === '오후' ? 'pt-1' : ''}`}>{칸.때}</span>
-                      {칸.ids.length === 0 && <p className="py-1 text-center text-[9px] text-slate-300">없음</p>}
-                      {칸.ids.map((id, idx) => {
-                        const o = orders.find(x => x.id === id);
-                        if (!o) return null;
-                        return renderDeliveryCard(o, {
-                          번호: todayValidDelivery.indexOf(id) + 1,
-                          띠: 칸.띠,
-                          번호색: 칸.번호색,
-                          drag: {
-                            draggable: true,
-                            onDragStart: () => { setDragDeliveryIdx(idx); setDragDeliveryId(id); },
-                            onDragOver: e => e.preventDefault(),
-                            onDrop: () => {
-                              if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
-                              const next = [...todayValidDelivery];
-                              const [moved] = next.splice(dragDeliveryIdx, 1);
-                              next.splice(next.indexOf(id), 0, moved);
-                              saveTodayOrdering(next);
-                              setDragDeliveryIdx(null); setDragDeliveryId(null);
-                            },
-                          },
-                        });
-                      })}
-                    </React.Fragment>
-                  ))}
-                </>
+                //  오늘 차례는 금일 배송순서 판과 **같은 칸**(`ordering`)을 쓴다 — 둘이 어긋나면 안 된다
+                <>{renderDaySequence(dateStr, todayValidDelivery, saveTodayOrdering)}</>
               )}
               {showDelivered && deliveredOrders.map(order => (
                 <div
@@ -610,11 +653,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             className="absolute inset-x-0 top-0 z-10 h-14 sm:hidden" aria-label={`${d.getDate()}일 배송 상세 보기`} />
           {dateHeader}
           <div className="flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-            {/*  전에는 여기만 상태색을 바탕에 통째로 깔아, 같은 캘린더 안에서 당일 칸과
-                 다른 카드가 보였다. **당일 칸이 쓰던 흰 카드로 맞춘다**(2026-09-12 사장님). */}
-            {dayOrders.map(order => renderDeliveryCard(order, {
-              drag: { draggable: true, onDragStart: e => handleDragStart(e, order.id) },
-            }))}
+            {/*  전에는 여기만 상태색을 바탕에 통째로 깔고, 번호도 오전·오후도 없었다.
+                 **당일 칸과 같게** 맞춘다(2026-09-12 사장님). 차례는 `orderingByDate[날짜]`. */}
+            {renderDaySequence(
+              dateStr,
+              하루차례(dateStr, dayOrders.map(order => order.id), orderingByDate[dateStr] ?? []),
+              next => saveDayOrdering(dateStr, next),
+            )}
             {showDelivered && deliveredOrders.map(order => (
               <div
                 key={order.id}
@@ -697,10 +742,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                **완료 체크는 카드에서 빠진다** — 그 체크는 `DeliveryDayList` 것이라 주간·당일에는
                원래 없었다. 출고완료 처리는 금일 배송순서 판과 날짜 상세 창에서 한다. */}
           {dayOrders.length > 0 && (
-            <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
-              {dayOrders.map(order => renderDeliveryCard(order, {
-                drag: { draggable: true, onDragStart: e => handleDragStart(e, order.id) },
-              }))}
+            <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 140, scrollbarWidth: 'thin' }}>
+              {renderDaySequence(
+                dateStr,
+                하루차례(dateStr, dayOrders.map(order => order.id), orderingByDate[dateStr] ?? []),
+                next => saveDayOrdering(dateStr, next),
+              )}
             </div>
           )}
           {showDelivered && deliveredOrders.length > 0 && (
@@ -1517,7 +1564,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                   </dd>
                 </div>
                 <div>
-                  <dt className="mb-1 font-medium text-slate-400">출고 방식</dt>
+                  <dt className="mb-1 font-medium text-slate-400">판매 채널</dt>
                   <dd className="font-bold text-slate-700">{editingOrder.source || '-'}</dd>
                 </div>
                 <div>

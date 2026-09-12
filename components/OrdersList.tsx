@@ -765,7 +765,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         value={current} disabled={readOnly}
                         onChange={(e) => { const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: e.target.value as '대기' | '날인' | '부착' }; onUpdateItems?.(order.id, ni); }}
                         aria-label={`${item.name} 라벨 상태`}
-                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-red-500 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${current === '대기' ? 'bg-slate-100 font-bold text-slate-700 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
                       >
                         <option value="대기">-</option>
                         <option value="날인">날인</option>
@@ -782,7 +782,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         aria-label={`${item.name} 소비기한 수정용 제조일`}
                         className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
                       />
-                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
                         <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
                         <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
                       </span>
@@ -1395,11 +1395,13 @@ const historyConfig = { ...칸('history_col', OrderStatus.DELIVERED, History, '�
 //  짧은 목록이라 검색칸이 안 뜬다(SearchableSelect 의 `searchThreshold`) — 전과 똑같이 동작한다.
 const 검색필드목록 = [
   { value: '', label: '필드 선택' },
-  /*  **판매 채널과 배송방식은 다른 축이다**(2026-09-12 사장님). 여기 있던 '출고 방식'은
-      거래처 채널(일반·택배·스마트스토어)이라 이름을 `배송채널`로 바로잡고,
-      주문마다 고르는 `배송방식`(배송·직접수령·택배)을 한 줄 더 둔다. */
-  { value: 'source', label: '배송채널' },
-  { value: 'shipMethod', label: '배송방식' },
+  /*  **두 축을 이름으로 갈라 둔다**(2026-09-12 사장님: "이름을 배송 채널이 아니라 판매
+      채널이라고", "배송 방식이 아니라 출고 방식으로 통일해라").
+        · `판매 채널` = 거래처가 들고 있는 것(일반·택배·스마트스토어) — 예전 이름이 '출고 방식'
+          이었는데 그건 채널을 가리키던 잘못된 이름이었다.
+        · `출고 방식` = 주문마다 고르는 것(배송·직접수령·택배). */
+  { value: 'source', label: '판매 채널' },
+  { value: 'shipMethod', label: '출고 방식' },
   { value: 'invoicePrinted', label: '송장' },
   { value: 'completion', label: '작업완료 여부' },
   { value: 'item', label: '주문 품목' },
@@ -2345,7 +2347,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                          그리지 않는다 — 리스트에서 완료/미완료를 읽던 눈이 여기서도 그대로 읽힌다.
                          라벨·소비기한과 **한 덩어리**다(사장님: "미완료도 한행 내려버려") —
                          좁으면 셋이 같이 아랫줄로 가고, 넓으면 셋이 같이 오른쪽에 선다. */}
-                    <div className="shrink-0" onPointerDown={e => e.stopPropagation()}>
+                    {/*  눌림을 막지 않는다 — 이 줄에는 누름 처리가 없고, 폰에서 끌기로 먹히면
+                         탭이 씹힌다(2026-09-12 사장님: "이건 클릭이 안된다"). */}
+                    <div className="shrink-0">
                       <CompletionStatusControl
                         completed={completed}
                         disabled={lineIdx < 0 || !onToggleItemChecked}
@@ -2359,7 +2363,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         value={라벨} disabled={못고침}
                         onChange={e => 고치기({ labelType: e.target.value as '대기' | '날인' | '부착' })}
                         aria-label={`${wi.itemName} 라벨 상태`}
-                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-red-500 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                        className={`h-7 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-slate-700 enabled:hover:bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
                       >
                         <option value="대기">-</option>
                         <option value="날인">날인</option>
@@ -2375,7 +2379,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         aria-label={`${wi.itemName} 소비기한 수정용 제조일`}
                         className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
                       />
-                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${줄?.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                      <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${줄?.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
                         <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
                         <span className="min-w-0 truncate tabular-nums">{줄?.mfgDate ? fmtYYMMDD(expiryFromMfgDate(줄.mfgDate)) : '-'}</span>
                       </span>
@@ -2962,7 +2966,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                       nextItems[originalIndex] = { ...nextItems[originalIndex], labelType: event.target.value as '대기' | '날인' | '부착' };
                                       onUpdateItems?.(order.id, nextItems);
                                     }}
-                                    className={`w-full appearance-none !pl-2 !pr-5 ${listInlineSelectClass} disabled:cursor-default disabled:opacity-100 ${(item.labelType || '대기') === '대기' ? '!border-slate-200 !bg-slate-100 !font-bold !text-red-500 enabled:hover:!bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
+                                    className={`w-full appearance-none !pl-2 !pr-5 ${listInlineSelectClass} disabled:cursor-default disabled:opacity-100 ${(item.labelType || '대기') === '대기' ? '!border-slate-200 !bg-slate-100 !font-bold !text-slate-700 enabled:hover:!bg-slate-200' : 'bg-slate-100 text-slate-700 enabled:hover:bg-slate-200'}`}
                                     aria-label={`${item.name} 라벨 상태`}
                                   >
                                     <option value="대기" className="bg-slate-100 text-slate-700">-</option>
@@ -2984,7 +2988,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
                                     aria-label={`${item.name} 소비기한 수정용 제조일`}
                                   />
-                                  <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                                  <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${item.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
                                     <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
                                     <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
                                   </span>
@@ -3722,7 +3726,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               value={라벨}
                               onChange={event => updateDraftItem(index, { labelType: event.target.value as '대기' | '날인' | '부착' })}
                               aria-label={`${orderItem.name} 라벨 상태`}
-                              className={`h-8 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-red-500 hover:bg-slate-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                              className={`h-8 w-full cursor-pointer appearance-none rounded-md border border-slate-200 pl-2 pr-5 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 ${라벨 === '대기' ? 'bg-slate-100 font-bold text-slate-700 hover:bg-slate-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
                             >
                               <option value="대기">-</option>
                               <option value="날인">날인</option>
@@ -3737,7 +3741,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               aria-label={`${orderItem.name} 소비기한 수정용 제조일`}
                               className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0"
                             />
-                            <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${orderItem.mfgDate ? 'text-indigo-600' : 'text-red-500'}`}>
+                            <span className={`pointer-events-none flex h-full min-w-0 items-center gap-1 px-1.5 ${orderItem.mfgDate ? 'text-indigo-600' : 'text-slate-700'}`}>
                               <CalendarDays size={11} className="shrink-0" aria-hidden="true" />
                               <span className="min-w-0 truncate tabular-nums">{orderItem.mfgDate ? fmtYYMMDD(expiryFromMfgDate(orderItem.mfgDate)) : '-'}</span>
                             </span>

@@ -690,16 +690,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                   <User size={14} aria-hidden="true" />
                   거래처 다시 선택
                 </button>
-                {/*  **배송방식**(2026-09-12 사장님: "일반택배 거래처 다시선택 밑으로 빼고
-                     배송방식이라고 달고 배송 직접수령 택배 세개로 둬봐").
+                {/*  **출고 방식**(2026-09-12 사장님: "일반택배 거래처 다시선택 밑으로 빼고
+                     배송방식이라고 달고 배송 직접수령 택배 세개로 둬봐" → 이름은 뒤이어
+                     "배송 방식이 아니라 출고 방식으로 통일해라").
                      거래처 이름 옆에 작게 붙어 있어서 무엇을 고르는 칸인지 안 읽혔다.
                      **판매 채널과는 다른 축이다**(사장님: "일반 스마트스토어랑 택배는 판매 채널이고
                      스마트스토어랑 택배는 배송방식이 기본이 택배"). 채널은 거래처가 들고 있고,
                      배송방식은 주문마다 고른다 — 다만 택배·스마트스토어 거래처면 택배로 미리 맞춘다.
                      택배일 때만 `deliveryBoxes` 를 만든다(송장·박스 수를 그때부터 센다). */}
                 <div>
-                  <p className="mb-1.5 text-[11px] font-black text-slate-600">배송방식</p>
-                  <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="배송방식">
+                  <p className="mb-1.5 text-[11px] font-black text-slate-600">출고 방식</p>
+                  <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
                     {([
                       { key: '배송' as const, icon: Truck, 색: 'bg-indigo-600' },
                       { key: '직접수령' as const, icon: Hand, 색: 'bg-teal-600' },
