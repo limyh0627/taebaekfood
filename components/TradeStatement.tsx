@@ -20,7 +20,7 @@ import { isSignedIn } from '../src/shared/firebase';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
-import { buildStatementCommand, checkStatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
+import { buildStatementCommand, checkStatementCommand, type StatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
 import { withDocNames } from '../src/shared/docName';
 import { 서류당사자ById } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
@@ -88,8 +88,21 @@ interface TradeStatementProps {
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void | Promise<void>;
-  onMarkInvoicePrinted?: (id: string, value: boolean) => void;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void | Promise<unknown>;
+  /**
+   * **전표 한 장을 한 덩이로 저장한다**(설계 §2, 3단계).
+   *
+   * 전표 본문·주문 발행표시·품목 원가·발주카드를 **하나라도 실패하면 전부 안 들어가게** 쓴다.
+   * 전에는 넷을 차례로 저장해서, 전표는 들어갔는데 주문에 발행표시가 안 찍히면 그 주문이
+   * 목록에 다시 떠 **전표가 두 장** 나갔다. 같은 명령을 두 번 보내면 두 번째는 `duplicate` 다.
+   */
+  onApplyStatement?: (input: {
+    command: StatementCommand;
+    statement: IssuedStatement;
+    costUpdates: { itemId: string; price: number }[];
+    poIds: string[];
+    newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];
+  }) => Promise<'applied' | 'duplicate'>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
   /** 회사를 지정해서 저장(대납 전용) — 지금 회사가 아닌 장부에 쓴다 */
@@ -108,8 +121,6 @@ interface TradeStatementProps {
   onRemoveConfirmedOrder?: (id: string) => void;
   onRemoveOrderRequest?: (id: string) => void;
   // 매입전표 발행 시: 발주카드 없으면 새로 생성(입고대기, 같은 거래처 품목 묶음), 있으면 발주카드에 전표 id 연결 + 입고대기 전환
-  onCreateInboundPO?: (po: { partnerId: string; partnerName: string; statementId: string; items: { itemId: string; itemName: string; quantity: number; isBox?: boolean; unit: string }[] }) => void;
-  onLinkPurchaseOrder?: (poId: string, statementId: string) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
@@ -182,7 +193,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
   voucherMode = 'full',
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
-  onMarkInvoicePrinted, onAddIssuedStatement,
+  onAddIssuedStatement,
+  onApplyStatement,
   onUpdateIssuedStatement,
   onProposeEdit,
   focusDocNo,
@@ -195,8 +207,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddConfirmedOrder,
   onRemoveConfirmedOrder,
   onRemoveOrderRequest,
-  onCreateInboundPO,
-  onLinkPurchaseOrder,
   companyInfo,
   onSaveCompanyInfo,
   onUpdateItemCost,
@@ -1323,7 +1333,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
     if (걸린줄들('ZERO_PRICE').length) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
     //  고른 주문 **전부**에 발행 표시를 찍는다 — 한 건만 찍으면 나머지가 목록에 다시 뜬다
-    if (!onAddIssuedStatement) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
+    if (!onApplyStatement) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
     const identity = issueIdentityRef.current ?? {
       id: `stmt-${Date.now()}`, docNo: claimDocNo(tradeDate, mergedStatements),
     };
@@ -1364,28 +1374,46 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           .map(p => p!.id),
       } : {}),
     };
-    await onAddIssuedStatement(stmt);
-    await applyPriceSync(stmtType);
-    for (const id of selectedOrderIds) await onMarkInvoicePrinted?.(id, true);
-    // 매입전표 발행 시 발주카드 처리:
-    //  - 발주카드 선택해서 발행 → 그 PO들의 linkedStatementId에 전표 id 연결 + 입고대기 전환
-    //  - 발주카드 없이 직접입력 발행 → 같은 거래처로 품목 묶어 새 입고대기 카드 1개 생성(전표 id 연결)
-    if (stmtType === '매입') {
-      if (loadedPoIds.length > 0) {
-        loadedPoIds.forEach(poId => onLinkPurchaseOrder?.(poId, stmt.id));
-      } else if (selectedClientId) {
-        // 품목에 매칭되는 줄만 발주카드로 — 비용 항목(택배비·상차비·기타)은 발주/입고 대상 아님 → 제외
-        const newItems = lineItems
+    /*  **한 덩이로 저장한다**(설계 §2, 2026-09-13).
+     *
+     *  전에는 여기서 넷을 차례로 저장했다 — 전표 본문 → 거래처 단가·품목 원가 →
+     *  주문 발행표시 → 발주카드. 앞이 되고 뒤가 엎어지면 **주문에 발행표시가 안 찍혀
+     *  그 주문이 목록에 다시 뜨고, 다시 누르면 전표가 두 장 나간다.**
+     *  이제 하나라도 실패하면 전부 안 들어가고, 같은 명령을 두 번 보내면 두 번째는 그냥 돌아온다.
+     *
+     *  **거래처 단가만 커밋 뒤에 민다** — 그 길에는 박스 품목을 등록하면 낱개도 같이 등록하는
+     *  규칙이 붙어 있어 통째로 옮기면 그 규칙이 사라진다. 단가는 "지금 파는 값"의 스냅샷이라
+     *  늦게 반영돼도 전표·주문의 짝은 이미 맞다. */
+    //  매입이면 발주카드도 같이 — 고른 카드가 있으면 잇고, 없으면 새 입고대기 카드를 세운다.
+    //  비용 줄(택배비·상차비)은 발주·입고 대상이 아니라 뺀다.
+    const newPoItems = stmtType === '매입' && loadedPoIds.length === 0 && selectedClientId
+      ? lineItems
           .map(item => {
             const product = allItems.find(p => p.id === item.itemId);
             return product ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, unit: product.unit || '개' } : null;
           })
-          .filter((it): it is NonNullable<typeof it> => it !== null);
-        if (newItems.length > 0) {
-          onCreateInboundPO?.({ partnerId: selectedClientId, partnerName: selectedClient?.name || '', statementId: stmt.id, items: newItems });
-        }
-      }
-    }
+          .filter((it): it is NonNullable<typeof it> => it !== null)
+      : [];
+
+    const command = buildStatementCommand({
+      statementId: stmt.id, partnerId: selectedClientId, partnerName: selectedClient?.name,
+      tradeDate, type: stmtType, docNo: stmt.docNo, memo: stmtMemo,
+      orderIds: selectedOrderIds, lines: lineItems,
+    });
+    //  전표에 찍힌 단가·계정이 품목 원가로 가는 것(매입)은 명령과 같이 커밋한다.
+    const { costUpdates } = partnerPriceWrites({
+      type: stmtType, partnerId: selectedClientId, lines: lineItems, items: allItems,
+      partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+      isLatest: isLatestForPartner({ this: { id: editingStmt?.id, partnerId: selectedClientId, type: stmtType, tradeDate }, all: mergedStatements }),
+    });
+
+    const 결과 = await onApplyStatement({
+      command, statement: stmt, costUpdates,
+      poIds: stmtType === '매입' ? loadedPoIds : [],
+      newPoItems,
+    });
+    //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
+    if (결과 === 'applied') await applyPriceSync(stmtType);
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.

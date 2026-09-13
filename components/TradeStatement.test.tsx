@@ -33,9 +33,17 @@ function deferred() {
 function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
   onUpsertPartnerItem = vi.fn(async (_p: PartnerItem) => {}),
   extra: Partial<React.ComponentProps<typeof TradeStatement>> = {}) {
+  /*  발행은 이제 **명령 하나**로 나간다(설계 §2, 3단계). 시험은 옛 통로를 그 위에 태워
+      `onAddIssuedStatement` 에 대한 검사 뜻을 그대로 지킨다 — 전표가 저장됐나, 실패하면
+      어떻게 되나. 저장이 엎어지는 상황도 그대로 만들어진다(아래 throw 가 그대로 올라온다). */
+  const onApplyStatement = vi.fn(async ({ statement }: { statement: IssuedStatement }) => {
+    await onAddIssuedStatement(statement);
+    return 'applied' as const;
+  });
   render(<TradeStatement orders={[]} allItems={[{ ...item, id: 'box' }, item]}
     partners={[partner]} partnerItems={[price]} issuedStatements={[]}
     pendingInvoice={pendingInvoice} onAddIssuedStatement={onAddIssuedStatement}
+    onApplyStatement={onApplyStatement}
     onUpsertPartnerItem={onUpsertPartnerItem} {...extra} />);
   return { onAddIssuedStatement, onUpsertPartnerItem };
 }

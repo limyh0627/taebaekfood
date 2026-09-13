@@ -27,6 +27,9 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['partners', 'partner-direct', { name:'가상직배송마트', type:'일반', partnerType:'매출처', address:'강원특별자치도 태백시 테스트로 1', region:'태백시', companyId:'taebaek' }],
   ['partners', 'partner-courier', { name:'가상온라인몰', type:'스마트스토어', partnerType:'매출처', address:'서울특별시 중구 테스트로 2', region:'서울 중구', companyId:'taebaek' }],
   ['partners', 'partner-unlinked', { name:'연결품목없는거래처', type:'택배', partnerType:'매출처', address:'부산광역시 중구 테스트로 3', region:'부산 중구', companyId:'taebaek' }],
+  //  **매입처가 하나는 있어야 한다** — 없으면 매입전표를 아예 못 열어 발주카드·품목 원가 경로를
+  //  로컬에서 시험할 수 없다(2026-09-13, 전표 원자 저장 검수 때 막혔다).
+  ['partners', 'partner-supplier', { name:'가상부자재상사', type:'일반', partnerType:'매입처', address:'경기도 김포시 테스트로 4', region:'김포시', companyId:'taebaek' }],
   ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[{id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),remainingKg:100,kg:100}] }],
   ['items', 'oil-350', { name:'가상 참기름/350ml', type:'product', category:'참기름', subtype:'낱개', stock:20, minStock:5, unit:'병', image:'', spec:'350ml', netContent:'350ml', weightInKg:0.32 }],
   ['items', 'oil-box', { name:'가상 참기름/350ml (12개입)', type:'product', category:'참기름', subtype:'박스', stock:3, minStock:1, unit:'박스', image:'', spec:'350ml' }],
@@ -38,6 +41,9 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['items', 'shipping-tape', { name:'가상 포장 테이프', type:'submaterial', category:'테이프', stock:20, minStock:2, unit:'개', image:'' }],
   ['items', 'archived-oil', { name:'노출되면 안 되는 archived 품목', type:'product', category:'참기름', subtype:'낱개', stock:0, minStock:0, unit:'병', image:'', archived:true }],
   ['partner_item', 'direct-oil', { partnerId:'partner-direct', itemId:'oil-350', Direction:'out', price:5000, taxType:'과세' }],
+  //  매입 쪽 연결 — 병·뚜껑을 사 온다(Direction:'in'). 여기 단가가 매입전표의 기본값이 된다.
+  ['partner_item', 'supplier-bottle', { partnerId:'partner-supplier', itemId:'bottle-350', Direction:'in', price:330, taxType:'과세', Account_Code:'505' }],
+  ['partner_item', 'supplier-cap', { partnerId:'partner-supplier', itemId:'cap-350', Direction:'in', price:88, taxType:'과세', Account_Code:'505' }],
   ['partner_item', 'direct-box', { partnerId:'partner-direct', itemId:'oil-box', Direction:'out', price:60000, taxType:'과세' }],
   ['partner_item', 'courier-powder', { partnerId:'partner-courier', itemId:'powder-1kg', Direction:'out', price:12000, taxType:'면세', isSmartStore:true }],
   ['item_bom', 'bom-oil-raw', { parent_id:'oil-350', child_id:'raw-sesame', quantity:0.4 }],
