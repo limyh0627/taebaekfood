@@ -7,12 +7,12 @@ import { unreservedItemStock } from './orderItemStock';
  * 작업완료 때 "이미 있는 재고 쓸까요?"를 물어볼 주문 라인들.
  *
  * 규칙(사장님 확정):
- *  · 완제품(낱개·박스)만 대상. 재고가 0 이하면 안 묻고 전량 생산한다.
+ *  · 완제품(낱개·박스)만 대상. 재고가 0이어도 행을 보여 주고 전량 생산임을 확인받는다.
  *  · 재고가 있으면 기본값은 min(주문량, 재고) — 주문량이 재고 이상이면 재고 전량,
  *    재고가 더 많으면 주문량만큼. 사용자가 줄이거나 0(사용안함)으로 바꿀 수 있다.
  *  · 박스 품목은 박스 재고로 다 못 채울 때 낱개 재고도 같이 묻는다. 그러고도 모자란 건 전부 생산.
  *
- * 물어볼 게 하나도 없으면 빈 배열 → 모달 없이 그대로 작업완료.
+ * 생산할 완제품이 하나도 없으면 빈 배열 → 모달 없이 그대로 작업완료.
  */
 export interface StockUseRow {
   idx: number;            // order.items 인덱스 — 플랜의 키
@@ -41,9 +41,6 @@ export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[])
     const loose = uc ? allItems.find(p => p.id === uc.itemId) : undefined;
     const stock = unreservedItemStock(product);
     const looseStock = loose ? unreservedItemStock(loose) : 0;
-
-    // 자기 재고도 없고 (박스라면) 낱개 재고도 없으면 어차피 전량 생산 → 묻지 않는다.
-    if (stock <= 0 && looseStock <= 0) return;
 
     rows.push({
       idx,

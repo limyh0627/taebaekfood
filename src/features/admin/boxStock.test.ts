@@ -70,8 +70,10 @@ const BOMS = [bom('loose', 'bulk', 1), bom('box10', 'loose', 10), bom('box20', '
 function harness(
   items: Item[], order: Order,
   buildFormula: (key: string) => { raw: string; ratio: number }[] = () => [],
+  claimOrderOperation?: () => Promise<Order>,
 ) {
   const rawUsed: Record<string, number> = {};
+  const 주문쓰기: Array<{ id: string; data: unknown }> = [];
   setBomIndex(buildBomIndex(items, BOMS));
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
@@ -86,6 +88,7 @@ function harness(
     db: {} as any,
     buildFormula,
     createProductionRecordsForOrder: async () => {},
+    ...(claimOrderOperation ? { claimOrderOperation } : {}),
     runRawInventoryJob: async input => {
       const result = await runRawJob(input);
       for (const r of result.results) {
@@ -99,6 +102,7 @@ function harness(
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }
       if (col === 'orders') {
+        주문쓰기.push({ id, data });
         Object.assign(order, data);
         store.orders.set(id, { ...(store.orders.get(id) ?? {}), ...data });
       }
@@ -114,7 +118,7 @@ function harness(
     return it.stock;
   };
   const savedOrder = () => store.orders.get(order.id) as Order;
-  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger, savedOrder };
+  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger, savedOrder, 주문쓰기 };
 }
 
 const 주문 = (boxes: number): Order => ({
@@ -370,7 +374,7 @@ describe('임가공 판매의 원료수불부 기록', () => {
 describe('모달 행 계산 (stockUseRows)', () => {
   const items = [벌크(), 낱개(2), 박스10(32)];
 
-  it('재고가 있는 라인만 묻는다 — 기본값은 min(주문량, 재고)', () => {
+  it('생산 품목을 보여 준다 — 기본값은 min(주문량, 재고)', () => {
     const rows = buildStockUseRows(주문(5), items);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ idx: 0, itemId: 'box10', ordered: 5, stock: 32, unitLabel: '박스' });
@@ -395,8 +399,11 @@ describe('모달 행 계산 (stockUseRows)', () => {
     expect(s.loose).toMatchObject({ need: 30, value: 2, short: 28 });
   });
 
-  it('재고가 하나도 없으면 아무것도 안 묻는다', () => {
-    expect(buildStockUseRows(주문(5), [벌크(), 낱개(0), 박스10(0)])).toEqual([]);
+  it('재고가 하나도 없어도 전량 생산 행을 보여 준다', () => {
+    const rows = buildStockUseRows(주문(5), [벌크(), 낱개(0), 박스10(0)]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ itemId: 'box10', ordered: 5, stock: 0 });
+    expect(resolveStockUse(rows)[0]).toMatchObject({ own: 0, shortUnits: 5 });
   });
 
   it('앞 품목이나 다른 주문이 배정한 재고는 사용 가능 수량에서 뺀다', () => {
@@ -428,6 +435,30 @@ describe('모달 행 계산 (stockUseRows)', () => {
     expect(states[1].loose!.value).toBe(0);   // 둘째 줄엔 남은 게 없다
     expect(states[1].loose!.short).toBe(20);
     expect(toStockUsePlan(states)).toEqual({ 0: { own: 0, loose: 5 }, 1: { own: 0, loose: 0 } });
+  });
+});
+
+describe('품목 완료 실패 사유 보존', () => {
+  it('이미 실패한 주문의 재시도 오류가 최초 실패 사유를 덮어쓰지 않는다', async () => {
+    const originalFailure = {
+      id: 'first-failure', targetStatus: OrderStatus.PROCESSING, state: 'failed' as const,
+      startedAt: '2026-09-14T01:00:00.000Z', actor: '태백식품', error: 'BOM 품목 SK가 없습니다.',
+    };
+    const order = 주문(1);
+    order.inventoryOperation = originalFailure;
+    const { engine, 주문쓰기 } = harness(
+      [벌크(), 낱개(0), 박스10(0)],
+      order,
+      () => [],
+      async () => { throw new Error('이 주문의 이전 재고 작업이 실패 상태입니다.'); },
+    );
+
+    await expect(engine.changeOrderItemCompletion(
+      order.id, 0, [{ ...order.items[0]!, checked: true }], OrderStatus.PROCESSING,
+    )).rejects.toThrow('이전 재고 작업');
+
+    expect(주문쓰기).toHaveLength(0);
+    expect(order.inventoryOperation).toEqual(originalFailure);
   });
 });
 

@@ -3,7 +3,6 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
 import { Item, PartnerItem, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
-import ConfirmModal from './ConfirmModal';
 import { bomOf } from '../src/shared/bomIndex';
 import { marginOf } from '../src/shared/margin';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -33,7 +32,6 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCost, setEditCost] = useState('');
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
 
   const filtered = useMemo(() => {
     return items
@@ -203,11 +201,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                               className="p-2 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all" title="품목 정보 수정">
                               <Edit2 size={15}/>
                             </button>
-                            <button onClick={() => setConfirmModal({
-                              message: `'${p.name}'을(를) 삭제하시겠습니까?`,
-                              subMessage: '삭제 후 복구할 수 없습니다.',
-                              onConfirm: () => { onDeleteItem(p.id, p.type); setConfirmModal(null); },
-                            })}
+                            <button onClick={() => onDeleteItem(p.id, p.type)}
                               className="p-2 text-rose-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-all" title="삭제">
                               <Trash2 size={15}/>
                             </button>
@@ -228,14 +222,6 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
         )}
       </div>
 
-      {confirmModal && (
-        <ConfirmModal
-          message={confirmModal.message}
-          subMessage={confirmModal.subMessage}
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(null)}
-        />
-      )}
     </div>
   );
 };

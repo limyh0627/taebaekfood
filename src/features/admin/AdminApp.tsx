@@ -102,8 +102,9 @@ import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
-import { buildStockUseRows, resolveStockUse, StockUseRow } from './stockUseRows';
+import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
+import { planCatalogItemDelete } from './catalogItemDelete';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { applyOemReceiptInventory } from './oemReceiptInventory';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
@@ -1299,6 +1300,40 @@ const AdminApp: React.FC<AdminAppProps> = ({
     mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
     onConfirm: (plan: StockUsePlan) => Promise<void>;
   } | null>(null);
+  const [catalogDeleteAsk, setCatalogDeleteAsk] = useState<{
+    itemId: string;
+    itemName: string;
+    bomIds: string[];
+    partnerItemIds: string[];
+    subMessage: string;
+  } | null>(null);
+
+  const requestCatalogItemDelete = (itemId: string) => {
+    const item = allItems.find(candidate => candidate.id === itemId);
+    if (!item) return;
+    const plan = planCatalogItemDelete(itemId, allItems, itemBoms, partnerItems);
+    setCatalogDeleteAsk({ itemId, itemName: item.name, ...plan });
+  };
+
+  const confirmCatalogItemDelete = async () => {
+    const ask = catalogDeleteAsk;
+    if (!ask) return;
+    try {
+      // 품목만 먼저 없어지면 BOM에 존재하지 않는 ID가 남아 생산 처리가 막힌다.
+      // 품목과 현재 BOM·거래처 연결을 같은 batch에 넣어 전부 성공하거나 전부 실패하게 한다.
+      const batch = writeBatch(db);
+      batch.delete(doc(db, COL.items, ask.itemId));
+      ask.bomIds.forEach(id => batch.delete(doc(db, COL.itemBom, id)));
+      ask.partnerItemIds.forEach(id => batch.delete(doc(db, COL.partnerItem, id)));
+      await batch.commit();
+      setCatalogDeleteAsk(null);
+      refreshStaticData();
+    } catch (error) {
+      console.error('품목과 BOM 연결 삭제 실패', error);
+      const reason = error instanceof Error ? error.message : String(error);
+      alert(`품목을 삭제하지 못했습니다.\n사유: ${reason}`);
+    }
+  };
   const requestOrderStatus = async (id: string, status: OrderStatus, orderPatch?: Partial<Order>) => {
     const prepared = await prepareOrderStatusChange(id, status);
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
@@ -1502,7 +1537,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     setLedgerReloadKey(k => k + 1);   // 입고확정으로 쓴 원료수불부 반영
   };
 
-  const [completionAsk, setCompletionAsk] = useState<{ message: string; subMessage: string; onConfirm: () => void } | null>(null);
   const completionSaving = React.useRef(new Set<string>());
   /**
    * **송장 칸 한 번 누름 → 저장할 값.**
@@ -1537,14 +1571,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const isLegacyRollback = !applying && !!order.producedAt && (!lineId || !order.itemInventory?.[lineId]);
         if (isLegacyRollback) await requestOrderStatus(orderId, plan.status, { items: plan.items });
         else await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
-        setCompletionAsk(null);
       } catch (error) {
         if (error instanceof Error && error.message === 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
           await requestOrderStatus(orderId, plan.status, { items: plan.items });
           return;
         }
         console.error('작업 확인 저장 실패', error);
-        alert('작업 확인을 저장하지 못했습니다. 다시 시도해 주세요.');
+        const reason = error instanceof Error ? error.message : String(error);
+        alert(`작업 확인을 저장하지 못했습니다.\n사유: ${reason}`);
       } finally { completionSaving.current.delete(orderId); }
     };
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
@@ -1565,41 +1599,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
       });
     };
 
-    // 대기중·작업중으로 움직이는 것은 묻지 않는다. 마지막 품목으로 작업완료가 될 때만 확인한다.
-    if (plan.status !== OrderStatus.DISPATCHED || !applying) return startSave();
-
-    /*  **작업완료로 넘길 때는 재고를 미리 알려 준다**(2026-09-12 사장님: "재고 있는 경우는
-     *  재고 사용할 수 있게 해주고 재고 없는 경우에는 전량 생산됩니다 알람내용에 같이 포함").
-     *
-     *  재고가 있으면 다음 창(`StockUseModal`)에서 얼마나 쓸지 고르게 되는데, 그 창이 뜨는지
-     *  아닌지를 **누르기 전에는 알 수 없었다.** 쓸 재고가 없으면 그 창 없이 곧바로 전량 생산으로
-     *  넘어간다 — 되돌리기 어려운 쪽이라 미리 말해 주는 게 맞다.
-     *  세는 길은 실제로 쓰는 것과 **같다**(`buildStockUseRows` → `resolveStockUse`). */
-    const 재고안내 = (): string => {
-      if (plan.status !== OrderStatus.DISPATCHED) return '';
-      const lineId = plan.items[itemIdx]?.lineId;
-      if (lineId && order.itemInventory?.[lineId]?.applied) return '이미 생산된 품목입니다 — 재고를 다시 쓰지 않습니다.';
-      const rows = lineRows;
-      if (rows.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
-      const 상태들 = resolveStockUse(rows);
-      const 쓸것 = 상태들.filter(x => x.own + (x.loose?.value ?? 0) > 0);
-      if (쓸것.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
-      /*  **한 문장으로 적는다** — 창 모양은 손대지 않는다(2026-09-12 사장님: "알람 ui는
-          유지하고 내가 말한 기능만 추가해"). 품목마다 줄을 세우면 창이 길어져 모양이 바뀐다.
-          자세한 것은 어차피 다음 창(`StockUseModal`)이 품목별로 보여 준다. */
-      const 모자람 = 상태들.some(x => (x.loose ? x.loose.short : x.shortUnits) > 0);
-      return `재고 ${쓸것.length}개 품목을 먼저 씁니다`
-        + (모자람 ? ' (모자란 만큼은 생산).' : '.')
-        + ' 다음 창에서 쓸 양을 고칠 수 있습니다.';
-    };
-    setCompletionAsk({
-      message: `“${plan.items[itemIdx]?.name || '품목'}” 작업을 완료할까요?`,
-      subMessage: [
-        (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
-        재고안내(),
-      ].filter(Boolean).join(' '),
-      onConfirm: () => { setCompletionAsk(null); startSave(); },
-    });
+    // 생산품은 주문 전체 상태와 관계없이 품목 하나를 완료할 때마다 재고 확인창을 거친다.
+    // 완사입·임가공 상품은 buildStockUseRows가 제외하므로 생산 확인 없이 체크만 저장한다.
+    startSave();
   };
 
   const handleToggleShipmentComplete = async (orderId: string, completed: boolean) => {
@@ -2260,10 +2262,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-              onDeleteItem={(id) => {
-                const inProducts = items.some(p => p.id === id);
-                deleteItem(inProducts ? 'items' : 'items', id);
-              }}
+              onDeleteItem={requestCatalogItemDelete}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               inboundPartners={partners.filter(buysFrom)}
               partnerItems={partnerItems}
@@ -4531,10 +4530,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   partnerItems={partnerItems}
                   onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
                   onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-                  onDeleteItem={(id) => {
-                    const inProducts = items.some(p => p.id === id);
-                    deleteItem(inProducts ? 'items' : 'items', id);
-                  }}
+                  onDeleteItem={requestCatalogItemDelete}
                   onLinkItem={async (itemId, partnerId) => {
                     const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
                     if (!current.includes(partnerId)) {
@@ -4607,7 +4603,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               items={allItems}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteItem={(id) => deleteItem('items', id)}
+              onDeleteItem={requestCatalogItemDelete}
               onUpdateCost={(itemId, cost) => updateItem('items', itemId, { cost })}
               partnerItems={partnerItems}
             />
@@ -4874,11 +4870,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
 
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
-      {completionAsk && <ConfirmModal {...completionAsk} confirmText="변경하기" onCancel={() => setCompletionAsk(null)} />}
+      {catalogDeleteAsk && (
+        <ConfirmModal
+          message={`“${catalogDeleteAsk.itemName}” 품목을 삭제할까요?`}
+          subMessage={catalogDeleteAsk.subMessage}
+          confirmText="삭제하기"
+          onConfirm={() => { void confirmCatalogItemDelete(); }}
+          onCancel={() => setCatalogDeleteAsk(null)}
+        />
+      )}
       {stockUseAsk && (
         <StockUseModal
           partnerName={stockUseAsk.partnerName}
           rows={stockUseAsk.rows}
+          completionLabel={stockUseAsk.mode === 'line' ? '품목 완료' : '작업완료'}
           onCancel={() => setStockUseAsk(null)}
           onConfirm={async (plan: StockUsePlan) => {
             const ask = stockUseAsk;

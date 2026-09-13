@@ -16,6 +16,7 @@ import type { StockUsePlan } from './orderStockEngine';
 interface Props {
   partnerName: string;
   rows: StockUseRow[];
+  completionLabel?: string;
   onConfirm: (plan: StockUsePlan) => void;
   onCancel: () => void;
 }
@@ -25,7 +26,7 @@ const num = (v: string) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const StockUseModal: React.FC<Props> = ({ partnerName, rows, onConfirm, onCancel }) => {
+const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '작업완료', onConfirm, onCancel }) => {
   const [ownOverride, setOwnOverride] = useState<Record<number, number>>({});
   const [looseOverride, setLooseOverride] = useState<Record<number, number>>({});
 
@@ -35,6 +36,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, onConfirm, onCancel
   );
 
   const totalUse = states.reduce((s, x) => s + x.own + (x.loose?.value ?? 0), 0);
+  const hasUsableStock = states.some(x => x.ownMax > 0 || (x.loose?.max ?? 0) > 0);
 
   const qtyInput = (value: number, max: number, onChange: (n: number) => void) => (
     <input
@@ -54,9 +56,13 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, onConfirm, onCancel
             <Package size={22} className="text-emerald-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-slate-900 leading-snug">재고가 있습니다 — 사용하시겠습니까?</p>
+            <p className="text-sm font-black text-slate-900 leading-snug">
+              {hasUsableStock ? '재고 사용량을 확인해 주세요' : '재고가 없어 전량 생산합니다'}
+            </p>
             <p className="text-xs text-slate-400 font-medium mt-1">
-              {partnerName} · 쓴 만큼 재고에서 빠지고, 모자란 만큼만 새로 생산합니다
+              {partnerName} · {hasUsableStock
+                ? '쓴 만큼 재고에서 빠지고, 모자란 만큼만 새로 생산합니다'
+                : '아래 주문 수량 전부를 새로 생산합니다'}
             </p>
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 transition-all shrink-0">
@@ -130,7 +136,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, onConfirm, onCancel
             onClick={() => onConfirm(toStockUsePlan(states))}
             className="flex-[2] py-2.5 bg-emerald-500 text-white font-black rounded-xl text-sm hover:bg-emerald-600 transition-all"
           >
-            {totalUse > 0 ? '재고 사용하고 작업완료' : '전량 생산하고 작업완료'}
+            {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}
           </button>
         </div>
       </div>

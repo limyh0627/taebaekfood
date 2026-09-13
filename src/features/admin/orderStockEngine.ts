@@ -639,9 +639,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     inFlightOrders.add(id);
     let reservation: Awaited<ReturnType<typeof reserveOrderStock>> | undefined;
     let stockCommitted = false;
+    let live: Order | undefined;
     try {
       const cached = allOrders.find(order => order.id === id) || orders.find(order => order.id === id);
-      let live = await getFreshOrder(id, true) ?? cached;
+      live = await getFreshOrder(id, true) ?? cached;
       if (!live) throw new Error('주문 정보를 확인할 수 없어 품목 작업을 저장할 수 없습니다.');
 
       let nextItems = ensureOrderLineIds(requestedItems);
@@ -658,22 +659,23 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
+      const operationOrder = live;
 
       // claim이 돌려준 DB 최신 줄과 스냅샷으로 다시 판정한다. 다른 창이 같은 상태 안에서
       // 다른 품목을 먼저 완료했어도 그 기록을 덮어쓰면 안 된다.
-      const liveItems = ensureOrderLineIds(live.items);
+      const liveItems = ensureOrderLineIds(operationOrder.items);
       const before = liveItems[itemIndex];
       if (!before || before.itemId !== after.itemId || before.lineId !== after.lineId) {
         throw new Error('주문 품목 순서가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
       }
       nextItems = liveItems.map((item, index) => index === itemIndex ? after : item);
       let effectiveStatus = nextStatus;
-      if (live.status === OrderStatus.PENDING || live.status === OrderStatus.PROCESSING || live.status === OrderStatus.DISPATCHED) {
+      if (operationOrder.status === OrderStatus.PENDING || operationOrder.status === OrderStatus.PROCESSING || operationOrder.status === OrderStatus.DISPATCHED) {
         const checkedCount = nextItems.filter(item => item.checked).length;
         effectiveStatus = checkedCount === nextItems.length ? OrderStatus.DISPATCHED
           : checkedCount > 0 ? OrderStatus.PROCESSING : OrderStatus.PENDING;
       }
-      const currentStates = { ...(live.itemInventory ?? {}) };
+      const currentStates = { ...(operationOrder.itemInventory ?? {}) };
       const previousState = currentStates[lineId];
       if (!!before.checked === applying && (!!previousState?.applied === applying || !applying)) {
         await updateItem('orders', id, { items: nextItems, status: effectiveStatus, inventoryOperation: null });
@@ -681,7 +683,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
       // 품목별 구조가 없는 옛 생산 주문은 한 줄만 정확히 분리할 근거가 없다.
       // 그 경우 기존 주문 전체 스냅샷 경로로만 되돌려야 한다.
-      if (!applying && live.producedAt && !previousState) {
+      if (!applying && operationOrder.producedAt && !previousState) {
         await updateItem('orders', id, { inventoryOperation: null });
         throw new Error('LEGACY_ORDER_ROLLBACK_REQUIRED');
       }
@@ -690,11 +692,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         ? nextItems.map((item, index) => ({ item, index }))
             .filter(({ item }) => item.checked && !currentStates[item.lineId!]?.applied)
         : [];
-      const inventoryOrder = { ...live, items: pendingApplyRows.length > 0 ? pendingApplyRows.map(row => row.item) : [after] };
+      const inventoryOrder = { ...operationOrder, items: pendingApplyRows.length > 0 ? pendingApplyRows.map(row => row.item) : [after] };
       const extraItemIds = [
         ...orderStockTouchedIds({ items: nextItems.filter(item => item.checked) }),
         ...Object.values(currentStates).flatMap(state => state.production.stockDeltas.map(row => row.itemId)),
-        ...(live.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
+        ...(operationOrder.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
       ];
       reservation = await reserveOrderStock(
         inventoryOrder,
@@ -703,7 +705,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
           const preview = new Map<string, number>();
           if (applying) {
             for (const row of pendingApplyRows) {
-              const single = { ...live, items: [row.item] };
+              const single = { ...operationOrder, items: [row.item] };
               planOrderProduction(single, preview, stockSnapshot, row.index === itemIndex ? plan : undefined);
               // 생산 순변화만 예약하면 이 줄이 쓸 기존 완제품이 보호되지 않는다.
               shipOrder(single, preview);
@@ -723,7 +725,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
           const rowBefore = new Map(deltas);
           const previous = currentStates[rowLineId];
           const attempt = (previous?.attempt ?? 0) + 1;
-          const single = { ...live, items: [row.item] };
+          const single = { ...operationOrder, items: [row.item] };
           const production = planOrderProduction(
             single, deltas, reservation.stockSnapshot, row.index === itemIndex ? plan : undefined,
           );
@@ -756,7 +758,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         }
         previousState.production.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
         await reverseOrderRawUsage({
-          ...live,
+          ...operationOrder,
           items: [after],
           rawConsumedLots: previousState.rawConsumedLots,
           rawInventoryAttempt: previousState.attempt,
@@ -764,8 +766,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         states[lineId] = { ...previousState, applied: false, reversedAt: now };
       }
 
-      reservation.allocationQuantities = completedLineAllocation(live, nextItems, states);
-      const aggregate = aggregateOrderLineInventory(live, states);
+      reservation.allocationQuantities = completedLineAllocation(operationOrder, nextItems, states);
+      const aggregate = aggregateOrderLineInventory(operationOrder, states);
       const orderPatch: Record<string, unknown> = {
         items: nextItems,
         status: effectiveStatus,
@@ -782,8 +784,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       });
       try {
         await addItem('orderStatusAudits', {
-          id: operationId, orderId: id, partnerName: live.partnerName,
-          previousStatus: live.status, nextStatus: effectiveStatus, approvedBy: actorName ?? '미기록',
+          id: operationId, orderId: id, partnerName: operationOrder.partnerName,
+          previousStatus: operationOrder.status, nextStatus: effectiveStatus, approvedBy: actorName ?? '미기록',
           approvedAt: now, completedAt: new Date().toISOString(), state: 'completed',
           legacyEvidenceWarning: false, stockAdjustments: namedAdjustments,
         } satisfies OrderStatusAudit);
@@ -797,7 +799,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         try { await releaseOrderStockReservation(reservation); }
         catch (releaseError) { console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
       }
-      if (error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
+      // 이미 실패 잠금이 있는 주문을 다시 누르면 claim 단계가 막는다. 그 2차 오류로 최초 실패
+      // 사유를 덮어쓰면 무엇을 고쳐야 하는지 영영 알 수 없으므로 기존 기록을 그대로 둔다.
+      const existingFailure = live?.inventoryOperation?.state === 'failed';
+      if (!existingFailure && error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
         await updateItem('orders', id, {
           inventoryOperation: {
             id: `order-line-failed-${Date.now()}`, targetStatus: nextStatus, state: 'failed',

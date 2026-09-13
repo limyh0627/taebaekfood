@@ -5,6 +5,28 @@
 
  
 ---
+## 2026-09-14 — 삭제된 품목을 가리키던 BOM 18줄 정리 · 일성상회 주문 잠금 해제
+
+**작업자:** Codex 에이전트 (사장님: "삭제된 품목은 bom에서 자동으로 좀 빠지면 안되나")
+
+품목 536개와 `item_bom` 1,029줄을 ID로 대조해 부모 또는 구성품이 없는 고아 BOM 18줄을
+삭제했다. `scripts/fix-orphan-item-boms.mts --apply`로 실행했고, 원본은
+`scripts/fix-orphan-item-boms-backup.json`에 저장했다.
+
+문제를 드러낸 줄은 `bom-box-p-201-4__SK`다. 일성상회 주문의
+`시골향들깨가루(중간4kg)` 박스 BOM이 이미 삭제된 `SK(자루)`를 1개 가리켜 품목 완료가
+재고 예약 단계에서 중단됐다. 해당 주문에는 원료 job·원료원장·완제품 예약·생산기록이
+한 건도 생기지 않은 것을 확인한 뒤 `ORD-1789085255034.inventoryOperation` 실패 잠금만
+`null`로 바꿨다.
+
+- BOM 되돌리기: `npx tsx scripts/fix-orphan-item-boms.mts --undo`
+- 주문 잠금 되돌리기: `npx tsx scripts/fix-ilsung-order-inventory-lock.mts --undo`
+- 주문 잠금 백업: `scripts/fix-ilsung-order-inventory-lock-backup.json`
+
+새 품목 삭제 경로는 품목 문서·그 품목이 부모/자식인 BOM·거래처 연결을 한 Firestore batch로
+같이 지우도록 바꿨다. 삭제 확인창에는 어느 품목들의 BOM에서 빠지는지도 먼저 표시한다.
+
+---
 ## 2026-09-13 — 전표 줄 8개에 **품목 id** 를 적음 (주문에서 가져옴)
 
 **작업자:** Claude 에이전트 (사장님: "ID로 찾는거 아니야?", "ㅇㅇ할 수 있으면 해놔")

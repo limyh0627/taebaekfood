@@ -1,0 +1,11 @@
+{
+  "backedUpAt": "2026-09-13T18:14:04.457Z",
+  "inventoryOperation": {
+    "targetStatus": "PROCESSING",
+    "state": "failed",
+    "actor": "태백식품",
+    "error": "이 주문의 이전 재고 작업이 실패 상태입니다. 재고·로트·수불부를 점검한 뒤 작업 잠금을 해제해 주세요.",
+    "startedAt": "2026-09-13T18:00:04.791Z",
+    "id": "order-line-failed-1789322404791"
+  }
+}

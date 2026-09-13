@@ -1,0 +1,113 @@
+{
+  "backedUpAt": "2026-09-13T18:12:37.582Z",
+  "itemBoms": [
+    {
+      "id": "bom-box-p-201-4__SK",
+      "child_id": "SK",
+      "quantity": 1,
+      "parent_id": "box-p-201-4"
+    },
+    {
+      "id": "bom-p-108-raw-볶음검정참깨",
+      "child_id": "raw-볶음검정참깨",
+      "parent_id": "p-108",
+      "quantity": 20
+    },
+    {
+      "id": "bom-p-108__container-bulk-vinyl",
+      "parent_id": "p-108",
+      "child_id": "container-bulk-vinyl",
+      "quantity": 1
+    },
+    {
+      "id": "bom-p-108__p-1784783031747",
+      "parent_id": "p-108",
+      "child_id": "p-1784783031747",
+      "quantity": 0
+    },
+    {
+      "id": "bom-p-150__C-RD01",
+      "child_id": "C-RD01",
+      "quantity": 1,
+      "parent_id": "p-150"
+    },
+    {
+      "id": "bom-p-150__PET-N-1750-TR",
+      "quantity": 1,
+      "child_id": "PET-N-1750-TR",
+      "parent_id": "p-150"
+    },
+    {
+      "id": "bom-p-150__label-진식자재-참2-1-75l",
+      "quantity": 0,
+      "child_id": "label-진식자재-참2-1-75l",
+      "parent_id": "p-150"
+    },
+    {
+      "id": "bom-p-150__wip-참기름A",
+      "child_id": "wip-참기름A",
+      "quantity": 1.603,
+      "parent_id": "p-150"
+    },
+    {
+      "id": "bom-p-1778227753693-Oa5VtyzqXt38phvTqfXH",
+      "child_id": "Oa5VtyzqXt38phvTqfXH",
+      "parent_id": "p-1778227753693",
+      "quantity": 1
+    },
+    {
+      "id": "bom-p-1779937553909-raw-볶음참깨",
+      "child_id": "raw-볶음참깨",
+      "parent_id": "p-1779937553909",
+      "quantity": 20
+    },
+    {
+      "id": "bom-p-1788756962927__GS-02",
+      "quantity": 1,
+      "parent_id": "p-1788756962927",
+      "child_id": "GS-02"
+    },
+    {
+      "id": "bom-p-1788756962927__p-165",
+      "quantity": 1,
+      "child_id": "p-165",
+      "parent_id": "p-1788756962927"
+    },
+    {
+      "id": "bom-p-1788756962927__p-1773585416573",
+      "parent_id": "p-1788756962927",
+      "child_id": "p-1773585416573",
+      "quantity": 1
+    },
+    {
+      "id": "mig-box-p-150-10__B-03",
+      "child_id": "B-03",
+      "quantity": 1,
+      "parent_id": "box-p-150-10"
+    },
+    {
+      "id": "mig-box-p-150-10__T-TR",
+      "child_id": "T-TR",
+      "quantity": 0,
+      "parent_id": "box-p-150-10"
+    },
+    {
+      "id": "mig-box-p-150-10__p-150",
+      "quantity": 10,
+      "parent_id": "box-p-150-10",
+      "child_id": "p-150"
+    },
+    {
+      "id": "mig-p-1779349161834__Oa5VtyzqXt38phvTqfXH",
+      "parent_id": "p-1779349161834",
+      "child_id": "Oa5VtyzqXt38phvTqfXH",
+      "quantity": 1
+    },
+    {
+      "id": "mig-p-1779937553909__container-bulk-vinyl",
+      "quantity": 1,
+      "parent_id": "p-1779937553909",
+      "child_id": "container-bulk-vinyl"
+    }
+  ]
+}
