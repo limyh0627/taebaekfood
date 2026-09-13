@@ -1,4 +1,4 @@
-import type { Item, Order, OrderItem, PartnerItem } from './types';
+import type { Item, Order, OrderItem, PartnerItem, StatementLineKind } from './types';
 import { lineAmount } from './lineAmount';
 import { unpackComponent, boxDerivedUnitPrice, boxCountOf } from './orderUnits';
 
@@ -26,6 +26,12 @@ export interface ManualRow {
 
 export interface LineItem {
   itemId?: string;
+  /**
+   * 품목 줄(`item`)인가 계정 줄(`account`)인가 — 저장할 때 그대로 따라간다.
+   * 여기서 정하는 근거는 **추측이 아니라 손에 쥔 것**이다: 주문에서 온 줄은 품목이 확실하고,
+   * 손입력 줄은 품목을 골랐거나(`itemId`) 계정만 고른 것(`accountCode`) 둘 중 하나다.
+   */
+  lineKind?: StatementLineKind;
   key: string; no: number; name: string; spec: string;
   qty: number; price: number; supply: number; tax: number; total: number;
   isTaxExempt: boolean; accountCode?: string;
@@ -93,12 +99,19 @@ export function manualLines(
        * 소수점이 남아 합계가 1원씩 어긋나고, 전표에 '1,234.56원'이 찍힌다.
        */
       const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
+      const accountCode = item.accountCode || 기본계정(stmtType);
+      /*  **품목 줄인지 계정 줄인지 여기서 적어 둔다.**
+          품목을 골랐으면(또는 이름이 꼭 맞아 이어졌으면) 품목 줄이고,
+          품목 없이 계정만 고른 줄은 계정 줄이다(택배비·화물비·카드대금…).
+          품목도 계정도 없으면 **아직 아무것도 아니다** — 찍지 않고 비워 둔다. */
+      const lineKind: StatementLineKind | undefined = itemId ? 'item' : accountCode ? 'account' : undefined;
       return {
         ...(itemId ? { itemId } : {}),
+        ...(lineKind ? { lineKind } : {}),
         key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec,
         qty, price, supply, tax, total: supply + tax,
         isTaxExempt: item.isTaxExempt, side: item.side,
-        accountCode: item.accountCode || 기본계정(stmtType),
+        accountCode,
       };
     });
 }
@@ -224,6 +237,9 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
       const acCode = accountCodeOverrides[key] || pcEntry?.Account_Code || 기본계정(stmtType);
       itemMap[key] = {
         ...(itemId ? { itemId } : {}),
+        /*  **주문에서 온 줄은 언제나 품목 줄이다.** 품목을 못 찾았어도(`unknownItem`)
+            품목 줄인 것은 변하지 않는다 — 오히려 그런 줄이야말로 진단에 걸려야 한다. */
+        lineKind: 'item' as const,
         key, no: no++, name: displayName, spec,
         qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax,
         isTaxExempt, accountCode: acCode,

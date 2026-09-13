@@ -828,9 +828,28 @@ export interface FixedCostTemplate {
   itemName?: string;
 }
 
+/**
+ * **이 줄이 품목 줄인가 계정 줄인가.**
+ *
+ * 설계([전표-원가-원장-재무-통합설계](../../docs/전표-원가-원장-재무-통합설계.md) §3):
+ * 품목 줄은 `itemId` 가 필수이고, 임대료·택배비처럼 실물이 아닌 **계정 줄은 `itemId` 없이
+ * `accountCode` 가 필수**다.
+ *
+ * 왜 나누나 — 지금은 `itemId?: string` 하나가 두 뜻을 겸한다. 그래서 **못 이은 품목 줄과
+ * 원래 품목이 없는 비용 줄이 똑같이 보인다.** 운영 DB 를 세어 보면(2026-09-13) id 없는 줄이
+ * 91개인데 그 중 83개가 택배비·카드대금·화물비 같은 계정 줄이다 — 이걸 못 가르면
+ * "무연결 0건" 이 영영 안 된다.
+ *
+ * **옛 줄에는 이 칸이 없다.** 없는 것을 아무 쪽으로나 찍지 않는다 — 모르는 것은 모르는 채로
+ * 두고(`lineKindOf` 가 `undefined` 를 낸다), 진단이 따로 센다.
+ */
+export type StatementLineKind = 'item' | 'account';
+
 export interface IssuedStatementItem {
   /** 비용·옛 전표는 없을 수 있다. 이름으로 품목을 추정해 단가를 덮어쓰지 않는다. */
   itemId?: string;
+  /** 품목 줄인가 계정 줄인가 — 2026-09-13부터 적는다. 옛 줄에는 없다. */
+  lineKind?: StatementLineKind;
   name: string;
   spec: string;
   qty: number;

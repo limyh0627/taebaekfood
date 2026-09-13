@@ -1331,6 +1331,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       totalAmount,
       items: lineItems.map(i => ({
         ...(i.itemId ? { itemId: i.itemId } : {}),
+        //  품목 줄인가 계정 줄인가 — 전표를 다시 읽을 때 "왜 id 가 없나" 를 되짚을 수 있게
+        //  **발행하는 순간 적어 둔다**(설계 §3). 뒤늦게 이름으로 짐작하면 늦다.
+        ...(i.lineKind ? { lineKind: i.lineKind } : {}),
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
