@@ -1,6 +1,6 @@
 import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
-import { statusLabel } from '../../shared/orderStatusStyle';
+import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 ﻿
 // ============================================================
 // [ADMIN APP 경계 — 미래 분리 안내]
@@ -103,7 +103,6 @@ import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, resolveStockUse, StockUseRow } from './stockUseRows';
-import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { applyOemReceiptInventory } from './oemReceiptInventory';
@@ -1217,7 +1216,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const p = allItems.find(pr => pr.id === item.itemId);
       return p && p.type === 'product';
     });
-    for (const item of finishedItems) {
+    for (const [index, item] of finishedItems.entries()) {
       const 원래 = allItems.find(p => p.id === item.itemId);
       if (!원래) continue;
       //  박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
@@ -1226,7 +1225,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const product = 푼것.product ?? 원래;
       const qty = 푼것.qty;
       const record: ProductionRecord = {
-        id: `pr-${order.id}-${product.id}-${Date.now()}`,
+        // 품목별 재시도에서 같은 생산 실적을 두 번 만들지 않는다.
+        id: `pr-${order.id}-${item.lineId || `${index + 1}-${product.id}`}`,
         //  `slice(0,10)` 은 UTC 라 밤 12시~아침 9시 사이 것이 하루 앞으로 밀린다
         date: dateOfLocal(order.deliveredAt ?? new Date().toISOString()),
         itemId: product.id,
@@ -1284,7 +1284,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
-  const { changeOrderStatus, prepareOrderStatusChange } = createOrderStockEngine({
+  const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange } = createOrderStockEngine({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, updateItem, addItem,
@@ -1293,9 +1293,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 작업완료 진입점 — 쓸 수 있는 재고가 있으면 모달로 사용량을 먼저 받는다(없으면 그대로 진행).
   //  드롭다운으로 바꾸든 품목 전체 체크로 자동 이동하든 여기 하나를 지난다.
-  const [stockUseAsk, setStockUseAsk] = useState<{ orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order> } | null>(null);
-  const [rollbackAsk, setRollbackAsk] = useState<{ order: Order; targetStatus: OrderStatus; plan: ReturnType<typeof buildRollbackPlan>; orderPatch?: Partial<Order> } | null>(null);
-  const [rollbackSaving, setRollbackSaving] = useState(false);
+  const [stockUseAsk, setStockUseAsk] = useState<{
+    mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
+  } | {
+    mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
+    onConfirm: (plan: StockUsePlan) => Promise<void>;
+  } | null>(null);
   const requestOrderStatus = async (id: string, status: OrderStatus, orderPatch?: Partial<Order>) => {
     const prepared = await prepareOrderStatusChange(id, status);
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
@@ -1309,12 +1312,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     //  체크를 남겨두면 되돌리는 즉시 원위치돼 되돌리기가 아예 안 되는 것처럼 보인다.
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
       ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
-    const isInventoryRollback = !!cur && stockStage(status) < stockStage(cur.status);
-    /**
-     * **되돌리기는 재고를 조용히 움직인다** — 출고취소로 완제품이 다시 채워지고, 생산취소로
-     * BOM 구성품·원료 로트가 복원되며 원료수불부 줄이 지워진다. 눌러 놓고 나중에
-     * "왜 재고가 늘었지"로 만나면 되짚기 어렵다. 무엇이 움직이는지 적어 보여주고 확인을 받는다.
-     */
+    const isInventoryRollback = !!cur && (
+      stockStage(status) < stockStage(cur.status) ||
+      (!!cur.producedAt && cur.status === OrderStatus.PROCESSING && status === OrderStatus.PENDING)
+    );
     if (cur && isInventoryRollback) {
       /*  부른 쪽이 **체크 상태를 직접 줬으면 그걸 쓴다**(2026-09-12).
        *  체크를 하나 푸는 길은 이미 '그 하나만 풀린' 목록을 들고 온다 — 여기서 전부 지워 버리면
@@ -1325,13 +1326,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const clearedItems = shouldClearChecks
         ? cur.items.map(({ checkedBy: _dropBy, checkedAt: _dropAt, ...rest }) => ({ ...rest, checked: false }))
         : cur.items;
-      setRollbackAsk({
-        order: cur,
-        targetStatus: status,
-        plan: prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status),
+      // 사장님 기준: 대기중·작업중으로 내릴 때는 상태 확인창을 띄우지 않는다.
+      // 재고 원복 자체는 저장된 스냅샷으로 그대로 실행한다.
+      return changeOrderStatus(id, status, undefined, {
+        approvedBy: currentUser?.name,
         orderPatch: { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) },
       });
-      return;
     }
 
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
@@ -1339,21 +1339,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (!order || order.producedAt) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
     const rows = buildStockUseRows(order, allItems);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
-    setStockUseAsk({ orderId: id, partnerName: order.partnerName, rows, orderPatch });
+    setStockUseAsk({ mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
-  /**
-   * 작업완료·출고 주문을 문서만 지우면 원료·재고와 출고 전 배정이 고아로 남는다.
-   * 삭제 확인은 각 화면에서 이미 받으므로, 여기서는 현재 주문만 대기로 원복한 뒤 지운다.
-   * 예전 주문은 기존 정책대로 삭제하지 않는다.
-   */
+  /** 작업완료·출고 주문은 경고 뒤 재고를 원복하고, 예전 주문은 기록만 지운다. */
   const handleDeleteOrder = async (id: string) => {
     const order = allOrders.find(candidate => candidate.id === id) ?? orders.find(candidate => candidate.id === id);
     if (order?.status === OrderStatus.DELIVERED) {
-      alert('예전 주문은 삭제할 수 없습니다.');
+      // 예전 주문은 당시 스냅샷이 없는 것이 많다. 현재 BOM으로 추정 복원하면 오히려 오늘 재고를 망친다.
+      // 목록의 삭제 확인창은 이미 거쳤으므로 문서만 지운다.
+      await deleteItem('orders', id);
       return;
     }
-    if (order?.producedAt || order?.shippedOut) {
+    const currentInventoryOrder = order && (
+      order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED ||
+      !!order.producedAt || !!order.shippedOut
+    );
+    if (order && currentInventoryOrder) {
+      const ok = window.confirm(
+        `${order.partnerName || '이 거래처'} 주문은 이미 ${order.shippedOut || order.status === OrderStatus.SHIPPED ? '출고완료' : '작업완료'} 상태입니다.\n\n`
+        + '삭제하면 사용된 BOM·원료와 할당된 완제품 재고를 원복한 뒤 주문을 삭제합니다. 계속할까요?',
+      );
+      if (!ok) return;
       await changeOrderStatus(id, OrderStatus.PENDING, undefined, { approvedBy: currentUser?.name });
     }
     await deleteItem('orders', id);
@@ -1518,28 +1525,49 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
     const order = allOrders.find(o => o.id === orderId);
     if (!order || completionSaving.current.has(orderId)) return;
-    const plan = planOrderItemToggle(order, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
+    const normalizedOrder = { ...order, items: ensureOrderLineIds(order.items) };
+    const plan = planOrderItemToggle(normalizedOrder, itemIdx, checkedBy || currentUser?.name, new Date().toISOString());
     if (!plan) return;
-    const save = async () => {
+    const applying = plan.items[itemIdx]?.checked === true;
+    const save = async (stockPlan?: StockUsePlan) => {
       if (completionSaving.current.has(orderId)) return;
       completionSaving.current.add(orderId);
       try {
-        if (plan.status !== order.status) await requestOrderStatus(orderId, plan.status, { items: plan.items });
-        else await updateItem('orders', orderId, { items: plan.items });
+        const lineId = plan.items[itemIdx]?.lineId;
+        const isLegacyRollback = !applying && !!order.producedAt && (!lineId || !order.itemInventory?.[lineId]);
+        if (isLegacyRollback) await requestOrderStatus(orderId, plan.status, { items: plan.items });
+        else await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
         setCompletionAsk(null);
       } catch (error) {
+        if (error instanceof Error && error.message === 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
+          await requestOrderStatus(orderId, plan.status, { items: plan.items });
+          return;
+        }
         console.error('작업 확인 저장 실패', error);
         alert('작업 확인을 저장하지 못했습니다. 다시 시도해 주세요.');
       } finally { completionSaving.current.delete(orderId); }
     };
-    if (plan.status === order.status) return save();
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
       ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
     const isRollback = stockStage(plan.status) < stockStage(order.status);
-    // 역행은 일반 상태 확인창을 먼저 띄우지 않는다. DB 최신값과 재고 증감을 보여주는
-    // 공통 원복 승인창 하나에서 체크 해제까지 함께 승인한다.
-    if (isRollback) return requestOrderStatus(orderId, plan.status, { items: plan.items });
-    // 승인 전에는 체크도 상태도 저장하지 않는다. 생산은 기존 재고 사용 승인 경로만 호출한다.
+    // 품목별 스냅샷이 있는 주문은 체크를 푼 그 줄만 즉시 원복한다.
+    // 옛 주문만 줄 근거가 없어 기존 주문 전체 원복 승인창을 쓴다.
+    if (isRollback && !order.itemInventory) return requestOrderStatus(orderId, plan.status, { items: plan.items });
+
+    const lineRows = applying
+      ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems)
+      : [];
+    const startSave = () => {
+      if (lineRows.length === 0) { void save(); return; }
+      setStockUseAsk({
+        mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
+        onConfirm: save,
+      });
+    };
+
+    // 대기중·작업중으로 움직이는 것은 묻지 않는다. 마지막 품목으로 작업완료가 될 때만 확인한다.
+    if (plan.status !== OrderStatus.DISPATCHED || !applying) return startSave();
+
     /*  **작업완료로 넘길 때는 재고를 미리 알려 준다**(2026-09-12 사장님: "재고 있는 경우는
      *  재고 사용할 수 있게 해주고 재고 없는 경우에는 전량 생산됩니다 알람내용에 같이 포함").
      *
@@ -1549,8 +1577,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
      *  세는 길은 실제로 쓰는 것과 **같다**(`buildStockUseRows` → `resolveStockUse`). */
     const 재고안내 = (): string => {
       if (plan.status !== OrderStatus.DISPATCHED) return '';
-      if (order.producedAt) return '이미 생산된 주문입니다 — 재고를 다시 쓰지 않습니다.';
-      const rows = buildStockUseRows(order, allItems);
+      const lineId = plan.items[itemIdx]?.lineId;
+      if (lineId && order.itemInventory?.[lineId]?.applied) return '이미 생산된 품목입니다 — 재고를 다시 쓰지 않습니다.';
+      const rows = lineRows;
       if (rows.length === 0) return '쓸 수 있는 재고가 없어 전량 생산됩니다.';
       const 상태들 = resolveStockUse(rows);
       const 쓸것 = 상태들.filter(x => x.own + (x.loose?.value ?? 0) > 0);
@@ -1564,12 +1593,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
         + ' 다음 창에서 쓸 양을 고칠 수 있습니다.';
     };
     setCompletionAsk({
-      message: '해당 거래처를 ' + statusLabel(plan.status) + ' 상태로 변경할까요?',
+      message: `“${plan.items[itemIdx]?.name || '품목'}” 작업을 완료할까요?`,
       subMessage: [
         (order.partnerName || '거래처 미지정') + ' · 주문일: ' + dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.'),
         재고안내(),
       ].filter(Boolean).join(' '),
-      onConfirm: () => { void save(); },
+      onConfirm: () => { setCompletionAsk(null); startSave(); },
     });
   };
 
@@ -4701,7 +4730,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, items: ensureOrderLineIds(o.items), companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4721,7 +4750,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, items: ensureOrderLineIds(o.items), companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4846,59 +4875,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
       {completionAsk && <ConfirmModal {...completionAsk} confirmText="변경하기" onCancel={() => setCompletionAsk(null)} />}
-      {/*  **되돌리기 확인창 — 작업완료 확인창과 같은 양식**(2026-09-12 사장님: "Ui만 작업완료
-           알람처럼 깔끔하게 바꿔 같은 양식으로"). 전에는 이 창만 따로 큰 표를 들고 있어,
-           같은 일(상태를 바꿀까요)을 두 가지 모양으로 묻고 있었다.
-           무엇이 얼마나 되돌아가는지는 한 문장으로 적는다 — 자세한 것은 원복 뒤 재고에서 본다. */}
-      {rollbackAsk && (() => {
-        const 것 = rollbackAsk;
-        const 움직임 = 것.plan.adjustments.filter(row => row.delta !== 0);
-        const 안내 = [
-          `${것.order.partnerName || '거래처 미지정'} · ${statusLabel(것.order.status)} → ${statusLabel(것.targetStatus)}`,
-          움직임.length > 0
-            ? `재고 ${움직임.length}건이 되돌아갑니다(로트·원료수불부 포함).`
-            : '되돌릴 재고 변화가 없습니다.',
-          것.plan.legacyEvidenceWarning
-            ? '이 주문은 생산 당시 기록이 없어 지금 구성(BOM)으로 추정해 되돌립니다.'
-            : '',
-        ].filter(Boolean).join(' ');
-        return (
-          <ConfirmModal
-            message="주문 상태와 재고를 원복할까요?"
-            subMessage={안내}
-            confirmText={rollbackSaving ? '원복 중…' : '원복 승인'}
-            onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
-            onConfirm={async () => {
-            if (rollbackSaving) return;
-            setRollbackSaving(true);
-            try {
-              await changeOrderStatus(rollbackAsk.order.id, rollbackAsk.targetStatus, undefined, {
-                approvedBy: currentUser?.name,
-                approvedAt: new Date().toISOString(),
-                approvedPlan: rollbackAsk.plan,
-                approvedFromStatus: rollbackAsk.order.status,
-                orderPatch: rollbackAsk.orderPatch,
-              });
-              setRollbackAsk(null);
-            } catch (error) {
-              console.error('주문 상태 원복 실패', error);
-              alert(error instanceof Error ? error.message : '원복을 완료하지 못했습니다. 재고 작업 이력을 확인해 주세요.');
-            } finally {
-              setRollbackSaving(false);
-            }
-          }}
-          />
-        );
-      })()}
       {stockUseAsk && (
         <StockUseModal
           partnerName={stockUseAsk.partnerName}
           rows={stockUseAsk.rows}
           onCancel={() => setStockUseAsk(null)}
           onConfirm={async (plan: StockUsePlan) => {
-            const { orderId } = stockUseAsk;
+            const ask = stockUseAsk;
             setStockUseAsk(null);
-            await changeOrderStatus(orderId, OrderStatus.DISPATCHED, plan, { approvedBy: currentUser?.name, orderPatch: stockUseAsk.orderPatch });
+            if (ask.mode === 'line') {
+              await ask.onConfirm(plan);
+              return;
+            }
+            await changeOrderStatus(ask.orderId, OrderStatus.DISPATCHED, plan, { approvedBy: currentUser?.name, orderPatch: ask.orderPatch });
           }}
         />
       )}

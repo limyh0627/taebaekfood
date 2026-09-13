@@ -25,7 +25,7 @@ export interface OrderStockReservation {
   active: boolean;
 }
 
-const liveReservations = (value: unknown, nowMs: number): ItemInventoryReservation[] => {
+export const liveItemInventoryReservations = (value: unknown, nowMs = Date.now()): ItemInventoryReservation[] => {
   if (!Array.isArray(value)) return [];
   return value.filter((row): row is ItemInventoryReservation => {
     if (!row || typeof row !== 'object') return false;
@@ -37,6 +37,13 @@ const liveReservations = (value: unknown, nowMs: number): ItemInventoryReservati
     return candidate.state === 'allocated' || nowMs - createdAt < RESERVATION_TTL_MS;
   });
 };
+
+/** 화면과 transaction이 같은 가용 재고를 보여주기 위한 공용 셈. */
+export const unreservedItemStock = (
+  item: Pick<Item, 'stock' | 'inventoryReservations'>,
+  nowMs = Date.now(),
+) => stock3(Math.max(0, Number(item.stock ?? 0) - liveItemInventoryReservations(item.inventoryReservations, nowMs)
+  .reduce((sum, row) => sum + Number(row.qty), 0)));
 
 /** 주문 라인과 재귀 BOM이 건드릴 모든 품목 ID를 한 번만 모은다. */
 export function orderStockTouchedIds(order: Pick<Order, 'items'>): string[] {
@@ -75,6 +82,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     operationId: string,
     planDeltas: (stockSnapshot: ReadonlyMap<string, number>) => ReadonlyMap<string, number>,
     extraItemIds: readonly string[] = [],
+    options: { preserveOwnAllocation?: boolean } = {},
   ): Promise<OrderStockReservation> => {
     const ids = [...new Set([...orderStockTouchedIds(order), ...extraItemIds])];
     const now = new Date();
@@ -94,12 +102,15 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       const available = new Map<string, number>();
       ids.forEach((itemId, index) => {
         const data = snapshots[index]!.data() ?? {};
-        const active = liveReservations(data.inventoryReservations, nowMs);
+        const active = liveItemInventoryReservations(data.inventoryReservations, nowMs);
         const own = active.filter(row => row.orderId === order.id);
         const others = active.filter(row => row.orderId !== order.id);
         previousReservations.set(itemId, own);
         activeByItem.set(itemId, others);
-        const reserved = others.reduce((sum, row) => sum + Number(row.qty), 0);
+        const ownAllocated = options.preserveOwnAllocation
+          ? own.filter(row => row.state === 'allocated').reduce((sum, row) => sum + Number(row.qty), 0)
+          : 0;
+        const reserved = others.reduce((sum, row) => sum + Number(row.qty), 0) + ownAllocated;
         available.set(itemId, stock3(Math.max(0, Number(data.stock ?? 0) - reserved)));
       });
 
@@ -110,7 +121,12 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       }
       const quantities = new Map<string, number>();
       ids.forEach(itemId => {
-        const qty = stock3(Math.max(0, -(planned.get(itemId) ?? 0)));
+        const previousQty = options.preserveOwnAllocation
+          ? (previousReservations.get(itemId) ?? [])
+              .filter(row => row.state === 'allocated')
+              .reduce((sum, row) => sum + Number(row.qty), 0)
+          : 0;
+        const qty = stock3(previousQty + Math.max(0, -(planned.get(itemId) ?? 0)));
         if (qty > 0) quantities.set(itemId, qty);
       });
 
@@ -163,7 +179,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       snapshots.forEach((snapshot, index) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data() ?? {};
-        const active = liveReservations(data.inventoryReservations, nowMs);
+        const active = liveItemInventoryReservations(data.inventoryReservations, nowMs);
         const hasCurrent = active.some(row => row.orderId === reservation.orderId && row.operationId === reservation.operationId);
         if (!hasCurrent) return;
         const otherOrders = active.filter(row => row.orderId !== reservation.orderId);
@@ -177,6 +193,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     deltas: ReadonlyMap<string, number>,
     lotMutations: readonly OrderProductLotMutation[] = [],
     reservation?: OrderStockReservation,
+    orderMutation?: { orderId: string; patch: Record<string, unknown> },
   ): Promise<NonNullable<Order['productConsumedLots']>> => {
     const lotMutationByItem = new Map<string, OrderProductLotMutation>();
     for (const mutation of lotMutations) {
@@ -221,7 +238,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         if (row.delta !== 0) patch.stock = stock3(before + row.delta);
         if (lotResult) patch.lots = stripUndefined(pruneDepletedLots(lotResult.lots));
         if (reservation) {
-          const next = liveReservations(data.inventoryReservations, Date.now())
+          const next = liveItemInventoryReservations(data.inventoryReservations, Date.now())
             .filter(entry => entry.orderId !== reservation.orderId);
           const allocatedQty = reservation.allocationQuantities?.get(row.itemId) ?? 0;
           if (allocatedQty > 0) {
@@ -249,6 +266,9 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       for (const update of updates) {
         if (Object.keys(update.patch).length > 0) tx.update(update.ref, update.patch);
       }
+      // 품목별 완료에서는 재고 숫자와 그 근거인 주문 줄 스냅샷이 한 transaction이어야 한다.
+      // 둘 사이에서 브라우저가 닫히면 재시도 때 같은 BOM을 또 뺄 수 있다.
+      if (orderMutation) tx.update(doc(db, 'orders', orderMutation.orderId), orderMutation.patch);
       return updates.map(({ itemId, delta, before, after, consumedLots }) => ({ itemId, delta, before, after, consumedLots }));
     });
 

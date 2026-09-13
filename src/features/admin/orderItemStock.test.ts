@@ -139,6 +139,34 @@ describe('주문 품목 재고 DB 경계', () => {
     ]);
   });
 
+  it('같은 주문의 다음 품목은 앞 품목 배정을 뺀 재고만 보고, 실패하면 앞 배정을 되살린다', async () => {
+    memory.docs.set('items/a', {
+      stock: 10,
+      inventoryReservations: [{
+        operationId: 'line-a', orderId: 'order-a', qty: 6,
+        createdAt: new Date().toISOString(), state: 'allocated',
+      }],
+    });
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [item('a')] });
+    const nextLine = await stock.reserveOrderStock(
+      reservableOrder('order-a', ['a']),
+      'line-b',
+      snapshot => new Map([['a', -Math.min(3, snapshot.get('a') ?? 0)]]),
+      [],
+      { preserveOwnAllocation: true },
+    );
+
+    expect(nextLine.stockSnapshot.get('a')).toBe(4);
+    expect(memory.docs.get('items/a')?.inventoryReservations).toEqual([
+      expect.objectContaining({ operationId: 'line-b', orderId: 'order-a', qty: 9, state: 'processing' }),
+    ]);
+
+    await stock.releaseOrderStockReservation(nextLine);
+    expect(memory.docs.get('items/a')?.inventoryReservations).toEqual([
+      expect.objectContaining({ operationId: 'line-a', orderId: 'order-a', qty: 6, state: 'allocated' }),
+    ]);
+  });
+
   it('작업완료 취소는 재고 반영 transaction에서 확정 배정을 함께 지운다', async () => {
     memory.docs.set('items/a', {
       stock: 12,

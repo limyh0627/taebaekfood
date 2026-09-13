@@ -1,6 +1,7 @@
 import type { Item, Order } from '../../shared/types';
 import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import { isGoodsItem } from './orderStockEngine';
+import { unreservedItemStock } from './orderItemStock';
 
 /**
  * 작업완료 때 "이미 있는 재고 쓸까요?"를 물어볼 주문 라인들.
@@ -38,8 +39,8 @@ export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[])
 
     const uc = unpackComponent(product);
     const loose = uc ? allItems.find(p => p.id === uc.itemId) : undefined;
-    const stock = Math.max(0, product.stock ?? 0);
-    const looseStock = Math.max(0, loose?.stock ?? 0);
+    const stock = unreservedItemStock(product);
+    const looseStock = loose ? unreservedItemStock(loose) : 0;
 
     // 자기 재고도 없고 (박스라면) 낱개 재고도 없으면 어차피 전량 생산 → 묻지 않는다.
     if (stock <= 0 && looseStock <= 0) return;

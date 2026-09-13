@@ -1,7 +1,7 @@
 import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit } from '../../shared/types';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit, OrderItemInventoryState } from '../../shared/types';
 import { toKg, baseRawName, unitToKg } from '../../constants/formula';
 import { runRawInventoryJob } from '../../shared/services/rawInventoryJob';
 import { bomQty } from '../../shared/bom';
@@ -13,6 +13,7 @@ import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForSt
 import { createOrderRawInventoryOperations, oemLedgerKg, rawLedgerDocIds } from './orderRawInventory';
 import { createOrderProductLotOperations, type OrderProductLotMutation } from './orderProductLots';
 import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
+import { aggregateOrderLineInventory, ensureOrderLineIds } from '../../shared/orderLineInventory';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -516,6 +517,12 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
           await reverseOrderRawUsage({ ...order, rawConsumedLots: snapshot.rawConsumedLots ?? order.rawConsumedLots });
         } else await unProduceOrder(order, deltas);
         patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
+        if (order.itemInventory) {
+          const reversedAt = new Date().toISOString();
+          patch.itemInventory = Object.fromEntries(Object.entries(order.itemInventory).map(([lineId, state]) => [
+            lineId, state.applied ? { ...state, applied: false, reversedAt } : state,
+          ]));
+        }
       }
       // 정방향: 생산 → 출고
       if (needsForwardProduction) {
@@ -600,6 +607,208 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       /* 일반 상태 저장은 화면의 최신 구독값으로 폴백한다. */
     }
     return cached;
+  };
+
+  /** 체크된 품목만 출고 전 배정으로 남긴다. 생산에 사용한 구성품은 이미 stock에서 빠져 있다. */
+  const completedLineAllocation = (
+    order: Order,
+    items: readonly OrderItem[],
+    states: Record<string, OrderItemInventoryState>,
+  ) => {
+    const completed = items.filter(item => !!item.lineId && states[item.lineId]?.applied);
+    const shipment = new Map<string, number>();
+    shipOrder({ ...order, items: completed }, shipment);
+    return new Map([...shipment]
+      .filter(([, delta]) => delta < 0)
+      .map(([itemId, delta]) => [itemId, -delta]));
+  };
+
+  /**
+   * 주문 품목 한 줄의 작업완료/취소 경계.
+   * 재고와 `itemInventory[lineId]`를 같은 transaction에 써서 저장 중 브라우저가 닫혀도
+   * 같은 BOM이 재시도에서 두 번 빠지지 않게 한다.
+   */
+  const changeOrderItemCompletion = async (
+    id: string,
+    itemIndex: number,
+    requestedItems: OrderItem[],
+    nextStatus: OrderStatus,
+    plan?: StockUsePlan,
+  ) => {
+    if (inFlightOrders.has(id)) return;
+    inFlightOrders.add(id);
+    let reservation: Awaited<ReturnType<typeof reserveOrderStock>> | undefined;
+    let stockCommitted = false;
+    try {
+      const cached = allOrders.find(order => order.id === id) || orders.find(order => order.id === id);
+      let live = await getFreshOrder(id, true) ?? cached;
+      if (!live) throw new Error('주문 정보를 확인할 수 없어 품목 작업을 저장할 수 없습니다.');
+
+      let nextItems = ensureOrderLineIds(requestedItems);
+      const after = nextItems[itemIndex];
+      if (!after) throw new Error('주문 품목을 찾을 수 없습니다. 새로고침 후 다시 확인해 주세요.');
+      const lineId = after.lineId!;
+      const applying = after.checked === true;
+
+      const now = new Date().toISOString();
+      const operationId = `order-line-${id}-${lineId}-${Date.now()}`;
+      const operation = {
+        id: operationId, targetStatus: nextStatus, state: 'processing' as const,
+        startedAt: now, actor: actorName ?? '미기록',
+      };
+      if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
+      else await updateItem('orders', id, { inventoryOperation: operation });
+
+      // claim이 돌려준 DB 최신 줄과 스냅샷으로 다시 판정한다. 다른 창이 같은 상태 안에서
+      // 다른 품목을 먼저 완료했어도 그 기록을 덮어쓰면 안 된다.
+      const liveItems = ensureOrderLineIds(live.items);
+      const before = liveItems[itemIndex];
+      if (!before || before.itemId !== after.itemId || before.lineId !== after.lineId) {
+        throw new Error('주문 품목 순서가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
+      }
+      nextItems = liveItems.map((item, index) => index === itemIndex ? after : item);
+      let effectiveStatus = nextStatus;
+      if (live.status === OrderStatus.PENDING || live.status === OrderStatus.PROCESSING || live.status === OrderStatus.DISPATCHED) {
+        const checkedCount = nextItems.filter(item => item.checked).length;
+        effectiveStatus = checkedCount === nextItems.length ? OrderStatus.DISPATCHED
+          : checkedCount > 0 ? OrderStatus.PROCESSING : OrderStatus.PENDING;
+      }
+      const currentStates = { ...(live.itemInventory ?? {}) };
+      const previousState = currentStates[lineId];
+      if (!!before.checked === applying && (!!previousState?.applied === applying || !applying)) {
+        await updateItem('orders', id, { items: nextItems, status: effectiveStatus, inventoryOperation: null });
+        return;
+      }
+      // 품목별 구조가 없는 옛 생산 주문은 한 줄만 정확히 분리할 근거가 없다.
+      // 그 경우 기존 주문 전체 스냅샷 경로로만 되돌려야 한다.
+      if (!applying && live.producedAt && !previousState) {
+        await updateItem('orders', id, { inventoryOperation: null });
+        throw new Error('LEGACY_ORDER_ROLLBACK_REQUIRED');
+      }
+
+      const pendingApplyRows = applying
+        ? nextItems.map((item, index) => ({ item, index }))
+            .filter(({ item }) => item.checked && !currentStates[item.lineId!]?.applied)
+        : [];
+      const inventoryOrder = { ...live, items: pendingApplyRows.length > 0 ? pendingApplyRows.map(row => row.item) : [after] };
+      const extraItemIds = [
+        ...orderStockTouchedIds({ items: nextItems.filter(item => item.checked) }),
+        ...Object.values(currentStates).flatMap(state => state.production.stockDeltas.map(row => row.itemId)),
+        ...(live.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
+      ];
+      reservation = await reserveOrderStock(
+        inventoryOrder,
+        operationId,
+        stockSnapshot => {
+          const preview = new Map<string, number>();
+          if (applying) {
+            for (const row of pendingApplyRows) {
+              const single = { ...live, items: [row.item] };
+              planOrderProduction(single, preview, stockSnapshot, row.index === itemIndex ? plan : undefined);
+              // 생산 순변화만 예약하면 이 줄이 쓸 기존 완제품이 보호되지 않는다.
+              shipOrder(single, preview);
+            }
+          }
+          return preview;
+        },
+        extraItemIds,
+        { preserveOwnAllocation: true },
+      );
+
+      const deltas = new Map<string, number>();
+      const states = { ...currentStates };
+      if (applying) {
+        for (const row of pendingApplyRows) {
+          const rowLineId = row.item.lineId!;
+          const rowBefore = new Map(deltas);
+          const previous = currentStates[rowLineId];
+          const attempt = (previous?.attempt ?? 0) + 1;
+          const single = { ...live, items: [row.item] };
+          const production = planOrderProduction(
+            single, deltas, reservation.stockSnapshot, row.index === itemIndex ? plan : undefined,
+          );
+          const consumedLots = await applyOrderRawUsage(
+            single, production.rawUsage, attempt, production.rawUsageLedgerOnly, rowLineId,
+          );
+          await createProductionRecordsForOrder(single);
+          const rowDeltas = new Map<string, number>();
+          for (const [itemId, value] of deltas) addDelta(rowDeltas, itemId, value - (rowBefore.get(itemId) ?? 0));
+          const snapshot: OrderInventorySnapshot = {
+            capturedAt: now,
+            stockDeltas: deltaRows(rowDeltas),
+            bomLines: bomSnapshotOf(single),
+            rawConsumedLots: consumedLots,
+            rawLedgerIds: rawLedgerDocIds(consumedLots),
+          };
+          states[rowLineId] = {
+            version: 1, lineId: rowLineId, itemId: row.item.itemId, applied: true, attempt,
+            completedAt: now, rawConsumedLots: consumedLots,
+            autoBuilt: production.autoBuilt, producedUnits: production.producedUnits,
+            production: snapshot,
+          };
+        }
+      } else {
+        if (!previousState?.applied) {
+          await updateItem('orders', id, { items: nextItems, status: effectiveStatus, inventoryOperation: null });
+          await releaseOrderStockReservation(reservation);
+          reservation = undefined;
+          return;
+        }
+        previousState.production.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+        await reverseOrderRawUsage({
+          ...live,
+          items: [after],
+          rawConsumedLots: previousState.rawConsumedLots,
+          rawInventoryAttempt: previousState.attempt,
+        }, lineId);
+        states[lineId] = { ...previousState, applied: false, reversedAt: now };
+      }
+
+      reservation.allocationQuantities = completedLineAllocation(live, nextItems, states);
+      const aggregate = aggregateOrderLineInventory(live, states);
+      const orderPatch: Record<string, unknown> = {
+        items: nextItems,
+        status: effectiveStatus,
+        itemInventory: states,
+        ...aggregate,
+        inventoryOperation: null,
+      };
+      await applyItemStockDeltas(deltas, [], reservation, { orderId: id, patch: orderPatch });
+      stockCommitted = true;
+
+      const namedAdjustments = deltaRows(deltas).map(row => {
+        const item = allItems.find(candidate => candidate.id === row.itemId);
+        return { ...row, name: item?.name ?? row.itemId, unit: item?.unit ?? '개' };
+      });
+      try {
+        await addItem('orderStatusAudits', {
+          id: operationId, orderId: id, partnerName: live.partnerName,
+          previousStatus: live.status, nextStatus: effectiveStatus, approvedBy: actorName ?? '미기록',
+          approvedAt: now, completedAt: new Date().toISOString(), state: 'completed',
+          legacyEvidenceWarning: false, stockAdjustments: namedAdjustments,
+        } satisfies OrderStatusAudit);
+      } catch (auditError) {
+        // 재고와 주문 스냅샷은 이미 한 transaction으로 확정됐다. 감사 로그 실패 때문에
+        // 완료된 재고 작업을 실패로 덮으면 재처리 판단이 더 위험해진다.
+        console.error(`[품목 작업 감사 기록 실패] ${id}/${lineId}`, auditError);
+      }
+    } catch (error) {
+      if (reservation && !stockCommitted) {
+        try { await releaseOrderStockReservation(reservation); }
+        catch (releaseError) { console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
+      }
+      if (error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
+        await updateItem('orders', id, {
+          inventoryOperation: {
+            id: `order-line-failed-${Date.now()}`, targetStatus: nextStatus, state: 'failed',
+            startedAt: new Date().toISOString(), actor: actorName ?? '미기록', error: error.message,
+          },
+        });
+      }
+      throw error;
+    } finally {
+      inFlightOrders.delete(id);
+    }
   };
 
   const prepareOrderStatusChange = async (id: string, status: OrderStatus): Promise<PreparedOrderStatusChange | undefined> => {
@@ -687,5 +896,5 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  return { changeOrderStatus, reconcileOrderStock, prepareOrderStatusChange };
+  return { changeOrderStatus, changeOrderItemCompletion, reconcileOrderStock, prepareOrderStatusChange };
 }

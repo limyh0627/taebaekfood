@@ -1250,7 +1250,9 @@ export const OrderCard = memo<OrderCardProps>(({
           </select>
           <button onClick={() => setConfirmModal({
               message: '주문을 삭제하시겠습니까?',
-              subMessage: `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
+              subMessage: order.status === OrderStatus.DELIVERED
+                ? `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
+                : `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
               onConfirm: () => { onDeleteOrder(order.id); setConfirmModal(null); },
             })}
             className="p-1.5 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
@@ -1655,6 +1657,18 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerGroup, setPickerGroup] = useState('');
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  const [followOrder, setFollowOrder] = useState<{ id: string; fromStatus: OrderStatus } | null>(null);
+
+  /** 모바일에서는 상태 변경으로 다른 열에 간 카드를 사용자가 다시 찾지 않게 그 자리까지 따라간다. */
+  const followAfterMove = (orderId: string) => {
+    const order = orders.find(candidate => candidate.id === orderId);
+    if (order) setFollowOrder({ id: orderId, fromStatus: order.status });
+  };
+
+  const followItemToggle = (orderId: string, itemIndex: number, actor?: string) => {
+    followAfterMove(orderId);
+    onToggleItemChecked?.(orderId, itemIndex, actor);
+  };
 
   const openOrderEditor = (orderId: string) => {
     const order = orders.find(candidate => candidate.id === orderId);
@@ -1721,6 +1735,25 @@ const OrdersList: React.FC<OrdersListProps> = ({
     }, 200);
     return () => clearTimeout(timer);
   }, [highlightOrderId]);
+
+  useEffect(() => {
+    if (!followOrder) return;
+    const moved = orders.find(order => order.id === followOrder.id);
+    // 확인창을 취소했거나 저장이 실패한 경우 영원히 기다리지 않는다.
+    if (!moved || moved.status === followOrder.fromStatus) {
+      const giveUp = window.setTimeout(() => setFollowOrder(current => current?.id === followOrder.id ? null : current), 15000);
+      return () => window.clearTimeout(giveUp);
+    }
+    const timer = window.setTimeout(() => {
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        document.getElementById(`order-card-${followOrder.id}`)?.scrollIntoView({
+          behavior: 'smooth', block: 'center', inline: 'nearest',
+        });
+      }
+      setFollowOrder(current => current?.id === followOrder.id ? null : current);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [orders, followOrder]);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -1999,11 +2032,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
     if (!order || order.status === nextStatus) return;
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
       ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
-    // 역행 승인은 DB 최신 재고 계획을 보여주는 AdminApp 공통 모달 한 곳에서만 받는다.
-    if (stockStage(nextStatus) < stockStage(order.status)) {
+    const move = () => {
+      followAfterMove(orderId);
       onUpdateStatus(orderId, nextStatus);
-      return;
-    }
+    };
+    // 대기중·작업중·출고완료 이동은 묻지 않고, 작업완료 진입만 확인한다.
+    if (nextStatus !== OrderStatus.DISPATCHED || stockStage(nextStatus) < stockStage(order.status)) return move();
     const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
     setConfirmModal({
       message: `해당 거래처를 ${statusLabel(nextStatus)} 상태로 변경할까요?`,
@@ -2011,7 +2045,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       confirmText: '변경하기',
       onConfirm: () => {
         setConfirmModal(null);
-        onUpdateStatus(orderId, nextStatus);
+        move();
       },
     });
   };
@@ -2024,7 +2058,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     onUpdateItems, onUpdateDeliveryDate,
     onUpdateStatus: activeView === 'kanban' ? requestBoardStatusChange : onUpdateStatus,
     onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType,
-    onToggleItemChecked, onDeleteOrder, currentUserName,
+    onToggleItemChecked: followItemToggle, onDeleteOrder, currentUserName,
     highlightOrderId,
     onEditOrder: embeddedListOnly ? undefined : openOrderEditor,
     onOpenMemo: embeddedListOnly ? undefined : openMemoEditor,
@@ -2514,7 +2548,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         disabled={lineIdx < 0 || !onToggleItemChecked}
                         ariaLabel={`${wi.itemName} 작업 완료 전환`}
                         title={completed ? '작업 완료 취소' : '작업 완료'}
-                        onChange={() => { if (lineIdx >= 0) onToggleItemChecked?.(wi.orderId, lineIdx, currentUserName); }}
+                        onChange={() => { if (lineIdx >= 0) followItemToggle(wi.orderId, lineIdx, currentUserName); }}
                       />
                     </div>
                     <div className="relative w-[58px] shrink-0" onPointerDown={e => e.stopPropagation()}>
@@ -2787,7 +2821,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           const listPageCount = Math.max(1, Math.ceil(listOrders.length / listPageSize));
           const currentListPage = Math.min(listPage, listPageCount);
           const paginatedListOrders = listOrders.slice((currentListPage - 1) * listPageSize, currentListPage * listPageSize);
-          const toggleListItemCompleted = (order: Order, itemIndex: number) => onToggleItemChecked?.(order.id, itemIndex, currentUserName);
+          const toggleListItemCompleted = (order: Order, itemIndex: number) => followItemToggle(order.id, itemIndex, currentUserName);
           const quickToday = seoulDateInput();
           const quickWeekStart = seoulWeekStart();
           const quickMonthStart = `${quickToday.slice(0, 7)}-01`;
@@ -3787,7 +3821,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   onUpdateStatus={onUpdateStatus}
                   onToggleInvoicePrinted={onToggleInvoicePrinted}
                   onUpdateInvoiceType={onUpdateInvoiceType}
-                  onToggleItemChecked={onToggleItemChecked}
+                  onToggleItemChecked={followItemToggle}
                   onDeleteOrder={onDeleteOrder}
                   readOnly
                 />
@@ -3926,7 +3960,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               disabled={!살아있는 || !onToggleItemChecked}
                               ariaLabel={`${orderItem.name} 작업 완료 전환`}
                               onChange={() => {
-                                onToggleItemChecked?.(editorOrder.id, index, currentUserName);
+                                followItemToggle(editorOrder.id, index, currentUserName);
                                 updateDraftItem(index, { checked: !완료, checkedBy: !완료 ? currentUserName : undefined });
                               }}
                             />
@@ -4030,7 +4064,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <section aria-label="주문 전체 삭제">
                 <button type="button" onClick={() => setConfirmModal({
                   message: '이 거래처 주문을 삭제하시겠습니까?',
-                  subMessage: `${partnerName} · 전체 주문과 품목이 삭제되며 복구할 수 없습니다.`,
+                  subMessage: editorOrder.status === OrderStatus.DELIVERED
+                    ? `${partnerName} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
+                    : `${partnerName} · 전체 주문과 품목이 삭제되며 복구할 수 없습니다.`,
                   confirmText: '주문 삭제',
                   onConfirm: () => { onDeleteOrder(editorOrder.id); setConfirmModal(null); closeEditor(); },
                 })} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-4 text-xs font-black text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><Trash2 size={15} aria-hidden="true" /> 주문 전체 삭제</button>

@@ -20,20 +20,22 @@ const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
  * 재고는 **DB에서 읽어 더한다**(트랜잭션) — 화면 상태에 더해 덮어쓰면 앞선 쓰기가 날아간다.
  * 그래서 여기 가짜 DB도 진짜처럼 자기가 들고 있는 값을 읽어 준다.
  */
-const store = vi.hoisted(() => ({ stock: new Map<string, number>() }));
+const store = vi.hoisted(() => ({ stock: new Map<string, number>(), orders: new Map<string, any>() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
   getDoc: async (ref: any) => ref.col === 'items'
     ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id) }) }
-    : { exists: () => false, data: () => undefined },
+    : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ({
-      exists: () => store.stock.has(ref.id),
-      data: () => ({ stock: store.stock.get(ref.id) }),
-    }),
-    update: (ref: any, data: any) => { if (data.stock !== undefined) store.stock.set(ref.id, data.stock); },
+    get: async (ref: any) => ref.col === 'items' ? ({
+      exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id) }),
+    }) : ({ exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) }),
+    update: (ref: any, data: any) => {
+      if (ref.col === 'items' && data.stock !== undefined) store.stock.set(ref.id, data.stock);
+      if (ref.col === 'orders') store.orders.set(ref.id, { ...(store.orders.get(ref.id) ?? {}), ...data });
+    },
   }),
 }));
 
@@ -73,6 +75,8 @@ function harness(
   setBomIndex(buildBomIndex(items, BOMS));
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
+  store.orders.clear();
+  store.orders.set(order.id, { ...order });
   for (const i of items) store.stock.set(i.id, i.stock ?? 0);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const rawLedger = new Map<string, Record<string, any>>();
@@ -94,7 +98,10 @@ function harness(
     },
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }
-      if (col === 'orders') Object.assign(order, data);
+      if (col === 'orders') {
+        Object.assign(order, data);
+        store.orders.set(id, { ...(store.orders.get(id) ?? {}), ...data });
+      }
       return undefined;
     },
     addItem: async () => undefined,
@@ -106,7 +113,8 @@ function harness(
     if (v !== undefined) it.stock = v;
     return it.stock;
   };
-  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger };
+  const savedOrder = () => store.orders.get(order.id) as Order;
+  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger, savedOrder };
 }
 
 const 주문 = (boxes: number): Order => ({
@@ -256,6 +264,40 @@ describe('되돌리기는 실제 생산분만 되돌린다', () => {
   });
 });
 
+describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
+  it('첫 줄만 완료하면 그 줄 구성품만 빠지고, 체크를 풀면 그 줄 스냅샷만 원복한다', async () => {
+    const bottle = mk({ id: 'bottle', name: '180ml 병', type: 'submaterial', stock: 100 });
+    const product = mk({ id: 'oil', name: '참기름 180ml', type: 'product', stock: 0 });
+    const items = [bottle, product];
+    const order = {
+      id: 'line-order', partnerName: '품목별 거래처', status: OrderStatus.PENDING,
+      items: [
+        { lineId: 'line-a', itemId: 'oil', name: '참기름 180ml', quantity: 10, checked: false },
+        { lineId: 'line-b', itemId: 'oil', name: '참기름 180ml', quantity: 20, checked: false },
+      ],
+    } as unknown as Order;
+    const { engine, stockOf, savedOrder } = harness(items, order);
+    setBomIndex(buildBomIndex(items, [bom('oil', 'bottle', 1)]));
+
+    const firstDone = order.items.map((item, index) => index === 0 ? { ...item, checked: true } : item);
+    await engine.changeOrderItemCompletion(order.id, 0, firstDone, OrderStatus.PROCESSING);
+
+    expect(stockOf('bottle')).toBe(90);
+    expect(stockOf('oil')).toBe(10);
+    expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: true, itemId: 'oil' });
+    expect(savedOrder().itemInventory?.['line-b']).toBeUndefined();
+    expect(savedOrder().status).toBe(OrderStatus.PROCESSING);
+
+    const firstUndone = savedOrder().items.map((item, index) => index === 0 ? { ...item, checked: false } : item);
+    await engine.changeOrderItemCompletion(order.id, 0, firstUndone, OrderStatus.PENDING);
+
+    expect(stockOf('bottle')).toBe(100);
+    expect(stockOf('oil')).toBe(0);
+    expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: false, attempt: 1 });
+    expect(savedOrder().producedAt).toBe('');
+  });
+});
+
 describe('임가공 판매의 원료수불부 기록', () => {
   it('원료 로트는 그대로 두고 사용 이력을 남기며 생산 취소는 그 이력만 역분개한다', async () => {
     const raw = mk({
@@ -297,6 +339,32 @@ describe('임가공 판매의 원료수불부 기록', () => {
       kind: 'reverse', received: 3, appliedDeltaKg: 0, reversalOf: operationId,
     });
   });
+
+  it('품목별 원료 명령은 주문·줄·회차를 모두 넣어 다른 줄과 겹치지 않는다', async () => {
+    const raw = mk({ id: 'raw-oem', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 500 });
+    const product = mk({
+      id: 'oem-product', name: '임가공 볶음참깨', type: 'product', procureType: '임가공', spec: '1kg', stock: 10,
+    });
+    const order = {
+      id: 'oem-line', partnerName: '임가공 거래처', status: OrderStatus.PENDING,
+      items: [{ lineId: 'line-a', itemId: product.id, name: product.name, quantity: 3, checked: false }],
+    } as unknown as Order;
+    const { engine, rawLedger } = harness([raw, product], order, () => [{ raw: '볶음참깨', ratio: 1 }]);
+    setBomIndex(buildBomIndex([raw, product], []));
+
+    await engine.changeOrderItemCompletion(
+      order.id, 0, [{ ...order.items[0]!, checked: true }], OrderStatus.DISPATCHED,
+    );
+
+    const operationId = 'production-ledger:oem-line:line-a:a1:raw-oem';
+    expect(rawLedger.get(operationId)).toMatchObject({ kind: 'ledger-consume', used: 3 });
+
+    const saved = store.orders.get(order.id) as Order;
+    await engine.changeOrderItemCompletion(
+      order.id, 0, [{ ...saved.items[0]!, checked: false }], OrderStatus.PENDING,
+    );
+    expect(rawLedger.get(`reverse:${operationId}`)).toMatchObject({ kind: 'reverse', reversalOf: operationId });
+  });
 });
 
 describe('모달 행 계산 (stockUseRows)', () => {
@@ -329,6 +397,17 @@ describe('모달 행 계산 (stockUseRows)', () => {
 
   it('재고가 하나도 없으면 아무것도 안 묻는다', () => {
     expect(buildStockUseRows(주문(5), [벌크(), 낱개(0), 박스10(0)])).toEqual([]);
+  });
+
+  it('앞 품목이나 다른 주문이 배정한 재고는 사용 가능 수량에서 뺀다', () => {
+    const box = 박스10(10);
+    box.inventoryReservations = [{
+      operationId: '앞품목', orderId: '다른주문', qty: 7,
+      createdAt: new Date().toISOString(), state: 'allocated',
+    }];
+    const rows = buildStockUseRows(주문(5), [벌크(), 낱개(0), box]);
+    expect(rows[0]).toMatchObject({ stock: 3, ordered: 5 });
+    expect(resolveStockUse(rows)[0]).toMatchObject({ own: 3, shortUnits: 2 });
   });
 
   it('같은 낱개를 노리는 두 라인이 재고를 나눠 쓴다', () => {

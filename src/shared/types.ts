@@ -16,6 +16,8 @@ export enum OrderStatus {
 }
 
 export interface OrderItem {
+  /** 주문 안에서 이 줄을 가리키는 안정적인 열쇠. 같은 품목이 두 줄이어도 재고 작업을 구분한다. */
+  lineId?: string;
   itemId: string;
   name: string;
   quantity: number;
@@ -237,6 +239,12 @@ export interface Order {
     production?: OrderInventorySnapshot;
     shipment?: OrderInventorySnapshot;
   };
+  /**
+   * 품목 체크 한 줄마다 남기는 생산·BOM 스냅샷.
+   * `applied=false`도 지우지 않는다. 체크를 풀었다가 다시 완료할 때 attempt를 올려
+   * 이미 reverse된 원료 명령 번호를 재사용하지 않기 위해서다.
+   */
+  itemInventory?: Record<string, OrderItemInventoryState>;
   /** 여러 창에서 같은 주문 상태를 동시에 바꾸지 못하게 하는 짧은 작업 잠금. */
   inventoryOperation?: {
     id: string;
@@ -246,6 +254,20 @@ export interface Order {
     actor: string;
     error?: string;
   } | null;
+}
+
+export interface OrderItemInventoryState {
+  version: 1;
+  lineId: string;
+  itemId: string;
+  applied: boolean;
+  attempt: number;
+  completedAt?: string;
+  reversedAt?: string;
+  rawConsumedLots: OrderRawInventoryTrace[];
+  autoBuilt: { itemId: string; qty: number }[];
+  producedUnits: { itemId: string; qty: number }[];
+  production: OrderInventorySnapshot;
 }
 
 export interface OrderInventoryAdjustment {

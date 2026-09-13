@@ -66,6 +66,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
     physicalUsage: RawUsageKg,
     attempt: number,
     ledgerOnlyUsage: RawUsageKg = {},
+    lineId?: string,
   ): Promise<OrderRawInventoryTrace[]> => {
     const traces: OrderRawInventoryTrace[] = [];
     const physicalNames = Object.keys(physicalUsage).filter(raw => kg3(physicalUsage[raw]) > 0);
@@ -86,7 +87,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
         throw new Error(`원료 차감 중단: ${companyId} 회사의 '${material}' 원료 품목을 찾을 수 없다 (주문 ${order.id})`);
       }
       holderByMaterial.set(material, rawItem);
-      const operationId = `production:${order.id}:a${attempt}:${rawItem.id}`;
+      const operationId = `production:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}:${rawItem.id}`;
       commands.push({
         command: {
           operationId,
@@ -118,7 +119,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
       }
       holderByMaterial.set(material, rawItem);
       // 실제 차감 명령과 같은 원료가 섞여도 작업 번호가 겹치지 않는다.
-      const operationId = `production-ledger:${order.id}:a${attempt}:${rawItem.id}`;
+      const operationId = `production-ledger:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}:${rawItem.id}`;
       commands.push({
         command: {
           operationId,
@@ -141,7 +142,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
     }
 
     const { job, results } = await runRawJob({
-      jobId: `production:${order.id}:a${attempt}`,
+      jobId: `production:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}`,
       companyId,
       source: { type: 'production', id: order.id },
       commands,
@@ -201,7 +202,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
     return traces;
   };
 
-  const reverseOrderRawUsage = async (order: Order): Promise<void> => {
+  const reverseOrderRawUsage = async (order: Order, lineId?: string): Promise<void> => {
     const traces = order.rawConsumedLots ?? [];
     if (traces.length === 0) return;
     const companyId = companyOf(order);
@@ -240,7 +241,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
     }
 
     const { job, results } = await runRawJob({
-      jobId: `production-reversal:${order.id}:a${order.rawInventoryAttempt ?? 0}`,
+      jobId: `production-reversal:${order.id}${lineId ? `:${lineId}` : ''}:a${order.rawInventoryAttempt ?? 0}`,
       companyId,
       source: { type: 'production-reversal', id: order.id },
       commands,
