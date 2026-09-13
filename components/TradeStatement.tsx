@@ -20,6 +20,7 @@ import { isSignedIn } from '../src/shared/firebase';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { buildStatementCommand, checkStatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
 import { withDocNames } from '../src/shared/docName';
 import { 서류당사자ById } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
@@ -1272,6 +1273,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
 
   // ── 발행 처리 ──
+  /**
+   * **막는 규칙을 한 곳에서 묻는다**(설계 §2, 2026-09-13).
+   *
+   * 전에는 `handleIssue` 가 묻고 `markIssued` 가 한 번 더 막는 것이 **두 벌로 쓰여 있었다.**
+   * 한쪽만 고치면 다른 쪽이 남아, 화면에서는 막혔는데 인쇄·세금계산서 경로로는 나가는 식이
+   * 된다. 규칙은 [statementCommand](../src/features/statements/domain/statementCommand.ts) 의
+   * 순수 함수가 정하고, 여기서는 **그 답으로 말투만 고른다.** 막는 것 자체는 전과 똑같다.
+   */
+  const 발행검사 = useMemo(() => checkStatementCommand(buildStatementCommand({
+    statementId: issueIdentityRef.current?.id ?? 'preview',
+    partnerId: selectedClientId, partnerName: selectedClient?.name,
+    tradeDate, type: stmtType, docNo, memo: stmtMemo,
+    orderIds: selectedOrderIds, lines: lineItems,
+  })), [selectedClientId, selectedClient, tradeDate, stmtType, docNo, stmtMemo, selectedOrderIds, lineItems]);
+  const 걸린줄들 = (code: StatementRejectionCode) =>
+    발행검사.rejections.find(r => r.code === code)?.lineNames ?? [];
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
   const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId);
 
@@ -1303,8 +1320,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const markIssued = async (): Promise<IssuedStatement | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
-    if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
-    if (lineItems.some(i => !i.price)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
+    if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
+    if (걸린줄들('ZERO_PRICE').length) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
     //  고른 주문 **전부**에 발행 표시를 찍는다 — 한 건만 찍으면 나머지가 목록에 다시 뜬다
     if (!onAddIssuedStatement) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
     const identity = issueIdentityRef.current ?? {
@@ -1379,16 +1396,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleIssue = async () => {
     if (saveBusyRef.current) return;
     // 계정과목 미설정 품목이 있으면 발행 차단 (매출은 800 기본이라 대개 매입에서 걸림)
-    if (missingAccountCodes.length > 0) {
-      alert(`계정과목이 설정되지 않은 품목이 ${missingAccountCodes.length}건 있습니다.\n(${missingAccountCodes.slice(0, 3).map(i => i.name).join(', ')}${missingAccountCodes.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
+    const 계정없음 = 걸린줄들('NO_ACCOUNT_CODE');
+    if (계정없음.length > 0) {
+      alert(`계정과목이 설정되지 않은 품목이 ${계정없음.length}건 있습니다.\n(${계정없음.slice(0, 3).join(', ')}${계정없음.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
       return;
     }
     // 단가 0(미입력) 품목이 있으면 발행 차단.
     //  ※ 0만 막는다. 음수는 통과 — 할인·반품 줄(단가 또는 수량이 마이너스)이
     //    전표 한 장에 단독으로 설 수 있어야 한다.
-    const zeroPriceItems = lineItems.filter(i => !i.price);
-    if (zeroPriceItems.length > 0) {
-      alert(`단가가 0인 품목이 ${zeroPriceItems.length}건 있습니다.\n(${zeroPriceItems.slice(0, 3).map(i => i.name).join(', ')}${zeroPriceItems.length > 3 ? ' 외' : ''})\n단가를 입력해야 발행할 수 있습니다.`);
+    const 단가0 = 걸린줄들('ZERO_PRICE');
+    if (단가0.length > 0) {
+      alert(`단가가 0인 품목이 ${단가0.length}건 있습니다.\n(${단가0.slice(0, 3).join(', ')}${단가0.length > 3 ? ' 외' : ''})\n단가를 입력해야 발행할 수 있습니다.`);
       return;
     }
     // ── 중복 발행 가드 — 발행 직전 같은 거래가 이미 발행됐는지 확인 ──
