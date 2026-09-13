@@ -30,6 +30,14 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   //  **매입처가 하나는 있어야 한다** — 없으면 매입전표를 아예 못 열어 발주카드·품목 원가 경로를
   //  로컬에서 시험할 수 없다(2026-09-13, 전표 원자 저장 검수 때 막혔다).
   ['partners', 'partner-supplier', { name:'가상부자재상사', type:'일반', partnerType:'매입처', address:'경기도 김포시 테스트로 4', region:'김포시', companyId:'taebaek' }],
+  //  **계정과목이 없으면 매입전표를 발행할 수 없다** — 줄마다 계정을 골라야 하는데 고르개가
+  //  비어 있어 "계정과목이 설정되지 않았다"에서 영영 막힌다(2026-09-13 검수 때 막혔다).
+  //  전표·분개를 로컬에서 보려면 최소 이 넷은 있어야 한다.
+  ['accountCodes', '500', { code:'500', name:'상품매입', type:'expense', normalBalance:'debit' }],
+  ['accountCodes', '505', { code:'505', name:'소모품비', type:'expense', normalBalance:'debit' }],
+  ['accountCodes', '800', { code:'800', name:'상품매출', type:'revenue', normalBalance:'credit' }],
+  ['accountCodes', '108', { code:'108', name:'외상매출금', type:'asset', normalBalance:'debit' }],
+  ['accountCodes', '251', { code:'251', name:'외상매입금', type:'liability', normalBalance:'credit' }],
   ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[{id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),remainingKg:100,kg:100}] }],
   ['items', 'oil-350', { name:'가상 참기름/350ml', type:'product', category:'참기름', subtype:'낱개', stock:20, minStock:5, unit:'병', image:'', spec:'350ml', netContent:'350ml', weightInKg:0.32 }],
   ['items', 'oil-box', { name:'가상 참기름/350ml (12개입)', type:'product', category:'참기름', subtype:'박스', stock:3, minStock:1, unit:'박스', image:'', spec:'350ml' }],
