@@ -1416,7 +1416,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const changes: { name: string; oldQty: number; newQty: number }[] = [];
       const newItems: typeof stmt.items = [];
       for (const it of stmt.items) {
-        const product = findByDocName(allItems, it.name);
+        /*  **id 가 있으면 id 로 잇는다**(2026-09-13 사장님: "연결은 제대로 id로 하고 있는거지").
+            여기만 저장된 전표 줄을 **이름**으로 되짚고 있었다. 이름이 같은 다른 품목이 있어서
+            (`시골향참기름/A/1750ml` = p-106 빨강캡 · p-116 노랑캡) 엉뚱한 줄의 수량이
+            바뀔 수 있었다. 이름은 **id 가 없는 옛 줄**에만 쓴다. */
+        const product = (it.itemId ? allItems.find(p => p.id === it.itemId) : undefined)
+          ?? findByDocName(allItems, it.name);
         const newQty = product ? qtyByItemId.get(product.id) : undefined;
         if (newQty === undefined || newQty === it.qty) { newItems.push(it); continue; }
         changes.push({ name: it.name, oldQty: it.qty, newQty });
