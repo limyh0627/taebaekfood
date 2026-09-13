@@ -1,0 +1,200 @@
+{
+ "stmt-1785994217130": [
+  {
+   "supply": 727273,
+   "name": "시골향 참기름/특A/1750ml",
+   "isTaxExempt": false,
+   "tax": 72727,
+   "qty": 40,
+   "total": 800000,
+   "price": 20000,
+   "spec": "1750ml",
+   "accountCode": "800"
+  }
+ ],
+ "stmt-1786325814420": [
+  {
+   "qty": 30,
+   "price": 18000,
+   "tax": 49091,
+   "isTaxExempt": false,
+   "spec": "1750ml",
+   "total": 540000,
+   "name": "시골향 참기름/A/1750ml",
+   "accountCode": "800",
+   "supply": 490909
+  },
+  {
+   "supply": 363636,
+   "accountCode": "800",
+   "name": "시골향 참기름/특A/1750ml",
+   "total": 400000,
+   "spec": "1750ml",
+   "tax": 36364,
+   "price": 20000,
+   "isTaxExempt": false,
+   "qty": 20
+  }
+ ],
+ "stmt-1787119980870": [
+  {
+   "isTaxExempt": false,
+   "name": "시골향 참기름/A/1750ml",
+   "total": 228000,
+   "spec": "1750ml * 1",
+   "tax": 20727,
+   "supply": 207273,
+   "price": 19000,
+   "accountCode": "800",
+   "qty": 12
+  }
+ ],
+ "stmt-1787210634315": [
+  {
+   "itemId": "p-1777506850191",
+   "spec": "1750ml * 1",
+   "isTaxExempt": false,
+   "price": 20000,
+   "supply": 727273,
+   "total": 800000,
+   "qty": 40,
+   "tax": 72727,
+   "name": "시골향 참기름/골드A/1750ml",
+   "accountCode": "800"
+  },
+  {
+   "price": 15500,
+   "isTaxExempt": false,
+   "name": "시골향 참기름/분/1750ml",
+   "accountCode": "800",
+   "qty": 200,
+   "spec": "1750ml * 1",
+   "itemId": "p-139",
+   "tax": 281818,
+   "supply": 2818182,
+   "total": 3100000
+  },
+  {
+   "isTaxExempt": false,
+   "total": 1900000,
+   "name": "시골향 참기름/특A/1750ml",
+   "supply": 1727273,
+   "price": 19000,
+   "spec": "1750ml * 1",
+   "qty": 100,
+   "tax": 172727,
+   "accountCode": "800"
+  }
+ ],
+ "stmt-1787293381057": [
+  {
+   "name": "시골향참기름/A/1750ml",
+   "price": 19000,
+   "tax": 20727,
+   "accountCode": "800",
+   "supply": 207273,
+   "qty": 12,
+   "spec": "1750ml * 1",
+   "isTaxExempt": false,
+   "total": 228000
+  }
+ ],
+ "stmt-1787845545593": [
+  {
+   "total": 1350000,
+   "spec": "350ml",
+   "accountCode": "800",
+   "isTaxExempt": false,
+   "qty": 300,
+   "supply": 1227273,
+   "itemId": "p-20",
+   "price": 4500,
+   "tax": 122727,
+   "name": "시골향참기름/병/특/350ml"
+  },
+  {
+   "total": 540000,
+   "supply": 490909,
+   "tax": 49091,
+   "isTaxExempt": false,
+   "qty": 30,
+   "spec": "1750ml",
+   "accountCode": "800",
+   "name": "시골향참기름/A/1750ml",
+   "price": 18000
+  },
+  {
+   "supply": 227273,
+   "qty": 10,
+   "name": "시골향들기름/1750ML",
+   "total": 250000,
+   "tax": 22727,
+   "accountCode": "800",
+   "itemId": "p-105",
+   "price": 25000,
+   "isTaxExempt": false,
+   "spec": "1750ml"
+  },
+  {
+   "spec": "1kg",
+   "itemId": "PLDhkjOgcPIhO1hhReHm",
+   "supply": 169091,
+   "price": 6200,
+   "isTaxExempt": false,
+   "tax": 16909,
+   "total": 186000,
+   "accountCode": "800",
+   "name": "볶음참깨-낱개/1kg",
+   "qty": 30
+  }
+ ],
+ "stmt-1788394633916": [
+  {
+   "total": 684000,
+   "spec": "1800ml",
+   "isTaxExempt": false,
+   "supply": 621818,
+   "qty": 36,
+   "tax": 62182,
+   "accountCode": "800",
+   "price": 19000,
+   "name": "시골향참기름/특A/1800ml"
+  },
+  {
+   "name": "들향기름",
+   "tax": 16364,
+   "total": 180000,
+   "qty": 24,
+   "accountCode": "800",
+   "supply": 163636,
+   "price": 7500,
+   "isTaxExempt": false,
+   "spec": "",
+   "itemId": "f5"
+  },
+  {
+   "price": 8700,
+   "name": "참진한기름",
+   "accountCode": "800",
+   "tax": 47455,
+   "qty": 60,
+   "itemId": "f1",
+   "supply": 474545,
+   "spec": "",
+   "total": 522000,
+   "isTaxExempt": false
+  },
+  {
+   "total": 360000,
+   "accountCode": "800",
+   "supply": 327273,
+   "qty": 20,
+   "itemId": "p-106",
+   "tax": 32727,
+   "spec": "1750ml",
+   "name": "시골향참기름/A/1750ml",
+   "price": 18000,
+   "isTaxExempt": false
+  }
+ ]
+}
