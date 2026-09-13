@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createOemEngine, itemKg } from './oemEngine';
 import type { Item, PurchaseOrder } from '../../shared/types';
+import { withCarryOverProductLot } from '../../shared/lotUtils';
 
 /**
  * 외주 한 바퀴 시뮬레이션 — 실제 데이터 모양 그대로.
@@ -56,6 +57,22 @@ function harness(items: Item[]) {
       if (col === 'rawMaterialLedger') ledger.push(data);
       if (col === 'purchaseOrders') pos[data.id] = data;
       return data.id;
+    },
+    applyOemReceiptInventory: async input => {
+      for (const row of input.items) {
+        const item = items.find(candidate => candidate.id === row.itemId)!;
+        const before = stocks[row.itemId] ?? item.stock ?? 0;
+        stocks[row.itemId] = before + row.qty;
+        if (row.lot && row.material && row.unitKg) {
+          const current = productLots[row.itemId] ?? item.lots ?? [];
+          productLots[row.itemId] = [
+            ...withCarryOverProductLot(current, before, row.material, row.unitKg),
+            row.lot,
+          ];
+        }
+      }
+      pos[input.poId] = { ...(pos[input.poId] ?? {}), ...input.poPatch, oemReceiptOperationId: input.operationId };
+      return 'applied';
     },
     buildFormula,
   });

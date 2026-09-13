@@ -142,6 +142,27 @@ export type ShipMethod = '배송' | '직접수령' | '택배';
 export type InvoiceType = 'A' | 'B' | 'C' | 'D' | 'E';
 export const INVOICE_TYPES: InvoiceType[] = ['A', 'B', 'C', 'D', 'E'];
 
+/**
+ * 주문 생산이 원료 코어에 남긴 취소 근거.
+ *
+ * `ledgerOnly`면 실물은 완제품 로트에서 이미 처리됐고 원료 원장 작업만 되돌린다.
+ * 저장 필드명 `rawConsumedLots`는 기존 주문 호환 때문에 유지하지만, 내용은 로트에 한정되지 않는다.
+ */
+export interface OrderRawInventoryTrace {
+  material: string;
+  /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
+  rawItemId?: string;
+  /** 이 원료 작업의 원자 명령. 취소는 이 명령을 reverse 한다. */
+  operationId?: string;
+  /** 임가공 완제품에서 이미 실물이 빠져 원료 로트는 건드리지 않고 수불부에만 남긴 줄. */
+  ledgerOnly?: boolean;
+  lotId?: string;
+  lotNo?: string;
+  supplierName: string;
+  receivedDate?: string;
+  kg: number;
+}
+
 export interface Order {
   id: string;
   /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
@@ -193,18 +214,7 @@ export interface Order {
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
-  rawConsumedLots?: {
-    material: string;
-    /** 새 원자화 이력은 이름이 아니라 이 열쇠로 원료를 되찾는다. 옛 주문에는 없을 수 있다. */
-    rawItemId?: string;
-    /** 이 로트를 소비한 원자 명령. 취소는 이 명령을 reverse 한다. */
-    operationId?: string;
-    lotId?: string;
-    lotNo?: string;
-    supplierName: string;
-    receivedDate?: string;
-    kg: number;
-  }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  rawConsumedLots?: OrderRawInventoryTrace[];
   /** 생산 원료 명령의 회차. 재생산 때 이미 취소된 operationId를 다시 쓰지 않게 한다. */
   rawInventoryAttempt?: number;
   /**
@@ -326,6 +336,22 @@ export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
 
 export type ProductStage = 'WIP' | 'FINISHED';
 
+/**
+ * 주문이 생산량을 계산하는 동안 잠시 선점한 품목 재고.
+ *
+ * 숫자 재고를 먼저 빼면 원료 차감 실패 때 되돌릴 범위가 커지므로 실제 재고는 마지막에 움직인다.
+ * 대신 이 예약을 transaction으로 먼저 남겨, 동시에 시작한 다른 주문이 같은 재고를 또 쓸 수
+ * 있다고 판단하지 못하게 한다. 정상 완료 때 재고 반영과 함께 지워지고, 중간 실패 때도 해제한다.
+ */
+export interface ItemInventoryReservation {
+  operationId: string;
+  orderId: string;
+  qty: number;
+  createdAt: string;
+  /** processing은 작업 중 임시 선점, allocated는 작업완료 후 출고까지 유지할 주문 몫. */
+  state: 'processing' | 'allocated';
+}
+
 // ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────
 export interface Item {
   id: string;
@@ -378,6 +404,8 @@ export interface Item {
   lotsAreTotal?: boolean;
   /** 재고 — **언제나 kg**(기름 포함). 화면에 L로 보여줄 때만 density로 나눈다. */
   stock: number;
+  /** 생산 판단과 최종 재고 저장 사이에 다른 주문이 중복 배정하지 못하게 하는 짧은 예약. */
+  inventoryReservations?: ItemInventoryReservation[];
   /**
    * 밀도 kg/L. **이 값이 있으면 화면에 L로 보여준다**(없으면 저장 단위 그대로).
    * 저장(stock·cost·BOM 수량)은 전부 kg이고, L은 표시·입력에서만 쓴다.
@@ -967,7 +995,10 @@ export interface PurchaseOrder {
   oemSent?: { material: string; kg: number }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
   oemSentAt?: string;                             // 외주 출고 시각
   oemReceivedKg?: number;                         // 받은 볶음참깨 총 kg (로스 = ΣoemSent.kg − 이 값)
+  oemReceivedBulk?: { material: string; kg: number }[];
   oemFeePerKg?: number;                           // 가공단가(원/kg) — 입고 때 입력, 전표 발행에 사용
+  /** 완제품 재고·로트와 배치 완료를 한 transaction으로 묶은 작업 번호(재시도 중복 방지). */
+  oemReceiptOperationId?: string;
 }
 
 // 발주카드의 품목 라인 통일 조회: 묶음(items[])이면 그대로, 단일품목 PO면 1줄로 변환

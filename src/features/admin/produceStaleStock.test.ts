@@ -17,6 +17,7 @@ import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble'
 
 const dbx = vi.hoisted(() => ({
   stock: new Map<string, number>(),
+  reservations: new Map<string, any[]>(),
   orders: new Map<string, any>(),
   ledger: new Map<string, any>(),
 }));
@@ -26,11 +27,18 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: async (ref: any) => { dbx.ledger.delete(ref.id); },
   //  items도 읽는다 — 재고 판정이 DB를 보게 됐으므로 진짜와 같게 흉내낸다.
   getDoc: async (ref: any) => (ref.col === 'items'
-    ? { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }
+    ? { exists: () => dbx.stock.has(ref.id), data: () => ({
+        stock: dbx.stock.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
+      }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }),
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }),
-    update: (ref: any, data: any) => { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); },
+    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({
+      stock: dbx.stock.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
+    }) }),
+    update: (ref: any, data: any) => {
+      if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock);
+      if (data.inventoryReservations !== undefined) dbx.reservations.set(ref.id, data.inventoryReservations);
+    },
   }),
 }));
 
@@ -61,13 +69,6 @@ function harness(items: Item[], orders: Order[]) {
     db: {} as any,
     buildFormula: () => [{ raw: '볶음참깨', ratio: 1 }],
     createProductionRecordsForOrder: async () => {},
-    mutateRawMaterialLots: async (id, transform, computeStock) => {
-      const cur = lotState.get(id) ?? [];
-      const next = transform(cur as any, dbx.stock.get(id) ?? 0);
-      lotState.set(id, next as any);
-      if (computeStock) dbx.stock.set(id, computeStock(next as any));
-      return next;
-    },
     runRawInventoryJob: runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') {
@@ -84,7 +85,7 @@ function harness(items: Item[], orders: Order[]) {
   return { engine, lotKg };
 }
 
-beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
+beforeEach(() => { dbx.stock.clear(); dbx.reservations.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
 
 describe('앞 주문이 깎은 재고를 뒤 주문이 다시 쓰지 못한다', () => {
   it('낱개 30개로 5개 + 30개를 내보내도 재고는 음수가 안 된다', async () => {
@@ -113,5 +114,28 @@ describe('앞 주문이 깎은 재고를 뒤 주문이 다시 쓰지 못한다',
     expect(lotKg('bulk')).toBe(995);
     //  예전엔 생산이 0이라 원료가 통째로 안 빠졌다(rawConsumedLots 0건).
     expect((b.rawConsumedLots ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('작업완료 주문 몫은 출고 전에도 뒤 주문이 다시 쓰지 못한다', async () => {
+    const items = [낱개(30), 벌크()];
+    const a = 주문('먼저작업', 5), b = 주문('뒤에작업', 30);
+    const { engine, lotKg } = harness(items, [a, b]);
+
+    await engine.reconcileOrderStock(a, OrderStatus.DISPATCHED);
+    expect(dbx.stock.get('loose')).toBe(30); // 아직 출고 전이라 숫자 재고는 그대로다.
+    expect(dbx.reservations.get('loose')).toEqual([
+      expect.objectContaining({ orderId: '먼저작업', qty: 5, state: 'allocated' }),
+    ]);
+
+    await engine.reconcileOrderStock(b, OrderStatus.DELIVERED);
+
+    // 뒤 주문은 앞 주문 몫 5개를 빼고 25개만 기존 재고로 쓰므로 나머지 5개를 생산한다.
+    expect(b.producedUnits).toEqual([{ itemId: 'loose', qty: 5 }]);
+    expect(lotKg('bulk')).toBe(995);
+    expect(dbx.stock.get('loose')).toBe(5);
+
+    await engine.reconcileOrderStock({ ...a, producedAt: a.producedAt }, OrderStatus.DELIVERED);
+    expect(dbx.stock.get('loose')).toBe(0);
+    expect(dbx.reservations.get('loose')).toEqual([]);
   });
 });

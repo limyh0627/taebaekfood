@@ -1,15 +1,17 @@
 
-import { stampFor, claimDocNo } from '../../shared/voucherStamp';import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
+import { stampFor, claimDocNo } from '../../shared/voucherStamp';
+import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { parsePackageKg, parseSpecCount } from '../../constants/formula';
 import { itemKg } from '../../shared/orderUnits';
 import { lineAmount } from '../../shared/lineAmount';
 export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
-import { buildProductLot, withCarryOverProductLot, nextLotNo } from '../../shared/lotUtils';
+import { buildProductLot, nextLotNo } from '../../shared/lotUtils';
 import { batchLoss, processingFee, sentKg } from './oem';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
+import type { OemReceiptInventoryInput } from './oemReceiptInventory';
 
 /**
  * OEM(임가공) 실행 엔진 — 재고·전표 쓰기. 의존성 주입으로 부수효과를 분리해 단위 테스트 가능.
@@ -26,9 +28,11 @@ export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) 
 
 export interface OemEngineDeps {
   items: Item[];
-  adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction' }) => Promise<void>;
+  adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction'; operationId?: string }) => Promise<void>;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
+  /** 완제품 재고·로트와 OEM 배치 완료 표시를 한 transaction으로 반영한다. */
+  applyOemReceiptInventory: (input: OemReceiptInventoryInput) => Promise<'applied' | 'duplicate'>;
   /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   /** 이미 있는 전표 — 문서번호를 그날 순번으로 매기는 데 쓴다 */
@@ -45,7 +49,7 @@ const findRawHolder = (items: Item[], material: string): Item | undefined =>
 
 
 export function createOemEngine(deps: OemEngineDeps) {
-  const { items, adjustRawLots, updateItem, addItem, buildFormula } = deps;
+  const { items, adjustRawLots, updateItem, addItem, buildFormula, applyOemReceiptInventory } = deps;
   const statementsOf = () => deps.issuedStatements ?? [];
   const feeCode = deps.processingFeeCode ?? OEM_PROCESSING_FEE_CODE;
 
@@ -112,12 +116,17 @@ export function createOemEngine(deps: OemEngineDeps) {
     if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
     if (po.status === 'received') throw new Error('이미 가공입고된 배치입니다.');
 
-    const lines = input.returns.filter(r => r.itemId && r.qty > 0);
+    const quantityByItem = new Map<string, number>();
+    for (const row of input.returns.filter(r => r.itemId && r.qty > 0)) {
+      quantityByItem.set(row.itemId, (quantityByItem.get(row.itemId) ?? 0) + row.qty);
+    }
+    const lines = [...quantityByItem].map(([itemId, qty]) => ({ itemId, qty }));
     const bulkLines = (input.bulk ?? []).filter(b => b.material && b.kg > 0);
     if (lines.length === 0 && bulkLines.length === 0) throw new Error('입고할 품목이 없습니다.');
 
     let receivedKg = 0;
     const poItems: PurchaseOrder['items'] = [];
+    const receiptItems: OemReceiptInventoryInput['items'] = [];
     const receivedByRaw: Record<string, number> = {};   // 원료수불부에 남길 kg (재고는 안 건드림)
     // 로트번호는 **물질·날짜 단위**로 이어 매긴다 — 박스 규격이 달라도 같은 날 볶은 건 한 묶음이라
     // 실물 박스에 찍는 번호와 장부가 같아진다. 이번 입고에서 새로 만든 것도 세어야 번호가 안 겹친다.
@@ -145,20 +154,19 @@ export function createOemEngine(deps: OemEngineDeps) {
       //  로트도 여기 붙는다. **벌크 홀더에 몰아넣지 않는 이유**: 그러면 같은 볶음참깨를
       //  홀더와 박스 품목이 각각 세고(재고 이중계상), FIFO도 kg·개수가 섞여 엉킨다.
       //  저장은 품목별로 나누고, 이력은 lot.material로 가로질러 묶는다.
-      const patch: Record<string, any> = { stock: Math.round(((item.stock ?? 0) + r.qty) * 1000) / 1000 };
       // 물질 축 — 배합이 여럿이면 비중이 가장 큰 원료로 건다(볶음참깨는 1.0 하나뿐).
       const material = formula.slice().sort((a, b) => b.ratio - a.ratio)[0]?.raw;
+      let productLot: RawMaterialLot | undefined;
       if (material && unitKg > 0) {
-        const lot = buildProductLot({
+        productLot = buildProductLot({
           material, itemId: item.id,
           supplierName: po.partnerName ?? '외주', supplierId: po.oemPartnerId ?? po.partnerId,
           qtyIn: r.qty, unitKg, receivedDate: input.date, poId: po.id,
           lotNo: lotNoFor(material, input.date),
         });
-        issuedLotNos.push(lot);
-        patch.lots = [...withCarryOverProductLot(item.lots ?? [], item.stock ?? 0, material, unitKg), lot];
+        issuedLotNos.push(productLot);
       }
-      await updateItem('items', item.id, patch);
+      receiptItems.push({ itemId: item.id, qty: r.qty, ...(productLot && material ? { lot: productLot, material, unitKg } : {}) });
     }
 
     // 벌크로 돌아온 몫 — 완포장과 달리 **우리 로트에 쌓는다**. 여기서 소분 품목이 BOM으로 빼간다.
@@ -171,6 +179,8 @@ export function createOemEngine(deps: OemEngineDeps) {
         material: b.material, rawItemId: holder.id, deltaKg: b.kg,
         date: input.date, note: `OEM 가공입고 ← ${po.partnerName ?? ''}`, addedBy: input.addedBy,
         ledgerType: 'auto',
+        // 완제품 transaction 전에 멈춰 재시도해도 벌크가 한 번만 들어가야 한다.
+        operationId: `oem-receive:${po.id}:bulk:${holder.id}`,
       });
       receivedKg += b.kg;
     }
@@ -186,11 +196,18 @@ export function createOemEngine(deps: OemEngineDeps) {
     const loss = batchLoss(po.oemSent, receivedKg);
 
     // 전표는 끊지 않는다 — linkedStatementId 없이 두면 '가공비 전표 작성 대기'가 된다.
-    await updateItem('purchaseOrders', po.id, {
-      status: 'received', receivedAt: new Date().toISOString(),
-      oemReceivedKg: receivedKg, items: poItems,
-      ...(bulkLines.length ? { oemReceivedBulk: bulkLines } : {}),
-      oemFeePerKg: input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG,
+    const operationId = `oem-receive:${po.id}`;
+    await applyOemReceiptInventory({
+      poId: po.id,
+      operationId,
+      date: input.date,
+      items: receiptItems,
+      poPatch: {
+        status: 'received', receivedAt: new Date().toISOString(),
+        oemReceivedKg: receivedKg, items: poItems,
+        ...(bulkLines.length ? { oemReceivedBulk: bulkLines } : {}),
+        oemFeePerKg: input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG,
+      },
     });
 
     return { receivedKg, loss };

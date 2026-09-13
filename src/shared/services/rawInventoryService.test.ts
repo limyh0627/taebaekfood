@@ -72,7 +72,7 @@ describe('옛 원장 화면이 읽는 칸을 같이 채운다', () => {
   });
 
   it('열쇠가 언제나 실린다 — 이름으로 되짚지 않는다', () => {
-    for (const kind of ['receive', 'consume', 'stocktake', 'deplete-lot', 'reverse', 'opening'] as const) {
+    for (const kind of ['receive', 'consume', 'ledger-consume', 'stocktake', 'deplete-lot', 'reverse', 'opening'] as const) {
       const d = toLedgerDoc(이력({ kind }));
       expect(d.rawItemId, kind).toBe('raw-참깨');
       expect(d.companyId, kind).toBe('taebaek');

@@ -25,10 +25,9 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (ref: any, data: any) => { dbx.ledger.set(ref.id, data); },
   deleteDoc: async (ref: any) => { dbx.ledger.delete(ref.id); },
-  getDoc: async (ref: any) => ({
-    exists: () => dbx.orders.has(ref.id),
-    data: () => dbx.orders.get(ref.id),
-  }),
+  getDoc: async (ref: any) => ref.col === 'items'
+    ? { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }
+    : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }),
     update: (ref: any, data: any) => { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); },
@@ -64,14 +63,6 @@ function harness(items: Item[], order: Order, runnerOverride?: any) {
     db: {} as any,
     buildFormula: () => [{ raw: '생들기름', ratio: 1 }],
     createProductionRecordsForOrder: async () => {},
-    // 진짜 로트 배열을 들고 있다가 transform 결과를 그대로 저장 — deductFromLots가 실제로 돈다
-    mutateRawMaterialLots: async (id, transform, computeStock) => {
-      const cur = lotState.get(id) ?? [];
-      const next = transform(cur as any, dbx.stock.get(id) ?? 0);
-      lotState.set(id, next as any);
-      if (computeStock) dbx.stock.set(id, computeStock(next as any));
-      return next;
-    },
     runRawInventoryJob: runnerOverride ?? runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'items') { const it = items.find(i => i.id === id); if (it) it.stock = data.stock; }

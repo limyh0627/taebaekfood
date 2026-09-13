@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
  * 이 둘은 **재고량이 아니라 어긋남**이라 남긴다. 갈래(type)로 뭉뚱그려 끄면 이것까지 죽는다.
  */
 const 엔진 = readFileSync('src/features/admin/orderStockEngine.ts', 'utf8');
+const 품목재고경계 = readFileSync('src/features/admin/orderItemStock.ts', 'utf8');
 
 /** `addItem('notifications', { ... title: '...' ... })` 에서 제목만 뽑는다 */
 const 알림제목 = (src: string): string[] => {
@@ -41,7 +42,7 @@ describe('재고량은 알림으로 안 보낸다', () => {
   });
 
   it('대신 로그로는 남긴다 — 조용히 사라지면 안 된다', () => {
-    expect(엔진).toContain('[재고 부족]');
+    expect(품목재고경계).toContain('[재고 부족]');
     //  **원료 부족 로그는 서비스가 대신 낸다**(2026-09-10 원자화 5단계).
     //  차감이 이월 로트로 흡수되는 자리도 [`rawInventoryCore`](rawInventoryCore.ts) 로 옮겼다 —
     //  엔진은 이제 그 로그를 안 낸다.

@@ -106,6 +106,7 @@ import { buildStockUseRows, resolveStockUse, StockUseRow } from './stockUseRows'
 import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
+import { applyOemReceiptInventory } from './oemReceiptInventory';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
@@ -164,7 +165,6 @@ import {
   setProductSuppliers,
   setDocument,
   fetchDateRange,
-  mutateRawMaterialLots,
   adjustItemStock,
   markNotificationForUser,
   claimOrderInventoryOperation,
@@ -1287,7 +1287,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const { changeOrderStatus, prepareOrderStatusChange } = createOrderStockEngine({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
+    buildFormula, createProductionRecordsForOrder, updateItem, addItem,
     claimOrderOperation: claimOrderInventoryOperation,
   });
 
@@ -1342,9 +1342,27 @@ const AdminApp: React.FC<AdminAppProps> = ({
     setStockUseAsk({ orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
+  /**
+   * 작업완료·출고 주문을 문서만 지우면 원료·재고와 출고 전 배정이 고아로 남는다.
+   * 삭제 확인은 각 화면에서 이미 받으므로, 여기서는 현재 주문만 대기로 원복한 뒤 지운다.
+   * 예전 주문은 기존 정책대로 삭제하지 않는다.
+   */
+  const handleDeleteOrder = async (id: string) => {
+    const order = allOrders.find(candidate => candidate.id === id) ?? orders.find(candidate => candidate.id === id);
+    if (order?.status === OrderStatus.DELIVERED) {
+      alert('예전 주문은 삭제할 수 없습니다.');
+      return;
+    }
+    if (order?.producedAt || order?.shippedOut) {
+      await changeOrderStatus(id, OrderStatus.PENDING, undefined, { approvedBy: currentUser?.name });
+    }
+    await deleteItem('orders', id);
+  };
+
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
     items: allItems, adjustRawLots, updateItem, addItem, buildFormula, issuedStatements,
+    applyOemReceiptInventory: input => applyOemReceiptInventory(db, input),
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
@@ -2085,11 +2103,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
               onToggleShipmentComplete={handleToggleShipmentComplete}
               onToggleItemChecked={handleToggleItemChecked}
-              onDeleteOrder={(id) => {
-                const o = orders.find(x => x.id === id);
-                if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
-                deleteItem('orders', id);
-              }}
+              onDeleteOrder={handleDeleteOrder}
             />
           )}
           {currentView === 'orders' && (
@@ -2128,11 +2142,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onLoadHistoricalOrders={loadHistoricalOrders}
               ordersMonths={ordersMonths}
               onChangeOrdersMonths={setOrdersMonths}
-              onDeleteOrder={(id) => {
-                const o = allOrders.find(x => x.id === id);
-                if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
-                deleteItem('orders', id);
-              }}
+              onDeleteOrder={handleDeleteOrder}
               onAddClick={() => setIsOrderCreateChooserOpen(true)}
               title="주문 관리"
               subtitle="전체 주문 현황"

@@ -1,20 +1,18 @@
-import { doc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
-import { today, dateOfLocal } from '../../shared/day';
+import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot, OrderInventorySnapshot, OrderStatusAudit, companyOf } from '../../shared/types';
-import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
-import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
-import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
-import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
-import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
-import type { ProductLotTake } from '../../shared/lotUtils';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit } from '../../shared/types';
+import { toKg, baseRawName, unitToKg } from '../../constants/formula';
+import { runRawInventoryJob } from '../../shared/services/rawInventoryJob';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf, unpackQty } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
 import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
+import { createOrderRawInventoryOperations, oemLedgerKg, rawLedgerDocIds } from './orderRawInventory';
+import { createOrderProductLotOperations, type OrderProductLotMutation } from './orderProductLots';
+import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -72,7 +70,6 @@ export interface OrderStockEngineDeps {
   db: Firestore;
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   createProductionRecordsForOrder: (order: Order) => Promise<void>;
-  mutateRawMaterialLots: (rawItemId: string, transform: (lots: RawMaterialLot[], stock: number) => RawMaterialLot[], computeStock?: (lots: RawMaterialLot[]) => number) => Promise<RawMaterialLot[]>;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
@@ -92,42 +89,6 @@ export const perUnitOilKg = (bomQuantity: number): number => bomQuantity;
  *  엔진은 렌더마다 새로 만들어지므로 모듈 스코프에 둬야 인스턴스 간에도 공유된다. */
 const inFlightOrders = new Set<string>();
 
-/**
- * **임가공 완제품 한 줄이 원료수불부에 남길 kg** — 원료별.
- *
- * 임가공은 재고도 로트도 안 건드린다(원료는 가공입고 때 이미 나갔고 완제품은 포장돼 돌아온다).
- * 그래도 서류는 흐름을 봐야 하니 쓴 만큼을 kg 으로 남긴다.
- *
- * **박스면 낱개까지 펴고 센다.**
- *   2026-09-11 사장님: "9월 9일 대왕 볶음참깨 10개입 박스 주문인데 깨는 1kg 밖에 차감이 안 됐네."
- *   맞다 — `units` 는 **박스 수**(`stockUnits`)인데 `toKg` 는 규격의 **앞부분만** 읽는다
- *   (`1kg * 10` → 1kg). 그 둘을 그냥 곱하면 한 박스가 한 낱개가 된다. **열 배가 모자랐다.**
- *
- *   임가공이 아닌 박스는 `accrueBom` 이 BOM 을 타고 낱개까지 내려가서 안 틀렸다.
- *   이 가지만 BOM 을 안 밟고 규격 글자로 세느라 혼자 어긋나 있었다.
- *
- *   펴는 셈은 **`unpackQty`** 가 이미 갖고 있다(인수인계 "같은 일에는 같은 함수를 쓴다").
- *   개입수의 임자는 그 안의 **BOM**(`unitsPerBoxOf`)이지 규격 글자가 아니다.
- *
- * **따로 꺼내 둔 이유** — 전에는 이 셈이 `produceOrder` 한복판에 박혀 있어서 시험이
- * 닿질 않았다. 그래서 `oemCycle.test.ts` ③번은 같은 셈을 **베껴 적어** 놓고 통과하고 있었고,
- * 규격이 `20kg`(개입수 없음)인 가짜 품목만 써서 진짜 데이터(`1kg * 10`)와 어긋난 줄을
- * 아무도 못 봤다. 꺼내 놨으니 이제 진짜 코드를 지난다.
- */
-export function oemLedgerKg(
-  product: Pick<Item, 'id' | 'unpackTo' | 'spec'>,
-  units: number,
-  formula: readonly { raw: string; ratio: number }[],
-): Record<string, number> {
-  const 낱개수 = unpackQty(units, product, isBoxStockItem(product));
-  const out: Record<string, number> = {};
-  for (const f of formula) {
-    const kg = toKg(product.spec || '', f.raw, 낱개수) * f.ratio;
-    if (kg > 0) out[f.raw] = Math.round(((out[f.raw] ?? 0) + kg) * 1000) / 1000;
-  }
-  return out;
-}
-
 /** 구성품에 완제품이 있는가 — 박스·세트·재포장. 그 완제품이 자기 원료를 지니므로
  *  이런 품목에 품목 원료식을 또 적용하면 원료가 두 번 빠진다. */
 export const hasProductComponent = (
@@ -143,8 +104,19 @@ export const isGoodsItem = (p: Item) =>
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
+    buildFormula, createProductionRecordsForOrder, updateItem, addItem,
     claimOrderOperation, runRawInventoryJob: runRawJob = runRawInventoryJob } = deps;
+  const { applyOrderRawUsage, reverseOrderRawUsage } = createOrderRawInventoryOperations({
+    actorName, allItems, partners, db,
+    addNotification: notification => addItem('notifications', notification),
+    runRawInventoryJob: runRawJob,
+  });
+  const {
+    reserveOrderStock,
+    orderStockReservationCleanup,
+    releaseOrderStockReservation,
+    applyItemStockDeltas,
+  } = createOrderItemStockOperations({ db, allItems });
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
 
@@ -161,88 +133,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const deltaRows = (m: Map<string, number>) => [...m]
     .filter(([, delta]) => delta !== 0)
     .map(([itemId, delta]) => ({ itemId, delta: Math.round(delta * 1000) / 1000 }));
-  const bomSnapshotOf = (order: Order): OrderInventorySnapshot['bomLines'] => stockTouchedIds(order).flatMap(parentItemId =>
+  const bomSnapshotOf = (order: Order): OrderInventorySnapshot['bomLines'] => orderStockTouchedIds(order).flatMap(parentItemId =>
     bomOf(parentItemId).map(line => ({ parentItemId, childItemId: line.childId, quantity: line.qty }))
   );
-
-  /**
-   * **재고 판정에 쓸 실제 값** — 생산 한 판이 시작될 때 DB에서 읽어 채운다.
-   *
-   * 쓰기(applyStockDeltas)는 진작 트랜잭션으로 고쳤는데 **읽기가 남아 있었다.**
-   * `product.stock`은 엔진을 만들 때 클로저에 갇힌 화면 값이라, 앞 주문이 방금 깎아도
-   * 그대로다. 그래서 "재고 있으니 안 만들어도 된다"고 판단해 놓고 실제로는 없어서 파였다:
-   *
-   *   화면 낱개 30개  ─┬─ 훈장골 5개   → "30 있다" 생산 0, 출고 −5   DB 30→25
-   *                   └─ 현대유통 30개 → "30 있다" 생산 0, 출고 −30  DB 25→ **−5**
-   *
-   * 재고만 음수가 아니다. 안 만들었으니 **원료도 안 빠진다**(rawConsumedLots 0건) —
-   * 이쪽이 더 크다. 판정도 DB를 보게 한다.
-   */
-  const freshStock = new Map<string, number>();
-  const stockOf = (p: Item) => freshStock.get(p.id) ?? p.stock ?? 0;
-
-  /** 주문이 건드릴 품목 — 주문 라인 + BOM 하위 전체(구성품을 모자라면 먼저 만들기 때문에 필요하다) */
-  const stockTouchedIds = (order: Order): string[] => {
-    const seen = new Set<string>();
-    const walk = (id: string, depth: number) => {
-      if (depth > 5 || seen.has(id)) return;
-      seen.add(id);
-      for (const line of bomOf(id)) walk(line.childId, depth + 1);
-    };
-    for (const item of order.items) walk(item.itemId, 0);
-    return [...seen];
-  };
-
-  /** 판정용 재고를 DB에서 새로 읽어 둔다 — 생산 한 판마다 한 번. */
-  const loadFreshStock = async (order: Order) => {
-    freshStock.clear();
-    const ids = stockTouchedIds(order);
-    const snaps = await Promise.all(ids.map(id => getDoc(doc(db, 'items', id))));
-    snaps.forEach((snap, i) => { if (snap.exists()) freshStock.set(ids[i], Number(snap.data().stock ?? 0)); });
-  };
-
-  /**
-   * 품목 재고 델타 일괄 반영 — 한 상태전환에서 같은 품목이 +/−로 겹쳐도 순변화만 1회 기록.
-   *
-   * **DB에서 읽어 더한다(트랜잭션).** 화면 상태(allItems)의 stock에 더해 덮어쓰면
-   * 앞선 쓰기가 통째로 날아간다. 실제로 그렇게 재고가 마이너스로 파였다:
-   *
-   *   작업완료  재고 0 + 100 = 100  → DB에 100
-   *   출고      allItems.stock이 아직 0(구독 미갱신) → 0 − 100 = −100  → DB에 −100
-   *                                                     ↑ +100이 사라진다
-   *
-   * allItems는 엔진을 만들 때 클로저에 갇혀서, 함수가 도는 동안 절대 안 바뀐다.
-   * 구독이 새 값을 받아도 이미 실행 중인 호출은 옛 배열을 계속 본다.
-   * 원료 로트는 진작 트랜잭션(mutateRawMaterialLots)이라 멀쩡했다 — 재고만 빠져 있었다.
-   */
-  const applyStockDeltas = async (deltas: Map<string, number>) => {
-    for (const [itemId, delta] of deltas) {
-      if (!delta) continue;
-      const it = allItems.find(p => p.id === itemId);
-      if (!it) continue;
-      let before = 0, newStock = 0;
-      await runTransaction(db, async (tx) => {
-        const ref = doc(db, 'items', itemId);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) return;
-        before = Number(snap.data().stock ?? 0);
-        newStock = Math.round((before + delta) * 1000) / 1000;
-        tx.update(ref, { stock: newStock });
-      });
-      /*
-       * **재고가 음수여도 알림을 안 보낸다**(2026-09-08 사장님: "알람에 재고부족경고 안오게 해").
-       *
-       * 이 집은 먼저 내보내고 나중에 만든다. 그래서 출고 때 재고가 음수로 내려가는 게
-       * 사고가 아니라 **평소 모습**이다. 실제로 종에 67건이 쌓여 있었고, 전체 알림의
-       * 15%가 이것이었다 — 새 주문·언급이 그 사이에 묻혔다.
-       *
-       * 없앤 게 아니라 **자리를 옮긴 것**이다. 음수 재고는 재고관리 화면에 늘 떠 있다.
-       * 알림은 "지금 눈을 떼고 봐야 할 일"에만 쓴다. 이건 그런 게 아니다.
-       * (원장·로트 불일치와 배송완료일 누락은 그대로 둔다 — 그건 재고량이 아니라 **어긋남**이다)
-       */
-      if (newStock < 0) console.warn(`[재고 부족] ${it.name}: ${before} → ${newStock}`);
-    }
-  };
 
   // 겉박스·테이프는 BOM으로만 깎는다. 박스 품목을 만들 때 그 BOM에 들어 있고,
   // 낱개 BOM에는 애초에 두지 않는다 — 거래처별 배송규칙 경로는 폐기했다.
@@ -304,6 +197,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     deltas: Map<string, number>, rawUsage: Record<string, number>,
     sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
     stockCap?: Map<string, number>,
+    stockOf?: (item: Item) => number,
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
     for (const line of bomOf(product.id)) {
@@ -320,6 +214,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 재고를 얼마나 쓸지는 stockCap이 정한다(0이면 전부 새로 생산). 그래도 차감은 need 전액 —
       // 먼저 만든 short가 상쇄해서 순변화는 딱 '쓴 재고'만큼이 된다.
       if (sign < 0 && (comp.type === 'product' || (comp.type === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
+        if (!stockOf) throw new Error(`생산 재고 스냅샷이 없습니다: ${comp.id}`);
         const onHand = stockOf(comp) + (deltas.get(comp.id) ?? 0);
         const cap = stockCap?.get(comp.id);
         const have = Math.max(0, cap === undefined ? onHand : Math.min(onHand, cap));
@@ -327,7 +222,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         if (short > 0) {
           addDelta(deltas, comp.id, short);
           autoBuilt.push({ itemId: comp.id, qty: short });
-          accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1);
+          accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1, undefined, stockOf);
           accrueRaw(comp, short, rawUsage);
         }
       }
@@ -335,229 +230,40 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
+  /** 실패한 재처리를 다시 시도할 때 DB에 남은 앞선 생산분을 계산판에서 먼저 제거한다. */
+  const addPreviousProductionRollback = (order: Order, deltas: Map<string, number>) => {
+    const already = order.rawConsumedLots ?? [];
+    if (already.length === 0) return false;
+    const previousProduction = order.inventorySnapshots?.production;
+    if (!previousProduction) {
+      throw new Error(`생산 재처리 중단: 이전 품목 재고 스냅샷이 없습니다 (주문 ${order.id})`);
+    }
+    previousProduction.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+    return true;
+  };
+
   /**
-   * 원료 차감 — **공용 명령(consume)** 을 원료별로 묶어 [runRawInventoryJob](../../shared/services/rawInventoryJob.ts) 로 실행한다.
-   *
-   * 예전엔 여기서 `mutateRawMaterialLots` 로 로트를 먼저 깎고 `setDoc` 으로 원장을 따로 썼다 —
-   * 뒤가 실패하면 조용히 갈렸다(원장 없이 46건). 이제 원료별 한 트랜잭션이라 그 갈림이 안 난다.
-   *
-   * **임가공(OEM) 원료는 로트를 안 깎고 원장에만 적는다.**
-   *
-   * 2026-09-11 사장님: "들어온만큼 입고 잡히고 나간만큼 차감되면 된다니까 애초에 볶음참깨
-   * 완제품 애들 로트를 따로 넣어뒀잖아 볶음참깨 안에."
-   *
-   * 맞다 — 임가공 완제품(`볶음참깨/1kg` 박스)은 **자기 로트에 kg 을 지고 있다**:
-   *   `lot-p-1785907900413-…`  `qtyIn 41박스 · kgIn 410kg · unitKg 10`
-   * 그 로트는 판매 때 `deductProductLotsForOrder` 가 박스 수로 깎고, kg 도 같이 준다.
-   * 그러니 **원료 홀더(`raw-볶음참깨`) 로트를 또 깎으면 두 번 빼는 것**이고,
-   * 반대로 원장에 안 적으면 나간 kg 이 수불부에서 사라진다. 로트는 완제품 쪽, 원장은 여기.
-   *
-   * 한때 이 줄을 통째로 뺐었다(`04b34d0`, "서류는 판매에서 후처리로 만든다"). 그러면
-   * 원료수불부 화면에서 볶음참깨가 통째로 안 보인다 — 사장님이 보시는 곳이 거기다. 되살린다.
+   * DB 쓰기 없이 생산량·원료 사용량·품목 증감을 계산한다.
+   * 예약 transaction과 실제 생산이 반드시 같은 함수를 써야 둘의 배정량이 갈리지 않는다.
    */
-  const deductRawLotsForOrder = async (
-    order: Order, rawUsage: Record<string, number>, attempt: number,
-    ledgerOnly: Record<string, number> = {},
+  const planOrderProduction = (
+    order: Order,
+    deltas: Map<string, number>,
+    stockSnapshot: ReadonlyMap<string, number>,
+    plan?: StockUsePlan,
   ) => {
-    const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
-    const rawNames = Object.keys(rawUsage).filter(r => Math.round(rawUsage[r] * 1000) / 1000 > 0);
-    const ledgerOnlyNames = Object.keys(ledgerOnly).filter(r => Math.round(ledgerOnly[r] * 1000) / 1000 > 0);
-    if (rawNames.length === 0 && ledgerOnlyNames.length === 0) return consumedLots;
-    const dateStr = dateOfLocal(order.deliveredAt) || today();
-    const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
-    const effectiveAt = `${dateStr}T12:00:00+09:00`;
-
-    const orderCompany = companyOf(order);
-
-    /*
-     * **임가공 몫은 아직 원장에 못 쓴다 — 쓸 명령이 없다.**
-     *
-     * 여기 필요한 것은 "로트는 그대로 두고 수불부에만 kg 을 남기는" 쓰기다. 로트는 완제품
-     * 쪽(`deductProductLotsForOrder`)에서 이미 박스 수와 kg 이 같이 빠졌으니 원료 홀더
-     * 로트를 또 깎으면 두 번 빼는 것이 된다.
-     *
-     * 그런데 원장은 이제 공용 서비스만 쓸 수 있고(`rawWriteGuard.test`), 그 명령은
-     * `receive·consume·stocktake·deplete-lot·reverse·opening` 뿐이라 **전부 로트를 건드린다.**
-     * 명령을 하나 늘리는 것은 원자화 코어(설계 §6)를 손대는 일이라 여기서 몰래 할 일이 아니다.
-     * 가드를 우회해 `setDoc` 을 직접 부르는 길로 되돌아가지 않는다 — 그 길을 없애려고 만든 가드다.
-     *
-     * **그래서 값만 바르게 세어 두고 쓰기는 Codex 설계에 넘긴다**(할일.md).
-     * `ledgerOnly` 의 값 자체는 `oemLedgerKg` 가 박스 개입수까지 반영해 맞게 준다 —
-     * 명령이 생기면 그대로 흘려보내면 된다.
-     */
-    void ledgerOnlyNames;
-    if (rawNames.length === 0) return consumedLots;
-
-    const jobId = `production:${order.id}:a${attempt}`;
-    const commands: JobCommandInput[] = [];
-    const holderByRaw = new Map<string, Item>();
-
-    for (const raw of rawNames) {
-      const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
-      const rawItem = rawHolderByName(allItems, raw, orderCompany);
-      if (!rawItem) {
-        throw new Error(`원료 차감 중단: ${orderCompany} 회사의 '${raw}' 원료 품목을 찾을 수 없다 (주문 ${order.id})`);
-      }
-      holderByRaw.set(raw, rawItem);
-      const opId = `production:${order.id}:a${attempt}:${rawItem.id}`;
-      commands.push({
-        command: {
-          operationId: opId,
-          ...rawLedgerKeys(rawItem),
-          materialSnapshot: raw,
-          effectiveAt,
-          ...(actorName ? { actorName } : {}),
-          source: { type: 'production', id: order.id },
-          kind: 'consume', kg: usedKg,
-          ...(rawItem.mixEnabled ? { mix: { topPercent: rawItem.mixTopPercent ?? 50 } } : {}),
-        },
-        options: {
-          newLotId: `lot-${opId}`,
-          carryOverLotId: `carry-${opId}`,
-          legacy: {
-            note: `자동: ${customerName}`,
-            type: 'auto', orderId: order.id,
-            ...(actorName ? { addedBy: actorName } : {}),
-          },
-        },
-      });
-    }
-
-    if (commands.length === 0) return consumedLots;
-
-    const { job, results } = await runRawJob({
-      jobId, companyId: orderCompany,
-      source: { type: 'production', id: order.id }, commands,
-      options: { db },
-    });
-
-    for (const { input, result } of results) {
-      if (result.status === 'applied' || result.status === 'duplicate') {
-        const mat = input.command.materialSnapshot;
-        for (const ch of result.movement.lotChanges) {
-          if (ch.deltaKg >= 0) continue;   // 되살아난 로트는 스냅샷에 안 담는다
-          consumedLots.push({
-            material: mat, rawItemId: input.command.rawItemId,
-            operationId: input.command.operationId, supplierName: ch.supplierName ?? '',
-            kg: Math.round(-ch.deltaKg * 1000) / 1000,
-            ...(ch.lotId ? { lotId: ch.lotId } : {}),
-            ...(ch.lotNo ? { lotNo: ch.lotNo } : {}),
-            ...(ch.receivedDate ? { receivedDate: ch.receivedDate } : {}),
-          });
-        }
-      } else if (result.status === 'conflict') {
-        throw new Error(`원료 차감 충돌: 같은 작업 번호에 다른 내용이 있다 (${input.command.operationId})`);
-      } else {
-        console.warn(`[생산 차감] 거절 — ${input.command.operationId}: ${result.code} ${result.message}`);
-        //  실사 이후 재고 갈림 같은 사람이 손봐야 하는 경우는 화면 알림으로 남긴다.
-        const rawItem = holderByRaw.get(input.command.materialSnapshot);
-        if (rawItem) {
-          await addItem('notifications', {
-            type: 'inventory_shortage', title: '원료 차감 거절',
-            body: `${input.command.materialSnapshot} — ${result.code} ${result.message} (주문 ${order.id}·${customerName})`,
-            linkedId: rawItem.id, readBy: [], createdAt: new Date().toISOString(),
-          } as Omit<AppNotification, 'id'>);
-        }
-        throw new Error(`원료 차감 거절: ${result.code} ${result.message}`);
-      }
-    }
-    if (job.status === 'failed') {
-      throw new Error(`원료 차감 업무 실패: ${job.id} ${job.lastError ?? ''}`);
-    }
-    return consumedLots;
-  };
-
-  /**
-   * 원료 로트 복원 — 소비 스냅샷의 각 원료 이력을 `reverse` 명령으로 되돌린다.
-   *
-   * 예전엔 `deleteDoc('rawMaterialLedger/rm-auto-…')` 로 원장을 지우고 로트를 손으로 복원했는데,
-   * 이제 이력은 지우지 않고 `reverse` 를 뒤에 쌓는다(설계 §9).
-   */
-  const restoreRawLotsForOrder = async (order: Order) => {
-    const consumed = order.rawConsumedLots ?? [];
-    if (consumed.length === 0) return;
-    const orderCompany = companyOf(order);
-    const originals = new Map<string, string>();
-    for (const c of consumed) {
-      if (!c.operationId || !c.rawItemId) {
-        throw new Error(`옛 생산 기록은 원자 명령 번호가 없어 자동 취소할 수 없다: 주문 ${order.id}`);
-      }
-      originals.set(c.operationId, c.rawItemId);
-    }
-    const effectiveAt = new Date().toISOString();
-    const commands: JobCommandInput[] = [];
-    for (const [originalOperationId, rawItemId] of originals) {
-      const rawItem = allItems.find(p => p.id === rawItemId);
-      if (!rawItem || companyOf(rawItem) !== orderCompany) {
-        throw new Error(`원료 복원 중단: 주문 회사의 원료 품목을 찾을 수 없다 (${rawItemId})`);
-      }
-      const opId = `reverse:${originalOperationId}`;
-      commands.push({
-        command: {
-          operationId: opId,
-          ...rawLedgerKeys(rawItem),
-          materialSnapshot: baseRawName(rawItem.name),
-          effectiveAt,
-          ...(actorName ? { actorName } : {}),
-          source: { type: 'reversal', id: order.id },
-          kind: 'reverse', originalOperationId,
-        },
-        options: { legacy: { type: 'auto', orderId: order.id, ...(actorName ? { addedBy: actorName } : {}) } },
-      });
-    }
-    if (commands.length === 0) return;
-    const { job, results } = await runRawJob({
-      jobId: `production-reversal:${order.id}:a${order.rawInventoryAttempt ?? 0}`,
-      companyId: orderCompany,
-      source: { type: 'production-reversal', id: order.id }, commands,
-      options: { db },
-    });
-    const failed = results.find(r => r.result.status === 'conflict' || r.result.status === 'rejected');
-    if (job.status !== 'complete' || failed) {
-      const detail = failed?.result.status === 'rejected'
-        ? `${failed.result.code} ${failed.result.message}`
-        : failed?.result.status === 'conflict' ? '작업 번호 충돌' : job.lastError ?? '';
-      throw new Error(`원료 복원 실패: 주문 ${order.id} ${detail}`);
-    }
-  };
-
-  // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +(생산분). → 소비 로트 스냅샷 반환.
-  //  **주문량 전량이 아니라 "기존 재고로 못 채우는 몫"만 생산한다.** 출고는 늘 주문량을 빼므로
-  //  순변화 = 쓴 재고만큼. 얼마나 쓸지는 plan(사용자 선택)이 정하고, 없으면 있는 만큼 다 쓴다.
-  const produceOrder = async (order: Order, deltas: Map<string, number>, plan?: StockUsePlan) => {
-    // **같은 주문은 원료를 한 번만 뺀다.**
-    //   원장 줄은 id가 `rm-auto-{주문}-{원료}`로 고정이라 두 번째 처리 때 덮어써지는데,
-    //   로트는 mutateRawMaterialLots가 부를 때마다 깎아서 한쪽만 이중이 됐다.
-    //   (생들기름 775.98kg = 8/04 277.2 + 8/05 249.48 + 8/14 249.3 세 건이 각각 두 번씩 빠졌다)
-    //   바깥 가드(`wantProduced && !order.producedAt`)는 **화면 상태**를 보므로 다른 탭·중복 클릭으로
-    //   낡으면 그냥 통과한다 — 재고 음수를 만들던 것과 같은 낡은-상태 문제다.
-    //   → DB의 지금 값을 직접 보고, 이미 빼둔 몫이 있으면 되돌린 뒤 새로 뺀다.
-    //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
-    await loadFreshStock(order);   // 판정 기준을 DB의 지금 값으로 — 화면 값은 낡는다
-    const fresh = await getDoc(doc(db, 'orders', order.id));
-    const freshOrder = fresh.exists() ? ({ ...order, ...(fresh.data() as Partial<Order>) } as Order) : order;
-    if (freshOrder.producedAt) {
-      return {
-        consumedLots: freshOrder.rawConsumedLots ?? [],
-        autoBuilt: freshOrder.autoBuilt ?? [],
-        producedUnits: freshOrder.producedUnits ?? [],
-        attempt: freshOrder.rawInventoryAttempt ?? 0,
-        alreadyProduced: true,
-      };
-    }
-    const already = freshOrder.rawConsumedLots ?? [];
-    if (already.length > 0) {
-      console.warn(`[생산 재처리] ${order.id} — 이미 빠진 원료 ${already.length}건을 되돌리고 다시 뺀다`);
-      await restoreRawLotsForOrder(freshOrder);
-    }
-    const attempt = (freshOrder.rawInventoryAttempt ?? 0) + 1;
+    const stockOf = (item: Item) => {
+      const stock = stockSnapshot.get(item.id);
+      if (stock === undefined) throw new Error(`주문 재고 스냅샷에 품목이 없습니다: ${item.id}`);
+      return stock;
+    };
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
     const producedByItem = new Map<string, number>();        // 실제 생산량 — 되돌리기용
     for (const [idx, item] of order.items.entries()) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product) continue;
+      if (!product) throw new Error(`주문 품목 기준정보를 찾을 수 없습니다: ${item.itemId}`);
       /**
        * **벌크를 그대로 파는 주문** — 볶음참깨 20kg 자루 같은 것.
        *
@@ -573,8 +279,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         const usedKg = unitToKg(stockUnits(item, product), raw);
         if (usedKg > 0) {
           rawUsage[raw] = Math.round(((rawUsage[raw] ?? 0) + usedKg) * 1000) / 1000;
-          //  lotsAreTotal 원료는 로트합이 통합재고라 stock을 안 덮는다(mutateRawMaterialLots).
-          //  벌크로 나간 만큼은 벌크 재고에서도 빼 줘야 한다.
+          // lotsAreTotal 원료는 로트합이 통합재고라 stock을 안 덮는다.
+          // 벌크로 나간 만큼은 벌크 재고에서도 빼 줘야 한다.
           if (product.lotsAreTotal) addDelta(deltas, product.id, -usedKg);
         }
         continue;
@@ -585,7 +291,6 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
-        //  셈은 oemLedgerKg 하나다 — 박스면 그 안에서 낱개까지 편다(위 주석 참고).
         for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)))))
           rawUsageLedgerOnly[raw] = (rawUsageLedgerOnly[raw] ?? 0) + kg;
         continue;
@@ -598,25 +303,71 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const choice = plan?.[idx];
       const own = Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
       const toProduce = Math.round((units - own) * 1000) / 1000;
-      if (toProduce <= 0) continue;   // 재고로 전부 충당 — 생산도 원료도 없다
+      if (toProduce <= 0) continue;
 
       // 박스 품목이면 낱개 재고 사용량도 사용자가 정한 만큼으로 묶는다.
       const looseId = unpackComponent(product)?.itemId;
       const stockCap = looseId && choice?.loose !== undefined
         ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
 
-      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap);
-      // 구성품에 완제품이 있으면(박스·세트·재포장) accrueBom이 그 완제품을 따라 내려가며
-      // 거기서 원료를 뺀다 → 여기서 품목 원료식으로 또 빼면 이중 차감이다.
-      //   (품목·규격은 서류용이라 재고 계산에 끌어들이지 않는다. BOM이 곧 구성이다)
+      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf);
+      // 구성품에 완제품이 있으면 accrueBom이 그 완제품을 따라 내려가며 원료를 뺀다.
       if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage);
-      addDelta(deltas, product.id, toProduce); // 완제품 재고 +생산분 (미출고)
+      addDelta(deltas, product.id, toProduce);
       producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
     }
-    const consumedLots = await deductRawLotsForOrder(order, rawUsage, attempt, rawUsageLedgerOnly);
-    await createProductionRecordsForOrder(order);
-    const producedUnits = [...producedByItem].map(([itemId, qty]) => ({ itemId, qty }));
-    return { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced: false };
+    return {
+      rawUsage,
+      rawUsageLedgerOnly,
+      autoBuilt,
+      producedUnits: [...producedByItem].map(([itemId, qty]) => ({ itemId, qty })),
+    };
+  };
+
+  // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +(생산분). → 소비 로트 스냅샷 반환.
+  // 순변화 = 쓴 재고만큼. 얼마나 쓸지는 plan(사용자 선택)이 정하고, 없으면 있는 만큼 다 쓴다.
+  const produceOrder = async (
+    order: Order,
+    deltas: Map<string, number>,
+    stockSnapshot: ReadonlyMap<string, number>,
+    plan?: StockUsePlan,
+  ) => {
+    // **같은 주문은 원료를 한 번만 뺀다.**
+    //   원장 줄은 id가 `rm-auto-{주문}-{원료}`로 고정이라 두 번째 처리 때 덮어써지는데,
+    //   로트는 mutateRawMaterialLots가 부를 때마다 깎아서 한쪽만 이중이 됐다.
+    //   (생들기름 775.98kg = 8/04 277.2 + 8/05 249.48 + 8/14 249.3 세 건이 각각 두 번씩 빠졌다)
+    //   바깥 가드(`wantProduced && !order.producedAt`)는 **화면 상태**를 보므로 다른 탭·중복 클릭으로
+    //   낡으면 그냥 통과한다 — 재고 음수를 만들던 것과 같은 낡은-상태 문제다.
+    //   → DB의 지금 값을 직접 보고, 이미 빼둔 몫이 있으면 되돌린 뒤 새로 뺀다.
+    //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
+    const fresh = await getDoc(doc(db, 'orders', order.id));
+    const freshOrder = fresh.exists() ? ({ ...order, ...(fresh.data() as Partial<Order>) } as Order) : order;
+    if (freshOrder.producedAt) {
+      return {
+        consumedLots: freshOrder.rawConsumedLots ?? [],
+        autoBuilt: freshOrder.autoBuilt ?? [],
+        producedUnits: freshOrder.producedUnits ?? [],
+        attempt: freshOrder.rawInventoryAttempt ?? 0,
+        alreadyProduced: true,
+      };
+    }
+    const already = freshOrder.rawConsumedLots ?? [];
+    if (addPreviousProductionRollback(freshOrder, deltas)) {
+      /*
+       * 원료 작업만 되돌리고 새 수량을 계산하면, DB에 남아 있는 이전 완제품이 가용 재고로 잡혀
+       * 새 생산량이 0이 된다. 이전 생산의 품목 델타도 같은 계산판에서 먼저 뒤집어야
+       * `+1000 생산 → 수량 900으로 정정`이 `-1000 +900`으로 끝난다.
+       */
+      console.warn(`[생산 재처리] ${order.id} — 이미 기록된 원료 작업 ${already.length}건을 되돌리고 다시 처리한다`);
+      await reverseOrderRawUsage(freshOrder);
+    }
+    const attempt = (freshOrder.rawInventoryAttempt ?? 0) + 1;
+    const production = planOrderProduction(freshOrder, deltas, stockSnapshot, plan);
+    const consumedLots = await applyOrderRawUsage(
+      freshOrder, production.rawUsage, attempt, production.rawUsageLedgerOnly,
+    );
+    await createProductionRecordsForOrder(freshOrder);
+    return { consumedLots, ...production, attempt, alreadyProduced: false };
   };
 
   // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −(생산분). 먼저 만든 것도 되돌린다.
@@ -647,7 +398,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       addDelta(deltas, comp.id, -b.qty);
       accrueBom(order, comp, b.qty, deltas, drop, +1, [], 1);
     }
-    await restoreRawLotsForOrder(order);
+    await reverseOrderRawUsage(order);
   };
 
   /**
@@ -691,125 +442,151 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     isGoodsItem(product) ? goodsShipQty(item, product)
       : product.type === 'product' ? stockUnits(item, product) : 0;
 
-  /** 로트를 쓰는 완제품인가 — 로트가 한 번이라도 선 품목만. 안 선 품목은 종전대로 숫자 재고만 움직인다. */
-  const hasProductLots = (p: Item) => (p.lots ?? []).some(l => l.qtyRemaining != null);
-
-  /** 출고 — 완제품 로트를 FIFO로 까고, 어느 로트가 나갔는지 주문에 스냅샷으로 남긴다. */
-  const deductProductLotsForOrder = async (order: Order) => {
-    const taken: NonNullable<Order['productConsumedLots']> = [];
-    for (const item of order.items) {
-      const product = allItems.find(p => p.id === item.itemId);
-      if (!product || !hasProductLots(product)) continue;
-      const qty = shipQtyOf(item, product);
-      if (qty <= 0) continue;
-      let captured: ProductLotTake[] = [];
-      // computeStock을 안 넘긴다 — 재고는 deltas가 쓴다(둘이 쓰면 서로 덮어쓴다).
-      await mutateRawMaterialLots(product.id, (lots) => {
-        const r = deductLotsByQty(lots, qty);
-        captured = r.distribution;
-        return r.lots;
-      });
-      for (const t of captured) {
-        taken.push({
-          itemId: product.id,
-          material: (product.lots ?? []).find(l => l.id === t.lotId)?.material,
-          lotId: t.lotId, lotNo: t.lotNo, receivedDate: t.receivedDate, qty: t.qty,
-        });
-      }
-    }
-    return taken;
-  };
-
-  /** 출고취소 — 그때 깐 로트에 스냅샷대로 되돌린다(역FIFO는 그새 들어온 로트에 얹혀 어긋난다). */
-  const restoreProductLotsForOrder = async (order: Order) => {
-    const byItem = new Map<string, ProductLotTake[]>();
-    for (const t of order.productConsumedLots ?? []) {
-      const cur = byItem.get(t.itemId) ?? [];
-      cur.push({ lotId: t.lotId, lotNo: t.lotNo, receivedDate: t.receivedDate, supplierName: '', qty: t.qty });
-      byItem.set(t.itemId, cur);
-    }
-    for (const [itemId, takes] of byItem) {
-      await mutateRawMaterialLots(itemId, (lots) => restoreLotsByQty(lots, takes));
-    }
-  };
+  const { deductProductLotsForOrder, restoreProductLotsForOrder } = createOrderProductLotOperations({
+    allItems,
+    shipQtyOf,
+  });
 
   const STATUS_WANT_PRODUCED = new Set<OrderStatus>([OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
   const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
 
   // 목표 상태에 맞춰 재고 상태를 조정(생산/출고/취소 자동). ON_HOLD은 재고 미변동.
-  const reconcileOrderStock = async (order: Order, target: OrderStatus, plan?: StockUsePlan, deferOrderPatch = false) => {
+  const reconcileOrderStock = async (
+    order: Order,
+    target: OrderStatus,
+    plan?: StockUsePlan,
+    deferOrderPatch = false,
+    inventoryOperationId?: string,
+  ) => {
     if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = STATUS_WANT_SHIPPED.has(target);
     const deltas = new Map<string, number>();
     const patch: Partial<Order> = {};
-    // 역방향(되돌리기): 출고취소 → 생산취소
-    if (!wantShipped && order.shippedOut) {
-      const snapshot = order.inventorySnapshots?.shipment;
-      if (snapshot) snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
-      else unShipOrder(order, deltas);
-      patch.shippedOut = false;
-      await restoreProductLotsForOrder(order); patch.productConsumedLots = [];
+    let productLotMutations: OrderProductLotMutation[] = [];
+    let shipmentStockDeltas: { itemId: string; delta: number }[] | undefined;
+    const needsForwardProduction = wantProduced && !order.producedAt;
+    const needsForwardShipment = wantShipped && !order.shippedOut;
+    const wantsAllocationUntilShipment = wantProduced && !wantShipped;
+    const reservationExtraItemIds = [
+      ...(order.inventorySnapshots?.production?.stockDeltas.map(row => row.itemId) ?? []),
+      ...(order.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
+    ];
+    const reservation = needsForwardProduction || needsForwardShipment || wantsAllocationUntilShipment
+      ? await reserveOrderStock(
+          order,
+          inventoryOperationId ?? `order-inventory-${order.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          stockSnapshot => {
+            const preview = new Map<string, number>();
+            if (needsForwardProduction) {
+              addPreviousProductionRollback(order, preview);
+              planOrderProduction(order, preview, stockSnapshot, plan);
+            }
+            // 작업완료 상태에서도 실제 출고 전까지 이 주문 전체 물량을 잡아 둔다.
+            // 생산분을 더한 뒤 출고한다고 가정한 순변화가 지금 재고에서 선점할 몫이다.
+            if (needsForwardShipment || wantsAllocationUntilShipment) shipOrder(order, preview);
+            return preview;
+          },
+          reservationExtraItemIds,
+        )
+      : undefined;
+    if (reservation && wantsAllocationUntilShipment) {
+      const shipment = new Map<string, number>();
+      shipOrder(order, shipment);
+      reservation.allocationQuantities = new Map(
+        [...shipment].filter(([, delta]) => delta < 0).map(([itemId, delta]) => [itemId, -delta]),
+      );
     }
-    if (!wantProduced && order.producedAt) {
-      const snapshot = order.inventorySnapshots?.production;
-      if (snapshot) {
-        snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
-        await restoreRawLotsForOrder({ ...order, rawConsumedLots: snapshot.rawConsumedLots ?? order.rawConsumedLots });
-      } else await unProduceOrder(order, deltas);
-      patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
-    }
-    // 정방향: 생산 → 출고
-    if (wantProduced && !order.producedAt) {
-      const productionDeltasBefore = new Map(deltas);
-      const { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced } = await produceOrder(order, deltas, plan);
-      if (!alreadyProduced) {
-        patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
-        patch.rawInventoryAttempt = attempt;
-        // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
-        // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
-        patch.rawConsumedLots = consumedLots;
-        // 생산량도 마찬가지로 항상 쓴다. 빈 배열([])과 없음(undefined)은 뜻이 다르다 —
-        // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
-        patch.producedUnits = producedUnits;
-        if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
-        const productionDeltas = new Map<string, number>();
-        for (const [itemId, value] of deltas) addDelta(productionDeltas, itemId, value - (productionDeltasBefore.get(itemId) ?? 0));
+    const reservationContext = reservation ?? orderStockReservationCleanup(order, reservationExtraItemIds);
+    let stockCommitted = false;
+
+    try {
+      // 역방향(되돌리기): 출고취소 → 생산취소
+      if (!wantShipped && order.shippedOut) {
+        const snapshot = order.inventorySnapshots?.shipment;
+        if (snapshot) snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+        else unShipOrder(order, deltas);
+        patch.shippedOut = false;
+        productLotMutations = restoreProductLotsForOrder(order); patch.productConsumedLots = [];
+      }
+      if (!wantProduced && order.producedAt) {
+        const snapshot = order.inventorySnapshots?.production;
+        if (snapshot) {
+          snapshot.stockDeltas.forEach(row => addDelta(deltas, row.itemId, -row.delta));
+          await reverseOrderRawUsage({ ...order, rawConsumedLots: snapshot.rawConsumedLots ?? order.rawConsumedLots });
+        } else await unProduceOrder(order, deltas);
+        patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = [];
+      }
+      // 정방향: 생산 → 출고
+      if (needsForwardProduction) {
+        const productionDeltasBefore = new Map(deltas);
+        if (!reservation) throw new Error(`주문 재고 예약이 없습니다: ${order.id}`);
+        const { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced } = await produceOrder(
+          order, deltas, reservation.stockSnapshot, plan,
+        );
+        if (!alreadyProduced) {
+          patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
+          patch.rawInventoryAttempt = attempt;
+          // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
+          // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
+          patch.rawConsumedLots = consumedLots;
+          // 생산량도 마찬가지로 항상 쓴다. 빈 배열([])과 없음(undefined)은 뜻이 다르다 —
+          // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
+          patch.producedUnits = producedUnits;
+          if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
+          const productionDeltas = new Map<string, number>();
+          for (const [itemId, value] of deltas) addDelta(productionDeltas, itemId, value - (productionDeltasBefore.get(itemId) ?? 0));
+          patch.inventorySnapshots = {
+            ...order.inventorySnapshots,
+            version: 1,
+            production: {
+              capturedAt: new Date().toISOString(),
+              stockDeltas: deltaRows(productionDeltas),
+              bomLines: bomSnapshotOf(order),
+              rawConsumedLots: consumedLots,
+              rawLedgerIds: rawLedgerDocIds(consumedLots),
+            },
+          };
+        }
+      }
+      if (needsForwardShipment) {
+        const shipmentDeltasBefore = new Map(deltas);
+        shipOrder(order, deltas); patch.shippedOut = true;
+        productLotMutations = deductProductLotsForOrder(order);
+        const shipmentDeltas = new Map<string, number>();
+        for (const [itemId, value] of deltas) addDelta(shipmentDeltas, itemId, value - (shipmentDeltasBefore.get(itemId) ?? 0));
+        shipmentStockDeltas = deltaRows(shipmentDeltas);
+      }
+      const productConsumedLots = await applyItemStockDeltas(deltas, productLotMutations, reservationContext);
+      stockCommitted = true;
+      if (shipmentStockDeltas) {
+        // 빈 배열이어도 반드시 쓴다 — 안 쓰면 이전 출고의 스냅샷이 남아 취소 때 유령 복원이 된다.
+        patch.productConsumedLots = productConsumedLots;
         patch.inventorySnapshots = {
-          ...order.inventorySnapshots,
+          ...(patch.inventorySnapshots ?? order.inventorySnapshots),
           version: 1,
-          production: {
+          shipment: {
             capturedAt: new Date().toISOString(),
-            stockDeltas: deltaRows(productionDeltas),
-            bomLines: bomSnapshotOf(order),
-            rawConsumedLots: consumedLots,
-            rawLedgerIds: [...new Set(consumedLots.map(row => `rm-auto-${order.id}-${row.material.replace(/\s/g, '_')}`))],
+            stockDeltas: shipmentStockDeltas,
+            bomLines: [],
+            productConsumedLots,
           },
         };
       }
+      if (!deferOrderPatch && Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
+      return { patch, stockAdjustments: deltaRows(deltas) };
+    } catch (error) {
+      if (reservation && !stockCommitted) {
+        try {
+          await releaseOrderStockReservation(reservation);
+        } catch (releaseError) {
+          // 원래 실패 원인을 바꾸면 주문 감사 기록이 엉뚱한 오류를 남긴다. 남은 processing 예약은
+          // 1시간 뒤 만료되므로 여기서는 둘 다 로그로 드러내고 최초 오류를 유지한다.
+          console.error(`[주문 재고 예약 해제 실패] ${order.id}`, releaseError);
+        }
+      }
+      throw error;
     }
-    if (wantShipped && !order.shippedOut) {
-      const shipmentDeltasBefore = new Map(deltas);
-      shipOrder(order, deltas); patch.shippedOut = true;
-      // 빈 배열이어도 반드시 쓴다 — 안 쓰면 이전 출고의 스냅샷이 남아 취소 때 유령 복원이 된다.
-      const productConsumedLots = await deductProductLotsForOrder(order);
-      patch.productConsumedLots = productConsumedLots;
-      const shipmentDeltas = new Map<string, number>();
-      for (const [itemId, value] of deltas) addDelta(shipmentDeltas, itemId, value - (shipmentDeltasBefore.get(itemId) ?? 0));
-      patch.inventorySnapshots = {
-        ...(patch.inventorySnapshots ?? order.inventorySnapshots),
-        version: 1,
-        shipment: {
-          capturedAt: new Date().toISOString(),
-          stockDeltas: deltaRows(shipmentDeltas),
-          bomLines: [],
-          productConsumedLots,
-        },
-      };
-    }
-    await applyStockDeltas(deltas);
-    if (!deferOrderPatch && Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
-    return { patch, stockAdjustments: deltaRows(deltas) };
   };
 
   // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
@@ -880,7 +657,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         await addItem('orderStatusAudits', initialAudit);
         // 같은 상태 재저장만 재고를 건너뛴다. 예전 주문(DELIVERED)도 실제로 역행시키면
         // 출고·생산 스냅샷을 따라 반드시 원복돼야 한다.
-        if (live.status !== status) result = await reconcileOrderStock(live, status, plan, true);
+        if (live.status !== status) result = await reconcileOrderStock(live, status, plan, true, operation.id);
       // 배송완료일은 **여기서 만들어 넣지 않는다.** 서류 네 종의 유일한 기준일이라,
       // '지금 시각'으로 채우면 새벽에 처리한 건이 다음 날짜로 새서 서류가 갈린다.
       // 판매기록부를 뽑는 쪽이 서류 날짜로 미리 박아 준다. 비어 있으면 알림으로 드러낸다.

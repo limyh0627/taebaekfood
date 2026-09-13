@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { oemLedgerKg } from './orderStockEngine';
+import { oemLedgerKg } from './orderRawInventory';
 import { buildBomIndex, setBomIndex } from '../../shared/bomIndex';
 import type { Item } from '../../shared/types';
 

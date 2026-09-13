@@ -9,7 +9,7 @@
 // 주문 문서는 만들지 않는다(가짜 주문이 목록에 끼면 안 된다). 엔진의 orders 쓰기는 받아서 버리고,
 // 되돌리기는 손댄 품목의 stock·lots를 통째로 스냅샷해 복원한다.
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc, runTransaction, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createOrderStockEngine } from '../src/features/admin/orderStockEngine';
@@ -61,29 +61,6 @@ const engine = createOrderStockEngine({
   allItems: live, submaterials: [], partners: [], allOrders: [], orders: [], db,
   buildFormula: (k: string) => buildFormula(k, formulas as any, live as any),
   createProductionRecordsForOrder: async () => {},          // 생산기록은 안 만든다(가짜 주문이라)
-  mutateRawMaterialLots: async (rawItemId, transform, computeStock) => {
-    remember(rawItemId);
-    if (!APPLY) {   // 미리보기 — 실제 로트는 안 건드리고 결과만 본다
-      const it = live.find(i => i.id === rawItemId) as any;
-      const next = transform([...(it?.lots ?? [])], Number(it?.stock ?? 0));
-      const sum = next.reduce((a: number, l: any) => a + Number(l.kgRemaining ?? 0), 0);
-      console.log(`      원료 ${it?.name}: 로트합 ${Math.round((it?.lots ?? []).reduce((a: number, l: any) => a + Number(l.kgRemaining ?? 0), 0) * 1000) / 1000} → ${Math.round(sum * 1000) / 1000}kg`);
-      return next;
-    }
-    return runTransaction(db, async (tx) => {
-      const ref = doc(db, 'items', rawItemId);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error(`원료 품목 없음: ${rawItemId}`);
-      const d = snap.data();
-      const next = transform(Array.isArray(d.lots) ? d.lots : [], Number(d.stock ?? 0));
-      const clean = JSON.parse(JSON.stringify(next));   // undefined 필드 제거 — Firestore가 거부한다
-      //  lotsAreTotal 원료는 stock을 로트합으로 덮지 않는다(로트=통합, stock=벌크만)
-      const patch: any = { lots: clean };
-      if (computeStock && !d.lotsAreTotal) patch.stock = computeStock(next);
-      tx.update(ref, patch);
-      return next;
-    });
-  },
   updateItem: async (col, id, data: any) => {
     if (col === 'orders') return undefined;               // 가짜 주문 — DB에 안 남긴다
     if (col === 'items') { remember(id); if (APPLY) await updateDoc(doc(db, col, id), data); }

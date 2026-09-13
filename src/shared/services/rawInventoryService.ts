@@ -211,6 +211,8 @@ export async function executeRawInventoryCommand(
     const 원본스냅 = originalSnap?.exists() ? originalSnap : oldOriginalSnap?.exists() ? oldOriginalSnap : null;
     const original = 원본스냅 ? normalizeRawMovement(원본스냅.data()) : null;
     const guard = guardSnap?.exists() ? (guardSnap.data() as ReversalGuard) : null;
+    const 원장전용 = command.kind === 'ledger-consume'
+      || (command.kind === 'reverse' && original?.kind === 'ledger-consume');
 
     /**
      * **상태 문서가 없는데 품목엔 로트가 있으면 멈춘다.**
@@ -218,7 +220,7 @@ export async function executeRawInventoryCommand(
      * 이관(설계 §15 4단계)을 안 돌린 원료다 — `scripts/migrate-raw-inventories.mts` 를 먼저.
      */
     const 품목로트 = (itemSnap?.data()?.lots ?? []) as unknown[];
-    if (!state && 품목로트.length > 0) {
+    if (!state && (품목로트.length > 0 || 원장전용)) {
       return { status: 'rejected', code: 'NOT_MIGRATED', message: `이관 안 된 원료다(rawInventories 문서 없음): ${invId}` };
     }
 
@@ -232,7 +234,7 @@ export async function executeRawInventoryCommand(
      * `lotsAreTotal` 원료(볶음참깨)는 원래 둘이 다른 숫자라 안 본다 — stock 을 덮지도 않는다.
      * 어느 쪽이 맞는지는 코드가 못 정한다. 사람이 실사로 정하고 나서 다시 부른다.
      */
-    if (mirror && command.kind !== 'stocktake' && itemSnap?.exists() && !itemSnap.data()?.lotsAreTotal) {
+    if (mirror && !원장전용 && command.kind !== 'stocktake' && itemSnap?.exists() && !itemSnap.data()?.lotsAreTotal) {
       const 품목재고 = Number(itemSnap.data()?.stock ?? 0);
       const 상태재고 = state?.stockKg ?? 0;
       if (Math.abs(품목재고 - 상태재고) > MIRROR_TOLERANCE_KG) {
@@ -255,7 +257,7 @@ export async function executeRawInventoryCommand(
     tx.set(stateRef, stripUndefined(result.state));
     tx.set(movementRef, stripUndefined(toLedgerDoc(result.movement, options.legacy)));
     if (result.guard) tx.set(guardRef, stripUndefined(result.guard));
-    if (mirror && itemSnap?.exists()) {
+    if (mirror && !원장전용 && itemSnap?.exists()) {
       //  화면이 보는 `lots` 는 활성·소진이 한 배열이다. 활성을 앞에 둬야 FIFO 순서가 산다.
       const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
       const patch: Record<string, unknown> = { lots: stripUndefined(lots) };

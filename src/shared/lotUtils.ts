@@ -278,19 +278,20 @@ export function withCarryOverProductLot(
   currentQty: number,
   material: string,
   unitKg: number,
+  carryOver?: { id: string; createdAt: string; receivedDate: string },
 ): RawMaterialLot[] {
   if (lots.length > 0) return lots;
   const qty = round3(currentQty);
   if (qty <= 0) return lots;
   return [{
-    id: `lot-carry-${material}-${Date.now()}`,
+    id: carryOver?.id ?? `lot-carry-${material}-${Date.now()}`,
     material,
     supplierName: '이월',
     qtyIn: qty, qtyRemaining: qty, unitKg,
     kgIn: round3(qty * unitKg), kgRemaining: round3(qty * unitKg),
-    receivedDate: todayStr(),
+    receivedDate: carryOver?.receivedDate ?? todayStr(),
     status: 'active',
-    createdAt: new Date().toISOString(),
+    createdAt: carryOver?.createdAt ?? new Date().toISOString(),
   }];
 }
 
@@ -318,6 +319,7 @@ export interface ProductLotTake {
 export function deductLotsByQty(
   lots: RawMaterialLot[],
   qtyToUse: number,
+  carryOver?: { id: string; createdAt: string; receivedDate: string },
 ): { lots: RawMaterialLot[]; distribution: ProductLotTake[]; shortageQty: number } {
   let remaining = round3(qtyToUse);
   const next = lots.map(l => ({ ...l }));
@@ -341,9 +343,10 @@ export function deductLotsByQty(
     let bIdx = next.findIndex(l => l.supplierName === '이월');
     if (bIdx < 0) {
       next.push({
-        id: `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: carryOver?.id ?? `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         supplierName: '이월', kgIn: 0, kgRemaining: 0, qtyIn: 0, qtyRemaining: 0,
-        receivedDate: todayStr(), status: 'active', createdAt: new Date().toISOString(),
+        receivedDate: carryOver?.receivedDate ?? todayStr(), status: 'active',
+        createdAt: carryOver?.createdAt ?? new Date().toISOString(),
       } as RawMaterialLot);
       bIdx = next.length - 1;
     }

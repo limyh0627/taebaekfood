@@ -66,6 +66,40 @@ describe('원료 재고 코어 — 등식', () => {
   });
 });
 
+describe('원장 전용 사용 — 임가공 완제품', () => {
+  it('사용 이력만 남기고 원료 재고와 로트는 그대로 둔다', () => {
+    const 입고 = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));
+    const beforeLots = JSON.stringify(입고.state.activeLots);
+    const 사용 = 적용(입고.state, 명령({
+      operationId: 'oem-use-1', kind: 'ledger-consume', kg: 30,
+      source: { type: 'oem', id: 'order-1' },
+    } as never));
+
+    expect(사용.state.stockKg).toBe(100);
+    expect(JSON.stringify(사용.state.activeLots)).toBe(beforeLots);
+    expect(사용.movement).toMatchObject({
+      kind: 'ledger-consume', reportedDeltaKg: -30, appliedDeltaKg: 0,
+      balanceAfterKg: 100, lotChanges: [], sequence: 2,
+    });
+  });
+
+  it('reverse도 원료 재고를 움직이지 않고 반대 원장 이력만 남긴다', () => {
+    const 입고 = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));
+    const 사용 = 적용(입고.state, 명령({
+      operationId: 'oem-use-1', kind: 'ledger-consume', kg: 30,
+    } as never));
+    const 취소 = 적용(사용.state, 명령({
+      operationId: 'reverse:oem-use-1', kind: 'reverse', originalOperationId: 'oem-use-1',
+    } as never), {}, 사용.movement);
+
+    expect(취소.state.stockKg).toBe(100);
+    expect(취소.movement).toMatchObject({
+      kind: 'reverse', reversalOf: 'oem-use-1',
+      reportedDeltaKg: 30, appliedDeltaKg: 0, lotChanges: [],
+    });
+  });
+});
+
 describe('revision 규칙 (설계 §4)', () => {
   it('applied 에서만 +1 · 언제나 최신 sequence 와 같다', () => {
     const a = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));
@@ -517,6 +551,7 @@ describe('빈 입력을 거절한다', () => {
     ['입고 0', 명령({ kg: 0 })],
     ['입고 음수', 명령({ kg: -5 })],
     ['사용 0', 명령({ kind: 'consume', kg: 0 } as never)],
+    ['원장 전용 사용 0', 명령({ kind: 'ledger-consume', kg: 0 } as never)],
   ])('%s', (_, cmd) => {
     const r = applyRawCommand({ state: 상태(), command: cmd, det: { now: NOW, newLotId: 'L1' } });
     expect(r.status).toBe('rejected');

@@ -129,6 +129,36 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
     if (rev2.status === 'rejected') expect(rev2.code).toBe('ALREADY_REVERSED');
   });
 
+  it('임가공 원장 사용과 취소는 이력만 쓰고 품목·원료 로트를 움직이지 않는다', async () => {
+    await executeRawInventoryCommand(명령({ operationId: 'in-oem', kg: 100 }));
+    const stateId = inventoryDocId('taebaek', 'raw-x');
+    const itemBefore = JSON.stringify(store.get('items/raw-x'));
+    const lotsBefore = JSON.stringify(store.get(`rawInventories/${stateId}`)?.activeLots);
+
+    const used = await executeRawInventoryCommand(명령({
+      operationId: 'oem-use-1', kind: 'ledger-consume', kg: 30,
+      source: { type: 'oem', id: 'order-1' },
+    } as never));
+    expect(used.status).toBe('applied');
+    expect(JSON.stringify(store.get('items/raw-x'))).toBe(itemBefore);
+    expect(store.get(`rawInventories/${stateId}`)).toMatchObject({ stockKg: 100, revision: 2 });
+    expect(JSON.stringify(store.get(`rawInventories/${stateId}`)?.activeLots)).toBe(lotsBefore);
+    expect(store.get(`rawMaterialLedger/${operationDocId('oem-use-1')}`)).toMatchObject({
+      kind: 'ledger-consume', used: 30, received: 0, appliedDeltaKg: 0,
+    });
+
+    const reversed = await executeRawInventoryCommand(명령({
+      operationId: 'reverse:oem-use-1', kind: 'reverse', originalOperationId: 'oem-use-1',
+    } as never));
+    expect(reversed.status).toBe('applied');
+    expect(JSON.stringify(store.get('items/raw-x'))).toBe(itemBefore);
+    expect(store.get(`rawInventories/${stateId}`)).toMatchObject({ stockKg: 100, revision: 3 });
+    expect(JSON.stringify(store.get(`rawInventories/${stateId}`)?.activeLots)).toBe(lotsBefore);
+    expect(store.get(`rawMaterialLedger/${operationDocId('reverse:oem-use-1')}`)).toMatchObject({
+      kind: 'reverse', used: 0, received: 30, appliedDeltaKg: 0, reversalOf: 'oem-use-1',
+    });
+  });
+
   it('lotsAreTotal 원료는 items.stock 을 안 덮는다', async () => {
     store.set('items/raw-x', 품목('raw-x', { lotsAreTotal: true, stock: 42 }));
     await executeRawInventoryCommand(명령({ kg: 5 }));

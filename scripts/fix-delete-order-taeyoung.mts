@@ -5,7 +5,7 @@
 // 그대로 남는다. 이 주문은 3박스를 생산 처리했으니 낱개·부자재가 빠져 있다.
 // 엔진으로 PENDING까지 되돌린(출고취소 → 생산취소) 뒤에 지운다.
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, deleteDoc, setDoc, updateDoc, runTransaction } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createOrderStockEngine } from '../src/features/admin/orderStockEngine';
@@ -66,17 +66,6 @@ const engine = createOrderStockEngine({
   allItems: live, submaterials: [], partners: [], allOrders: [order], orders: [order], db,
   buildFormula: (k: string) => buildFormula(k, formulas as any, live as any),
   createProductionRecordsForOrder: async () => {},
-  mutateRawMaterialLots: async (rawItemId, transform, computeStock) => runTransaction(db, async (tx) => {
-    const ref = doc(db, 'items', rawItemId);
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error(`원료 품목 없음: ${rawItemId}`);
-    const d = snap.data();
-    const next = transform(Array.isArray(d.lots) ? d.lots : [], Number(d.stock ?? 0));
-    const patch: any = { lots: JSON.parse(JSON.stringify(next)) };
-    if (computeStock && !d.lotsAreTotal) patch.stock = computeStock(next);
-    tx.update(ref, patch);
-    return next;
-  }),
   updateItem: async (col, id, data: any) => { if (col !== 'orders') await updateDoc(doc(db, col, id), data); return undefined; },
   addItem: async () => undefined,
 });

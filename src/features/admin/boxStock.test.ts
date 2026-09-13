@@ -22,10 +22,12 @@ const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
  */
 const store = vi.hoisted(() => ({ stock: new Map<string, number>() }));
 vi.mock('firebase/firestore', () => ({
-  doc: (_db: unknown, _col?: string, id?: string) => ({ id }),
+  doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
-  getDoc: async () => ({ exists: () => false }),
+  getDoc: async (ref: any) => ref.col === 'items'
+    ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id) }) }
+    : { exists: () => false, data: () => undefined },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ({
       exists: () => store.stock.has(ref.id),
@@ -49,6 +51,9 @@ const 낱개 = (stock: number) => mk({
 const 박스10 = (stock: number) => mk({
   id: 'box10', name: '볶음참깨/1kg (10개입)', type: 'product', unit: '박스', spec: '10kg', stock,
 });
+const 박스20 = (stock: number) => mk({
+  id: 'box20', name: '볶음참깨/1kg (20개입)', type: 'product', unit: '박스', spec: '20kg', stock,
+});
 
 /**
  * 구성은 item_bom이 유일 원천이다 — 품목에 붙이던 submaterials는 없앴다.
@@ -60,7 +65,10 @@ const bom = (parent: string, child: string, quantity: number) => ({ parent_id: p
 const BOMS = [bom('loose', 'bulk', 1), bom('box10', 'loose', 10), bom('box20', 'loose', 20)];
 
 /** 엔진을 실제로 돌린다. updateItem이 items·order를 그 자리에서 고쳐 앱의 리렌더를 흉내낸다. */
-function harness(items: Item[], order: Order) {
+function harness(
+  items: Item[], order: Order,
+  buildFormula: (key: string) => { raw: string; ratio: number }[] = () => [],
+) {
   const rawUsed: Record<string, number> = {};
   setBomIndex(buildBomIndex(items, BOMS));
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
@@ -72,9 +80,8 @@ function harness(items: Item[], order: Order) {
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
-    buildFormula: () => [],                       // 원료식 폴백은 이 테스트의 관심사가 아니다(BOM 경로만 본다)
+    buildFormula,
     createProductionRecordsForOrder: async () => {},
-    mutateRawMaterialLots: async (rawItemId, transform) => { transform([], 0); rawUsed[rawItemId] = (rawUsed[rawItemId] ?? 0) + 1; return []; },
     runRawInventoryJob: async input => {
       const result = await runRawJob(input);
       for (const r of result.results) {
@@ -99,7 +106,7 @@ function harness(items: Item[], order: Order) {
     if (v !== undefined) it.stock = v;
     return it.stock;
   };
-  return { engine, stockOf, rawUsed, ledger: ledger.entries };
+  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger };
 }
 
 const 주문 = (boxes: number): Order => ({
@@ -107,7 +114,11 @@ const 주문 = (boxes: number): Order => ({
   items: [{ itemId: 'box10', name: '볶음참깨/1kg (10개입)', quantity: boxes * 10, isBoxUnit: true, boxQuantity: boxes } as any],
 } as unknown as Order);
 
-beforeEach(() => { ledger.entries.length = 0; });
+beforeEach(() => {
+  ledger.entries.length = 0;
+  // BOM 색인은 모듈 전역이다. 앞 시험이 다른 품목의 색인을 심어도 다음 시험까지 새면 안 된다.
+  setBomIndex(buildBomIndex([벌크(), 낱개(0), 박스10(0), 박스20(0)], BOMS));
+});
 
 describe('박스 재고가 있으면 그걸 먼저 쓴다', () => {
   it('박스 32 · 1박스 주문 → 박스 31, 낱개 그대로, 원료 안 나감', async () => {
@@ -242,6 +253,49 @@ describe('되돌리기는 실제 생산분만 되돌린다', () => {
 
     expect(stockOf('box10')).toBe(32);      // +1(출고취소) −1(생산취소)
     expect(stockOf('loose')).toBe(0);       // +10(BOM 복원) −10(먼저 만든 것 취소)
+  });
+});
+
+describe('임가공 판매의 원료수불부 기록', () => {
+  it('원료 로트는 그대로 두고 사용 이력을 남기며 생산 취소는 그 이력만 역분개한다', async () => {
+    const raw = mk({
+      id: 'raw-oem', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 500,
+      lots: [{
+        id: 'raw-lot', supplierName: '기존', receivedDate: '2026-09-01',
+        qtyIn: 0, kgIn: 500, kgRemaining: 500, status: 'active', createdAt: '',
+      }],
+    });
+    const product = mk({
+      id: 'oem-product', name: '임가공 볶음참깨', type: 'product',
+      procureType: '임가공', spec: '1kg', stock: 10,
+    });
+    const order = {
+      id: 'oem-order', partnerName: '임가공 거래처', status: OrderStatus.PENDING,
+      items: [{ itemId: product.id, name: product.name, quantity: 3 }],
+    } as unknown as Order;
+    setBomIndex(buildBomIndex([raw, product], []));
+    const { engine, stockOf, rawLedger } = harness(
+      [raw, product], order,
+      () => [{ raw: '볶음참깨', ratio: 1 }],
+    );
+
+    await engine.reconcileOrderStock(order, OrderStatus.DISPATCHED);
+
+    const operationId = 'production-ledger:oem-order:a1:raw-oem';
+    expect(stockOf('raw-oem')).toBe(500);
+    expect(rawLedger.get(operationId)).toMatchObject({
+      kind: 'ledger-consume', used: 3, appliedDeltaKg: 0, lotChanges: [],
+    });
+    expect(order.rawConsumedLots).toEqual([expect.objectContaining({
+      material: '볶음참깨', rawItemId: 'raw-oem', operationId, kg: 3, ledgerOnly: true,
+    })]);
+
+    await engine.reconcileOrderStock(order, OrderStatus.PENDING);
+
+    expect(stockOf('raw-oem')).toBe(500);
+    expect(rawLedger.get(`reverse:${operationId}`)).toMatchObject({
+      kind: 'reverse', received: 3, appliedDeltaKg: 0, reversalOf: operationId,
+    });
   });
 });
 

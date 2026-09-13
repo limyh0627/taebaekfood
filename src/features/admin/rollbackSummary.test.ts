@@ -37,7 +37,20 @@ describe('되돌리기 안내문', () => {
     expect(p.text).toContain('시골향참기름/A/1750ml 1750ml * 10 −3');
     expect(p.text).toContain('깨분참기름 40kg');       // 같은 원료는 합쳐 적는다
     expect(p.text).toContain('통깨참기름 9.618kg');
-    expect(p.text).toContain('원료수불부에 적힌 그 사용 줄도 함께 지워집니다');
+    expect(p.text).toContain('원료수불부에는 사용 취소 이력이 뒤에 기록됩니다');
+  });
+
+  it('임가공 원장 전용 줄은 로트 복원으로 안내하지 않는다', () => {
+    const p = buildRollbackPlan(order({
+      producedAt: '2026-09-13T00:00:00.000Z',
+      rawConsumedLots: [{
+        material: '볶음참깨', rawItemId: 'raw-oem', operationId: 'oem-use-1',
+        supplierName: '임가공', kg: 30, ledgerOnly: true,
+      }],
+    }), items, OrderStatus.DISPATCHED, OrderStatus.PENDING);
+    expect(p.text).toContain('임가공 사용 기록만 취소됩니다: 볶음참깨 30kg');
+    expect(p.text).toContain('실물 수량은 여기서 다시 움직이지 않습니다');
+    expect(p.text).not.toContain('원료가 로트로 되돌아갑니다');
   });
 
   it('먼저 만들었던 구성품도 알린다', () => {

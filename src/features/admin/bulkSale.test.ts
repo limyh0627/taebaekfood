@@ -44,14 +44,6 @@ function harness(items: Item[], order: Order) {
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order], db: {} as any,
     buildFormula: () => [],
     createProductionRecordsForOrder: async () => {},
-    mutateRawMaterialLots: async (id, transform, computeStock) => {
-      const next = transform((lotState.get(id) ?? []) as any, dbx.stock.get(id) ?? 0);
-      lotState.set(id, next as any);
-      //  진짜와 같게 — lotsAreTotal이면 stock을 로트합으로 안 덮는다
-      const it = items.find(x => x.id === id);
-      if (computeStock && !(it as any)?.lotsAreTotal) dbx.stock.set(id, computeStock(next as any));
-      return next;
-    },
     runRawInventoryJob: runRawJob,
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') { Object.assign(order, data); dbx.orders.set(id, { ...(dbx.orders.get(id) ?? {}), ...data }); }

@@ -24,6 +24,14 @@ function makeDeps() {
     adjustRawLots: async (o: any) => { rawCalls.push(o); },
     updateItem: async (c: string, id: string, d: any) => { updates.push({ c, id, d }); },
     addItem: async (c: string, d: any) => { adds.push({ c, d }); return d.id; },
+    applyOemReceiptInventory: async (input: any) => {
+      for (const row of input.items) {
+        const current = items.find(item => item.id === row.itemId)?.stock ?? 0;
+        updates.push({ c: 'items', id: row.itemId, d: { stock: current + row.qty, ...(row.lot ? { lots: [row.lot] } : {}) } });
+      }
+      updates.push({ c: 'purchaseOrders', id: input.poId, d: input.poPatch });
+      return 'applied';
+    },
     // 원료식 — 볶음참깨 완제품은 전량 '볶음참깨' 원료로 잡힌다
     buildFormula: (key: string) => (/볶음참깨/.test(key) ? [{ raw: '볶음참깨', ratio: 1 }] : []),
   };

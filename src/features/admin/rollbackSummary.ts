@@ -102,11 +102,19 @@ export function buildRollbackPlan(
   }
 
   const raw = order.rawConsumedLots ?? [];
-  if (undoProduction && raw.length) {
+  const rawLots = raw.filter(r => !r.ledgerOnly);
+  const ledgerOnly = raw.filter(r => r.ledgerOnly);
+  if (undoProduction && rawLots.length) {
     const byMat = new Map<string, number>();
-    for (const r of raw) byMat.set(r.material, fmt((byMat.get(r.material) ?? 0) + Number(r.kg || 0)));
+    for (const r of rawLots) byMat.set(r.material, fmt((byMat.get(r.material) ?? 0) + Number(r.kg || 0)));
     lines.push(`· 원료가 로트로 되돌아갑니다: ${[...byMat].map(([m, kg]) => `${m} ${fmt(kg)}kg`).join(', ')}`);
-    lines.push(`  원료수불부에 적힌 그 사용 줄도 함께 지워집니다`);
+    lines.push(`  원료수불부에는 사용 취소 이력이 뒤에 기록됩니다`);
+  }
+  if (undoProduction && ledgerOnly.length) {
+    const byMat = new Map<string, number>();
+    for (const r of ledgerOnly) byMat.set(r.material, fmt((byMat.get(r.material) ?? 0) + Number(r.kg || 0)));
+    lines.push(`· 임가공 사용 기록만 취소됩니다: ${[...byMat].map(([m, kg]) => `${m} ${fmt(kg)}kg`).join(', ')}`);
+    lines.push(`  완제품 로트에서 이미 처리된 실물 수량은 여기서 다시 움직이지 않습니다`);
   }
 
   if (undoProduction && (order.autoBuilt ?? []).length) {

@@ -18,8 +18,7 @@ import { OrderStatus, type Item, type Order } from '../../shared/types';
 const dbx = vi.hoisted(() => ({
   stock: new Map<string, number>(),
   orders: new Map<string, any>(),
-  /** 재고를 만진 횟수 — `reconcileOrderStock` 은 클로저 안 함수라 스파이가 안 물린다.
-   *  트랜잭션이 돌았는지로 센다. 그게 곧 "재고를 건드렸나"다. */
+  /** 재고 DB 경계를 지난 횟수 — 예약 transaction과 최종 반영 transaction을 센다. */
   조정: 0,
   /** getDoc 을 느리게 — 겹쳐 들어오는 호출을 만들려면 안에서 시간이 흘러야 한다 */
   느린읽기: false,
@@ -30,6 +29,9 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: async () => {},
   getDoc: async (ref: any) => {
     if (dbx.느린읽기) await new Promise(r => setTimeout(r, 10));
+    if (ref.col === 'items') {
+      return { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) };
+    }
     return { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) };
   },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => (dbx.조정++, fn)({
@@ -62,7 +64,6 @@ function harness(items: Item[], order: Order) {
     db: {} as any,
     buildFormula: () => [],
     createProductionRecordsForOrder: async () => {},
-    mutateRawMaterialLots: async () => [],
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') {
         주문쓰기.push(data);
@@ -142,7 +143,8 @@ describe('③ 이미 배송완료된 주문은 재고를 다시 안 만진다', 
 
     await engine.changeOrderStatus('o1', OrderStatus.DELIVERED);
 
-    expect(조정()).toBe(1);
+    // 기존 재고 예약 1회 + 실제 재고 확정 1회다.
+    expect(조정()).toBe(2);
   });
 });
 

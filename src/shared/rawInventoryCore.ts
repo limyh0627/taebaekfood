@@ -95,7 +95,9 @@ export interface LotChange {
   lotSnapshot: RawMaterialLot;
 }
 
-export type RawMovementKind = 'receive' | 'consume' | 'stocktake' | 'deplete-lot' | 'reverse' | 'opening';
+export type RawMovementKind =
+  | 'receive' | 'consume' | 'ledger-consume'
+  | 'stocktake' | 'deplete-lot' | 'reverse' | 'opening';
 
 /**
  * **변경 이력이자 중복 방지 표다.** `rawMaterialLedger/{operationDocId}`.
@@ -171,7 +173,7 @@ export interface RawInventoryJob {
 
 export type RawSourceType =
   | 'purchase' | 'production' | 'manual' | 'adjustment'
-  | 'stocktake' | 'lot-delete' | 'reversal' | 'opening';
+  | 'stocktake' | 'lot-delete' | 'reversal' | 'opening' | 'oem';
 
 interface CommandBase {
   /** 같은 id + 같은 내용은 한 번만 먹는다. 같은 id 인데 다른 내용이면 `conflict`(§7). */
@@ -206,6 +208,8 @@ export interface ReceiveLotInput {
 export type RawInventoryCommand = CommandBase & (
   | { kind: 'receive'; kg: number; lot: ReceiveLotInput }
   | { kind: 'consume'; kg: number; mix?: { topPercent: number } }
+  /** 임가공 완제품 출고처럼 실물은 완제품 로트에서 빠지고 원료수불부에만 사용량을 남기는 경우. */
+  | { kind: 'ledger-consume'; kg: number }
   | { kind: 'stocktake'; targetKg: number }
   | { kind: 'deplete-lot'; lotId: string }
   | { kind: 'reverse'; originalOperationId: string }
@@ -302,6 +306,8 @@ function hashPayload(c: RawInventoryCommand): Record<string, unknown> {
       return { ...base, kg: r3(c.kg), supplierName: c.supplierName ?? '' };
     case 'consume':
       return { ...base, kg: r3(c.kg), mix: c.mix ?? null };
+    case 'ledger-consume':
+      return { ...base, kg: r3(c.kg) };
     case 'stocktake':
       return { ...base, targetKg: r3(c.targetKg) };
     case 'deplete-lot':
@@ -502,8 +508,9 @@ export function applyRawCommand(input: {
   const backdated = c.backdatedIntent === 'before' ? true
     : c.backdatedIntent === 'after' ? false
     : 시각소급;
-  const skipBackdated = (kind: RawMovementKind, reportedDeltaKg: number): RawApplyResult => {
-    //  소급 이력도 `revision` 은 올린다(설계 §4·§10). 잔량만 안 움직인다.
+  const recordWithoutStock = (
+    kind: RawMovementKind, reportedDeltaKg: number, backdatedBeforeStocktake = false,
+  ): RawApplyResult => {
     return {
       status: 'applied',
       state: { ...state, revision: sequence, lastProcessedAt: det.now },
@@ -513,10 +520,13 @@ export function applyRawCommand(input: {
         appliedDeltaKg: 0,
         balanceAfterKg: state.stockKg,
         lotChanges: [],
-        backdatedBeforeStocktake: true,
+        ...(backdatedBeforeStocktake ? { backdatedBeforeStocktake: true } : {}),
       },
     };
   };
+  //  소급 이력도 `revision` 은 올린다(설계 §4·§10). 잔량만 안 움직인다.
+  const skipBackdated = (kind: RawMovementKind, reportedDeltaKg: number): RawApplyResult =>
+    recordWithoutStock(kind, reportedDeltaKg, true);
 
   const working = [...state.activeLots];
 
@@ -556,6 +566,14 @@ export function applyRawCommand(input: {
         ? { id: det.carryOverLotId, createdAt: det.now, receivedDate: c.effectiveAt.slice(0, 10) }
         : undefined);
       return commit('consume', after, changesBetween(working, after), -kg);
+    }
+
+    case 'ledger-consume': {
+      const kg = r3(c.kg);
+      if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '원장 사용 수량은 0보다 커야 한다' };
+      // 임가공 완제품은 자기 제품 로트에서 이미 빠진다. 원료 로트를 또 빼면 이중 차감이므로
+      // 현재 상태는 그대로 두고, 원료수불부가 읽을 사용 이력만 한 순번으로 남긴다.
+      return recordWithoutStock('ledger-consume', -kg);
     }
 
     case 'stocktake': {
