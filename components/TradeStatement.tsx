@@ -13,7 +13,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw, RotateCcw, Trash2, Landmark
+  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2, Landmark
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
@@ -25,7 +25,7 @@ import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { buildStatementCommand, checkStatementCommand, type StatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
 import { withDocNames } from '../src/shared/docName';
-import { 서류당사자ById } from '../src/shared/docParty';
+import { 서류당사자ById, 서류당사자스냅샷우선 } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,
@@ -42,6 +42,11 @@ import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import RecurringModal from './voucher/RecurringModal';
 import VoucherComposer from './voucher/VoucherComposer';
+import StatementCompanyDialog from '../src/features/statements/ui/StatementCompanyDialog';
+import StatementHistoryFilters from '../src/features/statements/ui/StatementHistoryFilters';
+import StatementHistoryActions from '../src/features/statements/ui/StatementHistoryActions';
+import StatementHistoryPagination from '../src/features/statements/ui/StatementHistoryPagination';
+import StatementComposerHeader from '../src/features/statements/ui/StatementComposerHeader';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
@@ -101,7 +106,7 @@ interface TradeStatementProps {
   onApplyStatement?: (input: {
     command: StatementCommand;
     statement: IssuedStatement;
-    costUpdates: { itemId: string; price: number }[];
+    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];
     poIds: string[];
     newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];
   }) => Promise<'applied' | 'duplicate'>;
@@ -702,21 +707,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
   // 계좌 관리 모달 (장부에서 흡수)
-  // 거래명세서(매출/매입) 생성 드롭다운
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const createMenuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!createMenuOpen) return;
-    const h = (e: MouseEvent) => { if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) setCreateMenuOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [createMenuOpen]);
-
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [companyForm, setCompanyForm] = useState<CompanyInfo>({
-    name: '', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '', fax: '', email: '',
-  });
 
   // ── 세금계산서 탭 ──
   const taxPrintRef = useRef<HTMLDivElement>(null);
@@ -1283,6 +1275,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
+  const partySnapshot = useMemo(() => {
+    const { sup, buy } = 서류당사자ById({
+      isSale: stmtType === '매출', companyInfo, partners,
+      partnerId: selectedClientId, partnerName: selectedClient?.name,
+    });
+    return { supplier: sup, buyer: buy };
+  }, [stmtType, companyInfo, partners, selectedClientId, selectedClient]);
 
   // ── 발행 처리 ──
   /**
@@ -1297,8 +1296,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     statementId: issueIdentityRef.current?.id ?? 'preview',
     partnerId: selectedClientId, partnerName: selectedClient?.name,
     tradeDate, type: stmtType, docNo, memo: stmtMemo,
-    orderIds: selectedOrderIds, lines: lineItems,
-  })), [selectedClientId, selectedClient, tradeDate, stmtType, docNo, stmtMemo, selectedOrderIds, lineItems]);
+    orderIds: selectedOrderIds, lines: lineItems, partySnapshot,
+  })), [selectedClientId, selectedClient, tradeDate, stmtType, docNo, stmtMemo, selectedOrderIds, lineItems, partySnapshot]);
   const 걸린줄들 = (code: StatementRejectionCode) =>
     발행검사.rejections.find(r => r.code === code)?.lineNames ?? [];
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
@@ -1358,6 +1357,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       totalSupply,
       totalTax,
       totalAmount,
+      partySnapshot,
       items: lineItems.map(i => ({
         ...(i.itemId ? { itemId: i.itemId } : {}),
         //  품목 줄인가 계정 줄인가 — 전표를 다시 읽을 때 "왜 id 가 없나" 를 되짚을 수 있게
@@ -1400,15 +1400,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const command = buildStatementCommand({
       statementId: stmt.id, partnerId: selectedClientId, partnerName: selectedClient?.name,
       tradeDate, type: stmtType, docNo: stmt.docNo, memo: stmtMemo,
-      orderIds: selectedOrderIds, lines: lineItems,
+      orderIds: selectedOrderIds, lines: lineItems, partySnapshot,
     });
     //  전표에 찍힌 단가·계정이 품목 원가로 가는 것(매입)은 명령과 같이 커밋한다.
-    const { costUpdates } = partnerPriceWrites({
+    const { costUpdates: 계산된원가 } = partnerPriceWrites({
       type: stmtType, partnerId: selectedClientId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
       isLatest: isLatestForPartner({ this: { id: editingStmt?.id, partnerId: selectedClientId, type: stmtType, tradeDate }, all: mergedStatements }),
     });
 
+    const costUpdates = 계산된원가.map(c => ({
+      ...c,
+      beforeCost: Number(allItems.find(i => i.id === c.itemId)?.cost ?? 0),
+      sourceLineIndex: lineItems.findIndex(line => line.itemId === c.itemId),
+    }));
     const 결과 = await onApplyStatement({
       command, statement: stmt, costUpdates,
       poIds: stmtType === '매입' ? loadedPoIds : [],
@@ -1494,8 +1499,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       totalSupply,
       totalTax,
       totalAmount,
+      partySnapshot,
       items: lineItems.map(i => ({
         ...(i.itemId ? { itemId: i.itemId } : {}),
+        ...(i.lineKind ? { lineKind: i.lineKind } : {}),
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
@@ -1521,7 +1528,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
   };
 
-  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '', partnerIdStr = '') => {
+  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '', partnerIdStr = '', snapshot?: IssuedStatement['partySnapshot']) => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
     const yyyy = m ? m[1] : '';
     const mmN  = m ? m[2] : '';
@@ -1535,7 +1542,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  다 안 들어가냐"). 전에는 거래처 쪽이 이름과 전화만이었고 사업자번호·대표자·
     //  주소·팩스가 빈 문자열로 박혀 있었다. shared/docParty 가 양쪽을 같은 규칙으로 낸다.
     //  거래처는 **id 로 찾는다** — 이름으로 찾으면 같은 이름이 둘일 때 엉뚱한 곳이 걸린다.
-    const { sup: 파는쪽, buy: 사는쪽 } = 서류당사자ById({
+    const { sup: 파는쪽, buy: 사는쪽 } = 서류당사자스냅샷우선(snapshot, {
       isSale, companyInfo: ci, partners, partnerId: partnerIdStr, partnerName: partner,
     });
     const supName = 파는쪽.name, supCeo = 파는쪽.ceo, supBizNo = 파는쪽.bizNo;
@@ -1754,7 +1761,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const handlePrint = () => {
-    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '');
+    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot);
     printViaIframe(html, `${stmtType}전표`);
     // 인쇄는 '출력'만 — 발행(저장)은 '저장' 버튼(markIssued) 한 곳에서만. 저장된 전표만 인쇄 가능.
   };
@@ -1762,7 +1769,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId);
+    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId, stmt.partySnapshot);
     printViaIframe(html, `${stmt.type}전표`);
   };
 
@@ -2219,45 +2226,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
            꺼진 코드를 남겨 두면 **살아 있는 줄 알고 고치게 된다** (실제로 그랬다). */}
 
       {/* ── 회사 정보 설정 모달 ── */}
-      {showCompanyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <span className="font-black text-slate-900">회사 정보 설정</span>
-              <button onClick={() => setShowCompanyModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={18}/></button>
-            </div>
-            <div className="px-6 py-5 space-y-3">
-              {([
-                { key: 'name', label: '상호 (회사명)', placeholder: '(주)회사명' },
-                { key: 'bizNo', label: '사업자등록번호', placeholder: '000-00-00000' },
-                { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
-                { key: 'address', label: '사업장 주소', placeholder: '경기도 ...' },
-                { key: 'bizType', label: '업태', placeholder: '제조업' },
-                { key: 'bizItem', label: '종목', placeholder: '식품 제조·판매' },
-                { key: 'phone', label: '전화번호', placeholder: '031-000-0000' },
-                { key: 'fax', label: '팩스번호', placeholder: '031-000-0000' },
-                { key: 'email', label: '이메일', placeholder: 'info@company.com' },
-              ] as { key: keyof CompanyInfo; label: string; placeholder: string }[]).map(f => (
-                <div key={f.key} className="grid grid-cols-3 items-center gap-3">
-                  <label className="text-xs font-black text-slate-500 text-right">{f.label}</label>
-                  <input type="text" placeholder={f.placeholder}
-                    value={companyForm[f.key] ?? ''}
-                    onChange={e => setCompanyForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                    className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 px-6 pb-5">
-              <button onClick={() => setShowCompanyModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={() => { onSaveCompanyInfo?.(companyForm); setShowCompanyModal(false); }}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 flex items-center justify-center gap-1.5">
-                <Save size={13}/>저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showCompanyModal && <StatementCompanyDialog initial={companyInfo}
+        onClose={() => setShowCompanyModal(false)} onSave={onSaveCompanyInfo}/>}
 
       {mainTab === 'history' && <>
 
@@ -2265,54 +2235,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           전표 화면은 전표를 끊는 곳이다. 같은 숫자를 두 곳에 두면 어느 쪽이 진짜인지 흐려진다. */}
 
       {/* 주문 목록과 같은 순서로 찾는다: 검색조건 → 거래유형 → 조회 결과 → 표. */}
-      <section className="relative overflow-visible rounded-lg border border-slate-200 bg-white" aria-labelledby="statement-query-title">
-        <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4">
-          <h3 id="statement-query-title" className="text-xs font-black text-slate-800">검색조건</h3>
-          <button type="button" onClick={resetHistoryFilters}
-            className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800">
-            <RotateCcw size={12}/>초기화
-          </button>
-        </div>
-        <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-500">전표일자</span>
-            <div className="flex flex-wrap items-center gap-2">
-          {(['당일','금주','당월','당년','ALL'] as const).map(p => (
-            <button key={p} onClick={()=>setQuickRange(p)}
-              className={`h-9 px-3 text-[11px] font-black border-y border-l first:rounded-l-md last:rounded-r-md last:border-r -mr-2 last:mr-0 transition-all ${
-                histQuick===p
-                  ? 'relative z-10 bg-slate-900 text-white border-slate-900'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}>{p}</button>
-          ))}
-          {/*  좁으면 한 줄을 통째로 쓴다 — 안 접히면 날짜 두 개가 카드 밖으로 나간다(2026-09-04 사장님) */}
-          <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-1">
-            <input type="date" value={histFrom} aria-label="조회 시작일"
-              onChange={e=>{setHistFrom(e.target.value);setHistQuick('');}}
-              className="h-9 bg-slate-50 border border-slate-200 rounded-md px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-            <span className="text-slate-300 text-xs">~</span>
-            <input type="date" value={histTo} aria-label="조회 종료일"
-              onChange={e=>{setHistTo(e.target.value);setHistQuick('');}}
-              className="h-9 bg-slate-50 border border-slate-200 rounded-md px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-            {/*  **◀▶ 를 붙여 오른쪽에 둔다**(2026-09-14 사장님: "< 버튼이 날짜 오른쪽으로
-                 넘어와서 <> 같이 있어야돼"). 하나는 앞, 하나는 뒤에 떨어져 있으니 날짜를
-                 사이에 두고 눈이 왔다 갔다 했다. 붙여 두면 한 손가락으로 앞뒤를 오간다. */}
-            <div className="flex shrink-0 items-center gap-1 sm:ml-0.5">
-              <button type="button" onClick={() => moveHistoryRange(-1)} disabled={!histFrom || !histTo}
-                aria-label="이전 기간" title="이전 기간"
-                className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-                <ChevronLeft size={15} strokeWidth={2.5}/>
-              </button>
-              <button type="button" onClick={() => moveHistoryRange(1)} disabled={!histFrom || !histTo}
-                aria-label="다음 기간" title="다음 기간"
-                className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-                <ChevronRight size={15} strokeWidth={2.5}/>
-              </button>
-            </div>
-          </div>
-            </div>
-          </div>
-          <span className="h-0 basis-full" aria-hidden="true"/>
+      <StatementHistoryFilters
+        quickRange={histQuick} from={histFrom} to={histTo} kind={histKind} kindCounts={historyKindCounts}
+        onQuickRange={setQuickRange}
+        onFrom={date => { setHistFrom(date); setHistQuick(''); }}
+        onTo={date => { setHistTo(date); setHistQuick(''); }}
+        onMove={moveHistoryRange} onKind={setHistKind} onReset={resetHistoryFilters}>
         {/* 거래처·계정과목·검색.
             버튼을 늘어놓으니 계정이 수십 개라 줄이 세 겹으로 접혔다. 고르는 값이 많고
             계층이 깊은 건 드롭다운이 맞다. 지금 무엇으로 거르는지는 옆 숨길에 적어 둔다. */}
@@ -2460,73 +2388,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
             </div>
           </label>
-        </div>
-      </section>
+      </StatementHistoryFilters>
 
-      <div role="tablist" className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="전표 거래유형 선택">
-        {(['전체','매출','매입','대체','입금','출금'] as const).map(kind => (
-          <button key={kind} type="button" role="tab" aria-selected={histKind === kind} onClick={() => setHistKind(kind)}
-            className={`flex min-h-10 shrink-0 items-center gap-1 border-b-2 px-3 text-xs font-black transition-colors ${
-              histKind === kind ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}>
-            <span>{kind}</span><span className="text-[9px] opacity-70">{historyKindCounts.get(kind) ?? 0}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <h3 className="text-xs font-black text-slate-800">조회 결과 <span className="text-indigo-600">{filteredHistory.length}건</span>
-          {isFetchingHistory && <span className="ml-2 text-[11px] text-indigo-400 animate-pulse">불러오는 중…</span>}
-        </h3>
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-        {/* ── 전표 발행 (solid) ── */}
-        {/* 거래명세서 — 매출/매입을 한 버튼에서 고른다 */}
-        <div className="relative" ref={createMenuRef}>
-          <button
-            onClick={() => setCreateMenuOpen(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm shadow-indigo-200 transition-all"
-          >
-            <Plus size={13} strokeWidth={3}/>거래명세서<ChevronDown size={12} strokeWidth={3} className="-ml-0.5 opacity-80"/>
-          </button>
-          {createMenuOpen && (
-            <div className="absolute left-0 top-full mt-1 z-20 bg-white rounded-xl shadow-xl border border-slate-100 p-1 w-28">
-              <button onClick={() => { setCreateMenuOpen(false); openCreate('매출'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs font-black text-blue-600 hover:bg-blue-50">매출전표</button>
-              <button onClick={() => { setCreateMenuOpen(false); openCreate('매입'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs font-black text-rose-600 hover:bg-rose-50">매입전표</button>
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => openCashModal('출금')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-teal-600 text-white hover:bg-teal-500 shadow-sm shadow-teal-200 transition-all"
-          title="일반전표 — 돈이 실제로 오간 것. 전기·임대 같은 비용, 수금·지불(미수/미지급 상계), 대출상환·급여"
-        >
-          <Plus size={13} strokeWidth={3}/>일반전표
-        </button>
-        {onGenerateRecurringCosts && (
-          <button
-            onClick={() => setShowRecurring(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 shadow-sm shadow-violet-200 transition-all"
-            title="전표 템플릿 — 목록 관리 · 매달 자동 발행 설정"
-          >
-            <RotateCw size={13} strokeWidth={3}/>템플릿
-          </button>
-        )}
-
-        {/* 구분선 */}
-        <div className="w-px h-6 bg-slate-200 mx-1 self-center"/>
-
-        {/* ── 도구 (soft) ── */}
-        {/* 계좌 관리 버튼은 뺐다 — 장부(현금출납장)가 계좌를 쥔다.
-            한 가지를 두 곳에서 고칠 수 있으면 어느 쪽이 진짜인지 흐려진다. */}
-        <button
-          onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
-          title="회사 정보 설정"
-        >
-          <Save size={13}/>회사정보
-        </button>
-        </div>
-      </div>
+      <StatementHistoryActions
+        resultCount={filteredHistory.length}
+        fetching={isFetchingHistory}
+        onCreateSale={() => openCreate('매출')}
+        onCreatePurchase={() => openCreate('매입')}
+        onCreateCash={() => openCashModal('출금')}
+        onOpenRecurring={onGenerateRecurringCosts ? () => setShowRecurring(true) : undefined}
+        onOpenCompany={() => setShowCompanyModal(true)}
+      />
 
       {/* ── 발행내역 테이블 ── */}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -2606,7 +2478,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <React.Fragment key={`cash__${row.entry.id}`}>
                     <tr
                       onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60 hover:bg-emerald-100/60' : 'bg-slate-50/60 hover:bg-slate-100/60'}`}>
+                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} hover:bg-slate-50`}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 align-middle">
@@ -2615,7 +2487,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         </span>
                       </td>
                       <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
-                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>
                         {fmt(shownAmt)}
                         {/* 계정으로 걸렀을 땐 그 계정 몫을 띄우되, 통장에서 나간 전액도 같이 밝힌다 */}
                         {partial && (
@@ -2679,7 +2551,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   return (
                     <React.Fragment key={`pay__${payKey}`}>
                     <tr
-                      className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
+                      className={`cursor-pointer transition-colors hover:bg-slate-50`}
                       onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payEntry?.createdAt ? ` ${payEntry.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2">
@@ -2838,7 +2710,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 return (
                   <div key={`m-cash-${row.entry.id}`}
                     onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                    className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60' : 'bg-slate-50/60'}`}>
+                    className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''} `}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1">
                         {journalToggle(row.entry.id)}
@@ -2851,7 +2723,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (acct || '자금')}</span>
-                      <span className={`text-sm font-black shrink-0 ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</span>
+                      <span className={`text-sm font-black shrink-0 ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>{fmt(row.amount)}</span>
                     </div>
                     {detail && <p className="text-[11px] text-slate-400 truncate">{detail}</p>}
                     {expandedJournal.has(row.entry.id) && (
@@ -2994,43 +2866,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </div>
           );
         })()}
-        {/* 페이지네이션 */}
-        {filteredHistory.length > HIST_PAGE_SIZE && (
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/40">
-            <span className="text-[11px] text-slate-400 font-bold">
-              {(historyPage - 1) * HIST_PAGE_SIZE + 1}–{Math.min(historyPage * HIST_PAGE_SIZE, filteredHistory.length)} / {filteredHistory.length}건
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setHistoryPage(1)}
-                disabled={historyPage === 1}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
-                « 최신
-              </button>
-              <button
-                onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                disabled={historyPage === 1}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
-                ‹ 이전
-              </button>
-              <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-slate-700 text-white">
-                {historyPage} / {historyTotalPages}
-              </span>
-              <button
-                onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))}
-                disabled={historyPage === historyTotalPages}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
-                다음 ›
-              </button>
-              <button
-                onClick={() => setHistoryPage(historyTotalPages)}
-                disabled={historyPage === historyTotalPages}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
-                과거 »
-              </button>
-            </div>
-          </div>
-        )}
+        <StatementHistoryPagination page={historyPage} totalPages={historyTotalPages}
+          totalCount={filteredHistory.length} pageSize={HIST_PAGE_SIZE} onPage={setHistoryPage}/>
       </div>
 
       {/* ── 지불/수불 처리 모달 ── */}
@@ -3170,36 +3007,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
           <fieldset disabled={isSaving} aria-busy={isSaving} className="relative min-w-0 m-0 p-0 border-0 w-full h-[100dvh] sm:h-[80vh] sm:max-w-7xl flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden">
 
-            {/* ── 헤더 ── */}
-            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-slate-100 flex-shrink-0 flex-wrap">
-              {/* 양변 전표는 매출도 매입도 아니다 — 차·대를 직접 세운 일반전표다 */}
-              <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
-                isTwoSided ? 'bg-amber-100 text-amber-700' : createMode==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>
-                {isTwoSided ? '일반' : createMode==='매출'?'매출':'매입'}전표
-              </span>
-              {editingStmt && (
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">[수정중] {editingStmt.docNo}</span>
-              )}
-              {selectedClient
-                ? <span className="font-black text-slate-900">{selectedClient.name}</span>
-                : <span className="text-slate-400 font-bold text-sm">거래처를 선택하세요</span>
-              }
-              {selectedClient?.phone && <span className="text-xs text-slate-400">{selectedClient.phone}</span>}
-              <span className="text-slate-200">·</span>
-              {editingStmt && !isEditMode
-                ? <span className="text-xs font-black text-slate-700 bg-slate-100 px-2.5 py-1.5 rounded-lg">{tradeDate}</span>
-                : <input type="date" value={tradeDate} onChange={e=>setTradeDate(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"/>}
-              <div className="ml-auto flex items-center gap-2">
-                <button onClick={()=>{closeCreate();setTimeout(()=>setCreateMode(stmtType),50);}}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200 transition-all">
-                  새 전표
-                </button>
-                <button onClick={closeCreate} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all">
-                  <X size={18}/>
-                </button>
-              </div>
-            </div>
+            <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
+              editingDocNo={editingStmt?.docNo} editMode={isEditMode}
+              partnerName={selectedClient?.name} partnerPhone={selectedClient?.phone}
+              tradeDate={tradeDate} onTradeDate={setTradeDate}
+              onNew={() => { closeCreate(); setTimeout(() => setCreateMode(stmtType), 50); }} onClose={closeCreate}/>
 
             {/* ── 거래처 선택 / 모드 전환 바 ── */}
             <div className="flex items-center gap-2 px-5 py-2.5 border-b border-slate-100 flex-shrink-0 bg-slate-50 flex-wrap">

@@ -463,15 +463,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const [isCollapsed, setIsCollapsed] = useState(
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
-  const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showPalletPicker, setShowPalletPicker] = useState(false);
-
-  useEffect(() => {
-    if (!showStatusPicker) return;
-    const close = () => setShowStatusPicker(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [showStatusPicker]);
 
   useEffect(() => {
     if (!showPalletPicker) return;
@@ -543,8 +535,10 @@ export const OrderCard = memo<OrderCardProps>(({
   return (
     <div
       id={`order-card-${order.id}`}
-      draggable={!readOnly && !isEditing}
-      onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
+      /*  **카드는 안 끌린다**(2026-09-15 사장님: "드래그로 넘기는 기능도 막아놔").
+          보드에서 칸 사이로 끌어 놓는 것이 상태를 바로 바꾸는 유일한 길이었는데,
+          그것이 품목 체크와 어긋나는 자리였다(위 상태 칩 주석 참고).
+          끌기를 남겨 두면 "끌리긴 하는데 아무 일도 안 나는" 더 나쁜 모양이 된다. */
       /*  **카드 아무 데나 눌러서 편집에 들어가지 않는다**(2026-09-11 사장님: "이름부터 그쪽까지만
           누르면 수정하는 거고"). 카드 표면 대부분이 체크·수량 같은 조작이라, 아무 데나 눌러도
           편집이 열리면 누르려던 것과 엉킨다. 여는 자리는 **이름 + 연필**뿐이다. */
@@ -571,43 +565,17 @@ export const OrderCard = memo<OrderCardProps>(({
              **글줄 바닥(baseline)으로 맞춘다** — 둘은 글자 크기가 달라(11px·10px) 상자 가운데로
              맞추면 작은 쪽이 떠 보인다(2026-09-12 사장님: "대기중이랑 정렬이 안맞냐"). */}
         <div className="flex shrink-0 items-baseline gap-1.5 leading-tight">
+        {/*  **상태는 카드에서 못 바꾼다 — 보여 주기만 한다**(2026-09-15 사장님:
+             "카드에서 이제 대기중 작업중 그런거 안 눌리게 바꾸고", "드래그로 넘기는 기능도
+             막아놔", "작업완료랑 출고완료도 그 버튼으로 왔다갔다 못하게 하고").
+
+             대기중 → 작업중 → 작업완료는 **품목 체크가 굴린다**(체크한 수만큼 상태가
+             저절로 따라간다). 그런데 여기서 상태만 건너뛰면 체크와 어긋나 되돌리기·재고가
+             꼬였다 — 전부 체크된 카드를 대기중으로 내리면 다시 그려질 때 작업완료로
+             도로 튀어 올라가, 아예 안 옮겨지는 것처럼 보이기도 했다.
+             출고완료는 배송 쪽(출고완료 체크·묶음 출고)에서 찍는다. */}
         <div className="relative shrink-0">
-          {readOnly ? (
-            <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-              className="text-[11px] font-black transition-all hover:opacity-70 opacity-80"
-            >
-              {STATUS_LABEL[order.status] ?? order.status}
-            </button>
-          )}
-          {!readOnly && showStatusPicker && (
-            <div
-              className="absolute top-full right-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {([
-                [OrderStatus.PENDING,    statusLabel(OrderStatus.PENDING),    'hover:bg-amber-50 text-amber-700'],
-                [OrderStatus.PROCESSING, statusLabel(OrderStatus.PROCESSING), 'hover:bg-sky-50 text-sky-700'],
-                [OrderStatus.DISPATCHED, statusLabel(OrderStatus.DISPATCHED), 'hover:bg-emerald-50 text-emerald-700'],
-              ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdateStatus(order.id, st);
-                    setShowStatusPicker(false);
-                  }}
-                  className={`px-3 py-2 text-[10px] font-black text-left transition-all ${cls} ${order.status === st ? 'opacity-40 cursor-default' : ''}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+          <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
         </div>
           {nonHyangmiyuItems.length > 0 && (
             <button
@@ -2149,25 +2117,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
     return map;
   }, [partners]);
 
-  const requestBoardStatusChange = (orderId: string, nextStatus: OrderStatus) => {
-    const order = orders.find(candidate => candidate.id === orderId);
-    if (!order || order.status === nextStatus) return;
-    const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
-      ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
-    const move = () => onUpdateStatus(orderId, nextStatus);
-    // 대기중·작업중·출고완료 이동은 묻지 않고, 작업완료 진입만 확인한다.
-    if (nextStatus !== OrderStatus.DISPATCHED || stockStage(nextStatus) < stockStage(order.status)) return move();
-    const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
-    setConfirmModal({
-      message: `해당 거래처를 ${statusLabel(nextStatus)} 상태로 변경할까요?`,
-      subMessage: `${partnerName} · 주문일: ${dateOfLocal(order.createdAt).slice(2).replaceAll('-', '.')}`,
-      confirmText: '변경하기',
-      onConfirm: () => {
-        setConfirmModal(null);
-        move();
-      },
-    });
-  };
+  /*  보드에서 카드를 끌어 상태를 바꾸던 길(`requestBoardStatusChange`)은 없앴다
+      (2026-09-15 사장님: "드래그로 넘기는 기능도 막아놔", "작업완료랑 출고완료도 그 버튼으로
+      왔다갔다 못하게 하고"). 카드가 안 끌리고 칸도 안 받으므로 부르는 데가 없다.
+      작업완료 진입 확인창은 `AdminApp.requestOrderStatus` 가 그대로 들고 있다. */
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
@@ -2175,7 +2128,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate,
-    onUpdateStatus: activeView === 'kanban' ? requestBoardStatusChange : onUpdateStatus,
+    onUpdateStatus,
     onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType,
     onToggleItemChecked: followItemToggle, onDeleteOrder, currentUserName,
     highlightOrderId,
@@ -2773,9 +2726,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
             '일반': allColOrders.filter(o => o.source === '일반'),
           };
           return (
+            /*  **칸은 이제 카드를 안 받는다**(2026-09-15 사장님: "드래그로 넘기는 기능도 막아놔").
+                카드가 안 끌리므로 받는 손만 남겨 두면, 다른 데서 끌어온 것을 엉뚱하게 받는다. */
             <div key={col.id}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id && col.targetStatus) requestBoardStatusChange(id, col.targetStatus); }}
               /*  **칸 바탕은 흰색이다**(2026-09-11 사장님: "보드 각 컬럼에 바탕색 좀 빼라").
                   칸마다 색이 깔려 있으면 그 위에 얹힌 주문 카드의 상태 색이 안 읽힌다 —
                   색으로 알려야 할 것은 카드지 칸이 아니다. 테두리와 머리 아이콘 색은 남긴다. */
