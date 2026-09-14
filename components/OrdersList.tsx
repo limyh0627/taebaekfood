@@ -1657,18 +1657,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerGroup, setPickerGroup] = useState('');
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
-  const [followOrder, setFollowOrder] = useState<{ id: string; fromStatus: OrderStatus } | null>(null);
-
-  /** 모바일에서는 상태 변경으로 다른 열에 간 카드를 사용자가 다시 찾지 않게 그 자리까지 따라간다. */
-  const followAfterMove = (orderId: string) => {
-    const order = orders.find(candidate => candidate.id === orderId);
-    if (order) setFollowOrder({ id: orderId, fromStatus: order.status });
-  };
-
-  const followItemToggle = (orderId: string, itemIndex: number, actor?: string) => {
-    followAfterMove(orderId);
+  /*  **카드를 따라가지 않는다**(2026-09-14 사장님: "움직인 위치로 따라가도록 해놨는데 그거 기능 꺼놔봐").
+   *  폰에서 상태가 바뀌면 그 카드가 간 열까지 화면이 저절로 스크롤했다. 손으로 체크하는 중에
+   *  화면이 움직이니 다음 줄을 누르려던 손가락이 엉뚱한 데를 짚었다. 이제 제자리에 머문다. */
+  const followItemToggle = (orderId: string, itemIndex: number, actor?: string) =>
     onToggleItemChecked?.(orderId, itemIndex, actor);
-  };
 
   const openOrderEditor = (orderId: string) => {
     const order = orders.find(candidate => candidate.id === orderId);
@@ -1736,24 +1729,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
     return () => clearTimeout(timer);
   }, [highlightOrderId]);
 
-  useEffect(() => {
-    if (!followOrder) return;
-    const moved = orders.find(order => order.id === followOrder.id);
-    // 확인창을 취소했거나 저장이 실패한 경우 영원히 기다리지 않는다.
-    if (!moved || moved.status === followOrder.fromStatus) {
-      const giveUp = window.setTimeout(() => setFollowOrder(current => current?.id === followOrder.id ? null : current), 15000);
-      return () => window.clearTimeout(giveUp);
-    }
-    const timer = window.setTimeout(() => {
-      if (window.matchMedia('(max-width: 767px)').matches) {
-        document.getElementById(`order-card-${followOrder.id}`)?.scrollIntoView({
-          behavior: 'smooth', block: 'center', inline: 'nearest',
-        });
-      }
-      setFollowOrder(current => current?.id === followOrder.id ? null : current);
-    }, 120);
-    return () => window.clearTimeout(timer);
-  }, [orders, followOrder]);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -1962,8 +1937,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
         //  `lineKeyAt` 이 엉뚱한 줄을 가리킨다.
         .filter(workItem => items.find(product => product.id === workItem.itemId)?.type !== 'goods');
       });
+    /*  **담은 것만 선다**(2026-09-14 사장님: "고른 것만 해야지").
+     *
+     *  전에는 대기중·작업중 주문의 **모든 품목이 무조건** 줄로 섰다. 담긴 목록
+     *  (`workOrderItems`)은 순서·묶음을 이어받는 데만 쓰고 거르는 데는 안 썼다 —
+     *  그래서 `주문보기`에서 빼도 다음 그림에 도로 나타났고, 주문을 넣는 순간 저절로 끼어들었다.
+     *  담고 빼는 일 자체가 아무 효과가 없었던 것이다(`a08a811` 병합 때 이렇게 됐다).
+     *
+     *  **매일 아침 비우는 것**(AdminApp 의 작업순서 초기화)도 이 때문에 뜻이 없었다 —
+     *  비워도 곧바로 다시 채워졌다. 이제 비우면 비어 있고, 그날 세울 것을 담아서 짠다. */
+    const 담긴키 = new Set(workItems.map(item => item.key));
     const savedPosition = new Map(workItems.map((item, index) => [item.key, index]));
-    return liveItems.sort((a, b) => (savedPosition.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (savedPosition.get(b.key) ?? Number.MAX_SAFE_INTEGER));
+    return liveItems
+      .filter(workItem => 담긴키.has(workItem.key))
+      .sort((a, b) => (savedPosition.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (savedPosition.get(b.key) ?? Number.MAX_SAFE_INTEGER));
   }, [workItems, activeOperationOrders, partners, items]);
 
   const activeKanbanOrders = useMemo(() => {
@@ -2032,10 +2019,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     if (!order || order.status === nextStatus) return;
     const stockStage = (value: OrderStatus) => value === OrderStatus.SHIPPED || value === OrderStatus.DELIVERED
       ? 2 : value === OrderStatus.DISPATCHED ? 1 : 0;
-    const move = () => {
-      followAfterMove(orderId);
-      onUpdateStatus(orderId, nextStatus);
-    };
+    const move = () => onUpdateStatus(orderId, nextStatus);
     // 대기중·작업중·출고완료 이동은 묻지 않고, 작업완료 진입만 확인한다.
     if (nextStatus !== OrderStatus.DISPATCHED || stockStage(nextStatus) < stockStage(order.status)) return move();
     const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
