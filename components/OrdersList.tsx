@@ -421,9 +421,9 @@ const byDeliveryThenId = (a: Order, b: Order) =>
  * 새 카드 대신 **그 전에 쓰던 카드 모양**을 그대로 되돌린다 — 줄마다 제조·라벨·포장·팔레트를
  * 펼치고 부자재를 색 딱지로 찍던 그 카드다.
  *
- * `OrderCardProps` 는 **새것을 그대로 둔다** — 호출부가 넘기는 `onEditOrder`·`onOpenMemo`·
- * `tintedHeader` 같은 새 props 를 이 본문은 안 쓰고 흘려보낸다. 인터페이스까지 되돌리면
- * 그걸 넘기는 자리가 전부 타입 오류가 난다.
+ * `OrderCardProps` 는 **새것을 그대로 둔다** — 호출부가 넘기는 `tintedHeader` 같은 새 props 를
+ * 이 본문은 안 쓰고 흘려보낸다. 인터페이스까지 되돌리면 그걸 넘기는 자리가 전부 타입 오류가 난다.
+ * (`onEditOrder`·`onOpenMemo` 는 그 뒤에 실제로 쓰기 시작했다.)
  */
 export const OrderCard = memo<OrderCardProps>(({
   order, partners, items, partnerItems,
@@ -434,6 +434,8 @@ export const OrderCard = memo<OrderCardProps>(({
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
+  //  비고가 달린 줄의 단추를 누르면 이걸 부른다(2026-09-14).
+  onOpenMemo,
 }) => {
   // Compute derived variables
   const products = items;
@@ -942,6 +944,26 @@ export const OrderCard = memo<OrderCardProps>(({
                         <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
                       </span>
                     </div>
+                    {/*  **비고는 달린 줄에만 뜬다**(2026-09-14 사장님: "주문카드에 비고 있는 경우에만
+                         비고 버튼 생기게 해놔 소비기한 우측으로"). 카드에는 비고가 아예 안 보이고
+                         있었다 — 리스트에서만 보여서, 카드로 일하는 사람은 적어 둔 말을 못 봤다.
+                         빈 줄에까지 '메모 추가' 를 달면 줄마다 단추가 하나씩 더 붙어 카드가 길어진다.
+                         새로 다는 것은 리스트의 '메모 추가' 자리에서 한다. */}
+                    {(item.note ?? '').trim() && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onOpenMemo?.(order.id, idx); }}
+                        onPointerDown={누르는동안끌기끄기}
+                        disabled={readOnly || !onOpenMemo}
+                        title={item.note}
+                        aria-label={`${item.name} 비고`}
+                        className="inline-flex h-7 min-w-0 max-w-[150px] shrink items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-black text-amber-700 transition-colors enabled:hover:bg-amber-100 disabled:cursor-default"
+                      >
+                        <NotepadText size={11} className="shrink-0" aria-hidden="true" />
+                        {/*  적어 둔 말을 **그대로 보여 준다** — '비고' 라고만 쓰면 눌러 봐야 안다. */}
+                        <span className="min-w-0 truncate">{item.note}</span>
+                      </button>
+                    )}
                     {item.checked && item.checkedBy && (
                       <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
                     )}
