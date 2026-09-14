@@ -95,6 +95,25 @@ describe('주문 로그', () => {
     expect(rows[0].who).toBe('u-99');
   });
 
+  /*  품목 수정은 **한 번 저장에 한 줄** — 수량 고치며 줄을 지웠으면 한 번에 일어난 일이다. */
+  it('품목 수정은 한 번 저장에 한 줄로, 나머지 변경은 아래 붙인다', () => {
+    const rows = buildOrderActivityLog(주문(), [], undefined, [{
+      id: 'e1', orderId: 'o1', at: '2026-09-14T05:00:00.000Z', by: '사장',
+      changes: ['수량 — 볶음참깨/1kg 5박스 → 8박스', '품목 삭제 — 참기름 2개'],
+    }]);
+    const 수정 = rows.find(r => r.kind === 'edit')!;
+    expect(수정.what).toBe('수량 — 볶음참깨/1kg 5박스 → 8박스');
+    expect(수정.detail).toBe('품목 삭제 — 참기름 2개');
+    expect(수정.who).toBe('사장');
+  });
+
+  it('빈 수정 기록은 줄을 안 세운다', () => {
+    const rows = buildOrderActivityLog(주문(), [], undefined, [
+      { id: 'e1', orderId: 'o1', at: '2026-09-14T05:00:00.000Z', by: '사장', changes: [] },
+    ]);
+    expect(rows.some(r => r.kind === 'edit')).toBe(false);
+  });
+
   it('출고 확인도 줄로 선다', () => {
     const rows = buildOrderActivityLog(주문({ shipmentConfirmedBy: '윤주임', shipmentConfirmedAt: '2026-09-13T05:00:00.000Z' }), []);
     expect(rows[0]).toMatchObject({ what: '출고 확인', who: '윤주임' });

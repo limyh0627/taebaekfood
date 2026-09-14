@@ -77,7 +77,7 @@ import {
   Plus,
   ClipboardPaste,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
@@ -100,6 +100,7 @@ import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
 import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
+import { diffOrderItems } from '../../shared/orderItemDiff';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
@@ -1899,8 +1900,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
     /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
         작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
         자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
-    const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, new Date().toISOString()) : items;
+    const 지금 = new Date().toISOString();
+    const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, 지금) : items;
     updateItem('orders', orderId, { items: 찍은items });
+    /*  **수량·단가·품목 교체·줄 추가/삭제는 밖에 적는다**(2026-09-14 사장님: "2번도 했으면").
+        지워진 줄은 주문 문서에 남길 자리가 아예 없고, 주문 안에 쌓으면 문서가 계속 커진다.
+        주문 저장을 막지는 않는다 — 기록을 못 남겼다고 고친 것까지 되돌리면 더 나쁘다. */
+    const 바뀐것 = o ? diffOrderItems(o.items, 찍은items) : [];
+    if (바뀐것.length) {
+      addItem('orderItemEdits', {
+        orderId, at: 지금, by: currentUser?.name?.trim() || '미기록',
+        changes: 바뀐것.map(change => change.text),
+      } as Omit<OrderItemEdit, 'id'>)
+        .catch(error => console.error('[주문 품목 수정 기록 실패]', orderId, error));
+    }
   };
 
   // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.

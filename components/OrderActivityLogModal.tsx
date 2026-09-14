@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, X, CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert } from 'lucide-react';
+import { History, X, CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
 import type { OrderActivityRow } from '../src/shared/orderActivityLog';
 
 /**
@@ -18,14 +18,14 @@ interface Props {
 
 const 아이콘 = {
   create: CirclePlus, status: ArrowRightLeft, line: CheckCircle2,
-  label: Tag, note: MessageSquare, ship: Truck, fail: TriangleAlert,
+  label: Tag, note: MessageSquare, ship: Truck, fail: TriangleAlert, edit: PencilLine,
 } as const;
 
 const 색 = {
   create: 'bg-indigo-50 text-indigo-600', status: 'bg-slate-100 text-slate-600',
   line: 'bg-emerald-50 text-emerald-600', label: 'bg-amber-50 text-amber-600',
   note: 'bg-sky-50 text-sky-600', ship: 'bg-violet-50 text-violet-600',
-  fail: 'bg-rose-50 text-rose-600',
+  fail: 'bg-rose-50 text-rose-600', edit: 'bg-slate-100 text-slate-600',
 } as const;
 
 /** `2026-09-14T08:03:11.000Z` → `26.09.14 17:03` — 초는 버린다(줄이 길어지기만 한다). */
@@ -64,7 +64,8 @@ const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, er
                   <p className="text-[11px] font-medium leading-4 text-slate-500">
                     {로그시각(row.at)} · {row.who}
                   </p>
-                  {row.detail && <p className="mt-0.5 break-words text-[11px] font-medium leading-4 text-slate-400">{row.detail}</p>}
+                  {/*  한 번 저장에 여러 줄이 바뀌었으면 줄바꿈으로 온다 — 그대로 살려 그린다. */}
+                  {row.detail && <p className="mt-0.5 whitespace-pre-line break-words text-[11px] font-medium leading-4 text-slate-400">{row.detail}</p>}
                 </div>
               </li>
             );
@@ -75,9 +76,11 @@ const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, er
         {loading && <p className="mt-3 text-[11px] font-bold text-slate-400">상태 변경 기록을 불러오는 중…</p>}
         {/*  **없는 것은 없다고 적는다.** 품목 수량·추가·삭제는 지금 사람과 시각을 남기지 않는다.
              적어 두지 않으면 "왜 안 보이지" 하고 찾아 헤매게 된다. */}
+        {/*  **언제부터 쌓인 기록인지 적는다.** 라벨·제조일과 품목 수정은 2026-09-14 부터 남는다 —
+             그 전 주문에서 안 보이는 것이 고장이 아니라는 것을 알려 준다. */}
         <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] font-medium leading-4 text-slate-400">
-          품목 수량·추가·삭제는 아직 누가 했는지 남지 않습니다. 주문 등록 · 상태 변경 · 품목 작업완료 ·
-          라벨 · 제조일 · 비고 · 출고 확인만 기록됩니다.
+          주문 등록 · 상태 변경 · 품목 작업완료 · 품목 수량·추가·삭제 · 라벨 · 제조일 · 비고 · 출고 확인을 남깁니다.
+          이 중 <b className="font-bold text-slate-500">품목 수정과 라벨·제조일</b>은 26.09.14 부터 쌓이므로 그 전 것은 보이지 않습니다.
         </p>
       </div>
     </div>

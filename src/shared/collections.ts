@@ -27,6 +27,9 @@ export const COL = {
   adjustmentRequests: 'adjustmentRequests',
   workOrderItems: 'workOrderItems',
   orderStatusAudits: 'orderStatusAudits',
+  //  주문 품목을 누가 언제 어떻게 고쳤나 — 주문 수정 창의 '로그'가 읽는다.
+  //  주문 문서 안에 쌓으면 문서가 계속 커지고, 여러 창이 같이 고칠 때 서로 덮어쓴다.
+  orderItemEdits: 'orderItemEdits',
   deliveryScheduleAudits: 'deliveryScheduleAudits',
 
   // ── 전표·회계 ──

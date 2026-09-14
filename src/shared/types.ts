@@ -317,6 +317,21 @@ export interface OrderStatusAudit {
   error?: string;
 }
 
+/**
+ * **주문 품목을 누가 언제 어떻게 고쳤나.** 한 번 저장할 때 한 문서.
+ *
+ * 2026-09-14 사장님 — 라벨·작업완료에 이어 **품목 수량·추가·삭제**도 남긴다.
+ * 줄 자체에 찍는 라벨·제조일·비고와 달리, 지워진 줄은 남길 자리가 없어 밖에 적는다.
+ */
+export interface OrderItemEdit {
+  id: string;
+  orderId: string;
+  at: string;      // ISO
+  by: string;      // 고친 사람 이름 — 모르면 '미기록'
+  /** 사람이 읽을 한 줄들 — `수량 — 볶음참깨/1kg 5박스 → 8박스` */
+  changes: string[];
+}
+
 export interface BoxConfig {
   boxType: string;     // 박스 종류 표시명 (예: "2번박스", "3번박스")
   unitsPerBox: number; // 박스당 낱개 수 (예: 12, 10)

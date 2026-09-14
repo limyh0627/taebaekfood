@@ -41,7 +41,7 @@ import {
   Minimize2,
   Maximize2
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit, OrderItemEdit } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -1604,17 +1604,26 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const 사번표 = useMemo(() => new Map(employees.map(person => [person.id, person.name])), [employees]);
   const 사번이름 = useMemo(() => (key: string) => 사번표.get(key), [사번표]);
   const [logAudits, setLogAudits] = useState<OrderStatusAudit[]>([]);
+  const [logEdits, setLogEdits] = useState<OrderItemEdit[]>([]);
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!logOrderId) return;
     let 살아있나 = true;
-    setLogLoading(true); setLogError(undefined); setLogAudits([]);
-    fetchWhere<OrderStatusAudit>('orderStatusAudits', 'orderId', logOrderId)
-      .then(rows => { if (살아있나) setLogAudits(rows); })
+    setLogLoading(true); setLogError(undefined); setLogAudits([]); setLogEdits([]);
+    //  둘 다 주문 문서 밖이다 — 한 번에 읽는다. 하나가 실패해도 나머지는 보여 준다.
+    Promise.allSettled([
+      fetchWhere<OrderStatusAudit>('orderStatusAudits', 'orderId', logOrderId),
+      fetchWhere<OrderItemEdit>('orderItemEdits', 'orderId', logOrderId),
+    ]).then(([상태, 수정]) => {
+      if (!살아있나) return;
+      if (상태.status === 'fulfilled') setLogAudits(상태.value);
+      if (수정.status === 'fulfilled') setLogEdits(수정.value);
       //  못 읽어도 창은 띄운다 — 주문 문서에 있는 기록(등록·체크·라벨·비고)은 그대로 보인다.
-      .catch(() => { if (살아있나) setLogError('상태 변경 기록을 불러오지 못했습니다. 나머지는 그대로 보입니다.'); })
-      .finally(() => { if (살아있나) setLogLoading(false); });
+      const 못읽음 = [상태.status === 'rejected' ? '상태 변경' : '', 수정.status === 'rejected' ? '품목 수정' : ''].filter(Boolean);
+      setLogError(못읽음.length ? `${못읽음.join('·')} 기록을 불러오지 못했습니다. 나머지는 그대로 보입니다.` : undefined);
+      setLogLoading(false);
+    });
     return () => { 살아있나 = false; };
   }, [logOrderId]);
   /*  주문 수정 창의 팔레트는 **접어 둔다**(2026-09-12 사장님: "팔레트는 좀 접어둬라
@@ -4187,7 +4196,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         return (
           <OrderActivityLogModal
             partnerName={로그주문.partnerName || partners.find(partner => partner.id === 로그주문.partnerId)?.name || '이름 없음'}
-            rows={buildOrderActivityLog(로그주문, logAudits, 사번이름)}
+            rows={buildOrderActivityLog(로그주문, logAudits, 사번이름, logEdits)}
             loading={logLoading}
             error={logError}
             onClose={() => setLogOrderId(null)}

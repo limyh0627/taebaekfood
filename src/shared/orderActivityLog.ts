@@ -1,4 +1,4 @@
-import type { Order, OrderItem, OrderStatusAudit } from './types';
+import type { Order, OrderItem, OrderItemEdit, OrderStatusAudit } from './types';
 
 /**
  * **이 주문에 누가 무엇을 언제 했나** — 주문 수정 창의 '로그 보기'가 띄우는 목록.
@@ -15,6 +15,7 @@ import type { Order, OrderItem, OrderStatusAudit } from './types';
  * | 상태 변경(작업중·작업완료·출고·되돌리기) | `orderStatusAudits` 한 건 한 줄 |
  * | 품목별 작업완료 체크 | `items[].checkedBy` · `checkedAt` |
  * | 라벨 · 제조일 | `items[].labelBy/labelAt` · `mfgBy/mfgAt` |
+ * | 품목 수량·추가·삭제·단가 | `orderItemEdits` 한 번 저장에 한 줄 |
  * | 비고 | `items[].noteBy` · `noteAt` |
  * | 출고 확인 | `shipmentConfirmedBy` · `shipmentConfirmedAt` |
  *
@@ -26,7 +27,7 @@ export interface OrderActivityRow {
   who: string;
   what: string;
   detail?: string;
-  kind: 'create' | 'status' | 'line' | 'label' | 'note' | 'ship' | 'fail';
+  kind: 'create' | 'status' | 'line' | 'label' | 'note' | 'ship' | 'fail' | 'edit';
 }
 
 const 상태이름 = (s?: string) => ({
@@ -53,6 +54,7 @@ export function buildOrderActivityLog(
   audits: OrderStatusAudit[] = [],
   /** 사번 → 이름. 없으면 적힌 글자를 그대로 쓴다. */
   nameOf?: (key: string) => string | undefined,
+  edits: OrderItemEdit[] = [],
 ): OrderActivityRow[] {
   const rows: OrderActivityRow[] = [];
 
@@ -82,6 +84,21 @@ export function buildOrderActivityLog(
             audit.state === 'processing' ? '처리 중' : '',
           ].filter(Boolean).join(' · ') || undefined,
       kind: audit.state === 'failed' ? 'fail' : 'status',
+    });
+  }
+
+  /*  **품목 수정은 한 번 저장에 한 줄.** 수량 하나 고치면서 줄을 지웠으면 둘이 한 번에 일어난
+      일이라, 따로 세우면 같은 시각 줄이 여럿 서서 무슨 일이 있었는지 되레 흐려진다.
+      첫 줄을 제목으로 올리고 나머지는 아래에 붙인다. */
+  for (const edit of edits) {
+    const 적힌것 = (edit.changes ?? []).filter(Boolean);
+    if (!적힌것.length) continue;
+    rows.push({
+      at: edit.at,
+      who: 사람(edit.by, nameOf),
+      what: 적힌것[0],
+      detail: 적힌것.length > 1 ? 적힌것.slice(1).join('\n') : undefined,
+      kind: 'edit',
     });
   }
 
