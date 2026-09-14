@@ -29,7 +29,17 @@ export interface OrderItem {
   noteBy?: string;       // 메모 작성자
   noteAt?: string;       // 메모 작성 시각
   mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
+  mfgBy?: string;        // 제조일을 바꾼 사람
+  mfgAt?: string;        // 바꾼 시각
   labelType?: '대기' | '날인' | '부착';
+  /**
+   * 라벨 상태를 **누가 언제** 바꿨나(2026-09-14 사장님: "라벨이나 작업완료 등의 상태변경
+   * 누가하고 언제 했는지 볼 수 있게"). 체크(`checkedBy`)·비고(`noteBy`)에는 이미 있었는데
+   * 라벨·제조일에만 없어서, 바뀐 것은 보이는데 누가 바꿨는지는 볼 길이 없었다.
+   * 찍는 곳은 **한 군데** — 주문 품목 저장 문(`AdminApp.handleUpdateItems`)이 이전 값과 비교해 찍는다.
+   */
+  labelBy?: string;
+  labelAt?: string;
   isBoxUnit?: boolean;    // 박스 단위로 주문했는지
   boxQuantity?: number;   // 박스 수 (isBoxUnit이 true일 때)
   unitsPerBox?: number;   // 박스당 낱개 수 (주문 시점 기준)

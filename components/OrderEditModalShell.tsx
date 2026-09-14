@@ -9,6 +9,11 @@ interface OrderEditModalShellProps {
   onClose: () => void;
   onSave: () => void;
   saveDisabled?: boolean;
+  /**
+   * 머리 오른쪽, 닫기 단추 왼쪽에 놓을 것 — 지금은 '로그' 단추가 여기 들어간다
+   * (2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서").
+   */
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -19,6 +24,7 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
   onClose,
   onSave,
   saveDisabled = false,
+  headerAction,
   children,
 }) => (
   <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={onClose}>
@@ -32,7 +38,10 @@ const OrderEditModalShell: React.FC<OrderEditModalShellProps> = ({
             <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">{context}</p>
           </div>
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+        {headerAction}
         <button type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500" aria-label={`${title} 닫기`}><X size={18} /></button>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">{children}</div>

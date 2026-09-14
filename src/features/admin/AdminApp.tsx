@@ -99,6 +99,7 @@ import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
+import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
@@ -1895,7 +1896,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
         무관하니 안 막고, 생산된 **그 줄**의 수량·구성만 막는다. 판정은 `orderEditGuard`. */
     const 걸린줄 = o ? blockedEditLine(o, items) : null;
     if (걸린줄) { alert(editBlockMessage(o, 걸린줄)); return; }
-    updateItem('orders', orderId, { items });
+    /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
+        작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
+        자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
+    const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, new Date().toISOString()) : items;
+    updateItem('orders', orderId, { items: 찍은items });
   };
 
   // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
@@ -2398,6 +2403,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'orders' && (
             <OrdersList
+              //  주문 로그가 `createdBy`(사번)를 이름으로 풀 때 쓴다.
+              employees={employees}
               /*  **캘린더 자리는 배송 캘린더가 채운다**(2026-09-11 사장님:
                   "캘린더는 배송관리쪽꺼 쓰고 나머지 리스트랑 보드는 주문관리쪽꺼 쓸거고").
                   탭바·검색·금일 작업순서는 주문 쪽 그대로 두고 캘린더만 갈아 끼운다 —

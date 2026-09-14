@@ -41,7 +41,7 @@ import {
   Minimize2,
   Maximize2
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -58,7 +58,9 @@ import { shipMethodOf } from '../src/shared/channelStyle';
 import { groupStripes } from '../src/shared/groupStripe';
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
-import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
+import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
+import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
+import OrderActivityLogModal from './OrderActivityLogModal';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -251,6 +253,12 @@ const inventoryBoxPackCount = (product: Item | undefined): number | undefined =>
 
 interface OrdersListProps {
   title: string;
+  /**
+   * 사번 → 이름. **주문 로그에서만 쓴다** — `Order.createdBy` 에는 이름이 아니라
+   * 사번(`currentUser.id`)이 들어가서, 그대로 띄우면 화면에 사번이 뜬다.
+   */
+  employees?: { id: string; name: string }[];
+
   subtitle: string;
   groupBy: 'status' | 'source';
   allowedStatuses: OrderStatus[];
@@ -1553,6 +1561,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
   currentUserName,
+  employees = [],
   highlightOrderId,
   onHighlightClear,
   newOrderId,
@@ -1587,6 +1596,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
   const [listMemoDraft, setListMemoDraft] = useState('');
   const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[] } | null>(null);
+  /*  **주문 로그**(2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서 주문 넣은 사람 일시
+      라벨이나 작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게 해봐").
+      상태 변경 기록(`orderStatusAudits`)은 주문 문서 밖에 있어 **누를 때 읽어 온다** —
+      늘 구독해 두면 주문 수만큼 문서를 더 들고 다녀야 한다. */
+  const [logOrderId, setLogOrderId] = useState<string | null>(null);
+  const 사번표 = useMemo(() => new Map(employees.map(person => [person.id, person.name])), [employees]);
+  const 사번이름 = useMemo(() => (key: string) => 사번표.get(key), [사번표]);
+  const [logAudits, setLogAudits] = useState<OrderStatusAudit[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logError, setLogError] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!logOrderId) return;
+    let 살아있나 = true;
+    setLogLoading(true); setLogError(undefined); setLogAudits([]);
+    fetchWhere<OrderStatusAudit>('orderStatusAudits', 'orderId', logOrderId)
+      .then(rows => { if (살아있나) setLogAudits(rows); })
+      //  못 읽어도 창은 띄운다 — 주문 문서에 있는 기록(등록·체크·라벨·비고)은 그대로 보인다.
+      .catch(() => { if (살아있나) setLogError('상태 변경 기록을 불러오지 못했습니다. 나머지는 그대로 보입니다.'); })
+      .finally(() => { if (살아있나) setLogLoading(false); });
+    return () => { 살아있나 = false; };
+  }, [logOrderId]);
   /*  주문 수정 창의 팔레트는 **접어 둔다**(2026-09-12 사장님: "팔레트는 좀 접어둬라
       필요할때 펼치게"). 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
       창을 닫았다 열면 다시 접힌다. */
@@ -3930,7 +3960,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
           : current);
         const saveDisabled = !listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId);
         return (
-          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled}>
+          <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled}
+            headerAction={(
+              /*  **로그 보기**(2026-09-14 사장님). 누르면 이 주문에 누가 무엇을 언제 했는지 뜬다.
+                  수정 창은 열어 둔 채로 위에 겹쳐 뜬다 — 고치다 말고 닫히면 적던 것이 날아간다. */
+              <button type="button" onClick={() => setLogOrderId(editorOrder.id)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[11px] font-black text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                <History size={13} aria-hidden="true" />로그
+              </button>
+            )}>
             <div className="space-y-4">
               <section aria-labelledby="order-schedule-heading">
                 <h4 id="order-schedule-heading" className="mb-1.5 text-xs font-black text-slate-700">출고 일정</h4>
@@ -4139,6 +4177,21 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </section>
             </div>
           </OrderEditModalShell>
+        );
+      })()}
+      {/*  **주문 로그** — 목록은 `buildOrderActivityLog` 가 만든다.
+           수정 창 위에 겹쳐 뜬다(z-110). 주문은 전체 목록에서 찾는다 — 이력으로 넘어간 주문도 봐야 한다. */}
+      {logOrderId && (() => {
+        const 로그주문 = orders.find(order => order.id === logOrderId);
+        if (!로그주문) return null;
+        return (
+          <OrderActivityLogModal
+            partnerName={로그주문.partnerName || partners.find(partner => partner.id === 로그주문.partnerId)?.name || '이름 없음'}
+            rows={buildOrderActivityLog(로그주문, logAudits, 사번이름)}
+            loading={logLoading}
+            error={logError}
+            onClose={() => setLogOrderId(null)}
+          />
         );
       })()}
       {listMemoEditor && (() => {
