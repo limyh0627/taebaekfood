@@ -62,6 +62,7 @@ import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } fro
 import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
 import { sortOrdersByHead, nextHeadSort, headSortTitle, type OrderListHeadSort, type OrderListSortKey } from '../src/shared/orderListSort';
+import { listFilterChips } from '../src/shared/orderListFilterChips';
 import OrderActivityLogModal from './OrderActivityLogModal';
 
 import ConfirmModal from './ConfirmModal';
@@ -2855,6 +2856,31 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </button>
             );
           };
+          /*  **지금 걸린 조건**과 그것을 푸는 길. 고르는 셈은 `listFilterChips` 가 한다.
+              기본값(이달 1일~오늘 · 전체 상태 · 출고예정일 임박 순)은 안 적는다 —
+              늘 걸려 있는 것까지 적으면 줄이 길어져 정작 이상한 조건이 묻힌다. */
+          const 기본시작일 = `${seoulDateInput().slice(0, 7)}-01`;
+          const 걸린조건 = listFilterChips({
+            dateFrom: activeDateFrom, dateTo: activeDateTo,
+            defaultFrom: 기본시작일, defaultTo: seoulDateInput(),
+            filterFieldLabel: 검색필드목록.find(옵션 => 옵션.value === listFilterField)?.label,
+            filterValue: listFilterValue,
+            partnerName: listPartnerFilter,
+            searchTerm,
+            statusLabel: listStatusTab === 'all' ? undefined : statusLabel(listStatusTab),
+            sortLabel: 정렬목록.find(옵션 => 옵션.value === listSort)?.label,
+            defaultSortLabel: '출고예정일 임박 순',
+            headSort: listHeadSort,
+          });
+          const 조건초기화 = () => {
+            setActiveDateFrom(기본시작일);
+            setActiveDateTo(seoulDateInput());
+            setListFilterField(''); setListFilterValue('');
+            setListPartnerFilter(''); setSearchTerm('');
+            setListSort('delivery'); setListStatusTab('all');
+            setListHeadSort(null);
+            setListPage(1);
+          };
           const listInlineSelectClass = 'h-7 cursor-pointer rounded-md border border-slate-200 pl-2 pr-6 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400';
           const getListItemDetail = (_order: Order, orderItem: OrderItem) => orderItemDetails(orderItem, items);
           const getPalletSummary = (order: Order) => (order.pallets ?? [])
@@ -3071,8 +3097,30 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </div>
               </section>
               <section className="space-y-2" aria-labelledby="list-results-title">
-                <div className="flex items-center justify-between gap-3 px-1">
+                {/*  **왜 이만큼만 보이는지 여기서 밝힌다**(2026-09-14 사장님: "조회 N건 옆에 어떤
+                     필터 적용되는지 적히게 하고 그 옆에다 초기화 버튼 넣어놔"). 조건이 날짜·검색
+                     필드·거래처·정렬·전체 검색·상태 탭 여섯 군데에 흩어져 있어, 걸린 것을 찾으려면
+                     화면을 위아래로 훑어야 했다. 무엇이 걸렸는지는 `listFilterChips` 가 고른다. */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
                   <h3 id="list-results-title" className="text-sm font-black text-slate-900">조회 결과 <span className="text-indigo-600">{listOrders.length}건</span></h3>
+                  {걸린조건.map(chip => (
+                    <span key={chip.key} className="inline-flex max-w-[220px] items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                      <span className="shrink-0 text-indigo-400">{chip.name}</span>
+                      <span className="min-w-0 truncate" title={chip.value}>{chip.value}</span>
+                    </span>
+                  ))}
+                  {걸린조건.length === 0 && <span className="text-[11px] font-bold text-slate-400">걸린 조건 없음</span>}
+                  {/*  **푸는 길은 여기 하나다** — 표 머리를 여러 번 눌러 푸는 조작은 없앴다.
+                       걸린 것이 없으면 단추도 안 띄운다(누를 일이 없다). */}
+                  {걸린조건.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={조건초기화}
+                      className="inline-flex min-h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-black text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                    >
+                      <RotateCcw size={11} aria-hidden="true" />초기화
+                    </button>
+                  )}
                 </div>
               <div className="w-fit max-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div

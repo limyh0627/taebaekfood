@@ -65,27 +65,31 @@ describe('표 머리 정렬', () => {
   });
 });
 
+/*  **머리를 눌러서는 안 꺼진다**(2026-09-14 사장님: "여러번 눌러서 필터 취소하라고 했는데
+    그거말고"). 몇 번 눌렀는지 세고 있어야 하는 조작이었고, 한 번 더 눌러 정렬이 사라지면
+    왜 그런지 모른다. 푸는 것은 조회 결과 옆의 '초기화' 하나다. */
 describe('머리를 다시 누를 때', () => {
-  it('거래처는 가나다 → 거꾸로 → 없음', () => {
+  it('거래처는 가나다 ↔ 거꾸로만 오간다 — 눌러서 꺼지지 않는다', () => {
     let s: OrderListHeadSort | null = null;
     s = nextHeadSort(s, 'partner'); expect(s).toEqual({ key: 'partner', dir: 'asc' });
     s = nextHeadSort(s, 'partner'); expect(s).toEqual({ key: 'partner', dir: 'desc' });
-    s = nextHeadSort(s, 'partner'); expect(s).toBeNull();
+    s = nextHeadSort(s, 'partner'); expect(s).toEqual({ key: 'partner', dir: 'asc' });
   });
 
-  it('비고는 두 단계뿐 — 있는 것 위로 → 없음', () => {
-    let s: OrderListHeadSort | null = null;
-    s = nextHeadSort(s, 'note'); expect(s).toEqual({ key: 'note', dir: 'asc' });
-    s = nextHeadSort(s, 'note'); expect(s).toBeNull();
+  it('비고는 거꾸로가 없다 — 더 눌러도 그대로', () => {
+    const 한번 = nextHeadSort(null, 'note');
+    expect(한번).toEqual({ key: 'note', dir: 'asc' });
+    expect(nextHeadSort(한번, 'note')).toEqual({ key: 'note', dir: 'asc' });
   });
 
   it('다른 머리를 누르면 그쪽 첫 단계로 간다', () => {
     expect(nextHeadSort({ key: 'partner', dir: 'desc' }, 'orderDate')).toEqual({ key: 'orderDate', dir: 'asc' });
   });
 
-  it('무엇이 될지 말로 알려 준다', () => {
-    expect(headSortTitle(null, 'partner')).toBe('눌러서 가나다 순');
-    expect(headSortTitle({ key: 'completion', dir: 'asc' }, 'completion')).toBe('눌러서 작업도 낮은 순');
-    expect(headSortTitle({ key: 'note', dir: 'asc' }, 'note')).toBe('눌러서 정렬 없음');
+  it('무엇이 될지 말로 알려 주고, 푸는 길도 같이 알려 준다', () => {
+    expect(headSortTitle(null, 'partner')).toBe('눌러서 가나다 순 · 풀려면 조회 결과의 초기화');
+    expect(headSortTitle({ key: 'completion', dir: 'asc' }, 'completion')).toBe('눌러서 작업도 낮은 순 · 풀려면 조회 결과의 초기화');
+    //  더 눌러도 안 바뀌는 비고는 '눌러서'가 아니라 '지금'이라고 한다 — 아니면 거짓말이 된다.
+    expect(headSortTitle({ key: 'note', dir: 'asc' }, 'note')).toBe('지금 비고 있는 것 먼저 · 풀려면 조회 결과의 초기화');
   });
 });
