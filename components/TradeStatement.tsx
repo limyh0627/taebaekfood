@@ -2,7 +2,10 @@
 import { plOfJournals } from '../src/features/admin/financials';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { today, dateOfLocal } from '../src/shared/day';
+import {
+  today, dateOfLocal, shiftDateRange,
+  weekMonday, weekSunday, monthStart, monthEnd, yearStart,
+} from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { itemSummary } from '../src/shared/itemSummary';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
@@ -31,7 +34,6 @@ import { buildTimeline } from '../src/shared/timelineBuild';
 import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import OrderPicker from './OrderPicker';
 import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
-import { weekMonday, weekSunday, monthStart, monthEnd, yearStart } from '../src/shared/day';
 import { lineAmount, lineAmountOf, priceParts } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -1952,7 +1954,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const togglePcTax = async (pc: PartnerItem) => {
     setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
     try {
-      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType: pc.taxType === '면세' ? '과세' : '면세' });
+      /*  **셋으로 돈다** — 미설정(`-`) → 과세 → 면세 → 미설정(2026-09-14 사장님).
+          전에는 면세↔과세 둘뿐이라, **정한 적 없는 것을 한 번 누르면 '과세'로 굳었다.**
+          되돌릴 길이 없어서 "안 정했다"는 상태가 조용히 사라졌다. */
+      const 다음: '과세' | '면세' | null = !pc.taxType ? '과세' : pc.taxType === '과세' ? '면세' : null;
+      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType: 다음 });
       setPriceSaveState(s => { const n = { ...s }; delete n[pc.id]; return n; });
     } catch (e: any) {
       setPriceSaveState(s => ({ ...s, [pc.id]: 'error' }));
@@ -2085,6 +2091,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (preset === '금주')  { setHistFrom(weekMonday()); setHistTo(weekSunday()); } // 월~일 고정
     if (preset === '당월')  { setHistFrom(monthStart()); setHistTo(monthEnd()); }   // 1일~말일 고정
     if (preset === '당년')  { setHistFrom(yearStart()); setHistTo(t); }
+  };
+
+  const moveHistoryRange = (direction: -1 | 1) => {
+    const next = shiftDateRange(histFrom, histTo, direction);
+    setHistFrom(next.from);
+    setHistTo(next.to);
+    setHistQuick('');
   };
 
   // ── 주문 클릭 처리 (중복 발행 감지) ──
@@ -2239,13 +2252,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           ))}
           {/*  좁으면 한 줄을 통째로 쓴다 — 안 접히면 날짜 두 개가 카드 밖으로 나간다(2026-09-04 사장님) */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-1">
-            <input type="date" value={histFrom}
+            <button type="button" onClick={() => moveHistoryRange(-1)} disabled={!histFrom || !histTo}
+              aria-label="이전 기간" title="이전 기간"
+              className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+              <ChevronLeft size={15} strokeWidth={2.5}/>
+            </button>
+            <input type="date" value={histFrom} aria-label="조회 시작일"
               onChange={e=>{setHistFrom(e.target.value);setHistQuick('');}}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
             <span className="text-slate-300 text-xs">~</span>
-            <input type="date" value={histTo}
+            <input type="date" value={histTo} aria-label="조회 종료일"
               onChange={e=>{setHistTo(e.target.value);setHistQuick('');}}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+            <button type="button" onClick={() => moveHistoryRange(1)} disabled={!histFrom || !histTo}
+              aria-label="다음 기간" title="다음 기간"
+              className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+              <ChevronRight size={15} strokeWidth={2.5}/>
+            </button>
           </div>
         </div>
         <div className="border-t border-slate-100"/>
@@ -3454,8 +3477,14 @@ ${names}
                                 </td>
                                 <td className="px-4 py-2.5 text-center" onClick={e=>e.stopPropagation()}>
                                   <button type="button" onClick={()=>togglePcTax(r.pc)} disabled={priceSaveState[r.pc.id]==='saving'}
-                                    className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all disabled:opacity-50 ${r.pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
-                                    {r.pc.taxType==='면세'?'면세':'과세'}
+                                    title="눌러서 - → 과세 → 면세"
+                                    className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all disabled:opacity-50 ${
+                                      r.pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500'
+                                      :r.pc.taxType==='과세'?'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                                      :'bg-white text-slate-300 border-dashed border-slate-200 hover:bg-slate-50'}`}>
+                                    {/*  **정한 적 없으면 `-`** — 면세가 아니라고 과세로 그리면 거짓말이 된다.
+                                         801건이 그렇게 과세로 보였다(2026-09-14 사장님). */}
+                                    {r.pc.taxType==='면세'?'면세':r.pc.taxType==='과세'?'과세':'-'}
                                   </button>
                                 </td>
                                 <td className="px-4 py-2.5" onClick={e=>e.stopPropagation()}>

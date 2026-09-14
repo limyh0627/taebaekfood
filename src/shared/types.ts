@@ -79,7 +79,15 @@ export interface PartnerItem {
   Direction: 'in' | 'out';     // 'in' = 매입, 'out' = 매출
   price?: number;              // 거래처별 단가
   Account_Code?: string;       // 계정과목
-  taxType?: '과세' | '면세';
+  /**
+   * 이 거래처–품목의 과세 구분. **`null` 은 "정한 적 없음"** — 받는 쪽이 칸을 지운다.
+   *
+   * 2026-09-14 사장님: "단가 0인데 과세로 들어간 애들없어? 저장된거 본거 같은데".
+   * 화면이 **면세가 아니면 전부 '과세'로 그리고 있었다.** 정한 적 없는 801건이 다 과세로
+   * 보였고, 그 자리에서 한 번 누르면 진짜 '과세'로 굳었다(토글이 면세↔과세 둘뿐이었다).
+   * 정한 적 없는 것은 **정한 적 없는 채로** 남아야 사람이 보고 정한다.
+   */
+  taxType?: '과세' | '면세' | null;
   isSmartStore?: boolean;      // 스마트스토어 채널 여부
   // @deprecated → shipping_rule 컬렉션으로 이관 예정 (별도 정리)
   boxTypeId?: string;

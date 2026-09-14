@@ -183,7 +183,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -340,14 +340,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const docData = { id: docId, itemId, partnerId, Direction: dir,
       ...(price !== undefined ? { price } : {}),
       ...(Account_Code !== undefined ? { Account_Code } : {}),
-      ...(taxType !== undefined ? { taxType } : {}) } as PartnerItem;
+      //  **`null` 은 칸을 지운다** — 정한 적 없는 상태로 되돌리는 길(2026-09-14).
+      //  빈 글자를 넣어 두면 나중에 `''`·`null`·없음 셋을 다 따져야 한다.
+      ...(taxType === null ? { taxType: deleteField() } : taxType !== undefined ? { taxType } : {}) } as PartnerItem;
     // merge 저장 — setDoc(덮어쓰기)이면 박스/테이프/포장 등 여기서 안 다루는 필드가 통째로 지워진다.
     const { id: _omit, ...fields } = docData;
     await setDocument('partner_item', docId, fields);
+    //  화면에는 지움 표식(sentinel)이 아니라 **없음**으로 넣는다 — 그대로 두면 객체가 들어간다.
+    const 화면용 = { ...docData, ...(taxType === null ? { taxType: undefined } : {}) } as PartnerItem;
     setPartnerItems(prev => {
-      const idx = prev.findIndex(p => p.id && p.id === docData.id);
-      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...docData }; return n; }
-      return [...prev, docData];
+      const idx = prev.findIndex(p => p.id && p.id === 화면용.id);
+      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...화면용 }; return n; }
+      return [...prev, 화면용];
     });
     // 박스 품목을 등록하면 낱개도 함께 — "낱개 없이 박스만 물리는" 경우 방지.
     //   낱개가 이 거래처(같은 방향)에 없으면 알림 띄우고 낱개 partner_item까지 자동 추가.
