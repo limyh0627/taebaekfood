@@ -37,7 +37,10 @@ interface PlanInput {
   /** 저장할 전표 본문 — 화면이 만든 그대로. */
   statement: IssuedStatement & { companyId?: string };
   /** 매입이면 품목 원가도 따라 움직인다(`partnerPriceWrites` 의 답). */
-  costUpdates?: readonly { itemId: string; price: number }[];
+  costUpdates?: readonly { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];
+  /** 이력의 실제 기록 시각과 작업자. 업무 적용일은 command.tradeDate다. */
+  recordedAt?: string;
+  actorId?: string;
   /** 발주카드 연결 — 이미 있는 카드를 이 전표에 묶는다. */
   poLinks?: readonly { poId: string; data: Record<string, unknown> }[];
   /** 발주카드 없이 매입을 발행했을 때 새로 세우는 입고대기 카드. */
@@ -60,7 +63,12 @@ export function planStatementWrites(input: PlanInput): StatementWritePlan {
   writes.push({
     collection: 'issuedStatements',
     id: command.statementId,
-    data: { ...본문, operationId: command.operationId },
+    // 당사자 스냅샷은 화면이 따로 끼워 넣은 값을 믿지 않고 명령에 실린 값으로 확정한다.
+    data: {
+      ...본문,
+      ...(command.partySnapshot ? { partySnapshot: command.partySnapshot } : {}),
+      operationId: command.operationId,
+    },
     merge: false,
   });
 
@@ -74,6 +82,25 @@ export function planStatementWrites(input: PlanInput): StatementWritePlan {
   //  ② 품목 현재 원가 — 되말기(상위 품목 다시 세기)는 커밋 뒤로 미룬다
   for (const c of input.costUpdates ?? []) {
     writes.push({ collection: 'items', id: c.itemId, data: { cost: c.price }, merge: true });
+    if (c.beforeCost !== undefined && c.beforeCost !== c.price) {
+      const lineIndex = c.sourceLineIndex ?? command.lines.findIndex(line => line.itemId === c.itemId);
+      writes.push({
+        collection: 'itemCostHistory',
+        // 같은 전표 명령을 재시도해도 같은 이력 문서를 덮어써 한 건만 남긴다.
+        id: `${command.statementId}_${c.itemId}_${Math.max(0, lineIndex)}`,
+        data: {
+          itemId: c.itemId,
+          beforeCost: c.beforeCost,
+          afterCost: c.price,
+          effectiveAt: command.tradeDate,
+          recordedAt: input.recordedAt ?? statement.issuedAt,
+          actorId: input.actorId ?? '',
+          sourceStatementId: command.statementId,
+          sourceLineIndex: Math.max(0, lineIndex),
+        },
+        merge: false,
+      });
+    }
   }
 
   //  ③ 주문에 발행표시 — **이게 안 찍히면 그 주문이 목록에 다시 떠서 두 번 발행된다.**

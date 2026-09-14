@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { partyOfPartner, partyOfCompany, 서류당사자, 서류당사자ById } from './docParty';
+import { partyOfPartner, partyOfCompany, 서류당사자, 서류당사자ById, 서류당사자스냅샷우선 } from './docParty';
 import type { Partner, CompanyInfo } from './types';
 
 const 우리: CompanyInfo = {
@@ -56,6 +56,18 @@ describe('서류에 찍는 당사자 칸', () => {
 });
 
 describe('공급자 · 공급받는자 가르기', () => {
+  it('저장된 당사자 스냅샷이 있으면 바뀐 현재 거래처보다 먼저 쓴다', () => {
+    const snapshot = {
+      supplier: partyOfCompany(우리),
+      buyer: { ...partyOfPartner(거래처), addr: '발행 당시 주소' },
+    };
+    const { buy } = 서류당사자스냅샷우선(snapshot, {
+      isSale: true, companyInfo: 우리,
+      partners: [{ ...거래처, address: '나중 주소' } as Partner], partnerId: 거래처.id,
+    });
+    expect(buy.addr).toBe('발행 당시 주소');
+  });
+
   it('매출이면 우리가 공급자, 거래처가 공급받는자다', () => {
     const { sup, buy } = 서류당사자(true, 우리, 거래처);
     expect(sup.name).toBe('태백식품');
@@ -99,8 +111,8 @@ describe('서류 화면의 공용 모듈 연결', () => {
     const 거래명세서 = readFileSync(new URL('../../components/TradeStatement.tsx', import.meta.url), 'utf8');
     const 세금계산서 = readFileSync(new URL('../../components/TaxStatement.tsx', import.meta.url), 'utf8');
 
-    expect(거래명세서).toContain('서류당사자ById({');
-    expect(세금계산서).toContain('서류당사자ById({');
+    expect(거래명세서).toContain('서류당사자스냅샷우선(');
+    expect(세금계산서).toContain('서류당사자스냅샷우선(');
     expect(거래명세서).not.toMatch(/partners\.find\([^\n]*\.name\s*===/);
     expect(세금계산서).not.toContain('taxBuyerInfo');
   });

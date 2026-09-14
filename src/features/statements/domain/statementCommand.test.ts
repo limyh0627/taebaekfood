@@ -51,6 +51,14 @@ describe('buildStatementCommand — 흩어진 값을 한 덩이로', () => {
   it('빈 메모는 칸 자체를 안 만든다 — 빈 글자를 저장해 두면 나중에 둘을 다 따져야 한다', () => {
     expect('memo' in 명령({ memo: '   ' })).toBe(false);
   });
+
+  it('발행 당시 공급자·공급받는자 정보를 명령에 그대로 고정한다', () => {
+    const partySnapshot = {
+      supplier: { name: '태백식품', bizNo: '1', ceo: '임', addr: '음성', bizType: '제조', bizItem: '식품', tel: '1', fax: '' },
+      buyer: { name: '일성상회', bizNo: '2', ceo: '김', addr: '서울', bizType: '', bizItem: '', tel: '2', fax: '' },
+    };
+    expect(명령({ partySnapshot }).partySnapshot).toEqual(partySnapshot);
+  });
 });
 
 describe('checkStatementCommand — 막는 것', () => {

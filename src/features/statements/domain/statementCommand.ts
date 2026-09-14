@@ -1,4 +1,5 @@
 import type { LineItem, StatementType } from '../../../shared/statementLines';
+import type { StatementPartySnapshot } from '../../../shared/types';
 import { lineTotals } from '../../../shared/statementLines';
 
 /**
@@ -42,6 +43,8 @@ export interface StatementCommand {
   /** 이 전표에 묶인 주문 — 저장할 때 쉼표로 이어 담는다. */
   orderIds: string[];
   lines: LineItem[];
+  /** 발행 당시 서류 당사자. 저장 뒤 마스터 정보가 바뀌어도 과거 서류는 이 값을 쓴다. */
+  partySnapshot?: StatementPartySnapshot;
   /** 줄에서 셈한 합계 — 저장 값과 화면 값이 갈리지 않게 명령이 들고 다닌다. */
   totals: { supply: number; tax: number; amount: number };
 }
@@ -93,6 +96,7 @@ interface BuildInput {
   lines: readonly LineItem[];
   companyId?: string;
   expectedVersion?: number;
+  partySnapshot?: StatementPartySnapshot;
 }
 
 /**
@@ -120,6 +124,7 @@ export function buildStatementCommand(input: BuildInput): StatementCommand {
     ...(input.memo?.trim() ? { memo: input.memo.trim() } : {}),
     orderIds: [...(input.orderIds ?? [])].filter(Boolean),
     lines,
+    ...(input.partySnapshot ? { partySnapshot: input.partySnapshot } : {}),
     totals: { supply: totals.supply, tax: totals.tax, amount: totals.amount },
   };
 }

@@ -12,7 +12,8 @@ import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { vatOn } from '../src/shared/lineAmount';
 import { companyOf } from '../src/shared/types';
-import { 서류당사자ById, type DocParty } from '../src/shared/docParty';
+import { 서류당사자스냅샷우선, type DocParty } from '../src/shared/docParty';
+import type { TaxIssueScope } from '../src/features/tax-documents/domain/taxIssue';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -20,7 +21,8 @@ interface TaxStatementProps {
   issuedStatements: IssuedStatement[];
   partners: Partner[];
   companyInfo?: CompanyInfo | null;
-  onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
+  onApplyTaxIssue?: (input: { operationId: string; statements: IssuedStatement[]; scope: TaxIssueScope; issuedAt: string }) =>
+    Promise<{ id: string; data: Partial<IssuedStatement> }[]>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -40,7 +42,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   companyId = 'taebaek',
   issuedStatements: liveStatements, partners,
   companyInfo,
-  onUpdateIssuedStatement,
+  onApplyTaxIssue,
 }) => {
   const [activeTab, setActiveTab] = useState<'issue' | 'history'>('issue');
 
@@ -69,12 +71,6 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     return Array.from(map.values()).filter(s => companyOf(s) === companyId);
   }, [liveStatements, extraStatements, companyId]);
 
-  // 과거 전표를 업데이트할 때 라이브 구독이 잡지 못하므로 로컬 캐시도 갱신
-  const handleUpdateStatement = (id: string, data: Partial<IssuedStatement>) => {
-    onUpdateIssuedStatement?.(id, data);
-    setExtraStatements(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
-  };
-
   // ── 발행 탭 상태 ──
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [onlyUnissued, setOnlyUnissued] = useState(false);
@@ -82,6 +78,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [taxClientSearch, setTaxClientSearch] = useState('');
   const [taxStmtIds, setTaxStmtIds] = useState<string[]>([]);
   const taxPrintRef = useRef<HTMLDivElement>(null);
+  const taxIssueOperationRef = useRef<string | null>(null);
 
   // ── 발행 탭 편집 상태 ──
   const [editedItems, setEditedItems] = useState<MergedItem[]>([]);
@@ -200,34 +197,38 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   const selectedClient = partners.find(c => c.id === taxClientId);
   const tradeMonth = selectedStmts.length > 0 ? selectedStmts[selectedStmts.length - 1].tradeDate.slice(0, 7) : '';
-  const issueParties = 서류당사자ById({
-    isSale: true,
-    companyInfo,
-    partners,
-    partnerId: taxClientId,
-    partnerName: selectedClient?.name ?? partnerStmts[0]?.partnerName,
-  });
+  const issueSnapshot = selectedStmts.find(s => s.partySnapshot)?.partySnapshot;
+  const issueParties = 서류당사자스냅샷우선(issueSnapshot, {
+        isSale: true,
+        companyInfo,
+        partners,
+        partnerId: taxClientId,
+        partnerName: selectedClient?.name ?? partnerStmts[0]?.partnerName,
+      });
 
   /**
    * 발행 표시 — **고른 쪽만** 찍는다.
    * 면세만 있는 전표는 taxIssuedAt도 같이 찍는다: 다른 화면(전표·재고)들이 그 칸 하나로
    * '발행됨'을 보기 때문에, 안 찍으면 영영 미발행으로 남는다.
    */
-  const handleTaxIssue = () => {
-    if (selectedStmts.length === 0) return;
+  const handleTaxIssue = async () => {
+    if (selectedStmts.length === 0 || !onApplyTaxIssue) return;
     const at = new Date().toISOString();
-    selectedStmts.forEach(s => {
-      const hasTax = (s.items ?? []).some(i => !i.isTaxExempt);
-      const hasExempt = (s.items ?? []).some(i => i.isTaxExempt);
-      const patch: { taxIssuedAt?: string; exemptIssuedAt?: string } = {};
-      if (taxScope !== 'exempt' && hasTax) patch.taxIssuedAt = at;
-      if (taxScope !== 'taxable' && hasExempt) {
-        patch.exemptIssuedAt = at;
-        if (!hasTax) patch.taxIssuedAt = at;   // 면세만인 전표 — 옛 칸도 같이 찍는다
-      }
-      if (Object.keys(patch).length) handleUpdateStatement(s.id, patch);
-    });
-    setTaxStmtIds([]);
+    taxIssueOperationRef.current ??= `tax-${Date.now()}`;
+    try {
+      const patches = await onApplyTaxIssue({
+        operationId: taxIssueOperationRef.current, statements: selectedStmts, scope: taxScope, issuedAt: at,
+      });
+      // 12개월 온디맨드 캐시는 실시간 구독 밖의 전표도 들고 있으므로 커밋 결과를 같이 반영한다.
+      setExtraStatements(prev => prev.map(s => {
+        const patch = patches.find(p => p.id === s.id);
+        return patch ? { ...s, ...patch.data } : s;
+      }));
+      taxIssueOperationRef.current = null;
+      setTaxStmtIds([]);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '세금계산서 발행 기록을 저장하지 못했습니다.');
+    }
   };
 
   const handleTaxPdf = async () => {
@@ -306,13 +307,14 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // ── 미리보기용 그룹 ──
   const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey) : null;
   const previewClient = previewGroup ? partners.find(c => c.id === previewGroup.partnerId) : null;
-  const previewParties = 서류당사자ById({
-    isSale: true,
-    companyInfo,
-    partners,
-    partnerId: previewGroup?.partnerId,
-    partnerName: previewClient?.name ?? previewGroup?.partnerName,
-  });
+  const previewSnapshot = previewGroup?.stmts.find(s => s.partySnapshot)?.partySnapshot;
+  const previewParties = 서류당사자스냅샷우선(previewSnapshot, {
+        isSale: true,
+        companyInfo,
+        partners,
+        partnerId: previewGroup?.partnerId,
+        partnerName: previewClient?.name ?? previewGroup?.partnerName,
+      });
   const previewMerged = useMemo(
     () => (previewGroup ? mergeAndSplit(previewGroup.stmts) : { taxable: [], exempt: [] }),
     [previewGroup]);

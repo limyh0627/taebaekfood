@@ -1,4 +1,4 @@
-import type { Partner, CompanyInfo } from './types';
+import type { Partner, CompanyInfo, StatementPartySnapshot } from './types';
 
 /**
  * **서류에 찍는 한쪽 당사자** — 거래명세서·세금계산서의 공급자 / 공급받는자 칸.
@@ -107,4 +107,12 @@ export function 서류당사자ById({
 }: DocPartiesByIdInput): { sup: DocParty; buy: DocParty } {
   const partner = partnerId ? partners.find(p => p.id === partnerId) : undefined;
   return 서류당사자(isSale, companyInfo ?? undefined, partner, partnerName);
+}
+
+/** 새 전표는 발행 당시 값을 쓰고, 스냅샷이 없는 옛 전표만 현재 마스터로 보충한다. */
+export function 서류당사자스냅샷우선(
+  snapshot: StatementPartySnapshot | undefined,
+  fallback: DocPartiesByIdInput,
+): { sup: DocParty; buy: DocParty } {
+  return snapshot ? { sup: snapshot.supplier, buy: snapshot.buyer } : 서류당사자ById(fallback);
 }

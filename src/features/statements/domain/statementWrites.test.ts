@@ -40,6 +40,16 @@ describe('planStatementWrites — 전표 한 장이 만드는 쓰기', () => {
     expect('id' in 본문.data).toBe(false);
   });
 
+  it('당사자 스냅샷은 명령의 값을 전표 본문에 함께 저장한다', () => {
+    const partySnapshot = {
+      supplier: { name: '태백식품', bizNo: '1', ceo: '임', addr: '음성', bizType: '제조', bizItem: '식품', tel: '1', fax: '' },
+      buyer: { name: '일성상회', bizNo: '2', ceo: '김', addr: '서울', bizType: '', bizItem: '', tel: '2', fax: '' },
+    };
+    const command = 명령({ partySnapshot });
+    const [본문] = 찾기(planStatementWrites({ command, statement: 전표() }).writes, 'issuedStatements');
+    expect(본문.data.partySnapshot).toEqual(partySnapshot);
+  });
+
   it('묶인 주문마다 발행표시를 찍는다 — 이게 빠지면 그 주문이 다시 떠서 두 번 발행된다', () => {
     const 주문 = 찾기(계획().writes, 'orders');
     expect(주문.map(w => w.id)).toEqual(['ORD-1', 'ORD-2']);
@@ -54,6 +64,26 @@ describe('planStatementWrites — 전표 한 장이 만드는 쓰기', () => {
     const p = 계획({ costUpdates: [{ itemId: 'p-1', price: 800 }] });
     expect(찾기(p.writes, 'items')).toEqual([{ collection: 'items', id: 'p-1', data: { cost: 800 }, merge: true }]);
     expect(p.afterCommit).toEqual([{ kind: 'RECOMPUTE_COSTS', itemIds: ['p-1'] }]);
+  });
+
+  it('품목 원가가 바뀌면 근거 전표·줄과 변경 전후 금액을 같은 쓰기에 남긴다', () => {
+    const p = 계획({
+      costUpdates: [{ itemId: 'p-1', price: 800, beforeCost: 700, sourceLineIndex: 2 }],
+      recordedAt: '2026-09-14T10:00:00Z', actorId: 'staff-1',
+    });
+    expect(찾기(p.writes, 'itemCostHistory')).toEqual([{
+      collection: 'itemCostHistory', id: 'stmt-1_p-1_2', merge: false,
+      data: {
+        itemId: 'p-1', beforeCost: 700, afterCost: 800,
+        effectiveAt: '2026-09-13', recordedAt: '2026-09-14T10:00:00Z', actorId: 'staff-1',
+        sourceStatementId: 'stmt-1', sourceLineIndex: 2,
+      },
+    }]);
+  });
+
+  it('원가가 그대로면 변경 이력을 만들지 않는다', () => {
+    const p = 계획({ costUpdates: [{ itemId: 'p-1', price: 800, beforeCost: 800 }] });
+    expect(찾기(p.writes, 'itemCostHistory')).toEqual([]);
   });
 
   it('원가가 안 바뀌면 뒤로 미룰 일도 없다', () => {
