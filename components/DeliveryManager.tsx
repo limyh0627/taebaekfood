@@ -195,11 +195,22 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
   const weekday = new Date(`${todayKey}T00:00:00Z`).getUTCDay();
   quickWeekDate.setTime(quickWeekDate.getTime() - ((weekday + 6) % 7) * 86400000);
   const quickWeekStart = queryDateKey(quickWeekDate.toISOString());
-  const [queryStatus, setQueryStatus] = useState<'all' | OrderStatus.DISPATCHED | OrderStatus.SHIPPED>('all');
+  const [queryStatus, setQueryStatus] = useState<'all' | OrderStatus>('all');
   const deliverySearchOrders = useMemo(() => {
     const normalized = queryText.trim().toLocaleLowerCase('ko-KR');
     return sourceOrders.filter(order => {
-      if (order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED) return false;
+      /*  **배송 화면은 상태로 거르지 않는다**(2026-09-14 사장님: "배송캘린더에 작업완료
+       *  출고완료 주문만 뜨게 하지말고 대기중 작업중인 주문도 뜨게 해").
+       *
+       *  여기서 작업완료·출고완료만 들이고 있어서 **금일 배송순서와 캘린더가 어긋나 있었다** —
+       *  금일 배송순서(`deliverySequenceOrders`)는 이미 `sourceOrders` 를 바로 읽어
+       *  '배송완료가 아닌 것'을 다 담는데(2026-09-12 사장님: "금일배송순서가 배송캘린더
+       *  당일에 해당하는거랑 일치해야 하는데"), 캘린더만 좁아 대기중·작업중이 빠졌다.
+       *  **세는 곳이 둘이면 또 갈린다** — 그쪽 규칙에 맞춘다.
+       *
+       *  예전 주문(배송완료)도 들인다. 캘린더가 그걸 따로 모아(`deliveredSchedules`)
+       *  '이전 N건' 으로 접어 두기 때문이다 — 전에는 여기서 막혀 그 접힘이 늘 비어 있었다. */
+      if (order.partnerName === '생산기록') return false;
       const orderDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(order.createdAt));
       if (queryDateFrom && orderDate < queryDateFrom) return false;
       if (queryDateTo && orderDate > queryDateTo) return false;
@@ -873,8 +884,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       </section>}
 
       {!calendarOnly && <div className="order-4 flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="배송 상태 필터">
+        {/*  **'전체' 는 예전 주문을 안 센다** — 예전 것은 캘린더에서 '이전 N건' 으로 접혀 따로 뜬다.
+             셈에 넣으면 운영 중인 주문이 몇 건인지가 묻힌다. */}
         {[
-          { value: 'all' as const, label: '전체', count: deliveryQueryOrders.length },
+          { value: 'all' as const, label: '전체', count: deliveryQueryOrders.filter(order => order.status !== OrderStatus.DELIVERED).length },
+          { value: OrderStatus.PENDING, label: '대기중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PENDING).length },
+          { value: OrderStatus.PROCESSING, label: '작업중', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.PROCESSING).length },
           { value: OrderStatus.DISPATCHED, label: '작업완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.DISPATCHED).length },
           { value: OrderStatus.SHIPPED, label: '출고완료', count: deliveryQueryOrders.filter(order => order.status === OrderStatus.SHIPPED).length },
         ].map(status => (
@@ -888,10 +903,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         <div className="order-5">
         <OrdersList
           title="배송 목록"
-          subtitle="작업 완료 및 출고완료 주문"
+          subtitle="오늘 나갈 주문 — 대기중부터 출고완료까지"
           groupBy="status"
-          allowedStatuses={[OrderStatus.DISPATCHED, OrderStatus.SHIPPED]}
-          orders={orders.filter(order => order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED)}
+          /*  캘린더와 같은 것을 본다(2026-09-14) — 위 상태 바에서 '대기중'을 골랐는데
+              목록이 비어 있으면 거짓말이 된다. 예전 주문만 뺀다. */
+          allowedStatuses={[OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.ON_HOLD, OrderStatus.SHIPPED]}
+          orders={orders.filter(order => order.status !== OrderStatus.DELIVERED)}
           partners={partners}
           items={items}
           partnerItems={partnerItems}

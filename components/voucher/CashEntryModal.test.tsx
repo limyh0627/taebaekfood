@@ -81,7 +81,7 @@ describe('수금·지불 — 전표에서 연다', () => {
     //  100만원 전표에 60만원을 이미 받았다 → 40만원이 떠야 한다.
     //  총액이 뜨면 이미 받은 60만원이 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이었다).
     띄우기({ kind: '수금지불', stmt: 매출전표() }, { getBalance: () => 400_000 });
-    expect((입력칸('금액') as HTMLInputElement).value).toBe('400000');
+    expect((입력칸('금액') as HTMLInputElement).value).toBe('400,000');
   });
 
   it('일자 기본값은 오늘이 아니라 **그 전표 날짜**다', () => {
@@ -104,7 +104,7 @@ describe('수금·지불 — 전표에서 연다', () => {
     띄우기({ kind: '수금지불', stmt: 매출전표() });
     expect((입력칸('일자') as HTMLInputElement).value).toBe('2026-08-28');
     await u.click(screen.getByText('거래처 잔액'));
-    expect((입력칸('금액') as HTMLInputElement).value).toBe('1500000');   // 그 거래처 미수 전액
+    expect((입력칸('금액') as HTMLInputElement).value).toBe('1,500,000');   // 그 거래처 미수 전액
     //  전표에서 연 수금이라 날짜는 언제나 그 전표 날짜다 — 상자를 바꿔도 안 건드린다
     expect((입력칸('일자') as HTMLInputElement).value).toBe('2026-08-28');
   });

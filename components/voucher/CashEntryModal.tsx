@@ -3,6 +3,7 @@ import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, PaymentMethod } from '../../src/shared/types';
 import { cashEditSplit, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../../src/shared/cashEntryEdit';
+import { formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
 
 /**
  * **자금 전표 하나를 세우거나 고치는 창.**
@@ -79,7 +80,7 @@ function SettleBody({
    * 찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
    * 일자도 **그 전표 날짜**가 기본이다 — 오늘로 박아 두면 8/28 전표를 8/31에 열 때마다 고쳐야 한다.
    */
-  const [amount, setAmount] = useState(String(Math.round(getBalance(stmt))));
+  const [amount, setAmount] = useState(formatMoneyInput(Math.round(getBalance(stmt))));
   const [date, setDate] = useState(stmt.tradeDate || today());
   const [method, setMethod] = useState<PaymentMethod>('계좌이체');
   const [note, setNote] = useState('');
@@ -91,7 +92,7 @@ function SettleBody({
   const partnerLeft = isBuy ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
 
   const submit = (forceOver: boolean) => {
-    const amt = Number(amount);
+    const amt = parseMoneyInput(amount);
     if (!amount || amt <= 0) return;
     //  초과 판정은 **거래처 잔액 기준** — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
     const live = latestStatement(stmt.id) ?? stmt;
@@ -107,7 +108,7 @@ function SettleBody({
     const on = scope === k;
     //  상자를 바꿔도 **날짜는 안 건드린다** — 전표에서 연 수금·지불이라 기본은 언제나 그 전표 날짜다.
     return (
-      <button onClick={() => { setScope(k); setAmount(String(Math.round(amt))); }}
+      <button onClick={() => { setScope(k); setAmount(formatMoneyInput(Math.round(amt))); }}
         className={`flex-1 text-left rounded-xl px-3 py-2.5 border transition-all ${
           on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}>
         <div className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</div>
@@ -141,7 +142,7 @@ function SettleBody({
         <div className="space-y-3">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-            <input type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
+            <input type="text" inputMode="numeric" value={amount} onChange={e => setAmount(formatMoneyInput(e.target.value))}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
           </div>
           {cashAccounts.length > 0 && (
@@ -194,7 +195,7 @@ function SettleBody({
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => submit(false)} disabled={!amount || Number(amount) <= 0}
+          <button onClick={() => submit(false)} disabled={!amount || parseMoneyInput(amount) <= 0}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
             <Save size={12}/>저장
           </button>

@@ -97,6 +97,31 @@ export function addDays(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * 조회 기간을 앞뒤의 맞닿은 기간으로 옮긴다.
+ * 시작일과 종료일을 각각 같은 숫자만큼 미는 식이면 하루짜리는 움직이지 않고,
+ * 기간 끝이 겹치기 쉽다. 양 끝을 포함한 날짜 수만큼 옮겨 다음 범위가 바로 이어지게 한다.
+ */
+export function shiftDateRange(
+  from: string,
+  to: string,
+  direction: -1 | 1,
+): { from: string; to: string } {
+  const start = RE.exec(String(from ?? ''));
+  const end = RE.exec(String(to ?? ''));
+  if (!start || !end) return { from, to };
+
+  const startMs = Date.UTC(Number(start[1]), Number(start[2]) - 1, Number(start[3]));
+  const endMs = Date.UTC(Number(end[1]), Number(end[2]) - 1, Number(end[3]));
+  if (endMs < startMs) return { from, to };
+
+  const days = Math.round((endMs - startMs) / 86_400_000) + 1;
+  return {
+    from: addDays(from, direction * days),
+    to: addDays(to, direction * days),
+  };
+}
+
 /** 'YYYY-MM'에 몇 달 더하기(음수면 빼기). 말일은 안 넘어간다 — 달만 센다. */
 export function addMonths(ym: string, n: number): string {
   const m = /^(\d{4})-(\d{2})/.exec(String(ym ?? ''));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, addMonths, endOfMonth, today, dateOfLocal, timeOfLocal, kstDateRangeUtc } from './day';
+import { addDays, addMonths, endOfMonth, shiftDateRange, today, dateOfLocal, timeOfLocal, kstDateRangeUtc } from './day';
 
 /**
  * 이 셈이 틀리면 조용히 하루씩 밀린다 — 견적서 유효기한, 배송일, 앵커 시작일이
@@ -65,6 +65,33 @@ describe('한국 날짜 범위 → Firestore UTC 경계', () => {
       startInclusive: '2026-07-31T15:00:00.000Z',
       endExclusive: '2026-08-31T15:00:00.000Z',
     });
+  });
+
+  it('하루 조회는 이전·다음 하루로 움직인다', () => {
+    expect(shiftDateRange('2026-09-14', '2026-09-14', 1))
+      .toEqual({ from: '2026-09-15', to: '2026-09-15' });
+    expect(shiftDateRange('2026-09-14', '2026-09-14', -1))
+      .toEqual({ from: '2026-09-13', to: '2026-09-13' });
+  });
+
+  it('기간 조회는 양 끝을 포함한 날짜 수만큼 옮겨 서로 겹치지 않는다', () => {
+    expect(shiftDateRange('2026-09-07', '2026-09-13', 1))
+      .toEqual({ from: '2026-09-14', to: '2026-09-20' });
+    expect(shiftDateRange('2026-09-14', '2026-09-20', -1))
+      .toEqual({ from: '2026-09-07', to: '2026-09-13' });
+    expect(shiftDateRange('2026-09-06', '2026-09-13', 1))
+      .toEqual({ from: '2026-09-14', to: '2026-09-21' });
+  });
+
+  it('월말과 연말을 넘어도 기간 길이를 유지한다', () => {
+    expect(shiftDateRange('2026-12-29', '2026-12-31', 1))
+      .toEqual({ from: '2027-01-01', to: '2027-01-03' });
+  });
+
+  it('빈 값이나 뒤집힌 기간은 움직이지 않는다', () => {
+    expect(shiftDateRange('', '', 1)).toEqual({ from: '', to: '' });
+    expect(shiftDateRange('2026-09-14', '2026-09-13', 1))
+      .toEqual({ from: '2026-09-14', to: '2026-09-13' });
   });
 
   it('연말과 윤년 월말을 정확히 넘긴다', () => {

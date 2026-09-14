@@ -7,6 +7,7 @@ import { buildPaymentEntry } from '../src/shared/payment';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
+import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 
 interface Props {
   issuedStatements: IssuedStatement[];
@@ -38,9 +39,19 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
    * 수금·지불 창을 연다. 금액을 미리 채워 두면 바로 누르기만 하면 된다 —
    * 거래처 목록의 잔액을 누르거나, 전표 줄의 남은 금액을 누르면 그 값이 들어온다.
    */
-  const openPay = (금액?: number, 상대?: { partnerId: string; partnerName: string }) => {
+  const openPay = (
+    금액?: number,
+    상대?: { partnerId: string; partnerName: string },
+    전표날짜?: string,
+  ) => {
     if (상대 && 상대.partnerId !== selId) setSelId(상대.partnerId);
-    setPayForm({ amount: 금액 ? String(Math.round(금액)) : '', date: today(), note: '' });
+    setPayForm({
+      amount: 금액 ? formatMoneyInput(Math.round(금액)) : '',
+      // 전표의 남은 금액에서 연 창은 그 전표일로 소급하는 경우가 많다. 거래처 전체 잔액에서
+      // 연 창만 오늘을 쓴다 — 둘을 모두 today()로 두면 과거 전표마다 날짜를 다시 골라야 했다.
+      date: 전표날짜 || today(),
+      note: '',
+    });
     setPayOpen(true);
   };
   const [payForm, setPayForm] = useState({ amount: '', date: today(), note: '' });
@@ -78,7 +89,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
    */
   const savePay = () => {
     if (!sel || !onAddCashEntry) return;
-    const amt = Number(String(payForm.amount).replace(/[,\s원]/g, ''));
+    const amt = parseMoneyInput(payForm.amount);
     if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 넣으세요.'); return; }
     //  셈은 shared/payment 하나다 — 여기서 또 짓지 않는다
     onAddCashEntry(buildPaymentEntry({
@@ -294,7 +305,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                         const 남은 = r.kind === '전표' && r.sourceId ? (openByStmt.get(r.sourceId) ?? 0) : 0;
                         if (남은 <= 0 || !onAddCashEntry) return <span className="text-slate-200">—</span>;
                         return (
-                          <button type="button" onClick={() => openPay(남은)}
+                          <button type="button" onClick={() => openPay(남은, undefined, r.date)}
                             title={`${fmt(남은)}원 ${type === '매출' ? '수금' : '지불'}`}
                             className={`px-2 py-1 rounded-lg text-[10px] font-black text-white transition-all ${
                               type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
@@ -432,16 +443,18 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">금액</p>
                 <input autoFocus inputMode="numeric" value={payForm.amount}
-                  onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                  aria-label={`${type === '매출' ? '수금' : '지불'} 금액`}
+                  onChange={e => setPayForm(f => ({ ...f, amount: formatMoneyInput(e.target.value) }))}
                   onKeyDown={e => { if (e.key === 'Enter') savePay(); }}
-                  placeholder={String(sel.balance)}
+                  placeholder={formatMoneyInput(sel.balance)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-black text-right tabular-nums outline-none focus:border-indigo-400" />
-                <button type="button" onClick={() => setPayForm(f => ({ ...f, amount: String(sel.balance) }))}
+                <button type="button" onClick={() => setPayForm(f => ({ ...f, amount: formatMoneyInput(sel.balance) }))}
                   className="mt-1 text-[10px] font-black text-indigo-500 hover:text-indigo-700">전액 넣기</button>
               </div>
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">날짜</p>
-                <input type="date" value={payForm.date} onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+                <input type="date" value={payForm.date} aria-label={`${type === '매출' ? '수금' : '지불'} 날짜`}
+                  onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
               </div>
               <div>

@@ -53,6 +53,18 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
+describe('전표 목록 화면 구성', () => {
+  it('주문 목록과 같은 검색조건·거래유형·조회 결과 순서로 구성한다', () => {
+    setup(undefined, undefined, { pendingInvoice: null });
+
+    expect(screen.getByRole('heading', { name: '검색조건' })).toBeInTheDocument();
+    const kindTabs = screen.getByRole('tablist', { name: '전표 거래유형 선택' });
+    expect(within(kindTabs).getAllByRole('tab')).toHaveLength(6);
+    expect(screen.getByText(/조회 결과/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /초기화/ })).toBeInTheDocument();
+  });
+});
+
 describe('전표와 거래처 단가의 저장 완료', () => {
   it('기존 전표 수정도 ID와 과세 변경을 보존하고 단가 저장 완료까지 기다린다', async () => {
     const gate = deferred();

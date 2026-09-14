@@ -13,7 +13,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2, Landmark
+  ChevronLeft, Share2, Check, Wallet, RotateCw, RotateCcw, Trash2, Landmark
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
@@ -2032,6 +2032,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       { matchAccount: histAccount ? matchAccount : undefined, codeName })),
     [allTimelineRows, histFrom, histTo, histKind, histAccount, histPartner, histSearch, codeName, matchAccount]);
 
+  /** 거래유형 탭 건수 — 날짜·거래처·계정·검색은 유지하고, 유형만 풀어서 센다. */
+  const historyKindCounts = useMemo(() => {
+    const rows = filterTimeline(allTimelineRows,
+      { from: histFrom, to: histTo, kind: '전체', partner: histPartner, search: histSearch },
+      { matchAccount: histAccount ? matchAccount : undefined, codeName });
+    const counts = new Map<string, number>([['전체', rows.length]]);
+    for (const row of rows) {
+      const kind = 갈래(row);
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return counts;
+  }, [allTimelineRows, histFrom, histTo, histAccount, histPartner, histSearch, codeName, matchAccount]);
+
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAccount, histPartner, histSearch]);
   /** 거래처 목록 — 실제로 전표가 있는 이름만. 없는 이름을 고르게 하면 빈 목록만 본다. */
@@ -2098,6 +2111,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setHistFrom(next.from);
     setHistTo(next.to);
     setHistQuick('');
+  };
+
+  const resetHistoryFilters = () => {
+    setQuickRange('당일');
+    setHistKind('전체');
+    setHistPartner('');
+    setHistAccount('');
+    setHistSearch('');
+    setPartnerQuery('');
+    setAcctQuery('');
+    setAcctAxis('');
+    setAcctBranch('');
+    setAcctGroup('');
+    setPartnerPickerOpen(false);
+    setAcctPickerOpen(false);
   };
 
   // ── 주문 클릭 처리 (중복 발행 감지) ──
@@ -2236,68 +2264,64 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* 보유자금·계좌 잔액은 여기 안 띄운다 — 장부(현금출납장)가 그걸 쥔다.
           전표 화면은 전표를 끊는 곳이다. 같은 숫자를 두 곳에 두면 어느 쪽이 진짜인지 흐려진다. */}
 
-      {/* ── 필터 바 + 액션 버튼 (같은 행: 필터 좌측 · 버튼 우측) ── */}
-      <div className="flex flex-col md:flex-row md:items-start gap-3">
-      <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 px-4 py-3 space-y-2.5">
-        {/* 1행: 기간 퀵버튼 + 날짜 직접입력 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">기간</span>
+      {/* 주문 목록과 같은 순서로 찾는다: 검색조건 → 거래유형 → 조회 결과 → 표. */}
+      <section className="relative overflow-visible rounded-lg border border-slate-200 bg-white" aria-labelledby="statement-query-title">
+        <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4">
+          <h3 id="statement-query-title" className="text-xs font-black text-slate-800">검색조건</h3>
+          <button type="button" onClick={resetHistoryFilters}
+            className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800">
+            <RotateCcw size={12}/>초기화
+          </button>
+        </div>
+        <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-500">전표일자</span>
+            <div className="flex flex-wrap items-center gap-2">
           {(['당일','금주','당월','당년','ALL'] as const).map(p => (
             <button key={p} onClick={()=>setQuickRange(p)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+              className={`h-9 px-3 text-[11px] font-black border-y border-l first:rounded-l-md last:rounded-r-md last:border-r -mr-2 last:mr-0 transition-all ${
                 histQuick===p
-                  ? 'bg-slate-700 text-white border-slate-700'
-                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-700'
+                  ? 'relative z-10 bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}>{p}</button>
           ))}
           {/*  좁으면 한 줄을 통째로 쓴다 — 안 접히면 날짜 두 개가 카드 밖으로 나간다(2026-09-04 사장님) */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-1">
             <input type="date" value={histFrom} aria-label="조회 시작일"
               onChange={e=>{setHistFrom(e.target.value);setHistQuick('');}}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+              className="h-9 bg-slate-50 border border-slate-200 rounded-md px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
             <span className="text-slate-300 text-xs">~</span>
             <input type="date" value={histTo} aria-label="조회 종료일"
               onChange={e=>{setHistTo(e.target.value);setHistQuick('');}}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+              className="h-9 bg-slate-50 border border-slate-200 rounded-md px-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
             {/*  **◀▶ 를 붙여 오른쪽에 둔다**(2026-09-14 사장님: "< 버튼이 날짜 오른쪽으로
                  넘어와서 <> 같이 있어야돼"). 하나는 앞, 하나는 뒤에 떨어져 있으니 날짜를
                  사이에 두고 눈이 왔다 갔다 했다. 붙여 두면 한 손가락으로 앞뒤를 오간다. */}
             <div className="flex shrink-0 items-center gap-1 sm:ml-0.5">
               <button type="button" onClick={() => moveHistoryRange(-1)} disabled={!histFrom || !histTo}
                 aria-label="이전 기간" title="이전 기간"
-                className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                 <ChevronLeft size={15} strokeWidth={2.5}/>
               </button>
               <button type="button" onClick={() => moveHistoryRange(1)} disabled={!histFrom || !histTo}
                 aria-label="다음 기간" title="다음 기간"
-                className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                 <ChevronRight size={15} strokeWidth={2.5}/>
               </button>
             </div>
           </div>
-        </div>
-        <div className="border-t border-slate-100"/>
-        {/* 2행 — 거래유형·계정과목·검색 한 줄.
+            </div>
+          </div>
+          <span className="h-0 basis-full" aria-hidden="true"/>
+        {/* 거래처·계정과목·검색.
             버튼을 늘어놓으니 계정이 수십 개라 줄이 세 겹으로 접혔다. 고르는 값이 많고
             계층이 깊은 건 드롭다운이 맞다. 지금 무엇으로 거르는지는 옆 숨길에 적어 둔다. */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">필터</span>
-
-          {/* 거래유형 — 다섯 갈래 고정 */}
-          <label className="flex items-center gap-1.5">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">거래유형</span>
-            <select value={histKind} onChange={e => setHistKind(e.target.value as typeof histKind)}
-              className={`${'border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white text-slate-600 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer'} ${histKind !== '전체' ? 'border-indigo-300 text-indigo-700' : ''}`}>
-              {(['전체','매출','매입','대체','입금','출금'] as const).map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </label>
-
           {/* 거래처 — 전표가 실제로 있는 이름만. 수백 곳이라 검색으로 찾는다(목록 높이는 고정). */}
-          <div className="relative">
+          <div className="relative flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-500">거래처</span>
             <button type="button" onClick={() => { setPartnerPickerOpen(v => !v); setPartnerQuery(''); }}
-              className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white outline-none transition-all max-w-[200px] ${
+              className={`flex h-9 min-w-[145px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all max-w-[210px] ${
                 histPartner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">거래처</span>
               <span className="truncate">{histPartner || '거래처 선택'}</span>
               <ChevronDown size={12} className="shrink-0 opacity-50"/>
             </button>
@@ -2330,11 +2354,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           {/* 계정과목 — **검색되는 목록 하나.** 계정은 수십 개지만 찾는 사람은 이름을 안다.
               층을 훑어 내려가게 하면 이자비용 하나 찾는 데도 세 번을 골라야 한다.
               계층은 줄마다 경로로 보여 준다 — 손익 › 영업외비용 › 951 이자비용. */}
-          <div className="relative">
+          <div className="relative flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-500">계정과목</span>
             <button type="button" onClick={() => { setAcctPickerOpen(v => !v); setAcctQuery(''); }}
-              className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white outline-none transition-all max-w-[260px] ${
+              className={`flex h-9 min-w-[190px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all max-w-[280px] ${
                 histAccount ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">계정과목</span>
               <span className="truncate">
                 {acctPicked ? <>
                   <span className="text-slate-400 font-bold">{acctPicked.path} › </span>{acctPicked.label}
@@ -2427,19 +2451,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </>)}
           </div>
 
-          <div className="relative flex-1 max-w-xs ml-1">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-            <input type="text" placeholder="업체명 · 문서번호 · 계정과목(예: 이자)" value={histSearch}
-              onChange={e=>setHistSearch(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
-          </div>
-          {isFetchingHistory
-            ? <span className="text-[11px] text-indigo-400 font-bold shrink-0 animate-pulse">불러오는 중…</span>
-            : <span className="text-[11px] text-slate-400 font-bold shrink-0">{filteredHistory.length}건</span>
-          }
+          <label className="flex min-w-[260px] max-w-sm flex-1 flex-col gap-1">
+            <span className="text-[10px] font-bold text-slate-500">전체 검색</span>
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+              <input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={histSearch}
+                onChange={e=>setHistSearch(e.target.value)}
+                className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
+            </div>
+          </label>
         </div>
+      </section>
+
+      <div role="tablist" className="flex items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-white px-1" aria-label="전표 거래유형 선택">
+        {(['전체','매출','매입','대체','입금','출금'] as const).map(kind => (
+          <button key={kind} type="button" role="tab" aria-selected={histKind === kind} onClick={() => setHistKind(kind)}
+            className={`flex min-h-10 shrink-0 items-center gap-1 border-b-2 px-3 text-xs font-black transition-colors ${
+              histKind === kind ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}>
+            <span>{kind}</span><span className="text-[9px] opacity-70">{historyKindCounts.get(kind) ?? 0}</span>
+          </button>
+        ))}
       </div>
-      <div className="flex items-center gap-2 flex-wrap shrink-0">
+
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <h3 className="text-xs font-black text-slate-800">조회 결과 <span className="text-indigo-600">{filteredHistory.length}건</span>
+          {isFetchingHistory && <span className="ml-2 text-[11px] text-indigo-400 animate-pulse">불러오는 중…</span>}
+        </h3>
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
         {/* ── 전표 발행 (solid) ── */}
         {/* 거래명세서 — 매출/매입을 한 버튼에서 고른다 */}
         <div className="relative" ref={createMenuRef}>
@@ -2486,30 +2525,30 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         >
           <Save size={13}/>회사정보
         </button>
-      </div>
+        </div>
       </div>
 
       {/* ── 발행내역 테이블 ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         {filteredHistory.length === 0 ? (
           <div className="py-16 text-center text-slate-300 text-sm font-bold">
             <FileText size={32} className="mx-auto mb-2 opacity-40"/>
             발행된 전표가 없습니다
           </div>
         ) : (<>
-          <table className="w-full text-left hidden md:table">
+          <table className="hidden w-full min-w-[980px] text-left md:table [&_th:not(:last-child)]:border-r [&_th:not(:last-child)]:border-slate-300 [&_td:not(:last-child)]:border-r [&_td:not(:last-child)]:border-slate-200">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 whitespace-nowrap">전표일자</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 whitespace-nowrap">구분</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400">업체명</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">금액</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">거래처 누적잔액</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400">거래내역</th>
+              <tr className="border-b-2 border-slate-400 bg-slate-100">
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600 whitespace-nowrap">전표일자</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600 whitespace-nowrap">구분</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600">업체명</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600 text-right whitespace-nowrap">금액</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600 text-right whitespace-nowrap">거래처 누적잔액</th>
+                <th className="px-4 py-3 text-[11px] font-black text-slate-600">거래내역</th>
                 <th className="px-4 py-3"/>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-200">
               {pagedHistory.map(row => {
                 if (row.kind === 'cash') {
                   // ── 자금 입출금 전표 행 ──
