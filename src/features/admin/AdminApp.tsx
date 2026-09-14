@@ -98,7 +98,7 @@ import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
-import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
+import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
@@ -1801,7 +1801,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
    */
   const handleUpdateItems = (orderId: string, items: OrderItem[]) => {
     const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
-    if (!canEditItems(o)) { alert(editBlockMessage(o)); return; }
+    /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
+        "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
+        무관하니 안 막고, 생산된 **그 줄**의 수량·구성만 막는다. 판정은 `orderEditGuard`. */
+    const 걸린줄 = o ? blockedEditLine(o, items) : null;
+    if (걸린줄) { alert(editBlockMessage(o, 걸린줄)); return; }
     updateItem('orders', orderId, { items });
   };
 
