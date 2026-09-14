@@ -1,0 +1,20 @@
+{
+ "docNo": "260731-02",
+ "type": "매입",
+ "items": [
+  {
+   "spec": "",
+   "name": "기초 미수금(이월)",
+   "supply": 819318,
+   "isTaxExempt": false,
+   "price": 901250,
+   "tax": 81932,
+   "qty": 1,
+   "accountCode": "540",
+   "total": 901250
+  }
+ ],
+ "totalAmount": 901250,
+ "totalSupply": 819318,
+ "totalTax": 81932
+}

@@ -1,0 +1,33 @@
+{
+ "stmt-open-sup-3-매입": {
+  "items": [
+   {
+    "qty": 1,
+    "isTaxExempt": true,
+    "name": "기초 미지급(이월)",
+    "total": 2917500,
+    "tax": 0,
+    "price": 2917500,
+    "accountCode": "375",
+    "side": "차변",
+    "supply": 2917500,
+    "spec": ""
+   },
+   {
+    "side": "대변",
+    "price": 2917500,
+    "supply": 2917500,
+    "spec": "",
+    "qty": 1,
+    "isTaxExempt": true,
+    "tax": 0,
+    "total": 2917500,
+    "name": "기초 미지급(이월)",
+    "accountCode": "251"
+   }
+  ],
+  "totalAmount": 2917500,
+  "totalSupply": 2917500,
+  "totalTax": 0
+ }
+}

@@ -789,9 +789,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 onClick={() => { set검색열림(v => !v); if (검색열림) set찾는글(''); }}
                 aria-label={검색열림 ? '검색 닫기' : '메시지 검색'}
                 aria-pressed={검색열림}
-                className={`shrink-0 rounded-xl p-2 transition-all ${검색열림 ? 'bg-indigo-50 text-indigo-600' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-600'}`}
+                /*  **흐려서 안 보였다**(2026-09-14 사장님: "검색창 뵈지도 않는다").
+                    `text-slate-300` 아이콘 하나만 떠 있으니 흰 바탕에 묻혔다.
+                    테두리와 글자를 붙여 **단추로 보이게** 한다 — 좁은 폰에서는 글자를 접는다. */
+                className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-xs font-bold transition-all ${
+                  검색열림
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
               >
-                <Search size={18} />
+                <Search size={15} />
+                <span className="hidden sm:inline">검색</span>
               </button>
               <div className="relative">
                 <button
