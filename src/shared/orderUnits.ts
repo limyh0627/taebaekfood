@@ -196,6 +196,24 @@ export function unitsPerBoxOf(product: BoxLike | undefined): number {
 }
 
 /**
+ * 재고관리의 현재재고 입력값을 DB `stock` 단위로 바꾼다.
+ *
+ * 이 입력칸은 화면에 보인 재고 단위를 그대로 받는다. 박스 SKU는 박스, 낱개 SKU는 개수다.
+ * BOM·포장 환산표의 개입수는 주문에서 “몇 박스”라고 입력했을 때만 쓰며, 재고 실사에 곱하면
+ * 박스 SKU는 `1박스 → 10박스`, 향미유 낱개 SKU는 `1개 → 12개`가 된다.
+ * 밀도 품목만 화면 L를 저장 kg으로 바꾼다.
+ * `addStockUnits`는 작업완료분처럼 이미 DB 재고 단위로 계산된 값이다.
+ */
+export function stocktakeStoredQuantity(
+  product: Pick<Item, 'density'>,
+  displayedValue: number,
+  addStockUnits = 0,
+): number {
+  const units = product.density ? displayedValue * product.density : displayedValue;
+  return Math.round((units + addStockUnits) * 1000) / 1000;
+}
+
+/**
  * **박스 수량을 낱개로 편다.**
  *
  * 개입수는 품목이 안다(`unitsPerBoxOf`). 그런데 화면 일곱 군데가 **12를 손으로 박아** 놓고

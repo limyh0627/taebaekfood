@@ -39,7 +39,7 @@ import {
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
-import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
+import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -744,13 +744,8 @@ const ItemList: React.FC<ItemListProps> = ({
           : `${product.name} 실사 — 로트는 그대로, 원장 잔량을 ${val}${unitLabel}로 맞췄습니다`,
       });
     } else {
-      // 입력은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
-      //  개입수는 품목이 안다 — '향미유면 12'로 박아 두면 20개입 품목이 12개로 잡힌다
-      const perBox = unitsPerBoxOf(product);
-      const units = perBox > 1 ? val * perBox
-        : product.density ? val * product.density
-        : val;
-      onUpdateItem({ ...product, stock: Math.round((units + addStockUnits) * 1000) / 1000 });
+      // 입력은 화면에 보인 재고 단위 그대로다. 개입수를 또 곱하면 1박스가 10박스로 저장된다.
+      onUpdateItem({ ...product, stock: stocktakeStoredQuantity(product, val, addStockUnits) });
     }
   };
 
@@ -2278,11 +2273,9 @@ const ItemList: React.FC<ItemListProps> = ({
                       await onUpdateItem(metaOnly as Item);
                       await commitStockEdit(p, newStock);
                     } else {
-                      // 입력칸은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
-                      const stockKg = p.density && newStock !== undefined
-                        ? Math.round(newStock * p.density * 1000) / 1000
-                        : newStock;
-                      await onUpdateItem({ ...p, ...form, ...(newStock !== undefined ? { stock: stockKg } : {}) } as Item);
+                      // 인라인 수정과 같은 변환을 쓴다 — 두 저장문이 갈리면 박스·밀도 품목이 다시 어긋난다.
+                      const storedStock = newStock === undefined ? undefined : stocktakeStoredQuantity(p, newStock);
+                      await onUpdateItem({ ...p, ...form, ...(storedStock !== undefined ? { stock: storedStock } : {}) } as Item);
                     }
                     setRowEditProduct(null);
                   }}

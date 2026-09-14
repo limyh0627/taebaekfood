@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { unitsPerBoxOf, unpackQty, boxQtyLabel, packBreakdown } from './orderUnits';
+import { unitsPerBoxOf, unpackQty, boxQtyLabel, packBreakdown, stocktakeStoredQuantity } from './orderUnits';
 import { setBomIndex, buildBomIndex, resetBomIndex } from './bomIndex';
 import { setPackIndex, buildPackIndex, resetPackIndex } from './packIndex';
 import type { Item } from './types';
@@ -102,6 +102,29 @@ describe('둘이 겹치면 BOM 이 이긴다', () => {
     BOM세우기([낱개, 박스], [{ parent_id: 'box', child_id: 'loose', quantity: 20 }]);
     환산표세우기([{ item_id: 'box', units_per_box: 99 }]);
     expect(unitsPerBoxOf(박스)).toBe(20);
+  });
+});
+
+describe('현재재고 실사 입력을 저장 단위로 바꾼다', () => {
+  it('박스 SKU의 1은 1박스다 — BOM 개입수 10을 다시 곱하지 않는다', () => {
+    const 낱개 = { id: 'loose', name: '들깨가루/1kg', type: 'product' } as Item;
+    const 박스 = { id: 'box', name: '들깨가루/1kg', type: 'product', unit: '박스' } as Item;
+    BOM세우기([낱개, 박스], [{ parent_id: 'box', child_id: 'loose', quantity: 10 }]);
+
+    expect(stocktakeStoredQuantity(박스, 1)).toBe(1);
+    expect(stocktakeStoredQuantity(박스, 1, 6)).toBe(7);
+  });
+
+  it('포장 환산표를 쓰는 낱개 SKU도 화면에 보인 개수를 그대로 저장한다', () => {
+    const 상품 = 품목({ id: 'goods', type: 'goods' });
+    환산표세우기([{ item_id: 'goods', units_per_box: 12 }]);
+
+    expect(unitsPerBoxOf(상품)).toBe(12);
+    expect(stocktakeStoredQuantity(상품, 2)).toBe(2);
+  });
+
+  it('밀도 품목은 화면 L를 저장 kg으로 바꾼다', () => {
+    expect(stocktakeStoredQuantity(품목({ density: 0.924 }), 10)).toBe(9.24);
   });
 });
 
