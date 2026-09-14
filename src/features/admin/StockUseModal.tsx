@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Package, X, CornerDownRight } from 'lucide-react';
+import { Package, CornerDownRight } from 'lucide-react';
+import AlertModalShell from '../../shared/components/AlertModalShell';
 import { StockUseRow, resolveStockUse, toStockUsePlan } from './stockUseRows';
 import type { StockUsePlan } from './orderStockEngine';
 
@@ -48,29 +49,40 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
   );
 
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-6 pb-4 flex items-start gap-4 border-b border-slate-100">
-          <div className="p-2.5 bg-emerald-50 rounded-2xl shrink-0">
-            <Package size={22} className="text-emerald-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-slate-900 leading-snug">
-              {hasUsableStock ? '재고 사용량을 확인해 주세요' : '재고가 없어 전량 생산합니다'}
-            </p>
-            <p className="text-xs text-slate-400 font-medium mt-1">
-              {partnerName} · {hasUsableStock
-                ? '쓴 만큼 재고에서 빠지고, 모자란 만큼만 새로 생산합니다'
-                : '아래 주문 수량 전부를 새로 생산합니다'}
-            </p>
-          </div>
-          <button onClick={onCancel} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 transition-all shrink-0">
-            <X size={16} />
+    /*  틀은 `AlertModalShell` 한 벌이다(2026-09-15 사장님: "알람양식은 저걸로 통일").
+        머리에는 **짧은 이름**만 서고 — 쓸 재고가 있으면 `재고 사용`, 없으면 `재고부족` —
+        "재고가 없어 전량 생산합니다" 같은 설명은 아래 내용의 첫 줄로 내려간다. */
+    <AlertModalShell
+      wide
+      title={hasUsableStock ? '재고 사용' : '재고부족'}
+      tone={hasUsableStock ? 'emerald' : 'amber'}
+      icon={Package}
+      onClose={onCancel}
+      footer={<>
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-all"
+          >
+            취소
           </button>
-        </div>
+          <button
+            onClick={() => onConfirm(toStockUsePlan(states))}
+            className={`flex-[2] py-2.5 text-white font-black rounded-xl text-sm transition-all ${hasUsableStock ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+          >
+            {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}
+          </button>
+      </>}
+    >
+        <p className="text-sm font-bold leading-snug text-slate-800">
+          {hasUsableStock ? '재고 사용량을 확인해 주세요' : '재고가 없어 전량 생산합니다'}
+        </p>
+        <p className="mt-1.5 text-xs font-medium leading-5 text-slate-500">
+          {partnerName} · {hasUsableStock
+            ? '쓴 만큼 재고에서 빠지고, 모자란 만큼만 새로 생산합니다'
+            : '아래 주문 수량 전부를 새로 생산합니다'}
+        </p>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div className="mt-3 space-y-3">
           {states.map(({ row, own, ownMax, shortUnits, loose }) => (
             <div key={row.idx} className="rounded-2xl border-2 border-slate-100 p-3.5">
               <div className="flex items-center gap-3">
@@ -124,23 +136,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
             </div>
           ))}
         </div>
-
-        <div className="px-6 py-4 flex gap-2 border-t border-slate-100">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-all"
-          >
-            취소
-          </button>
-          <button
-            onClick={() => onConfirm(toStockUsePlan(states))}
-            className="flex-[2] py-2.5 bg-emerald-500 text-white font-black rounded-xl text-sm hover:bg-emerald-600 transition-all"
-          >
-            {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}
-          </button>
-        </div>
-      </div>
-    </div>
+    </AlertModalShell>
   );
 };
 

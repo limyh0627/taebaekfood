@@ -38,6 +38,7 @@ import {
   AlertTriangle,
   Minimize2,
   Maximize2,
+  AlertCircle,
   ArrowUp,
   ArrowDown,
   ArrowUpDown
@@ -61,11 +62,15 @@ import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
+import { clampNote, noteChip, NOTE_MAX } from '../src/shared/orderNote';
+import { shipDeductions } from '../src/shared/shipDeduction';
 import { sortOrdersByHead, nextHeadSort, headSortTitle, type OrderListHeadSort, type OrderListSortKey } from '../src/shared/orderListSort';
 import { listFilterChips } from '../src/shared/orderListFilterChips';
 import OrderActivityLogModal from './OrderActivityLogModal';
 
 import ConfirmModal from './ConfirmModal';
+import type { AlertTone } from '../src/shared/components/AlertModalShell';
+import type { LucideIcon } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
@@ -354,6 +359,8 @@ interface OrderCardProps {
   onEditOrder?: (orderId: string) => void;
   /** 보드 카드 헤더에서 품목 메모를 바로 연다. */
   onOpenMemo?: (orderId: string, itemIndex: number) => void;
+  /** 작업완료 카드에서 출고를 요청한다 — 확인창은 받는 쪽이 띄운다. */
+  onRequestShip?: (orderId: string) => void;
 }
 
 interface OrderSourceGroupProps {
@@ -436,12 +443,16 @@ export const OrderCard = memo<OrderCardProps>(({
   onEditOrder,
   //  비고가 달린 줄의 단추를 누르면 이걸 부른다(2026-09-14).
   onOpenMemo,
+  //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
+  onRequestShip,
 }) => {
   // Compute derived variables
   const products = items;
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  /*  머리에는 **짧은 이름**(`출고완료`·`주문 삭제`), 설명은 내용으로
+      (2026-09-15 사장님: "헤더에는 재고부족 작업완료 출고완료 이런식으로 제목을 넣어"). */
+  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
   //  줄마다 구성(BOM)을 폈나 — **기본은 접힘**(2026-09-12 사장님: "bom 접었다 펼 수 있게")
   const [openItemBom, setOpenItemBom] = useState<Set<string>>(new Set());
@@ -513,6 +524,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const handleRemoveItem = (idx: number) => {
     const item = order.items[idx];
     setConfirmModal({
+      title: '품목 삭제', tone: 'rose', icon: Trash2,
       message: `"${item.name}" 품목을 삭제할까요?`,
       subMessage: '주문에서 해당 품목이 제거됩니다.',
       confirmText: '삭제',
@@ -925,11 +937,18 @@ export const OrderCard = memo<OrderCardProps>(({
                         disabled={readOnly || !onOpenMemo}
                         title={item.note}
                         aria-label={`${item.name} 비고`}
-                        className="inline-flex h-7 min-w-0 max-w-[150px] shrink items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-black text-amber-700 transition-colors enabled:hover:bg-amber-100 disabled:cursor-default"
+                        /*  **바탕과 테두리는 회색**(2026-09-15 사장님) — 노란 딱지는 라벨·소비기한
+                            옆에서 저 혼자 튀어, 급한 비고와 그냥 적어 둔 비고가 구별되지 않았다.
+                            급한 것은 **빨간 느낌표**가 알린다. */
+                        className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-black text-slate-600 transition-colors enabled:hover:bg-slate-100 disabled:cursor-default"
                       >
-                        <NotepadText size={11} className="shrink-0" aria-hidden="true" />
-                        {/*  적어 둔 말을 **그대로 보여 준다** — '비고' 라고만 쓰면 눌러 봐야 안다. */}
-                        <span className="min-w-0 truncate">{item.note}</span>
+                        {item.noteImportant
+                          ? <AlertCircle size={11} className="shrink-0 text-rose-500" aria-hidden="true" />
+                          : <NotepadText size={11} className="shrink-0" aria-hidden="true" />}
+                        {/*  **다섯 글자만 보이고 뒤는 `…`**(사장님: "5글자 이후...으로 떠서 줄 안
+                             바뀌게"). 라벨·소비기한과 한 줄에 서는 자리라, 긴 비고가 그대로 들어오면
+                             줄이 접히면서 카드가 통째로 길어졌다. 전문은 마우스를 올리면 나온다. */}
+                        <span>{noteChip(item.note)}</span>
                       </button>
                     )}
                     {item.checked && item.checkedBy && (
@@ -1142,7 +1161,29 @@ export const OrderCard = memo<OrderCardProps>(({
               {/*  **팔레트 위에 출고 방식**(사장님: "팔레트 위에 출고 방식이 오게 해봐").
                    배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`).
                    여기 있던 판매 채널은 거래처명 앞으로 옮겼다. */}
-              <span className="text-[9px] font-black text-slate-500">{shipMethodOf(order)}</span>
+              {/*  **작업완료 주문은 여기서 바로 출고한다**(2026-09-15 사장님: "작업완료인 주문만
+                   카드에서 배송방식이 버튼으로 누를 수 있게 바뀌고 누르면 알림띄워
+                   재고가 ~~~차감됩니다. 출고완료로 전환하시겠습니까? … 예 누르면
+                   배송버튼 > 완료로 바뀌고 출고완료로 이동하게").
+
+                   같은 날 카드의 상태 칩에서 상태 바꾸는 길을 막았는데, 작업완료 → 출고완료는
+                   **체크가 굴려 주지 않는 단계**라 누를 자리가 있어야 한다. 그 자리를 여기 둔다 —
+                   출고 방식(배송·직접수령·택배)은 어차피 "어떻게 나가나" 를 적는 칸이다.
+                   무엇이 얼마나 빠지는지는 `shipDeductions` 가 셈한다(재고 엔진과 같은 함수). */}
+              {order.status === OrderStatus.SHIPPED ? (
+                <span className="text-[9px] font-black text-emerald-600">완료</span>
+              ) : order.status === OrderStatus.DISPATCHED && !readOnly && onRequestShip ? (
+                <button
+                  type="button"
+                  onClick={event => { event.stopPropagation(); onRequestShip(order.id); }}
+                  title="눌러서 출고완료로"
+                  className="rounded px-1.5 py-0.5 text-[9px] font-black text-slate-600 underline decoration-dotted underline-offset-2 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                >
+                  {shipMethodOf(order)}
+                </button>
+              ) : (
+                <span className="text-[9px] font-black text-slate-500">{shipMethodOf(order)}</span>
+              )}
               {/*  **택배면 송장, 아니면 팔레트**(2026-09-12 사장님: "보드에 카드에도 같은 방식으로
                    바꾸고"). 리스트의 '출고 방식' 칸과 같은 셈이다 — 택배로 나가면 팔레트가 돌
                    일이 없고, 우리 차가 돌면 송장이 붙을 일이 없다.
@@ -1252,6 +1293,7 @@ export const OrderCard = memo<OrderCardProps>(({
             ))}
           </select>
           <button onClick={() => setConfirmModal({
+              title: '주문 삭제', tone: 'rose', icon: Trash2,
               message: '주문을 삭제하시겠습니까?',
               subMessage: order.status === OrderStatus.DELIVERED
                 ? `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
@@ -1266,6 +1308,9 @@ export const OrderCard = memo<OrderCardProps>(({
       )}
       {confirmModal && (
         <ConfirmModal
+          title={confirmModal.title}
+          tone={confirmModal.tone}
+          icon={confirmModal.icon}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
           onConfirm={confirmModal.onConfirm}
@@ -1604,6 +1649,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listFilterValue, setListFilterValue] = useState('');
   const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
   const [listMemoDraft, setListMemoDraft] = useState('');
+  //  메모창의 '중요' 체크 — 창을 열 때 그 줄의 값으로 채우고, 닫을 때 끈다.
+  const [listMemoImportant, setListMemoImportant] = useState(false);
   const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[] } | null>(null);
   /*  **주문 로그**(2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서 주문 넣은 사람 일시
       라벨이나 작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게 해봐").
@@ -1759,7 +1806,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
     setPickerGroup(현재 => 현재 === name ? (남은[0] ?? '') : 현재);
   };
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  /*  머리에는 **짧은 이름**(`출고완료`·`주문 삭제`), 설명은 내용으로
+      (2026-09-15 사장님: "헤더에는 재고부족 작업완료 출고완료 이런식으로 제목을 넣어"). */
+  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   /*  **카드를 따라가지 않는다**(2026-09-14 사장님: "움직인 위치로 따라가도록 해놨는데 그거 기능 꺼놔봐").
    *  폰에서 상태가 바뀌면 그 카드가 간 열까지 화면이 저절로 스크롤했다. 손으로 체크하는 중에
    *  화면이 움직이니 다음 줄을 누르려던 손가락이 엉뚱한 데를 짚었다. 이제 제자리에 머문다. */
@@ -1786,6 +1835,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     if (!order || !item || embeddedListOnly) return;
     setListMemoEditor({ orderId, itemIndex });
     setListMemoDraft(item.note || '');
+    setListMemoImportant(!!item.noteImportant);
   };
 
   useEffect(() => {
@@ -2122,6 +2172,35 @@ const OrdersList: React.FC<OrdersListProps> = ({
       왔다갔다 못하게 하고"). 카드가 안 끌리고 칸도 안 받으므로 부르는 데가 없다.
       작업완료 진입 확인창은 `AdminApp.requestOrderStatus` 가 그대로 들고 있다. */
 
+  /**
+   * **작업완료 → 출고완료** — 카드의 출고 방식 단추가 부른다(2026-09-15 사장님).
+   *
+   * 출고는 재고를 실제로 줄인다. 그래서 **무엇이 얼마나 빠지는지 적어 보여주고** 받는다.
+   * 셈은 `shipDeductions` 가 한다 — 재고 엔진(`shipOrder`)이 쓰는 그 함수다.
+   * 여기서 따로 세면 적어 놓은 말과 실제로 빠지는 양이 갈린다.
+   */
+  const requestShip = (orderId: string) => {
+    const order = orders.find(candidate => candidate.id === orderId);
+    if (!order) return;
+    const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
+    const 빠질것 = shipDeductions(order, items);
+    const 수 = (n: number) => Math.round(n * 1000) / 1000;
+    const 적을것 = 빠질것.map(row => `${row.name} −${수(row.qty)}${row.unit} · ${수(row.before)} → ${수(row.after)}`);
+    //  모자라면 숨기지 않고 먼저 말한다 — 눌러 놓고 나중에 음수로 만나면 되짚기 어렵다.
+    const 모자란것 = 빠질것.filter(row => row.after < 0);
+    setConfirmModal({
+      title: '출고완료', tone: 'sky', icon: Truck,
+      message: 빠질것.length ? '재고가 차감됩니다. 출고완료로 전환할까요?' : '출고완료로 전환할까요?',
+      subMessage: [
+        partnerName,
+        ...(적을것.length ? 적을것 : ['빠질 재고가 없습니다 — 벌크(원료·반제품)는 작업완료 때 이미 빠졌습니다.']),
+        모자란것.length ? `재고가 모자랍니다 — ${모자란것.map(row => row.name).join(', ')} 가 음수가 됩니다.` : '',
+      ].filter(Boolean).join('\n'),
+      confirmText: '출고완료',
+      onConfirm: () => { setConfirmModal(null); onUpdateStatus(orderId, OrderStatus.SHIPPED); },
+    });
+  };
+
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
     partners, items, partnerItems, palletStocks, itemBoms,
@@ -2134,6 +2213,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     highlightOrderId,
     onEditOrder: embeddedListOnly ? undefined : openOrderEditor,
     onOpenMemo: embeddedListOnly ? undefined : openMemoEditor,
+    onRequestShip: embeddedListOnly ? undefined : requestShip,
     isListView: activeView === 'list',
     tintedHeader: activeView === 'kanban' && !embeddedListOnly,
   };
@@ -2315,6 +2395,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 onClick={() => {
                   const checked = deliveryOrders.filter(o => o.invoicePrinted);
                   setConfirmModal({
+                    title: '출고완료', tone: 'sky', icon: Truck,
                     message: `체크된 ${checked.length}건을 출고 처리하시겠습니까?`,
                     confirmText: '출고 처리',
                     onConfirm: () => { checked.forEach(o => onUpdateStatus(o.id, OrderStatus.SHIPPED)); setConfirmModal(null); },
@@ -3203,6 +3284,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                 return;
                               }
                               setConfirmModal({
+                                title: '출고완료', tone: 'sky', icon: Truck,
                                 message: '해당 거래처를 출고완료 상태로 변경할까요?',
                                 subMessage: `${partnerName} · 출고완료일: ${fmtYYMMDD(new Date())}`,
                                 confirmText: '변경하기',
@@ -3335,6 +3417,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                              (2026-09-11 사장님: "송장은 - ,출력, 부착 세가지 옵션으로 뜨고") — 부착
                              여부가 여기 들어 있어 그대로 둔다. */}
                         <div role="cell" className="relative flex min-h-full items-center gap-1 border-r border-slate-300 px-1.5 font-bold text-slate-600">
+                          {/*  **무엇으로 나가는지부터 적는다**(2026-09-15 사장님: "리스트 출고
+                               방식에 출고방식이 뭔지가 없어"). 칸 이름이 '출고 방식'인데 정작
+                               방식은 없고 송장 고르개나 팔레트 단추만 서 있었다 — 택배인지
+                               우리 차가 가는지를 **이 칸에서 바로 읽을 수 있어야** 한다.
+                               판정은 `shipMethodOf` 하나다. */}
+                          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-black text-slate-600">{shipMethodOf(order)}</span>
                           {shipMethodOf(order) === '택배' ? (
                           <>
                           <select
@@ -3439,9 +3527,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               <button
                                 key={originalIndex}
                                 type="button"
-                                onClick={() => { setListMemoEditor({ orderId: order.id, itemIndex: originalIndex }); setListMemoDraft(item.note || ''); }}
+                                onClick={() => { setListMemoEditor({ orderId: order.id, itemIndex: originalIndex }); setListMemoDraft(item.note || ''); setListMemoImportant(!!item.noteImportant); }}
                                 className={`flex h-10 w-full min-w-0 items-center px-2 text-left text-[10px] font-bold transition-colors hover:bg-slate-100 ${item.checked ? 'bg-slate-50/70 text-slate-400' : 'text-slate-600'}`}
                               >
+                                {/*  중요로 적은 비고는 **빨간 느낌표**를 앞에 세운다(2026-09-15 사장님). */}
+                                {item.note && item.noteImportant && <AlertCircle size={11} className="mr-1 shrink-0 text-rose-500" aria-hidden="true" />}
                                 <span className={item.note ? 'block min-w-0 truncate' : 'inline-flex rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-slate-500'} title={item.note || '메모 추가'}>{item.note || '메모 추가'}</span>
                               </button>
                             ))}
@@ -4225,6 +4315,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
               <section aria-label="주문 전체 삭제">
                 <button type="button" onClick={() => setConfirmModal({
+                  title: '주문 삭제', tone: 'rose', icon: Trash2,
                   message: '이 거래처 주문을 삭제하시겠습니까?',
                   subMessage: editorOrder.status === OrderStatus.DELIVERED
                     ? `${partnerName} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
@@ -4257,13 +4348,18 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const memoOrder = orders.find(order => order.id === listMemoEditor.orderId);
         const memoItem = memoOrder?.items[listMemoEditor.itemIndex];
         if (!memoOrder || !memoItem) return null;
-        const closeMemo = () => { setListMemoEditor(null); setListMemoDraft(''); };
+        const closeMemo = () => { setListMemoEditor(null); setListMemoDraft(''); setListMemoImportant(false); };
         const saveMemo = () => {
           const nextItems = [...memoOrder.items];
-          const { note: _oldNote, noteBy: _oldNoteBy, noteAt: _oldNoteAt, ...baseItem } = nextItems[listMemoEditor.itemIndex];
-          const trimmed = listMemoDraft.trim().slice(0, 500);
+          //  중요 표시도 같이 걷어낸다 — 비고를 지웠는데 느낌표만 남으면 무엇이 급한지 알 수 없다.
+          const { note: _oldNote, noteBy: _oldNoteBy, noteAt: _oldNoteAt, noteImportant: _oldImportant, ...baseItem } = nextItems[listMemoEditor.itemIndex];
+          const trimmed = clampNote(listMemoDraft.trim());
           nextItems[listMemoEditor.itemIndex] = trimmed
-            ? { ...baseItem, note: trimmed, noteBy: currentUserName || '미기록', noteAt: new Date().toISOString() }
+            ? {
+                ...baseItem, note: trimmed, noteBy: currentUserName || '미기록', noteAt: new Date().toISOString(),
+                //  거짓은 아예 안 적는다 — 칸이 없으면 없는 것이다.
+                ...(listMemoImportant ? { noteImportant: true } : {}),
+              }
             : baseItem;
           onUpdateItems?.(memoOrder.id, nextItems);
           closeMemo();
@@ -4271,6 +4367,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const requestDeleteMemo = () => {
           closeMemo();
           setConfirmModal({
+            title: '비고 삭제', tone: 'rose', icon: Trash2,
             message: '이 메모를 삭제할까요?',
             subMessage: '메모 내용과 작성자, 작성일시가 함께 삭제됩니다.',
             confirmText: '메모 삭제',
@@ -4307,6 +4404,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             const nextItem = memoOrder.items[itemIndex];
                             setListMemoEditor({ orderId: memoOrder.id, itemIndex });
                             setListMemoDraft(nextItem?.note || '');
+                            setListMemoImportant(!!nextItem?.noteImportant);
                           }}
                           className="h-8 min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                           aria-label="메모를 작성할 주문 품목"
@@ -4327,17 +4425,33 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <div>
                   <textarea
                     value={listMemoDraft}
-                    onChange={event => setListMemoDraft(event.target.value.slice(0, 500))}
+                    onChange={event => setListMemoDraft(clampNote(event.target.value))}
                     placeholder="작업 시 확인할 내용을 입력하세요."
-                    maxLength={500}
+                    maxLength={NOTE_MAX}
                     rows={4}
                     aria-describedby="memo-character-count"
                     className="h-28 w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium leading-5 text-slate-800 outline-none placeholder:text-xs placeholder:font-medium placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 md:h-32 md:resize-y"
                   />
                   <p id="memo-character-count" className="mt-1 text-right text-[10px] font-medium tabular-nums text-slate-400">
-                    {listMemoDraft.length}/500자
+                    {listMemoDraft.length}/{NOTE_MAX}자
                   </p>
                 </div>
+                {/*  **중요 표시**(2026-09-15 사장님: "ㅁ중요 이런식으로 체크박스 만들어서
+                     중요하다고 체크된 비고는 빨간 느낌표 달아"). 카드에는 비고가 다섯 글자만
+                     보이고 잘리므로, 급한 것과 그냥 적어 둔 것을 **글을 읽지 않고도** 갈라야 한다. */}
+                <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={listMemoImportant}
+                    onChange={event => setListMemoImportant(event.target.checked)}
+                    className="h-4 w-4 cursor-pointer accent-rose-500"
+                  />
+                  <span className="inline-flex items-center gap-1">
+                    중요
+                    <AlertCircle size={13} className={listMemoImportant ? 'text-rose-500' : 'text-slate-300'} aria-hidden="true" />
+                  </span>
+                  <span className="font-medium text-slate-400">— 카드와 리스트에 빨간 느낌표가 붙습니다</span>
+                </label>
                 {memoItem.noteAt && <div className="grid grid-cols-[72px_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-slate-50 px-3 py-2.5 text-xs">
                     <span className="font-bold text-slate-500">작성일시</span>
                     <span className="font-bold tabular-nums text-slate-700">{new Date(memoItem.noteAt).toLocaleString('ko-KR')}</span>
@@ -4358,6 +4472,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
       })()}
       {confirmModal && (
         <ConfirmModal
+          title={confirmModal.title}
+          tone={confirmModal.tone}
+          icon={confirmModal.icon}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
           confirmText={confirmModal.confirmText}

@@ -727,7 +727,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
           className={`border-b border-r border-slate-100 p-1.5 sm:p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : compact ? 'bg-slate-50/40' : 'bg-white'}`}
-          style={{ minHeight: compact ? 36 : 110 }}
+          /*  **한 칸에 주문 넉 장은 보여야 한다**(2026-09-15 사장님: "한칸에 주문 4개는
+              보여야돼 더 늘어나게 해"). 카드 한 장이 44px(카드 40 + 사이 4)이고 오전·오후
+              머리가 각 16px 이라, 넉 장이면 176 + 32 = 208 이 든다.
+              일정이 없는 지난 날은 전처럼 납작하게 둔다(`compact`). */
+          style={{ minHeight: compact ? 36 : 208 }}
         >
           {/* 작은 화면에서도 열 너비는 유지하고 가로 스크롤하므로 일정 카드를 그대로 보여 준다. */}
           <button type="button" onClick={() => setDayModal(dateStr)}
@@ -760,8 +764,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
                **완료 체크는 카드에서 빠진다** — 그 체크는 `DeliveryDayList` 것이라 주간·당일에는
                원래 없었다. 출고완료 처리는 금일 배송순서 판과 날짜 상세 창에서 한다. */}
+          {/*  넉 장까지는 안 밀고 그대로 보인다 — 더 있으면 그때부터 칸 안에서 굴린다. */}
           {dayOrders.length > 0 && (
-            <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 140, scrollbarWidth: 'thin' }}>
+            <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 208, scrollbarWidth: 'thin' }}>
               {renderDaySequence(
                 dateStr,
                 하루차례(dateStr, dayOrders.map(order => order.id), 날짜차례(dateStr)),

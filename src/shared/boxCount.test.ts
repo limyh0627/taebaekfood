@@ -36,9 +36,9 @@ const 봐주는것 = new Set([
   'src/shared/orderUnits.ts',
   'src/features/admin/AdminApp.tsx',
   'src/features/admin/rollbackSummary.ts',
-  //  goodsShipQty — 향미유·고춧가루의 **낱개** 출고량을 낸다(`박스수 × 개입수`).
-  //  박스 수를 내는 게 아니라 낱개 수를 내는 것이라 규칙 자체가 다르다.
-  'src/features/admin/orderStockEngine.ts',
+  //  `goodsShipQty` 는 [shipDeduction](./shipDeduction.ts) 으로 옮기면서 **봐줄 것이 없어졌다**
+  //  (2026-09-15) — 박스 수는 `boxCountOf` 에게 묻고 거기에 개입수를 곱한다.
+  //  그래서 `orderStockEngine.ts` 를 목록에서 뺀다.
   //  주문카드의 향미유·고춧가루 칸에 `2B` 냐 `24개` 냐를 적는다. 숫자를 안 움직인다.
   //  그 상품은 재고가 낱개라 isBoxUnit 이 진짜 정보다.
   'components/OrdersList.tsx',

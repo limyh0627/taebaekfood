@@ -32,6 +32,20 @@ export function isBulkItem(item: { subtype?: string } | undefined): boolean {
 
 
 /**
+ * **사입·임가공 완제품** — 팔 때 생산 없이 제 재고만 뺀다
+ * (원료는 완사입이면 무관, 임가공이면 가공입고 때 이미 소진된다).
+ * 생산을 안 하므로 '재고 쓸까요' 물음의 대상도 아니다 → 화면(`stockUseRows`)도 이걸 본다.
+ *
+ * **재고 엔진 안에 있던 것을 여기로 옮겼다**(2026-09-15). 품목이 무엇이냐는 판정인데
+ * 엔진에 갇혀 있어서, 화면 쪽에서 출고 차감량을 셈하려면 엔진을 끌어와야 했다 —
+ * 그러면 서로 물고 도는 모양이 된다. 분류는 분류가 있는 자리에 둔다.
+ */
+export const isGoodsItem = (p: { category?: string; type?: string; procureType?: string }) =>
+  p.category === '향미유' || p.category === '고춧가루' ||
+  p.type === '향미유' || p.type === '고춧가루' || p.type === 'goods' ||
+  p.procureType === '완사입' || p.procureType === '임가공';
+
+/**
  * 타입 키(고정) — 사용자가 못 바꾼다.
  *
  * 선물세트·배송은 **타입이 아니라 product의 subtype**이다. 예전엔 타입에도 있어서

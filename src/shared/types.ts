@@ -25,9 +25,16 @@ export interface OrderItem {
   checked?: boolean;
   checkedBy?: string;    // 체크한 사람 이름
   checkedAt?: string;    // 작업 완료 확인 시각
-  note?: string;         // 품목별 작업 메모
+  note?: string;         // 품목별 작업 메모 — 50자까지(`shared/orderNote`)
   noteBy?: string;       // 메모 작성자
   noteAt?: string;       // 메모 작성 시각
+  /**
+   * **중요 표시된 비고** — 카드·리스트에 빨간 느낌표가 붙는다
+   * (2026-09-15 사장님: "ㅁ중요 이런식으로 체크박스 만들어서 중요하다고 체크된 비고는
+   * 빨간 느낌표 달아"). 비고는 다섯 글자만 보이고 잘리므로, 급한 것과 그냥 적어 둔 것을
+   * **글을 읽지 않고도** 가를 수 있어야 한다.
+   */
+  noteImportant?: boolean;
   mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
   mfgBy?: string;        // 제조일을 바꾼 사람
   mfgAt?: string;        // 바꾼 시각
@@ -978,6 +985,23 @@ export interface IssuedStatementItem {
   side?: '차변' | '대변';
 }
 
+/** 전표 발행 당시 서류에 찍힌 한쪽 당사자 정보. 마스터 변경 뒤에도 과거 서류를 보존한다. */
+export interface StatementParty {
+  name: string;
+  bizNo: string;
+  ceo: string;
+  addr: string;
+  bizType: string;
+  bizItem: string;
+  tel: string;
+  fax: string;
+}
+
+export interface StatementPartySnapshot {
+  supplier: StatementParty;
+  buyer: StatementParty;
+}
+
 export interface IssuedStatement {
   id: string;
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
@@ -993,6 +1017,8 @@ export interface IssuedStatement {
   totalTax: number;
   totalAmount: number;
   items: IssuedStatementItem[];
+  /** 발행 당시 공급자·공급받는자. 없는 옛 전표만 현재 거래처 정보로 표시한다. */
+  partySnapshot?: StatementPartySnapshot;
   /**
    * **전표 비고** — 결제 조건·납기 같은 걸 적는 자리(2026-09-03 사장님).
    * 품목 줄이 아니라 **전표 전체**에 붙는 말이다. 인쇄물 합계 밑에 찍힌다.

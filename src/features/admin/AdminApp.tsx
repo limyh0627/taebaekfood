@@ -76,6 +76,9 @@ import {
   ChevronDown,
   Plus,
   ClipboardPaste,
+  Trash2,
+  CheckCircle2,
+  type LucideIcon,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
@@ -105,6 +108,8 @@ import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
 import { buildRollbackPlan, buildStatusChangeAsk, type RollbackPlan } from './rollbackSummary';
+import type { AlertTone } from '../../shared/components/AlertModalShell';
+import { statusLabel } from '../../shared/orderStatusStyle';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
@@ -195,6 +200,8 @@ import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
 import { planStatementWrites } from '../statements/domain/statementWrites';
 import { applyStatementWrites } from '../statements/infrastructure/applyStatementWrites';
+import { planTaxIssue } from '../tax-documents/domain/taxIssue';
+import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -1328,7 +1335,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * `shipOrder`). 모자라면 그때 음수가 된다 — 그래서 완료를 찍는 지금 알린다.
    */
   const [goodsStockAsk, setGoodsStockAsk] = useState<{
-    message: string; subMessage: string; confirmText: string; onConfirm: () => void;
+    title: string; tone: AlertTone; message: string; subMessage: string; confirmText: string; onConfirm: () => void;
   } | null>(null);
 
   /**
@@ -1343,6 +1350,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [rollbackAsk, setRollbackAsk] = useState<{
     message: string; subMessage: string; confirmText: string; onConfirm: () => Promise<void>;
   } | null>(null);
+  /**
+   * **주문 상태 색** — 알림 머리의 아이콘 색을 카드와 맞춘다.
+   * 색을 정하는 곳은 `orderStatusStyle` 이지만 그쪽은 Tailwind 클래스라 갈래 이름이 필요하다.
+   */
+  const 상태색: Record<string, AlertTone> = {
+    [OrderStatus.PENDING]: 'amber', [OrderStatus.PROCESSING]: 'pink',
+    [OrderStatus.DISPATCHED]: 'emerald', [OrderStatus.SHIPPED]: 'sky',
+    [OrderStatus.DELIVERED]: 'slate', [OrderStatus.ON_HOLD]: 'amber',
+  };
   const [rollbackSaving, setRollbackSaving] = useState(false);
 
   const [stockUseAsk, setStockUseAsk] = useState<{
@@ -1359,6 +1375,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     subMessage: string;
   } | null>(null);
   const [appNotice, setAppNotice] = useState<{
+    title?: string;
+    tone?: AlertTone;
+    icon?: LucideIcon;
     message: string;
     subMessage: string;
   } | null>(null);
@@ -1758,7 +1777,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const lineId = plan.items[itemIdx]?.lineId;
         const isLegacyRollback = !applying && !!order.producedAt && (!lineId || !order.itemInventory?.[lineId]);
         if (isLegacyRollback) await requestOrderStatus(orderId, plan.status, { items: plan.items });
-        else await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
+        else {
+          await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
+          /*  **품목 알림 다음에 주문 알림**(2026-09-15 사장님: "품목단위 알람 다음에 주문 자체
+           *  상태변환 알람뜨게해 이건 취소는 못하고 확인버튼만 누르게 … 주문이 대기중에서
+           *  작업중으로 이동합니다 확인").
+           *
+           *  품목 하나를 찍으면 **주문 전체가 따라 움직인다**(체크한 수에 따라 대기중·작업중·
+           *  작업완료). 그런데 그 움직임은 카드가 다른 칸으로 옮겨 가는 것으로만 보여서,
+           *  보고 있지 않으면 주문이 어디로 갔는지 모른 채 지나갔다.
+           *
+           *  **되물리지 않는다 — 확인만 받는다.** 이미 저장이 끝난 뒤라 여기서 '취소'를
+           *  주면 되돌릴 수 없는 것을 되돌릴 수 있는 척하게 된다. */
+          if (plan.status !== order.status) {
+            const 체크수 = plan.items.filter(줄 => 줄.checked).length;
+            setAppNotice({
+              title: statusLabel(plan.status),
+              tone: 상태색[plan.status] ?? 'slate',
+              icon: CheckCircle2,
+              message: `주문이 ${statusLabel(order.status)}에서 ${statusLabel(plan.status)}(으)로 이동합니다`,
+              subMessage: `${order.partnerName || '거래처 미지정'} · 품목 ${체크수}/${plan.items.length} 완료`,
+            });
+          }
+        }
       } catch (error) {
         if (error instanceof Error && error.message === 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
           await requestOrderStatus(orderId, plan.status, { items: plan.items });
@@ -1841,6 +1882,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           (`shipOrder`). "쓴다"고 하면 지금 줄어드는 줄 안다. */
       const 출고뒤 = Math.round((재고 - 주문량) * 1000) / 1000;
       setGoodsStockAsk(모자란양 > 0 ? {
+        title: '재고부족', tone: 'amber',
         message: `재고가 부족합니다 — “${완료품목.name}”`,
         subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
           + `이 주문 몫으로 ${주문량}${단위}를 잡으면, 출고할 때 재고가 ${출고뒤}${단위} 로 음수가 됩니다.\n`
@@ -1848,6 +1890,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         confirmText: '그래도 완료',
         onConfirm: () => { setGoodsStockAsk(null); void save(); },
       } : {
+        title: '작업완료', tone: 'emerald',
         message: `“${완료품목.name}” ${주문량}${단위}를 이 주문 몫으로 잡습니다.`,
         subMessage: `재고에서는 출고할 때 빠집니다 — 지금 ${재고}${단위} → 출고 뒤 ${출고뒤}${단위}.\n`
           + `사 오거나 맡긴 물건이라 생산하지 않습니다.${잡힘글}`,
@@ -4449,6 +4492,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 const plan = planStatementWrites({
                   command, statement: { ...statement, companyId }, costUpdates, poLinks, newPo,
+                  recordedAt: 지금, actorId: currentUser.id,
                 });
                 const 결과 = await applyStatementWrites(plan.writes, {
                   statementId: command.statementId, operationId: command.operationId,
@@ -4515,7 +4559,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               issuedStatements={issuedStatements}
               partners={partners}
               companyInfo={companyInfo}
-              onUpdateIssuedStatement={updateStatement}
+              onApplyTaxIssue={async input => {
+                const plan = planTaxIssue({ ...input, companyId, actorId: currentUser.id });
+                await applyTaxIssueWrites(plan.writes);
+                return plan.statementPatches;
+              }}
             />
           )}
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
@@ -5135,6 +5183,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
       {catalogDeleteAsk && (
         <ConfirmModal
+          title="품목 삭제" tone="rose" icon={Trash2}
           message={`“${catalogDeleteAsk.itemName}” 품목을 삭제할까요?`}
           subMessage={catalogDeleteAsk.subMessage}
           confirmText="삭제하기"
@@ -5147,6 +5196,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
            누르는 동안 단추를 잠근다(두 번 눌러 두 번 원복되는 것을 막는다). */}
       {rollbackAsk && (
         <ConfirmModal
+          title="되돌리기" tone="amber" icon={RotateCcw}
           message={rollbackAsk.message}
           subMessage={rollbackAsk.subMessage}
           confirmText={rollbackSaving ? '처리 중…' : rollbackAsk.confirmText}
@@ -5168,6 +5218,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {goodsStockAsk && (
         <ConfirmModal
+          title={goodsStockAsk.title} tone={goodsStockAsk.tone} icon={Package}
           message={goodsStockAsk.message}
           subMessage={goodsStockAsk.subMessage}
           confirmText={goodsStockAsk.confirmText}
@@ -5177,6 +5228,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {appNotice && (
         <ConfirmModal
+          title={appNotice.title} tone={appNotice.tone} icon={appNotice.icon}
           message={appNotice.message}
           subMessage={appNotice.subMessage}
           confirmText="확인"

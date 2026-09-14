@@ -1,5 +1,6 @@
 import { doc, getDoc, Firestore } from 'firebase/firestore';
-import { isBulkItem } from '../../shared/itemTaxonomy';
+import { isBulkItem, isGoodsItem } from '../../shared/itemTaxonomy';
+import { goodsShipQty, shipQtyOfLine } from '../../shared/shipDeduction';
 import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit, OrderItemInventoryState } from '../../shared/types';
 import { toKg, baseRawName, unitToKg } from '../../constants/formula';
@@ -96,12 +97,9 @@ export const hasProductComponent = (
   product: Pick<Item, 'id'> | undefined,
 ): boolean => bomOf(product?.id).some(l => l.child?.type === 'product' || l.child?.type === '완제품');
 
-/** 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진).
- *  생산을 안 하므로 '재고 쓸까요' 물음의 대상도 아니다 → 화면(stockUseRows)도 이걸 본다. */
-export const isGoodsItem = (p: Item) =>
-  p.category === '향미유' || p.category === '고춧가루' ||
-  p.type === '향미유' || p.type === '고춧가루' || p.type === 'goods' ||
-  p.procureType === '완사입' || p.procureType === '임가공';
+//  판정은 [itemTaxonomy](../../shared/itemTaxonomy.ts) 로 옮겼다(2026-09-15) — 여기서 받아 넘긴다.
+//  이 이름으로 끌어다 쓰는 자리가 여럿이라 내보내기는 그대로 둔다.
+export { isGoodsItem };
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
@@ -121,15 +119,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
 
-  const goodsShipQty = (item: OrderItem, product: Item) => {
-    // 박스 품목(BOM에 낱개가 물린 것)은 재고 단위가 박스 → 박스 개수로 뺀다.
-    if (isBoxStockItem(product)) return stockUnits(item, product);
-    //  개입수는 주문 줄에 박힌 값이 먼저고(그때 판 조건), 없으면 품목이 안다
-    //  — BOM 아니면 포장 환산표. 예전엔 `|| 12` 로 물러섰는데, 박스 품목 140개 중
-    //  102개가 12개입이 아니라 **출고 차감이 그만큼 어긋날 자리**였다.
-    const uPerBox = item.unitsPerBox || unitsPerBoxOf(product) || 1;
-    return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
-  };
+  //  셈은 [shipDeduction](../../shared/shipDeduction.ts) 한 곳이다 — 화면의 출고 확인창도
+  //  같은 함수를 본다. 여기 한 벌 더 적어 두면 **말과 실제가 갈린다**(2026-09-15).
   const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };
   const deltaRows = (m: Map<string, number>) => [...m]
     .filter(([, delta]) => delta !== 0)
@@ -415,9 +406,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const shipOrder = (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product || isBulkItem(product)) continue;
-      if (isGoodsItem(product)) addDelta(deltas, product.id, -goodsShipQty(item, product));
-      else addDelta(deltas, product.id, -stockUnits(item, product));
+      if (!product) continue;
+      addDelta(deltas, product.id, -shipQtyOfLine(item, product));
     }
   };
 
@@ -425,9 +415,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const unShipOrder = (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product || isBulkItem(product)) continue;
-      if (isGoodsItem(product)) addDelta(deltas, product.id, goodsShipQty(item, product));
-      else addDelta(deltas, product.id, stockUnits(item, product));
+      if (!product) continue;
+      addDelta(deltas, product.id, shipQtyOfLine(item, product));
     }
   };
 
