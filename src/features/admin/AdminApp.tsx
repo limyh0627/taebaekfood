@@ -102,7 +102,7 @@ import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
-import { unreservedItemStock } from './orderItemStock';
+import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
 import {
@@ -1749,17 +1749,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const 재고 = unreservedItemStock(완료품목);
       const 단위 = unpackComponent(완료품목) ? '박스' : (완료품목.unit || '개');
       const 모자란양 = Math.round((주문량 - 재고) * 1000) / 1000;
+      /*  **얼마가 다른 주문에 잡혀 있는지 같이 보여 준다**(2026-09-14 사장님: "참진은 재고가
+          24개 있는데 왜 알람에선 0으로 뜨지"). 화면에 0 이라고만 뜨면, 품목 재고 24개를 아는
+          사람에게는 숫자가 어긋나 보인다. 잡아 둔 몫은 이미 임자가 있어 못 쓰는 것뿐이다. */
+      const 잡힌양 = reservedItemQty(완료품목);
+      const 잡은주문 = reservedByOrders(완료품목)
+        .map(id => cardNoLabel(allOrders.find(o => o.id === id)) || id)
+        .slice(0, 2);
+      const 잡힘글 = 잡힌양 > 0
+        ? `
+재고 ${Math.round((재고 + 잡힌양) * 1000) / 1000}${단위} 중 ${잡힌양}${단위} 는 다른 주문`
+          + `${잡은주문.length ? `(${잡은주문.join(', ')})` : ''}에 잡혀 있어 쓸 수 있는 건 ${재고}${단위} 입니다.`
+        : '';
       setGoodsStockAsk(모자란양 > 0 ? {
         message: `재고가 부족합니다 — “${완료품목.name}”`,
         subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
           + `이대로 진행하면 출고할 때 재고가 ${Math.round((재고 - 주문량) * 1000) / 1000}${단위} 로 음수가 됩니다.\n`
-          + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.`,
+          + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.${잡힘글}`,
         confirmText: '그래도 완료',
         onConfirm: () => { setGoodsStockAsk(null); void save(); },
       } : {
         message: `“${완료품목.name}” 재고 ${주문량}${단위}를 씁니다.`,
         subMessage: `지금 재고 ${재고}${단위} → 출고하면 ${Math.round((재고 - 주문량) * 1000) / 1000}${단위}.\n`
-          + `사 오거나 맡긴 물건이라 생산하지 않습니다.`,
+          + `사 오거나 맡긴 물건이라 생산하지 않습니다.${잡힘글}`,
         confirmText: '완료',
         onConfirm: () => { setGoodsStockAsk(null); void save(); },
       });

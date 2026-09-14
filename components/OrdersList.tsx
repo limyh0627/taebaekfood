@@ -540,40 +540,14 @@ export const OrderCard = memo<OrderCardProps>(({
       {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
            **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
            색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
-      <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
+      <div className={`flex flex-col rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
-        <div className="min-w-0 flex-1">
-          {/*  **주문번호는 거래처명 위**(2026-09-12 사장님: "주문 번호는 거래처명 위로 가고").
-               꼬리에 있던 것을 올렸다 — 카드를 가리킬 이름이라 먼저 읽힌다. */}
-          {cardNoLabel(order) && (
-            <p className="text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}</p>
-          )}
-        <div className="flex min-w-0 items-center gap-1.5">
-          {/*  **판매 채널은 거래처명 앞**(사장님: "배송채널은 거래처명 앞으로 가고").
-               꼬리 구석에 작게 적혀 있어 안 읽혔다. 색은 channelStyle 한 곳이 정한다. */}
-          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-black ${channelStyle(order.source).chip}`}>
-            {channelStyle(order.source).short}
-          </span>
-          {/*  **이름 + 연필까지가 '수정' 자리다.** 누르면 리스트에서 쓰는 것과 **같은**
-               `거래처 주문 수정` 창이 뜬다(2026-09-11 사장님: "리스트 쪽에 붙은 거래처 주문 수정
-               모달띄우는걸로 바꿔 기존 방식 버리고"). 카드 안에서 직접 고치던 옛 방식은 버린다 —
-               같은 일을 두 가지 모양으로 하면 어느 쪽이 맞는지 매번 헷갈린다.
-               색을 안 준다 — 머리 띠의 상태 글자색을 물려받아 상태와 같은 색이 된다. */}
-          {onEditOrder && !readOnly ? (
-            <button
-              type="button"
-              onClick={event => { event.stopPropagation(); onEditOrder(order.id); }}
-              aria-label={`${displayName} 주문 수정`}
-              className="flex min-w-0 items-center gap-1 rounded-md px-1 -mx-1 text-left transition-opacity hover:opacity-70"
-            >
-              <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
-              <Edit2 size={13} className="shrink-0 opacity-60" aria-hidden="true" />
-            </button>
-          ) : (
-            <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
-          )}
-        </div>
-        </div>
+        {/*  **첫 줄은 주문번호와 상태, 둘째 줄은 거래처명 통째로**(2026-09-14 사장님:
+             "출고완료 3/5 이거 위로 올려서 주문 번호랑 같은 행에 두고 거래처명이 한 행
+             온전히 쓸 수 있게"). 상태가 이름 옆에 있으면 긴 거래처명이 밀려 잘렸다 —
+             주문번호는 짧아서 옆자리가 남는다. */}
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="min-w-0 truncate text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}</p>
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
         {/*  **상태와 진행도는 한 줄이다** — `작업중 3/5`
@@ -630,6 +604,32 @@ export const OrderCard = memo<OrderCardProps>(({
             >
               {completedItems}/{totalItems}
             </button>
+          )}
+        </div>
+        </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {/*  **판매 채널은 거래처명 앞**(사장님: "배송채널은 거래처명 앞으로 가고").
+               꼬리 구석에 작게 적혀 있어 안 읽혔다. 색은 channelStyle 한 곳이 정한다. */}
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-black ${channelStyle(order.source).chip}`}>
+            {channelStyle(order.source).short}
+          </span>
+          {/*  **이름 + 연필까지가 '수정' 자리다.** 누르면 리스트에서 쓰는 것과 **같은**
+               `거래처 주문 수정` 창이 뜬다(2026-09-11 사장님: "리스트 쪽에 붙은 거래처 주문 수정
+               모달띄우는걸로 바꿔 기존 방식 버리고"). 카드 안에서 직접 고치던 옛 방식은 버린다 —
+               같은 일을 두 가지 모양으로 하면 어느 쪽이 맞는지 매번 헷갈린다.
+               색을 안 준다 — 머리 띠의 상태 글자색을 물려받아 상태와 같은 색이 된다. */}
+          {onEditOrder && !readOnly ? (
+            <button
+              type="button"
+              onClick={event => { event.stopPropagation(); onEditOrder(order.id); }}
+              aria-label={`${displayName} 주문 수정`}
+              className="flex min-w-0 items-center gap-1 rounded-md px-1 -mx-1 text-left transition-opacity hover:opacity-70"
+            >
+              <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
+              <Edit2 size={13} className="shrink-0 opacity-60" aria-hidden="true" />
+            </button>
+          ) : (
+            <h4 className="font-black leading-tight text-base break-words">{displayName}</h4>
           )}
         </div>
         {isEditing && (
@@ -1655,6 +1655,39 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerGroups, setPickerGroups] = useState<string[]>([]);
   const [pickerAssign, setPickerAssign] = useState<Record<string, string>>({});
   const [pickerGroup, setPickerGroup] = useState('');
+  /** 그룹 편집 창 — 추가·이름바꾸기·지우기를 여기 한곳에 모은다(2026-09-14 사장님). */
+  const [그룹편집, set그룹편집] = useState(false);
+  const [새그룹이름, set새그룹이름] = useState('');
+
+  /*  그룹을 손대는 일 셋 — 창에서만 부른다. 칩에서는 고르기만 한다(2026-09-14 사장님). */
+  const 그룹추가 = () => {
+    const 이름 = 새그룹이름.trim();
+    if (!이름) return;
+    if (pickerGroups.includes(이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
+    setPickerGroups(prev => [...prev, 이름]);
+    setPickerGroup(이름);
+    set새그룹이름('');
+  };
+
+  const 그룹이름바꾸기 = (name: string) => {
+    const 새이름 = window.prompt('그룹 이름', name)?.trim();
+    if (!새이름 || 새이름 === name) return;
+    if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
+    setPickerGroups(prev => prev.map(x => x === name ? 새이름 : x));
+    //  담긴 줄도 같이 따라간다 — 이름만 바꾸고 줄을 두면 그 줄이 갈 곳을 잃는다.
+    setPickerAssign(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, v === name ? 새이름 : v])));
+    setPickerGroup(현재 => 현재 === name ? 새이름 : 현재);
+  };
+
+  const 그룹지우기 = (name: string, 담긴수: number) => {
+    if (pickerGroups.length <= 1) { alert('그룹은 하나는 남아 있어야 합니다.'); return; }
+    if (담긴수 > 0 && !window.confirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
+    const 남은 = pickerGroups.filter(x => x !== name);
+    setPickerGroups(남은);
+    //  지운 그룹에 담겼던 줄은 **목록에서도 뺀다** — 갈 곳 없는 줄을 남기지 않는다.
+    setPickerOrdering(prev => prev.filter(k => pickerAssign[k] !== name));
+    setPickerGroup(현재 => 현재 === name ? (남은[0] ?? '') : 현재);
+  };
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   /*  **카드를 따라가지 않는다**(2026-09-14 사장님: "움직인 위치로 따라가도록 해놨는데 그거 기능 꺼놔봐").
@@ -3514,6 +3547,58 @@ const OrdersList: React.FC<OrdersListProps> = ({
               </section>
             ) : activeView === 'list' ? renderListTable() : null}
 
+            {/*  **그룹 편집 창**(2026-09-14 사장님) — 추가·이름바꾸기·지우기를 여기 모은다.
+                 작업순서 설정 창 **위에** 뜬다(z-[60]). 칩에서 손대던 일이 다 여기로 왔다. */}
+            {그룹편집 && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => set그룹편집(false)}>
+                <div className="flex max-h-[70vh] w-full max-w-sm flex-col rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <h3 className="font-black text-slate-900">그룹 편집</h3>
+                    <button onClick={() => set그룹편집(false)} aria-label="닫기" className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={16} /></button>
+                  </div>
+
+                  {/*  새 그룹 — 창 맨 위다. 들어오자마자 하는 일이 보통 '추가'다. */}
+                  <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
+                    <input
+                      value={새그룹이름}
+                      onChange={e => set새그룹이름(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); 그룹추가(); } }}
+                      placeholder="새 그룹 이름"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400"
+                    />
+                    <button type="button" onClick={그룹추가} disabled={!새그룹이름.trim()}
+                      className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg bg-violet-600 px-3 text-xs font-black text-white transition-colors hover:bg-violet-700 disabled:bg-slate-200 disabled:text-slate-400">
+                      <Plus size={12} />추가
+                    </button>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto">
+                    {pickerGroups.length === 0 ? (
+                      <p className="py-10 text-center text-xs font-bold text-slate-400">그룹이 없습니다.</p>
+                    ) : pickerGroups.map(name => {
+                      const 담긴수 = pickerOrdering.filter(k => pickerAssign[k] === name).length;
+                      return (
+                        <div key={name} className="flex items-center gap-2 border-b border-slate-50 px-5 py-3 last:border-0">
+                          <span className={`h-3 w-3 shrink-0 rounded-full ${그룹색(pickerGroups, name).번호}`} />
+                          <span className="min-w-0 flex-1 truncate text-sm font-black text-slate-700">{name}</span>
+                          <span className="shrink-0 text-[10px] font-bold text-slate-400 tabular-nums">{담긴수}건</span>
+                          <button type="button" aria-label={`${name} 이름 바꾸기`} onClick={() => 그룹이름바꾸기(name)}
+                            className="shrink-0 rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-violet-50 hover:text-violet-600"><Edit2 size={14} /></button>
+                          <button type="button" aria-label={`${name} 지우기`} onClick={() => 그룹지우기(name, 담긴수)}
+                            className="shrink-0 rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600"><X size={14} /></button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="border-t border-slate-100 p-4">
+                    <button type="button" onClick={() => set그룹편집(false)}
+                      className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-200">닫기</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 작업순서 설정 모달 */}
             {showWorkOrderPicker && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowWorkOrderPicker(false)}>
@@ -3529,50 +3614,25 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       const 고름 = pickerGroup === name;
                       const 담긴수 = pickerOrdering.filter(k => pickerAssign[k] === name).length;
                       return (
-                        <span key={name} className={`flex items-center gap-1 rounded-xl border px-2 py-1 text-[11px] font-black transition-all ${그룹색(pickerGroups, name).칩} ${고름 ? 'ring-2 ring-slate-400' : 'opacity-55'}`}>
-                          <button type="button" onClick={() => setPickerGroup(name)} className="min-h-6">
-                            {name} <span className="tabular-nums opacity-60">{담긴수}</span>
-                          </button>
-                          <button
-                            type="button" aria-label={`${name} 이름 바꾸기`} title="이름 바꾸기"
-                            onClick={() => {
-                              const 새이름 = window.prompt('그룹 이름', name)?.trim();
-                              if (!새이름 || 새이름 === name) return;
-                              if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
-                              setPickerGroups(prev => prev.map(x => x === name ? 새이름 : x));
-                              //  담긴 줄도 같이 따라간다 — 이름만 바꾸고 줄을 두면 그 줄이 갈 곳을 잃는다.
-                              setPickerAssign(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, v === name ? 새이름 : v])));
-                              setPickerGroup(현재 => 현재 === name ? 새이름 : 현재);
-                            }}
-                            className="text-slate-300 hover:text-violet-500"
-                          ><Edit2 size={11} /></button>
-                          <button
-                            type="button" aria-label={`${name} 지우기`} title="지우기"
-                            onClick={() => {
-                              if (pickerGroups.length <= 1) { alert('그룹은 하나는 남아 있어야 합니다.'); return; }
-                              if (담긴수 > 0 && !window.confirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
-                              const 남은 = pickerGroups.filter(x => x !== name);
-                              setPickerGroups(남은);
-                              //  지운 그룹에 담겼던 줄은 **목록에서도 뺀다** — 갈 곳 없는 줄을 남기지 않는다.
-                              setPickerOrdering(prev => prev.filter(k => pickerAssign[k] !== name));
-                              setPickerGroup(현재 => 현재 === name ? (남은[0] ?? '') : 현재);
-                            }}
-                            className="text-slate-300 hover:text-rose-500"
-                          ><X size={11} /></button>
-                        </span>
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => setPickerGroup(name)}
+                          className={`flex min-h-7 items-center gap-1 rounded-xl border px-2.5 py-1 text-[11px] font-black transition-all ${그룹색(pickerGroups, name).칩} ${고름 ? 'ring-2 ring-slate-400' : 'opacity-55'}`}
+                        >
+                          {name} <span className="tabular-nums opacity-60">{담긴수}</span>
+                        </button>
                       );
                     })}
+                    {/*  **칩에는 고르기만 남긴다**(2026-09-14 사장님: "그룹안에 수정이랑 삭제버튼
+                         넣지말고 그룹추가>그룹편집 으로 바꾸고 모달로 띄워서 안에서 추가랑,
+                         수정, 삭제 할 수 있게"). 좁은 칩에 단추 셋이 붙어 있어 고르려다 이름이
+                         바뀌거나 그룹이 지워졌다. 손대는 일은 편집 창에 모은다. */}
                     <button
                       type="button"
-                      onClick={() => {
-                        const 새이름 = window.prompt('새 그룹 이름')?.trim();
-                        if (!새이름) return;
-                        if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
-                        setPickerGroups(prev => [...prev, 새이름]);
-                        setPickerGroup(새이름);
-                      }}
-                      className="flex min-h-7 items-center gap-1 rounded-xl bg-violet-50 px-2 text-[11px] font-black text-violet-600 hover:bg-violet-100"
-                    ><Plus size={11} />그룹 추가</button>
+                      onClick={() => set그룹편집(true)}
+                      className="flex min-h-7 items-center gap-1 rounded-xl bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 hover:bg-violet-100"
+                    ><Settings2 size={11} />그룹 편집</button>
                   </div>
 
                   {/*  **`min-h-0` 가 있어야 스크롤이 먹는다**(2026-09-12 사장님: "스크롤이 안되는건지").

@@ -45,6 +45,27 @@ export const unreservedItemStock = (
 ) => stock3(Math.max(0, Number(item.stock ?? 0) - liveItemInventoryReservations(item.inventoryReservations, nowMs)
   .reduce((sum, row) => sum + Number(row.qty), 0)));
 
+/**
+ * **다른 주문이 잡아 둔 몫** — 현재고 − 쓸 수 있는 재고.
+ *
+ * 2026-09-14 사장님: "참진은 재고가 24개 있는데 왜 알람에선 0으로 뜨지 이미 잡아둔게 있어서
+ * 그런거야?" 맞다. 그런데 화면에는 **0 이라고만** 떠서, 재고 24개가 보이는 사람에게는
+ * 숫자가 어긋나 보인다. **얼마가 잡혀 있는지 같이 보여 주려고** 따로 뽑는다.
+ *
+ * 잡아 둔 것은 `allocated`(작업완료됐지만 출고 전) 과 처리 중인 것이다 — 이미 임자가 있는
+ * 물건이라 다른 주문의 "재고 쓸까요"에 세어 주면 같은 물건을 둘이 나눠 쓴 셈이 된다.
+ */
+export const reservedItemQty = (
+  item: Pick<Item, 'stock' | 'inventoryReservations'>,
+  nowMs = Date.now(),
+) => stock3(Math.max(0, Number(item.stock ?? 0) - unreservedItemStock(item, nowMs)));
+
+/** 그 몫을 누가 잡고 있나 — 주문 id 들(많으면 앞에서 몇 개만). */
+export const reservedByOrders = (
+  item: Pick<Item, 'inventoryReservations'>,
+  nowMs = Date.now(),
+): string[] => [...new Set(liveItemInventoryReservations(item.inventoryReservations, nowMs).map(r => r.orderId))];
+
 /** 주문 라인과 재귀 BOM이 건드릴 모든 품목 ID를 한 번만 모은다. */
 export function orderStockTouchedIds(order: Pick<Order, 'items'>): string[] {
   const seen = new Set<string>();

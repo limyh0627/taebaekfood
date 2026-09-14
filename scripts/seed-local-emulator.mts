@@ -50,6 +50,11 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['items', 'archived-oil', { name:'노출되면 안 되는 archived 품목', type:'product', category:'참기름', subtype:'낱개', stock:0, minStock:0, unit:'병', image:'', archived:true }],
   ['partner_item', 'direct-oil', { partnerId:'partner-direct', itemId:'oil-350', Direction:'out', price:5000, taxType:'과세' }],
   //  매입 쪽 연결 — 병·뚜껑을 사 온다(Direction:'in'). 여기 단가가 매입전표의 기본값이 된다.
+  //  **임가공 품목** — 우리가 만들지 않고 맡겨서 받아 오는 것(2026-09-14).
+  //  작업완료를 눌러도 생산이 없어 재고 확인창(`buildStockUseRows`)이 건너뛴다.
+  //  대신 재고를 쓰는지/모자라 음수가 되는지 알리는 창이 뜨는지 여기서 본다.
+  ['items', 'oem-sesame', { name:'가상 볶음참깨/1kg', type:'product', procureType:'임가공', category:'참깨', subtype:'박스', stock:5, minStock:0, unit:'박스', price:12000, cost:9000, image:'' }],
+  ['partner_item', 'direct-oem', { partnerId:'partner-direct', itemId:'oem-sesame', Direction:'out', price:12000, taxType:'과세' }],
   ['partner_item', 'supplier-bottle', { partnerId:'partner-supplier', itemId:'bottle-350', Direction:'in', price:330, taxType:'과세', Account_Code:'505' }],
   ['partner_item', 'supplier-cap', { partnerId:'partner-supplier', itemId:'cap-350', Direction:'in', price:88, taxType:'과세', Account_Code:'505' }],
   ['partner_item', 'direct-box', { partnerId:'partner-direct', itemId:'oil-box', Direction:'out', price:60000, taxType:'과세' }],
@@ -67,6 +72,9 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['orders', 'order-processing', { cardNo:'ORD-LOCAL-02', partnerId:'partner-courier', partnerName:'가상온라인몰', items:[{itemId:'powder-1kg',name:'가상 고춧가루/1kg',quantity:10,price:12000,checked:true,checkedBy:'테스트 관리자',checkedAt:atDay(-1),labelType:'부착',mfgDate:day(-30)},{itemId:'oil-350',name:'가상 참기름/350ml',quantity:4,price:5000,labelType:'대기'}], totalAmount:140000, status:'PROCESSING', createdAt:atDay(-1), deliveryDate:day(0), email:'', source:'스마트스토어', invoicePrinted:false, region:'서울 중구' }],
   ['orders', 'order-done', { cardNo:'ORD-LOCAL-03', partnerId:'partner-direct', partnerName:'가상직배송마트', items:[{itemId:'oil-350',name:'가상 참기름/350ml',quantity:6,price:5000,checked:true,checkedBy:'테스트 관리자',checkedAt:atDay(-1),labelType:'날인',mfgDate:day(-20)}], totalAmount:30000, status:'DISPATCHED', createdAt:atDay(-4), deliveryDate:day(0), email:'', source:'일반', producedAt:atDay(-1), region:'태백시' }],
   ['orders', 'order-shipped', { cardNo:'ORD-LOCAL-04', partnerId:'partner-courier', partnerName:'가상온라인몰', items:[{itemId:'powder-1kg',name:'가상 고춧가루/1kg',quantity:5,price:12000,checked:true,checkedBy:'테스트 관리자',checkedAt:atDay(-2),labelType:'부착'}], totalAmount:60000, status:'SHIPPED', createdAt:atDay(-5), deliveryDate:day(-1), email:'', source:'택배', invoicePrinted:true, shipmentConfirmedBy:'테스트 관리자', shipmentConfirmedAt:atDay(-1), shippedOut:true, region:'서울 중구' }],
+  //  임가공 품목 주문 둘 — **재고가 넉넉한 것**(3박스 ≤ 재고 5)과 **모자란 것**(9박스 > 5).
+  ['orders', 'order-oem-enough', { cardNo:'ORD-LOCAL-08', partnerId:'partner-direct', partnerName:'가상직배송마트', items:[{itemId:'oem-sesame',name:'가상 볶음참깨/1kg',quantity:3,price:12000,labelType:'대기'}], totalAmount:36000, status:'PENDING', createdAt:atDay(-1), deliveryDate:day(0), email:'', source:'일반', region:'태백시' }],
+  ['orders', 'order-oem-short', { cardNo:'ORD-LOCAL-09', partnerId:'partner-direct', partnerName:'가상직배송마트', items:[{itemId:'oem-sesame',name:'가상 볶음참깨/1kg',quantity:9,price:12000,labelType:'대기'}], totalAmount:108000, status:'PENDING', createdAt:atDay(-1), deliveryDate:day(0), email:'', source:'일반', region:'태백시' }],
   ['orders', 'order-hold', { cardNo:'ORD-LOCAL-05', partnerId:'partner-unlinked', partnerName:'연결품목없는거래처', items:[{itemId:'oil-350',name:'가상 참기름/350ml',quantity:3,price:5000,labelType:'대기'}], totalAmount:15000, status:'ON_HOLD', createdAt:atDay(-3), deliveryDate:day(2), email:'', source:'택배', region:'부산 중구' }],
 ];
 for (const [collection, id, data] of docs) await db.collection(collection).doc(id).set(data);
