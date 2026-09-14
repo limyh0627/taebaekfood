@@ -42,6 +42,7 @@ interface Props {
   /** 넓은 창이 필요한가 — 표를 담을 때만(재고 사용 확인창). */
   wide?: boolean;
   children: React.ReactNode;
+  /** 단추 줄. **세로로 쌓는다** — 단추 아래에 덧붙일 말이 있을 수 있다(못 누르는 까닭 등). */
   footer: React.ReactNode;
 }
 
@@ -73,7 +74,7 @@ const AlertModalShell: React.FC<Props> = ({ title, tone, icon: Icon, onClose, wi
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
 
-        <div className="flex gap-2 border-t border-slate-100 px-6 py-4">{footer}</div>
+        <div className="flex flex-col gap-2 border-t border-slate-100 px-6 py-4">{footer}</div>
       </div>
     </div>
   );

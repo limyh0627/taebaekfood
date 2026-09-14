@@ -64,16 +64,16 @@ export const STATUS_HEAD: Record<string, string> = {
  * 바탕을 칠하지 않으면서 카드를 훑어볼 수 있는 자리가 테두리다.
  */
 export const STATUS_CARD_BORDER: Record<string, string> = {
-  /*  **글씨와 같은 색이다**(2026-09-15 사장님: "대기중 테두리 색을 글씨 색이랑 같은 색을 써").
-      400 은 800 짜리 거래처명 옆에서 **바래 보였다** — 같은 카드인데 테두리만 물 빠진 듯했다.
-      아래 `STATUS_HEAD_LINE` 과 짝을 맞춘다. 한쪽을 고치면 다른 쪽도 같이 고친다.
-      (2026-09-12 "테두리색 좀만 어두운 계열로" 에서 300 → 400 으로 한 번 어둡게 했던 자리다) */
-  [OrderStatus.PENDING]: 'border-pink-800',
-  [OrderStatus.PROCESSING]: 'border-amber-800',
-  [OrderStatus.DISPATCHED]: 'border-emerald-800',
-  [OrderStatus.SHIPPED]: 'border-sky-800',
-  [OrderStatus.DELIVERED]: 'border-slate-600',
-  [OrderStatus.ON_HOLD]: 'border-orange-800',
+  /*  **연한 400 이다.** 2026-09-15 에 글씨와 같은 800 로 진하게 해 봤는데 바로 무르셨다 —
+      "테두리 연하게 다시 돌려놔", "너무 구별이 안간다". 진한 테두리끼리는 **색끼리 서로
+      안 갈린다**(진한 분홍과 진한 노랑이 둘 다 그냥 '진한 테'로 보인다). 연해야 색이 산다.
+      (300 은 흰 바탕에서 흐렸다 — 2026-09-12 "테두리색 좀만 어두운 계열로") */
+  [OrderStatus.PENDING]: 'border-pink-400',
+  [OrderStatus.PROCESSING]: 'border-amber-400',
+  [OrderStatus.DISPATCHED]: 'border-emerald-400',
+  [OrderStatus.SHIPPED]: 'border-sky-400',
+  [OrderStatus.DELIVERED]: 'border-slate-400',
+  [OrderStatus.ON_HOLD]: 'border-orange-400',
 };
 
 /**

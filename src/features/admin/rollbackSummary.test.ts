@@ -128,7 +128,7 @@ describe('상태 변경 확인창 글', () => {
 
   it('전량 재고로 나가 생산이 없던 건은 되돌릴 것이 없다고 적는다', () => {
     const 글 = buildStatusChangeAsk({ partnerName: '해내음', from: OrderStatus.DISPATCHED, to: OrderStatus.PENDING, plan: 계획({ adjustments: [] }) });
-    expect(글.subMessage).toContain('되돌릴 원료·부자재가 없습니다');
+    expect(글.subMessage).toContain('되돌릴 원료·부자재는 없습니다');
     expect(글.confirmText).toBe('되돌리기');
   });
 
@@ -145,6 +145,36 @@ describe('상태 변경 확인창 글', () => {
       .toBe('“참기름 골드” 을 풀고 재고를 원복할까요?');
     expect(buildStatusChangeAsk({ from: OrderStatus.DISPATCHED, to: OrderStatus.PROCESSING, plan: 계획({ adjustments: [] }), lineName: '참기름 골드' }).message)
       .toBe('“참기름 골드” 작업완료를 풀까요?');
+  });
+
+  /*  2026-09-15 사장님: "이 주문 몫으로 할당돼있던 재고 N개가 풀립니다를 첫 줄에 써".
+      작업완료로는 재고가 안 줄고 그 몫이 이 주문에 잡혀 있을 뿐이라, 생산이 없는
+      사입·임가공 건을 되돌리면 "되돌릴 게 없습니다" 만 떴다 — 실제로는 잡힘이 풀린다. */
+  it('잡아 둔 재고가 풀린다는 말이 맨 앞줄에 온다', () => {
+    const 글 = buildStatusChangeAsk({
+      partnerName: '남양유통', from: OrderStatus.DISPATCHED, to: OrderStatus.PROCESSING,
+      plan: 계획({ adjustments: [] }), lineName: '참진한기름',
+      released: [{ name: '참진한기름', qty: 60, unit: '개' }],
+    });
+    const 줄들 = 글.subMessage.split('\n');
+    expect(줄들[1]).toBe('이 주문 몫으로 할당돼 있던 재고 60개가 풀립니다 — 참진한기름.');
+    expect(줄들[2]).toContain('되돌릴 원료·부자재는 없습니다');
+  });
+
+  it('풀릴 것이 여럿이면 품목마다 적는다', () => {
+    const 글 = buildStatusChangeAsk({
+      from: OrderStatus.DISPATCHED, to: OrderStatus.PENDING, plan: 계획(),
+      released: [{ name: '참진한기름', qty: 60, unit: '개' }, { name: '들기름', qty: 2, unit: '박스' }],
+    });
+    expect(글.subMessage).toContain('이 주문 몫으로 할당돼 있던 재고가 풀립니다 — 참진한기름 60개, 들기름 2박스.');
+  });
+
+  it('풀릴 것이 없으면 그 줄을 안 세운다 — 빈 줄이 끼면 글이 성기어 보인다', () => {
+    const 글 = buildStatusChangeAsk({
+      from: OrderStatus.DISPATCHED, to: OrderStatus.PENDING, plan: 계획(),
+      released: [{ name: '참진한기름', qty: 0, unit: '개' }],
+    });
+    expect(글.subMessage).not.toContain('풀립니다');
   });
 
   it('생산 당시 기록이 없으면 추정이라고 밝힌다', () => {

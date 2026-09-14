@@ -58,7 +58,9 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
       tone={hasUsableStock ? 'emerald' : 'amber'}
       icon={Package}
       onClose={onCancel}
-      footer={<>
+      footer={
+        //  틀의 발은 세로로 쌓으므로 단추 줄을 따로 묶는다.
+        <div className="flex gap-2">
           <button
             onClick={onCancel}
             className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-all"
@@ -71,7 +73,8 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
           >
             {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}
           </button>
-      </>}
+        </div>
+      }
     >
         <p className="text-sm font-bold leading-snug text-slate-800">
           {hasUsableStock ? '재고 사용량을 확인해 주세요' : '재고가 없어 전량 생산합니다'}

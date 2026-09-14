@@ -20,6 +20,12 @@ interface ConfirmModalProps {
   icon?: LucideIcon;
   message: string;
   subMessage?: string;
+  /** 설명 아래에 붙일 것 — 표처럼 줄글로는 못 읽는 내용을 담는다. */
+  body?: React.ReactNode;
+  /** 누르면 안 되는 상황 — 까닭은 `footerNote` 로 단추 아래에 적는다. */
+  confirmDisabled?: boolean;
+  /** **단추 아래** 한 줄 — 왜 못 누르는지. 단추 위에 적으면 설명에 묻힌다. */
+  footerNote?: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   confirmOnly?: boolean;
@@ -33,6 +39,9 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   icon = AlertTriangle,
   message,
   subMessage,
+  body,
+  confirmDisabled = false,
+  footerNote,
   confirmText = '삭제',
   cancelText = '취소',
   confirmOnly = false,
@@ -43,22 +52,26 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <AlertModalShell title={title ?? message} tone={tone} icon={icon} onClose={onCancel}
       footer={<>
-        {!confirmOnly && (
+        <div className="flex gap-2">
+          {!confirmOnly && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-bold text-slate-600 transition-all hover:bg-slate-200"
+            >
+              {cancelText}
+            </button>
+          )}
           <button
             type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-bold text-slate-600 transition-all hover:bg-slate-200"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-black text-white transition-all disabled:cursor-not-allowed disabled:bg-slate-300 ${색.단추}`}
           >
-            {cancelText}
+            {confirmText}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onConfirm}
-          className={`flex-1 rounded-xl py-2.5 text-sm font-black text-white transition-all ${색.단추}`}
-        >
-          {confirmText}
-        </button>
+        </div>
+        {footerNote}
       </>}
     >
       {/*  제목을 따로 준 창에서는 `message` 가 **설명의 첫 줄**이다 — 머리에 또 쓰지 않는다.
@@ -67,6 +80,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       {subMessage && (
         <p className={`whitespace-pre-line text-xs font-medium leading-5 text-slate-500 ${title ? 'mt-1.5' : ''}`}>{subMessage}</p>
       )}
+      {body}
     </AlertModalShell>
   );
 };

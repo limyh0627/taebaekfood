@@ -104,6 +104,7 @@ import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedge
 import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
 import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
 import { diffOrderItems } from '../../shared/orderItemDiff';
+import { shipQtyOfLine } from '../../shared/shipDeduction';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
@@ -1547,7 +1548,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
        *  다만 `buildStatusChangeAsk` 가 "되돌릴 원료·부자재가 없습니다"로 글을 바꾼다. */
       const 계획: RollbackPlan = prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status);
       const 최종패치 = { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) };
-      const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status, plan: 계획 });
+      /*  **작업완료에서 내릴 때만** 잡힘이 풀린다 — 출고까지 갔던 건은 재고가 이미 빠졌고,
+          그건 위 `계획`(원복)이 되돌린다. 여기서 또 세면 두 번 말하는 셈이 된다. */
+      const 풀릴것 = cur.status === OrderStatus.DISPATCHED
+        ? cur.items.flatMap(줄 => {
+            const 품목 = allItems.find(p => p.id === 줄.itemId);
+            const 양 = shipQtyOfLine(줄, 품목);
+            return 품목 && 양 > 0
+              ? [{ name: 품목.name, qty: 양, unit: unpackComponent(품목) ? '박스' : (품목.unit || '개') }]
+              : [];
+          })
+        : [];
+      const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status, plan: 계획, released: 풀릴것 });
       setRollbackAsk({
         ...묻는글,
         onConfirm: () => changeOrderStatus(id, status, undefined, {
@@ -1835,8 +1847,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
         inventorySnapshots: { production: 줄상태.production },
       } as Parameters<typeof buildRollbackPlan>[0], allItems, OrderStatus.DISPATCHED, OrderStatus.PROCESSING);
       const 줄이름 = allItems.find(p => p.id === plan.items[itemIdx]?.itemId)?.name ?? plan.items[itemIdx]?.name ?? '이 품목';
+      /*  **되돌리면 이 주문 몫으로 잡아 둔 재고가 풀린다**(2026-09-15 사장님).
+          작업완료로는 재고가 안 줄고 그 몫이 이 주문에 잡혀 있을 뿐이라, 생산이 없는
+          사입·임가공 줄은 "되돌릴 게 없습니다" 만 떴다 — 실제로는 잡힘이 풀린다.
+          얼마가 풀리는지는 출고 때 빠질 양과 같다(`shipQtyOfLine`) — 그 몫을 잡아 둔 것이니. */
+      const 푸는품목 = allItems.find(p => p.id === normalizedOrder.items[itemIdx]?.itemId);
+      const 풀릴양 = shipQtyOfLine(normalizedOrder.items[itemIdx]!, 푸는품목);
       const 묻는글 = buildStatusChangeAsk({
         partnerName: order.partnerName, from: order.status, to: plan.status, plan: 줄계획, lineName: 줄이름,
+        released: 푸는품목 && 풀릴양 > 0
+          ? [{ name: 줄이름, qty: 풀릴양, unit: unpackComponent(푸는품목) ? '박스' : (푸는품목.unit || '개') }]
+          : [],
       });
       setRollbackAsk({ ...묻는글, onConfirm: () => save() });
       return;
@@ -1882,7 +1903,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
           (`shipOrder`). "쓴다"고 하면 지금 줄어드는 줄 안다. */
       const 출고뒤 = Math.round((재고 - 주문량) * 1000) / 1000;
       setGoodsStockAsk(모자란양 > 0 ? {
-        title: '재고부족', tone: 'amber',
+        //  **분홍**(2026-09-15 사장님: "이 경우는 색 분홍색으로 해줘"). 노랑은 '재고를 다 쓴다'는
+        //  알림에도 쓰고 있어, 재고가 모자라 음수가 될 이 경고와 한 색이면 갈리지 않았다.
+        title: '재고부족', tone: 'pink',
         message: `재고가 부족합니다 — “${완료품목.name}”`,
         subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
           + `이 주문 몫으로 ${주문량}${단위}를 잡으면, 출고할 때 재고가 ${출고뒤}${단위} 로 음수가 됩니다.\n`

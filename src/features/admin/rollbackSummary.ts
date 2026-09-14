@@ -170,11 +170,29 @@ export function buildStatusChangeAsk(args: {
   plan?: RollbackPlan;
   /** 한 줄만 되돌릴 때 그 품목 이름 */
   lineName?: string;
+  /**
+   * **이 주문 몫으로 잡혀 있던 재고** — 되돌리면 풀린다(2026-09-15 사장님:
+   * "이 주문 몫으로 할당돼있던 재고 N개가 풀립니다를 첫 줄에 써").
+   *
+   * 작업완료로는 재고가 **안 줄어든다.** 그 몫이 이 주문에 잡히고(`inventoryReservations`)
+   * 실제로 빠지는 건 출고할 때다. 그래서 사입·임가공처럼 생산이 없는 건을 되돌리면
+   * "되돌릴 원료·부자재가 없습니다" 만 떴는데, **아무 일도 안 일어나는 것이 아니다** —
+   * 잡아 둔 몫이 풀려 다른 주문이 쓸 수 있게 된다. 그 말을 맨 앞에 적는다.
+   */
+  released?: { name: string; qty: number; unit: string }[];
 }): { message: string; subMessage: string; confirmText: string } {
   const label = (s: string) => ({ PENDING: '대기중', PROCESSING: '작업중', DISPATCHED: '작업완료', SHIPPED: '출고', DELIVERED: '배송완료' } as Record<string, string>)[String(s)] ?? String(s);
   const 거래처 = args.partnerName || '거래처 미지정';
   const 흐름 = `${거래처} · ${label(String(args.from))} → ${label(String(args.to))}`;
   const 움직임 = (args.plan?.adjustments ?? []).filter(row => row.delta !== 0);
+
+  //  잡아 둔 몫이 풀린다는 말 — 있으면 **맨 앞줄**이다. 그 순간 실제로 움직이는 것이라 먼저 읽혀야 한다.
+  const 풀릴것 = (args.released ?? []).filter(row => row.qty > 0);
+  const 수 = (n: number) => Math.round(n * 1000) / 1000;
+  const 풀림글 = 풀릴것.length === 0 ? ''
+    : 풀릴것.length === 1
+      ? `이 주문 몫으로 할당돼 있던 재고 ${수(풀릴것[0].qty)}${풀릴것[0].unit}가 풀립니다 — ${풀릴것[0].name}.`
+      : `이 주문 몫으로 할당돼 있던 재고가 풀립니다 — ${풀릴것.map(row => `${row.name} ${수(row.qty)}${row.unit}`).join(', ')}.`;
 
   //  되돌릴 것이 없다 — 전량 재고로 나가 하나도 생산하지 않은 건이 여기다.
   //  그래도 묻기는 한다(사장님: "그냥 알람띄워"). 다만 겁줄 말은 안 쓴다.
@@ -184,9 +202,13 @@ export function buildStatusChangeAsk(args: {
       message: args.lineName
         ? `“${args.lineName}” 작업완료를 풀까요?`
         : `${label(String(args.to))} 로 바꿀까요?`,
-      subMessage: `${흐름}\n${되돌리기
-        ? '이 건은 생산한 기록이 없어 되돌릴 원료·부자재가 없습니다.'
-        : '재고는 움직이지 않습니다.'}`,
+      subMessage: [
+        흐름,
+        풀림글,
+        되돌리기
+          ? '생산한 기록은 없어 되돌릴 원료·부자재는 없습니다.'
+          : '재고는 움직이지 않습니다.',
+      ].filter(Boolean).join('\n'),
       confirmText: 되돌리기 ? '되돌리기' : '변경하기',
     };
   }
@@ -199,6 +221,7 @@ export function buildStatusChangeAsk(args: {
       : '주문 상태와 재고를 원복할까요?',
     subMessage: [
       흐름,
+      풀림글,
       `재고 ${움직임.length}건이 되돌아갑니다(로트·원료수불부 포함) — ${이름들}${남은 > 0 ? ` 외 ${남은}건` : ''}.`,
       args.plan.legacyEvidenceWarning
         ? '이 주문은 생산 당시 기록이 없어 지금 구성(BOM)으로 추정해 되돌립니다.'

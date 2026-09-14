@@ -452,7 +452,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const isEditing = editingOrderId === order.id;
   /*  머리에는 **짧은 이름**(`출고완료`·`주문 삭제`), 설명은 내용으로
       (2026-09-15 사장님: "헤더에는 재고부족 작업완료 출고완료 이런식으로 제목을 넣어"). */
-  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; body?: React.ReactNode; confirmDisabled?: boolean; footerNote?: React.ReactNode; confirmText?: string; onConfirm: () => void } | null>(null);
   const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
   //  줄마다 구성(BOM)을 폈나 — **기본은 접힘**(2026-09-12 사장님: "bom 접었다 펼 수 있게")
   const [openItemBom, setOpenItemBom] = useState<Set<string>>(new Set());
@@ -576,29 +576,35 @@ export const OrderCard = memo<OrderCardProps>(({
              오른쪽 두 조각을 옆으로 붙여도 이름을 안 밀어낸다. 눌러서 접는 것도 그대로다.
              **글줄 바닥(baseline)으로 맞춘다** — 둘은 글자 크기가 달라(11px·10px) 상자 가운데로
              맞추면 작은 쪽이 떠 보인다(2026-09-12 사장님: "대기중이랑 정렬이 안맞냐"). */}
-        <div className="flex shrink-0 items-baseline gap-1.5 leading-tight">
-        {/*  **상태는 카드에서 못 바꾼다 — 보여 주기만 한다**(2026-09-15 사장님:
-             "카드에서 이제 대기중 작업중 그런거 안 눌리게 바꾸고", "드래그로 넘기는 기능도
-             막아놔", "작업완료랑 출고완료도 그 버튼으로 왔다갔다 못하게 하고").
+        {/*  **`작업완료 6/6` 통째가 펼치기 단추다**(2026-09-15 사장님: "작업완료 6/6 까지를
+             그냥 통째로 주문 펼치기 용 버튼으로 써"). 전에는 숫자 `6/6` 만 눌렸는데,
+             10px 짜리 네 글자라 손가락으로 겨냥하기 어려웠다. 상태 글자까지 한 덩어리로 묶으면
+             누를 자리가 두 배가 된다.
 
-             대기중 → 작업중 → 작업완료는 **품목 체크가 굴린다**(체크한 수만큼 상태가
-             저절로 따라간다). 그런데 여기서 상태만 건너뛰면 체크와 어긋나 되돌리기·재고가
-             꼬였다 — 전부 체크된 카드를 대기중으로 내리면 다시 그려질 때 작업완료로
-             도로 튀어 올라가, 아예 안 옮겨지는 것처럼 보이기도 했다.
-             출고완료는 배송 쪽(출고완료 체크·묶음 출고)에서 찍는다. */}
-        <div className="relative shrink-0">
-          <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
-        </div>
-          {nonHyangmiyuItems.length > 0 && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className="text-[10px] font-black opacity-70 transition-all hover:opacity-100"
-            >
-              {completedItems}/{totalItems}
-            </button>
-          )}
-        </div>
+             **상태는 여기서 못 바꾼다 — 보여 주기만 한다**(같은 날 사장님: "카드에서 이제
+             대기중 작업중 그런거 안 눌리게 바꾸고", "드래그로 넘기는 기능도 막아놔",
+             "작업완료랑 출고완료도 그 버튼으로 왔다갔다 못하게 하고"). 대기중 → 작업중 →
+             작업완료는 **품목 체크가 굴린다** — 여기서 상태만 건너뛰면 체크와 어긋나
+             되돌리기·재고가 꼬였다. 그래서 이 자리는 이제 '펼치기' 하나만 한다.
+
+             **글줄 바닥(baseline)으로 맞춘다** — 둘은 글자 크기가 달라(11px·10px) 상자 가운데로
+             맞추면 작은 쪽이 떠 보인다(2026-09-12 사장님: "대기중이랑 정렬이 안맞냐"). */}
+        {nonHyangmiyuItems.length > 0 ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
+            aria-expanded={!isCollapsed}
+            title={isCollapsed ? '주문 펼치기' : '주문 접기'}
+            className="-mx-1 flex shrink-0 items-baseline gap-1.5 rounded-md px-1 leading-tight transition-all hover:bg-black/5"
+          >
+            <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
+            <span className="text-[10px] font-black opacity-70">{completedItems}/{totalItems}</span>
+          </button>
+        ) : (
+          <div className="flex shrink-0 items-baseline leading-tight">
+            <span className="text-[11px] font-black opacity-80">{STATUS_LABEL[order.status] ?? order.status}</span>
+          </div>
+        )}
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           {/*  **판매 채널은 거래처명 앞**(사장님: "배송채널은 거래처명 앞으로 가고").
@@ -1147,17 +1153,15 @@ export const OrderCard = memo<OrderCardProps>(({
           </div>
         ) : (
           <>
+            {/*  **주문일자는 뺐다**(2026-09-15 사장님: "아예 주문일자는 빼고 왼쪽에 배송기한
+                 가운데 배송방법 오른쪽은 팔레트 or 송장 이렇게 가자"). 셋이 가로로 벌어져
+                 좁은 카드에서 서로 밀었고, 주문일자는 카드 머리의 주문번호로 갈음된다.
+                 손대는 것(출고 방식·송장·팔레트)에 자리를 넘긴다. */}
             <div className="flex flex-col">
-              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">주문일자</span>
-              <span className="text-[9px] font-bold text-slate-400">
-                {(() => { const d = new Date(order.createdAt); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}
-              </span>
-            </div>
-            <div className="flex flex-col items-center">
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
               <span className="text-[9px] font-bold text-slate-500">{(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}</span>
             </div>
-            <div className="flex flex-col items-center gap-0.5">
+            <div className="flex items-center">
               {/*  **팔레트 위에 출고 방식**(사장님: "팔레트 위에 출고 방식이 오게 해봐").
                    배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`).
                    여기 있던 판매 채널은 거래처명 앞으로 옮겼다. */}
@@ -1184,10 +1188,12 @@ export const OrderCard = memo<OrderCardProps>(({
               ) : (
                 <span className="text-[9px] font-black text-slate-500">{shipMethodOf(order)}</span>
               )}
-              {/*  **택배면 송장, 아니면 팔레트**(2026-09-12 사장님: "보드에 카드에도 같은 방식으로
-                   바꾸고"). 리스트의 '출고 방식' 칸과 같은 셈이다 — 택배로 나가면 팔레트가 돌
-                   일이 없고, 우리 차가 돌면 송장이 붙을 일이 없다.
-                   송장은 **양식(A~E)** 과 **세 단계**(`-`→출력→부착)를 나란히 둔다. */}
+            </div>
+            {/*  **택배면 송장, 아니면 팔레트**(2026-09-12 사장님: "보드에 카드에도 같은 방식으로
+                 바꾸고"). 리스트의 '출고 방식' 칸과 같은 셈이다 — 택배로 나가면 팔레트가 돌
+                 일이 없고, 우리 차가 돌면 송장이 붙을 일이 없다.
+                 송장은 **양식(A~E)** 과 **세 단계**(`-`→출력→부착)를 나란히 둔다. */}
+            <div className="flex items-center">
               {shipMethodOf(order) === '택배' ? (
                 <div className="flex items-center gap-1">
                   <select
@@ -1313,6 +1319,9 @@ export const OrderCard = memo<OrderCardProps>(({
           icon={confirmModal.icon}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
+          body={confirmModal.body}
+          confirmDisabled={confirmModal.confirmDisabled}
+          footerNote={confirmModal.footerNote}
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />
@@ -1808,7 +1817,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   /*  머리에는 **짧은 이름**(`출고완료`·`주문 삭제`), 설명은 내용으로
       (2026-09-15 사장님: "헤더에는 재고부족 작업완료 출고완료 이런식으로 제목을 넣어"). */
-  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title?: string; tone?: AlertTone; icon?: LucideIcon; message: string; subMessage?: string; body?: React.ReactNode; confirmDisabled?: boolean; footerNote?: React.ReactNode; confirmText?: string; onConfirm: () => void } | null>(null);
   /*  **카드를 따라가지 않는다**(2026-09-14 사장님: "움직인 위치로 따라가도록 해놨는데 그거 기능 꺼놔봐").
    *  폰에서 상태가 바뀌면 그 카드가 간 열까지 화면이 저절로 스크롤했다. 손으로 체크하는 중에
    *  화면이 움직이니 다음 줄을 누르려던 손가락이 엉뚱한 데를 짚었다. 이제 제자리에 머문다. */
@@ -2184,18 +2193,49 @@ const OrdersList: React.FC<OrdersListProps> = ({
     if (!order) return;
     const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
     const 빠질것 = shipDeductions(order, items);
-    const 수 = (n: number) => Math.round(n * 1000) / 1000;
-    const 적을것 = 빠질것.map(row => `${row.name} −${수(row.qty)}${row.unit} · ${수(row.before)} → ${수(row.after)}`);
-    //  모자라면 숨기지 않고 먼저 말한다 — 눌러 놓고 나중에 음수로 만나면 되짚기 어렵다.
+    const 수 = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
+    /*  **재고가 음수가 될 출고는 아예 막는다**(2026-09-15 사장님: "작업완료에서 출고완료로
+        갈때 음수재고 나오는 경우는 막아야겠다 출고완료버튼 못 누르게 막아두고").
+        전에는 경고만 하고 눌러 지나갈 수 있었는데, 한 번 음수가 되면 그 품목 재고는
+        실사를 하기 전까지 아무도 못 믿는 숫자가 된다. */
     const 모자란것 = 빠질것.filter(row => row.after < 0);
     setConfirmModal({
       title: '출고완료', tone: 'sky', icon: Truck,
       message: 빠질것.length ? '재고가 차감됩니다. 출고완료로 전환할까요?' : '출고완료로 전환할까요?',
-      subMessage: [
-        partnerName,
-        ...(적을것.length ? 적을것 : ['빠질 재고가 없습니다 — 벌크(원료·반제품)는 작업완료 때 이미 빠졌습니다.']),
-        모자란것.length ? `재고가 모자랍니다 — ${모자란것.map(row => row.name).join(', ')} 가 음수가 됩니다.` : '',
-      ].filter(Boolean).join('\n'),
+      subMessage: partnerName,
+      /*  **줄글로 늘어놓으니 못 읽었다**(사장님: "가독성 개 떨어진다 깔끔하게 다시 표현해") —
+          이름·차감량·남는 재고가 가운뎃점으로 이어 붙어 어느 숫자가 무엇인지 안 잡혔다.
+          칸을 갈라 숫자는 오른쪽으로 맞춘다. 음수가 되는 줄만 빨갛다. */
+      body: 빠질것.length ? (
+        <div className="mt-2.5 overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black text-slate-500">
+            <span>품목</span><span className="text-right">차감</span><span className="text-right">남는 재고</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {빠질것.map(row => {
+              const 모자람 = row.after < 0;
+              return (
+                <div key={row.itemId} className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 px-3 py-1.5 text-[11px] ${모자람 ? 'bg-rose-50' : ''}`}>
+                  <span className="min-w-0 truncate font-bold text-slate-700" title={row.name}>{row.name}</span>
+                  <span className="whitespace-nowrap text-right font-black tabular-nums text-slate-500">−{수(row.qty)}{row.unit}</span>
+                  <span className={`whitespace-nowrap text-right font-black tabular-nums ${모자람 ? 'text-rose-600' : 'text-slate-800'}`}>{수(row.after)}{row.unit}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-1.5 text-xs font-medium text-slate-500">빠질 재고가 없습니다 — 벌크(원료·반제품)는 작업완료 때 이미 빠졌습니다.</p>
+      ),
+      confirmDisabled: 모자란것.length > 0,
+      //  **못 누르는 까닭은 단추 아래에**(사장님: "재고가 모자랍니다 부터를 출고완료버튼 밑에 띄워").
+      //  설명 쪽에 섞으면 표에 묻혀 왜 단추가 회색인지 모른다.
+      footerNote: 모자란것.length ? (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-600">
+          재고가 모자라 출고할 수 없습니다 — {모자란것.map(row => row.name).join(', ')}
+          <span className="mt-0.5 block font-medium text-rose-500">재고를 채우거나 주문 수량을 고친 뒤 다시 눌러 주세요.</span>
+        </p>
+      ) : undefined,
       confirmText: '출고완료',
       onConfirm: () => { setConfirmModal(null); onUpdateStatus(orderId, OrderStatus.SHIPPED); },
     });
@@ -4477,6 +4517,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
           icon={confirmModal.icon}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
+          body={confirmModal.body}
+          confirmDisabled={confirmModal.confirmDisabled}
+          footerNote={confirmModal.footerNote}
           confirmText={confirmModal.confirmText}
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
