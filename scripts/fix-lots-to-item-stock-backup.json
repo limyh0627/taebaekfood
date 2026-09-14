@@ -1,0 +1,17 @@
+{
+ "p-1782788554239": [
+  {
+   "receivedDate": "2026-08-12",
+   "supplierId": "c-1785818085745",
+   "poId": "po-1785859517345",
+   "supplierName": "카프코",
+   "kgIn": 10000,
+   "status": "active",
+   "lotNo": "260812-01",
+   "qtyIn": 10000,
+   "id": "lot-깨분-1786516535923-uyga",
+   "kgRemaining": 2000,
+   "createdAt": "2026-08-12T06:35:35.923Z"
+  }
+ ]
+}
