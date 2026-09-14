@@ -10,6 +10,7 @@ interface ConfirmModalProps {
   subMessage?: string;
   confirmText?: string;
   cancelText?: string;
+  confirmOnly?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,6 +20,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   subMessage,
   confirmText = '삭제',
   cancelText = '취소',
+  confirmOnly = false,
   onConfirm,
   onCancel,
 }) => (
@@ -33,7 +35,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-slate-900 leading-snug">{message}</p>
             {subMessage && (
-              <p className="text-xs text-slate-400 font-medium mt-1">{subMessage}</p>
+              <p className="text-xs text-slate-400 font-medium mt-1 whitespace-pre-line">{subMessage}</p>
             )}
           </div>
           <button onClick={onCancel} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 transition-all shrink-0">
@@ -42,12 +44,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
         </div>
       </div>
       <div className="px-6 pb-6 flex gap-2">
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-all"
-        >
-          {cancelText}
-        </button>
+        {!confirmOnly && (
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm hover:bg-slate-200 transition-all"
+          >
+            {cancelText}
+          </button>
+        )}
         <button
           onClick={() => { onConfirm(); }}
           className="flex-1 py-2.5 bg-rose-500 text-white font-black rounded-xl text-sm hover:bg-rose-600 transition-all"

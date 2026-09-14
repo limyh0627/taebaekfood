@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Item, ItemBom, PartnerItem } from '../../shared/types';
-import { planCatalogItemDelete } from './catalogItemDelete';
+import { OrderStatus, type Item, type ItemBom, type Order, type PartnerItem } from '../../shared/types';
+import { catalogItemDeleteBlockers, catalogItemDeleteBlockMessage, planCatalogItemDelete } from './catalogItemDelete';
 
 describe('품목 삭제 계획', () => {
   it('부모·자기 BOM과 거래처 연결을 모으고 부모 품목명을 경고한다', () => {
@@ -28,5 +28,23 @@ describe('품목 삭제 계획', () => {
     expect(plan.subMessage).toContain('들깨가루 4kg 박스, 참깨 20kg 박스의 BOM');
     expect(plan.subMessage).toContain('자체의 BOM 1줄');
     expect(plan.subMessage).toContain('자동 제거');
+  });
+
+  it('진행 중 주문만 삭제를 막고 주문번호·거래처·상태를 알려 준다', () => {
+    const orders = [
+      { id: 'ORD-1', partnerName: '가을식품', status: OrderStatus.PROCESSING, items: [{ itemId: 'child' }] },
+      { id: 'ORD-2', partnerName: '해피유통', status: OrderStatus.SHIPPED, items: [{ itemId: 'child' }] },
+      { id: 'ORD-OLD', partnerName: '옛 거래처', status: OrderStatus.DELIVERED, items: [{ itemId: 'child' }] },
+      { id: 'ORD-OTHER', partnerName: '다른 거래처', status: OrderStatus.PENDING, items: [{ itemId: 'other' }] },
+    ] as Order[];
+
+    const blockers = catalogItemDeleteBlockers('child', orders);
+    const message = catalogItemDeleteBlockMessage('자루', blockers);
+
+    expect(blockers.map(order => order.id)).toEqual(['ORD-1', 'ORD-2']);
+    expect(message).toContain('진행 중 주문 2건');
+    expect(message).toContain('ORD-1 · 가을식품 · 작업중');
+    expect(message).toContain('ORD-2 · 해피유통 · 출고완료');
+    expect(message).not.toContain('ORD-OLD');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, addMonths, endOfMonth, today, dateOfLocal, timeOfLocal } from './day';
+import { addDays, addMonths, endOfMonth, today, dateOfLocal, timeOfLocal, kstDateRangeUtc } from './day';
 
 /**
  * 이 셈이 틀리면 조용히 하루씩 밀린다 — 견적서 유효기한, 배송일, 앵커 시작일이
@@ -56,6 +56,29 @@ describe('달력 날짜 셈', () => {
     expect(today()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const d = new Date();
     expect(today()).toBe(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  });
+});
+
+describe('한국 날짜 범위 → Firestore UTC 경계', () => {
+  it('한국 자정부터 종료일 다음 날 자정 직전까지 조회한다', () => {
+    expect(kstDateRangeUtc('2026-08-01', '2026-08-31')).toEqual({
+      startInclusive: '2026-07-31T15:00:00.000Z',
+      endExclusive: '2026-08-31T15:00:00.000Z',
+    });
+  });
+
+  it('연말과 윤년 월말을 정확히 넘긴다', () => {
+    expect(kstDateRangeUtc('2026-12-31', '2026-12-31')).toEqual({
+      startInclusive: '2026-12-30T15:00:00.000Z',
+      endExclusive: '2026-12-31T15:00:00.000Z',
+    });
+    expect(kstDateRangeUtc('2028-02-29', '2028-02-29').endExclusive)
+      .toBe('2028-02-29T15:00:00.000Z');
+  });
+
+  it('없는 날짜와 뒤집힌 범위를 조용히 조회하지 않는다', () => {
+    expect(() => kstDateRangeUtc('2026-02-30', '2026-03-01')).toThrow('올바르지 않은 한국 날짜 범위');
+    expect(() => kstDateRangeUtc('2026-09-02', '2026-09-01')).toThrow('올바르지 않은 한국 날짜 범위');
   });
 });
 

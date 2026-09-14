@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today, addDays, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown, CalendarDays, Hand, Package } from 'lucide-react';
@@ -29,7 +29,7 @@ interface AddOrderModalProps {
   submaterials?: Item[];
   onClose: () => void;
   onBack?: () => void;
-  onSave: (_order: Omit<Order, 'id' | 'status'>) => void;
+  onSave: (_order: Omit<Order, 'id' | 'status'>) => Promise<void>;
 }
 
 const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -57,13 +57,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   const itemById = useMemo(() => new Map(items.map(item => [item.id, item])), [items]);
   const submaterials = _submaterials ?? items.filter(i => i.type !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
 
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [isSaving, onClose]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
@@ -526,9 +528,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   };
 
 
-  const handleSubmit = (e?: React.SyntheticEvent) => {
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
-    if (!orderDate || !deadline || !selectedPartner || selectedItems.length === 0) return;
+    if (savingRef.current || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0) return;
 
     const orderItems: OrderItem[] = selectedItems.flatMap(item => {
       if (!item.quantity || item.quantity <= 0) return [];
@@ -560,32 +562,39 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       return sum + (boxPrice ?? 0) * actualQty;
     }, 0);
 
-    onSave({
-      partnerId: selectedPartner.id,
-      partnerName: selectedPartner.name || '이름 없음',
-      email: selectedPartner.email || '',
-      createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
-      items: orderItems,
-      totalAmount,
-      deliveryDate: new Date(deadline).toISOString(),
-      source: (isDelivery && source === '일반') ? '택배' : source,
-      pallets: pallets.filter(p => p.quantity > 0),
-      region: selectedPartner.region || '미지정',
-      shipMethod,
-      ...(isDelivery ? { deliveryBoxes: [] } : {}),
-    });
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      await onSave({
+        partnerId: selectedPartner.id,
+        partnerName: selectedPartner.name || '이름 없음',
+        email: selectedPartner.email || '',
+        createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
+        items: orderItems,
+        totalAmount,
+        deliveryDate: new Date(deadline).toISOString(),
+        source: (isDelivery && source === '일반') ? '택배' : source,
+        pallets: pallets.filter(p => p.quantity > 0),
+        region: selectedPartner.region || '미지정',
+        shipMethod,
+        ...(isDelivery ? { deliveryBoxes: [] } : {}),
+      });
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!savingRef.current) onClose(); }} />
 
       <div className="relative bg-white w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col h-[92dvh] sm:h-[85vh] sm:max-h-[900px] animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
         <div className="sticky top-0 z-10 rounded-t-3xl">
           <OrderCreationModalHeader
             currentLabel="직접 선택"
-            onBack={onBack}
-            onClose={onClose}
+            onBack={onBack ? () => { if (!savingRef.current) onBack(); } : undefined}
+            onClose={() => { if (!savingRef.current) onClose(); }}
           />
         </div>
 
@@ -986,10 +995,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
             </div>
           )}
           <ModalActionFooter
-            onCancel={onClose}
+            onCancel={() => { if (!savingRef.current) onClose(); }}
             onPrimary={handleSubmit}
-            primaryLabel="주문 생성 완료"
-            primaryDisabled={!orderDate || !deadline || !selectedPartner || selectedItems.length === 0}
+            primaryLabel={isSaving ? '저장 중…' : '주문 생성 완료'}
+            primaryDisabled={isSaving || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0}
           />
         </div>
       </div>

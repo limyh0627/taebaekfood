@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
 import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
@@ -100,7 +100,7 @@ interface PasteOrderModalProps {
   palletStocks: PalletStock[];
   onClose: () => void;
   onBack?: () => void;
-  onSave: (_order: Omit<Order, 'id' | 'status'>) => void;
+  onSave: (_order: Omit<Order, 'id' | 'status'>) => Promise<void>;
 }
 
 type Step = 'partner' | 'paste' | 'review';
@@ -110,11 +110,13 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) onClose(); };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [isSaving, onClose]);
 
   const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
@@ -208,8 +210,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     return { unitsPerBox: 0, boxType: '' };
   };
 
-  const handleSubmit = () => {
-    if (!orderDate || !deadline || !selectedClient) return;
+  const handleSubmit = async () => {
+    if (savingRef.current || !orderDate || !deadline || !selectedClient) return;
     const validLines = parsedLines.filter(l => l.selectedProductId && l.qty > 0);
     const orderItems: OrderItem[] = validLines.flatMap(line => {
       const product = items.find(p => p.id === line.selectedProductId);
@@ -231,19 +233,26 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     });
     if (!orderItems.length) return;
     const totalAmount = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
-    onSave({
-      partnerId: selectedClient.id,
-      partnerName: selectedClient.name,
-      email: selectedClient.email || '',
-      createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
-      items: orderItems,
-      totalAmount,
-      deliveryDate: new Date(deadline).toISOString(),
-      source: (isDelivery ? '택배' : '일반') as OrderSource,
-      pallets: pallets.filter(p => p.quantity > 0),
-      region: selectedClient.region || '미지정',
-      ...(isDelivery ? { deliveryBoxes: [] } : {}),
-    });
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      await onSave({
+        partnerId: selectedClient.id,
+        partnerName: selectedClient.name,
+        email: selectedClient.email || '',
+        createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
+        items: orderItems,
+        totalAmount,
+        deliveryDate: new Date(deadline).toISOString(),
+        source: (isDelivery ? '택배' : '일반') as OrderSource,
+        pallets: pallets.filter(p => p.quantity > 0),
+        region: selectedClient.region || '미지정',
+        ...(isDelivery ? { deliveryBoxes: [] } : {}),
+      });
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   //  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
@@ -310,14 +319,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { if (!savingRef.current) onClose(); }} />
       <div className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col h-[85vh] max-h-[860px] animate-in zoom-in-95 duration-300">
 
         {/* 헤더 */}
         <OrderCreationModalHeader
           currentLabel="주문 내역 붙여넣기"
-          onBack={onBack}
-          onClose={onClose}
+          onBack={onBack ? () => { if (!savingRef.current) onBack(); } : undefined}
+          onClose={() => { if (!savingRef.current) onClose(); }}
         />
 
         {/* 스텝 인디케이터 */}
@@ -542,12 +551,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         <div className="rounded-b-3xl">
           {step === 'partner' && (
             <ModalActionFooter
-              onCancel={onClose}
+              onCancel={() => { if (!savingRef.current) onClose(); }}
             />
           )}
           {step === 'paste' && (
             <ModalActionFooter
-              onCancel={onClose}
+              onCancel={() => { if (!savingRef.current) onClose(); }}
               onPrimary={analyze}
               primaryLabel="분석하기"
               primaryDisabled={!orderDate || !deadline || !pasteText.trim()}
@@ -555,10 +564,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
           )}
           {step === 'review' && (
             <ModalActionFooter
-              onCancel={onClose}
+              onCancel={() => { if (!savingRef.current) onClose(); }}
               onPrimary={handleSubmit}
-              primaryLabel={`주문 생성 (${parsedLines.filter(line => line.selectedProductId).length}건)`}
-              primaryDisabled={!orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}
+              primaryLabel={isSaving ? '저장 중…' : `주문 생성 (${parsedLines.filter(line => line.selectedProductId).length}건)`}
+              primaryDisabled={isSaving || !orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}
             />
           )}
         </div>

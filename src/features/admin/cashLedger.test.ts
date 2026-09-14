@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts, cashPaidByMonth,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts, cashPaidByMonth,
 } from './cashLedger';
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
@@ -756,5 +756,44 @@ describe('openBalance 는 살아 있는 자금줄만 센다', () => {
   it('총액보다 더 갚은 것으로 잡히지 않는다 — 음수가 나오면 후보에서 통째로 빠진다', () => {
     const 과잉 = { ...지정, amount: 20_000_000 } as Settlement;
     expect(openBalance(매입, [과잉], new Set(산자금.map(e => e.id)))).toBe(10_264_980);
+  });
+});
+
+describe('partnerLedgerForPeriod — 전월 기말을 다음 달 기초로', () => {
+  const row = (id: string, date: string, amount: number, opening = false) => ({
+    kind: amount < 0 ? '결제' as const : '전표' as const,
+    id,
+    date,
+    label: id,
+    amount,
+    balance: 0,
+    ...(opening ? { opening: true as const } : {}),
+  });
+  const all = buildPartnerLedger('none', '매출', [], [], []);
+  all.rows = [
+    row('장부기초', '2026-07-31', 1_000, true),
+    row('8월매출', '2026-08-10', 500),
+    row('8월수금', '2026-08-20', -200),
+    row('9월매출', '2026-09-03', 700),
+  ];
+
+  it('8월은 장부 기초를 이월하고 8월 거래만 발생·결제로 센다', () => {
+    const august = partnerLedgerForPeriod(all, '2026-08-01', '2026-08-31');
+    expect(august.rows.map(r => r.id)).toEqual(['period-opening:2026-08-01', '8월매출', '8월수금']);
+    expect(august.rows.map(r => r.balance)).toEqual([1_000, 1_500, 1_300]);
+    expect(august).toMatchObject({ opening: 1_000, accrued: 500, paid: 200, balance: 1_300 });
+  });
+
+  it('8월 기말과 9월 기초가 정확히 같다', () => {
+    const august = partnerLedgerForPeriod(all, '2026-08-01', '2026-08-31');
+    const september = partnerLedgerForPeriod(all, '2026-09-01', '2026-09-30');
+    expect(september.opening).toBe(august.balance);
+    expect(september.balance).toBe(2_000);
+  });
+
+  it('장부를 열기 전 기간에는 미래의 기초 전표를 당겨오지 않는다', () => {
+    const june = partnerLedgerForPeriod(all, '2026-06-01', '2026-06-30');
+    expect(june.opening).toBe(0);
+    expect(june.balance).toBe(0);
   });
 });

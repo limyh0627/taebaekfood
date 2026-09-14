@@ -12,6 +12,36 @@
  */
 
 const RE = /^(\d{4})-(\d{2})-(\d{2})/;
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export interface KstDateRangeUtc {
+  startInclusive: string;
+  endExclusive: string;
+}
+
+const isCalendarDay = (value: string): boolean => {
+  const match = DAY_RE.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+};
+
+/** 한국 달력의 시작일 00:00 이상, 종료일 다음 날 00:00 미만을 UTC ISO로 바꾼다. */
+export function kstDateRangeUtc(start: string, end: string): KstDateRangeUtc {
+  if (!isCalendarDay(start) || !isCalendarDay(end) || start > end) {
+    throw new Error(`올바르지 않은 한국 날짜 범위입니다: ${start} ~ ${end}`);
+  }
+  const nextDay = addDays(end, 1);
+  return {
+    startInclusive: new Date(`${start}T00:00:00.000+09:00`).toISOString(),
+    endExclusive: new Date(`${nextDay}T00:00:00.000+09:00`).toISOString(),
+  };
+}
 
 /** 오늘 — **그 자리 시간 기준**. UTC로 찍으면 한국 아침에 어제가 나온다. */
 export const today = (): string => {

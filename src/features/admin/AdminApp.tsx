@@ -104,7 +104,17 @@ import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
-import { planCatalogItemDelete } from './catalogItemDelete';
+import {
+  CATALOG_DELETE_BLOCKING_STATUSES,
+  catalogItemDeleteBlockers,
+  catalogItemDeleteBlockMessage,
+  planCatalogItemDelete,
+} from './catalogItemDelete';
+import {
+  newOrderCreationSession,
+  resetOrderCreationSession,
+  submitOrderCreation,
+} from './orderCreation';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { applyOemReceiptInventory } from './oemReceiptInventory';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
@@ -165,6 +175,7 @@ import {
   setProductSuppliers,
   setDocument,
   fetchDateRange,
+  fetchWhereIn,
   adjustItemStock,
   markNotificationForUser,
   claimOrderInventoryOperation,
@@ -810,6 +821,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
   const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
+  const directOrderCreation = useRef(newOrderCreationSession());
+  const pasteOrderCreation = useRef(newOrderCreationSession());
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Item | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1292,8 +1305,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     claimOrderOperation: claimOrderInventoryOperation,
   });
 
-  // 작업완료 진입점 — 쓸 수 있는 재고가 있으면 모달로 사용량을 먼저 받는다(없으면 그대로 진행).
-  //  드롭다운으로 바꾸든 품목 전체 체크로 자동 이동하든 여기 하나를 지난다.
+  // 품목 완료 진입점 — 생산품은 재고 유무와 관계없이 모달에서 재고 사용/전량 생산을 확인한다.
+  // 드롭다운으로 바꾸든 품목 체크로 자동 이동하든 여기 하나를 지난다.
   const [stockUseAsk, setStockUseAsk] = useState<{
     mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
@@ -1307,18 +1320,53 @@ const AdminApp: React.FC<AdminAppProps> = ({
     partnerItemIds: string[];
     subMessage: string;
   } | null>(null);
+  const [appNotice, setAppNotice] = useState<{
+    message: string;
+    subMessage: string;
+  } | null>(null);
 
-  const requestCatalogItemDelete = (itemId: string) => {
+  const loadCatalogDeleteBlockers = async (itemId: string) => catalogItemDeleteBlockers(
+    itemId,
+    await fetchWhereIn<Order>('orders', 'status', CATALOG_DELETE_BLOCKING_STATUSES),
+  );
+
+  const requestCatalogItemDelete = async (itemId: string) => {
     const item = allItems.find(candidate => candidate.id === itemId);
     if (!item) return;
-    const plan = planCatalogItemDelete(itemId, allItems, itemBoms, partnerItems);
-    setCatalogDeleteAsk({ itemId, itemName: item.name, ...plan });
+    try {
+      const blockers = await loadCatalogDeleteBlockers(itemId);
+      if (blockers.length > 0) {
+        setAppNotice({
+          message: '진행 중 주문이 있어 품목을 삭제할 수 없습니다',
+          subMessage: catalogItemDeleteBlockMessage(item.name, blockers),
+        });
+        return;
+      }
+      const plan = planCatalogItemDelete(itemId, allItems, itemBoms, partnerItems);
+      setCatalogDeleteAsk({ itemId, itemName: item.name, ...plan });
+    } catch (error) {
+      console.error('품목 삭제 전 주문 확인 실패', error);
+      setAppNotice({
+        message: '품목 삭제 전 주문을 확인하지 못했습니다',
+        subMessage: '안전하게 삭제를 중단했습니다. 잠시 뒤 다시 시도해 주세요.',
+      });
+    }
   };
 
   const confirmCatalogItemDelete = async () => {
     const ask = catalogDeleteAsk;
     if (!ask) return;
     try {
+      // 확인창이 열린 뒤 주문이 생길 수도 있으므로 실제 삭제 직전에 다시 읽는다.
+      const blockers = await loadCatalogDeleteBlockers(ask.itemId);
+      if (blockers.length > 0) {
+        setCatalogDeleteAsk(null);
+        setAppNotice({
+          message: '진행 중 주문이 생겨 품목을 삭제하지 않았습니다',
+          subMessage: catalogItemDeleteBlockMessage(ask.itemName, blockers),
+        });
+        return;
+      }
       // 품목만 먼저 없어지면 BOM에 존재하지 않는 ID가 남아 생산 처리가 막힌다.
       // 품목과 현재 BOM·거래처 연결을 같은 batch에 넣어 전부 성공하거나 전부 실패하게 한다.
       const batch = writeBatch(db);
@@ -1334,6 +1382,81 @@ const AdminApp: React.FC<AdminAppProps> = ({
       alert(`품목을 삭제하지 못했습니다.\n사유: ${reason}`);
     }
   };
+
+  type NewOrderDraft = Omit<Order, 'id' | 'status'>;
+  const saveNewOrder = async (kind: 'direct' | 'paste', draft: NewOrderDraft) => {
+    const session = kind === 'direct' ? directOrderCreation.current : pasteOrderCreation.current;
+    const label = kind === 'direct' ? 'AddOrder' : 'PasteOrder';
+    const partnerName = partners.find(partner => partner.id === draft.partnerId)?.name
+      || draft.partnerName || '거래처';
+    try {
+      const result = await submitOrderCreation(session, draft, {
+        createIdentity: () => ({ id: `ORD-${Date.now()}`, cardNo: nextOrderNo(today(), allOrders) }),
+        saveOrder: async (identity, order) => {
+          // 응답만 끊기고 DB에는 저장됐을 수도 있어 재시도에서 같은 ID·카드번호를 다시 쓴다.
+          내가넣은주문.current.add(identity.id);
+          await addItem('orders', {
+            ...order,
+            items: ensureOrderLineIds(order.items),
+            companyId,
+            id: identity.id,
+            cardNo: identity.cardNo,
+            createdBy: currentUser.id,
+            createdAt: order.createdAt || new Date().toISOString(),
+            status: OrderStatus.PENDING,
+          });
+        },
+        followUps: [
+          {
+            label: '재고 부족 확인',
+            run: async () => {
+              try { await checkAndAlertShortage(draft.items, draft.partnerId); }
+              catch (error) { console.error(`[${label}] 재고 부족 확인 실패`, error); throw error; }
+            },
+          },
+          {
+            label: '신규 주문 알림',
+            run: async (identity) => {
+              try {
+                await addItem('notifications', {
+                  type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`,
+                  readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id,
+                  linkedId: identity.id,
+                } as Omit<AppNotification, 'id'>);
+              } catch (error) { console.error(`[${label}] 신규 주문 알림 실패`, error); throw error; }
+            },
+          },
+        ],
+      });
+      if (result.status === 'busy') return;
+      setNewOrderId(result.identity.id);
+      if (kind === 'direct') setIsAddOrderOpen(false);
+      else setIsPasteOrderOpen(false);
+      if (result.failedFollowUps.length > 0) {
+        setAppNotice({
+          message: '주문은 정상적으로 저장됐습니다',
+          subMessage: `${result.failedFollowUps.join(', ')}을 처리하지 못했습니다. 주문을 다시 만들 필요는 없습니다.`,
+        });
+      }
+    } catch (error) {
+      console.error(`[${label}] 주문 본문 저장 실패`, error);
+      const reason = error instanceof Error ? error.message : String(error);
+      setAppNotice({
+        message: '주문을 저장하지 못했습니다',
+        subMessage: `${reason}\n다시 누르면 같은 주문번호로 재시도합니다.`,
+      });
+    }
+  };
+
+  const closeOrderCreation = (kind: 'direct' | 'paste', goBack = false) => {
+    const session = kind === 'direct' ? directOrderCreation.current : pasteOrderCreation.current;
+    if (session.busy) return;
+    resetOrderCreationSession(session);
+    if (kind === 'direct') setIsAddOrderOpen(false);
+    else setIsPasteOrderOpen(false);
+    if (goBack) setIsOrderCreateChooserOpen(true);
+  };
+
   const requestOrderStatus = async (id: string, status: OrderStatus, orderPatch?: Partial<Order>) => {
     const prepared = await prepareOrderStatusChange(id, status);
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
@@ -4719,46 +4842,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
           </div>
         </div>
       )}
-      {isAddOrderOpen && <AddOrderModal items={allItems} orders={allOrders} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onBack={() => { setIsAddOrderOpen(false); setIsOrderCreateChooserOpen(true); }} onSave={async (o) => {
-        try {
-          console.log('[AddOrder] 저장 시작', o);
-          const orderId = `ORD-${Date.now()}`;
-          //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
-          const cardNo = nextOrderNo(today(), allOrders);
-          내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, items: ensureOrderLineIds(o.items), companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
-          console.log('[AddOrder] orders 저장 완료', orderId);
-          await checkAndAlertShortage(o.items, o.partnerId);
-          const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
-          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
-          setNewOrderId(orderId);
-          setIsAddOrderOpen(false);
-          console.log('[AddOrder] 완료');
-        } catch (err) {
-          console.error('[AddOrder] 저장 실패:', err);
-          alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }} />}
-      {isPasteOrderOpen && <PasteOrderModal items={allItems} partners={partners} partnerItems={partnerItems} palletStocks={pallets} onClose={() => setIsPasteOrderOpen(false)} onBack={() => { setIsPasteOrderOpen(false); setIsOrderCreateChooserOpen(true); }} onSave={async (o) => {
-        try {
-          console.log('[PasteOrder] 저장 시작', o);
-          const orderId = `ORD-${Date.now()}`;
-          //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
-          const cardNo = nextOrderNo(today(), allOrders);
-          내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, items: ensureOrderLineIds(o.items), companyId, id: orderId, cardNo, createdBy: currentUser.id, createdAt: o.createdAt || new Date().toISOString(), status: OrderStatus.PENDING});
-          console.log('[PasteOrder] orders 저장 완료', orderId);
-          await checkAndAlertShortage(o.items, o.partnerId);
-          const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
-          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
-          setNewOrderId(orderId);
-          setIsPasteOrderOpen(false);
-          console.log('[PasteOrder] 완료');
-        } catch (err) {
-          console.error('[PasteOrder] 저장 실패:', err);
-          alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }} />}
+      {isAddOrderOpen && (
+        <AddOrderModal
+          items={allItems}
+          orders={allOrders}
+          partners={partners}
+          partnerItems={partnerItems}
+          palletStocks={pallets}
+          submaterials={submaterials}
+          onClose={() => closeOrderCreation('direct')}
+          onBack={() => closeOrderCreation('direct', true)}
+          onSave={(order) => saveNewOrder('direct', order)}
+        />
+      )}
+      {isPasteOrderOpen && (
+        <PasteOrderModal
+          items={allItems}
+          partners={partners}
+          partnerItems={partnerItems}
+          palletStocks={pallets}
+          onClose={() => closeOrderCreation('paste')}
+          onBack={() => closeOrderCreation('paste', true)}
+          onSave={(order) => saveNewOrder('paste', order)}
+        />
+      )}
       {isProductModalOpen && (
         <ProductModal
           initialData={editingProduct || undefined}
@@ -4877,6 +4984,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
           confirmText="삭제하기"
           onConfirm={() => { void confirmCatalogItemDelete(); }}
           onCancel={() => setCatalogDeleteAsk(null)}
+        />
+      )}
+      {appNotice && (
+        <ConfirmModal
+          message={appNotice.message}
+          subMessage={appNotice.subMessage}
+          confirmText="확인"
+          confirmOnly
+          onConfirm={() => setAppNotice(null)}
+          onCancel={() => setAppNotice(null)}
         />
       )}
       {stockUseAsk && (

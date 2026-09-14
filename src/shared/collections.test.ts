@@ -19,11 +19,11 @@ const 파일들 = globSync('{components,src,scripts,functions/src}/**/*.{ts,tsx,
  * DB 를 부르는 자리에서 첫 인자로 쓴 글자.
  *
  * **부르는 모양이 여럿이다** — 처음엔 `addItem` 계열만 봤다가
- * `fetchWhere`·`setDocument`, 그리고 상수에 담아 쓰는 것(`const COL = 'dashboardLinks'`)을
+ * `fetchWhere`·`fetchWhereIn`·`setDocument`, 그리고 상수에 담아 쓰는 것(`const COL = 'dashboardLinks'`)을
  * 놓쳤다(2026-09-06). 타입을 좁히고 나서야 컴파일러가 잡아 줬다.
  */
 const 부르는곳 =
-  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
+  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|fetchWhereIn|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
 
 /**
  * **`COL.무엇` 으로 쓴 것도 쓴 것이다.**

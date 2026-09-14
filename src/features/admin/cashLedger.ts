@@ -262,6 +262,40 @@ export function buildPartnerLedger(
   return { rows, opening, accrued, paid, balance: running };
 }
 
+/**
+ * 전기간 원장을 날짜 범위로 잘라 **기간 시작 직전 잔액을 기초**로 다시 세운다.
+ * 장부 개시용 기초 전표는 날짜가 범위 안이어도 당기 발생이 아니므로 언제나 기초에 포함한다.
+ */
+export function partnerLedgerForPeriod(
+  ledger: PartnerLedger,
+  from: string,
+  to: string,
+): PartnerLedger {
+  if (!from || !to || from > to) return ledger;
+
+  const opening = ledger.rows
+    .filter(row => (row.opening && row.date <= to) || (!row.opening && row.date < from))
+    .reduce((sum, row) => sum + row.amount, 0);
+  const periodRows = ledger.rows.filter(row => !row.opening && row.date >= from && row.date <= to);
+  let running = opening;
+  const openingRow: PartnerLedgerRow = {
+    kind: opening < 0 ? '결제' : '전표',
+    id: `period-opening:${from}`,
+    date: from,
+    label: '기간 전 잔액',
+    amount: opening,
+    balance: opening,
+    opening: true,
+  };
+  const rows = [openingRow, ...periodRows.map(row => {
+    running += row.amount;
+    return { ...row, balance: running };
+  })];
+  const accrued = periodRows.reduce((sum, row) => sum + (row.amount > 0 ? row.amount : 0), 0);
+  const paid = periodRows.reduce((sum, row) => sum + (row.amount < 0 ? -row.amount : 0), 0);
+  return { rows, opening, accrued, paid, balance: running };
+}
+
 /** 거래처별 현재 잔액 — 목록 화면용 */
 /**
  * 거래처 잔액 — 미수(매출) / 미지급(매입).

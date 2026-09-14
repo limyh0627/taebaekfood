@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Search, Users, Wallet, X } from 'lucide-react';
 import { AccountCode, CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
-import { today } from '../src/shared/day';
+import { endOfMonth, today } from '../src/shared/day';
 import { claimDocNo } from '../src/shared/voucherStamp';
 import { buildPaymentEntry } from '../src/shared/payment';
 import VoucherSlip from '../src/shared/VoucherSlip';
-import { buildPartnerLedger, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
+import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 
 interface Props {
@@ -52,6 +52,18 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
+  const [periodMode, setPeriodMode] = useState<'all' | 'month' | 'custom'>('all');
+  const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
+  const [customFrom, setCustomFrom] = useState(() => `${today().slice(0, 7)}-01`);
+  const [customTo, setCustomTo] = useState(today);
+  const periodRange = useMemo(() => {
+    if (periodMode === 'all') return null;
+    if (periodMode === 'month') return selectedMonth
+      ? { from: `${selectedMonth}-01`, to: endOfMonth(selectedMonth) }
+      : null;
+    if (!customFrom || !customTo || customFrom > customTo) return null;
+    return { from: customFrom, to: customTo };
+  }, [periodMode, selectedMonth, customFrom, customTo]);
 
   const balances = useMemo(
     () => partnerBalances(type, issuedStatements, cashEntries, journals),
@@ -90,9 +102,15 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
 
   const shown = balances.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
   const sel = balances.find(b => b.partnerId === selId) ?? shown[0];
-  const ledger = useMemo(
+  const fullLedger = useMemo(
     () => (sel ? buildPartnerLedger(sel.partnerId, type, issuedStatements, cashEntries, journals) : null),
     [sel, type, issuedStatements, cashEntries, journals],
+  );
+  const ledger = useMemo(
+    () => (fullLedger && periodRange
+      ? partnerLedgerForPeriod(fullLedger, periodRange.from, periodRange.to)
+      : fullLedger),
+    [fullLedger, periodRange],
   );
 
   const total = shown.reduce((a, b) => a + b.balance, 0);
@@ -115,6 +133,31 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
             </button>
           ))}
         </div>
+        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+          {([['all', '전체'], ['month', '월별'], ['custom', '기간']] as const).map(([mode, text]) => (
+            <button key={mode} type="button" onClick={() => setPeriodMode(mode)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                periodMode === mode ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+              }`}>
+              {text}
+            </button>
+          ))}
+        </div>
+        {periodMode === 'month' && (
+          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
+            className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
+        )}
+        {periodMode === 'custom' && (
+          <div className="flex items-center gap-1">
+            <input type="date" value={customFrom} max={customTo}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
+            <span className="text-slate-400 text-xs font-black">~</span>
+            <input type="date" value={customTo} min={customFrom}
+              onChange={e => setCustomTo(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer" />
+          </div>
+        )}
         <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="거래처명"
@@ -179,7 +222,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 <span className="text-slate-400">발생 <span className="text-slate-700 tabular-nums">{fmt(ledger.accrued)}</span></span>
                 <span className="text-slate-400">결제 <span className="text-emerald-600 tabular-nums">{fmt(ledger.paid)}</span></span>
                 <span className="text-slate-300">=</span>
-                <span className="text-slate-400">{label} <span className={`tabular-nums ${tone}`}>{fmt(ledger.balance)}</span></span>
+                <span className="text-slate-400">{periodRange ? '기말' : label} <span className={`tabular-nums ${tone}`}>{fmt(ledger.balance)}</span></span>
               </div>
             )}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
@@ -188,7 +231,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
               <button type="button" onClick={() => openPay(sel.balance)}
                 className={`ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black text-white transition-all ${
                   type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
-                <Wallet size={13} />{type === '매출' ? '수금' : '지불'}
+                <Wallet size={13} />{periodRange ? '현재 ' : ''}{type === '매출' ? '수금' : '지불'}
               </button>
             )}
           </div>

@@ -15,6 +15,7 @@ import { buildBomIndex, setBomIndex } from '../bomIndex';
 import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
+import { kstDateRangeUtc } from '../day';
 
 export interface WorkOrderItem {
   id: string;
@@ -158,9 +159,10 @@ export function useAppData(): AppData {
     setIsLoadingHistoricalOrders(true);
     try {
       const { where } = await import('firebase/firestore');
+      const range = kstDateRangeUtc(start, end);
       const data = await fetchCollection<Order>('orders', [
-        where('createdAt', '>=', start + 'T00:00:00.000Z'),
-        where('createdAt', '<=', end + 'T23:59:59.999Z'),
+        where('createdAt', '>=', range.startInclusive),
+        where('createdAt', '<', range.endExclusive),
       ]);
       setHistoricalOrders(data);
       loadedHistoricalRangeRef.current = { start, end };
