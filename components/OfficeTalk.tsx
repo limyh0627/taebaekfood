@@ -36,6 +36,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../src/firebase';
 import { actionsFor, replySnippet, deletePatch, isDeleted, type MessageAction } from '../src/shared/messageActions';
+import { REACTION_EMOJIS, toggleReaction, reactionChips, reactionTitle } from '../src/shared/messageReactions';
+import { matchesSearch } from '../src/shared/hangul';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -420,6 +422,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   //  할 수 있는 일을 고르는 규칙은 [shared/messageActions](../src/shared/messageActions.ts) 가 안다.
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [actionMsg, setActionMsg] = useState<ChatMessage | null>(null);
+  /**
+   * **방 안에서 말 찾기**(2026-09-14 사장님: "오피스톡에 메시지 검색기능").
+   *
+   * 찾는 글자가 있으면 **맞는 말만 남긴다** — 카톡처럼 위아래로 건너뛰는 것보다,
+   * 여러 날에 걸친 것을 한눈에 훑는 데는 걸러 보는 쪽이 낫다(오피스톡은 업무 기록이다).
+   * 초성으로도 걸린다(`matchesSearch` — 인수인계 "검색은 어디서나 초성으로 된다").
+   */
+  const [찾는글, set찾는글] = useState('');
+  const [검색열림, set검색열림] = useState(false);
   /** 답장할 말 — 입력칸 위에 인용으로 뜬다 */
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [알림글, set알림글] = useState('');
@@ -453,6 +464,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setActionRoom(null);
   };
 
+  /**
+   * 이모티콘을 남기거나 뗀다. 셈은 [messageReactions](../src/shared/messageReactions.ts) 가 한다.
+   * 누르면 **창을 닫는다** — 하나 고르고 나면 볼 일이 없다.
+   */
+  const 이모지토글 = (msg: ChatMessage, emoji: string) => {
+    onUpdateMessage?.(msg.id, { reactions: toggleReaction(msg.reactions, emoji, currentUser.id) });
+    setActionMsg(null);
+  };
+
   const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
   const startLongPress = (msg: ChatMessage) => {
     cancelLongPress();
@@ -463,6 +483,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       navigator.vibrate?.(15);
     }, 450);
   };
+
+  /*  찾는 글자가 있으면 걸러 본다. 지운 말은 글이 없으니 자연히 빠진다. */
+  const 보는말 = 찾는글.trim()
+    ? localMessages.filter(m => !m.deletedAt && (matchesSearch(m.text ?? '', 찾는글) || matchesSearch(m.senderName ?? '', 찾는글)))
+    : localMessages;
 
   /** 잠깐 뜨는 알림 — '복사했습니다' 같은 것 */
   const 알리기 = (t: string) => { set알림글(t); setTimeout(() => set알림글(''), 1600); };
@@ -758,6 +783,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   </p>
                 </div>
               </div>
+              {/*  **말 찾기**(2026-09-14 사장님) — 돋보기를 누르면 칸이 열린다.
+                   늘 펴 두면 좁은 폰에서 방 이름을 밀어낸다. */}
+              <button
+                onClick={() => { set검색열림(v => !v); if (검색열림) set찾는글(''); }}
+                aria-label={검색열림 ? '검색 닫기' : '메시지 검색'}
+                aria-pressed={검색열림}
+                className={`shrink-0 rounded-xl p-2 transition-all ${검색열림 ? 'bg-indigo-50 text-indigo-600' : 'text-slate-300 hover:bg-slate-50 hover:text-slate-600'}`}
+              >
+                <Search size={18} />
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setShowRoomMenu(p => !p)}
@@ -843,19 +878,34 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 </div>
               )}
 
-              {localMessages.length === 0 && !isLoadingMore ? (
+              {검색열림 && (
+                <div className="sticky top-0 z-10 -mx-1 mb-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <Search size={14} className="shrink-0 text-slate-400" />
+                  <input
+                    autoFocus
+                    value={찾는글}
+                    onChange={e => set찾는글(e.target.value)}
+                    placeholder="이 방에서 말 찾기 (초성도 됩니다)"
+                    className="min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-700 outline-none placeholder:font-medium placeholder:text-slate-300"
+                  />
+                  {찾는글.trim() && <span className="shrink-0 text-[10px] font-black text-indigo-600 tabular-nums">{보는말.length}건</span>}
+                  <button onClick={() => { set찾는글(''); set검색열림(false); }} aria-label="검색 닫기"
+                    className="shrink-0 p-1 text-slate-300 hover:text-slate-500"><X size={14} /></button>
+                </div>
+              )}
+              {보는말.length === 0 && !isLoadingMore ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-2">
                   <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center">
                     <MessageSquare size={32} className="opacity-20" />
                   </div>
-                  <p className="text-xs font-bold">첫 메시지를 보내보세요!</p>
+                  <p className="text-xs font-bold">{찾는글.trim() ? `“${찾는글}” 이 든 말이 없습니다` : '첫 메시지를 보내보세요!'}</p>
                 </div>
               ) : (
-                localMessages.map((msg, idx) => {
+                보는말.map((msg, idx) => {
                   const isMine = msg.senderId === currentUser.id;
-                  const showSender = idx === 0 || localMessages[idx - 1].senderId !== msg.senderId;
+                  const showSender = idx === 0 || 보는말[idx - 1].senderId !== msg.senderId;
                   //  시간은 이어 말한 덩어리의 마지막에만 — 줄마다 찍으면 지저분하다(카톡과 같다)
-                  const nx = localMessages[idx + 1];
+                  const nx = 보는말[idx + 1];
                   const showTime = !nx || nx.senderId !== msg.senderId
                     || msg.createdAt.slice(0, 16) !== nx.createdAt.slice(0, 16);
                   
@@ -965,6 +1015,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                           </p>
                         )}
                       </div>
+                      {/*  **남긴 이모티콘** — 말풍선 바로 밑에 붙는다(카톡·슬랙과 같다).
+                           눌러서 내 것을 얹거나 뗄 수 있다 — 창을 안 열어도 된다. */}
+                      {reactionChips(msg.reactions, currentUser.id).length > 0 && (
+                        <div className={`flex flex-wrap gap-1 mt-1 ${isMine ? 'justify-end mr-1' : 'ml-1'}`}>
+                          {reactionChips(msg.reactions, currentUser.id).map(칩 => (
+                            <button
+                              key={칩.emoji}
+                              type="button"
+                              onClick={() => onUpdateMessage?.(msg.id, { reactions: toggleReaction(msg.reactions, 칩.emoji, currentUser.id) })}
+                              title={reactionTitle(msg.reactions, 칩.emoji, id => employees.find(e => e.id === id)?.name)}
+                              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold transition-colors ${
+                                칩.mine ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                            >
+                              <span>{칩.emoji}</span>
+                              <span className="tabular-nums">{칩.count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {/*  시간은 늘 보인다 — hover 로만 뜨게 해놨더니 폰에선 아예 못 봤다(2026-09-03 사장님) */}
                       {showTime && (
                         <span className={`text-[9px] font-bold text-slate-400 whitespace-nowrap mt-0.5 ${isMine ? 'mr-1' : 'ml-1'}`}>
@@ -1283,6 +1352,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <p className="text-[10px] font-black text-slate-400">{actionMsg.senderName}</p>
               <p className="text-xs font-bold text-slate-600 line-clamp-2 whitespace-pre-wrap">{actionMsg.text || '(사진·파일)'}</p>
             </div>
+            {/*  **이모티콘 줄**(2026-09-14 사장님) — 창 맨 위다. 하나 누르면 바로 닫힌다.
+                 지운 말에는 안 보인다 — 아래 목록이 비는 것과 같은 까닭이다. */}
+            {!isDeleted(actionMsg) && onUpdateMessage && (
+              <div className="flex items-center justify-around border-b border-slate-100 px-2 py-2">
+                {REACTION_EMOJIS.map(emoji => {
+                  const 내가눌렀나 = (actionMsg.reactions?.[emoji] ?? []).includes(currentUser.id);
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => 이모지토글(actionMsg, emoji)}
+                      aria-label={`${emoji} 남기기`}
+                      className={`flex h-11 w-11 items-center justify-center rounded-full text-xl transition-colors ${
+                        내가눌렀나 ? 'bg-indigo-100' : 'hover:bg-slate-100'}`}
+                    >{emoji}</button>
+                  );
+                })}
+              </div>
+            )}
             {actionsFor({ msg: actionMsg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, actionMsg) }).map(act => (
               <button key={act} onClick={() => doAction(act, actionMsg)}
                 className={`w-full px-5 py-3.5 text-left text-sm font-black border-b border-slate-50 last:border-0 transition-colors ${

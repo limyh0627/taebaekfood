@@ -725,6 +725,12 @@ export interface ChatMessage {
    */
   deletedAt?: string;
   deletedBy?: string;
+  /**
+   * **이모티콘**(2026-09-14 사장님: "꾹 눌렀을때 이모티콘 남길 수 있는 기능").
+   * 이모지 → 누른 사람 id 들. 개수를 먼저 보여 주는 화면이라 이 방향이 세기 쉽다.
+   * 아무도 안 남은 이모지는 칸을 지운다 — 규칙은 [messageReactions](./messageReactions.ts).
+   */
+  reactions?: Record<string, string[]>;
 }
 
 export interface ChatRoom {
