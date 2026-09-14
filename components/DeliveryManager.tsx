@@ -452,6 +452,23 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     [...saved.filter(id => ids.includes(id)), ...ids.filter(id => !saved.includes(id))];
 
   /**
+   * **그 날짜에 저장된 차례** — 오늘도 다른 날과 같은 데서 읽는다.
+   *
+   * 2026-09-14 사장님: "ORDERING에 없는거 자동포함은 하지마", "출고예정일이 오늘인 주문이
+   * 이미 캘린더에 순서 붙어서 들어있잖아 그 목록을 그냥 가져오면 돼".
+   *
+   * 오늘만 **날짜를 안 들고 있는 옛 전역 목록**(`ordering`)을 쓰고 있었다. 날짜가 없으니
+   * 어제 세운 줄이 오늘 칸에 남았고, 그걸 메우려고 "오늘 주문 중 차례에 없는 것"을 뒤에
+   * 자동으로 붙였다. 한 번 끌면 그 자동분까지 통째로 저장돼, 고른 적 없는 주문이 차례에 박혔다.
+   *
+   * 이제 **오늘도 `orderingByDate[날짜]`** 다 — 다른 날과 같은 규칙이라 자동포함이라는
+   * 개념 자체가 없다. 그 날 주문을 그대로 늘어놓고 차례만 저장한다.
+   *
+   * 옛 전역 목록은 **오늘 것이 아직 안 옮겨졌을 때만** 읽는다 — 세워 둔 차례를 잃지 않게.
+   */
+  const 날짜차례 = (dateStr: string) => orderingByDate[dateStr] ?? (dateStr === todayKey ? deliveryOrdering : []);
+
+  /**
    * **배송 카드 한 벌 — 어느 날 칸이든 같은 모양이다.**
    *
    * 2026-09-12 사장님: "카드 양식이 당일에 해당하는 바탕색 없는 카드로 통일했으면 좋겠고".
@@ -564,39 +581,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
     const getStatusColor = statusChip;
 
-    // 금일 배송순서 공통 데이터 (오늘 열에서 사용)
-    // deliveryOrdering에 있는 것 + 오늘 날짜 캘린더 주문 중 ordering에 없는 것 자동 포함
-    const todayCalendarExtra = orders
-      .filter(o =>
-        o.partnerName !== '생산기록' &&
-        o.status !== OrderStatus.DELIVERED &&
-        queryDateKey(o.deliveryDate) === todayStr &&
-        !deliveryOrdering.includes(o.id)
-      )
-      .map(o => o.id);
-    /*  **오늘 칸에도 오늘 것만 선다**(2026-09-12 사장님: "왜 중복으로 뜨지").
-     *
-     *  저장해 둔 배송 차례(`deliveryOrdering`)는 **날짜를 안 들고 있다.** 그래서 어제 세워 둔
-     *  줄이 배송완료가 되기 전까지 그대로 남아, 오늘 칸에 어제 것이 또 떴다 — 어제 칸과
-     *  오늘 칸에 같은 거래처가 나란히 보인 까닭이다(9/11·9/12 에 같은 8건).
-     *
-     *  금일 배송순서 목록은 이미 같은 이유로 고쳐 뒀다(`deliverySequenceOrders` —
-     *  "목록이 오늘 출고 예정인것만 보여야 하는데?"). 그때 **캘린더 오늘 칸은 따로 세는 줄
-     *  몰라 안 고쳤다.** 두 곳이 같은 것을 세야 건수도 서로 맞는다. */
-    const todayValidDelivery = [
-      ...deliveryOrdering.filter(id =>
-        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.partnerName !== '생산기록'
-          && queryDateKey(o.deliveryDate) === todayStr)
-      ),
-      ...todayCalendarExtra,
-    ];
-    const todayMorningIds = todayValidDelivery.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
-    const todayAfternoonIds = todayValidDelivery.filter(id => deliveryTimeSlots[id] === '오후');
-
-    const saveTodayOrdering = (next: string[], slots?: Record<string, '오전' | '오후'>) => {
-      setDeliveryOrdering(next);
-      setDocument('settings', 'deliveryOrdering', { ordering: next, timeSlots: slots ?? deliveryTimeSlots });
-    };
+    /*  **오늘 칸도 다른 날과 똑같이 그린다**(2026-09-14 사장님). 전에는 오늘만 날짜 없는
+     *  전역 목록을 읽고, 거기 없는 오늘 주문을 뒤에 자동으로 붙였다. 이제 `날짜차례` 하나다 —
+     *  그 날 주문(`deliverySchedules[날짜]`)을 늘어놓고 차례만 `orderingByDate` 에 담는다. */
 
     return weekDays.map(d => {
       const dateStr = toLocalDateStr(d);
@@ -615,7 +602,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             <span className={`text-[11px] font-black ${weekdayTextClass(d.getDay())}`}>{dayLabels[d.getDay()]}</span>
           </div>
           <div className="flex items-center gap-1">
-            <CalendarDayCountBadge count={isToday ? todayValidDelivery.length : dayOrders.length} />
+            <CalendarDayCountBadge count={dayOrders.length} />
             {deliveredOrders.length > 0 && (
               <button
                 onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
@@ -645,11 +632,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               className="absolute inset-x-0 top-0 z-10 h-14 sm:hidden" aria-label={`${d.getDate()}일 배송 상세 보기`} />
             {dateHeader}
             <div className="flex flex-1 flex-col gap-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-              {todayValidDelivery.length === 0 ? (
-                <p className="text-center text-[10px] text-slate-300 font-bold py-4">배송순서 미설정</p>
+              {dayOrders.length === 0 ? (
+                <p className="text-center text-[10px] text-slate-300 font-bold py-4">오늘 나갈 주문 없음</p>
               ) : (
-                //  오늘 차례는 금일 배송순서 판과 **같은 칸**(`ordering`)을 쓴다 — 둘이 어긋나면 안 된다
-                <>{renderDaySequence(dateStr, todayValidDelivery, saveTodayOrdering)}</>
+                //  오늘 차례도 `orderingByDate[오늘]` 이다 — 금일 배송순서 판이 같은 것을 읽는다.
+                <>{renderDaySequence(dateStr, 하루차례(dateStr, dayOrders.map(order => order.id), 날짜차례(dateStr)), next => saveDayOrdering(dateStr, next))}</>
               )}
               {showDelivered && deliveredOrders.map(order => (
                 <div
@@ -685,7 +672,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                  **당일 칸과 같게** 맞춘다(2026-09-12 사장님). 차례는 `orderingByDate[날짜]`. */}
             {renderDaySequence(
               dateStr,
-              하루차례(dateStr, dayOrders.map(order => order.id), orderingByDate[dateStr] ?? []),
+              하루차례(dateStr, dayOrders.map(order => order.id), 날짜차례(dateStr)),
               next => saveDayOrdering(dateStr, next),
             )}
             {showDelivered && deliveredOrders.map(order => (
@@ -773,7 +760,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             <div className="mt-1 flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 140, scrollbarWidth: 'thin' }}>
               {renderDaySequence(
                 dateStr,
-                하루차례(dateStr, dayOrders.map(order => order.id), orderingByDate[dateStr] ?? []),
+                하루차례(dateStr, dayOrders.map(order => order.id), 날짜차례(dateStr)),
                 next => saveDayOrdering(dateStr, next),
               )}
             </div>
@@ -986,15 +973,15 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
           const order = 판주문(id);
           return isDeliveryChannel(order?.source) || order?.status === OrderStatus.SHIPPED;
         };
-        const numberingIds = [
-          ...deliveryOrdering.filter(id => deliverySequenceOrders.some(order => order.id === id)),
-          ...deliverySequenceOrders.filter(order => !deliveryOrdering.includes(order.id)).map(order => order.id),
-        ].filter(id => !차례밖(id));
-        const validIds = new Set(visibleDeliverySequenceOrders.map(order => order.id));
-        const manualIds = [
-          ...deliveryOrdering.filter(id => validIds.has(id)),
-          ...visibleDeliverySequenceOrders.filter(order => !deliveryOrdering.includes(order.id)).map(order => order.id),
-        ];
+        /*  **차례는 캘린더가 들고 있는 오늘 것을 그대로 가져온다**(2026-09-14 사장님:
+            "출고예정일이 오늘인 주문이 이미 캘린더에 순서 붙어서 들어있잖아 그 목록을 그냥
+            가져오면 돼"). 전에는 여기와 캘린더가 **날짜 없는 전역 목록**을 따로 이어 붙여
+            썼다 — 같은 일을 두 군데서 하니 어긋났고, 붙인 것이 그대로 저장돼 고른 적 없는
+            주문이 차례에 박혔다. 이제 `하루차례` 하나가 정한다. */
+        const 오늘차례 = 날짜차례(todayKey);
+        const numberingIds = 하루차례(todayKey, deliverySequenceOrders.map(order => order.id), 오늘차례)
+          .filter(id => !차례밖(id));
+        const manualIds = 하루차례(todayKey, visibleDeliverySequenceOrders.map(order => order.id), 오늘차례);
         const visibleIds = deliverySortMode === 'recommended'
           ? recommendedOrders.map(order => order.id)
           : manualIds;
@@ -1007,9 +994,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         const todayIncompleteCount = deliverySequenceOrders.filter(order => order.status !== OrderStatus.SHIPPED).length;
         const todayCompleteCount = deliverySequenceOrders.filter(order => order.status === OrderStatus.SHIPPED).length;
 
+        /*  캘린더 오늘 칸과 **같은 자리**(`orderingByDate[오늘]`)에 담는다 — 둘이 어긋나면 안 된다.
+            오전·오후는 날짜와 무관하게 주문마다 붙는 것이라 예전 자리(`timeSlots`)에 그대로 둔다. */
         const saveDeliveryOrdering = (next: string[], slots?: Record<string, '오전' | '오후'>) => {
-          setDeliveryOrdering(next);
-          setDocument('settings', 'deliveryOrdering', { ordering: next, timeSlots: slots ?? deliveryTimeSlots });
+          saveDayOrdering(todayKey, next);
+          if (slots) saveTimeSlots(slots);
         };
 
         const saveTimeSlots = (next: Record<string, '오전' | '오후'>) => {
@@ -1561,7 +1550,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         const 제목 = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayLabels[d.getDay()]})`;
         const 진행Rows: DayRow[] = 진행.map(order => ({
           orderId: order.id,
-          auto: !deliveryOrdering.includes(order.id),
+          //  차례에 손으로 담긴 적 없는 줄 — 이제 날짜별 차례를 본다(전역 목록이 아니다).
+          auto: !날짜차례(dayModal).includes(order.id),
           slot: deliveryTimeSlots[order.id] || '오전',
           done: order.status === OrderStatus.SHIPPED,
         }));
