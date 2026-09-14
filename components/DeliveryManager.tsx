@@ -20,7 +20,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { Order, Partner, OrderStatus, Item, ItemBom, PartnerItem, PalletStock, OrderPallet } from '../types';
-import { statusChip, statusLabel } from '../src/shared/orderStatusStyle';
+import { statusChip, statusLabel, STATUS_CARD_BORDER, STATUS_HEAD_LINE } from '../src/shared/orderStatusStyle';
 import { X } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import OrdersList, { OrderCard } from './OrdersList';
@@ -490,14 +490,20 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         key={o.id}
         {...opt.drag}
         onClick={() => setPreviewDeliveryOrderId(o.id)}
-        className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${opt.띠 ?? 'border-slate-100'} ${끝났나 ? 'opacity-50' : ''} ${statusChip(o.status)}`}
+        /*  **주문 카드와 같은 옷을 입힌다**(2026-09-14 사장님: "저기 있는 카드들도 주문카드랑
+             색 맞춰 글씨랑 테두리"). 전에는 `statusChip` 을 통째로 얹어 **바탕까지 상태색으로
+             칠했다** — 캘린더 칸은 카드가 작고 여럿이라 바탕이 깔리면 온통 색판이 됐다
+             ("대기중 왤케 노래"). 주문 카드는 바탕이 흰색이고 **테두리와 글자**로만 상태를
+             알린다(`STATUS_CARD_BORDER`·`STATUS_HEAD_LINE`) — 같은 규칙을 쓴다.
+             오전·오후는 번호 색으로 남는다(`opt.번호색`). */
+        className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${STATUS_CARD_BORDER[o.status] ?? 'border-slate-200'} ${끝났나 ? 'opacity-50' : ''}`}
       >
         {opt.번호 !== undefined && (
           <span className={`w-3 shrink-0 text-[9px] font-black ${opt.번호색 ?? 'text-slate-400'}`}>{opt.번호}</span>
         )}
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1">
-            <span className={`min-w-0 truncate text-[10px] font-bold ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
+            <span className={`min-w-0 truncate text-[10px] font-bold ${STATUS_HEAD_LINE[o.status] ?? 'text-slate-700'} ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
             {/*  **출고 방식**(2026-09-12 사장님: "거래처명 옆에 출고 방식 하나 추가해라") —
                  배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`). */}
             <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-black ${channelStyle(shipMethodOf(o) === '배송' ? '일반' : shipMethodOf(o)).chip}`}>
@@ -521,7 +527,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             </span>
           )}
         </span>
-        <span className="shrink-0 text-[9px] font-black">{DELIVERY_STATUS_LABEL[o.status]}</span>
+        <span className={`shrink-0 text-[9px] font-black ${STATUS_HEAD_LINE[o.status] ?? 'text-slate-500'}`}>{DELIVERY_STATUS_LABEL[o.status]}</span>
         {opt.drag?.draggable && <GripVertical size={10} className="shrink-0 text-slate-300" />}
       </div>
     );
@@ -579,7 +585,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     const todayStr = toLocalDateStr(new Date());
     //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
     //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
-    const getStatusColor = statusChip;
 
     /*  **오늘 칸도 다른 날과 똑같이 그린다**(2026-09-14 사장님). 전에는 오늘만 날짜 없는
      *  전역 목록을 읽고, 거기 없는 오늘 주문을 뒤에 자동으로 붙였다. 이제 `날짜차례` 하나다 —
@@ -706,7 +711,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
     //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
     //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
-    const getStatusColor = statusChip;
 
     const todayStr = toLocalDateStr(new Date());
     const renderDayCell = (day: number, dateStr: string) => {
