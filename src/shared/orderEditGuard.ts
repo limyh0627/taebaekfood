@@ -46,15 +46,33 @@ export const canEditItems = (o: Pick<Order, 'producedAt' | 'shippedOut'> | undef
  * `checked` 는 **여기 없다.** 작업완료는 재고를 움직이는 길(`handleToggleItemChecked`)이
  * 따로 있고, 그 길은 재고 확인창·생산처리를 지난다. 여기로 우회시키면 안 된다.
  */
-const 재고와무관한칸 = new Set(['note', 'noteBy', 'noteAt', 'labelType', 'mfgDate', 'displaySize', 'boxType']);
+const 재고와무관한칸 = new Set([
+  'note', 'noteBy', 'noteAt',
+  //  비고의 **중요 표시** — 빨간 느낌표를 붙일지 말지다. 재고와 아무 상관이 없다.
+  //  2026-09-15: 이 칸을 만들면서 여기 적는 걸 빠뜨려, 생산된 줄에 중요만 체크해도
+  //  "이미 생산처리돼서 수량·구성을 고칠 수 없습니다" 가 떴다. 위 설계대로 막힌 것이다.
+  'noteImportant',
+  'labelType', 'mfgDate', 'displaySize', 'boxType',
+  //  라벨·제조일을 **누가 언제** 바꿨나(`stampOrderItemEdits` 가 찍는다). 기록일 뿐이다.
+  'labelBy', 'labelAt', 'mfgBy', 'mfgAt',
+]);
 
 type 줄 = OrderItem & Record<string, unknown>;
 
-/** 그 줄이 이미 생산됐나 — 줄 기록이 있으면 그것이 근거다. */
+/**
+ * 그 줄이 **지금** 생산돼 있나 — 줄 기록이 근거다.
+ *
+ * **기록이 있는지가 아니라 `applied` 인지를 본다.** 체크를 풀면 엔진은 그 기록을 지우지 않고
+ * `applied: false` 로 표시만 남긴다(되돌린 이력을 남겨야 하니까). 그런데 여기서 "기록이
+ * 있으면 생산됨" 으로 보던 탓에, **한 번 체크했다 푼 줄이 영영 잠겼다** —
+ * 2026-09-15 사장님: "애초에 생산 체크도 안돼있어 완도식품은".
+ *
+ * 되돌린 줄은 재고가 이미 제자리로 돌아갔다. 잠글 이유가 없다.
+ */
 const 줄이생산됨 = (order: Pick<Order, 'itemInventory' | 'producedAt' | 'shippedOut'>, line: 줄): boolean => {
   //  **줄 기록이 아예 없는 옛 주문**은 근거가 없다 — 주문 단위로 본다(안전한 쪽).
   if (!order.itemInventory) return stockMoved(order);
-  return !!(line.lineId && order.itemInventory[line.lineId]);
+  return !!(line.lineId && order.itemInventory[line.lineId]?.applied);
 };
 
 /**

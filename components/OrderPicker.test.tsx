@@ -53,10 +53,9 @@ describe('미발행 주문의 품목·수량', () => {
     const status = within(card).getByLabelText('상태 대기중');
     expect(unissued.compareDocumentPosition(delivery) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(delivery.compareDocumentPosition(partnerName) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    //  대기중은 노랑이다. 분홍은 작업중으로 갔다(2026-09-14 사장님: "작업중 카드 색깔을
-    //  이걸로 바꾸고 출고완료 카드 색에 작업중 색을 써").
+    //  대기중은 분홍, 작업중은 노랑이다(2026-09-15 사장님: "대기중 작업중 색 서로 바꾸라고").
     //  색은 `orderStatusStyle` 한 곳이 정한다 — 여기서는 그 색이 점까지 오는지만 본다.
-    expect(status.querySelector('[aria-hidden="true"]')).toHaveClass('rounded-full', 'bg-amber-500');
+    expect(status.querySelector('[aria-hidden="true"]')).toHaveClass('rounded-full', 'bg-pink-500');
     expect(within(card).queryByText('생들기름 300ml')).not.toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: 'ORD-260908-01 2품목 보기' }));

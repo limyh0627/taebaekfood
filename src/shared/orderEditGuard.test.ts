@@ -52,7 +52,8 @@ describe('blockedEditLine — 어느 줄이 걸리나', () => {
   } as OrderItem);
   const 그주문 = (부분: any = {}) => ({
     items: [줄(), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })],
-    itemInventory: { L1: { some: 'snapshot' } },   // 골드만 생산됐다
+    //  골드만 생산됐다. **`applied` 가 근거다** — 되돌린 줄은 `applied: false` 로 남는다.
+    itemInventory: { L1: { lineId: 'L1', applied: true } },
     ...부분,
   });
 
@@ -77,6 +78,34 @@ describe('blockedEditLine — 어느 줄이 걸리나', () => {
   it('라벨·제조일도 마찬가지다', () => {
     const o = 그주문();
     const 새것 = [줄({ labelType: '부착', mfgDate: '2026-09-14' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
+    expect(blockedEditLine(o as never, 새것)).toBeNull();
+  });
+
+  /*  2026-09-15: 비고에 '중요' 표시를 만들면서 이 칸을 `재고와무관한칸` 에 안 적었더니,
+      생산된 줄에 중요만 체크해도 "이미 생산처리돼서 수량·구성을 고칠 수 없습니다" 가 떴다.
+      가드는 설계대로(모르는 칸은 막는 쪽) 동작한 것이라, 새 칸은 반드시 여기서 잠가 둔다. */
+  it('비고의 **중요 표시**도 생산된 줄에서 켤 수 있다', () => {
+    const o = 그주문();
+    const 새것 = [줄({ note: '급한 건', noteImportant: true }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
+    expect(blockedEditLine(o as never, 새것)).toBeNull();
+  });
+
+  it('라벨·제조일을 **누가 언제** 바꿨는지 찍는 칸도 안 막는다 — 기록일 뿐이다', () => {
+    const o = 그주문();
+    const 새것 = [
+      줄({ labelType: '부착', labelBy: '이실장', labelAt: '2026-09-15T01:00:00.000Z', mfgDate: '2026-09-14', mfgBy: '이실장', mfgAt: '2026-09-15T01:00:00.000Z' }),
+      줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' }),
+    ];
+    expect(blockedEditLine(o as never, 새것)).toBeNull();
+  });
+
+  /*  2026-09-15 사장님: "애초에 생산 체크도 안돼있어 완도식품은".
+      체크를 풀면 엔진은 줄 기록을 **지우지 않고** `applied: false` 로 표시만 남긴다
+      (되돌린 이력을 남겨야 하니까). 그런데 "기록이 있으면 생산됨" 으로 보던 탓에
+      **한 번 체크했다 푼 줄이 영영 잠겼다.** 되돌린 줄은 재고가 제자리라 잠글 이유가 없다. */
+  it('체크를 **풀어 되돌린 줄**은 다시 고칠 수 있다 — 재고가 제자리로 돌아갔다', () => {
+    const o = { ...그주문(), itemInventory: { L1: { lineId: 'L1', applied: false, reversedAt: '2026-09-15T00:00:00.000Z' } } };
+    const 새것 = [줄({ quantity: 99 }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
     expect(blockedEditLine(o as never, 새것)).toBeNull();
   });
 
