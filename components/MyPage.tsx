@@ -8,6 +8,7 @@ import {
 } from '../src/shared/notify';
 import { canEnterAdmin } from '../src/shared/adminAccess';
 import { registerPush, unregisterPush, pushSupported, pushMuted, setPushMuted } from '../src/shared/push';
+import { currentDeviceLabel } from '../src/shared/deviceLabel';
 
 /**
  * 마이페이지 — 내 계정과 알림 설정.
@@ -42,6 +43,23 @@ const MyPage: React.FC<{
   const pickMode = (m: NotifyMode) => { setMode(m); saveNotifyMode(m); };
   /** 크기를 고르면 **바로 들려준다** — 귀로 확인 못 하면 고를 수가 없다 */
   const pickVolume = (v: NotifyVolume) => { setVolume(v); saveNotifyVolume(v); playChime(v); };
+
+  /*  **어느 기기에 알림이 가고 있나**(2026-09-14 사장님 건).
+   *
+   *  알림이 안 온다는데 서버 로그는 `보냄 10/10` 이었다. 사무실 PC 크롬에 남은 표도
+   *  FCM 은 영원히 성공으로 받아 주기 때문이다 — 알림은 그 PC 에 조용히 뜨고 폰에는 안 온다.
+   *  **표가 죽어 지워져도 딸림표는 남을 수 있으므로, `fcmTokens` 에 있는 것만 센다.**
+   *  이 기기가 목록에 없으면 아래에서 빨갛게 알린다. */
+  const 담긴기기 = (currentUser.fcmTokens ?? [])
+    .map(token => ({ token, 것: currentUser.fcmDevices?.[token] }))
+    .map(({ token, 것 }) => ({ token, name: 것?.name ?? '(예전에 담은 표)', at: 것?.at ?? '' }));
+  const 이기기이름 = currentDeviceLabel();
+  const 이기기있나 = 담긴기기.some(기기 => 기기.name === 이기기이름);
+  const 날짜글 = (at: string) => {
+    if (!at) return '';
+    const d = new Date(at);
+    return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  };
 
   //  앱을 완전히 닫아도 알림이 오게 — 이 폰의 표를 받아 직원 기록에 담는다(shared/push)
   const [푸시, set푸시] = useState<'모름' | '켜짐' | '안됨' | '꺼둠'>('모름');
@@ -235,6 +253,38 @@ const MyPage: React.FC<{
               : 푸시 === '안됨' ? `📡 앱을 닫으면 알림이 안 옵니다 — ${푸시사유}`
               : '📡 확인 중…'}
           </p>
+        )}
+
+        {/*  **알림이 실제로 어느 기기에 가는지 보여 준다**(2026-09-14 사장님 건).
+             "보냈다"는 말만으로는 안 온다는 신고를 못 가린다 — 안 보는 PC 에 가고 있어도
+             서버 기록은 성공이다. 이 기기가 목록에 없으면 그게 곧 원인이다. */}
+        {perm === 'granted' && 푸시 !== '꺼둠' && (
+          <div className="mt-3 rounded-xl bg-slate-50 p-3">
+            <p className="text-[10px] font-black text-slate-500 mb-1.5">알림이 가는 기기</p>
+            {담긴기기.length === 0 ? (
+              <p className="text-[10px] font-bold text-rose-600">
+                담긴 기기가 없습니다 — 위 [폰 알림 켜기] 를 눌러 이 기기를 담아 주세요.
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {담긴기기.map(기기 => (
+                  <li key={기기.token} className="flex items-center justify-between gap-2 text-[10px] font-bold">
+                    <span className={기기.name === 이기기이름 ? 'text-emerald-700' : 'text-slate-500'}>
+                      {기기.name === 이기기이름 ? '● ' : '○ '}{기기.name}
+                      {기기.name === 이기기이름 && <span className="ml-1 text-emerald-600">(지금 이 기기)</span>}
+                    </span>
+                    <span className="shrink-0 text-slate-400 tabular-nums">{날짜글(기기.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {담긴기기.length > 0 && !이기기있나 && (
+              <p className="mt-2 text-[10px] font-bold text-rose-600 leading-relaxed">
+                ⚠ <b>지금 이 기기({이기기이름})는 목록에 없습니다.</b> 알림은 위 기기로만 갑니다 —
+                이 기기에서도 받으려면 [폰 알림 켜기] 를 눌러 주세요.
+              </p>
+            )}
+          </div>
         )}
 
         {/*  언제 오고 언제 안 오는지 — 안 온다는 신고의 절반이 여기서 갈린다 */}

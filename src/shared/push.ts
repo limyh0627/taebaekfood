@@ -1,7 +1,8 @@
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { arrayUnion, arrayRemove, doc, updateDoc } from 'firebase/firestore';
+import { arrayUnion, arrayRemove, deleteField, doc, updateDoc, FieldPath } from 'firebase/firestore';
 import { app, db } from './firebase';
 import { COL } from './collections';
+import { currentDeviceLabel } from './deviceLabel';
 
 /**
  * **앱을 완전히 닫아도 오는 알림(FCM).**
@@ -73,8 +74,24 @@ export async function registerPush(employeeId: string): Promise<PushResult> {
     const token = await getToken(getMessaging(app), { vapidKey: VAPID, serviceWorkerRegistration: reg });
     if (!token) return { ok: false, reason: '표를 받지 못했습니다. 알림 권한을 확인해 주세요.' };
 
+    /*  **표만 담으면 누구 폰 건지 모른다**(2026-09-14 사장님 건).
+     *
+     *  이총제·이지영·남명숙·박은지·윤찬호 알림이 안 오는데 서버 로그는 `보냄 10/10` 이었다.
+     *  표가 글자뿐이라 **사무실 PC 에 남은 표인지 그분 폰 표인지 가릴 수가 없었다** —
+     *  안 보는 브라우저의 표도 FCM 은 영원히 성공으로 받아 준다. 알림은 그 PC 에 뜬다.
+     *
+     *  그래서 기기 이름과 담은 날짜를 같이 적는다. 마이페이지가 이걸 보여 주므로
+     *  **"내 폰 표가 목록에 없다"를 본인이 바로 본다.**
+     *
+     *  `fcmTokens`(글자 배열)는 **그대로 둔다** — 보내는 쪽(functions)과 죽은 표 지우기가
+     *  그 모양에 기대고 있어 한꺼번에 못 바꾼다. 옆에 딸림표(`fcmDevices`)를 둘 뿐이다.
+     *  표 이름에는 `:` 이 들어가므로 점으로 끊기지 않게 `FieldPath` 로 적는다. */
+    const ref = doc(db, COL.employees, employeeId);
     //  같은 표를 또 담아도 arrayUnion 이 한 번만 넣는다
-    await updateDoc(doc(db, COL.employees, employeeId), { fcmTokens: arrayUnion(token) });
+    await updateDoc(ref, { fcmTokens: arrayUnion(token) });
+    await updateDoc(ref, new FieldPath('fcmDevices', token), {
+      name: currentDeviceLabel(), at: new Date().toISOString(),
+    });
     return { ok: true, token };
   } catch (e: any) {
     return { ok: false, reason: `푸시 등록 실패: ${e?.message ?? String(e)}` };
@@ -97,6 +114,9 @@ export async function unregisterPush(employeeId: string, token?: string): Promis
       ? await getToken(getMessaging(app), { vapidKey: VAPID! }).catch(() => undefined)
       : undefined);
     if (!t) return;
-    await updateDoc(doc(db, COL.employees, employeeId), { fcmTokens: arrayRemove(t) });
+    const ref = doc(db, COL.employees, employeeId);
+    await updateDoc(ref, { fcmTokens: arrayRemove(t) });
+    //  딸림표도 같이 지운다 — 표가 없는데 기기만 남으면 목록이 거짓말을 한다
+    await updateDoc(ref, new FieldPath('fcmDevices', t), deleteField());
   } catch { /* 지우기 실패는 조용히 넘긴다 — 로그아웃을 막을 일이 아니다 */ }
 }
