@@ -2138,6 +2138,35 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return { side: null, delta: 0 };   // 감가상각처럼 거래처 빚이 없는 대체
   }, [journalBySource]);
 
+  /**
+   * **누적잔액을 세울 때 쓰는 방향** — 받을 돈 `+1`, 줄 돈 `-1`(2026-09-15 사장님:
+   * "거래처 누적잔액이 절대값으로 하면 되냐" → "B로 해").
+   *
+   * 잔액은 거래처별·방향별로 따로 쌓여 **매입도 양수로 남는다.** 그냥 세우면 매출 미수와
+   * 매입 미지급이 같은 자리에 서는데, 정반대 뜻이라 잔액순으로 훑는 뜻이 없어진다.
+   * **화면에 찍히는 숫자는 그대로 두고 세울 때만 뒤집는다** — 한 번 내림차순으로
+   * `받을 돈 많은 곳 → … → 줄 돈 많은 곳` 이 된다.
+   *
+   * 채권이냐 채무냐는 **분개가 이미 안다**(`arapOf`) — 갈래(type)로 가르면 기초 이월처럼
+   * '대체'로 적힌 미수가 통째로 샌다.
+   * 자금 줄은 제 전표가 없어 분개로 못 가린다 — 그 거래처가 여태 어느 쪽이었는지로 본다.
+   */
+  const 거래처방향 = useMemo(() => {
+    const 표 = new Map<string, '채권' | '채무'>();
+    for (const st of mergedStatements) {
+      const side = arapOf(st).side;
+      if (side && st.partnerId && !표.has(st.partnerId)) 표.set(st.partnerId, side);
+    }
+    return 표;
+  }, [mergedStatements, arapOf]);
+
+  const 잔액방향 = useCallback((row: TimelineRow): 1 | -1 => {
+    if (row.kind === 'stmt') return arapOf(row.data).side === '채무' ? -1 : 1;
+    if (row.kind === 'pay') return row.stmtType === '매입' ? -1 : 1;
+    return 거래처방향.get(row.entry.partnerId ?? '') === '채무' ? -1 : 1;
+  }, [arapOf, 거래처방향]);
+
+
   //  줄을 만들고 누적잔액을 굴리는 셈은 [shared/timelineBuild](../src/shared/timelineBuild.ts) 에 있다.
   //  돈이 걸린 자리라 그동안 난 사고가 거기 주석으로 남아 있다.
   const allTimelineRows = useMemo(
@@ -2177,8 +2206,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /*  머리 정렬은 **목록 차례 위에 얹는다** — 제자리 정렬이라 같은 값끼리는
       오래된 것부터라는 차례가 남는다(한 거래처 안에서 시간이 흐른다). */
   const sortedHistory = useMemo(
-    () => sortByColumns(filteredHistory, histSort, { textOf: 정렬글 }),
-    [filteredHistory, histSort, 정렬글]);
+    () => sortByColumns(filteredHistory, histSort, { textOf: 정렬글, signOf: 잔액방향 }),
+    [filteredHistory, histSort, 정렬글, 잔액방향]);
 
   const pagedHistory = useMemo(() => {
     /*  **오래된 것이 위다**(2026-09-15 사장님: "오래된게 위로 오게 바꿀래? 디폴트가").
@@ -2571,7 +2600,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                      "거래내역 열도 너비 좀 줄여"). 폭을 안 주면 표가 남는 자리를 이 둘에 다 몰아줘
                      한 줄이 화면을 가로지른다. 넘치는 글자는 잘리고 마우스를 올리면 전문이 뜬다. */}
                 <th className="w-[180px] px-3 py-2.5 text-[13px] font-black text-slate-600">{머리('partner', '업체명')}</th>
-                <th className="w-[300px] px-3 py-2.5 text-[13px] font-black text-slate-600">거래내역</th>
+                <th className="w-[240px] px-3 py-2.5 text-[13px] font-black text-slate-600">거래내역</th>
                 {/*  **숫자 칸은 널널하게**(2026-09-15 사장님: "금액이랑 누적잔액 칸을 조금 널널하게 둬") —
                      `w-px`(내용만큼)로 조여 두니 자릿수 많은 금액이 칸 끝에 딱 붙어 읽기 답답했다.
                      너비를 정해 두면 줄마다 숫자 오른쪽 끝이 세로로 맞아 눈으로 크기를 견줄 수 있다. */}
@@ -2670,7 +2699,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </td>
                       <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-700" title={row.partnerName || ''}>{row.partnerName || <span className="text-slate-300">—</span>}</td>
                       {/*  거래내역 = **계정과목**(쪼갠 줄이면 계정별 금액까지). 적어 둔 메모는 맨 뒤 '비고' 칸이다. */}
-                      <td className="max-w-[300px] truncate px-3 py-2 text-slate-500" title={계정글(split, row, codeName)}>
+                      <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={계정글(split, row, codeName)}>
                         {(split.length || row.accountCode)
                           ? 계정글(split, row, codeName)
                           : <span className="font-bold text-amber-500">계정 미지정</span>}
@@ -2742,7 +2771,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </td>
                       <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={row.partnerName}>{row.partnerName}</td>
                       {/*  거래내역 = **결제수단**(현금·계좌). 메모는 맨 뒤 '비고' 칸이다. */}
-                      <td className="max-w-[300px] truncate px-3 py-2 text-slate-500">{row.method || '—'}</td>
+                      <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500">{row.method || '—'}</td>
                       <td className="px-4 py-2 text-right font-black text-slate-800">{fmt(row.amount)}</td>
                       <td className="px-4 py-2 text-right">
                         {cumul === 0
@@ -2797,7 +2826,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </td>
                     <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={stmt.partnerName}>{stmt.partnerName}</td>
                     {/*  거래내역 = **품목 요약**. 전표에는 따로 적는 메모가 없어 비고 칸은 비운다. */}
-                    <td className="max-w-[300px] truncate px-3 py-2 text-slate-500" title={summary}>{summary || '—'}</td>
+                    <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={summary}>{summary || '—'}</td>
                     <td className={`px-4 py-2 text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>
                       {fmt(stPartial ? stPortion! : stmt.totalAmount)}
                       {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}

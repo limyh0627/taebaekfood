@@ -118,3 +118,36 @@ describe('구분 정렬 차례', () => {
     expect((결과[0] as { data: { type: string } }).data.type).toBe('매출');
   });
 });
+
+/**
+ * 누적잔액은 **거래처별·방향별로 따로 쌓여 매입도 양수로 남는다** — 그냥 세우면
+ * 매출 미수 500만과 매입 미지급 500만이 같은 자리에 선다(2026-09-15 사장님:
+ * "거래처 누적잔액이 절대값으로 하면 되냐" → "B로 해").
+ * 화면 숫자는 그대로 두고 **세울 때만** 줄 돈을 음수로 본다.
+ */
+describe('누적잔액 방향', () => {
+  const 잔액줄 = (이름: string, 잔액: number): TimelineRow =>
+    ({ kind: 'stmt', data: { id: 이름, partnerName: 이름, tradeDate: '2026-09-01', totalAmount: 1, type: '매출' },
+       cumul: 잔액, dateKey: '2026-09-01', ts: '2026-09-01' } as unknown as TimelineRow);
+
+  const 받을것 = 잔액줄('받을곳', 5_000_000);
+  const 줄것 = 잔액줄('줄곳', 5_000_000);
+  const 적게받을것 = 잔액줄('조금받을곳', 100);
+  const 방향 = (row: TimelineRow): 1 | -1 =>
+    (row as { data: { partnerName: string } }).data.partnerName === '줄곳' ? -1 : 1;
+
+  it('방향을 안 주면 받을 500만과 줄 500만이 나란히 선다 — 그게 문제였다', () => {
+    const 결과 = sortByColumns([적게받을것, 줄것, 받을것], [{ column: 'cumul', dir: 'desc' }]);
+    expect(이름들(결과).slice(0, 2).sort()).toEqual(['받을곳', '줄곳']);
+  });
+
+  it('방향을 주면 한 축에 선다 — 받을 돈 많은 곳부터, 줄 돈 많은 곳이 맨 뒤', () => {
+    const 결과 = sortByColumns([줄것, 적게받을것, 받을것], [{ column: 'cumul', dir: 'desc' }], { signOf: 방향 });
+    expect(이름들(결과)).toEqual(['받을곳', '조금받을곳', '줄곳']);
+  });
+
+  it('금액 칸은 방향을 안 입힌다 — 오간 돈의 크기라 방향이 없다', () => {
+    const 결과 = sortByColumns([줄것, 받을것], [{ column: 'amount', dir: 'desc' }], { signOf: 방향 });
+    expect(결과).toHaveLength(2);
+  });
+});

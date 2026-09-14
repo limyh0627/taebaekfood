@@ -67,6 +67,18 @@ export function sortText(row: TimelineRow, column: TimelineSortColumn): string {
 export interface SortOptions {
   /** 화면이 그린 글자를 그대로 쓰는 칸(수금/지불·증빙). */
   textOf?: (row: TimelineRow, column: TimelineSortColumn) => string | undefined;
+  /**
+   * **누적잔액을 한 축에 세우기 위한 방향** — 받을 돈은 `1`, 줄 돈은 `-1`.
+   *
+   * 2026-09-15 사장님: "거래처 누적잔액이 절대값으로 하면 되냐", 그리고 "B로 해".
+   * 잔액은 거래처별·방향별로 따로 쌓여서 **매입도 양수로 남는다** — 그래서 그냥 세우면
+   * 매출 미수 500만과 매입 미지급 500만이 같은 자리에 선다. 정반대 뜻인데 나란히 서는 것이다.
+   *
+   * **화면에 찍히는 숫자는 그대로 두고 세울 때만 뒤집는다** — 매입 줄을 음수로 보면
+   * 한 번 내림차순으로 `받을 돈 많은 곳 → … → 줄 돈 많은 곳` 이 된다.
+   * 방향 판정은 부르는 쪽이 한다(분개로 채권·채무를 가리는 `arapOf` 가 이미 있다).
+   */
+  signOf?: (row: TimelineRow) => 1 | -1;
 }
 
 const 숫자칸 = (column: TimelineSortColumn) => column === 'amount' || column === 'cumul';
@@ -82,7 +94,12 @@ export function sortByColumns(
       const 뒤집기 = dir === 'desc' ? -1 : 1;
       let 차 = 0;
       if (숫자칸(column)) {
-        const 값 = (row: TimelineRow) => column === 'amount' ? rowAmount(row) : rowCumul(row);
+        const 값 = (row: TimelineRow) => {
+          if (column === 'amount') return rowAmount(row);
+          const c = rowCumul(row);
+          //  **잔액만 방향을 입힌다** — 금액은 오간 돈의 크기라 방향이 없다.
+          return c === undefined ? undefined : c * (options.signOf?.(row) ?? 1);
+        };
         const x = 값(a); const y = 값(b);
         //  잔액이 없는 줄은 **늘 맨 뒤** — 방향을 뒤집어도 뒤다. 가운데 끼면 차례가 거짓말이 된다.
         if (x === undefined && y === undefined) 차 = 0;
