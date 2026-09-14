@@ -64,3 +64,34 @@ export function voucheredOrderIds(statements: Pick<IssuedStatement, 'orderId'>[]
 export function canSettleStatement(s: IssuedStatement, balance: number): boolean {
   return (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && balance > 0;
 }
+
+/**
+ * **수금·지불이 어디까지 됐나** — 전표 목록에 글자로 세운다.
+ *
+ * 2026-09-15 사장님: "수금 상태 (미수 / 완료 / 부분수금) … 이거 열로 하나 추가하자".
+ * 전에는 `수금처리` 단추가 붙었는지로만 짐작해야 했다 — 단추가 없으면 다 낸 것인지,
+ * 애초에 받을 것이 없는 전표인지(감가상각·급여 같은) 가릴 수가 없었다.
+ *
+ * **매입은 '지불'이라고 부른다.** 같은 셈인데 말이 다르다 — 받는 쪽인지 주는 쪽인지를
+ * 글자가 바로 알려 줘야 한다.
+ */
+export type SettleState = 'none' | 'open' | 'partial' | 'done';
+
+export interface SettleStatus {
+  state: SettleState;
+  /** 화면에 적을 말 */
+  label: string;
+}
+
+export function settleStatus(s: IssuedStatement, balance: number): SettleStatus {
+  //  채권·채무를 안 세우는 전표는 받을 것도 줄 것도 없다 — 빈칸이 아니라 '해당없음'이다.
+  if (!isReceivableStmt(s, '매출') && !isReceivableStmt(s, '매입')) return { state: 'none', label: '—' };
+  const 매입 = s.type === '매입';
+  const 총액 = Number(s.totalAmount ?? 0);
+  const 남은 = Number(balance ?? 0);
+  if (남은 <= 0) return { state: 'done', label: '완료' };
+  //  **총액보다 많이 남을 수는 없다** — 반올림이나 음수 전표(반품)로 그런 값이 나오면
+  //  '부분'이라고 하는 게 거짓말이다. 손댄 적 없는 것으로 본다.
+  if (남은 >= 총액) return { state: 'open', label: 매입 ? '미지급' : '미수' };
+  return { state: 'partial', label: 매입 ? '부분지급' : '부분수금' };
+}

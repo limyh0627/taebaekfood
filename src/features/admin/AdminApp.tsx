@@ -2048,7 +2048,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ...allIssuedStatements.filter(x => companyOf(x) === co),
       ...appData.cashEntries.filter(x => companyOf(x) === co),
     ];
-    return addItem('cashEntries', { ...e, companyId: co, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
+    //  **담당자를 찍는다**(2026-09-15 사장님: "전표일자 다음에 담당자") — 자금이 들어오는 문이
+    //  여기 하나라, 어느 화면에서 만들든 사람이 남는다. 이미 적힌 것은 안 덮는다.
+    return addItem('cashEntries', { ...e, companyId: co, createdBy: e.createdBy ?? currentUser?.name, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
   };
 
   const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
@@ -2070,7 +2072,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const v = buildStatementVoucher(t, ym, { docNo: '', accountName });
         const docNo = claimDocNo(v.tradeDate, [...issuedStatements, ...made]);
         made.push({ docNo });
-        await addItem('issuedStatements', { ...v, docNo } as any);
+        await addItem('issuedStatements', { ...v, docNo, createdBy: currentUser?.name } as any);
       }
       created++;
     }
@@ -3038,7 +3040,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   appData.accountCodes.find(c => c.name === name)?.code ?? fallback;
                 const id = `stmt-payroll-${date.slice(0, 7)}-${companyId}`;
                 await addItem('issuedStatements', {
-                  id, companyId, issuedAt: stampFor(date), tradeDate: date, type: '비용',
+                  id, companyId, createdBy: currentUser?.name, issuedAt: stampFor(date), tradeDate: date, type: '비용',
                   partnerId: '', partnerName: '급여', orderId: '',
                   docNo: claimDocNo(date, issuedStatements, '급여'),
                   totalSupply: gross, totalTax: 0, totalAmount: gross,
@@ -4480,7 +4482,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (payload.cashEntry) addCashEntry(payload.cashEntry, target);
                 if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
               }}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId })}
+              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId, createdBy: (stmt as { createdBy?: string }).createdBy ?? currentUser?.name })}
               /*  **전표 한 장을 한 덩이로 저장한다**(설계 §2, 3단계).
                   전에는 화면이 넷을 차례로 저장했다 — 전표 본문 → 거래처 단가·품목 원가 →
                   주문 발행표시 → 발주카드. 앞이 되고 뒤가 엎어지면 **주문에 발행표시가 안 찍혀
@@ -4514,7 +4516,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 } : undefined;
 
                 const plan = planStatementWrites({
-                  command, statement: { ...statement, companyId }, costUpdates, poLinks, newPo,
+                  //  **누가 끊었나**(2026-09-15 사장님) — 전표 목록의 '담당자' 칸이 이걸 읽는다.
+                  command, statement: { ...statement, companyId, createdBy: statement.createdBy ?? currentUser?.name }, costUpdates, poLinks, newPo,
                   recordedAt: 지금, actorId: currentUser.id,
                 });
                 const 결과 = await applyStatementWrites(plan.writes, {

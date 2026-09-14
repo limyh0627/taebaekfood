@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeStatements, voucheredOrderIds, canSettleStatement } from './voucherMerge';
+import { mergeStatements, voucheredOrderIds, canSettleStatement, settleStatus } from './voucherMerge';
 import type { IssuedStatement } from '../../shared/types';
 
 /**
@@ -116,5 +116,43 @@ describe('수금·지불 버튼을 달 전표인가', () => {
     const 기초비용 = 전표({ id: 'open2', type: '비용', docNo: '기초260731-02', partnerId: 'p1',
       items: [{ name: '기초 소모품', spec: '', qty: 1, price: 500, supply: 500, tax: 0, total: 500, isTaxExempt: true, accountCode: '830', side: '차변' }] } as never);
     expect(canSettleStatement(기초비용, 500)).toBe(false);
+  });
+});
+
+/**
+ * 수금·지불이 어디까지 됐나(2026-09-15 사장님: "수금 상태 (미수 / 완료 / 부분수금)").
+ * 전에는 `수금처리` 단추가 붙었는지로만 짐작해야 했다 — 단추가 없으면 다 낸 것인지
+ * 애초에 받을 것이 없는 전표인지 가릴 수 없었다.
+ */
+describe('수금·지불 상태', () => {
+  //  채권·채무 판정(`isReceivableStmt`)은 분개를 먼저 보고, 분개가 안 서면 줄의 `side` 로
+  //  물러선다. 붙박이 값이 얇으면 분개가 안 서므로 **`side` 를 적어 그 길을 탄다.**
+  const 매출 = (over: Record<string, unknown> = {}) =>
+    ({ id: 's1', type: '매출', totalAmount: 100000, items: [{ accountCode: '108', side: '차변' }], ...over } as never);
+  const 매입 = (over: Record<string, unknown> = {}) =>
+    ({ id: 's2', type: '매입', totalAmount: 100000, items: [{ accountCode: '251', side: '대변' }], ...over } as never);
+
+  it('남은 게 없으면 완료', () => {
+    expect(settleStatus(매출(), 0)).toEqual({ state: 'done', label: '완료' });
+    expect(settleStatus(매출(), -1)).toEqual({ state: 'done', label: '완료' });
+  });
+
+  it('손댄 적 없으면 미수 — 매입은 미지급이라 부른다', () => {
+    expect(settleStatus(매출(), 100000)).toEqual({ state: 'open', label: '미수' });
+    expect(settleStatus(매입(), 100000)).toEqual({ state: 'open', label: '미지급' });
+  });
+
+  it('일부만 받았으면 부분수금 — 매입은 부분지급', () => {
+    expect(settleStatus(매출(), 40000)).toEqual({ state: 'partial', label: '부분수금' });
+    expect(settleStatus(매입(), 40000)).toEqual({ state: 'partial', label: '부분지급' });
+  });
+
+  it('총액보다 많이 남으면 부분이라 하지 않는다 — 손댄 적 없는 것이다', () => {
+    expect(settleStatus(매출(), 200000).state).toBe('open');
+  });
+
+  it('채권·채무를 안 세우는 전표는 해당없음 — 감가상각·급여처럼 갚을 상대가 없다', () => {
+    const 비용 = { id: 's3', type: '비용', totalAmount: 50000, items: [{ accountCode: '818' }] } as never;
+    expect(settleStatus(비용, 50000)).toEqual({ state: 'none', label: '—' });
   });
 });

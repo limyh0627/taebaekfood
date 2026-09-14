@@ -2,6 +2,10 @@
 import { plOfJournals } from '../src/features/admin/financials';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import DateChipButton from '../src/shared/components/DateChipButton';
+import { settleStatus } from '../src/features/admin/voucherMerge';
+import { evidenceChoices, evidenceOf, evidenceMissing } from '../src/features/statements/domain/evidence';
+import { sortByColumns, toggleSort, sortRank, sortSummary, type TimelineSort, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
 import {
   today, dateOfLocal, shiftDateRange,
   weekMonday, weekSunday, monthStart, monthEnd, yearStart,
@@ -13,7 +17,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2, Landmark
+  ChevronLeft, Share2, Check, Wallet, RotateCw, RotateCcw, Trash2, Landmark, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
@@ -439,6 +443,71 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+
+  /**
+   * **전표일자 칸** — 눌러서 그 자리에서 날짜를 바꾼다(2026-09-15 사장님:
+   * "전표일자에 일자 캘린더 버튼으로 달아서 그냥 날짜 변경할 수 있게 해줘").
+   *
+   * 달력 단추는 **주문 리스트가 쓰던 것 그대로**다(`DateChipButton`) — 같은 날 사장님:
+   * "캘린더도 주문 쪽에서 쓰던거 그대로 들고오지". 비슷한 것을 여기 새로 그려 두면
+   * 같은 일이 두 모양이 된다.
+   *
+   * **달을 넘기면 한 번 묻는다.** 분개는 전표에서 그때그때 세우므로 날짜를 따라 저절로 옮겨
+   * 가고 전표번호 도장도 받는 쪽이 다시 찍지만(`statementEditPatch`·`cashEditPatch`),
+   * 달이 바뀌면 **부가세 신고 달과 월 마감이 같이 바뀐다** — 조용히 넘길 일이 아니다.
+   *
+   * 시각은 단추 밖 아랫줄이다(사장님: "전표일자 뒤에 시간은 캘린더에서 빼고 밑에 줄로 넣어") —
+   * 눌러서 바꾸는 건 날짜뿐이라, 단추 안에 있으면 시각도 바뀌는 줄 안다.
+   */
+  const 전표일자칸 = (
+    날짜: string,
+    바꾸기: (다음: string) => void,
+    고칠수있나: boolean,
+    찍힌시각?: string,
+  ) => {
+    const 날 = String(날짜 ?? '').slice(0, 10);
+    const 시각 = 찍힌시각 ? String(찍힌시각).slice(11, 16) : '';
+    const 시각줄 = 시각 ? <span className="mt-0.5 block font-mono text-[11px] text-slate-400">{시각}</span> : null;
+    if (!고칠수있나) return <span className="font-mono text-slate-500">{날}{시각줄}</span>;
+    return (
+      <span className="inline-block">
+        <DateChipButton
+          label="전표일자"
+          value={날}
+          text={날}
+          onChange={다음 => {
+            if (!다음 || 다음 === 날) return;
+            /*  **언제나 묻는다**(2026-09-15 사장님: "날짜 바꾸면 알람띄워서 확정 받고 바꿔").
+                처음엔 달이 바뀔 때만 물었는데, 달력은 손이 스치기만 해도 날이 바뀐다 —
+                같은 달 안이라도 전표일자가 틀리면 그 날 장부가 어긋난다.
+                달을 넘길 때는 **왜 더 큰일인지** 한 줄 더 붙인다. */
+            const 달바뀜 = 다음.slice(0, 7) !== 날.slice(0, 7);
+            const 물음 = `전표일자를 ${날} → ${다음} 로 바꿉니다.`
+              + (달바뀜 ? '\n\n달이 바뀌어 부가세 신고 달과 월 마감이 함께 달라집니다.' : '')
+              + '\n\n바꿀까요?';
+            if (!window.confirm(물음)) return;
+            바꾸기(다음);
+          }}
+        />
+        {시각줄}
+      </span>
+    );
+  };
+
+  /** 담당자 — 안 적힌 옛 전표는 줄표. **없는 것을 지어내지 않는다.** */
+  const 담당자글 = (이름?: string) => (이름 ?? '').trim()
+    ? <span className="font-bold">{이름}</span>
+    : <span className="text-slate-300">—</span>;
+
+  /** 자금 줄의 '거래내역' — 계정과목. 쪼갠 줄(대출상환 원금+이자)은 계정별 금액까지 편다. */
+  const 계정글 = (
+    split: { accountCode?: string; amount: number; note?: string }[],
+    row: { accountCode?: string },
+    이름표: Map<string, string>,
+  ): string => split.length
+    ? split.map(l => `${l.note ? l.note + ' ' : ''}${이름표.get(l.accountCode ?? '') ?? l.accountCode} ${l.amount < 0 ? '−' : ''}${fmt(Math.abs(l.amount))}`).join(' · ')
+    : (row.accountCode ? (이름표.get(row.accountCode) ?? row.accountCode) : '');
+
 
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
@@ -933,6 +1002,50 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     mergedStatements, journalBySource, partnerBalances,
     getBalance, canSettle, isVouchered, isFetchingHistory, forgetStatement,
   } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo });
+
+  /**
+   * **표 머리를 눌러 세운다**(2026-09-15 사장님: "업체명이랑 이런거 눌러서 정렬 거는거
+   * 아직도 안되노"). 셈은 `timelineColumnSort` 한 곳이 한다 — 줄 갈래가 셋이라 칸마다
+   * 값을 꺼내는 길이 다른데, 그 길은 `timelineRows` 가 이미 안다.
+   *
+   * 위쪽 조회조건(기간·갈래·거래처)은 **무엇을 불러올지**를 정하고, 여기 머리는
+   * **불러온 것을 어떻게 세울지**만 정한다. 둘은 겹치지 않는다.
+   */
+  const [histSort, setHistSort] = useState<TimelineSort[]>([]);
+
+  /** 화면이 셈해 그리는 칸(수금/지불·증빙)은 그 글자로 세운다 — 표에 보이는 대로 서야 한다. */
+  const 정렬글 = useCallback((row: TimelineRow, column: TimelineSortColumn): string | undefined => {
+    if (row.kind !== 'stmt') return column === 'settle' || column === 'evidence' ? '\uffff' : undefined;
+    if (column === 'settle') return settleStatus(row.data, getBalance(row.data)).label;
+    if (column === 'evidence') return evidenceChoices(row.data.type).length ? evidenceOf(row.data) : '\uffff';
+    return undefined;
+  }, [getBalance]);
+
+  /**
+   * 머리 한 칸 — 누르면 **뒤에 붙는다**(겹치기). 이미 걸린 칸을 누르면 방향만 뒤집는다.
+   * 몇 번째로 걸렸는지 숫자로 보여 준다 — 안 보이면 왜 이 차례인지 알 수가 없다.
+   */
+  const 머리 = (column: TimelineSortColumn, label: string, extra = '') => {
+    const 차례 = sortRank(histSort, column);
+    const 걸림 = 차례 > 0;
+    const 지금 = histSort.find(s => s.column === column);
+    return (
+      <button
+        type="button"
+        onClick={() => { setHistSort(이전 => toggleSort(이전, column)); setHistoryPage(1); }}
+        title={걸림 ? `${label} ${지금?.dir === 'asc' ? '오름' : '내림'} — 눌러서 뒤집기` : `눌러서 ${label} 순 더하기`}
+        className={`-mx-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-slate-200/70 ${걸림 ? 'text-indigo-700' : ''} ${extra}`}
+      >
+        <span className="truncate whitespace-nowrap">{label}</span>
+        {걸림 ? (<>
+          {지금?.dir === 'asc' ? <ArrowUp size={11} className="shrink-0" /> : <ArrowDown size={11} className="shrink-0" />}
+          {/*  **몇 번째인지** — 겹쳐 걸면 순서가 결과를 바꾼다. 하나만 걸렸으면 숫자가 군더더기다. */}
+          {histSort.length > 1 && <span className="shrink-0 rounded bg-indigo-100 px-1 text-[9px] tabular-nums text-indigo-700">{차례}</span>}
+        </>) : <ArrowUpDown size={11} className="shrink-0 text-slate-300" />}
+      </button>
+    );
+  };
+
 
   /**
    * 계정으로 걸렀을 때 **그 계정 몫**이 얼마인가 — 분개에서 센다.
@@ -2061,12 +2174,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return q ? histPartnerNames.filter(n => matchesSearch(n, q)) : histPartnerNames;
   }, [histPartnerNames, partnerQuery]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
+  /*  머리 정렬은 **목록 차례 위에 얹는다** — 제자리 정렬이라 같은 값끼리는
+      오래된 것부터라는 차례가 남는다(한 거래처 안에서 시간이 흐른다). */
+  const sortedHistory = useMemo(
+    () => sortByColumns(filteredHistory, histSort, { textOf: 정렬글 }),
+    [filteredHistory, histSort, 정렬글]);
+
   const pagedHistory = useMemo(() => {
-    // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
-    const reversed = [...filteredHistory].reverse();
+    /*  **오래된 것이 위다**(2026-09-15 사장님: "오래된게 위로 오게 바꿀래? 디폴트가").
+        `sortTimeline` 이 이미 시간순(오래된 것 먼저)으로 세우는데, 여기서 통째로 뒤집어
+        최신순으로 보여 주고 있었다. 뒤집기를 뺀다 — 장부는 위에서 아래로 시간이 흐르는 것이
+        읽기 편하고, **거래처 누적잔액이 그 차례로 쌓여** 숫자가 따라 읽힌다. */
     const start = (historyPage - 1) * HIST_PAGE_SIZE;
-    return reversed.slice(start, start + HIST_PAGE_SIZE);
-  }, [filteredHistory, historyPage]);
+    return sortedHistory.slice(start, start + HIST_PAGE_SIZE);
+  }, [sortedHistory, historyPage]);
 
   // 하단 합계 — 현재 필터·기간에 걸린 전표/수금/지불 총액 (검색·날짜와 무관하게 항상 합계 표시)
   const histTotals = useMemo(() => {
@@ -2400,6 +2521,25 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         onOpenCompany={() => setShowCompanyModal(true)}
       />
 
+      {/*  **무엇으로 세워 뒀는지 적고, 푸는 길을 옆에 둔다**(2026-09-15 사장님: "얘도 무슨 정렬인지
+           보이고 초기화 버튼 있어야지"). 머리를 여러 번 눌러 겹쳐 두면 왜 이 차례인지 잊는다.
+           머리를 눌러서는 정렬이 안 빠진다 — 푸는 것은 여기 하나다. */}
+      {histSort.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <span className="text-[11px] font-bold text-slate-400">정렬</span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+            {sortSummary(histSort)}
+          </span>
+          <button
+            type="button"
+            onClick={() => { setHistSort([]); setHistoryPage(1); }}
+            className="inline-flex min-h-7 items-center gap-1 rounded-md border border-slate-200 px-2 text-[11px] font-black text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          >
+            <RotateCcw size={11} aria-hidden="true" />정렬 해제
+          </button>
+        </div>
+      )}
+
       {/* ── 발행내역 테이블 ── */}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         {filteredHistory.length === 0 ? (
@@ -2410,17 +2550,58 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         ) : (<>
           <table className="hidden w-full min-w-[980px] text-left md:table [&_th:not(:last-child)]:border-r [&_th:not(:last-child)]:border-slate-300 [&_td:not(:last-child)]:border-r [&_td:not(:last-child)]:border-slate-200">
             <thead>
+              {/*  **구분은 상자 없이 글자만**(2026-09-15 사장님: "구분에서 매출 이런것도 박스에서
+                   꺼내 답답하다"). 알약 딱지가 좁은 칸 안에서 양옆 여백까지 먹어 글자가 눌렸다 —
+                   갈래는 **색만으로도** 읽힌다(매출 파랑 · 매입 빨강 · 입금 초록 · 지불 주황).
+
+                   **칸 차례는 사장님이 정한다**(2026-09-15: "업체명 거래내역 금액 거래처누적잔액
+                   비고 이런식으로 가자"). 무엇을 거래했는지를 금액보다 앞에 두어, 줄을 왼쪽에서
+                   오른쪽으로 읽으면 "누가 · 무엇을 · 얼마에 · 남은 잔액" 순으로 읽힌다.
+
+                   **구분 칸은 글자 너비만큼만**(사장님: "지금 구분칸이 너무 넓고") — 폭을 안 주면
+                   표가 남는 자리를 여기 다 몰아줘서, 정작 긴 업체명·거래내역이 눌렸다.
+                   `w-px` + `whitespace-nowrap` 이 "내용만큼만" 이라는 뜻이다. */}
               <tr className="border-b-2 border-slate-400 bg-slate-100">
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600 whitespace-nowrap">전표일자</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600 whitespace-nowrap">구분</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600">업체명</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600 text-right whitespace-nowrap">금액</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600 text-right whitespace-nowrap">거래처 누적잔액</th>
-                <th className="px-4 py-3 text-[11px] font-black text-slate-600">거래내역</th>
-                <th className="px-4 py-3"/>
+                <th className="w-px px-3 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('date', '전표일자')}</th>
+                {/*  **담당자**(2026-09-15 사장님) — 누가 끊었나. 예전 전표는 비어 있다.
+                     자금 줄은 `cashEntries.createdBy`, 전표 줄은 `issuedStatements.createdBy`. */}
+                <th className="w-px px-3 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('owner', '담당자')}</th>
+                <th className="w-px px-3 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('kind', '구분')}</th>
+                {/*  **업체명·거래내역은 너비를 묶는다**(2026-09-15 사장님: "업체명 너비 좀 줄이고",
+                     "거래내역 열도 너비 좀 줄여"). 폭을 안 주면 표가 남는 자리를 이 둘에 다 몰아줘
+                     한 줄이 화면을 가로지른다. 넘치는 글자는 잘리고 마우스를 올리면 전문이 뜬다. */}
+                <th className="w-[180px] px-3 py-2.5 text-[13px] font-black text-slate-600">{머리('partner', '업체명')}</th>
+                <th className="w-[300px] px-3 py-2.5 text-[13px] font-black text-slate-600">거래내역</th>
+                {/*  **숫자 칸은 널널하게**(2026-09-15 사장님: "금액이랑 누적잔액 칸을 조금 널널하게 둬") —
+                     `w-px`(내용만큼)로 조여 두니 자릿수 많은 금액이 칸 끝에 딱 붙어 읽기 답답했다.
+                     너비를 정해 두면 줄마다 숫자 오른쪽 끝이 세로로 맞아 눈으로 크기를 견줄 수 있다. */}
+                <th className="w-[150px] px-4 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('amount', '금액', 'ml-auto')}</th>
+                <th className="w-[160px] px-4 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('cumul', '거래처 누적잔액', 'ml-auto')}</th>
+                {/*  **수금 상태를 글자로 세운다**(사장님: "수금 상태 (미수 / 완료 / 부분수금) …
+                     이거 열로 하나 추가하자"). 전에는 `수금처리` 단추가 붙었는지로만 짐작해야 했다 —
+                     단추가 없으면 다 낸 것인지, 애초에 받을 것이 없는 전표인지 가릴 수 없었다. */}
+                <th className="w-px px-3 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('settle', '수금/지불')}</th>
+                {/*  **세무 증빙**(2026-09-15 사장님: "매출에 대한 세무 증빙 처리 여부를 즉시
+                     확인하여 누락을 방지합니다"). 끊었는지 안 끊었는지가 표에 안 보여,
+                     신고 때가 되어야 빠진 것을 찾았다. 그 자리에서 골라 바꾼다. */}
+                <th className="w-px px-3 py-2.5 text-[13px] font-black text-slate-600 whitespace-nowrap">{머리('evidence', '증빙')}</th>
+                {/*  **비고는 반으로**(2026-09-15 사장님: "비고 반토막 나게 나머지들 더 키워") —
+                     폭을 안 주면 남는 자리를 비고가 다 먹는데, 정작 거기 적힌 글은 짧다.
+                     자리를 업체명·거래내역·숫자 칸에 넘긴다. */}
+                <th className="w-[110px] px-3 py-2.5 text-[13px] font-black text-slate-600">{머리('note', '비고')}</th>
+                {/*  **작업 칸은 내용만큼 벌어져야 한다**(2026-09-15 사장님: "이렇게 안되게 하고") —
+                     `w-px` 만 주고 줄바꿈을 안 막았더니 '수금처리' 가 한 글자씩 세로로 쪼개졌다.
+                     `w-px` 는 "제일 좁게"라는 뜻이라, 안 쪼개진다고 알려 줘야(`whitespace-nowrap`)
+                     비로소 글자 너비만큼 벌어진다. */}
+                {/*  **삭제 칸은 없앴다**(2026-09-15 사장님: "삭제버튼은 없애 열에서") —
+                     줄마다 휴지통이 서 있어 눈이 그리로 갔고, 표를 훑다 잘못 누르기도 쉬웠다.
+                     지우는 일은 줄을 눌러 여는 창에서 한다(자금은 수정창, 전표는 상세창). */}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            {/*  **몸통 글씨는 여기 한 번**(12px) — 칸마다 따로 적어 12px·11px 이 섞여 있었다.
+                 한 번 10px 로 줄였다가 사장님이 "조금씩만 더 키워 20% 정도만" 하셔서 12px 이다
+                 (머리는 13px). 한 곳에서 정하니 이렇게 통째로 키울 수 있다. 바탕색은 안 깐다. */}
+            <tbody className="divide-y divide-slate-200 text-[12px]">
               {pagedHistory.map(row => {
                 if (row.kind === 'cash') {
                   // ── 자금 입출금 전표 행 ──
@@ -2479,15 +2660,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <tr
                       onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
                       className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} hover:bg-slate-50`}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(row.date, 날짜 => onUpdateCashEntry?.(row.entry.id, { date: 날짜 }), !!onUpdateCashEntry, row.entry.createdAt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글((row.entry as { createdBy?: string }).createdBy)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 align-middle">
                           {journalToggle(row.entry.id)}
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
+                          <span className={`whitespace-nowrap text-[12px] font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-600'}`}>{rowKind(row)}</span>
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
-                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>
+                      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-700" title={row.partnerName || ''}>{row.partnerName || <span className="text-slate-300">—</span>}</td>
+                      {/*  거래내역 = **계정과목**(쪼갠 줄이면 계정별 금액까지). 적어 둔 메모는 맨 뒤 '비고' 칸이다. */}
+                      <td className="max-w-[300px] truncate px-3 py-2 text-slate-500" title={계정글(split, row, codeName)}>
+                        {(split.length || row.accountCode)
+                          ? 계정글(split, row, codeName)
+                          : <span className="font-bold text-amber-500">계정 미지정</span>}
+                      </td>
+                      <td className={`px-4 py-2 text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>
                         {fmt(shownAmt)}
                         {/* 계정으로 걸렀을 땐 그 계정 몫을 띄우되, 통장에서 나간 전액도 같이 밝힌다 */}
                         {partial && (
@@ -2496,7 +2684,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {/* '그중 비용 …'은 안 붙인다 — 안 물어봤는데 늘 따라다녀 줄만 어지럽다.
                             계정으로 걸렀을 때 그 몫이 위 shownAmt로 뜨는 것으로 충분하다(partial). */}
                       </td>
-                      <td className="px-4 py-2 text-xs text-right">
+                      <td className="px-4 py-2 text-right">
                         {/* 거래처는 붙었는데 전표에도 안 붙고 계정도 없는 돈 = 어디 쓸지 안 정한 돈.
                             완도식품처럼 조용히 떠 있으면 미수금이 안 맞는데 원인을 못 찾는다. */}
                         {/* 거래처가 붙은 돈이면 그 시점 잔액도 같이 — 수금/지불 행과 같은 근거(cumul) */}
@@ -2506,24 +2694,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           </span>
                         )}
                         {unallocated > 0
-                          ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                          ? <span className="whitespace-nowrap text-[12px] font-black text-amber-600">
                               미배분 {fmt(unallocated)}
                             </span>
                           : row.cumul === undefined && <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
-                        {/* 쪼갠 줄로 계정이 붙은 건도 지정된 것 — accountCode만 보면 '미지정'으로 잘못 뜬다.
-                            쪼갠 건은 계정별 금액을 그대로 보여준다 — "원금 차입금 1,000,000 · 이자 이자비용 284,169" */}
-                        {(split.length || row.accountCode)
-                          ? detail
-                          : <span className="text-amber-500 font-bold">계정 미지정{row.note ? ` · ${row.note}` : ''}</span>}
-                      </td>
-                      <td className="px-4 py-2">
-                        {onDeleteCashEntry && (
-                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); }}
-                            className="text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={13}/></button>
-                        )}
-                      </td>
+                      {/*  자금 줄은 그 자체가 오간 돈이라 '수금 상태'도 '증빙'도 없다. */}
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
+                      <td className="max-w-[110px] truncate px-3 py-2 text-[10px] text-slate-400" title={row.note || ''}>{row.note || '—'}</td>
                     </tr>
                     {/* 분개 — 쪼갠 줄(대출상환 원금+이자)도 여기서 계정별로 갈려 보인다.
                         전에는 쪼갠 줄만 따로 폈는데, 통장 쪽 상대계정이 안 보여 반쪽이었다. */}
@@ -2553,16 +2732,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <tr
                       className={`cursor-pointer transition-colors hover:bg-slate-50`}
                       onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payEntry?.createdAt ? ` ${payEntry.createdAt.slice(11,16)}` : ''}</td>
-                      <td className="px-4 py-2">
+                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(row.date, 날짜 => payEntry && onUpdateCashEntry?.(payEntry.id, { date: 날짜 }), !!payEntry && !!onUpdateCashEntry, payEntry?.createdAt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글((payEntry as { createdBy?: string } | undefined)?.createdBy)}</td>
+                      <td className="px-3 py-2">
                         <span className="inline-flex items-center gap-1 align-middle">
                           {journalToggle(payKey)}
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                          <span className={`whitespace-nowrap text-[12px] font-black ${row.stmtType === '매출' ? 'text-lime-700' : 'text-orange-600'}`}>{label}</span>
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-xs font-bold text-slate-800">{row.partnerName}</td>
-                      <td className="px-4 py-2 text-xs text-right font-black text-slate-800">{fmt(row.amount)}</td>
-                      <td className="px-4 py-2 text-xs text-right">
+                      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={row.partnerName}>{row.partnerName}</td>
+                      {/*  거래내역 = **결제수단**(현금·계좌). 메모는 맨 뒤 '비고' 칸이다. */}
+                      <td className="max-w-[300px] truncate px-3 py-2 text-slate-500">{row.method || '—'}</td>
+                      <td className="px-4 py-2 text-right font-black text-slate-800">{fmt(row.amount)}</td>
+                      <td className="px-4 py-2 text-right">
                         {cumul === 0
                           ? <span className="font-black text-slate-400">0</span>
                           : cumul < 0
@@ -2573,13 +2755,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             : <span className={`font-black ${row.stmtType === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                         }
                       </td>
-                      <td className="px-4 py-2 text-[11px] text-slate-400 max-w-[180px] truncate">
-                        {[row.method, row.note].filter(Boolean).join(' · ')}
-                      </td>
-                      <td className="px-4 py-2">
-                        <button onClick={e => { e.stopPropagation(); deletePayTimelineRow(row.paymentId, row.src); }}
-                          className="text-slate-300 hover:text-rose-500 transition-all" title="수금/지불 삭제"><Trash2 size={13}/></button>
-                      </td>
+                      {/*  수금·지불 줄은 **받은 행위 자체**다 — 얼마나 남았는지와 증빙은 위의 전표 줄이 말한다. */}
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
+                      <td className="max-w-[110px] truncate px-3 py-2 text-[10px] text-slate-400" title={row.note || ''}>{row.note || '—'}</td>
                     </tr>
                     {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
                     {expandedJournal.has(payKey) && payEntry &&
@@ -2605,22 +2784,25 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <React.Fragment key={stmt.id}>
                   <tr className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
                     onClick={() => openEdit(stmt)}>
-                    <td className="px-4 py-3 text-[11px] font-mono text-slate-600 whitespace-nowrap">{dateLabel}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(stmt.tradeDate, 날짜 => onUpdateIssuedStatement?.(stmt.id, { tradeDate: 날짜 }), !!onUpdateIssuedStatement, stmt.issuedAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글(stmt.createdBy)}</td>
+                    <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
                         {journalToggle(stmt.id)}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                          stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
+                        <span className={`whitespace-nowrap text-[12px] font-black ${
+                          stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'
                         }`}>{stmt.type}</span>
-                        {isReturn && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">반품</span>}
+                        {isReturn && <span className="whitespace-nowrap text-[12px] font-black text-amber-600">반품</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.partnerName}</td>
-                    <td className={`px-4 py-3 text-xs text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>
+                    <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={stmt.partnerName}>{stmt.partnerName}</td>
+                    {/*  거래내역 = **품목 요약**. 전표에는 따로 적는 메모가 없어 비고 칸은 비운다. */}
+                    <td className="max-w-[300px] truncate px-3 py-2 text-slate-500" title={summary}>{summary || '—'}</td>
+                    <td className={`px-4 py-2 text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>
                       {fmt(stPartial ? stPortion! : stmt.totalAmount)}
                       {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}
                     </td>
-                    <td className="px-4 py-3 text-xs text-right">
+                    <td className="px-4 py-2 text-right">
                       {cumul == null
                         ? <span className="font-black text-slate-300" title="거래처가 없는 전표 — 잔액이라는 게 없다">—</span>
                         : cumul === 0
@@ -2633,21 +2815,61 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           : <span className={`font-black ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                       }
                     </td>
-                    <td className="px-4 py-3 text-[11px] text-slate-400 max-w-[180px] truncate">{summary}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
-                        {canSettle(stmt) && (
-                          <button onClick={e=>{e.stopPropagation();openPayModal(stmt);}}
-                            className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
-                              stmt.type === '매입'
-                                ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                            }`}>
-                            <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수금처리'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                    {/*  **상태와 단추는 한 칸에**(2026-09-15 사장님: "수금상태랑 버튼이 같이 있어야
+                         맞지 않을까?"). 맞다 — '미수' 를 읽고 바로 옆에서 처리하는 것이 한 동작이다.
+                         따로 두면 눈이 표를 가로질러 오가야 한다. */}
+                    {(() => {
+                      const 상태 = settleStatus(stmt, getBalance(stmt));
+                      //  색은 **일의 상태**를 가리킨다 — 다 끝난 것 초록, 손도 안 댄 것 빨강,
+                      //  하다 만 것 주황. 해당 없는 전표는 회색 줄표다.
+                      /*  **미수는 색을 안 쓴다**(2026-09-15 사장님: "미수 색깔 빼라").
+                          대부분의 줄이 미수라 빨갛게 칠하면 표가 온통 빨개져, 정작 눈에 띄어야 할
+                          '부분수금'(하다 만 것)이 묻힌다. 끝난 것과 하다 만 것만 색으로 알린다. */
+                      const 색 = 상태.state === 'done' ? 'text-emerald-600'
+                        : 상태.state === 'partial' ? 'text-amber-600'
+                        : 상태.state === 'open' ? 'text-slate-600' : 'text-slate-300';
+                      return (
+                        <td className="whitespace-nowrap px-3 py-2">
+                          <span className="flex items-center gap-1.5">
+                            <span className={`font-black ${색}`}>{상태.label}</span>
+                            {canSettle(stmt) && (
+                              <button onClick={e=>{e.stopPropagation();openPayModal(stmt);}}
+                                /*  **글자만**(2026-09-15 사장님: "수금처리 버튼도 앞에 아이콘 빼고
+                                    바탕색 빼봐", 앞서 "너무 크다 좀 작게하고") — 줄마다 서는 것이라
+                                    칠하고 아이콘까지 붙이면 그것이 줄 높이와 눈길을 다 가져간다.
+                                    밑줄로 누를 수 있다는 것만 알린다. */
+                                className={`shrink-0 whitespace-nowrap text-[11px] font-black underline decoration-dotted underline-offset-2 transition-colors ${
+                                  stmt.type === '매입' ? 'text-rose-600 hover:text-rose-700' : 'text-blue-600 hover:text-blue-700'
+                                }`}>
+                                {stmt.type === '매입' ? '지불처리' : '수금처리'}
+                              </button>
+                            )}
+                          </span>
+                        </td>
+                      );
+                    })()}
+                    {(() => {
+                      const 고를것 = evidenceChoices(stmt.type);
+                      if (!고를것.length) return <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>;
+                      const 지금 = evidenceOf(stmt);
+                      //  **색은 안 쓴다**(2026-09-15 사장님: "증빙도 색 빼라") — 대부분이 미발행이라
+                      //  칠하면 표가 온통 빨개진다. 미수와 같은 까닭이다.
+                      void evidenceMissing;
+                      return (
+                        <td className="whitespace-nowrap px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={지금}
+                            disabled={!onUpdateIssuedStatement}
+                            onChange={e => { e.stopPropagation(); onUpdateIssuedStatement?.(stmt.id, { evidence: e.target.value }); }}
+                            aria-label={`${stmt.partnerName} 증빙`}
+                            className={`h-6 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[11px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 text-slate-700`}
+                          >
+                            {고를것.map(옵션 => <option key={옵션} value={옵션}>{옵션}</option>)}
+                          </select>
+                        </td>
+                      );
+                    })()}
+                    <td className="px-3 py-2 text-slate-300">—</td>
                   </tr>
                   {/* ── 분개 미리보기 ── 매출 한 건도 채권·매출·부가세로 갈리므로 줄로 편다 */}
                   {jOpen && journalTr(`je__${stmt.id}`, journalOfStmt(stmt),
@@ -2826,10 +3048,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           //  빠지고, 전표 총액으로 세면 부가세가 섞인다. 손익 화면과 같은 근거다.
           const sale = histTotals.incomeCash;
           const buy  = histTotals.costCash;
+          /*  **숫자는 다 검정이다**(2026-09-15 사장님: "숫자는 다 검정색으로 써라").
+              매출 파랑·매입 빨강·수금 연두·지불 주황으로 칠해 놓으니 합계 줄이 색판이 됐고,
+              **빨간 숫자가 손실처럼 읽혔다** — 매입은 손실이 아니라 그냥 산 돈이다.
+              이름표에만 색을 남긴다. 무엇의 합계인지는 이름이 알려 주면 된다. */
           const cell = (label: string, val: number, cls: string) => (
             <div className="flex items-center gap-2">
               <span className={`text-[10px] font-black uppercase tracking-widest ${cls}`}>{label}</span>
-              <span className={`font-black text-sm ${cls}`}>{fmt(val)}</span>
+              <span className="text-sm font-black text-slate-800">{fmt(val)}</span>
             </div>
           );
           // 탭이 보는 것의 합계만 띄운다 — 매출 탭에 지불 합계가 뜨면 뭘 보는 건지 흐려진다.

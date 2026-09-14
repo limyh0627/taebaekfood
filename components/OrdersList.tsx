@@ -83,6 +83,7 @@ import CalendarView from './CalendarView';
 import Badge from '../src/shared/components/Badge';
 import CompletionStatusControl from '../src/shared/components/CompletionStatusControl';
 import OrderEditModalShell from './OrderEditModalShell';
+import DateChipButton from '../src/shared/components/DateChipButton';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -99,52 +100,14 @@ const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
    10px 크기라 현장에서 특히 안 읽혔다. slate-500은 4.76:1로 통과한다. */
 const CARD_ROW_LABEL = 'w-10 md:w-9 shrink-0 text-[11px] md:text-[10px] font-black text-slate-500';
 
-interface EditableDeliveryDateProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}
-
 /**
- * 표 안에서는 투명한 date input이 클릭 위치에 따라 연·월·일 조각만 포커스되는 문제가 있다.
- * 셀 전체를 하나의 명시적인 버튼으로 만들고, 사용자 동작 안에서 네이티브 선택기를 연다.
+ * 출고예정일 칸 — **달력 단추는 공용 한 벌**(`DateChipButton`)이다.
+ * 2026-09-15 사장님: "캘린더도 주문 쪽에서 쓰던거 그대로 들고오지" — 전표 목록이 이걸
+ * 가져다 쓰면서 공용으로 옮겼다. 여기 있던 본문은 그 파일로 갔다.
  */
-const EditableDeliveryDate: React.FC<EditableDeliveryDateProps> = ({ label, value, onChange }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const openPicker = () => {
-    const input = inputRef.current;
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    try {
-      input.showPicker?.();
-    } catch {
-      input.click();
-    }
-  };
-
-  return (
-    <div className="relative w-full">
-      <button
-        type="button"
-        onClick={openPicker}
-        className="flex h-7 w-full items-center justify-start gap-1.5 rounded-md border border-slate-200 bg-slate-100 px-1.5 text-[10px] font-black tabular-nums text-indigo-600 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-        aria-label={`${label} 수정`}
-      >
-        <CalendarDays size={11} className="shrink-0 opacity-70" aria-hidden="true" />
-        <span>{fmtYYMMDD(new Date(value))}</span>
-      </button>
-      <input
-        ref={inputRef}
-        type="date"
-        value={value.slice(0, 10)}
-        onChange={event => { if (event.target.value) onChange(event.target.value); }}
-        className="pointer-events-none absolute bottom-0 left-1/2 h-px w-px -translate-x-1/2 opacity-0"
-        aria-label={label}
-        tabIndex={-1}
-      />
-    </div>
-  );
-};
+const EditableDeliveryDate: React.FC<{ label: string; value: string; onChange: (value: string) => void }> = ({ label, value, onChange }) => (
+  <DateChipButton block label={label} value={value} text={fmtYYMMDD(new Date(value))} onChange={onChange} />
+);
 
 interface CardDatePickerButtonProps {
   label: string;
