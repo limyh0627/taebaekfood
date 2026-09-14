@@ -148,3 +148,62 @@ export function buildRollbackPlan(
       : `${head}\n\n되돌릴 재고는 없습니다. 계속할까요?`,
   };
 }
+
+/**
+ * **상태를 바꿀 때 띄울 확인창 글** — 순수 함수다. 화면은 이 글을 띄우기만 한다.
+ *
+ * 2026-09-14 사장님: "작업완료 이후에 있던 주문들이 돌아올때는 무조건 알람 띄워야지
+ * (전량 재고로 나가서 하나도 생산 안 했던 애들 말고는) 차감된 원료 부자재 같은거 롤백해야 하는데",
+ * 그리고 "작업중에서 대기중으로 가거나 대기중에서 작업중으로 가거나 하는 것도 알람띄워 그냥".
+ *
+ * 그동안은 **내릴 때 아무것도 안 물었다.** 되돌리기가 원료 로트·부자재·원료수불부를 조용히
+ * 되돌려 놓아서, 눌러 놓고 나중에 "왜 재고가 늘었지"로 만나면 되짚을 길이 없었다.
+ *
+ * 글은 짧게 — 2026-09-12 사장님이 "알람처럼 깔끔하게 바꿔 같은 양식으로" 하라고 한 그 모양이다.
+ * 무엇이 얼마나 움직이는지 낱낱이 적지 않고, **몇 건이 어느 쪽으로** 움직이는지만 적는다.
+ */
+export function buildStatusChangeAsk(args: {
+  partnerName?: string;
+  from: OrderStatus | string;
+  to: OrderStatus | string;
+  /** 되돌리기면 그 계획. 단순 상태 변경이면 없다. */
+  plan?: RollbackPlan;
+  /** 한 줄만 되돌릴 때 그 품목 이름 */
+  lineName?: string;
+}): { message: string; subMessage: string; confirmText: string } {
+  const label = (s: string) => ({ PENDING: '대기중', PROCESSING: '작업중', DISPATCHED: '작업완료', SHIPPED: '출고', DELIVERED: '배송완료' } as Record<string, string>)[String(s)] ?? String(s);
+  const 거래처 = args.partnerName || '거래처 미지정';
+  const 흐름 = `${거래처} · ${label(String(args.from))} → ${label(String(args.to))}`;
+  const 움직임 = (args.plan?.adjustments ?? []).filter(row => row.delta !== 0);
+
+  //  되돌릴 것이 없다 — 전량 재고로 나가 하나도 생산하지 않은 건이 여기다.
+  //  그래도 묻기는 한다(사장님: "그냥 알람띄워"). 다만 겁줄 말은 안 쓴다.
+  if (!args.plan || 움직임.length === 0) {
+    const 되돌리기 = !!args.plan;
+    return {
+      message: args.lineName
+        ? `“${args.lineName}” 작업완료를 풀까요?`
+        : `${label(String(args.to))} 로 바꿀까요?`,
+      subMessage: `${흐름}\n${되돌리기
+        ? '이 건은 생산한 기록이 없어 되돌릴 원료·부자재가 없습니다.'
+        : '재고는 움직이지 않습니다.'}`,
+      confirmText: 되돌리기 ? '되돌리기' : '변경하기',
+    };
+  }
+
+  const 이름들 = 움직임.slice(0, 3).map(row => row.name).join(', ');
+  const 남은 = 움직임.length - Math.min(3, 움직임.length);
+  return {
+    message: args.lineName
+      ? `“${args.lineName}” 을 풀고 재고를 원복할까요?`
+      : '주문 상태와 재고를 원복할까요?',
+    subMessage: [
+      흐름,
+      `재고 ${움직임.length}건이 되돌아갑니다(로트·원료수불부 포함) — ${이름들}${남은 > 0 ? ` 외 ${남은}건` : ''}.`,
+      args.plan.legacyEvidenceWarning
+        ? '이 주문은 생산 당시 기록이 없어 지금 구성(BOM)으로 추정해 되돌립니다.'
+        : '',
+    ].filter(Boolean).join('\n'),
+    confirmText: '원복 승인',
+  };
+}

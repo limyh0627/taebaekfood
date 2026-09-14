@@ -102,6 +102,7 @@ import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
+import { buildRollbackPlan, buildStatusChangeAsk, type RollbackPlan } from './rollbackSummary';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
@@ -1328,6 +1329,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
     message: string; subMessage: string; confirmText: string; onConfirm: () => void;
   } | null>(null);
 
+  /**
+   * **상태를 되돌릴 때 묻는 창**(2026-09-14 사장님: "작업완료 이후에 있던 주문들이 돌아올때는
+   * 무조건 알람 띄워야지 … 차감된 원료 부자재 같은거 롤백해야 하는데").
+   *
+   * 되돌리기는 재고를 조용히 움직인다 — 출고취소로 완제품이 다시 채워지고, 생산취소로
+   * BOM 구성품(병·캡·라벨·박스)과 원료 로트가 복원되며 원료수불부 줄이 지워진다.
+   * 그동안은 **내릴 때 아무것도 안 물어서**, 눌러 놓고 나중에 "왜 재고가 늘었지"로 만나면
+   * 되짚을 길이 없었다. 글은 `buildStatusChangeAsk` 가 만든다 — 여기는 띄우기만 한다.
+   */
+  const [rollbackAsk, setRollbackAsk] = useState<{
+    message: string; subMessage: string; confirmText: string; onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [rollbackSaving, setRollbackSaving] = useState(false);
+
   const [stockUseAsk, setStockUseAsk] = useState<{
     mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
@@ -1505,12 +1520,39 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const clearedItems = shouldClearChecks
         ? cur.items.map(({ checkedBy: _dropBy, checkedAt: _dropAt, ...rest }) => ({ ...rest, checked: false }))
         : cur.items;
-      // 사장님 기준: 대기중·작업중으로 내릴 때는 상태 확인창을 띄우지 않는다.
-      // 재고 원복 자체는 저장된 스냅샷으로 그대로 실행한다.
-      return changeOrderStatus(id, status, undefined, {
-        approvedBy: currentUser?.name,
-        orderPatch: { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) },
+      /*  **되돌릴 때는 반드시 묻는다**(2026-09-14 사장님). 한동안 묻지 않고 바로 원복했는데,
+       *  그 사이 원료·부자재가 조용히 되돌아가 무슨 일이 있었는지 알 길이 없었다.
+       *  되돌릴 것이 하나도 없는 건(전량 재고로 나가 생산이 없던 건)도 묻기는 한다 —
+       *  다만 `buildStatusChangeAsk` 가 "되돌릴 원료·부자재가 없습니다"로 글을 바꾼다. */
+      const 계획: RollbackPlan = prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status);
+      const 최종패치 = { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) };
+      const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status, plan: 계획 });
+      setRollbackAsk({
+        ...묻는글,
+        onConfirm: () => changeOrderStatus(id, status, undefined, {
+          approvedBy: currentUser?.name,
+          approvedAt: new Date().toISOString(),
+          //  승인한 계획과 지금 계획이 다르면 엔진이 막는다 — 창을 띄워 둔 사이 누가 바꿨을 수 있다.
+          approvedPlan: 계획,
+          approvedFromStatus: cur.status,
+          orderPatch: 최종패치,
+        }),
       });
+      return;
+    }
+
+    /*  **대기중 ↔ 작업중도 묻는다**(2026-09-14 사장님: "작업중에서 대기중으로 가거나
+        대기중에서 작업중으로 가거나 하는 것도 알람띄워 그냥"). 재고는 안 움직이지만,
+        끌어 놓다가 잘못 떨어뜨리는 일이 잦아 한 번 물어 준다. */
+    if (cur && cur.status !== status
+      && (status === OrderStatus.PENDING || status === OrderStatus.PROCESSING)
+      && (cur.status === OrderStatus.PENDING || cur.status === OrderStatus.PROCESSING)) {
+      const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status });
+      setRollbackAsk({
+        ...묻는글,
+        onConfirm: () => changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch }),
+      });
+      return;
     }
 
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
@@ -1731,6 +1773,31 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 품목별 스냅샷이 있는 주문은 체크를 푼 그 줄만 즉시 원복한다.
     // 옛 주문만 줄 근거가 없어 기존 주문 전체 원복 승인창을 쓴다.
     if (isRollback && !order.itemInventory) return requestOrderStatus(orderId, plan.status, { items: plan.items });
+
+    /*  **체크를 푸는 것도 되돌리기다 — 묻는다**(2026-09-14 사장님).
+     *  줄 하나를 풀면 그 줄 몫의 원료 로트와 부자재(병·캡·라벨·박스)가 도로 채워지고
+     *  원료수불부에 사용 취소가 붙는다. 주문 상태가 그대로(작업중)여도 재고는 움직인다 —
+     *  그래서 `isRollback`(상태 단계 비교)이 아니라 **그 줄이 실제로 차감했는지**로 가른다. */
+    const 푸는줄id = plan.items[itemIdx]?.lineId;
+    const 줄상태 = 푸는줄id ? order.itemInventory?.[푸는줄id] : undefined;
+    if (!applying && 줄상태?.applied) {
+      const 줄계획 = buildRollbackPlan({
+        items: [normalizedOrder.items[itemIdx]!],
+        producedUnits: 줄상태.producedUnits,
+        rawConsumedLots: 줄상태.rawConsumedLots,
+        autoBuilt: 줄상태.autoBuilt,
+        shippedOut: false,
+        //  이 줄이 실제로 차감했다는 근거다. 없으면 '기록 없음'으로 잘못 겁준다.
+        producedAt: 줄상태.completedAt ?? 줄상태.production?.capturedAt,
+        inventorySnapshots: { production: 줄상태.production },
+      } as Parameters<typeof buildRollbackPlan>[0], allItems, OrderStatus.DISPATCHED, OrderStatus.PROCESSING);
+      const 줄이름 = allItems.find(p => p.id === plan.items[itemIdx]?.itemId)?.name ?? plan.items[itemIdx]?.name ?? '이 품목';
+      const 묻는글 = buildStatusChangeAsk({
+        partnerName: order.partnerName, from: order.status, to: plan.status, plan: 줄계획, lineName: 줄이름,
+      });
+      setRollbackAsk({ ...묻는글, onConfirm: () => save() });
+      return;
+    }
 
     const lineRows = applying
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems)
@@ -5056,6 +5123,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
         />
       )}
       {/*  임가공·완사입 품목 완료 — 재고를 쓰는지, 모자라 음수가 되는지 알린다 */}
+      {/*  **되돌리기 확인창** — 글은 `buildStatusChangeAsk` 가 만든다.
+           누르는 동안 단추를 잠근다(두 번 눌러 두 번 원복되는 것을 막는다). */}
+      {rollbackAsk && (
+        <ConfirmModal
+          message={rollbackAsk.message}
+          subMessage={rollbackAsk.subMessage}
+          confirmText={rollbackSaving ? '처리 중…' : rollbackAsk.confirmText}
+          onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
+          onConfirm={async () => {
+            if (rollbackSaving) return;
+            setRollbackSaving(true);
+            try {
+              await rollbackAsk.onConfirm();
+              setRollbackAsk(null);
+            } catch (error) {
+              console.error('주문 상태 되돌리기 실패', error);
+              alert(error instanceof Error ? error.message : '되돌리지 못했습니다. 재고 작업 이력을 확인해 주세요.');
+            } finally {
+              setRollbackSaving(false);
+            }
+          }}
+        />
+      )}
       {goodsStockAsk && (
         <ConfirmModal
           message={goodsStockAsk.message}
