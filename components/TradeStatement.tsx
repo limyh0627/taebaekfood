@@ -2252,11 +2252,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           ))}
           {/*  좁으면 한 줄을 통째로 쓴다 — 안 접히면 날짜 두 개가 카드 밖으로 나간다(2026-09-04 사장님) */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-1">
-            <button type="button" onClick={() => moveHistoryRange(-1)} disabled={!histFrom || !histTo}
-              aria-label="이전 기간" title="이전 기간"
-              className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-              <ChevronLeft size={15} strokeWidth={2.5}/>
-            </button>
             <input type="date" value={histFrom} aria-label="조회 시작일"
               onChange={e=>{setHistFrom(e.target.value);setHistQuick('');}}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
@@ -2264,11 +2259,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <input type="date" value={histTo} aria-label="조회 종료일"
               onChange={e=>{setHistTo(e.target.value);setHistQuick('');}}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-            <button type="button" onClick={() => moveHistoryRange(1)} disabled={!histFrom || !histTo}
-              aria-label="다음 기간" title="다음 기간"
-              className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
-              <ChevronRight size={15} strokeWidth={2.5}/>
-            </button>
+            {/*  **◀▶ 를 붙여 오른쪽에 둔다**(2026-09-14 사장님: "< 버튼이 날짜 오른쪽으로
+                 넘어와서 <> 같이 있어야돼"). 하나는 앞, 하나는 뒤에 떨어져 있으니 날짜를
+                 사이에 두고 눈이 왔다 갔다 했다. 붙여 두면 한 손가락으로 앞뒤를 오간다. */}
+            <div className="flex shrink-0 items-center gap-1 sm:ml-0.5">
+              <button type="button" onClick={() => moveHistoryRange(-1)} disabled={!histFrom || !histTo}
+                aria-label="이전 기간" title="이전 기간"
+                className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                <ChevronLeft size={15} strokeWidth={2.5}/>
+              </button>
+              <button type="button" onClick={() => moveHistoryRange(1)} disabled={!histFrom || !histTo}
+                aria-label="다음 기간" title="다음 기간"
+                className="shrink-0 p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                <ChevronRight size={15} strokeWidth={2.5}/>
+              </button>
+            </div>
           </div>
         </div>
         <div className="border-t border-slate-100"/>
