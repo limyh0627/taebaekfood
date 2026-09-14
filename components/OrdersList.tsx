@@ -713,6 +713,7 @@ export const OrderCard = memo<OrderCardProps>(({
                   </div>
                   {!개입수있음 && (
                     <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
+                        onClick={달력열기}
                       className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 cursor-pointer" />
                   )}
                 </div>
@@ -920,6 +921,7 @@ export const OrderCard = memo<OrderCardProps>(({
                       title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
                       <input
                         type="date" value={item.mfgDate || ''} disabled={readOnly}
+                        onClick={달력열기}
                         onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
                         aria-label={`${item.name} 소비기한 수정용 제조일`}
                         className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
@@ -1480,6 +1482,24 @@ const 그룹색 = (groups: readonly string[], name: string | undefined) => {
  * 보드 카드는 칸 사이로 끌어 옮기는 것이라 카드째 끌리는 것을 없앨 수 없으니,
  * **누르는 동안만** 끌기를 꺼 두고 손을 떼면 되돌린다.
  */
+/**
+ * **투명한 날짜칸은 데스크톱에서 눌러도 달력이 안 열린다.**
+ *
+ * 2026-09-14 사장님: "주문카드에 소비기한 달력이 데스크톱에선 눌러도 안 열린다는데".
+ * 칸을 `opacity-0` 으로 덮고 우리 아이콘을 그 위에 그리는 모양이라, 크롬은 **입력칸 안의
+ * 달력 아이콘**을 눌러야 열어 준다 — 그 아이콘이 안 보이니 열 방법이 없다.
+ * 폰은 칸을 아무 데나 눌러도 열려서 **모바일에서만 되는 것처럼** 보였다.
+ *
+ * 사람이 누른 그 순간에 `showPicker()` 를 부른다 — 사용자 동작 밖에서 부르면 브라우저가 막는다.
+ * `EditableDeliveryDate` 가 진작 같은 처방을 쓰고 있다.
+ */
+const 달력열기 = (event: React.MouseEvent<HTMLInputElement>) => {
+  event.stopPropagation();
+  const 칸 = event.currentTarget;
+  칸.focus({ preventScroll: true });
+  try { 칸.showPicker?.(); } catch { /* 브라우저가 막으면 칸에 직접 치면 된다 */ }
+};
+
 const 누르는동안끌기끄기 = (event: React.PointerEvent) => {
   const 카드 = (event.currentTarget as HTMLElement).closest('[draggable="true"]') as HTMLElement | null;
   if (!카드) return;
@@ -2585,6 +2605,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       onPointerDown={e => e.stopPropagation()}>
                       <input
                         type="date" value={줄?.mfgDate || ''} disabled={못고침}
+                        onClick={달력열기}
                         onChange={e => 고치기({ mfgDate: e.target.value })}
                         aria-label={`${wi.itemName} 소비기한 수정용 제조일`}
                         className="peer absolute inset-0 z-10 h-full w-full min-w-0 cursor-pointer opacity-0 disabled:cursor-default"
