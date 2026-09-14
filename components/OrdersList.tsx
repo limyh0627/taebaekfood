@@ -21,8 +21,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  ChevronLeft,
-  ChevronRight,
   Square,
   CheckSquare,
   Droplets,
@@ -39,7 +37,10 @@ import {
   NotepadText,
   AlertTriangle,
   Minimize2,
-  Maximize2
+  Maximize2,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit, OrderItemEdit } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
@@ -60,6 +61,7 @@ import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
+import { sortOrdersByHead, nextHeadSort, headSortTitle, type OrderListHeadSort, type OrderListSortKey } from '../src/shared/orderListSort';
 import OrderActivityLogModal from './OrderActivityLogModal';
 
 import ConfirmModal from './ConfirmModal';
@@ -1584,8 +1586,24 @@ const OrdersList: React.FC<OrdersListProps> = ({
     탭바가 `hidden` 이라 **들어갈 길이 없었다.** 숨은 축(`activeTab`)을 쓰지 않고 보기 축에
     붙여, 배송 캘린더·리스트·보드와 같은 줄에서 고르게 한다. */
   const [activeView, setActiveView] = useState<'calendar' | 'list' | 'kanban' | 'history'>(embeddedListOnly ? 'list' : 'kanban');
-  const [showListDetailColumns, setShowListDetailColumns] = useState(false);
-  const [showListCompletionColumns, setShowListCompletionColumns] = useState(false);
+  /*  **품목 상세는 줄마다 편다**(2026-09-14 사장님: "각 주문품목명 옆에다가 버튼두고 펼칠 수
+      있게 바꿔 … 작업카드에 구성 버튼 달려있는거랑 같은 양식으로"). 전에는 표 머리를 눌러
+      품목명·병·뚜껑·라벨 **네 칸을 통째로** 폈다 — 안 보고 싶은 주문 것까지 다 펴져 표가
+      가로로 길어졌고, 정작 궁금한 줄 하나를 보려고 표 전체를 밀어야 했다.
+      키는 `주문id-줄자리`. 창을 닫았다 열면 다시 접힌다.
+
+      **확인자·확인날짜 두 칸은 없앴다**(같은 날 사장님: "작업완료 여부에 확인정보 펼치기
+      기능도 제거하고 로그로 대체할거니까") — 누가 언제 했는지는 주문 로그가 다 보여 준다. */
+  const [openListItemDetail, setOpenListItemDetail] = useState<Set<string>>(new Set());
+  const toggleListItemDetail = (key: string) => setOpenListItemDetail(이전 => {
+    const 다음 = new Set(이전);
+    다음.has(key) ? 다음.delete(key) : 다음.add(key);
+    return 다음;
+  });
+  /*  **표 머리를 눌러 정렬한다**(2026-09-14 사장님). 셈은 `orderListSort` 한 곳이 한다.
+      목록 차례(출고예정일 임박 순 등)를 먼저 세우고 그 위에 얹으므로, 같은 값끼리는
+      원래 차례를 지킨다. */
+  const [listHeadSort, setListHeadSort] = useState<OrderListHeadSort | null>(null);
   const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh'>('delivery');
   const [listStatusTab, setListStatusTab] = useState<'all' | OrderStatus>('all');
   const [listPage, setListPage] = useState(1);
@@ -1639,8 +1657,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const listBodyScrollRef = React.useRef<HTMLDivElement>(null);
   const [listColumnWidths, setListColumnWidths] = useState<Record<string, number>>({
     //  작업완료 여부·주문 수량은 글자가 짧아 자리가 남았다 — 좁힌다(2026-09-11 사장님).
-    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 84, confirmer: 90, confirmedAt: 90,
-    item: 180, quantity: 76, manufacturing: 145, bottle: 120, cap: 120, componentLabel: 135,
+    status: 90, source: 112, invoicePrinted: 105, shipmentComplete: 116, partner: 168, address: 220, completion: 84,
+    //  품목 상세(품목명·병·뚜껑·라벨)와 확인자·확인날짜 칸은 없앴다(2026-09-14) —
+    //  상세는 줄마다 '구성'으로 펴고, 누가 언제 했는지는 주문 로그가 보여 준다.
+    item: 180, quantity: 76,
     label: 150, packaging: 135, pallet: 140,
     //  송장(105) + 팔레트(140) 를 합친 칸 — 한쪽만 뜨므로 둘을 더한 만큼은 필요 없다
     shipOut: 168,
@@ -2776,9 +2796,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             ...(embeddedListOnly ? ['address'] : []),
             ...(embeddedListOnly ? ['shipmentComplete'] : []),
             'completion',
-            ...(showListCompletionColumns ? ['confirmer', 'confirmedAt'] : []),
             'item',
-            ...(showListDetailColumns ? ['manufacturing', 'bottle', 'cap', 'componentLabel'] : []),
             'quantity',
             //  포장이 송장보다 앞이다(2026-09-11 사장님) — 싸고 나서 송장을 붙인다.
             /*  **송장과 팔레트는 한 칸이다**(2026-09-12 사장님: "송장 팔레트 합쳐서 출고
@@ -2815,6 +2833,28 @@ const OrdersList: React.FC<OrdersListProps> = ({
               className="absolute -right-1 top-0 z-30 h-full w-2 cursor-col-resize select-none after:absolute after:bottom-0 after:left-1/2 after:top-0 after:w-px after:-translate-x-1/2 after:bg-slate-300 hover:after:w-0.5 hover:after:bg-indigo-500"
             />
           );
+          /*  **정렬할 수 있는 표 머리**(2026-09-14 사장님). 누를 때마다 다음 단계로 돌고,
+              지금 무엇으로 서 있는지 화살표로 보인다. 무엇이 될지는 마우스를 올리면 나온다.
+              단계와 셈은 `orderListSort` 가 정한다 — 여기는 누른 것만 넘긴다. */
+          const 정렬머리 = (key: OrderListSortKey, label: string, extra = '') => {
+            const 걸림 = listHeadSort?.key === key;
+            return (
+              <button
+                type="button"
+                onClick={() => { setListHeadSort(이전 => nextHeadSort(이전, key)); setListPage(1); }}
+                title={headSortTitle(listHeadSort, key)}
+                className={`-mx-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-indigo-100 ${걸림 ? 'text-indigo-700' : ''} ${extra}`}
+              >
+                <span className="truncate whitespace-nowrap">{label}</span>
+                {/*  안 걸렸을 때도 자리를 비워 두지 않는다 — 화살표가 생겼다 사라지면 머리 글자가 흔들린다. */}
+                {걸림
+                  ? (listHeadSort?.dir === 'asc'
+                      ? <ArrowUp size={11} className="shrink-0" aria-hidden="true" />
+                      : <ArrowDown size={11} className="shrink-0" aria-hidden="true" />)
+                  : <ArrowUpDown size={11} className="shrink-0 text-slate-300" aria-hidden="true" />}
+              </button>
+            );
+          };
           const listInlineSelectClass = 'h-7 cursor-pointer rounded-md border border-slate-200 pl-2 pr-6 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400';
           const getListItemDetail = (_order: Order, orderItem: OrderItem) => orderItemDetails(orderItem, items);
           const getPalletSummary = (order: Order) => (order.pallets ?? [])
@@ -2891,9 +2931,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
           }));
           //  거래처 거르개는 검색필드와 **따로** 먹는다 — 둘을 같이 걸 수 있어야 쓸모가 있다.
           const searchConditionMatchedListOrders = searchMatchedListOrders.filter(matchesListFilter).filter(거래처걸림);
-          const listOrders = 정렬(embeddedListOnly || listStatusTab === 'all'
+          /*  목록 차례(출고예정일 임박 순 등)를 **먼저** 세우고 그 위에 표 머리 정렬을 얹는다.
+              제자리 정렬이라 같은 값끼리는 아래 차례를 그대로 지킨다. */
+          const listOrders = sortOrdersByHead(정렬(embeddedListOnly || listStatusTab === 'all'
             ? searchConditionMatchedListOrders
-            : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab));
+            : searchConditionMatchedListOrders.filter(order => order.status === listStatusTab)), listHeadSort);
           const listPageSize = 20;
           const listPageCount = Math.max(1, Math.ceil(listOrders.length / listPageSize));
           const currentListPage = Math.min(listPage, listPageCount);
@@ -3032,7 +3074,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <div className="flex items-center justify-between gap-3 px-1">
                   <h3 id="list-results-title" className="text-sm font-black text-slate-900">조회 결과 <span className="text-indigo-600">{listOrders.length}건</span></h3>
                 </div>
-              <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${showListDetailColumns ? 'w-full' : 'w-fit max-w-full'}`}>
+              <div className="w-fit max-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div
                   ref={listTopScrollRef}
                   onScroll={event => { if (listBodyScrollRef.current && listBodyScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listBodyScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }}
@@ -3045,48 +3087,21 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <div role="row" style={listGridStyle} className="sticky top-0 z-10 grid border-b-2 border-slate-400 bg-slate-100 text-[11px] font-black text-slate-600">
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문번호{resizeHandle('orderNo')}</div>
                   <div role="columnheader" className="relative flex min-h-10 flex-col justify-center border-r border-slate-300 px-3 leading-tight">
-                    <span>주문일</span><span className="text-[10px] font-bold text-slate-400">출고예정일</span>{resizeHandle('dates')}
+                    {/*  **주문일만 정렬한다** — 아래 출고예정일은 눌러 고치는 칸이라 정렬을 얹으면
+                         무엇을 세운 것인지 헷갈린다. */}
+                    {정렬머리('orderDate', '주문일', 'text-left')}
+                    <span className="text-[10px] font-bold text-slate-400">출고예정일</span>{resizeHandle('dates')}
                   </div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">거래처{resizeHandle('partner')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">{정렬머리('partner', '거래처')}{resizeHandle('partner')}</div>
                   {embeddedListOnly && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주소{resizeHandle('address')}</div>}
                   {embeddedListOnly && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고완료 여부{resizeHandle('shipmentComplete')}</div>}
-                  <button
-                    type="button"
-                    role="columnheader"
-                    onClick={() => setShowListCompletionColumns(value => !value)}
-                    className="relative flex min-h-10 items-center justify-between border-r border-slate-300 px-2 text-left hover:bg-indigo-50"
-                    title={showListCompletionColumns ? '확인 정보 접기' : '확인 정보 펼치기'}
-                  >
-                    <span className="whitespace-nowrap">작업완료 여부</span>
-                    {showListCompletionColumns ? <ChevronLeft size={14} className="text-indigo-600" /> : <ChevronRight size={14} className="text-indigo-600" />}
-                    {resizeHandle('completion')}
-                  </button>
-                  {showListCompletionColumns && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-2">확인자{resizeHandle('confirmer')}</div>}
-                  {showListCompletionColumns && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-2">확인날짜{resizeHandle('confirmedAt')}</div>}
-                  <button
-                    type="button"
-                    role="columnheader"
-                    onClick={() => setShowListDetailColumns(value => !value)}
-                    className="relative flex min-h-10 items-center justify-between border-r border-slate-300 px-3 text-left hover:bg-indigo-50"
-                    title={showListDetailColumns ? '품목 상세 접기' : '품목 상세 펼치기'}
-                  >
-                    <span>주문 품목</span>
-                    {showListDetailColumns ? <ChevronLeft size={15} className="text-indigo-600" /> : <ChevronRight size={15} className="text-indigo-600" />}
-                    {resizeHandle('item')}
-                  </button>
-                  {showListDetailColumns ? (
-                    <>
-                      <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">품목명{resizeHandle('manufacturing')}</div>
-                      <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">병{resizeHandle('bottle')}</div>
-                      <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">뚜껑{resizeHandle('cap')}</div>
-                      <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">라벨{resizeHandle('componentLabel')}</div>
-                    </>
-                  ) : null}
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-2">{정렬머리('completion', '작업완료 여부')}{resizeHandle('completion')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문 품목{resizeHandle('item')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문 수량{resizeHandle('quantity')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">라벨 작업{resizeHandle('label')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">포장{resizeHandle('packaging')}</div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">출고 방식{resizeHandle('shipOut')}</div>
-                  <div role="columnheader" className="relative flex min-h-10 items-center px-3">비고{resizeHandle('note')}</div>
+                  <div role="columnheader" className="relative flex min-h-10 items-center px-3">{정렬머리('note', '비고')}{resizeHandle('note')}</div>
                 </div>
                 {paginatedListOrders.map((order, rowIndex) => {
                   const partner = partners.find(candidate => candidate.id === order.partnerId);
@@ -3096,6 +3111,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     .map((item, originalIndex) => ({ item, originalIndex }))
                     .filter(({ item }) => !normalizedListSearch || matchesOrderHeaderSearch(order) || matchesItemSearch(order, item));
                   const itemDetails = visibleItemEntries.map(({ item }) => getListItemDetail(order, item));
+                  /*  **품목 줄 높이는 칸마다 따로 정하면 안 된다.** 표는 칸(세로 줄)마다 제 품목을
+                      쌓는 구조라, 한 칸만 늘리면 그 아래 품목들이 옆 칸과 어긋난다.
+                      그래서 한 주문의 줄 높이를 여기서 한 번 세우고 **모든 칸이 같은 틀을 쓴다** —
+                      편 줄은 두 칸 높이(80px), 나머지는 한 칸(40px). 줄 안의 내용은 `h-10` 그대로라
+                      늘어난 칸의 **위쪽 40px** 에 붙어, 옆 칸 글자와 눈높이가 맞는다. */
+                  const 줄열림 = (originalIndex: number) => openListItemDetail.has(`${order.id}-${originalIndex}`);
+                  const 줄자리: React.CSSProperties = {
+                    display: 'grid',
+                    gridTemplateRows: visibleItemEntries.map(({ originalIndex }) => 줄열림(originalIndex) ? '80px' : '40px').join(' '),
+                  };
                   return (
                       <div
                         key={order.id}
@@ -3169,7 +3194,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           />
                         </div>}
                         <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
+                          <div className="divide-y divide-slate-300" style={줄자리}>
                             {visibleItemEntries.map(({ item, originalIndex }) => (
                               <div key={`${item.itemId}-${originalIndex}`} className={`flex h-10 items-center justify-center px-2 ${item.checked ? 'bg-slate-50/70' : ''}`}>
                                 <CompletionStatusControl
@@ -3182,49 +3207,51 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             ))}
                           </div>
                         </div>
-                        {showListCompletionColumns && <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
-                            {visibleItemEntries.map(({ item, originalIndex }) => (
-                              <div key={originalIndex} className={`flex h-10 items-center px-2 text-[10px] font-bold ${item.checked ? 'bg-slate-50/70 text-slate-500' : 'text-slate-300'}`}>
-                                {item.checked ? (item.checkedBy || currentUserName || '-') : '-'}
-                              </div>
-                            ))}
-                          </div>
-                        </div>}
-                        {showListCompletionColumns && <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
-                            {visibleItemEntries.map(({ item, originalIndex }) => (
-                              <div key={originalIndex} className={`flex h-10 items-center px-2 text-[10px] font-bold tabular-nums ${item.checked ? 'bg-slate-50/70 text-slate-500' : 'text-slate-300'}`}>
-                                {item.checkedAt ? fmtYYMMDD(new Date(item.checkedAt)) : '-'}
-                              </div>
-                            ))}
-                          </div>
-                        </div>}
                         <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
-                            {visibleItemEntries.map(({ item, originalIndex }) => (
-                              <div key={`${item.itemId}-${originalIndex}`} className={`flex h-10 min-w-0 items-center px-3 font-bold ${item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={item.name}>{item.name}</span></div>
-                            ))}
+                          <div className="divide-y divide-slate-300" style={줄자리}>
+                            {visibleItemEntries.map(({ item, originalIndex }, 순번) => {
+                              /*  **구성은 줄마다 편다**(2026-09-14 사장님). 작업 카드의 '구성' 단추와 같은 모양이다.
+                                  전에는 표 머리를 눌러 품목명·병·뚜껑·라벨 네 칸을 통째로 폈는데, 궁금한 줄 하나를
+                                  보려고 표 전체가 가로로 길어졌다. 구성이 없는 줄에는 단추를 안 단다 — 눌러도
+                                  빈 칸만 나오는 단추는 없느니만 못하다. */
+                              const detail = itemDetails[순번];
+                              const 구성 = [
+                                ...detail.manufacturing.map(name => `품목 ${name}`),
+                                ...detail.bottles.map(name => `병 ${name}`),
+                                ...detail.caps.map(name => `뚜껑 ${name}`),
+                                ...detail.labels.map(name => `라벨 ${name}`),
+                              ];
+                              const 폄 = 줄열림(originalIndex);
+                              return (
+                                <div key={`${item.itemId}-${originalIndex}`} className={`min-w-0 ${item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}>
+                                  <div className="flex h-10 min-w-0 items-center gap-1 px-3 font-bold">
+                                    <span className="min-w-0 flex-1 truncate" title={item.name}>{item.name}</span>
+                                    {구성.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleListItemDetail(`${order.id}-${originalIndex}`)}
+                                        aria-expanded={폄}
+                                        title={폄 ? '구성 접기' : '구성 펼치기'}
+                                        className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-black text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                                      >
+                                        <ChevronDown size={11} className={`transition-transform ${폄 ? 'rotate-180' : ''}`} aria-hidden="true" />
+                                        구성 <span className="tabular-nums">{구성.length}</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                  {/*  칸이 좁아 두 줄까지만 보이고 나머지는 마우스를 올리면 나온다. */}
+                                  {폄 && (
+                                    <p className="line-clamp-2 break-words px-3 pb-1 text-[10px] font-medium leading-4 text-slate-500" title={구성.join(' · ')}>
+                                      {구성.join(' · ')}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                        {showListDetailColumns ? (
-                          <>
-                            <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.manufacturing.join(', ')}>{detail.manufacturing.join(', ') || '-'}</span></div>)}</div>
-                            </div>
-                            <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.bottles.join(', ')}>{detail.bottles.join(', ') || '-'}</span></div>)}</div>
-                            </div>
-                            <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.caps.join(', ')}>{detail.caps.join(', ') || '-'}</span></div>)}</div>
-                            </div>
-                            <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.labels.join(', ')}>{detail.labels.join(', ') || '-'}</span></div>)}</div>
-                            </div>
-                          </>
-                        ) : null}
                         <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
+                          <div className="divide-y divide-slate-300" style={줄자리}>
                             {visibleItemEntries.map(({ item, originalIndex }) => (
                               <div key={`${item.itemId}-${originalIndex}`} className={`flex h-10 items-center px-3 font-black tabular-nums ${item.checked ? 'bg-slate-50/70 text-slate-400' : 'text-indigo-600'}`}>
                                 {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`}
@@ -3233,7 +3260,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           </div>
                         </div>
                             <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{visibleItemEntries.map(({ item, originalIndex }) => <div key={originalIndex} className={`flex h-10 min-w-0 items-center gap-1 overflow-hidden px-1.5 font-bold ${item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}>
+                              <div className="divide-y divide-slate-300" style={줄자리}>{visibleItemEntries.map(({ item, originalIndex }) => <div key={originalIndex} className={`flex h-10 min-w-0 items-center gap-1 overflow-hidden px-1.5 font-bold ${item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}>
                                 <div className="relative w-[58px] shrink-0">
                                   <select
                                     value={item.labelType || '대기'}
@@ -3273,7 +3300,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               </div>)}</div>
                             </div>
                             <div role="cell" className="border-r border-slate-300">
-                              <div className="divide-y divide-slate-300">{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.packaging.join(', ')}>{detail.packaging.join(', ')}</span></div>)}</div>
+                              <div className="divide-y divide-slate-300" style={줄자리}>{itemDetails.map((detail, index) => <div key={visibleItemEntries[index].originalIndex} className={`flex h-10 min-w-0 items-center px-2 font-bold ${visibleItemEntries[index].item.checked ? 'bg-slate-50/70 text-slate-400' : ''}`}><span className="truncate" title={detail.packaging.join(', ')}>{detail.packaging.join(', ')}</span></div>)}</div>
                             </div>
                         {/*  **출고 방식 한 칸** — 택배면 송장, 아니면 팔레트
                              (2026-09-12 사장님: "출고 방식이 택배인 애들은 팔레트가 안뜨고 송장만
@@ -3384,7 +3411,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           )}
                         </div>
                         <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300">
+                          <div className="divide-y divide-slate-300" style={줄자리}>
                             {visibleItemEntries.map(({ item, originalIndex }) => (
                               <button
                                 key={originalIndex}

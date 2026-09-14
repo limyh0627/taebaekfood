@@ -76,11 +76,8 @@ const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, er
         {loading && <p className="mt-3 text-[11px] font-bold text-slate-400">상태 변경 기록을 불러오는 중…</p>}
         {/*  **없는 것은 없다고 적는다.** 품목 수량·추가·삭제는 지금 사람과 시각을 남기지 않는다.
              적어 두지 않으면 "왜 안 보이지" 하고 찾아 헤매게 된다. */}
-        {/*  **언제부터 쌓인 기록인지 적는다.** 라벨·제조일과 품목 수정은 2026-09-14 부터 남는다 —
-             그 전 주문에서 안 보이는 것이 고장이 아니라는 것을 알려 준다. */}
         <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] font-medium leading-4 text-slate-400">
           주문 등록 · 상태 변경 · 품목 작업완료 · 품목 수량·추가·삭제 · 라벨 · 제조일 · 비고 · 출고 확인을 남깁니다.
-          이 중 <b className="font-bold text-slate-500">품목 수정과 라벨·제조일</b>은 26.09.14 부터 쌓이므로 그 전 것은 보이지 않습니다.
         </p>
       </div>
     </div>
