@@ -101,7 +101,8 @@ import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedge
 import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
-import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
+import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
+import { unreservedItemStock } from './orderItemStock';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
 import {
@@ -1307,6 +1308,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 품목 완료 진입점 — 생산품은 재고 유무와 관계없이 모달에서 재고 사용/전량 생산을 확인한다.
   // 드롭다운으로 바꾸든 품목 체크로 자동 이동하든 여기 하나를 지난다.
+  /**
+   * **임가공·완사입 품목을 완료할 때 묻는다**(2026-09-14 사장님: "재고가 있으면 재고
+   * 사용할까요 뜨는거고 재고 부족하거나 없으면 재고가 부족합니다 … 음수가 됩니다").
+   *
+   * 볶음참깨/1kg 을 완료해도 **아무 말이 없었다.** 그 품목이 `procureType=임가공` 이라
+   * 재고 사용 확인창(`buildStockUseRows`)이 통째로 건너뛰기 때문이다 — 우리가 만드는 게
+   * 아니라 "재고를 쓸까 만들까"를 물을 게 없다는 판단이었다. 그런데 **묻지 않으니 재고가
+   * 모자란 것도 모르고 지나간다.**
+   *
+   * 이 품목들은 생산이 없으므로 **출고할 때 재고에서 그대로 빠진다**(orderStockEngine
+   * `shipOrder`). 모자라면 그때 음수가 된다 — 그래서 완료를 찍는 지금 알린다.
+   */
+  const [goodsStockAsk, setGoodsStockAsk] = useState<{
+    message: string; subMessage: string; confirmText: string; onConfirm: () => void;
+  } | null>(null);
+
   const [stockUseAsk, setStockUseAsk] = useState<{
     mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
@@ -1722,8 +1739,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
       });
     };
 
+    /*  **완사입·임가공은 생산이 없다 — 재고로만 나간다.**
+     *  그래서 `buildStockUseRows` 가 빼 버리는데, 그냥 지나가면 재고가 모자란 것도 모른다.
+     *  여기서 재고와 주문량을 견줘 **쓸 수 있으면 쓴다고, 모자라면 음수가 된다고** 알린다. */
+    const 완료줄 = plan.items[itemIdx];
+    const 완료품목 = 완료줄 ? allItems.find(p => p.id === 완료줄.itemId) : undefined;
+    if (applying && lineRows.length === 0 && 완료줄 && 완료품목 && isGoodsItem(완료품목)) {
+      const 주문량 = stockUnits(완료줄, 완료품목);
+      const 재고 = unreservedItemStock(완료품목);
+      const 단위 = unpackComponent(완료품목) ? '박스' : (완료품목.unit || '개');
+      const 모자란양 = Math.round((주문량 - 재고) * 1000) / 1000;
+      setGoodsStockAsk(모자란양 > 0 ? {
+        message: `재고가 부족합니다 — “${완료품목.name}”`,
+        subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
+          + `이대로 진행하면 출고할 때 재고가 ${Math.round((재고 - 주문량) * 1000) / 1000}${단위} 로 음수가 됩니다.\n`
+          + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.`,
+        confirmText: '그래도 완료',
+        onConfirm: () => { setGoodsStockAsk(null); void save(); },
+      } : {
+        message: `“${완료품목.name}” 재고 ${주문량}${단위}를 씁니다.`,
+        subMessage: `지금 재고 ${재고}${단위} → 출고하면 ${Math.round((재고 - 주문량) * 1000) / 1000}${단위}.\n`
+          + `사 오거나 맡긴 물건이라 생산하지 않습니다.`,
+        confirmText: '완료',
+        onConfirm: () => { setGoodsStockAsk(null); void save(); },
+      });
+      return;
+    }
+
     // 생산품은 주문 전체 상태와 관계없이 품목 하나를 완료할 때마다 재고 확인창을 거친다.
-    // 완사입·임가공 상품은 buildStockUseRows가 제외하므로 생산 확인 없이 체크만 저장한다.
     startSave();
   };
 
@@ -4984,6 +5027,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
           confirmText="삭제하기"
           onConfirm={() => { void confirmCatalogItemDelete(); }}
           onCancel={() => setCatalogDeleteAsk(null)}
+        />
+      )}
+      {/*  임가공·완사입 품목 완료 — 재고를 쓰는지, 모자라 음수가 되는지 알린다 */}
+      {goodsStockAsk && (
+        <ConfirmModal
+          message={goodsStockAsk.message}
+          subMessage={goodsStockAsk.subMessage}
+          confirmText={goodsStockAsk.confirmText}
+          onConfirm={goodsStockAsk.onConfirm}
+          onCancel={() => setGoodsStockAsk(null)}
         />
       )}
       {appNotice && (
