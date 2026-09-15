@@ -448,6 +448,16 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     다음.has(열쇠) ? 다음.delete(열쇠) : 다음.add(열쇠);
     return 다음;
   });
+  /*  **묶음 숫자 색**(2026-09-16 사장님: "택배는 분홍색으로 글씨 해봐" → "숫자에만 색 넣어"
+      → "배송도 숫자에만 색넣고"). 이름은 안 칠한다 — 카드의 거래처명 색과 다투고 정작
+      몇 건인지가 안 읽힌다. 방식마다 색이 달라야 접힌 채로도 눈으로 갈린다.
+      **클래스는 통째로 적는다** — Tailwind 는 조립한 이름을 못 알아본다. */
+  const 묶음숫자색: Record<string, string> = {
+    택배: 'text-pink-600',
+    배송: 'text-sky-600',
+    직접수령: 'text-emerald-600',
+  };
+
   const 접힌묶음 = (열쇠: string, 방식: string) => {
     const 기본접힘 = 방식 === '택배';
     return 묶음토글.has(열쇠) ? !기본접힘 : 기본접힘;
@@ -545,12 +555,15 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
         )}
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1">
-            <span className={`min-w-0 truncate text-[10px] font-bold ${STATUS_HEAD_LINE[o.status] ?? 'text-slate-700'} ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
-            {/*  **출고 방식**(2026-09-12 사장님: "거래처명 옆에 출고 방식 하나 추가해라") —
+            {/*  **출고 방식은 거래처명 **앞**이다**(2026-09-16 사장님: "배송 택배 이런게 거래처명
+                 좌측으로 오자"). 뒤에 두면 긴 거래처명에 밀려 잘려 나갔고, 딱지가 줄마다
+                 다른 자리에 서서 세로로 훑을 수가 없었다. 앞에 세우면 딱지들이 한 줄로 선다.
+                 주문 카드도 판매 채널을 이름 앞에 둔다 — 같은 규칙이다.
                  배송·직접수령·택배. 안 적힌 옛 주문은 판매 채널로 읽는다(`shipMethodOf`). */}
             <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-black ${channelStyle(shipMethodOf(o) === '배송' ? '일반' : shipMethodOf(o)).chip}`}>
               {shipMethodOf(o)}
             </span>
+            <span className={`min-w-0 truncate text-[10px] font-bold ${STATUS_HEAD_LINE[o.status] ?? 'text-slate-700'} ${끝났나 ? 'line-through' : ''}`}>{이름}</span>
           </span>
           {/*  **주문번호를 누르면 주문 카드**(2026-09-15 사장님) — 2026-09-12 에 여기 붙였던
                출고 일정 수정은 카드 전체로 옮겼다. 품목·수량을 보려는 일은 가끔이라
@@ -646,15 +659,22 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
       return (
         <React.Fragment key={이름}>
+          {/*  **묶음 머리는 눈에 띄어야 한다**(2026-09-16 사장님: "택배랑 배송 접어둔 버튼이
+               표가 너무 안난다"). 9px 회색 글자가 카드들 사이에 묻혀 접힌 묶음이 있는지도
+               몰랐다. 바탕과 아래 금을 줘서 **줄이 갈리는 자리**로 읽히게 한다.
+
+               **색은 숫자에만**(같은 날 사장님: "택배는 분홍색으로 글씨 해봐" → "숫자에만 색 넣어").
+               이름까지 칠하면 카드의 거래처명 색과 다투고, 정작 몇 건인지가 안 읽힌다. */}
           <button
             type="button"
             onClick={e => { e.stopPropagation(); 묶음접기(열쇠); }}
             aria-expanded={!접힘}
-            className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-[9px] font-black text-slate-500 transition-colors hover:bg-slate-100"
+            title={접힘 ? `${이름} 펴기` : `${이름} 접기`}
+            className="flex w-full items-center gap-1 rounded-md border-b border-slate-200 bg-slate-100 px-1.5 py-1 text-[10px] font-black text-slate-700 transition-colors hover:bg-slate-200"
           >
-            <ChevronDown size={10} className={`shrink-0 transition-transform ${접힘 ? '-rotate-90' : ''}`} aria-hidden="true" />
+            <ChevronDown size={11} className={`shrink-0 text-slate-400 transition-transform ${접힘 ? '-rotate-90' : ''}`} aria-hidden="true" />
             <span className="truncate">{이름}</span>
-            <span className="tabular-nums text-slate-400">{묶음ids.length}</span>
+            <span className={`ml-auto shrink-0 tabular-nums ${묶음숫자색[이름] ?? 'text-slate-500'}`}>{묶음ids.length}</span>
           </button>
           {!접힘 && 차례.map(id => {
             const o = orders.find(x => x.id === id);
