@@ -15,6 +15,10 @@ const db = admin.firestore();
 
 const REGION = 'asia-northeast3';
 
+//  **말로 온 주문을 읽어 표로 옮긴다** — 복사주문의 'AI로 다시 읽기'(2026-09-15 사장님).
+//  열쇠를 앱에 두면 브라우저에서 그대로 보이므로 서버에만 둔다. 자세한 것은 그 파일에.
+export { extractOrder } from './extractOrder';
+
 // 아이디 찾기: 이름 + 연락처가 일치하는 계정의 username 반환
 export const findUsername = onCall({ region: REGION }, async (request) => {
   const name = String(request.data?.name ?? '').trim();

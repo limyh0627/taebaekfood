@@ -1,6 +1,9 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays } from 'lucide-react';
+import { getApp } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { validateExtract, catalogLine } from '../src/shared/orderExtract';
+import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
 import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
@@ -123,6 +126,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
+  //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<{ tone: 'good' | 'warn' | 'bad'; text: string } | null>(null);
   const [isDelivery, setIsDelivery] = useState(false);
   const [orderDate, setOrderDate] = useState(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -197,7 +203,71 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const analyze = () => {
     const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
     setParsedLines(lines.map(l => parseLine(l, productPool)));
+    setAiNote(null);
     setStep('review');
+  };
+
+  /**
+   * **AI 로 다시 읽기**(2026-09-15 사장님: "api달아서 메시지에서 주문 추출하는 기능 …
+   * 그냥 복사주문 업그레이드", "걔는 너무 못해").
+   *
+   * 규칙(정규식)은 `참기름 두 박스요`(숫자가 없다) · `볶음참깨 5, 참기름 3`(한 줄에 둘) ·
+   * `내일 오전까지`(날짜) 같은 **사람 말**을 못 읽는다. 그런 글만 이쪽으로 보낸다 —
+   * 깔끔한 주문은 규칙이 공짜로 읽으므로 값이 안 든다.
+   *
+   * **저장은 안 한다.** 읽어 온 것을 아래 확인 표에 채워 놓기만 하고, 사람이 보고 고쳐
+   * 저장한다 — 수량 하나가 틀리면 재고·전표가 다 틀어진다.
+   * 열쇠는 앱에 없다. Cloud Function(`extractOrder`)이 서버 시크릿으로 부른다.
+   */
+  const aiRead = async () => {
+    if (aiBusy) return;
+    const 글 = pasteText.trim();
+    if (!글 || !productPool.length) return;
+    setAiBusy(true);
+    setAiNote(null);
+    try {
+      const 부르기 = httpsCallable(getFunctions(getApp(), 'asia-northeast3'), 'extractOrder');
+      const 답 = await 부르기({
+        text: 글,
+        catalog: productPool.map(catalogLine),
+        //  거래처는 이미 골라 놓고 오는 화면이라 목록을 안 보낸다 — 값만 비싸진다.
+        today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()),
+      });
+      const 읽은것 = validateExtract(답.data as Record<string, unknown>, productPool);
+
+      if (!읽은것.lines.length) {
+        setAiNote({ tone: 'bad', text: '주문으로 읽을 것을 못 찾았습니다. 규칙으로 읽은 결과를 그대로 둡니다.' });
+        return;
+      }
+      //  **읽은 것으로 갈아 끼운다** — 규칙이 잘못 잡은 줄을 남겨 두면 둘이 섞여 더 헷갈린다.
+      setParsedLines(읽은것.lines.map(줄 => ({
+        rawText: 줄.source ?? 줄.name,
+        rawName: 줄.name,
+        qty: 줄.qty,
+        //  박스 여부를 못 정했으면 지금 화면이 쓰던 기본값(박스)을 그대로 둔다.
+        isBox: 줄.isBox ?? true,
+        selectedProductId: 줄.itemId,
+      })));
+      if (읽은것.deliveryDate) setDeadline(읽은것.deliveryDate);
+
+      const 못읽은수 = 읽은것.rejected.length;
+      setAiNote({
+        tone: 못읽은수 ? 'warn' : 'good',
+        text: [
+          `${읽은것.lines.length}건을 읽었습니다.`,
+          읽은것.deliveryDate ? `출고예정일 ${읽은것.deliveryDate}` : '',
+          읽은것.note ? `비고: ${읽은것.note}` : '',
+          //  **못 읽은 것을 조용히 버리지 않는다** — 빠진 줄을 나중에 못 찾는다.
+          못읽은수 ? `못 읽은 ${못읽은수}건: ${읽은것.rejected.map(r => r.text).join(', ')}` : '',
+        ].filter(Boolean).join(' · '),
+      });
+    } catch (error) {
+      console.error('[주문 AI 읽기] 실패', error);
+      const 사유 = error instanceof Error ? error.message : String(error);
+      setAiNote({ tone: 'bad', text: `읽지 못했습니다 — ${사유}` });
+    } finally {
+      setAiBusy(false);
+    }
   };
   const matchedLineCount = parsedLines.filter(line => !!line.selectedProductId).length;
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
@@ -412,6 +482,29 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   주문 내용 다시 입력
                 </button>
               </div>
+              {/*  **못 읽었으면 AI 에게 다시 시킨다**(2026-09-15 사장님). 규칙이 잘 읽은 주문은
+                   누를 일이 없으므로 값이 안 든다 — 말로 온 주문만 이쪽으로 간다. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-slate-400">
+                  규칙으로 읽은 결과입니다. 사람 말로 온 주문이면 아래 단추를 눌러 보세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={aiRead}
+                  disabled={aiBusy || !pasteText.trim()}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-2.5 text-[11px] font-black text-indigo-600 transition-colors enabled:hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Sparkles size={12} aria-hidden="true" />{aiBusy ? '읽는 중…' : 'AI로 다시 읽기'}
+                </button>
+              </div>
+              {aiNote && (
+                <p className={`rounded-lg px-3 py-2 text-[11px] font-bold leading-4 ${
+                  aiNote.tone === 'good' ? 'bg-emerald-50 text-emerald-700'
+                  : aiNote.tone === 'warn' ? 'bg-amber-50 text-amber-700'
+                  : 'bg-rose-50 text-rose-700'}`}>
+                  {aiNote.text}
+                </p>
+              )}
               <div className={`rounded-xl border px-3 py-3 ${unmatchedLineCount === 0 ? 'border-emerald-200 bg-emerald-50' : matchedLineCount === 0 ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'}`} role="status">
                 <div className="flex items-start gap-2.5">
                   {unmatchedLineCount === 0 ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <AlertCircle size={18} className={`mt-0.5 shrink-0 ${matchedLineCount === 0 ? 'text-rose-600' : 'text-amber-600'}`} aria-hidden="true" />}
