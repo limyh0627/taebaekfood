@@ -508,13 +508,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       <div
         key={o.id}
         {...opt.drag}
-        onClick={() => setPreviewDeliveryOrderId(o.id)}
+        /*  **카드를 누르면 출고 일정 수정**(2026-09-15 사장님: "카드 자체를 누르면 출고일정수정이
+             뜨게 바꾸고 주문 번호를 눌렀을때 주문카드 보이게"). 둘을 맞바꿨다 —
+             배송 화면에서 카드를 누르는 까닭은 열에 아홉 **날짜를 옮기려는 것**인데,
+             넓은 카드가 주문 상세를 열고 좁은 주문번호가 일정 수정을 열고 있었다.
+             자주 하는 일을 넓은 자리에 둔다. */
+        onClick={() => handleOrderClick(o)}
         /*  **주문 카드와 같은 옷을 입힌다**(2026-09-14 사장님: "저기 있는 카드들도 주문카드랑
              색 맞춰 글씨랑 테두리"). 전에는 `statusChip` 을 통째로 얹어 **바탕까지 상태색으로
              칠했다** — 캘린더 칸은 카드가 작고 여럿이라 바탕이 깔리면 온통 색판이 됐다
              ("대기중 왤케 노래"). 주문 카드는 바탕이 흰색이고 **테두리와 글자**로만 상태를
              알린다(`STATUS_CARD_BORDER`·`STATUS_HEAD_LINE`) — 같은 규칙을 쓴다.
              오전·오후는 번호 색으로 남는다(`opt.번호색`). */
+        title={`${이름} · ${DELIVERY_STATUS_LABEL[o.status] ?? o.status} — 눌러서 출고 일정 수정`}
         className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${STATUS_CARD_BORDER[o.status] ?? 'border-slate-200'} ${끝났나 ? 'opacity-50' : ''}`}
       >
         {/*  **번호를 눌러 자리를 고른다**(2026-09-15 사장님: "배송캘린더에 배송순서 숫자 눌러서
@@ -546,15 +552,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
               {shipMethodOf(o)}
             </span>
           </span>
-          {/*  **주문번호를 누르면 출고 일정 수정 창**(2026-09-12 사장님: "주문번호 하나 추가해줘
-               눌러서 출고일정 수정하는 모달 띄우는"). 창은 **이미 있는 것**을 쓴다 —
-               날짜 상세에서 쓰던 `handleOrderClick` 그대로다(시험도 그걸 잠그고 있다).
-               카드를 누르면 주문 상세라, 둘이 겹치지 않게 눌림을 여기서 끊는다. */}
+          {/*  **주문번호를 누르면 주문 카드**(2026-09-15 사장님) — 2026-09-12 에 여기 붙였던
+               출고 일정 수정은 카드 전체로 옮겼다. 품목·수량을 보려는 일은 가끔이라
+               좁은 자리가 맞다. 카드 눌림과 겹치지 않게 여기서 끊는다. */}
           <button
             type="button"
-            title="눌러서 출고일정 수정"
-            aria-label={`${이름} 출고 일정 수정`}
-            onClick={e => { e.stopPropagation(); handleOrderClick(o); }}
+            title="눌러서 주문 상세 보기"
+            aria-label={`${이름} 주문 상세`}
+            onClick={e => { e.stopPropagation(); setPreviewDeliveryOrderId(o.id); }}
             className="block max-w-full truncate text-left text-[9px] font-black text-indigo-500 tabular-nums hover:underline"
           >{cardNoLabel(o)}</button>
           {calendarLocationOf(o) && (
@@ -563,7 +568,10 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
             </span>
           )}
         </span>
-        <span className={`shrink-0 text-[9px] font-black ${STATUS_HEAD_LINE[o.status] ?? 'text-slate-500'}`}>{DELIVERY_STATUS_LABEL[o.status]}</span>
+        {/*  **상태 글자는 뺐다 — 색으로만 알린다**(2026-09-15 사장님: "작업완료 대기중 이런건
+             빼고 색깔로만 구분할게 배송캘린더 쪽에선"). 칸이 좁아 `작업완료` 네 글자가
+             거래처명을 밀어냈다. 테두리와 거래처명 색이 이미 같은 말을 하고 있다
+             (`STATUS_CARD_BORDER`·`STATUS_HEAD_LINE`). 마우스를 올리면 글자로도 나온다. */}
         {opt.drag?.draggable && <GripVertical size={10} className="shrink-0 text-slate-300" />}
       </div>
     );
@@ -595,9 +603,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       const o = orders.find(x => x.id === id);
       return o ? shipMethodOf(o) : '배송';
     };
-    //  칸에 서는 차례대로 묶음을 세운다 — 있는 방식만, 나온 차례 그대로.
+    /*  **택배가 맨 위다**(2026-09-15 사장님: "택배가 위로 올라오게 해 캘린더에서").
+        택배는 접혀 있어 한 줄만 먹는다 — 위에 두면 그 한 줄만 지나면 바로 우리 차 도는
+        차례가 나온다. 아래에 두면 배송 목록이 길 때 택배가 몇 건인지 보려고 칸을 굴려야 한다.
+        나머지는 칸에 서는 차례 그대로. */
     const 묶음이름: string[] = [];
     for (const id of ids) { const m = 방식(id); if (!묶음이름.includes(m)) 묶음이름.push(m); }
+    묶음이름.sort((a, b) => (a === '택배' ? 0 : 1) - (b === '택배' ? 0 : 1));
 
     const 놓기 = (놓인id: string) => {
       const 끈것 = 끄는카드.current;
