@@ -101,7 +101,7 @@ import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
-import { blockedEditLine, editBlockMessage } from '../../shared/orderEditGuard';
+import { classifyOrderEdit, editBlockMessage } from '../../shared/orderEditGuard';
 import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
 import { diffOrderItems } from '../../shared/orderItemDiff';
 import { shipQtyOfLine } from '../../shared/shipDeduction';
@@ -1961,8 +1961,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
     /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
         "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
         무관하니 안 막고, 생산된 **그 줄**의 수량·구성만 막는다. 판정은 `orderEditGuard`. */
-    const 걸린줄 = o ? blockedEditLine(o, items) : null;
-    if (걸린줄) { alert(editBlockMessage(o, 걸린줄)); return; }
+    const 판정 = o ? classifyOrderEdit(o, items) : { kind: 'ok' as const };
+    if (판정.kind === 'blocked') { alert(editBlockMessage(o, 판정.line)); return; }
+    /*  **줄을 더한 것은 막지 않는다 — 묻고 작업중으로 돌린다**(2026-09-15 사장님:
+        "작업완료 주문에 품목추가하면 가드로 막지말고 알람띄우고 기존 완료 품목은 유지한
+        상태로, 작업중으로 돌려보내 굳이 막을 이유가 없음").
+
+        더하는 건 재고를 안 건드린다 — 옛 줄은 그대로고 새 줄은 아직 아무것도 안 했다.
+        다만 **작업완료였던 주문에 할 일이 하나 생긴 것**이라 상태가 그대로면 거짓말이 된다.
+        이미 끝낸 줄의 체크와 재고는 **손대지 않는다**(`itemInventory` 를 안 건드린다) —
+        되돌리는 게 아니라 할 일이 붙는 것이다. */
+    if (판정.kind === 'added' && o?.status === OrderStatus.DISPATCHED) {
+      const 되돌릴수 = o.items.filter(줄 => 줄.checked).length;
+      if (!window.confirm(
+        `작업완료된 주문에 품목을 더합니다 — ${판정.added.join(', ')}\n\n`
+        + `이미 끝낸 ${되돌릴수}개 품목의 작업완료와 재고는 그대로 둡니다.\n`
+        + `새로 더한 품목이 남아 있으므로 주문은 '작업중' 으로 돌아갑니다.\n\n계속할까요?`
+      )) return;
+      updateItem('orders', orderId, { status: OrderStatus.PROCESSING });
+    }
     /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
         작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
         자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */

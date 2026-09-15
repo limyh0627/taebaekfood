@@ -440,6 +440,18 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       담는 데가 없어 번호도 끌기도 없었다. 안 담긴 주문은 뒤에 붙는다. */
   const [orderingByDate, setOrderingByDate] = useState<Record<string, string[]>>({});
   const 끄는카드 = React.useRef<{ id: string; date: string } | null>(null);
+  /*  **출고 방식 묶음을 접었다 편다**(2026-09-15 사장님) — 택배는 기본이 접힘이다.
+      손댄 적 없는 묶음은 기본을 따르고, 한 번 누른 묶음만 여기 담긴다(그래야 날마다 안 흔들린다). */
+  const [묶음토글, set묶음토글] = useState<Set<string>>(new Set());
+  const 묶음접기 = (열쇠: string) => set묶음토글(이전 => {
+    const 다음 = new Set(이전);
+    다음.has(열쇠) ? 다음.delete(열쇠) : 다음.add(열쇠);
+    return 다음;
+  });
+  const 접힌묶음 = (열쇠: string, 방식: string) => {
+    const 기본접힘 = 방식 === '택배';
+    return 묶음토글.has(열쇠) ? !기본접힘 : 기본접힘;
+  };
 
   const saveDayOrdering = (dateStr: string, next: string[]) => {
     setOrderingByDate(prev => ({ ...prev, [dateStr]: next }));
@@ -481,7 +493,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
    */
   const renderDeliveryCard = (
     o: Order,
-    opt: { 번호?: number; 띠?: string; 번호색?: string; drag?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean } } = {},
+    opt: {
+      번호?: number; 띠?: string; 번호색?: string;
+      /** 그 묶음에 몇 장인가 — 번호 고르개에 세울 숫자들. */
+      번호총수?: number;
+      /** 번호를 눌러 자리를 옮긴다(0부터). 안 주면 번호는 글자로만 뜬다. */
+      onGotoNumber?: (목표: number) => void;
+      drag?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
+    } = {},
   ) => {
     const 이름 = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
     const 끝났나 = o.status === OrderStatus.SHIPPED;
@@ -498,8 +517,25 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
              오전·오후는 번호 색으로 남는다(`opt.번호색`). */
         className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${STATUS_CARD_BORDER[o.status] ?? 'border-slate-200'} ${끝났나 ? 'opacity-50' : ''}`}
       >
+        {/*  **번호를 눌러 자리를 고른다**(2026-09-15 사장님: "배송캘린더에 배송순서 숫자 눌러서
+             번호 타겟할 수 있게 바꿔주고"). 좁은 칸에서 카드를 끌어 옮기는 것보다 확실하다 —
+             금일 배송순서 판이 진작 쓰던 방식이라 모양을 맞춘다. */}
         {opt.번호 !== undefined && (
-          <span className={`w-3 shrink-0 text-[9px] font-black ${opt.번호색 ?? 'text-slate-400'}`}>{opt.번호}</span>
+          opt.onGotoNumber && (opt.번호총수 ?? 0) > 1 ? (
+            <select
+              aria-label={`${이름} 배송 순서`}
+              value={opt.번호}
+              onClick={e => e.stopPropagation()}
+              onPointerDown={e => e.stopPropagation()}
+              onChange={e => { e.stopPropagation(); opt.onGotoNumber?.(Number(e.target.value) - 1); }}
+              className={`w-6 shrink-0 cursor-pointer appearance-none rounded bg-transparent text-center text-[9px] font-black outline-none hover:bg-slate-100 ${opt.번호색 ?? 'text-slate-400'}`}
+            >
+              {Array.from({ length: opt.번호총수 ?? 0 }, (_, i) => i + 1)
+                .map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          ) : (
+            <span className={`w-3 shrink-0 text-[9px] font-black ${opt.번호색 ?? 'text-slate-400'}`}>{opt.번호}</span>
+          )
         )}
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1">
@@ -542,43 +578,95 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
    * 번호는 `오전 → 오후` 로 이어 매긴다. 카드를 끌어 **같은 날 안에서는 차례가 바뀌고**,
    * 다른 날 칸에 떨어뜨리면 날짜가 바뀐다(바깥 칸이 받는다 — 그래서 여기서 전파를 안 막는다).
    */
+  /**
+   * **하루치를 출고 방식으로 묶는다**(2026-09-15 사장님: "같은 날짜에 있는 주문들이 배송방식으로
+   * 묶이게 하고 열었다 접었다 할 수 있게 택배는 기본적으로 접혀있고 그리고 배송방식 택배인
+   * 주문들은 자기네 순서 따로 써").
+   *
+   * 전에는 오전·오후로만 갈라, 우리 차가 도는 집과 기사가 실어 가는 택배가 한 줄에 섞여 있었다.
+   * **도는 차례는 우리 차 것에만 뜻이 있다** — 택배는 몇 번째든 상관이 없다.
+   * 그래서 방식으로 먼저 묶고 **번호를 묶음 안에서 매긴다.**
+   *
+   * **택배는 접어 둔다** — 대개 손댈 일이 없는데 칸을 제일 많이 먹는다. 접힌 채로도 몇 건인지는 보인다.
+   * 오전·오후는 묶음 **안에서** 차례를 가르는 데 그대로 쓴다(오전 먼저, 오후 나중).
+   */
   const renderDaySequence = (dateStr: string, ids: string[], 저장: (_next: string[]) => void) => {
-    const 오전 = ids.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
-    const 오후 = ids.filter(id => deliveryTimeSlots[id] === '오후');
-    const 이어진 = [...오전, ...오후];
+    const 방식 = (id: string) => {
+      const o = orders.find(x => x.id === id);
+      return o ? shipMethodOf(o) : '배송';
+    };
+    //  칸에 서는 차례대로 묶음을 세운다 — 있는 방식만, 나온 차례 그대로.
+    const 묶음이름: string[] = [];
+    for (const id of ids) { const m = 방식(id); if (!묶음이름.includes(m)) 묶음이름.push(m); }
+
     const 놓기 = (놓인id: string) => {
       const 끈것 = 끄는카드.current;
       끄는카드.current = null;
       if (!끈것 || 끈것.date !== dateStr || 끈것.id === 놓인id) return;   // 다른 날 → 바깥 칸이 받는다
-      const next = 이어진.filter(id => id !== 끈것.id);
+      const next = ids.filter(id => id !== 끈것.id);
       next.splice(Math.max(0, next.indexOf(놓인id)), 0, 끈것.id);
       저장(next);
     };
-    return ([
-      { 때: '오전' as const, 목록: 오전, 색: 'text-amber-500', 띠: 'border-amber-100', 번호색: 'text-amber-500' },
-      { 때: '오후' as const, 목록: 오후, 색: 'text-indigo-500', 띠: 'border-indigo-100', 번호색: 'text-indigo-500' },
-    ]).map(칸 => (
-      <React.Fragment key={칸.때}>
-        <span className={`px-1 text-[9px] font-black ${칸.색} ${칸.때 === '오후' ? 'pt-1' : ''}`}>{칸.때}</span>
-        {칸.목록.length === 0 && <p className="py-1 text-center text-[9px] text-slate-300">없음</p>}
-        {칸.목록.map(id => {
-          const o = orders.find(x => x.id === id);
-          if (!o) return null;
-          return renderDeliveryCard(o, {
-            번호: 이어진.indexOf(id) + 1,
-            띠: 칸.띠,
-            번호색: 칸.번호색,
-            drag: {
-              draggable: true,
-              onDragStart: e => { 끄는카드.current = { id, date: dateStr }; handleDragStart(e, id); },
-              onDragEnd: () => { 끄는카드.current = null; },
-              onDragOver: e => e.preventDefault(),
-              onDrop: () => 놓기(id),
-            },
-          });
-        })}
-      </React.Fragment>
-    ));
+
+    return 묶음이름.map(이름 => {
+      //  그 묶음 것만, 오전 먼저 오후 나중으로.
+      const 묶음ids = ids.filter(id => 방식(id) === 이름);
+      const 오전 = 묶음ids.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
+      const 오후 = 묶음ids.filter(id => deliveryTimeSlots[id] === '오후');
+      const 차례 = [...오전, ...오후];
+      const 열쇠 = `${dateStr}__${이름}`;
+      const 접힘 = 접힌묶음(열쇠, 이름);
+
+      /*  **번호를 눌러 자리를 고른다**(사장님: "배송순서 숫자 눌러서 번호 타겟할 수 있게").
+          좁은 칸에서 카드를 끌어 옮기는 것보다 확실하다 — 금일 배송순서 판이 진작 쓰던 방식이다.
+          **묶음 안에서만** 자리를 바꾸고, 저장할 때 그 자리에 도로 끼워 넣는다 —
+          그래야 택배를 옮겨도 우리 차 도는 차례가 안 흔들린다. */
+      const 자리바꾸기 = (id: string, 목표: number) => {
+        const 지금 = 차례.indexOf(id);
+        if (지금 < 0 || 목표 < 0 || 목표 === 지금 || 목표 >= 차례.length) return;
+        const 새차례 = [...차례];
+        const [옮길것] = 새차례.splice(지금, 1);
+        새차례.splice(목표, 0, 옮길것);
+        //  전체 목록에서 **이 묶음 자리들만** 새 차례로 갈아 끼운다.
+        let n = 0;
+        저장(ids.map(원래 => 방식(원래) === 이름 ? 새차례[n++] : 원래));
+      };
+
+      return (
+        <React.Fragment key={이름}>
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); 묶음접기(열쇠); }}
+            aria-expanded={!접힘}
+            className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-[9px] font-black text-slate-500 transition-colors hover:bg-slate-100"
+          >
+            <ChevronDown size={10} className={`shrink-0 transition-transform ${접힘 ? '-rotate-90' : ''}`} aria-hidden="true" />
+            <span className="truncate">{이름}</span>
+            <span className="tabular-nums text-slate-400">{묶음ids.length}</span>
+          </button>
+          {!접힘 && 차례.map(id => {
+            const o = orders.find(x => x.id === id);
+            if (!o) return null;
+            const 오후인가 = deliveryTimeSlots[id] === '오후';
+            return renderDeliveryCard(o, {
+              //  **묶음 안에서 매긴다** — 택배가 우리 차 번호를 밀지 않는다.
+              번호: 차례.indexOf(id) + 1,
+              번호총수: 차례.length,
+              onGotoNumber: 목표 => 자리바꾸기(id, 목표),
+              띠: 오후인가 ? 'border-indigo-100' : 'border-amber-100',
+              번호색: 오후인가 ? 'text-indigo-500' : 'text-amber-500',
+              drag: {
+                draggable: true,
+                onDragStart: e => { 끄는카드.current = { id, date: dateStr }; handleDragStart(e, id); },
+                onDragEnd: () => { 끄는카드.current = null; },
+                onDragOver: e => e.preventDefault(),
+                onDrop: () => 놓기(id),
+              },
+            });
+          })}
+        </React.Fragment>
+      );
+    });
   };
 
   const renderWeekCalendar = () => {

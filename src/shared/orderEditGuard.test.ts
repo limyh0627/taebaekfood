@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stockMoved, canEditItems, editBlockMessage, blockedEditLine } from './orderEditGuard';
+import { stockMoved, canEditItems, editBlockMessage, blockedEditLine, classifyOrderEdit } from './orderEditGuard';
 import type { OrderItem } from './types';
 
 const 주문 = (o: { producedAt?: string; shippedOut?: boolean }) => o;
@@ -130,5 +130,70 @@ describe('blockedEditLine — 어느 줄이 걸리나', () => {
     const o = 그주문({ itemInventory: undefined });
     const 새것 = [줄({ quantity: 99 }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
     expect(blockedEditLine(o as never, 새것)).toBeNull();
+  });
+});
+
+/**
+ * **더하기와 빼기는 다르다**(2026-09-15 사장님: "작업완료 주문에 품목추가하면 가드로 막지말고
+ * 알람띄우고 기존 완료 품목은 유지한 상태로, 작업중으로 돌려보내 굳이 막을 이유가 없음").
+ *
+ * 전에는 줄 수가 달라지면 짝을 못 맞춘다며 주문을 통째로 막았다 — 빼는 것과 더하는 것이
+ * 같은 취급을 받았다. 더하는 건 재고를 안 건드린다.
+ */
+describe('손질 갈래 가리기', () => {
+  //  붙박이 값은 이 블록 안에 둔다 — 위 블록의 것은 여기서 안 보인다.
+  const 줄 = (부분: Partial<OrderItem> = {}): OrderItem => ({
+    lineId: 'L1', itemId: 'p-1', name: '참기름/골드', quantity: 10, price: 1000, ...부분,
+  } as OrderItem);
+  const 그주문 = (부분: Record<string, unknown> = {}) => ({
+    items: [줄(), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })],
+    itemInventory: { L1: { lineId: 'L1', applied: true } },   // 골드만 생산됐다
+    producedAt: '2026-09-15T00:00:00.000Z',
+    ...부분,
+  });
+  const 새품목 = (over: Partial<OrderItem> = {}): OrderItem =>
+    ({ lineId: 'L9', itemId: 'p-9', name: '새로 넣은 들기름', quantity: 2, price: 0, ...over } as OrderItem);
+
+  it('생산된 주문에 **줄을 더하면 막지 않고 물어본다**', () => {
+    const o = 그주문();
+    const 판정 = classifyOrderEdit(o as never, [줄(), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' }), 새품목()]);
+    expect(판정).toEqual({ kind: 'added', added: ['새로 넣은 들기름'] });
+  });
+
+  it('가운데에 끼워 넣어도 더하기다 — 자리로 맞추면 아래가 다 밀려 "다 바뀌었다"가 된다', () => {
+    const o = 그주문();
+    const 판정 = classifyOrderEdit(o as never, [줄(), 새품목(), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]);
+    expect(판정).toEqual({ kind: 'added', added: ['새로 넣은 들기름'] });
+  });
+
+  it('**생산된 줄을 빼면 막는다** — 이미 빠진 재고가 갈 곳을 잃는다', () => {
+    const o = 그주문();
+    const 판정 = classifyOrderEdit(o as never, [줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]);
+    expect(판정).toEqual({ kind: 'blocked', line: '참기름/골드' });
+  });
+
+  it('생산 안 된 줄은 빼도 된다', () => {
+    const o = 그주문();
+    const 판정 = classifyOrderEdit(o as never, [줄()]);
+    expect(판정).toEqual({ kind: 'ok' });
+  });
+
+  it('더하면서 생산된 줄의 수량까지 바꾸면 막는다', () => {
+    const o = 그주문();
+    const 판정 = classifyOrderEdit(o as never, [줄({ quantity: 99 }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' }), 새품목()]);
+    expect(판정).toEqual({ kind: 'blocked', line: '참기름/골드' });
+  });
+
+  it('줄 수가 같으면 예전 판정 그대로다', () => {
+    const o = 그주문();
+    expect(classifyOrderEdit(o as never, [줄({ quantity: 99 }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]))
+      .toEqual({ kind: 'blocked', line: '참기름/골드' });
+    expect(classifyOrderEdit(o as never, [줄({ note: '급함' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]))
+      .toEqual({ kind: 'ok' });
+  });
+
+  it('아무것도 안 움직인 주문은 뭘 하든 자유다', () => {
+    const 맨주문 = { items: [줄()] };
+    expect(classifyOrderEdit(맨주문 as never, [줄(), 새품목()])).toEqual({ kind: 'ok' });
   });
 });

@@ -135,3 +135,82 @@ export function editBlockMessage(
 `
     + `주문 상태를 되돌린 뒤 고치고 다시 처리해 주세요 — 그때 재고가 같이 따라옵니다.`;
 }
+
+/**
+ * **이 손질이 어떤 손질인가** — 막을 것, 물어볼 것, 그냥 할 것을 가른다.
+ *
+ * 2026-09-15 사장님: "작업완료 주문에 품목추가하면 가드로 막지말고 알람띄우고 기존 완료
+ * 품목은 유지한 상태로, 작업중으로 돌려보내 굳이 막을 이유가 없음".
+ *
+ * 맞다 — **줄을 더하는 건 재고를 안 건드린다.** 그런데 `blockedEditLine` 은 줄 수가 달라지면
+ * 짝을 못 맞춘다며 주문을 통째로 막았다. 빼는 것과 더하는 것이 같은 취급을 받은 것이다:
+ *
+ *   · **빼기**는 막아야 한다 — 생산된 줄을 지우면 이미 빠진 재고가 갈 곳을 잃는다.
+ *   · **더하기**는 막을 이유가 없다 — 옛 줄은 그대로 있고 새 줄은 아직 아무것도 안 했다.
+ *
+ * 다만 조용히 넘기지도 않는다. 작업완료였던 주문에 할 일이 하나 생긴 것이라
+ * **주문은 작업중으로 돌아가야 한다** — 그 말을 하고 받는다.
+ */
+export type OrderEditVerdict =
+  | { kind: 'ok' }
+  /** 막는다 — 걸린 줄 이름 */
+  | { kind: 'blocked'; line: string }
+  /** 더하기만 했다 — 물어보고 진행한다. `added` 는 새로 붙은 품목 이름들 */
+  | { kind: 'added'; added: string[] };
+
+/** 그 줄의 내용이 그대로인가 — 재고와 무관한 칸(비고·라벨 등)은 달라도 같은 것으로 본다. */
+const 같은줄 = (옛: 줄, 새: 줄): boolean => {
+  const 칸들 = new Set([...Object.keys(옛), ...Object.keys(새)]);
+  return ![...칸들].some(k => !재고와무관한칸.has(k) && JSON.stringify(옛[k]) !== JSON.stringify(새[k]));
+};
+
+export function classifyOrderEdit(
+  order: Pick<Order, 'itemInventory' | 'producedAt' | 'shippedOut'> & { items?: OrderItem[] },
+  after: readonly OrderItem[],
+): OrderEditVerdict {
+  const before = order.items;
+  if (!before) return { kind: 'ok' };
+
+  //  줄 수가 같으면 예전 판정 그대로 — 자리끼리 맞대어 본다.
+  if (before.length === after.length) {
+    const 걸린줄 = blockedEditLine(order, after);
+    return 걸린줄 ? { kind: 'blocked', line: 걸린줄 } : { kind: 'ok' };
+  }
+
+  //  재고가 안 움직인 주문은 뭘 하든 자유다.
+  if (!stockMoved(order) && !order.itemInventory) return { kind: 'ok' };
+
+  /*  **더하기만 했나** — 옛 줄이 하나도 빠짐없이, 내용 그대로 남아 있어야 한다.
+   *  `lineId` 로 맞춘다. 자리로 맞추면 가운데에 새 줄을 끼웠을 때 아래가 전부 밀려
+   *  "다 바뀌었다"로 읽힌다. `lineId` 가 없는 옛 줄만 자리로 떨어진다. */
+  const 새줄표 = new Map<string, 줄>();
+  const 아이디없는새줄: 줄[] = [];
+  for (const line of after as 줄[]) {
+    if (line.lineId) 새줄표.set(line.lineId, line);
+    else 아이디없는새줄.push(line);
+  }
+
+  const 남은아이디없는줄 = [...아이디없는새줄];
+  for (const 옛 of before as 줄[]) {
+    const 짝 = 옛.lineId ? 새줄표.get(옛.lineId) : undefined;
+    if (짝) {
+      if (!같은줄(옛, 짝)) {
+        //  옛 줄이 바뀌었다 — 생산된 줄이면 막는다(줄 수가 달라진 상태라 더 볼 것도 없다).
+        if (줄이생산됨(order, 옛)) return { kind: 'blocked', line: String(옛.name ?? 옛.itemId ?? '이 품목') };
+      }
+      continue;
+    }
+    //  `lineId` 가 없던 옛 줄은 같은 내용의 새 줄과 짝지어 본다.
+    const 자리 = 남은아이디없는줄.findIndex(새 => 같은줄(옛, 새));
+    if (자리 >= 0) { 남은아이디없는줄.splice(자리, 1); continue; }
+    //  **짝이 없다 = 빠졌다.** 생산된 줄이 빠지면 재고가 갈 곳을 잃는다.
+    if (줄이생산됨(order, 옛)) return { kind: 'blocked', line: String(옛.name ?? 옛.itemId ?? '이 품목') };
+  }
+
+  //  여기까지 왔으면 옛 줄은 다 남아 있다. 늘어난 만큼이 새로 더한 줄이다.
+  const 옛아이디 = new Set((before as 줄[]).map(l => l.lineId).filter(Boolean));
+  const added = (after as 줄[])
+    .filter(l => !l.lineId || !옛아이디.has(l.lineId))
+    .map(l => String(l.name ?? l.itemId ?? '새 품목'));
+  return added.length ? { kind: 'added', added } : { kind: 'ok' };
+}
