@@ -5,7 +5,7 @@ import type {
   IssuedStatement, Item, Order, OrderInventorySnapshot, OrderItemInventoryState,
   OrderRawInventoryTrace, ProductionSalesLog, PurchaseOrder, RawMaterialEntry,
 } from '../../shared/types';
-import { auditDataIntegrity, expectedProductionDeltas, type IntegrityAuditInput } from './dataIntegrityAudit';
+import { auditDataIntegrity, expectedProductionDeltas, isStaleInventoryProcessing, PROCESSING_STALE_MS, type IntegrityAuditInput } from './dataIntegrityAudit';
 
 const productItem = (over: Partial<Item> = {}): Item => ({
   id: 'item-1',
@@ -85,6 +85,18 @@ const coherentSnapshot = (over: Partial<OrderInventorySnapshot> = {}): OrderInve
 });
 
 describe('auditDataIntegrity — 기존 검사', () => {
+  it('processing은 1시간을 넘긴 잠금만 경고한다', () => {
+    const now = Date.now();
+    expect(isStaleInventoryProcessing(new Date(now - PROCESSING_STALE_MS + 1).toISOString(), now)).toBe(false);
+    expect(isStaleInventoryProcessing(new Date(now - PROCESSING_STALE_MS).toISOString(), now)).toBe(true);
+
+    const recent = { ...appliedOrder(), inventoryOperation: { state: 'processing', startedAt: new Date(now - 10 * 60 * 1000).toISOString() } } as unknown as Order;
+    const stale = { ...appliedOrder(), id: 'order-stale', inventoryOperation: { state: 'processing', startedAt: new Date(now - 2 * PROCESSING_STALE_MS).toISOString() } } as unknown as Order;
+    const ids = auditDataIntegrity(input({ orders: [recent, stale] })).map(issue => issue.id);
+    expect(ids).not.toContain('op-processing:order-1');
+    expect(ids).toContain('op-processing:order-stale');
+  });
+
   it('작업 완료 줄에 생산 스냅샷이 없으면 찾는다', () => {
     const issues = auditDataIntegrity(input({ orders: [appliedOrder({ production: undefined as unknown as OrderInventorySnapshot })] }));
 
@@ -118,6 +130,28 @@ describe('auditDataIntegrity — 기존 검사', () => {
 
     expect(ids).toContain('stmt-no-item:statement-1:0');
     expect(ids).toContain('sales-capacity:sales-1:0');
+  });
+
+  it('연결 품목에는 규격이 있는데 전표 출력 규격이 비면 잡는다', () => {
+    const statement = {
+      id: 'statement-spec', companyId: 'taebaek', tradeDate: '2026-09-16', docNo: 'S-SPEC',
+      items: [{ itemId: 'item-1', name: '정상 품목', spec: '', lineKind: 'item' }],
+    } as unknown as IssuedStatement;
+    const ids = auditDataIntegrity(input({ items: [productItem({ spec: '350ml' })], issuedStatements: [statement] })).map(issue => issue.id);
+    expect(ids).toContain('stmt-spec:statement-spec:0');
+  });
+
+  it('선물세트 BOM 구성품이 삭제되면 판매일지 일부 누락으로 잡는다', () => {
+    const set = productItem({ id: 'set-1', name: '선물세트', subtype: '선물세트' });
+    const order = {
+      ...appliedOrder(), status: 'DELIVERED', deliveredAt: '2026-09-16T00:00:00.000Z',
+      items: [{ lineId: 'set-line', itemId: 'set-1', name: '선물세트', quantity: 1, price: 1000 }],
+    } as unknown as Order;
+    const issues = auditDataIntegrity(input({
+      items: [set], orders: [order],
+      itemBoms: [{ id: 'bom-missing', parent_id: 'set-1', child_id: 'deleted-product', quantity: 1 } as never],
+    }));
+    expect(issues.map(issue => issue.id)).toContain('doc-set-child-missing:order-1:set-line:deleted-product');
   });
 
   it('근거가 모두 연결된 정상 데이터는 문제로 잡지 않는다', () => {

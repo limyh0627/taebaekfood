@@ -854,6 +854,7 @@ export interface ChatMessage {
 
 export interface ChatRoom {
   id: string;
+  companyId?: CompanyId;
   /** 방장이 정한 이름 — 모두에게 기본으로 보인다. 규칙은 shared/roomName.ts */
   name?: string;
   /** 각자 따로 정한 이름 — 자기한테만 보인다 */
@@ -861,6 +862,8 @@ export interface ChatRoom {
   /** 누가 만들었나. 옛 방은 비어 있다(2026-09-03 이전) — 그때는 아무나 기본을 고친다 */
   createdBy?: string;
   participantIds: string[];
+  /** 참여자 ID → 방 회사. Firestore 규칙이 participantIds와 정확히 같은 키인지 검사한다. */
+  participantCompanies?: Record<string, CompanyId>;
   lastMessage?: string;
   lastUpdatedAt: string;
   isGroup: boolean;

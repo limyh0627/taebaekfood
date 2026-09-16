@@ -75,8 +75,8 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await setDoc(doc(db, 'leaveRequests', 'lv-e9'), { companyId: 'punghoe', employeeId: 'e9', status: 'pending' });
       await setDoc(doc(db, 'adjustmentRequests', 'adj-1'), { companyId: 'taebaek', itemId: 'i-taebaek', qty: 5, requestedBy: 'e1', status: 'pending' });
       //  오피스톡 — 방과 메시지, 알림
-      await setDoc(doc(db, 'chatRooms', 'room-taebaek'), { companyId: 'taebaek', participantIds: ['e1'] });
-      await setDoc(doc(db, 'chatRooms', 'room-punghoe'), { companyId: 'punghoe', participantIds: ['e9'] });
+      await setDoc(doc(db, 'chatRooms', 'room-taebaek'), { companyId: 'taebaek', participantIds: ['e1'], participantCompanies: { e1: 'taebaek' } });
+      await setDoc(doc(db, 'chatRooms', 'room-punghoe'), { companyId: 'punghoe', participantIds: ['e9'], participantCompanies: { e9: 'punghoe' } });
       await setDoc(doc(db, 'chatMessages', 'msg-1'), { companyId: 'taebaek', roomId: 'room-taebaek', senderId: 'e1' });
       await setDoc(doc(db, 'notifications', 'n-1'), { companyId: 'taebaek', targetId: 'e1', title: '개인 알림', readBy: [] });
       //  문서함 — 실제 컬렉션 이름이다(`fileCabinet` 이 아니다)
@@ -325,19 +325,16 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
 
     it('같은 회사 사람끼리 방을 만든다', async () => {
-      await assertSucceeds(setDoc(doc(태백직원(), 'chatRooms', 'room-새것2'), { companyId: 'taebaek', participantIds: ['e1'] }));
+      await assertSucceeds(setDoc(doc(태백직원(), 'chatRooms', 'room-새것2'), { companyId: 'taebaek', participantIds: ['e1'], participantCompanies: { e1: 'taebaek' } }));
     });
 
-    it('**참여자에 남의 회사 사람을 적어도 그 사람은 못 읽는다** — 경계는 읽기가 지킨다', async () => {
-      //  규칙으로 참여자를 하나씩 검사하지는 못한다(`get()` 10회 한도 · 운영 방 최대 9명).
-      //  대신 풍회 사람이 태백 방을 **읽으려는 순간** 막힌다. 이름이 잘못 올라가는 것은
-      //  표시 문제지 자료가 새는 문제가 아니다.
-      await assertSucceeds(setDoc(doc(태백직원(), 'chatRooms', 'room-섞임'), { companyId: 'taebaek', participantIds: ['e1', 'e9'] }));
-      await assertFails(getDoc(doc(풍회직원(), 'chatRooms', 'room-섞임')));
+    it('**다른 회사 참여자 회사값이나 누락된 회사값을 쓰지 못한다**', async () => {
+      await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-섞임'), { companyId: 'taebaek', participantIds: ['e1', 'e9'], participantCompanies: { e1: 'taebaek', e9: 'punghoe' } }));
+      await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-누락'), { companyId: 'taebaek', participantIds: ['e1'] }));
     });
 
     it('**남의 회사 방은 만들지도 못한다**', async () => {
-      await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-풍회'), { companyId: 'punghoe', participantIds: ['e9'] }));
+      await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-풍회'), { companyId: 'punghoe', participantIds: ['e9'], participantCompanies: { e9: 'punghoe' } }));
     });
   });
 

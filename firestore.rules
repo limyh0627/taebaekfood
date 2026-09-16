@@ -194,30 +194,21 @@ service cloud.firestore {
     }
 
     // ── 오피스톡 방 ────────────────────────────────────────────
-    /**
-     * **참여자를 하나씩 검사하지는 못한다** — 그래도 회사는 새지 않는다.
-     *
-     * 2026-09-16 코덱스 검수 5번이 "참여자 회사 = 방 회사" 를 요구했는데, 규칙으로는
-     * **못 한다.** `get()`·`exists()` 는 규칙 한 번에 **10회까지**인데 운영 방이 최대
-     * **9명**이다(`ROOM-1775809388278`). 하나씩 읽으면 18회라 한도를 넘는다.
-     *
-     * **대신 경계는 읽기가 지킨다.** 풍회 사람 id 가 태백 방 참여자에 적혀 있어도,
-     * 그 사람이 방을 **읽으려는 순간** `readOk()` 가 막는다(방의 회사 ≠ 자기 회사).
-     * 메시지도 마찬가지다. 그러니 목록에 이름이 잘못 올라가는 것은 **표시 문제**지
-     * 자료가 새는 문제가 아니다.
-     *
-     * 목록에 잘못 올리는 것 자체를 막으려면 방 문서에 참여자 회사를 같이 적어 두고
-     * (`participantCompanies`) 그것과 견주는 길이 있다 — 앱이 같이 써야 하므로
-     * 여기서 혼자 정하지 않고 남겨 둔다.
-     *
-     * 칸 이름은 **`participantIds`** 다(`members` 가 아니다 — 운영 데이터 확인함).
-     */
+    function validRoomParticipants() {
+      let ids = request.resource.data.participantIds;
+      let companies = request.resource.data.participantCompanies;
+      return ids is list
+             && ids.size() <= 30
+             && companies is map
+             && companies.keys().hasOnly(ids)
+             && ids.hasOnly(companies.keys())
+             && companies.values().hasOnly([request.resource.data.companyId]);
+    }
+
     match /chatRooms/{roomId} {
       allow read: if readOk();
       allow create, update: if createUpdateOk()
-                            && request.resource.data.participantIds is list
-                            //  터무니없이 큰 방을 막는다 — 지금 제일 큰 방이 9명이다.
-                            && request.resource.data.participantIds.size() <= 30;
+                            && validRoomParticipants();
       allow delete: if deleteOk();
     }
 

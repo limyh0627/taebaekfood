@@ -1,7 +1,42 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-09-17 — 기존 오피스톡 방·메시지를 태백 소속으로 확정
+
+**작업자:** Codex 에이전트 (사장님이 "다 태백방"이라고 확인하고 적용 승인)
+
+- 기존 오피스톡 방 6개에 `companyId: taebaek`와 `participantCompanies`를 기록했다.
+- 해당 방의 메시지 78개에도 `companyId: taebaek`를 기록했다.
+- 옛 이은경 ID `emp-1773373867440` 참조를 태백 이은경 ID
+  `admin-taebaek-eunkyung`으로 교체했다.
+- 풍회 Storage 경로를 가리키는 메시지는 0개였다.
+- 적용 뒤 방 6개와 메시지 78개를 다시 읽어 저장값이 모두 일치함을 확인했다.
+- 스크립트: `scripts/fix-chat-room-participant-companies.mts --apply`
+- 백업: `로컬전용/백업/chat-room-participant-companies.json`
+- 되돌리기: `npx tsx scripts/fix-chat-room-participant-companies.mts --undo`
+
+---
+
 > 운영 Firestore에 직접 가한 변경을 시간순으로 기록합니다. **DB를 건드린 사람/에이전트는 반드시 여기에 추가하세요.**
 > 코드 변경은 git 히스토리로 추적되므로 여기엔 **데이터(문서) 변경만** 적습니다.
+
+## 2026-09-17 — 세화 전표 품목 연결·해피유통 낱개 단가 복원
+
+**작업자:** Codex 에이전트 (사장님 적용 승인)
+
+- `issuedStatements/stmt-1786496038113` (`260812-02`, 세화식품)
+  - 첫 줄 `시골향 들깨가루(중간)/4kg ×1`에 `itemId: p-201`, `lineKind: item`을 기록했다.
+  - 연결 주문 `ORD-1786507369829`의 품목 ID·수량과 현재 품목 문서를 모두 대조했다.
+  - 스크립트: `scripts/fix-sehwa-statement-item-link.mts --apply`
+  - 되돌리기: `npx tsx scripts/fix-sehwa-statement-item-link.mts --undo`
+- 해피유통(네이버커머스) `partner_item` 낱개 연결 2건
+  - `p-1777536360094_c-1784010198853_out`: 빈 단가·과세 → 4,600원·과세
+  - `p-281_c-1784010198853_out`: 빈 단가·과세 → 6,000원·과세
+  - 각각 정확한 20개입 박스 BOM 자식임을 확인하고 박스 단가 92,000원·120,000원을 20으로 나눴다.
+  - 스크립트: `scripts/fix-happy-naver-loose-prices.mts --apply`
+  - 되돌리기: `npx tsx scripts/fix-happy-naver-loose-prices.mts --undo`
+- 두 작업 모두 로컬전용 백업 생성 후 적용하고 재조회 내용 일치까지 확인했다.
+
+---
 
 ## 2026-09-16 (5) — 볶음참깨-낱개 제품 로트를 현재재고에 맞춤
 

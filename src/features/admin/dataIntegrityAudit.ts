@@ -43,6 +43,12 @@ const kg3 = (n: number) => Math.round(n * 1000) / 1000;
 const KG_EPS = 0.01;
 /** 재고 개수 허용치 — 엔진은 3자리에서 반올림한다. */
 const QTY_EPS = 0.001;
+/** 처리 중 예약은 정상 작업 중에도 잠깐 보인다. 예약 TTL과 같은 1시간을 넘긴 것만 멈춤으로 본다. */
+export const PROCESSING_STALE_MS = 60 * 60 * 1000;
+export const isStaleInventoryProcessing = (startedAt: string | undefined, nowMs = Date.now()): boolean => {
+  const startedMs = Date.parse(startedAt ?? '');
+  return Number.isFinite(startedMs) && nowMs - startedMs >= PROCESSING_STALE_MS;
+};
 
 type LedgerMovement = RawMaterialEntry & {
   materialSnapshot?: string;
@@ -194,7 +200,7 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
   for (const order of orders) {
     const reference = refOf(order);
     if (order.inventoryOperation?.state === 'failed' && inRange(order.inventoryOperation.startedAt)) out.push({ id: `op-failed:${order.id}`, area: '작업완료·BOM', severity: 'error', title: '재고 작업이 실패한 주문', detail: order.inventoryOperation.error || '실패 사유가 기록되지 않았습니다.', date: order.inventoryOperation.startedAt, reference });
-    if (order.inventoryOperation?.state === 'processing' && inRange(order.inventoryOperation.startedAt)) out.push({ id: `op-processing:${order.id}`, area: '작업완료·BOM', severity: 'warning', title: '재고 작업이 처리 중으로 남은 주문', detail: '작업이 끝났는데 잠금만 남았는지 확인해야 합니다.', date: order.inventoryOperation.startedAt, reference });
+    if (order.inventoryOperation?.state === 'processing' && inRange(order.inventoryOperation.startedAt) && isStaleInventoryProcessing(order.inventoryOperation.startedAt)) out.push({ id: `op-processing:${order.id}`, area: '작업완료·BOM', severity: 'warning', title: '재고 작업이 1시간 이상 처리 중으로 남은 주문', detail: '정상 작업 시간을 넘겼습니다. 브라우저 종료나 저장 실패로 잠금만 남았는지 확인해야 합니다.', date: order.inventoryOperation.startedAt, reference });
 
     order.items.forEach((line, index) => {
       if (!line.checked) return;
@@ -440,6 +446,8 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     if (!line.itemId) out.push({ id: `stmt-no-item:${statement.id}:${index}`, area: '전표·서류', severity: 'warning', title: '전표 품목 ID 없음', detail: `${line.name} 줄은 품목과 ID로 연결되지 않아 이후 변경을 추적할 수 없습니다.`, date: statement.tradeDate, reference: statement.docNo });
     else if (!itemIds.has(line.itemId)) out.push({ id: `stmt-missing-item:${statement.id}:${index}`, area: '전표·서류', severity: 'error', title: '전표가 없는 품목을 참조함', detail: `${line.name}의 품목 ${line.itemId}를 찾을 수 없습니다.`, date: statement.tradeDate, reference: statement.docNo });
     if (!line.name.trim()) out.push({ id: `stmt-name:${statement.id}:${index}`, area: '전표·서류', severity: 'error', title: '전표 품목명 누락', detail: '인쇄되는 품목명이 비어 있습니다.', date: statement.tradeDate, reference: statement.docNo });
+    const linkedItem = line.itemId ? itemById.get(line.itemId) : undefined;
+    if (linkedItem?.spec?.trim() && !String(line.spec ?? '').trim()) out.push({ id: `stmt-spec:${statement.id}:${index}`, area: '전표·서류', severity: 'warning', title: '전표 출력 규격 누락', detail: `${line.name}은 연결 품목 규격 '${linkedItem.spec}'이 있지만 전표에 저장된 출력 규격이 비어 있습니다.`, date: statement.tradeDate, reference: statement.docNo });
   });
 
   // ── 서류용 판매 줄·저장된 판매일지·서류수불부 환산 대조 ────────────
@@ -463,6 +471,20 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     order.items.forEach((line, index) => {
       const product = items.find(item => item.id === line.itemId);
       if (!isSalesJournalProduct(product)) return;
+      const isGiftSet = String(product?.subtype ?? product?.category ?? '').includes('선물세트');
+      if (isGiftSet && product) {
+        const components = input.itemBoms.filter(bom => bom.parent_id === product.id && Number(bom.quantity) > 0);
+        const productComponents = components.filter(bom => {
+          const child = itemById.get(bom.child_id);
+          return child?.type === 'product' || child?.type === '완제품';
+        });
+        if (components.length === 0 || productComponents.length === 0) out.push({ id: `doc-set-empty:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'error', title: '선물세트의 서류용 완제품 구성 없음', detail: `${line.name}은 선물세트지만 판매일지로 풀 완제품 BOM이 없습니다.`, date: docDate, reference: refOf(order) });
+        for (const bom of components) {
+          const child = itemById.get(bom.child_id);
+          if (!child) out.push({ id: `doc-set-child-missing:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성 품목이 삭제됨', detail: `${line.name}의 구성 ${bom.child_id}를 품목 목록에서 찾을 수 없어 판매일지에서 일부가 빠질 수 있습니다.`, date: docDate, reference: refOf(order) });
+          else if ((child.type === 'product' || child.type === '완제품') && !docSaleLines(child, Number(bom.quantity) || 1, id => items.find(item => item.id === id)).length) out.push({ id: `doc-set-child-no-doc:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성품의 서류 품목 누락', detail: `${line.name} 구성품 ${child.name}은 서류용 품목으로 변환되지 않아 판매일지에서 빠집니다.`, date: docDate, reference: refOf(order) });
+        }
+      }
       // 생산판매일지 화면은 주문의 표시 수량을 docUnpack에 넘긴다. stockUnits를 먼저 적용하면
       // 박스가 낱개로 바뀐 뒤 docUnpack에서 다시 풀려 개입수가 두 번 곱해진다.
       const expanded = journalSaleLines(product, line.quantity, { name: line.name, displaySize: line.displaySize }, id => items.find(item => item.id === id));

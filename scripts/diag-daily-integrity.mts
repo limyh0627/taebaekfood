@@ -100,9 +100,10 @@ try {
   const all = reports.flatMap(report => report.issues.map(issue => ({ ...issue, companyId: report.companyId })));
   const errors = all.filter(issue => issue.severity === 'error').length;
   const warnings = all.filter(issue => issue.severity === 'warning').length;
+  const ongoing = all.filter(issue => !!issue.date && issue.date.slice(0, 10) < date).length;
   const lines = [
     `# ${date} 데이터 점검 보고서`, '',
-    `- 작성 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, `- 오류: **${errors}건**`, `- 확인 필요: **${warnings}건**`,
+    `- 작성 시각: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, `- 오류: **${errors}건**`, `- 확인 필요: **${warnings}건**`, `- 과거부터 지속 중: **${ongoing}건**`,
     `- 판정: ${errors ? '즉시 확인할 오류가 있습니다.' : warnings ? '확인이 필요한 기록이 있습니다.' : '현재 자동 점검에서 발견된 문제가 없습니다.'}`, '',
   ];
   const orderById = new Map(orders.map(order => [order.id, order]));
@@ -136,9 +137,21 @@ try {
   for (const report of reports) {
     lines.push(`## ${report.companyId === 'taebaek' ? '태백식품' : '풍회유통'}`, '');
     if (!report.issues.length) { lines.push('- 발견된 문제 없음', ''); continue; }
-    report.issues.forEach((issue, index) => lines.push(
+    const currentIssues = report.issues.filter(issue => !issue.date || issue.date.slice(0, 10) >= date);
+    const ongoingIssues = report.issues.filter(issue => !!issue.date && issue.date.slice(0, 10) < date);
+    if (currentIssues.length) lines.push('### 오늘 발생·확인된 문제', '');
+    currentIssues.forEach((issue, index) => lines.push(
       `### ${index + 1}. [${issue.severity === 'error' ? '오류' : '확인 필요'}] ${issue.title}`,
       `- 대상: ${issue.reference || '연결번호 없음'}${issue.date ? ` / ${issue.date.slice(0, 10)}` : ''}`,
+      `- 내용: ${issue.detail}`,
+      `- 예상 원인: ${causeOf(issue)}`,
+      `- 권장 조치: ${actionOf(issue)}`, '',
+    ));
+    if (ongoingIssues.length) lines.push('### 과거부터 지속 중인 문제', '', '- 오늘 새로 생긴 것으로 세지 않으며, 현재도 해소되지 않아 계속 표시합니다.', '');
+    ongoingIssues.forEach((issue, index) => lines.push(
+      `#### 지속 ${index + 1}. [${issue.severity === 'error' ? '오류' : '확인 필요'}] ${issue.title}`,
+      `- 최초·마지막 근거일: ${issue.date?.slice(0, 10)}`,
+      `- 대상: ${issue.reference || '연결번호 없음'}`,
       `- 내용: ${issue.detail}`,
       `- 예상 원인: ${causeOf(issue)}`,
       `- 권장 조치: ${actionOf(issue)}`, '',

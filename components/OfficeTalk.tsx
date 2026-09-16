@@ -39,6 +39,7 @@ import { actionsFor, replySnippet, deletePatch, isDeleted, type MessageAction } 
 import { REACTION_EMOJIS, toggleReaction, reactionChips, reactionTitle } from '../src/shared/messageReactions';
 import { matchesSearch } from '../src/shared/hangul';
 import { companyOf } from '../src/shared/types';
+import { participantCompaniesOf } from '../src/shared/chatParticipants';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -232,6 +233,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     if (selectedParticipants.length === 0) return;
     
     const participantIds = [...new Set([...selectedParticipants, currentUser.id])];
+    const companyId = companyOf(currentUser);
+    const participantCompanies = participantCompaniesOf(participantIds, employees, companyId);
     
     // Check if 1:1 room already exists
     if (participantIds.length === 2) {
@@ -250,7 +253,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
     const newRoom: ChatRoom = {
       id: `ROOM-${Date.now()}`,
+      companyId,
       participantIds,
+      participantCompanies,
       createdBy: currentUser.id,   // 기본 이름을 정할 수 있는 사람
       lastUpdatedAt: new Date().toISOString(),
       isGroup: participantIds.length > 2
@@ -1225,7 +1230,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             </div>
             <div className="p-4 max-h-72 overflow-y-auto space-y-1">
               {employees
-                .filter(e => e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id))
+                .filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id))
                 .map(emp => (
                   <button
                     key={emp.id}
@@ -1242,7 +1247,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     <span className="text-[10px] text-slate-400 ml-auto">{emp.position}</span>
                   </button>
                 ))}
-              {employees.filter(e => e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id)).length === 0 && (
+              {employees.filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id)).length === 0 && (
                 <p className="text-center text-slate-400 text-sm py-4">초대할 수 있는 멤버가 없습니다</p>
               )}
             </div>
@@ -1251,7 +1256,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <button
                 disabled={inviteSelected.length === 0}
                 onClick={() => {
-                  onUpdateRoom(activeRoom.id, { participantIds: [...activeRoom.participantIds, ...inviteSelected] });
+                  const participantIds = [...new Set([...activeRoom.participantIds, ...inviteSelected])];
+                  onUpdateRoom(activeRoom.id, {
+                    participantIds,
+                    participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
+                  });
                   setShowInviteModal(false);
                 }}
                 className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm disabled:opacity-40 hover:bg-indigo-700 transition-all"
@@ -1293,7 +1302,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
               <div className="flex-1 overflow-y-auto p-6 space-y-2 custom-scrollbar">
                 {employees
-                  .filter(e => e.id !== currentUser.id)
+                  .filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id)
                   .map(emp => (
                   <button
                     key={emp.id}
