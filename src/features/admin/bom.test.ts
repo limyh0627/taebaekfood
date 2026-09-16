@@ -55,6 +55,7 @@ describe('PRODUCT_FORMULA — 서류용 품목 배합 (2026-08-09 확정)', () =
     expect(mix('시골향참기름3')).toEqual({ 깨분참기름: 1.0 });
     expect(mix('시골향참기름4')).toEqual({ 통깨참기름: 0.1, 깨분참기름: 0.9 });
     expect(mix('하남댁참기름')).toEqual({ 통깨참기름: 1.0 });
+    expect(mix('하남댁전통참기름')).toEqual({ 깨분참기름: 1.0 });
     expect(mix('해달참기름')).toEqual({ 통깨참기름: 1.0 });
   });
 

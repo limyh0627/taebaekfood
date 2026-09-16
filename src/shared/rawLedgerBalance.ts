@@ -13,10 +13,12 @@ import type { RawMaterialEntry } from './types';
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** 날짜 → 기록시각 순. 같은 날 여러 줄이면 들어온 순서가 잔량을 가른다. */
-export function sortLedger<T extends Pick<RawMaterialEntry, 'date' | 'createdAt' | 'id'>>(entries: T[]): T[] {
+export function sortLedger<T extends Pick<RawMaterialEntry, 'date' | 'createdAt' | 'recordedAt' | 'sequence' | 'id'>>(entries: T[]): T[] {
   return [...entries].sort(
     (a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''))
-      || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
+      // 원자화된 줄은 recordedAt, 옛 줄은 createdAt을 쓴다. 한쪽만 보면 같은 날의 실사 앵커가
+      // 옛 사용 기록보다 앞으로 정렬되어 그 사용량을 두 번 차감한다(깨분참기름 41.555kg 사고).
+      || String(a.recordedAt ?? a.createdAt ?? '').localeCompare(String(b.recordedAt ?? b.createdAt ?? ''))
       // 같은 시각이면 번호순 — 여기서 손을 놓으면 읽어온 순서를 쓰게 되고,
       // 실사(targetKg)가 잔량을 덮어쓰는 앵커라 순서 한 칸에 숫자가 통째로 달라진다.
       || String(a.id ?? '').localeCompare(String(b.id ?? ''), undefined, { numeric: true }),
@@ -43,6 +45,20 @@ export function ledgerBalanceKg(entries: RawMaterialEntry[], density = 1): numbe
   let bal = 0;
   for (const e of sortLedger(entries)) bal = applyLedgerRow(bal, e, density);
   return bal;
+}
+
+/**
+ * 원자화 이후 원장의 확정 잔량. 원자화 줄은 트랜잭션이 적용된 직후의 잔량을
+ * `balanceAfterKg`로 남기므로, 과거 legacy 줄을 날짜순으로 다시 더하는 것보다 이 값이 우선이다.
+ * 원자화 줄이 아직 없는 원료만 예전 누적 계산을 사용한다.
+ */
+export function authoritativeLedgerBalanceKg(entries: RawMaterialEntry[], density = 1): number {
+  const atomic = entries
+    .filter((e): e is RawMaterialEntry & { balanceAfterKg: number } => Number.isFinite(e.balanceAfterKg))
+    .sort((a, b) => Number(a.sequence ?? 0) - Number(b.sequence ?? 0)
+      || String(a.recordedAt ?? a.createdAt ?? '').localeCompare(String(b.recordedAt ?? b.createdAt ?? ''))
+      || String(a.id ?? '').localeCompare(String(b.id ?? ''), undefined, { numeric: true }));
+  return atomic.length ? round3(Number(atomic[atomic.length - 1].balanceAfterKg)) : ledgerBalanceKg(entries, density);
 }
 
 /**

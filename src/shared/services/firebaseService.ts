@@ -119,12 +119,14 @@ export const fetchDateRange = async <T extends { id: string }>(
   collectionName: CollectionName,
   dateField: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  extraConstraints: QueryConstraint[] = [],
 ): Promise<T[]> => {
   const q = query(
     collection(db, collectionName),
     where(dateField, '>=', startDate),
-    where(dateField, '<=', endDate)
+    where(dateField, '<=', endDate),
+    ...extraConstraints,
   );
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));

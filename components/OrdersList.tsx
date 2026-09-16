@@ -1143,7 +1143,16 @@ export const OrderCard = memo<OrderCardProps>(({
                    **체크가 굴려 주지 않는 단계**라 누를 자리가 있어야 한다. 그 자리를 여기 둔다 —
                    출고 방식(배송·직접수령·택배)은 어차피 "어떻게 나가나" 를 적는 칸이다.
                    무엇이 얼마나 빠지는지는 `shipDeductions` 가 셈한다(재고 엔진과 같은 함수). */}
-              {order.status === OrderStatus.SHIPPED ? (
+              {order.status === OrderStatus.SHIPPED && !readOnly ? (
+                <button
+                  type="button"
+                  onClick={event => { event.stopPropagation(); onUpdateStatus(order.id, OrderStatus.DISPATCHED); }}
+                  title="출고를 취소하고 작업완료로 되돌리기"
+                  className="rounded px-1.5 py-0.5 text-[9px] font-black text-amber-600 underline decoration-dotted underline-offset-2 transition-colors hover:bg-amber-50 hover:text-amber-700"
+                >
+                  출고취소
+                </button>
+              ) : order.status === OrderStatus.SHIPPED ? (
                 <span className="text-[9px] font-black text-emerald-600">완료</span>
               ) : order.status === OrderStatus.DISPATCHED && !readOnly && onRequestShip ? (
                 <button

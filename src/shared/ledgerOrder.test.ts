@@ -47,4 +47,15 @@ describe('같은 시각이면 번호순', () => {
     expect(ledgerBalanceKg([실사, 사용])).toBe(10);
     expect(ledgerBalanceKg([사용, 실사])).toBe(10);   // 순서를 뒤집어 넣어도 같다
   });
+
+  it('옛 createdAt 사용 기록 뒤의 새 recordedAt 실사 앵커를 순서대로 적용한다', () => {
+    const 옛사용1 = e('legacy-1', '2026-09-11', '2026-09-11T04:43:52.633Z', { used: 29.682 });
+    const 옛사용2 = e('legacy-2', '2026-09-11', '2026-09-11T05:31:15.288Z', { used: 11.873 });
+    const 새실사 = {
+      ...e('atomic-anchor', '2026-09-11', ''),
+      recordedAt: '2026-09-11T08:47:55.800Z', sequence: 2, targetKg: 1511.061, type: 'correction' as const,
+    };
+    expect(sortLedger([새실사, 옛사용2, 옛사용1]).map(x => x.id)).toEqual(['legacy-1', 'legacy-2', 'atomic-anchor']);
+    expect(ledgerBalanceKg([새실사, 옛사용2, 옛사용1])).toBe(1511.061);
+  });
 });

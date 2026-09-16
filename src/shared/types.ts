@@ -636,6 +636,7 @@ export interface FileItem {
 // 대분류(카테고리) 탭으로 파일을 올려 보관/다운로드한다.
 export interface CabinetCategory {
   id: string;
+  companyId?: CompanyId;
   name: string;        // 대분류 예: 직원용, 업무용, 거래처용
   order: number;       // 탭 정렬 순서
   createdAt: string;   // ISO
@@ -643,6 +644,7 @@ export interface CabinetCategory {
 
 export interface CabinetSubCategory {
   id: string;
+  companyId?: CompanyId;
   category: string;    // 상위 대분류 이름(CabinetCategory.name)
   name: string;        // 중분류 예: 계약, 매뉴얼, 인증
   order: number;       // 정렬 순서
@@ -651,6 +653,7 @@ export interface CabinetSubCategory {
 
 export interface CabinetDoc {
   id: string;
+  companyId?: CompanyId;
   category: string;    // 대분류(CabinetCategory.name)
   subCategory: string; // 중분류(CabinetSubCategory.name), 없으면 ''
   fileName: string;    // 원본 파일명
@@ -893,7 +896,7 @@ export interface RoomNotice {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'quotation' | 'mypage';
+export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'quotation' | 'mypage';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -1321,6 +1324,14 @@ export interface RawMaterialEntry {
   used: number;      // 사용량 (정정은 음수)
   note: string;      // 비고
   createdAt: string;
+  /** 원자화 이후 실제 기록 시각. 옛 줄은 createdAt만 있으므로 읽을 때 둘을 함께 본다. */
+  recordedAt?: string;
+  /** 원료 상태 안에서 확정된 적용 순서. 같은 시각의 명령 순서를 고정한다. */
+  sequence?: number;
+  /** 장부에 귀속되는 시각. date는 이 값에서 계산한 표시용 날짜다. */
+  effectiveAt?: string;
+  /** 원자화 트랜잭션 적용 직후의 확정 재고(kg). */
+  balanceAfterKg?: number;
   addedBy?: string;  // 작성자
   type?: 'auto' | 'manual' | 'correction' | 'stocktake_unit'; // auto: 주문 자동생성, manual: 직접입력, correction: 정정, stocktake_unit: 재고실사 단위현황 스냅샷
   orderId?: string;  // auto 타입일 때 출처 주문 ID

@@ -67,13 +67,13 @@ const RawLedgerList: React.FC<Props> = ({
       // 날짜 → 같은 날은 기록된 시각 순 (그 묶음 첫 줄 직전 잔량 = 전일재고)
       // 날짜 → 기록된 시각 → 번호. 마지막 번호까지 봐야 동시각일 때 순서가 고정된다
       // (안 그러면 읽어온 순서라 새로고침마다 잔량 표시가 흔들린다).
-      list.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')
-        || (a.createdAt ?? '').localeCompare(b.createdAt ?? '')
+      const ordered = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''))
+        || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
         || String(a.id ?? '').localeCompare(String(b.id ?? ''), undefined, { numeric: true }));
       let bal = 0, seg = 0, curDate = '';
       let g: DayRow | null = null;
       const flush = () => { if (g) { g.seq = order++; out.push(g); g = null; } };
-      for (const e of list) {
+      for (const e of ordered) {
         // 옛 기록(unit='L')은 L로 저장돼 있어 kg로 환산해야 나머지와 더해진다
         const toKg = (v: number) => (e.unit === 'L' && density !== 1 ? v * density : v);
         const isCorr = e.type === 'correction' || e.targetKg != null;

@@ -239,4 +239,24 @@ describe('상태 변경 감사 이력', () => {
       expect.objectContaining({ itemId: 'p1', delta: -10, name: '참기름/180ml' }),
     ]);
   });
+
+  it('출고완료를 작업완료로 되돌리면 출고 재고만 복원하고 생산은 유지한다', async () => {
+    const order = 주문({
+      status: OrderStatus.SHIPPED,
+      producedAt: '2026-09-16T01:00:00.000Z',
+      shippedOut: true,
+      inventorySnapshots: {
+        version: 1,
+        production: { capturedAt: '2026-09-16T01:00:00.000Z', stockDeltas: [], bomLines: [], rawConsumedLots: [], rawLedgerIds: [] },
+        shipment: { capturedAt: '2026-09-16T02:00:00.000Z', stockDeltas: [{ itemId: 'p1', delta: -10 }], bomLines: [], productConsumedLots: [] },
+      },
+    } as never);
+    const { engine, 주문쓰기 } = harness([상품()], order);
+
+    await engine.changeOrderStatus('o1', OrderStatus.DISPATCHED, undefined, { approvedBy: '테스트 관리자' });
+
+    expect(dbx.stock.get('p1')).toBe(110);
+    expect(주문쓰기.at(-1)).toMatchObject({ status: OrderStatus.DISPATCHED, shippedOut: false });
+    expect(order.producedAt).toBe('2026-09-16T01:00:00.000Z');
+  });
 });

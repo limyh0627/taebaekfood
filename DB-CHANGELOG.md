@@ -3,6 +3,19 @@
 > 운영 Firestore에 직접 가한 변경을 시간순으로 기록합니다. **DB를 건드린 사람/에이전트는 반드시 여기에 추가하세요.**
 > 코드 변경은 git 히스토리로 추적되므로 여기엔 **데이터(문서) 변경만** 적습니다.
 
+## 2026-09-16 (5) — 볶음참깨-낱개 제품 로트를 현재재고에 맞춤
+
+**작업자:** Codex 에이전트 (사장님 적용 승인)
+
+- 대상: `items/PLDhkjOgcPIhO1hhReHm` (`볶음참깨-낱개/1kg`)
+- 적용 전: `stock 0개`, 활성 로트 합계 `-15개`
+- 적용 후: `stock 0개`, 활성 로트 합계 `0개`
+- 원인: 과거 완제품 실사정정이 `items.stock`만 바꾸고 제품 로트를 따라가지 못한 경로
+- 스크립트: `scripts/fix-bokkeum-loose-lot-gap.mts --apply`
+- 백업: `scripts/fix-bokkeum-loose-lot-gap-backup.json`
+- 되돌리기: `npx tsx scripts/fix-bokkeum-loose-lot-gap.mts --undo`
+- 적용 후 4축 점검: `item-lot-gap`, `raw-item-state-gap`, `raw-lot-gap`, `raw-ledger-state-gap` 모두 0건
+
  
 ---
 ## 2026-09-16 (4) — 회사 기준정보·설정·남은 문서·Storage 경로 분리

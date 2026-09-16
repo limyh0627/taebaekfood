@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { where } from 'firebase/firestore';
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash2, Plus, Upload, Search, X, FolderPlus } from 'lucide-react';
 import { storage } from '../src/shared/firebase';
 import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection } from '../src/shared/services/firebaseService';
@@ -44,6 +45,7 @@ const fileIconFor = (name: string, contentType: string) => {
 };
 
 const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [], onSelect, hideDocs }) => {
+  const companyId = companyOf(currentUser);
   const [categories, setCategories] = useState<CabinetCategory[]>([]);
   const [subCategories, setSubCategories] = useState<CabinetSubCategory[]>([]);
   const [docs, setDocs] = useState<CabinetDoc[]>([]);
@@ -56,25 +58,33 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const [addingSub, setAddingSub] = useState(false);
   const [newSubName, setNewSubName] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const seededRef = useRef(false);
 
   // 구독 + 최초 진입 시 기본 대분류 시드
   useEffect(() => {
-    const unsubCat = subscribeToCollection<CabinetCategory>('fileCabinetCategories', setCategories);
-    const unsubSub = subscribeToCollection<CabinetSubCategory>('fileCabinetSubCategories', setSubCategories);
-    const unsubDoc = subscribeToCollection<CabinetDoc>('fileCabinetDocs', setDocs);
+    seededRef.current = false;
+    setLoadError('');
+    const companyConstraint = [where('companyId', '==', companyId)];
+    const onLoadError = (error: Error) => {
+      console.error('[문서함] 회사별 자료 조회 실패:', error);
+      setLoadError('문서함 자료를 불러오지 못했습니다. 다시 로그인한 뒤 재시도해 주세요.');
+    };
+    const unsubCat = subscribeToCollection<CabinetCategory>('fileCabinetCategories', setCategories, companyConstraint, onLoadError);
+    const unsubSub = subscribeToCollection<CabinetSubCategory>('fileCabinetSubCategories', setSubCategories, companyConstraint, onLoadError);
+    const unsubDoc = subscribeToCollection<CabinetDoc>('fileCabinetDocs', setDocs, companyConstraint, onLoadError);
     // 빈 컬렉션은 구독 콜백이 호출되지 않으므로 1회 조회로 시드 여부 판단
-    fetchCollection<CabinetCategory>('fileCabinetCategories').then((rows) => {
+    fetchCollection<CabinetCategory>('fileCabinetCategories', companyConstraint).then((rows) => {
       if (rows.length === 0 && !seededRef.current) {
         seededRef.current = true;
         DEFAULT_CATEGORIES.forEach((name, i) =>
-          addItem('fileCabinetCategories', { name, order: i, createdAt: new Date().toISOString() })
+          addItem('fileCabinetCategories', { name, order: i, createdAt: new Date().toISOString(), companyId })
         );
       }
-    });
+    }).catch(onLoadError);
     return () => { unsubCat(); unsubSub(); unsubDoc(); };
-  }, []);
+  }, [companyId]);
 
   /*
    * **자리를 세우는 건 딱 한 번, 그것도 목록을 실제로 읽어 본 뒤에.**
@@ -93,23 +103,23 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     let alive = true;
     (async () => {
       for (const { category, subCategory } of seed) {
-        const key = `${category}|${subCategory}`;
+        const key = `${companyId}|${category}|${subCategory}`;
         if (seededPaths.has(key)) continue;
         seededPaths.add(key);                       // 먼저 막는다 — await 사이에 또 들어온다
         const [cs, ss] = await Promise.all([
-          fetchCollection<CabinetCategory>('fileCabinetCategories'),
-          fetchCollection<CabinetSubCategory>('fileCabinetSubCategories'),
+          fetchCollection<CabinetCategory>('fileCabinetCategories', [where('companyId', '==', companyId)]),
+          fetchCollection<CabinetSubCategory>('fileCabinetSubCategories', [where('companyId', '==', companyId)]),
         ]);
         if (!alive) return;
         if (!cs.some(c => c.name === category))
-          await addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
+          await addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString(), companyId });
         if (!ss.some(x => x.category === category && x.name === subCategory))
-          await addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
+          await addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString(), companyId });
       }
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedKey]);
+  }, [seedKey, companyId]);
 
   /*
    * 고른 자리를 바깥에 알린다.
@@ -184,7 +194,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
       for (const file of list) {
         const safeName = file.name.replace(/[#?%]/g, '_');
         const path = cabinetStoragePath(
-          companyOf(currentUser), activeCat, activeSub, `${Date.now()}_${safeName}`,
+          companyId, activeCat, activeSub, `${Date.now()}_${safeName}`,
         );
         const storageRef = ref(storage, path);
         await uploadBytes(storageRef, file);
@@ -200,6 +210,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
           note: '',
           uploadedBy: currentUser.name,
           uploadedAt: new Date().toISOString(),
+          companyId,
         });
       }
     } catch (e: any) {
@@ -234,7 +245,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     const name = newCatName.trim();
     if (!name) return;
     if (categories.some(c => c.name === name)) { alert('이미 있는 대분류입니다.'); return; }
-    await addItem('fileCabinetCategories', { name, order: categories.length, createdAt: new Date().toISOString() });
+    await addItem('fileCabinetCategories', { name, order: categories.length, createdAt: new Date().toISOString(), companyId });
     setNewCatName(''); setAddingCat(false); selectCat(name);
   };
 
@@ -250,7 +261,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     if (!name) return;
     if (!activeCat) { alert('먼저 대분류를 선택하세요.'); return; }
     if (subsOfActive.some(s => s.name === name)) { alert('이미 있는 중분류입니다.'); return; }
-    await addItem('fileCabinetSubCategories', { category: activeCat, name, order: subsOfActive.length, createdAt: new Date().toISOString() });
+    await addItem('fileCabinetSubCategories', { category: activeCat, name, order: subsOfActive.length, createdAt: new Date().toISOString(), companyId });
     setNewSubName(''); setAddingSub(false); setActiveSub(name);
   };
 
@@ -267,6 +278,11 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
 
   return (
     <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+      {loadError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+          {loadError}
+        </div>
+      )}
       <div className="hidden md:flex items-center justify-between pb-3 md:pb-4 border-b border-slate-200">
         <div>
           <h2 className="text-base md:text-lg font-black text-slate-800 leading-tight">문서함</h2>

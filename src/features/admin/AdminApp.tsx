@@ -168,7 +168,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
@@ -184,6 +184,7 @@ import {
   setProductClients,
   setProductSuppliers,
   setDocument,
+  fetchCollection,
   fetchDateRange,
   fetchWhereIn,
   adjustItemStock,
@@ -206,6 +207,8 @@ import { applyStatementWrites } from '../statements/infrastructure/applyStatemen
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
+import DataIntegrityMonitor from './DataIntegrityMonitor';
+import type { RawInventoryState } from '../../shared/rawInventoryCore';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -252,7 +255,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements: allIssuedStatements,
-    itemFormulas, itemBoms, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
+    itemFormulas, itemBoms, returnRequests, itemReceipts, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
     ordersMonths, setOrdersMonths,
@@ -465,10 +468,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const from = fromDate.toISOString().slice(0, 10);
-    fetchDateRange<import('../../shared/types').ProductionSalesLog>('productionSalesLogs', 'date', from, to)
+    fetchDateRange<import('../../shared/types').ProductionSalesLog>(
+      'productionSalesLogs', 'date', from, to,
+      [where('companyId', '==', companyId)],
+    )
       .then(setExtraProductionLogs)
       .catch(e => console.error('[AdminApp] 과거 생산판매기록 로드 실패:', e));
-  }, []);
+  }, [companyId]);
   const mergedProductionSalesLogs = useMemo(() => {
     const map = new Map<string, import('../../shared/types').ProductionSalesLog>();
     extraProductionLogs.forEach(l => map.set(l.id, l));
@@ -491,17 +497,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 라이브 구독은 7일치만(무료요금제 읽기 절약) → 원료수불부는 전재고(이월 잔고) 계산에 전체 이력이 필요.
   // 수불부 탭을 열 때만 1회 온디맨드 조회하여 라이브 7일 구독분과 merge. (다른 페이지는 7일 유지)
   const [extraRawMaterialLedger, setExtraRawMaterialLedger] = useState<import('../../shared/types').RawMaterialEntry[]>([]);
+  const [rawInventoryStates, setRawInventoryStates] = useState<RawInventoryState[]>([]);
   const [ledgerReloadKey, setLedgerReloadKey] = useState(0);
   // 원료수불부/재고관리 화면에 들어올 때(또는 원장 쓰기로 reloadKey 변경 시)마다 전체 이력을 fresh하게 조회.
   //   전역 7일 구독을 제거했으므로, 이 화면 진입 시 재조회가 유일한 최신화 경로 —
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
-    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory') return;
+    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory' && currentView !== 'data-integrity') return;
     const to = today();
-    fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
-      .then(setExtraRawMaterialLedger)
+    // 전체 이력이 필요한 화면이라 회사 범위만 서버에서 제한하고 날짜는 클라이언트에서 거른다.
+    // companyId+date 복합 인덱스 배포 여부 때문에 원장이 통째로 비는 일을 피한다.
+    fetchCollection<import('../../shared/types').RawMaterialEntry>(
+      'rawMaterialLedger', [where('companyId', '==', companyId)],
+    )
+      .then(rows => setExtraRawMaterialLedger(rows.filter(row => row.date >= '2020-01-01' && row.date <= to)))
       .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); });
-  }, [docTab, currentView, ledgerReloadKey]);
+  }, [docTab, currentView, ledgerReloadKey, companyId]);
+  useEffect(() => {
+    if (currentView !== 'data-integrity') return;
+    getDocs(query(collection(db, 'rawInventories'), where('companyId', '==', companyId)))
+      .then(snapshot => setRawInventoryStates(snapshot.docs.map(row => ({ id: row.id, ...row.data() } as RawInventoryState))))
+      .catch(error => console.error('[AdminApp] 원료 현재고 점검 로드 실패:', error));
+  }, [currentView, companyId, ledgerReloadKey]);
   const mergedRawMaterialLedger = useMemo(() => {
     const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
     extraRawMaterialLedger.forEach(e => map.set(e.id, e));
@@ -2113,7 +2130,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   useEffect(() => { if (inCabinetDoc) setDocTab('생산판매기록부'); }, [inCabinetDoc]);
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'data-integrity', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -2250,6 +2267,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="대시보드" storageKey="dash" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
+                      <NavItem icon={ShieldCheck} label="데이터 점검" active={currentView === 'data-integrity'} onClick={() => handleNavClick('data-integrity')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('data-integrity')} />
                       <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
                     </nav>
                   </NavGroup>
@@ -2377,7 +2395,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           <div className="flex-1 min-w-0">
             <p className="text-[15px] font-black text-slate-800 truncate">
               {(({
-                'dashboard': '비즈니스 현황', 'ai-consultant': 'AI 인사이트',
+                'dashboard': '비즈니스 현황', 'data-integrity': '데이터 점검', 'ai-consultant': 'AI 인사이트',
                 'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
@@ -2481,6 +2499,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 )}
               </div>
             </div>
+          )}
+          {currentView === 'data-integrity' && (
+            <DataIntegrityMonitor
+              companyId={companyId}
+              orders={allOrders}
+              items={allItems}
+              itemBoms={itemBoms}
+              purchaseOrders={purchaseOrders}
+              itemReceipts={itemReceipts}
+              rawMaterialLedger={mergedRawMaterialLedger}
+              rawInventories={rawInventoryStates}
+              issuedStatements={issuedStatements}
+              productionSalesLogs={mergedProductionSalesLogs}
+              onRefresh={() => setLedgerReloadKey(key => key + 1)}
+            />
           )}
           {currentView === 'shipping' && (
             <DeliveryManager
@@ -2606,6 +2639,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <>
             <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />
             <ItemList
+              companyId={companyId}
               items={companyItems}
               orders={allOrders}
               onUpdateItem={async (p) => {
@@ -3145,15 +3179,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <PartnerSignupApproval partners={partners} />
           )}
           {(currentView === 'documents' || inCabinetDoc) && (() => {
-            const SUB_ONLY_CATS = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw']);
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
               o.partnerName !== '생산기록' &&
               o.items.some(item => {
                 const p = allItems.find(pr => pr.id === item.itemId);
-                // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
-                // 명확히 부자재인 경우만 제외
-                return !p || !SUB_ONLY_CATS.has(p.type);
+                return isSalesJournalProduct(p);
               })
             );
 
@@ -3172,19 +3203,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const partnerName = partner?.name || order.partnerName || '';
               return order.items.flatMap((item, itemIdx) => {
                 let product = allItems.find(p => p.id === item.itemId);
-                if (product && SUB_ONLY_CATS.has(product.type)) return [];
-                // 완사입(goods: 향미유·고춧가루)은 우리가 생산한 게 아니므로 생산작업판매일지엔 제외(표시만 — 재고 차감엔 영향 없음)
-                if (product && product.type === 'goods') return [];
-                // 박스는 낱개로, **선물세트는 든 완제품 각각으로** 푼다
-                // (수불부·생산작업기록부와 같은 docUnpack). 세트 하나가 줄 여럿이 된다.
-                const 푼것 = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
-                const 줄들 = 푼것.length ? 푼것 : [{ item: product as typeof product, qty: item.quantity }];
-                return 줄들.map(u => {
-                  const base = u.item ?? product;
-                  const 용량 = docSpec(base?.spec) || base?.용량 || item.displaySize || '';
-                  // 품목이 비면 이름으로 대체 — 판매일지는 줄을 떨어뜨리지 않는다(수량 문서라서)
-                  return { 상호: partnerName, 품목: docPumok(base?.품목) || base?.name || item.name, 용량, 수량: u.qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx };
-                });
+                if (!isSalesJournalProduct(product)) return [];
+                // 화면·저장·일일점검이 같은 공용 변환을 쓴다. 품목명이 비면 이름으로 대체하고,
+                // 박스·선물세트는 실제 완제품 줄로 푼다.
+                return journalSaleLines(product, item.quantity, { name: item.name, displaySize: item.displaySize }, id => allItems.find(p => p.id === id)).map(row => ({
+                  상호: partnerName, 품목: row.품목, 용량: row.spec, 수량: row.qty,
+                  소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx,
+                }));
               });
             });
             const rightRows: RightRow[] = Object.values(

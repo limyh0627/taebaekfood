@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
@@ -153,6 +154,7 @@ interface StockClosing { id: string; date: string; closedBy: string; createdAt: 
  */
 
 interface ItemListProps {
+  companyId: import('../src/shared/types').CompanyId;
   items: Item[];
   orderRequests: PurchaseOrder[];
   confirmedOrders: PurchaseOrder[];
@@ -281,6 +283,7 @@ const displayStockOf = (p: any): number => {
 };
 
 const ItemList: React.FC<ItemListProps> = ({
+  companyId,
   items,
   orderRequests,
   confirmedOrders,
@@ -481,11 +484,12 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // 문서함 대분류/중분류 보장 (없으면 생성)
   const ensureCabinetPath = async (cat: string, sub: string) => {
-    const cats = await fetchCollection<{ id: string; name: string }>('fileCabinetCategories');
-    if (!cats.some(c => c.name === cat)) await addItem('fileCabinetCategories', { name: cat, order: cats.length, createdAt: new Date().toISOString() });
-    const subs = await fetchCollection<{ id: string; category: string; name: string }>('fileCabinetSubCategories');
+    const companyConstraint = [where('companyId', '==', companyId)];
+    const cats = await fetchCollection<{ id: string; name: string }>('fileCabinetCategories', companyConstraint);
+    if (!cats.some(c => c.name === cat)) await addItem('fileCabinetCategories', { name: cat, order: cats.length, createdAt: new Date().toISOString(), companyId });
+    const subs = await fetchCollection<{ id: string; category: string; name: string }>('fileCabinetSubCategories', companyConstraint);
     if (!subs.some(s => s.category === cat && s.name === sub)) {
-      await addItem('fileCabinetSubCategories', { category: cat, name: sub, order: subs.filter(s => s.category === cat).length, createdAt: new Date().toISOString() });
+      await addItem('fileCabinetSubCategories', { category: cat, name: sub, order: subs.filter(s => s.category === cat).length, createdAt: new Date().toISOString(), companyId });
     }
   };
 

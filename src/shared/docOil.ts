@@ -220,6 +220,36 @@ export const docSaleLines = (
     .filter(l => l.품목);
 
 /**
+ * 생산판매일지에 실제로 적는 판매 줄.
+ *
+ * 품목의 서류용 품목명이 비어 있어도 운영 화면은 예전부터 품목 이름을 대신 썼다. 점검기가
+ * `docSaleLines`만 사용하면 화면에는 정상적으로 적힌 줄을 "누락"으로 오판한다. 화면·점검이
+ * 같은 결과를 쓰도록 이 폴백까지 공용 함수로 둔다.
+ */
+export const journalSaleLines = (
+  product: Item | undefined,
+  quantity: number,
+  fallback: { name?: string; displaySize?: string },
+  findItem: (id: string) => Item | undefined,
+): { 품목: string; spec: string; qty: number }[] => {
+  const unpacked = docUnpack(product, quantity, findItem);
+  const rows = unpacked.length ? unpacked : [{ item: product, qty: quantity }];
+  return rows.map(row => {
+    const base = row.item ?? product;
+    return {
+      품목: docPumok(base?.품목) || base?.name || fallback.name || '',
+      spec: docSpec(base?.spec) || base?.용량 || fallback.displaySize || '',
+      qty: row.qty,
+    };
+  }).filter(row => row.품목);
+};
+
+/** 생산판매일지 판매란에 싣는 품목인지. 완사입·포장재는 재고 출고만 하고 제조 서류에서는 뺀다. */
+const JOURNAL_EXCLUDED_TYPES = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw', 'goods']);
+export const isSalesJournalProduct = (product: Item | undefined): boolean =>
+  !product || !JOURNAL_EXCLUDED_TYPES.has(String(product.type));
+
+/**
  * 품목별 기름 kg → 원료별 kg. 배합비는 PRODUCT_FORMULA 한 곳에서만 온다.
  * @param into 누적할 대상 (원료명 → kg)
  */

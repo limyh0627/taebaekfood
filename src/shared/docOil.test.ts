@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
 import { buildBomIndex, setBomIndex } from './bomIndex';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
@@ -139,6 +139,23 @@ describe('docSaleLines — 박스는 낱개로, 선물세트는 든 것 각각�
   it('품목이 없으면 빈 목록 — 서류에 잡을 근거가 없다', () => {
     expect(docSaleLines({ ...loose, 품목: '' }, 5, find)).toEqual([]);
     expect(docSaleLines(undefined, 5, find)).toEqual([]);
+  });
+
+  it('생산판매일지는 서류용 품목명이 비어도 상품명과 주문 규격으로 줄을 보존한다', () => {
+    const unmapped = { id: 'p-unmapped', name: '직접 상품명', type: 'product', spec: '' } as any;
+    expect(journalSaleLines(unmapped, 3, { name: '주문 상품명', displaySize: '1kg' }, find)).toEqual([
+      { 품목: '직접 상품명', spec: '1kg', qty: 3 },
+    ]);
+    expect(journalSaleLines(undefined, 2, { name: '삭제된 상품', displaySize: '350ml' }, find)).toEqual([
+      { 품목: '삭제된 상품', spec: '350ml', qty: 2 },
+    ]);
+  });
+
+  it('완사입과 포장재는 생산판매일지에서 제외하고 삭제된 품목은 보존한다', () => {
+    expect(isSalesJournalProduct({ type: 'goods' } as any)).toBe(false);
+    expect(isSalesJournalProduct({ type: 'box' } as any)).toBe(false);
+    expect(isSalesJournalProduct({ type: 'product' } as any)).toBe(true);
+    expect(isSalesJournalProduct(undefined)).toBe(true);
   });
 
   it('박스 판매가 서류에서 통째로 누락되지 않는다 (회귀 방지)', () => {

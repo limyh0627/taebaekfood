@@ -20,6 +20,7 @@
     "preview": "npx vite preview --config vite.admin.config.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "audit:daily": "tsx scripts/diag-daily-integrity.mts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "fcm:sw": "node scripts/gen-fcm-sw.mjs",
     "deploy:functions": "cd functions && npm run build && cd .. && npx firebase deploy --only functions"
