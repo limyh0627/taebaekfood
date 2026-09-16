@@ -32,6 +32,9 @@ export function sortLedger<T extends Pick<RawMaterialEntry, 'date' | 'createdAt'
  * @param density 옛 기록(unit='L')을 kg으로 되돌릴 밀도. 1이면 환산 안 함.
  */
 export function applyLedgerRow(bal: number, e: RawMaterialEntry, density = 1): number {
+  // 원자화 기록은 트랜잭션 직후 확정 잔량을 함께 저장한다. 과거 legacy 줄과 섞인 원장을
+  // 입고-사용으로 다시 계산하면 이관 기준값에 이미 포함된 사용량을 두 번 뺄 수 있다.
+  if (Number.isFinite(e.balanceAfterKg)) return round3(Number(e.balanceAfterKg));
   if (e.targetKg != null) return Number(e.targetKg);   // 실사 = 앵커. 여태 누적을 버리고 이 값부터 다시.
   const toKg = (v: number) => (e.unit === 'L' && density !== 1 ? v * density : v);
   return round3(bal + toKg(e.received ?? 0) - toKg(e.used ?? 0));

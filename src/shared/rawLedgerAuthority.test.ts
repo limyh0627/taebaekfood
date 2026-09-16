@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authoritativeLedgerBalanceKg } from './rawLedgerBalance';
+import { applyLedgerRow, authoritativeLedgerBalanceKg } from './rawLedgerBalance';
 import type { RawMaterialEntry } from './types';
 
 const row = (over: Partial<RawMaterialEntry>): RawMaterialEntry => ({
@@ -19,5 +19,9 @@ describe('원자화 원장 확정 잔량', () => {
 
   it('원자화 줄이 없으면 기존 입출고 누적을 유지한다', () => {
     expect(authoritativeLedgerBalanceKg([row({ received: 100, used: 30 })])).toBe(70);
+  });
+
+  it('화면 누적도 원자화 줄의 balanceAfterKg를 확정값으로 사용한다', () => {
+    expect(applyLedgerRow(882.699, row({ used: 10, balanceAfterKg: 924.254 }))).toBe(924.254);
   });
 });
