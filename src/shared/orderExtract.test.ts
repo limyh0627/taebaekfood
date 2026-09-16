@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateExtract, catalogLine } from './orderExtract';
+import { validateExtract, catalogLine, historyLines, type HistoryOrder } from './orderExtract';
 
 /**
  * AI 가 읽어 온 것을 **믿지 않고 검사한다**(2026-09-15 사장님: "api달아서 메시지에서 주문
@@ -80,5 +80,57 @@ describe('AI 에게 줄 품목 줄', () => {
     expect(catalogLine(품목[0])).toBe('p-oil\t참기름/골드 350ml');
     expect(catalogLine(품목[1])).toBe('p-oil-box\t참기름/골드 350ml * 12');
     expect(catalogLine(품목[2])).toBe('p-sesame\t볶음참깨/1kg');
+  });
+});
+
+const TAB = String.fromCharCode(9);
+
+describe('이 거래처가 전에 시킨 것', () => {
+  const 주문: HistoryOrder[] = [
+    { partnerId: 'c-가득찬', createdAt: '2026-09-10T00:00:00Z', items: [
+      { itemId: 'p-oil', name: '참기름/골드', quantity: 340, orderedAs: '참기름 340개 부탁드려요' },
+      { itemId: 'p-sesame', name: '볶음참깨/1kg', quantity: 50 },
+    ] },
+    { partnerId: 'c-가득찬', createdAt: '2026-08-02T00:00:00Z', items: [
+      { itemId: 'p-oil-box', name: '참기름/골드 박스', quantity: 36, isBoxUnit: true, boxQuantity: 3 },
+    ] },
+    { partnerId: 'c-딴집', createdAt: '2026-09-11T00:00:00Z', items: [
+      { itemId: 'p-oil', name: '참기름/골드', quantity: 10 },
+    ] },
+  ];
+
+  it('그 거래처 것만 가져온다 — 남의 집 버릇을 배우면 안 된다', () => {
+    const 줄 = historyLines(주문, 'c-가득찬');
+    expect(줄.some(l => l.includes('p-oil'))).toBe(true);
+    expect(줄).toHaveLength(3);
+  });
+
+  it('그 집이 쓴 말을 큰따옴표로 붙인다 — 이게 말버릇을 전하는 유일한 길이다', () => {
+    const 줄 = historyLines(주문, 'c-가득찬');
+    expect(줄[0]).toBe('2026-09-10' + TAB + 'p-oil' + TAB + '참기름/골드' + TAB + '340  "참기름 340개 부탁드려요"');
+  });
+
+  it('원문이 없는 옛 주문은 품목·수량만 적는다', () => {
+    expect(historyLines(주문, 'c-가득찬')[1]).toBe('2026-09-10' + TAB + 'p-sesame' + TAB + '볶음참깨/1kg' + TAB + '50');
+  });
+
+  it('박스로 시킨 줄은 박스 수로 적는다 — 낱개로 환산한 수를 보여 주면 버릇을 잘못 배운다', () => {
+    expect(historyLines(주문, 'c-가득찬')[2]).toContain(TAB + '3박스');
+  });
+
+  it('최근 것부터 준다 — 넘쳐 잘리는 쪽이 오래된 것이어야 한다', () => {
+    const 줄 = historyLines(주문, 'c-가득찬');
+    expect(줄[0].startsWith('2026-09-10')).toBe(true);
+    expect(줄[2].startsWith('2026-08-02')).toBe(true);
+  });
+
+  it('주문 수로 자른다 — 품목 줄 수가 아니다', () => {
+    expect(historyLines(주문, 'c-가득찬', 1)).toHaveLength(2);
+  });
+
+  it('거래처를 안 골랐거나 거래가 없으면 빈 목록 — 그 대목을 아예 안 보낸다', () => {
+    expect(historyLines(주문, '')).toEqual([]);
+    expect(historyLines(주문, 'c-처음보는곳')).toEqual([]);
+    expect(historyLines([], 'c-가득찬')).toEqual([]);
   });
 });

@@ -5106,6 +5106,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         <PasteOrderModal
           items={allItems}
           partners={partners}
+          orders={orders}
           partnerItems={partnerItems}
           palletStocks={pallets}
           onClose={() => closeOrderCreation('paste')}

@@ -20,6 +20,20 @@ export interface OrderItem {
   lineId?: string;
   itemId: string;
   name: string;
+  /**
+   * **그 집이 이 줄을 뭐라고 불렀나** — 복사주문에 붙여 넣은 원문 조각 그대로
+   * (`참기름 340개 부탁드려요`). 2026-09-16 사장님: "거래처가 이전에 주문했던 내용을
+   * 참고하는 방식".
+   *
+   * 주문 기록에는 **우리 품목 이름**만 남아서, 그 집이 실제로 뭐라고 부르는지는
+   * 볼 길이 없었다. 그래서 AI 도 규칙도 같은 말을 매번 새로 틀렸다. 이 칸에 원문을
+   * 남겨 두면 다음번에 **지난 주문을 그대로 보여 주는 것만으로** 말버릇이 전해진다
+   * (`orderExtract.historyLines`).
+   *
+   * 사람이 확인 표에서 고친 뒤의 짝이라 **사람이 맞다고 한 답**이다.
+   * 우리 품목 이름과 똑같으면 안 적는다 — 보탤 것이 없다.
+   */
+  orderedAs?: string;
   quantity: number;
   price: number;
   checked?: boolean;

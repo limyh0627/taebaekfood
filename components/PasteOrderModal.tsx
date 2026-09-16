@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { validateExtract, catalogLine } from '../src/shared/orderExtract';
+import { validateExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
 import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
@@ -99,6 +99,12 @@ const matchClient = (name: string, q: string) => {
 interface PasteOrderModalProps {
   items: Item[];
   partners: Partner[];
+  /**
+   * **지난 주문** — AI 가 "이 집이 늘 뭘 어떻게 시키나" 를 보는 데 쓴다(2026-09-16 사장님:
+   * "거래처가 이전에 주문했던 내용을 참고하는 방식"). 앱이 이미 들고 있는 것을 그대로 받는다 —
+   * 따로 물으러 가지 않으므로 기다림이 없다. 추리는 일은 `orderExtract.historyLines` 가 한다.
+   */
+  orders?: HistoryOrder[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   palletStocks: PalletStock[];
   onClose: () => void;
@@ -109,7 +115,7 @@ interface PasteOrderModalProps {
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, partnerItems, palletStocks, onClose, onBack, onSave,
+  items, partners, orders, partnerItems, palletStocks, onClose, onBack, onSave,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -230,6 +236,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       const 답 = await 부르기({
         text: 글,
         catalog: productPool.map(catalogLine),
+        //  **이 집이 전에 시킨 것** — 고를 품목을 좁히고, 그 집 말버릇(`orderedAs`)을 전한다.
+        history: historyLines(orders ?? [], selectedClient?.id ?? ''),
         //  거래처는 이미 골라 놓고 오는 화면이라 목록을 안 보낸다 — 값만 비싸진다.
         today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()),
       });
@@ -289,9 +297,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       const cfg = getBoxConfig(line.selectedProductId!);
       const uPerBox = cfg.unitsPerBox;
       const actualQty = line.isBox && uPerBox > 0 ? line.qty * uPerBox : line.qty;
+      //  **그 집이 뭐라고 불렀는지 같이 적어 둔다**(2026-09-16) — 다음 주문을 읽을 때
+      //  이 짝이 그대로 근거가 된다(`historyLines`). 사람이 확인 표에서 고른 뒤라
+      //  **사람이 맞다고 한 답**이다. 우리 이름과 똑같으면 보탤 것이 없어 안 적는다.
+      const 그집말 = line.rawText?.trim();
       return [{
         itemId: line.selectedProductId!,
         name: product.name,
+        ...(그집말 && 그집말 !== product.name ? { orderedAs: 그집말.slice(0, 80) } : {}),
         quantity: actualQty,
         price: 0,
         ...(line.isBox ? {

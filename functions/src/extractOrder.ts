@@ -27,12 +27,19 @@ const REGION = 'asia-northeast3';
 /** 한 번에 받을 수 있는 글·목록 크기. 넘치면 값이 비싸지고 읽기도 나빠진다. */
 const 글자한도 = 4000;
 const 품목한도 = 400;
+/** 지난 주문 줄 수. 한 줄이 15토큰쯤이라 이만큼 붙여도 한 건에 몇 원이다. */
+const 기록한도 = 60;
 
 interface 들어온것 {
   text?: string;
   /** `id\t이름 규격` 줄들 — 부르는 쪽이 그 거래처가 사는 것만 추려 넘긴다. */
   catalog?: string[];
   partners?: string[];
+  /**
+   * **이 거래처가 전에 시킨 것** — `날짜\tid\t이름\t수량  "그때 그 집이 쓴 말"` 줄들.
+   * 부르는 쪽이 `shared/orderExtract.historyLines` 로 만들어 넘긴다.
+   */
+  history?: string[];
   /** 오늘 날짜(YYYY-MM-DD). "내일" 같은 말을 날짜로 옮기는 기준이 된다. */
   today?: string;
 }
@@ -56,6 +63,14 @@ const 지침 = (오늘: string) => `너는 식품 제조사의 주문 접수 담
   note 에 그대로 옮긴다.
 - source 에는 그 줄이 나온 **원문 조각**을 그대로 적는다. 사람이 대조할 수 있어야 한다.
 
+'전에 시킨 것' 목록이 붙어 있으면 그것부터 본다:
+- 그 집이 **실제로 사는 품목**이 거기 있다. 새 글의 품목은 **웬만하면 거기서 나온다.**
+- 큰따옴표 안은 **그때 그 집이 보낸 말**이고 그 앞이 사람이 최종으로 고른 품목이다.
+  곧 **사람이 맞다고 한 짝**이다. 같은 말이 또 오면 **같은 품목으로 읽는다.**
+- '3박스' 처럼 적힌 줄은 그 집이 **박스로 시키는 버릇**이라는 뜻이다. isBox 를 정할 때 쓴다.
+- 늘 시키던 수량과 다르더라도 **글에 적힌 대로** 옮긴다. 기록에 맞춰 고치지 마라.
+- 전에 시킨 것에만 있고 위 품목 목록에 없는 id 는 **쓰지 않는다.** 품목 목록이 언제나 기준이다.
+
 JSON 형식(이것만 출력한다. 설명·코드블록 금지):
 {"partnerId":"","deliveryDate":"","note":"","lines":[{"itemId":"","qty":0,"isBox":true,"source":""}]}`;
 
@@ -65,13 +80,15 @@ export const extractOrder = onCall(
     //  **로그인한 사람만** — 열쇠를 대신 써 주는 함수라 아무나 부르면 요금이 샌다.
     if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
 
-    const { text, catalog, partners, today } = (request.data ?? {}) as 들어온것;
+    const { text, catalog, partners, history, today } = (request.data ?? {}) as 들어온것;
     const 글 = String(text ?? '').trim().slice(0, 글자한도);
     if (!글) throw new HttpsError('invalid-argument', '읽을 글이 없습니다.');
 
     const 품목목록 = (Array.isArray(catalog) ? catalog : []).slice(0, 품목한도);
     if (!품목목록.length) throw new HttpsError('invalid-argument', '품목 목록이 비어 있습니다.');
     const 거래처목록 = (Array.isArray(partners) ? partners : []).slice(0, 품목한도);
+    //  **지난 주문은 없어도 된다** — 처음 거래하는 곳이면 빈 목록이 온다. 그때는 그 대목을 아예 뺀다.
+    const 지난주문 = (Array.isArray(history) ? history : []).slice(0, 기록한도);
     const 오늘 = /^\d{4}-\d{2}-\d{2}$/.test(String(today ?? '')) ? String(today) : new Date().toISOString().slice(0, 10);
 
     const 본문 = [
@@ -80,6 +97,7 @@ export const extractOrder = onCall(
       '## 품목 목록 (id\t이름)',
       ...품목목록,
       ...(거래처목록.length ? ['', '## 거래처 목록 (id\t이름)', ...거래처목록] : []),
+      ...(지난주문.length ? ['', '## 이 거래처가 전에 시킨 것 (최근순 · 날짜\tid\t이름\t수량  "그때 그 집이 쓴 말")', ...지난주문] : []),
       '',
       '## 받은 글',
       글,

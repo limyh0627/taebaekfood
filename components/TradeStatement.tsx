@@ -4,20 +4,19 @@ import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DateChipButton from '../src/shared/components/DateChipButton';
 import { settleStatus } from '../src/features/admin/voucherMerge';
-import { evidenceChoices, evidenceOf, evidenceMissing } from '../src/features/statements/domain/evidence';
+import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
 import { sortByColumns, toggleSort, sortRank, sortSummary, type TimelineSort, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
 import {
   today, dateOfLocal, shiftDateRange,
   weekMonday, weekSunday, monthStart, monthEnd, yearStart,
 } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
-import { itemSummary } from '../src/shared/itemSummary';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw, RotateCcw, Trash2, Landmark, ArrowUp, ArrowDown, ArrowUpDown
+  ChevronLeft, Share2, Check, Wallet, RotateCw, RotateCcw, Landmark, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
@@ -38,8 +37,7 @@ import { buildTimeline } from '../src/shared/timelineBuild';
 import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import OrderPicker from './OrderPicker';
 import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
-import { lineAmount, lineAmountOf, priceParts } from '../src/shared/lineAmount';
-import { marginOf } from '../src/shared/margin';
+import { lineAmountOf } from '../src/shared/lineAmount';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
@@ -51,6 +49,14 @@ import StatementHistoryFilters from '../src/features/statements/ui/StatementHist
 import StatementHistoryActions from '../src/features/statements/ui/StatementHistoryActions';
 import StatementHistoryPagination from '../src/features/statements/ui/StatementHistoryPagination';
 import StatementComposerHeader from '../src/features/statements/ui/StatementComposerHeader';
+import StatementOrderDateFilter from '../src/features/statements/ui/StatementOrderDateFilter';
+import StatementHistorySearchFields from '../src/features/statements/ui/StatementHistorySearchFields';
+import { statementHistoryRowView } from '../src/features/statements/domain/statementHistoryRowView';
+import { StatementPaymentMobileRow, StatementPaymentTableRow } from '../src/features/statements/ui/StatementPaymentRow';
+import { StatementCashMobileRow, StatementCashTableRow } from '../src/features/statements/ui/StatementCashRow';
+import { StatementTradeMobileRow, StatementTradeTableRow } from '../src/features/statements/ui/StatementTradeRow';
+import StatementPartnerBar from '../src/features/statements/ui/StatementPartnerBar';
+import { quickItemMetrics } from '../src/features/statements/domain/quickItemModel';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
@@ -493,21 +499,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       </span>
     );
   };
-
-  /** 담당자 — 안 적힌 옛 전표는 줄표. **없는 것을 지어내지 않는다.** */
-  const 담당자글 = (이름?: string) => (이름 ?? '').trim()
-    ? <span className="font-bold">{이름}</span>
-    : <span className="text-slate-300">—</span>;
-
-  /** 자금 줄의 '거래내역' — 계정과목. 쪼갠 줄(대출상환 원금+이자)은 계정별 금액까지 편다. */
-  const 계정글 = (
-    split: { accountCode?: string; amount: number; note?: string }[],
-    row: { accountCode?: string },
-    이름표: Map<string, string>,
-  ): string => split.length
-    ? split.map(l => `${l.note ? l.note + ' ' : ''}${이름표.get(l.accountCode ?? '') ?? l.accountCode} ${l.amount < 0 ? '−' : ''}${fmt(Math.abs(l.amount))}`).join(' · ')
-    : (row.accountCode ? (이름표.get(row.accountCode) ?? row.accountCode) : '');
-
 
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
@@ -2349,6 +2340,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 고르기를 끝내고 양식으로 — 목록 아래 단추가 부른다 */
   const goCompose = () => setManualMode(true);
 
+  const selectStatementPartner = (partnerId: string) => {
+    setSelectedClientId(partnerId); setSelectedOrderIds([]); setEditablePrices({});
+    setTaxExemptOverrides({}); setSelectedConfirmedIds([]);
+  };
+  const clearStatementPartner = () => {
+    setSelectedClientId(''); setSelectedOrderIds([]); setEditablePrices({}); setTaxExemptOverrides({});
+    setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]); setSelectedConfirmedIds([]);
+  };
+  const changeStatementInputMode = (manual: boolean) => {
+    setManualMode(manual);
+    if (manual) return;
+    // 주문 목록으로 돌아갈 때 앞서 불러온 줄이 남으면 다른 주문에 섞여 다시 발행된다.
+    setSelectedOrderIds([]); setLoadedPoIds([]);
+    setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+    setEditablePrices({}); setTaxExemptOverrides({}); setAccountCodeOverrides({}); setSelectedConfirmedIds([]);
+  };
+
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
 
@@ -2391,153 +2399,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         onFrom={date => { setHistFrom(date); setHistQuick(''); }}
         onTo={date => { setHistTo(date); setHistQuick(''); }}
         onMove={moveHistoryRange} onKind={setHistKind} onReset={resetHistoryFilters}>
-        {/* 거래처·계정과목·검색.
-            버튼을 늘어놓으니 계정이 수십 개라 줄이 세 겹으로 접혔다. 고르는 값이 많고
-            계층이 깊은 건 드롭다운이 맞다. 지금 무엇으로 거르는지는 옆 숨길에 적어 둔다. */}
-          {/* 거래처 — 전표가 실제로 있는 이름만. 수백 곳이라 검색으로 찾는다(목록 높이는 고정). */}
-          <div className="relative flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-500">거래처</span>
-            <button type="button" onClick={() => { setPartnerPickerOpen(v => !v); setPartnerQuery(''); }}
-              className={`flex h-9 min-w-[145px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all max-w-[210px] ${
-                histPartner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-              <span className="truncate">{histPartner || '거래처 선택'}</span>
-              <ChevronDown size={12} className="shrink-0 opacity-50"/>
-            </button>
-            {partnerPickerOpen && (<>
-              <div className="fixed inset-0 z-40" onClick={() => setPartnerPickerOpen(false)}/>
-              <div className="absolute left-0 top-full mt-1 z-50 w-[240px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
-                <div className="p-2 border-b border-slate-100">
-                  <input autoFocus value={partnerQuery} onChange={e => setPartnerQuery(e.target.value)}
-                    placeholder="거래처 이름으로 찾기"
-                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                </div>
-                <div className="h-[260px] overflow-y-auto py-1">
-                  {histPartner && (
-                    <button type="button" onClick={() => { setHistPartner(''); setPartnerPickerOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 text-xs font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
-                  )}
-                  {partnerShown.length === 0 && (
-                    <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">찾는 거래처가 없습니다</p>
-                  )}
-                  {partnerShown.map(n => (
-                    <button key={n} type="button" onClick={() => { setHistPartner(n); setPartnerPickerOpen(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs font-black hover:bg-slate-50 transition-colors ${
-                        histPartner === n ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>{n}</button>
-                  ))}
-                </div>
-              </div>
-            </>)}
-          </div>
-
-          {/* 계정과목 — **검색되는 목록 하나.** 계정은 수십 개지만 찾는 사람은 이름을 안다.
-              층을 훑어 내려가게 하면 이자비용 하나 찾는 데도 세 번을 골라야 한다.
-              계층은 줄마다 경로로 보여 준다 — 손익 › 영업외비용 › 951 이자비용. */}
-          <div className="relative flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-500">계정과목</span>
-            <button type="button" onClick={() => { setAcctPickerOpen(v => !v); setAcctQuery(''); }}
-              className={`flex h-9 min-w-[190px] items-center justify-between gap-1.5 rounded-md border bg-slate-50 px-2.5 text-xs font-bold outline-none transition-all max-w-[280px] ${
-                histAccount ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
-              <span className="truncate">
-                {acctPicked ? <>
-                  <span className="text-slate-400 font-bold">{acctPicked.path} › </span>{acctPicked.label}
-                </> : '계정 선택'}
-              </span>
-              <ChevronDown size={12} className="shrink-0 opacity-50"/>
-            </button>
-            {acctPickerOpen && (<>
-              <div className="fixed inset-0 z-40" onClick={() => setAcctPickerOpen(false)}/>
-              <div className="absolute left-0 top-full mt-1 z-50 w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
-                <div className="p-2 border-b border-slate-100">
-                  <input autoFocus value={acctQuery} onChange={e => setAcctQuery(e.target.value)}
-                    placeholder="계정 이름·번호·묶음(재료비·판관비)"
-                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                </div>
-                {/* 층으로 좁힌다 — 손익 › 이익·비용,  재무 › 자산·부채·자본. 검색하면 층을 건너뛴다. */}
-                {!acctQuery.trim() && (
-                  <div className="px-2 py-2 space-y-1.5 border-b border-slate-100">
-                    <div className="flex gap-1">
-                      {(['손익', '재무'] as const).map(a => (
-                        <button key={a} type="button"
-                          onClick={() => { setAcctAxis(a); setAcctBranch(''); setAcctGroup(''); }}
-                          className={`flex-1 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                            acctAxis === a ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{a}</button>
-                      ))}
-                    </div>
-                    {acctAxis && (
-                      <div className="flex gap-1">
-                        {(acctAxis === '손익' ? ['이익', '비용'] : ['자산', '부채', '자본']).map(b => (
-                          <button key={b} type="button"
-                            onClick={() => { setAcctBranch(b); setAcctGroup(''); }}
-                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                              acctBranch === b ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{b}</button>
-                        ))}
-                      </div>
-                    )}
-                    {/* 고른 묶음 — 눌러서 되돌아간다(계정과목 층에서 묶음 층으로) */}
-                    {acctBranch && acctGroup && (
-                      <button type="button" onClick={() => setAcctGroup('')}
-                        className="w-full flex items-center gap-1 py-1.5 px-2 rounded-lg text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all">
-                        <ChevronDown size={11} className="rotate-90 shrink-0"/>
-                        {accountItems.find(i => i.isGroup && i.groupId === acctGroup)?.label ?? '묶음'}
-                        <span className="ml-auto text-[10px] font-bold text-indigo-400">묶음 다시 고르기</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-                <div className="h-[260px] overflow-y-auto py-1">
-                  {histAccount && (
-                    <button type="button"
-                      onClick={() => { setHistAccount(''); setAcctAxis(''); setAcctBranch(''); setAcctGroup(''); setAcctPickerOpen(false); }}
-                      className="w-full text-left px-3 py-1.5 text-xs font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
-                  )}
-                  {acctShown.length === 0 && (
-                    <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">
-                      {acctQuery.trim() ? '찾는 계정이 없습니다'
-                        : !acctAxis ? '손익 · 재무 중에서 고르세요'
-                        : !acctBranch ? '갈래를 고르세요'
-                        : acctGroup ? '이 묶음에 딸린 계정이 없습니다' : '묶음을 고르세요'}
-                    </p>
-                  )}
-                  {acctShown.map(it => (
-                    <button key={it.value} type="button"
-                      onClick={() => {
-                        //  묶음은 **한 층 내려가는 것**이 먼저다(그 밑 계정을 본다).
-                        //  묶음 통째로 거르고 싶으면 오른쪽 '이 묶음 전체' 배지를 누른다.
-                        //  검색 결과에서는 층이 없으므로 바로 걸린다.
-                        if (it.isGroup && !acctQuery.trim()) { setAcctGroup(it.groupId ?? ''); return; }
-                        setHistAccount(it.value); setAcctPickerOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors ${
-                        histAccount === it.value ? 'bg-indigo-50' : ''}`}>
-                      <span className={`text-xs font-black ${histAccount === it.value ? 'text-indigo-700' : 'text-slate-700'}`}>
-                        {it.label}
-                        {/* 묶음 줄은 눌러서 내려가고, 통째로 거르려면 오른쪽 배지를 누른다 */}
-                        {it.isGroup && (
-                          <span role="button" tabIndex={0}
-                            onClick={e => { e.stopPropagation(); setHistAccount(it.value); setAcctPickerOpen(false); }}
-                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLElement).click(); }}
-                            className="float-right text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-200 cursor-pointer">
-                            이 묶음 전체
-                          </span>
-                        )}
-                      </span>
-                      <span className="block text-[10px] font-bold text-slate-300 leading-tight">{it.path}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>)}
-          </div>
-
-          <label className="flex min-w-[260px] max-w-sm flex-1 flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-500">전체 검색</span>
-            <div className="relative">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
-              <input type="text" placeholder="업체명 · 문서번호 · 계정과목 검색" value={histSearch}
-                onChange={e=>setHistSearch(e.target.value)}
-                className="h-9 w-full rounded-md border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
-            </div>
-          </label>
+        <StatementHistorySearchFields
+          partner={histPartner} partnerOpen={partnerPickerOpen} partnerQuery={partnerQuery} partnerShown={partnerShown}
+          onPartnerOpen={setPartnerPickerOpen} onPartnerQuery={setPartnerQuery} onPartner={setHistPartner}
+          account={histAccount} accountOpen={acctPickerOpen} accountQuery={acctQuery}
+          accountAxis={acctAxis} accountBranch={acctBranch} accountGroup={acctGroup}
+          accountPicked={acctPicked} accountShown={acctShown} accountItems={accountItems}
+          onAccountOpen={setAcctPickerOpen} onAccountQuery={setAcctQuery} onAccountAxis={setAcctAxis}
+          onAccountBranch={setAcctBranch} onAccountGroup={setAcctGroup} onAccount={setHistAccount}
+          search={histSearch} onSearch={setHistSearch}/>
       </StatementHistoryFilters>
 
       <StatementHistoryActions
@@ -2632,279 +2502,60 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                  (머리는 13px). 한 곳에서 정하니 이렇게 통째로 키울 수 있다. 바탕색은 안 깐다. */}
             <tbody className="divide-y divide-slate-200 text-[12px]">
               {pagedHistory.map(row => {
+                const view = statementHistoryRowView(row, codeName);
                 if (row.kind === 'cash') {
-                  // ── 자금 입출금 전표 행 ──
-                  // 쪼갠 줄(대출상환 원금+이자)은 계정 칸에 "원금 차입금 1,000,000 · 이자 …"로 펼친다.
-                  // 줄 금액은 부호를 가진다 — 음수는 통장과 같은 편(급여의 원천공제 등)
-                  const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0);
-                  const acct = split.length
-                    ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${l.amount < 0 ? '−' : ''}${fmt(Math.abs(l.amount))}`).join(' · ')
-                    : (row.accountCode ? `${codeName.get(row.accountCode) ?? row.accountCode}` : '');
-                  const detail = [acct, row.note].filter(Boolean).join(' · ');
-                  // 자금기록 한 건은 줄도 하나다. 다만 성격이 둘이면 배지를 둘 단다 — [출금][비용].
-                  // 예전엔 자금축·손익축을 별개 줄로 뽑아 대출상환 한 건이 두 줄로 보였다.
-                  // 자금 행은 언제나 통장에서 오간 전액을 보여준다.
-                  // (예전엔 손익 탭에서 그 성격의 금액만 보여줬는데, 이제 자금전표는
-                  //  매출·매입 탭에 아예 안 오므로 가릴 이유가 없다.)
-                  // 계정을 콕 집어 걸렀으면 **그 계정 몫**을 보여준다 — 안 그러면 손익과 안 맞아 보인다
+                  const lines = (row.entry.lines ?? []).filter(line => line.accountCode && line.amount !== 0);
                   const portion = accountPortion(row);
-                  const shownAmt = portion != null && portion !== row.amount ? portion : row.amount;
+                  const shownAmount = portion != null && portion !== row.amount ? portion : row.amount;
                   const partial = portion != null && portion !== row.amount;
-                  // 성격 배지 — 계정의 종류에서 뽑는다. 한 건에 성격이 여럿이면 배지도 여럿.
-                  //   대출상환 = [출금] + 원금(부채↓) [상환] + 이자(비용) [비용]
-                  // Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다.
-                  const KIND_CLS: Record<string, string> = {
-                    비용: 'bg-rose-100 text-rose-700', 수익: 'bg-blue-100 text-blue-700',
-                    상환: 'bg-violet-100 text-violet-700', 차입: 'bg-violet-100 text-violet-700',
-                    예수: 'bg-amber-100 text-amber-700', 반환: 'bg-amber-100 text-amber-700',
-                    자산: 'bg-teal-100 text-teal-700', 처분: 'bg-teal-100 text-teal-700',
-                  };
-                  // 부채는 줄지 느는지에 따라 말이 다르다 — 줄 금액의 부호로 가른다.
-                  //   대출상환 원금(+, 출금) = 부채 감소 → 상환 / 급여 원천공제(−, 출금) = 부채 증가 → 예수
                   const kindOf = (code?: string, amount = 1): string | null => {
-                    const t = code ? codeType.get(code) : undefined;
-                    if (t === '비용' || t === '수익') return t;
-                    const shrink = row.dir === '출금' ? amount > 0 : amount < 0;   // 그 계정이 줄어드는가
-                    if (t === '부채') {
-                      const isLoan = /차입금/.test(codeName.get(code!) ?? '');
-                      return shrink ? (isLoan ? '상환' : '반환') : (isLoan ? '차입' : '예수');
+                    const type = code ? codeType.get(code) : undefined;
+                    if (type === '비용' || type === '수익') return type;
+                    const shrink = row.dir === '출금' ? amount > 0 : amount < 0;
+                    if (type === '부채') {
+                      const loan = /차입금/.test(codeName.get(code!) ?? '');
+                      return shrink ? (loan ? '상환' : '반환') : (loan ? '차입' : '예수');
                     }
-                    if (t === '자산') return shrink ? '처분' : '자산';
+                    if (type === '자산') return shrink ? '처분' : '자산';
                     return null;
                   };
-                  const kindParts = split.length
-                    ? split.map(l => ({ code: l.accountCode, amount: l.amount }))
-                    : (row.accountCode ? [{ code: row.accountCode, amount: row.amount }] : []);
-                  const kinds = [...new Set(kindParts.map(p => kindOf(p.code, p.amount)).filter((k): k is string => !!k))];
-                  const isOpen = expandedJournal.has(row.entry.id);
-                  // 거래처가 붙은 돈인데 전표 매칭도 계정도 없으면 '미배분' — 받았지만 어느 청구서에
-                  // 넣을지 안 정한 돈이다. 계정이 있으면 성격이 정해진 것이라 정상(이자·차입금 등).
-                  //  **셈은 cashLedger.unmatchedCash 하나다.** 여기 손으로 한 벌 더
-                  //  적혀 있었는데(2026-09-03 사장님 지적), 그러면 규칙이 바뀔 때
-                  //  이 자리만 안 따라온다 — 실제로 '자금줄 생사를 본다'가 그랬다.
-                  const unallocated = row.entry.partnerId && !split.length && !row.accountCode
+                  const parts = lines.length ? lines.map(line => ({ code: line.accountCode, amount: line.amount }))
+                    : row.accountCode ? [{ code: row.accountCode, amount: row.amount }] : [];
+                  const classifications = [...new Set(parts.map(part => kindOf(part.code, part.amount)).filter((label): label is string => !!label))];
+                  const unallocated = row.entry.partnerId && !lines.length && !row.accountCode
                     ? Math.max(0, unmatchedCash(row.entry, settlements)) : 0;
-                  return (
-                  <React.Fragment key={`cash__${row.entry.id}`}>
-                    <tr
-                      onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} hover:bg-slate-50`}>
-                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(row.date, 날짜 => onUpdateCashEntry?.(row.entry.id, { date: 날짜 }), !!onUpdateCashEntry, row.entry.createdAt)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글((row.entry as { createdBy?: string }).createdBy)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 align-middle">
-                          {journalToggle(row.entry.id)}
-                          <span className={`whitespace-nowrap text-[12px] font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-600'}`}>{rowKind(row)}</span>
-                        </span>
-                      </td>
-                      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-700" title={row.partnerName || ''}>{row.partnerName || <span className="text-slate-300">—</span>}</td>
-                      {/*  거래내역 = **계정과목**(쪼갠 줄이면 계정별 금액까지). 적어 둔 메모는 맨 뒤 '비고' 칸이다. */}
-                      <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={계정글(split, row, codeName)}>
-                        {(split.length || row.accountCode)
-                          ? 계정글(split, row, codeName)
-                          : <span className="font-bold text-amber-500">계정 미지정</span>}
-                      </td>
-                      <td className={`px-4 py-2 text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>
-                        {fmt(shownAmt)}
-                        {/* 계정으로 걸렀을 땐 그 계정 몫을 띄우되, 통장에서 나간 전액도 같이 밝힌다 */}
-                        {partial && (
-                          <span className="block text-[10px] font-bold text-slate-400">통장 {fmt(row.amount)}</span>
-                        )}
-                        {/* '그중 비용 …'은 안 붙인다 — 안 물어봤는데 늘 따라다녀 줄만 어지럽다.
-                            계정으로 걸렀을 때 그 몫이 위 shownAmt로 뜨는 것으로 충분하다(partial). */}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {/* 거래처는 붙었는데 전표에도 안 붙고 계정도 없는 돈 = 어디 쓸지 안 정한 돈.
-                            완도식품처럼 조용히 떠 있으면 미수금이 안 맞는데 원인을 못 찾는다. */}
-                        {/* 거래처가 붙은 돈이면 그 시점 잔액도 같이 — 수금/지불 행과 같은 근거(cumul) */}
-                        {row.cumul !== undefined && (
-                          <span className={`block font-black tabular-nums ${row.cumul === 0 ? 'text-slate-300' : row.cumul < 0 ? 'text-amber-600' : 'text-slate-600'}`}>
-                            {row.cumul === 0 ? '0' : row.cumul < 0 ? `−${fmt(Math.abs(row.cumul))}` : fmt(row.cumul)}
-                          </span>
-                        )}
-                        {unallocated > 0
-                          ? <span className="whitespace-nowrap text-[12px] font-black text-amber-600">
-                              미배분 {fmt(unallocated)}
-                            </span>
-                          : row.cumul === undefined && <span className="text-slate-300">—</span>}
-                      </td>
-                      {/*  자금 줄은 그 자체가 오간 돈이라 '수금 상태'도 '증빙'도 없다. */}
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
-                      <td className="max-w-[110px] truncate px-3 py-2 text-[10px] text-slate-400" title={row.note || ''}>{row.note || '—'}</td>
-                    </tr>
-                    {/* 분개 — 쪼갠 줄(대출상환 원금+이자)도 여기서 계정별로 갈려 보인다.
-                        전에는 쪼갠 줄만 따로 폈는데, 통장 쪽 상대계정이 안 보여 반쪽이었다. */}
-                    {isOpen && journalTr(`je__cash__${row.entry.id}`, journalizeCashEntry(row.entry),
-                      { kind: rowKind(row), docNo: row.entry.docNo, date: row.date, headPartner: row.partnerName })}
-                  </React.Fragment>
-                  );
+                  return <StatementCashTableRow key={`cash__${view.key}`} view={view} direction={row.dir}
+                    shownAmount={shownAmount} partial={partial} unallocated={unallocated} classifications={classifications}
+                    dateCell={전표일자칸(row.date, 날짜 => onUpdateCashEntry?.(row.entry.id, { date: 날짜 }), !!onUpdateCashEntry, row.entry.createdAt)}
+                    journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
+                    journalPreview={expandedJournal.has(view.key)
+                      ? journalTr(`je__cash__${view.key}`, journalizeCashEntry(row.entry), { kind: rowKind(row), docNo: row.entry.docNo, date: row.date, headPartner: row.partnerName })
+                      : undefined}/>;
                 }
                 if (row.kind === 'pay') {
-                  // ── 수금/지불 행 ──
-                  // 라벨은 수금·지불(무슨 돈인지 알아야 하니까). 다만 분류는 자금(입금·출금)이라
-                  // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
-                  const label = row.offset ? (row.stmtType === '매출' ? '미수상계' : '미지급상계')
-                    : row.stmtType === '매출' ? '수금' : '지불';
-                  const cumul = row.cumul;
                   const payEntry = row.entry;
-                  /*
-                   * **행 열쇠는 자금전표 id만으로 모자란다.**
-                   * 상계 하나가 미수와 미지급을 같이 줄이면 채권 묶음·채무 묶음에서 각각
-                   * 한 줄씩 나온다(가득찬식품 8/31 24,604,700). 둘 다 paymentId가 같아
-                   * key가 겹쳤고, React가 같은 열쇠를 둘로 보고 지운 줄을 못 지워
-                   * "필터에 안 맞는데도 남아 있는" 행이 됐다. 방향을 열쇠에 붙여 가른다.
-                   */
-                  const payKey = `${row.paymentId}__${row.stmtType}`;
-                  return (
-                    <React.Fragment key={`pay__${payKey}`}>
-                    <tr
-                      className={`cursor-pointer transition-colors hover:bg-slate-50`}
-                      onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
-                      <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(row.date, 날짜 => payEntry && onUpdateCashEntry?.(payEntry.id, { date: 날짜 }), !!payEntry && !!onUpdateCashEntry, payEntry?.createdAt)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글((payEntry as { createdBy?: string } | undefined)?.createdBy)}</td>
-                      <td className="px-3 py-2">
-                        <span className="inline-flex items-center gap-1 align-middle">
-                          {journalToggle(payKey)}
-                          <span className={`whitespace-nowrap text-[12px] font-black ${row.stmtType === '매출' ? 'text-lime-700' : 'text-orange-600'}`}>{label}</span>
-                        </span>
-                      </td>
-                      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={row.partnerName}>{row.partnerName}</td>
-                      {/*  거래내역 = **결제수단**(현금·계좌). 메모는 맨 뒤 '비고' 칸이다. */}
-                      <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500">{row.method || '—'}</td>
-                      <td className="px-4 py-2 text-right font-black text-slate-800">{fmt(row.amount)}</td>
-                      <td className="px-4 py-2 text-right">
-                        {cumul === 0
-                          ? <span className="font-black text-slate-400">0</span>
-                          : cumul < 0
-                            ? <span className="font-black text-slate-500 whitespace-nowrap">
-                              −{fmt(Math.abs(cumul))}
-                              <span className="ml-1 text-[9px] font-black px-1 py-0.5 rounded bg-slate-100 text-slate-500 align-middle">{overLabelOf(row.stmtType)}</span>
-                            </span>
-                            : <span className={`font-black ${row.stmtType === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
-                        }
-                      </td>
-                      {/*  수금·지불 줄은 **받은 행위 자체**다 — 얼마나 남았는지와 증빙은 위의 전표 줄이 말한다. */}
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>
-                      <td className="max-w-[110px] truncate px-3 py-2 text-[10px] text-slate-400" title={row.note || ''}>{row.note || '—'}</td>
-                    </tr>
-                    {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
-                    {expandedJournal.has(payKey) && payEntry &&
-                      journalTr(`je__pay__${payKey}`, journalizeCashEntry(payEntry),
-                        { kind: payEntry.dir, docNo: payEntry.docNo, date: row.date, headPartner: row.partnerName })}
-                    </React.Fragment>
-                  );
+                  return <StatementPaymentTableRow key={`pay__${view.key}`} view={view} statementType={row.stmtType}
+                    dateCell={전표일자칸(row.date, 날짜 => payEntry && onUpdateCashEntry?.(payEntry.id, { date: 날짜 }), !!payEntry && !!onUpdateCashEntry, payEntry?.createdAt)}
+                    journalToggle={journalToggle(view.key)} onOpen={() => openPayTimelineRow(row.paymentId, row.src)}
+                    journalPreview={expandedJournal.has(view.key) && payEntry
+                      ? journalTr(`je__pay__${view.key}`, journalizeCashEntry(payEntry),
+                          { kind: payEntry.dir, docNo: payEntry.docNo, date: row.date, headPartner: row.partnerName })
+                      : undefined}/>;
                 }
-                // ── 전표 행 ──
                 const stmt = row.data;
-                const issuedDate = new Date(stmt.issuedAt);
-                const dateLabel  = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
-                const stmtItems  = stmt.items ?? [];
-                const summary    = itemSummary(stmtItems);
-                const isReturn   = stmtItems.some(i => i.qty < 0);
-                const cumul = row.cumul;
-                const jOpen = expandedJournal.has(stmt.id);
-                // 계정을 콕 집어 걸렀으면 **그 계정 몫**을 보여준다 — 전표 총액을 띄우면
-                // 손익과 안 맞아 보인다(매출전표 안에 잡이익이 섞인 것처럼).
-                const stPortion = accountPortion(row);
-                const stPartial = stPortion != null && stPortion !== stmt.totalAmount;
-                return (
-                  <React.Fragment key={stmt.id}>
-                  <tr className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
-                    onClick={() => openEdit(stmt)}>
-                    <td className="px-3 py-2 whitespace-nowrap" onClick={e => e.stopPropagation()}>{전표일자칸(stmt.tradeDate, 날짜 => onUpdateIssuedStatement?.(stmt.id, { tradeDate: 날짜 }), !!onUpdateIssuedStatement, stmt.issuedAt)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-500">{담당자글(stmt.createdBy)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        {journalToggle(stmt.id)}
-                        <span className={`whitespace-nowrap text-[12px] font-black ${
-                          stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'
-                        }`}>{stmt.type}</span>
-                        {isReturn && <span className="whitespace-nowrap text-[12px] font-black text-amber-600">반품</span>}
-                      </div>
-                    </td>
-                    <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={stmt.partnerName}>{stmt.partnerName}</td>
-                    {/*  거래내역 = **품목 요약**. 전표에는 따로 적는 메모가 없어 비고 칸은 비운다. */}
-                    <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={summary}>{summary || '—'}</td>
-                    <td className={`px-4 py-2 text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {fmt(stPartial ? stPortion! : stmt.totalAmount)}
-                      {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {cumul == null
-                        ? <span className="font-black text-slate-300" title="거래처가 없는 전표 — 잔액이라는 게 없다">—</span>
-                        : cumul === 0
-                        ? <span className="font-black text-slate-400">0</span>
-                        : cumul < 0
-                          ? <span className="font-black text-slate-500 whitespace-nowrap">
-                              −{fmt(Math.abs(cumul))}
-                              <span className="ml-1 text-[9px] font-black px-1 py-0.5 rounded bg-slate-100 text-slate-500 align-middle">{overLabelOf(stmt.type)}</span>
-                            </span>
-                          : <span className={`font-black ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
-                      }
-                    </td>
-                    {/*  **상태와 단추는 한 칸에**(2026-09-15 사장님: "수금상태랑 버튼이 같이 있어야
-                         맞지 않을까?"). 맞다 — '미수' 를 읽고 바로 옆에서 처리하는 것이 한 동작이다.
-                         따로 두면 눈이 표를 가로질러 오가야 한다. */}
-                    {(() => {
-                      const 상태 = settleStatus(stmt, getBalance(stmt));
-                      //  색은 **일의 상태**를 가리킨다 — 다 끝난 것 초록, 손도 안 댄 것 빨강,
-                      //  하다 만 것 주황. 해당 없는 전표는 회색 줄표다.
-                      /*  **미수는 색을 안 쓴다**(2026-09-15 사장님: "미수 색깔 빼라").
-                          대부분의 줄이 미수라 빨갛게 칠하면 표가 온통 빨개져, 정작 눈에 띄어야 할
-                          '부분수금'(하다 만 것)이 묻힌다. 끝난 것과 하다 만 것만 색으로 알린다. */
-                      const 색 = 상태.state === 'done' ? 'text-emerald-600'
-                        : 상태.state === 'partial' ? 'text-amber-600'
-                        : 상태.state === 'open' ? 'text-slate-600' : 'text-slate-300';
-                      return (
-                        <td className="whitespace-nowrap px-3 py-2">
-                          <span className="flex items-center gap-1.5">
-                            <span className={`font-black ${색}`}>{상태.label}</span>
-                            {canSettle(stmt) && (
-                              <button onClick={e=>{e.stopPropagation();openPayModal(stmt);}}
-                                /*  **글자만**(2026-09-15 사장님: "수금처리 버튼도 앞에 아이콘 빼고
-                                    바탕색 빼봐", 앞서 "너무 크다 좀 작게하고") — 줄마다 서는 것이라
-                                    칠하고 아이콘까지 붙이면 그것이 줄 높이와 눈길을 다 가져간다.
-                                    밑줄로 누를 수 있다는 것만 알린다. */
-                                className={`shrink-0 whitespace-nowrap text-[11px] font-black underline decoration-dotted underline-offset-2 transition-colors ${
-                                  stmt.type === '매입' ? 'text-rose-600 hover:text-rose-700' : 'text-blue-600 hover:text-blue-700'
-                                }`}>
-                                {stmt.type === '매입' ? '지불처리' : '수금처리'}
-                              </button>
-                            )}
-                          </span>
-                        </td>
-                      );
-                    })()}
-                    {(() => {
-                      const 고를것 = evidenceChoices(stmt.type);
-                      if (!고를것.length) return <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td>;
-                      const 지금 = evidenceOf(stmt);
-                      //  **색은 안 쓴다**(2026-09-15 사장님: "증빙도 색 빼라") — 대부분이 미발행이라
-                      //  칠하면 표가 온통 빨개진다. 미수와 같은 까닭이다.
-                      void evidenceMissing;
-                      return (
-                        <td className="whitespace-nowrap px-3 py-2" onClick={e => e.stopPropagation()}>
-                          <select
-                            value={지금}
-                            disabled={!onUpdateIssuedStatement}
-                            onChange={e => { e.stopPropagation(); onUpdateIssuedStatement?.(stmt.id, { evidence: e.target.value }); }}
-                            aria-label={`${stmt.partnerName} 증빙`}
-                            className={`h-6 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[11px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60 text-slate-700`}
-                          >
-                            {고를것.map(옵션 => <option key={옵션} value={옵션}>{옵션}</option>)}
-                          </select>
-                        </td>
-                      );
-                    })()}
-                    <td className="px-3 py-2 text-slate-300">—</td>
-                  </tr>
-                  {/* ── 분개 미리보기 ── 매출 한 건도 채권·매출·부가세로 갈리므로 줄로 편다 */}
-                  {jOpen && journalTr(`je__${stmt.id}`, journalOfStmt(stmt),
-                    { kind: stmt.type === '비용' ? '대체' : stmt.type, docNo: stmt.docNo, date: stmt.tradeDate, headPartner: stmt.partnerName })}
-                  </React.Fragment>
-                );
+                const portion = accountPortion(row);
+                const partial = portion != null && portion !== stmt.totalAmount;
+                const settle = settleStatus(stmt, getBalance(stmt));
+                const choices = evidenceChoices(stmt.type);
+                return <StatementTradeTableRow key={view.key} statement={stmt} view={view}
+                  shownAmount={partial ? portion! : view.amount} partial={partial} settle={settle} canSettle={canSettle(stmt)}
+                  evidenceChoices={choices} evidence={evidenceOf(stmt)}
+                  dateCell={전표일자칸(stmt.tradeDate, 날짜 => onUpdateIssuedStatement?.(stmt.id, { tradeDate: 날짜 }), !!onUpdateIssuedStatement, stmt.issuedAt)}
+                  journalToggle={journalToggle(view.key)} onOpen={() => openEdit(stmt)} onSettle={() => openPayModal(stmt)}
+                  onEvidence={onUpdateIssuedStatement ? evidence => onUpdateIssuedStatement(stmt.id, { evidence }) : undefined}
+                  journalPreview={expandedJournal.has(view.key)
+                    ? journalTr(`je__${view.key}`, journalOfStmt(stmt), { kind: stmt.type === '비용' ? '대체' : stmt.type, docNo: stmt.docNo, date: stmt.tradeDate, headPartner: stmt.partnerName })
+                    : undefined}/>;
               })}
             </tbody>
           </table>
@@ -2912,162 +2563,32 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           {/* ── 모바일 카드 목록 ── */}
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
+              const view = statementHistoryRowView(row, codeName);
               if (row.kind === 'cash') {
-                const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0);
-                const acct = split.length
-                  ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
-                  : (row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '');
-                const detail = [acct, row.note].filter(Boolean).join(' · ');
-                // 자금 행은 언제나 전액. 매출·매입 탭에는 자금전표가 안 온다.
-                const mPl: '수익' | '비용' | null = null;
-                if (mPl) {
-                  const parts = split.length
-                    ? split.filter(l => codeType.get(l.accountCode) === mPl).map(l => ({ code: l.accountCode, amount: l.amount }))
-                    : (row.accountCode && codeType.get(row.accountCode) === mPl
-                        ? [{ code: row.accountCode, amount: row.amount }] : []);
-                  if (!parts.length) return null;
-                  const badge = mPl === '비용' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700';
-                  const amtC = mPl === '비용' ? 'text-rose-600' : 'text-blue-600';
-                  return (
-                    <React.Fragment key={`m-cash-${row.entry.id}`}>
-                      {parts.map((p, i) => (
-                        <div key={`m-cashpl-${row.entry.id}-${i}`}
-                          onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                          className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''}`}>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-1">
-                              {journalToggle(`${row.entry.id}#pl`)}
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badge}`}>{mPl}</span>
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (codeName.get(p.code) ?? p.code)}</span>
-                            <span className={`text-sm font-black shrink-0 ${amtC}`}>{fmt(p.amount)}</span>
-                          </div>
-                          <p className="text-[11px] text-slate-400 truncate">
-                            {[`${p.code} ${codeName.get(p.code) ?? ''}`, row.note].filter(Boolean).join(' · ')}
-                          </p>
-                          {expandedJournal.has(`${row.entry.id}#pl`) && (
-                            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
-                              {renderJournal(journalizeCashEntry(row.entry), true)}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </React.Fragment>
-                  );
-                }
-                return (
-                  <div key={`m-cash-${row.entry.id}`}
-                    onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                    className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''} `}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1">
-                        {journalToggle(row.entry.id)}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
-                        {onDeleteCashEntry && <button onClick={(e)=>{e.stopPropagation(); if(window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id);}} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (acct || '자금')}</span>
-                      <span className={`text-sm font-black shrink-0 ${row.dir === '입금' ? 'text-emerald-600' : 'text-slate-800'}`}>{fmt(row.amount)}</span>
-                    </div>
-                    {detail && <p className="text-[11px] text-slate-400 truncate">{detail}</p>}
-                    {expandedJournal.has(row.entry.id) && (
-                      <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
-                        {renderJournal(journalizeCashEntry(row.entry), true)}
-                      </div>
-                    )}
-                  </div>
-                );
+                return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
+                  journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
+                  onDelete={onDeleteCashEntry ? () => { if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); } : undefined}
+                  journalPreview={expandedJournal.has(view.key)
+                    ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalizeCashEntry(row.entry), true)}</div>
+                    : undefined}/>;
               }
               if (row.kind === 'pay') {
-                const label = row.offset ? (row.stmtType === '매출' ? '미수상계' : '미지급상계')
-                  : row.stmtType === '매출' ? '수금' : '지불';
-                const cumul = row.cumul;
-                const memo = [row.method, row.note].filter(Boolean).join(' · ');
-                const payKey = `${row.paymentId}__${row.stmtType}`;   // 상계는 채권·채무 두 줄 — 데스크탑과 같은 이유
-                return (
-                  <div key={`m-pay-${payKey}`}
-                    onClick={() => openPayTimelineRow(row.paymentId, row.src)}
-                    className={`w-full px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1">
-                        {journalToggle(payKey)}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
-                        <button onClick={e => { e.stopPropagation(); deletePayTimelineRow(row.paymentId, row.src); }} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-bold text-slate-800 truncate">{row.partnerName}</span>
-                      <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
-                    </div>
-                    {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
-                    {expandedJournal.has(payKey) && row.entry && (
-                      <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
-                        {renderJournal(journalizeCashEntry(row.entry), true)}
-                      </div>
-                    )}
-                  </div>
-                );
+                return <StatementPaymentMobileRow key={`m-pay-${view.key}`} view={view} statementType={row.stmtType}
+                  journalToggle={journalToggle(view.key)} onOpen={() => openPayTimelineRow(row.paymentId, row.src)}
+                  onDelete={() => deletePayTimelineRow(row.paymentId, row.src)}
+                  journalPreview={expandedJournal.has(view.key) && row.entry
+                    ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalizeCashEntry(row.entry), true)}</div>
+                    : undefined}/>;
               }
               const stmt = row.data;
               const issuedDate = new Date(stmt.issuedAt);
-              const dateLabel = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
-              const stmtItems = stmt.items ?? [];
-              const summary = itemSummary(stmtItems);
-              const isReturn = stmtItems.some(i => i.qty < 0);
-              const cumul = row.cumul;
-              const mJOpen = expandedJournal.has(stmt.id);
-              return (
-                <div key={`m-${stmt.id}`} onClick={() => openEdit(stmt)}
-                  className={`px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${isReturn ? 'bg-rose-50' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
-                      {journalToggle(stmt.id)}
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{stmt.type}</span>
-                      {isReturn && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">반품</span>}
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">{dateLabel}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold text-slate-800 truncate">{stmt.partnerName}</span>
-                    <span className={`text-sm font-black shrink-0 ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(stmt.totalAmount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-400 truncate flex-1 min-w-0">{summary}</span>
-                    {cumul == null
-                      ? <span className="text-[11px] font-black shrink-0 text-slate-300" title="거래처가 없는 전표">—</span>
-                      : cumul !== 0 && (
-                      cumul < 0
-                        ? <span className="text-[11px] font-black shrink-0 text-slate-500 whitespace-nowrap">
-                            −{fmt(Math.abs(cumul))}
-                            <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-slate-100 align-middle">{overLabelOf(stmt.type)}</span>
-                          </span>
-                        : <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>잔액 {fmt(cumul)}</span>
-                    )}
-                  </div>
-                  {canSettle(stmt) && (
-                    <button onClick={e => { e.stopPropagation(); openPayModal(stmt); }}
-                      className={`self-start mt-0.5 text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 ${stmt.type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
-                      <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수금처리'}
-                    </button>
-                  )}
-                  {/* 분개 미리보기 — 표와 같은 내용, 좁은 화면이라 줄만 세로로 쌓는다 */}
-                  {mJOpen && (
-                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
-                      {renderJournal(journalOfStmt(stmt), true)}
-                    </div>
-                  )}
-                </div>
-              );
+              const dateLabel = `${view.date} ${String(issuedDate.getHours()).padStart(2, '0')}:${String(issuedDate.getMinutes()).padStart(2, '0')}`;
+              return <StatementTradeMobileRow key={`m-${view.key}`} statement={stmt} view={view} dateLabel={dateLabel}
+                canSettle={canSettle(stmt)} journalToggle={journalToggle(view.key)}
+                onOpen={() => openEdit(stmt)} onSettle={() => openPayModal(stmt)}
+                journalPreview={expandedJournal.has(view.key)
+                  ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalOfStmt(stmt), true)}</div>
+                  : undefined}/>;
             })}
           </div>
         </>)}
@@ -3265,79 +2786,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
               editingDocNo={editingStmt?.docNo} editMode={isEditMode}
               partnerName={selectedClient?.name} partnerPhone={selectedClient?.phone}
+              //  셈은 `allPartnerBalances`(분개 기준) 한 곳 — 거래처 원장과 같은 숫자여야 한다.
+              balance={selectedClient ? partnerBalances.get(selectedClient.id) : undefined}
               tradeDate={tradeDate} onTradeDate={setTradeDate}
               onNew={() => { closeCreate(); setTimeout(() => setCreateMode(stmtType), 50); }} onClose={closeCreate}/>
 
-            {/* ── 거래처 선택 / 모드 전환 바 ── */}
-            <div className="flex items-center gap-2 px-5 py-2.5 border-b border-slate-100 flex-shrink-0 bg-slate-50 flex-wrap">
-              {!selectedClientId ? (<>
-                <div className="relative">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input type="text" placeholder="거래처 검색..." value={partnerSearch}
-                    onChange={e=>setPartnerSearch(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-40"/>
-                </div>
-                <select value={selectedClientId}
-                  onChange={e=>{setSelectedClientId(e.target.value);setSelectedOrderIds([]);setEditablePrices({});setTaxExemptOverrides({});setSelectedConfirmedIds([]);}}
-                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 min-w-[180px]">
-                  <option value="">— 거래처 선택 —</option>
-                  {availableClients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                {createMode==='매출' && (
-                  <button onClick={()=>setOnlyActive(v=>!v)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${onlyActive?'bg-blue-600 text-white border-blue-600':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                    미발행
-                  </button>
-                )}
-              </>) : (<>
-                <button onClick={()=>{setSelectedClientId('');setSelectedOrderIds([]);setEditablePrices({});setTaxExemptOverrides({});setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setSelectedConfirmedIds([]);}}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-100 transition-all shrink-0">
-                  <ChevronLeft size={12}/>거래처 변경
-                </button>
-                {createMode==='매출' && !editingStmt && (
-                  <div className="ml-auto flex bg-slate-200 rounded-lg p-0.5 gap-0.5">
-                    <button onClick={()=>{
-                        // 주문 불러오기 = 주문 목록으로 복귀 (불러온 주문·수동행·로드상태 초기화, 거래처는 유지)
-                        setManualMode(false);
-                        setSelectedOrderIds([]);
-                        setLoadedPoIds([]);
-                        setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
-                        setEditablePrices({});
-                        setTaxExemptOverrides({});
-                        setAccountCodeOverrides({});
-                        setSelectedConfirmedIds([]);
-                      }}
-                      className={`px-3 py-1 rounded-md text-xs font-black transition-all ${!manualMode?'bg-white text-slate-800 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-                      주문 불러오기
-                    </button>
-                    <button onClick={()=>setManualMode(true)}
-                      className={`px-3 py-1 rounded-md text-xs font-black transition-all ${manualMode?'bg-white text-slate-800 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
-                      직접 입력
-                    </button>
-                  </div>
-                )}
-              </>)}
-            </div>
+            <StatementPartnerBar partners={availableClients} selectedPartnerId={selectedClientId}
+              search={partnerSearch} sale={createMode === '매출'} editing={!!editingStmt}
+              onlyActive={onlyActive} manualMode={manualMode} onSearch={setPartnerSearch}
+              onSelect={selectStatementPartner} onClear={clearStatementPartner}
+              onOnlyActive={() => setOnlyActive(value => !value)} onManualMode={changeStatementInputMode}/>
 
             {/* ── 날짜 필터 (거래처 선택 전 개요) — 거래처 선택 시 UI와 통일 ── */}
-            {createMode==='매출' && !selectedClientId && (
-              <div className="flex items-center gap-1.5 px-5 py-2.5 border-b border-slate-100 bg-slate-50 flex-wrap flex-shrink-0">
-                {(['당일','금주','당월','전체'] as const).map(p=>(
-                  <button key={p} onClick={()=>{
-                    if(p==='전체'){setDateFrom('');setDateTo('');setOrderDateQuick('전체');return;}
-                    if(p==='금주'){setDateFrom(weekMonday());setDateTo(weekSunday());setOrderDateQuick('금주');return;} // 월~일 고정
-                    if(p==='당월'){setDateFrom(monthStart());setDateTo(monthEnd());setOrderDateQuick('당월');return;} // 1일~말일 고정
-                    const t=today();
-                    setDateFrom(t);setDateTo(t);setOrderDateQuick(p); // 당일
-                  }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${orderDateQuick===p?'bg-slate-700 text-white border-slate-700':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{p}</button>
-                ))}
-                <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setOrderDateQuick('');}}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-                <span className="text-slate-300 text-xs">~</span>
-                <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setOrderDateQuick('');}}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
+            {createMode === '매출' && !selectedClientId && (
+              <StatementOrderDateFilter quick={orderDateQuick} from={dateFrom} to={dateTo}
+                onChange={(from, to, quick) => { setDateFrom(from); setDateTo(to); setOrderDateQuick(quick); }}/>
             )}
 
             {/*  ── 주문/발주 고르기 ──
@@ -3371,10 +2834,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 : selItem ? selItem.price : 0;
               //  마진은 **공급가에서** 센다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
               //  세포함 단가로 나누면 부풀어 보인다(5,600/5,510 이 +1.6% 로 보이는데 실제는 −8.2%).
-              const margin = (marginOf(salePrice, productCost, quickIsTaxExempt).marginRate * 100).toFixed(1);
               const qQty = parseFloat(quickQty)||0;
               const qPrc = parseFloat(quickPrice)||0;
-              const { supply: qAmt, tax: qTax } = lineAmount(qQty, qPrc, quickIsTaxExempt);
+              const metrics = quickItemMetrics({ quantity: qQty, unitPrice: qPrc, cost: productCost, taxExempt: quickIsTaxExempt });
+              const margin = (metrics.marginRate * 100).toFixed(1);
+              const qAmt = metrics.supply, qTax = metrics.tax;
               const quickResults = quickSearchOpen ? (() => {
                 if (!quickName.trim()) return [];
                 const q = quickName.toLowerCase();
@@ -3468,9 +2932,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <span>매출단가 <b className="text-slate-600">{salePrice>0?fmt(salePrice):'-'}</b>
                       {(() => {
                         if (!(salePrice > 0)) return null;
-                        const { supply, showSupply } = priceParts(salePrice, quickIsTaxExempt);
-                        return showSupply
-                          ? <span className="ml-1 text-slate-400">(공급가 <b className="text-slate-500">{fmt(supply)}</b>)</span>
+                        return metrics.showUnitSupply
+                          ? <span className="ml-1 text-slate-400">(공급가 <b className="text-slate-500">{fmt(metrics.unitSupply)}</b>)</span>
                           : null;
                       })()}
                     </span>

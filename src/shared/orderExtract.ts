@@ -126,3 +126,58 @@ export function validateExtract(
  */
 export const catalogLine = (item: CatalogItem): string =>
   `${item.id}\t${item.name}${item.spec ? ` ${item.spec}` : ''}`;
+
+/**
+ * **이 거래처가 전에 시킨 것** — AI 에게 같이 들려 보낼 지난 주문.
+ *
+ * 2026-09-16 사장님: "거래처가 이전에 주문했던 내용을 참고하는 방식은 너무 오래걸리나".
+ * 안 걸린다 — 주문은 앱이 이미 들고 있어 따로 물으러 갈 데가 없다.
+ *
+ * **왜 잘 듣나.** 지금은 품목 목록을 `partner_item` 연결로 추리는데, 연결이 없는 거래처는
+ * 전체 목록을 통째로 보낸다. 고를 것이 많으면 많이 틀린다. 지난 주문으로 좁히면
+ * 이 집이 **실제로 사는 것**·**늘 시키는 수량**·**박스로 시키나 낱개로 시키나**가 한꺼번에 드러난다.
+ *
+ * **큰따옴표 안이 그때 그 집이 보낸 말**(`OrderItem.orderedAs`)이고 그 앞이 사람이 최종으로
+ * 고른 품목이다. 곧 **사람이 맞다고 한 짝**이라, 같은 말이 또 오면 같은 답이 나온다.
+ * 사장님이 사전을 따로 만들 필요가 없다 — 평소처럼 주문만 넣으면 쌓인다.
+ * 원문은 2026-09-16 부터 쌓이므로 그 전 주문은 품목·수량만 쓰인다.
+ *
+ * 최근 것부터 준다 — 넘칠 때 잘려 나가는 쪽이 **오래된 것**이어야 한다.
+ */
+export function historyLines(
+  orders: HistoryOrder[],
+  partnerId: string,
+  limit = 10,
+): string[] {
+  if (!partnerId) return [];
+  const 그집 = orders
+    .filter(o => o.partnerId === partnerId && (o.items?.length ?? 0) > 0)
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))
+    .slice(0, Math.max(0, limit));
+
+  return 그집.flatMap(o => {
+    const 날 = String(o.createdAt ?? '').slice(0, 10);
+    return (o.items ?? []).map(it => {
+      //  **박스로 시킨 줄은 박스 수로 적는다** — 낱개로 환산된 수(340)를 보여 주면
+      //  "이 집은 늘 340개씩" 이라고 잘못 배운다. 그 집이 말한 단위가 그 집의 버릇이다.
+      const 박스 = it.isBoxUnit && (it.boxQuantity ?? 0) > 0;
+      const 수량 = 박스 ? `${it.boxQuantity}박스` : `${it.quantity}`;
+      const 말 = it.orderedAs && it.orderedAs !== it.name ? `  "${it.orderedAs}"` : '';
+      return `${날}	${it.itemId}	${it.name}	${수량}${말}`;
+    });
+  });
+}
+
+/** `historyLines` 가 읽는 것만. 주문 전체를 받을 필요가 없다. */
+export interface HistoryOrder {
+  partnerId?: string;
+  createdAt?: string;
+  items?: {
+    itemId: string;
+    name: string;
+    quantity: number;
+    orderedAs?: string;
+    isBoxUnit?: boolean;
+    boxQuantity?: number;
+  }[];
+}

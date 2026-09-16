@@ -43,7 +43,7 @@ function props(selectedClientId = '', selectedOrderIds: string[] = []): OrderPic
 }
 
 describe('미발행 주문의 품목·수량', () => {
-  it('미발행을 맨 앞에 두고 작은 상태 점을 쓰며 N품목을 눌러 품목을 여닫는다', () => {
+  it('미발행을 맨 앞에 두고 상태를 글자 색으로만 보이며 N품목을 눌러 품목을 여닫는다', () => {
     const p = props();
     render(<OrderPicker {...p}/>);
     const card = screen.getByTestId('active-order-order-1');
@@ -54,8 +54,11 @@ describe('미발행 주문의 품목·수량', () => {
     expect(unissued.compareDocumentPosition(delivery) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(delivery.compareDocumentPosition(partnerName) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     //  대기중은 분홍, 작업중은 노랑이다(2026-09-15 사장님: "대기중 작업중 색 서로 바꾸라고").
-    //  색은 `orderStatusStyle` 한 곳이 정한다 — 여기서는 그 색이 점까지 오는지만 본다.
-    expect(status.querySelector('[aria-hidden="true"]')).toHaveClass('rounded-full', 'bg-pink-500');
+    //  색은 `orderStatusStyle` 한 곳이 정한다 — 여기서는 그 색이 글자까지 오는지만 본다.
+    //  **점은 없다**(2026-09-16 사장님: "예전주문 대기중 앞에 점 빼버려") — 글자가 이미
+    //  상태 색이라 점은 같은 말을 두 번 했다.
+    expect(status.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(within(status).getByText('대기중')).toHaveClass('text-pink-500');
     expect(within(card).queryByText('생들기름 300ml')).not.toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: 'ORD-260908-01 2품목 보기' }));
