@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Order, RawMaterialEntry } from '../types';
 import { unitOf, kgToUnit, DENSITY } from '../src/constants/formula';
-import { applyLedgerRow } from '../src/shared/rawLedgerBalance';
+import { applyLedgerRow, sortLedger } from '../src/shared/rawLedgerBalance';
 import { ledgerTrace, orderIndex } from '../src/shared/ledgerTrace';
 import { ChevronRight } from 'lucide-react';
 
@@ -67,9 +67,9 @@ const RawLedgerList: React.FC<Props> = ({
       // 날짜 → 같은 날은 기록된 시각 순 (그 묶음 첫 줄 직전 잔량 = 전일재고)
       // 날짜 → 기록된 시각 → 번호. 마지막 번호까지 봐야 동시각일 때 순서가 고정된다
       // (안 그러면 읽어온 순서라 새로고침마다 잔량 표시가 흔들린다).
-      const ordered = [...list].sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''))
-        || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
-        || String(a.id ?? '').localeCompare(String(b.id ?? ''), undefined, { numeric: true }));
+      // 원자화 줄은 `recordedAt`, 옛 줄은 `createdAt`을 쓴다. 화면만 createdAt으로 정렬하면
+      // 같은 원장을 공용 계산기는 1,009L, 표는 1,052L로 서로 다르게 보여 준다.
+      const ordered = sortLedger(list);
       let bal = 0, seg = 0, curDate = '';
       let g: DayRow | null = null;
       const flush = () => { if (g) { g.seq = order++; out.push(g); g = null; } };
