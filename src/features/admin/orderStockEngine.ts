@@ -1,5 +1,5 @@
 import { doc, getDoc, Firestore } from 'firebase/firestore';
-import { isBulkItem, isGoodsItem } from '../../shared/itemTaxonomy';
+import { isBulkItem, isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { goodsShipQty, shipQtyOfLine } from '../../shared/shipDeduction';
 import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit, OrderItemInventoryState } from '../../shared/types';
@@ -205,7 +205,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀).
       // 재고를 얼마나 쓸지는 stockCap이 정한다(0이면 전부 새로 생산). 그래도 차감은 need 전액 —
       // 먼저 만든 short가 상쇄해서 순변화는 딱 '쓴 재고'만큼이 된다.
-      if (sign < 0 && (comp.type === 'product' || (comp.type === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
+      //  판정은 `holdsUnitStock` 한 곳이다 — 여기 적혀 있던 `unit === '개'` 가 단위를
+      //  '캔'으로 쓴 품목을 빠뜨렸다(시골향참기름1-캔).
+      if (sign < 0 && holdsUnitStock(comp) && !isGoodsItem(comp)) {
         if (!stockOf) throw new Error(`생산 재고 스냅샷이 없습니다: ${comp.id}`);
         const onHand = stockOf(comp) + (deltas.get(comp.id) ?? 0);
         const cap = stockCap?.get(comp.id);
@@ -277,7 +279,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         }
         continue;
       }
-      if (product.type !== 'product') continue;
+      //  **캔 같은 개수 반제품도 여기 든다**(2026-09-16) — 판정은 `holdsUnitStock` 한 곳.
+      //  `type === 'product'` 로만 보다가 캔을 반제품으로 옮기면 생산이 조용히 멈춘다.
+      if (!holdsUnitStock(product)) continue;
       const units = stockUnits(item, product);   // 박스 품목이면 박스 개수
 
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
@@ -376,7 +380,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         });
     for (const { itemId, qty } of produced) {
       const product = allItems.find(p => p.id === itemId);
-      if (!product || product.type !== 'product') continue;
+      if (!product || !holdsUnitStock(product)) continue;
       if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
       if (isGoodsItem(product)) continue;
       if (qty <= 0) continue;
@@ -430,7 +434,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   /** 출고 수량 — shipOrder와 같은 규칙이어야 로트와 재고가 안 갈린다. */
   const shipQtyOf = (item: OrderItem, product: Item) =>
     isGoodsItem(product) ? goodsShipQty(item, product)
-      : product.type === 'product' ? stockUnits(item, product) : 0;
+      //  캔 같은 개수 반제품도 출고 때 빠진다 — 안 그러면 팔아도 재고가 그대로 남는다.
+      : holdsUnitStock(product) ? stockUnits(item, product) : 0;
 
   const { deductProductLotsForOrder, restoreProductLotsForOrder } = createOrderProductLotOperations({
     allItems,

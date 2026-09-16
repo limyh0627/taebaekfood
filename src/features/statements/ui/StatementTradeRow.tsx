@@ -39,7 +39,13 @@ export function StatementTradeTableRow(props: {
       <td className="whitespace-nowrap px-3 py-2" onClick={event => event.stopPropagation()}>{props.dateCell}</td>
       <td className="whitespace-nowrap px-3 py-2 text-slate-500">{view.owner ? <span className="font-bold">{view.owner}</span> : <span className="text-slate-300">—</span>}</td>
       <td className="px-3 py-2"><div className="flex items-center gap-1">{props.journalToggle}<span className={`whitespace-nowrap text-[12px] font-black ${statement.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{view.label}</span>{view.isReturn && <span className="whitespace-nowrap text-[12px] font-black text-amber-600">반품</span>}</div></td>
-      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={view.partner}>{view.partner}</td>
+      <td className="max-w-[180px] px-3 py-2 font-bold text-slate-800" title={view.partner}>
+        {/*  **업체명 밑에 배송지**(2026-09-16 사장님: "업체명 밑에 회색 글씨로 배송지명만
+             표시해주면 어떠냐"). 배송지를 안 쓰는 거래처는 줄을 아예 안 그린다 —
+             빈 줄을 두면 줄 높이만 늘고 읽을 것이 없다. */}
+        <span className="block truncate">{view.partner}</span>
+        {view.shipTo && <span className="block truncate text-[10px] font-bold text-slate-400">{view.shipTo}</span>}
+      </td>
       <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={view.detail}>{view.detail || '—'}</td>
       <td className={`px-4 py-2 text-right font-black ${view.isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(props.shownAmount)}{props.partial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(view.amount)}</span>}</td>
       <td className="px-4 py-2 text-right"><Balance view={view} type={statement.type}/></td>

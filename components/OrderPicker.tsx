@@ -10,6 +10,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import type { ManualRow } from '../src/shared/statementLines';
 import { OrderCard } from './OrdersList';
 import OrderStatusDot from '../src/shared/components/OrderStatusDot';
+import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
 
 /**
@@ -438,7 +439,8 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                         <div className="flex items-center gap-2">
                         <VoucherStatusDot issued={isVouchered(o)} className="w-16 shrink-0" />
                         <span className="w-24 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
-                        <span className="font-black text-slate-800 w-32 truncate shrink-0">{cl?.name || o.partnerId}</span>
+                        {/*  **배송지까지**(2026-09-16 사장님: "여기서도 주문카드처럼 배송지명으로 표시") */}
+                        <span className="font-black text-slate-800 w-32 truncate shrink-0">{partnerLabel(cl?.name || o.partnerName, shipToOf(cl, o.shipToId)?.name) || o.partnerId}</span>
                         <OrderStatusDot status={o.status} className="w-20 shrink-0" />
                         {/*  카드번호 — 어느 주문 카드인지 가리킬 이름(2026-09-03) */}
                         <button type="button" onClick={() => setPreviewOrder(o)}

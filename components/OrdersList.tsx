@@ -41,13 +41,15 @@ import {
   AlertCircle,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  CheckCircle2
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit, OrderItemEdit } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../src/shared/orderUnits';
+import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { CHIP_NEUTRAL as SUB_CHIP_NEUTRAL, subChipClass } from '../src/shared/submaterialStyle';
@@ -459,7 +461,9 @@ export const OrderCard = memo<OrderCardProps>(({
   }, [allNonHyangmiyuDone]);
 
   const partner = partners.find(c => c.id === order.partnerId);
-  const rawName = order.partnerName || partner?.name || '이름 없음';
+  //  **배송지까지 붙인 이름**(2026-09-16 사장님: "주문카드처럼 배송지명으로 표시") —
+  //  `해피유통(쿠팡)`. 만드는 곳은 `shared/shipTo` 하나다.
+  const rawName = partnerLabel(order.partnerName || partner?.name || '이름 없음', shipToOf(partner, order.shipToId)?.name);
   const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
 
   const handleDirectQtyChange = (idx: number, value: string) => {
@@ -3628,7 +3632,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       setPickerOrdering(validWorkItems.map(workItem => workItem.key));
                       setPickerAssign(Object.fromEntries(validWorkItems.map(workItem => [workItem.key, workCategoryOf(workItem)])));
                       setPickerGroups(workGroups);
-                      setPickerGroup(workGroups[0] ?? '');
+                      //  **`전체` 로 연다**(2026-09-16) — 열자마자 무엇이 있는지부터 본다.
+                      //  그룹을 미리 골라 두면 그 그룹 것만 떠서 "왜 주문이 없지" 하게 된다.
+                      setPickerGroup('');
                       setShowWorkOrderPicker(true);
                     }}
                     className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-50 px-2.5 text-[11px] font-black text-violet-600 transition-colors hover:bg-violet-100"
@@ -3805,7 +3811,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
             {/* 작업순서 설정 모달 */}
             {showWorkOrderPicker && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowWorkOrderPicker(false)}>
-                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[75vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                {/*  **창을 키워 뒀다**(2026-09-16 사장님: "모달 기본 크기 좀 키워둬라").
+                       한 줄이 두 줄(거래처·품목)로 늘어난 뒤로 보이는 줄 수가 반이 됐다 —
+                       담은 차례를 보려고 여는 창인데 서너 줄만 보이면 훑을 수가 없다.
+
+                       **세로를 특히 키웠다**(사장님: "특히 세로길이") — 목록은 아래로 자라지
+                       옆으로 안 자란다. `min-h` 도 같이 걸어 **주문이 몇 건 없을 때도 창이
+                       쪼그라들지 않게** 한다. 줄이 몇 개냐에 따라 창 크기가 들쭉날쭉하면
+                       그룹 칩·단추 자리가 매번 옮겨 다닌다.
+                       폭은 `md`(448px) → `xl`(576px), 높이는 75vh → 90vh. */}
+                <div className="flex max-h-[90vh] min-h-[70vh] w-full max-w-xl flex-col rounded-3xl bg-white shadow-2xl mx-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                     <h3 className="font-black text-slate-900">작업순서 설정</h3>
                     <button onClick={() => setShowWorkOrderPicker(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={16} /></button>
@@ -3813,6 +3828,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
                   {/*  **그룹 줄** — 고른 그룹에 주문이 담긴다. 이름 고치기·지우기·새로 만들기가 여기 있다. */}
                   <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-5 py-3">
+                    {/*  **`전체` 를 따로 둔다**(2026-09-16 사장님: "전체를 따로두고 전체로
+                         눌렀을때는 전체가 뜨고 기름 선택하면 기름에 선택된거랑 아직 그룹이
+                         없는것만 뜨게 해봐").
+
+                         그룹을 고르면 목록이 **그 그룹에 담긴 것 + 아직 아무 데도 안 담긴 것**
+                         으로 줄어든다. 다른 그룹에 이미 담긴 줄은 지금 담을 것이 아니라
+                         자리만 먹는다 — 깨 담는 중에 기름 스무 줄을 지나칠 이유가 없다.
+                         `전체` 는 지금까지처럼 다 보여 준다 — 어디에 뭘 담았는지 훑는 자리다.
+
+                         **`전체` 에서는 담을 수 없다.** 어느 그룹에 담을지가 안 정해져 있다.
+                         (누르면 지금도 "먼저 담을 그룹을 고르세요" 가 뜬다) */}
+                    <button
+                      type="button"
+                      onClick={() => setPickerGroup('')}
+                      className={`flex min-h-7 items-center gap-1 rounded-xl border px-2.5 py-1 text-[11px] font-black transition-all ${
+                        pickerGroup === ''
+                          ? 'border-slate-400 bg-slate-700 text-white ring-2 ring-slate-400'
+                          : 'border-slate-200 bg-white text-slate-500 opacity-55 hover:opacity-100'}`}
+                    >
+                      전체 <span className="tabular-nums opacity-60">{allPickableItems.length}</span>
+                    </button>
                     {pickerGroups.map(name => {
                       const 고름 = pickerGroup === name;
                       const 담긴수 = pickerOrdering.filter(k => pickerAssign[k] === name).length;
@@ -3844,65 +3880,115 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <div className="min-h-0 flex-1 overflow-y-auto">
                     {allPickableItems.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
-                    ) : pickableOrders.map(o => {
-                      const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
-                      /*  **그룹끼리 모은다**(2026-09-12 사장님: "왜 그룹별로 안 보이고 같이 보이냐").
-                          한 거래처 줄이 기름·미분류·기름·깨 로 섞여 있어 어느 그룹에 무엇이
-                          담겼는지 한 줄씩 읽어야 했다. 그룹 차례(`pickerGroups`)대로 세우고,
-                          아직 안 담긴 것은 맨 뒤로 보낸다 — 담긴 것부터 보는 게 맞다. */
-                      const 그룹자리 = (key: string) => {
+                    ) : (() => {
+                      /*  **거래처를 줄 안으로 넣고, 담은 것을 맨 위로 세운다**
+                          (2026-09-16 사장님: "거래처명은 각 품목 안으로 넣고 순서따라서
+                          정렬돼서 맨 위에 정렬되게 해봐").
+
+                          예전엔 주문별로 묶고 거래처를 머리에 뒀다. 그래서 **담은 것이
+                          목록 곳곳에 흩어져** 무엇을 몇 번으로 담았는지 보려면 끝까지
+                          훑어야 했다. 담은 차례가 곧 작업 차례인데 그게 안 보였다.
+
+                          이제 **담은 것이 담은 차례대로 위**에 서고, 안 담은 것은 아래에
+                          원래 차례로 남는다. 거래처는 줄 안으로 들어가 품목 앞에 붙는다 —
+                          작업순서 줄(`거래처 → 품목 → 수량`)과 같은 차례다. */
+                      const 원래자리 = new Map(allPickableItems.map((wi, i) => [wi.key, i]));
+                      const 담긴자리 = (key: string) => {
+                        if (!pickerOrdering.includes(key)) return Number.MAX_SAFE_INTEGER;
                         const 그룹 = pickerAssign[key];
-                        const 자리 = 그룹 ? pickerGroups.indexOf(그룹) : -1;
-                        return 자리 < 0 ? pickerGroups.length : 자리;
+                        const 그룹칸 = 그룹 ? pickerGroups.indexOf(그룹) : pickerGroups.length;
+                        //  그룹 차례로 먼저, 그 안에서 담은 차례로 — 번호도 그 그룹 안에서만 센다.
+                        return 그룹칸 * 100000 + pickerOrdering.filter(k => pickerAssign[k] === 그룹).indexOf(key);
                       };
-                      const orderItems = allPickableItems
-                        .filter(wi => wi.orderId === o.id)
-                        .sort((a, b) => 그룹자리(a.key) - 그룹자리(b.key));
-                      return (
-                        <div key={o.id} className="px-5 py-3 border-b border-slate-50">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-sm font-bold text-slate-700">{partnerName}</span>
-                            <Badge variant={o.status === OrderStatus.PROCESSING ? 'info' : 'progress'}>
-                              {o.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
-                            </Badge>
+                      /*  **고른 그룹에 담긴 것 + 아직 아무 데도 안 담긴 것**만 보여 준다
+                          (2026-09-16 사장님). 다른 그룹에 이미 담긴 줄은 지금 담을 것이
+                          아니라 자리만 먹는다. `전체`(빈 값)면 다 보여 준다. */
+                      const 보일것 = allPickableItems.filter(wi => {
+                        if (!pickerGroup) return true;
+                        const 담긴 = pickerAssign[wi.key];
+                        return !담긴 || 담긴 === pickerGroup;
+                      });
+                      //  **끝난 것은 맨 아래**로 — 담을 수 없는 줄이 위에서 자리를 먹으면 안 된다.
+                      const 줄들 = [...보일것].sort((a, b) =>
+                        (isWorkComplete(a) ? 1 : 0) - (isWorkComplete(b) ? 1 : 0)
+                        || 담긴자리(a.key) - 담긴자리(b.key)
+                        || (원래자리.get(a.key)! - 원래자리.get(b.key)!));
+                      return 줄들.map(wi => {
+                        const 거래처 = wi.partnerName
+                          || pickableOrders.find(x => x.id === wi.orderId)?.partnerName || '이름없음';
+                        /*  **이미 끝난 품목은 못 담는다**(2026-09-16 사장님: "이미 상태
+                            작업상태 완료인 애들은 이것처럼 줄로 그어지고 순서에 못 넣게 해놔").
+
+                            작업순서는 **앞으로 할 일**을 세우는 자리다. 끝난 것을 담으면
+                            현장이 다 만든 것을 다시 만든다. 목록에서 빼지 않고 **줄을 그어
+                            남겨 두는** 까닭은, 없으면 "내가 안 담은 건가 원래 없는 건가"를
+                            못 가리기 때문이다. 주문 카드에서 완료 줄을 긋는 것과 같은 모양이다. */
+                        const 끝났나 = isWorkComplete(wi);
+                        const isSelected = pickerOrdering.includes(wi.key);
+                        const 담긴그룹 = pickerAssign[wi.key];
+                        //  **번호는 그 그룹 안에서만 센다**(사장님: "그 그룹내에서만 순서 따로").
+                        const sectionPos = pickerOrdering.filter(k => pickerAssign[k] === 담긴그룹).indexOf(wi.key) + 1;
+                        return (
+                          <div key={wi.key}
+                            onClick={() => {
+                              if (끝났나) return;                //  끝난 것은 아무 반응 없다
+                              if (!pickerGroup) { alert('먼저 담을 그룹을 고르세요.'); return; }
+                              if (isSelected && 담긴그룹 === pickerGroup) {
+                                //  같은 그룹에 담긴 것을 다시 누르면 뺀다.
+                                setPickerOrdering(prev => prev.filter(k => k !== wi.key));
+                                setPickerAssign(prev => { const { [wi.key]: _뺌, ...남은 } = prev; return 남은; });
+                                return;
+                              }
+                              //  안 담겼거나 **다른 그룹**에 담긴 것이면 지금 그룹으로 옮긴다(끝에 붙는다).
+                              setPickerOrdering(prev => [...prev.filter(k => k !== wi.key), wi.key]);
+                              setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
+                            }}
+                            aria-disabled={끝났나}
+                            className={`mx-2 flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ${
+                              끝났나 ? 'cursor-default opacity-60'
+                                : isSelected ? `cursor-pointer ${그룹색(pickerGroups, 담긴그룹).줄}`
+                                : 'cursor-pointer hover:bg-slate-50'}`}
+                          >
+                            {/*  끝난 것은 체크칸 대신 **완료 표시**를 둔다 — 빈 네모를 두면 누를 수
+                                 있어 보인다. */}
+                            {끝났나 ? (
+                              <CheckCircle2 size={18} className="shrink-0 text-emerald-500" aria-label="작업 완료" />
+                            ) : (
+                              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 text-[10px] font-black transition-all ${isSelected ? `${그룹색(pickerGroups, 담긴그룹).번호} text-white` : 'border-slate-300 text-transparent'}`}>
+                                {isSelected ? sectionPos : ''}
+                              </div>
+                            )}
+                            <span className="min-w-0 flex-1">
+                              {/*  **거래처는 품목명 위에**(2026-09-16 사장님: "거래처명이 품목명
+                                   위로 올라가게 해봐"). 한 줄에 나란히 두면 긴 거래처명이 품목명을
+                                   밀어내 잘렸다. 위아래로 쌓으면 둘 다 온전한 폭을 쓴다 —
+                                   배송 캘린더 카드도 같은 까닭으로 주문번호를 위로 올렸다.
+                                   읽는 차례는 그대로다: 어디 갈 것인지 → 무엇을. */}
+                              <span className="flex min-w-0 flex-col leading-tight">
+                                <span className={`truncate text-[11px] font-black ${끝났나 ? 'text-slate-400 line-through' : 'text-indigo-600'}`}>{거래처}</span>
+                                <span className={`truncate text-sm font-bold ${
+                                  끝났나 ? 'text-slate-400 line-through' : isSelected ? 'text-slate-800' : 'text-slate-700'}`}>{wi.itemName}</span>
+                              </span>
+                            </span>
+                            {/*  **오른쪽은 위아래로 나눈다**(2026-09-16 사장님: "기름이 밑에가
+                                 아니라 오른쪽 상단으로 가게"). 그룹은 품목명 밑에 있었는데,
+                                 왼쪽이 거래처·품목 두 줄이 되면서 세 줄째가 되어 줄이 두꺼워졌다.
+                                 왼쪽 두 줄에 오른쪽 두 줄을 맞춰 세우면 높이가 안 늘고,
+                                 **그룹과 수량이 같은 세로줄**에 서서 훑기도 낫다.
+
+                                 **상태는 안 적는다**(사장님: "대기중 작업중은 안떠도 되겠다") —
+                                 여기서 고르는 것은 '무엇을 작업할까'라, 그 주문이 지금 대기중인지
+                                 작업중인지는 고르는 데 안 쓰인다. */}
+                            <span className="flex shrink-0 flex-col items-end leading-tight">
+                              <span className={`text-[10px] font-black ${isSelected && 담긴그룹 ? 그룹색(pickerGroups, 담긴그룹).글자 : 'text-transparent'}`}>
+                                {isSelected && 담긴그룹 ? 담긴그룹 : '\u00a0'}
+                              </span>
+                              <span className={`text-[10px] font-black ${끝났나 ? 'text-slate-300 line-through' : 'text-slate-400'}`}>{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
+                            </span>
                           </div>
-                          <div className="space-y-1">
-                            {orderItems.map(wi => {
-                              const isSelected = pickerOrdering.includes(wi.key);
-                              const 담긴그룹 = pickerAssign[wi.key];
-                              //  **번호는 그 그룹 안에서만 센다**(사장님: "그 그룹내에서만 순서 따로").
-                              const sectionPos = pickerOrdering.filter(k => pickerAssign[k] === 담긴그룹).indexOf(wi.key) + 1;
-                              return (
-                                <div key={wi.key}
-                                  onClick={() => {
-                                    if (!pickerGroup) { alert('먼저 담을 그룹을 고르세요.'); return; }
-                                    if (isSelected && 담긴그룹 === pickerGroup) {
-                                      //  같은 그룹에 담긴 것을 다시 누르면 뺀다.
-                                      setPickerOrdering(prev => prev.filter(k => k !== wi.key));
-                                      setPickerAssign(prev => { const { [wi.key]: _뺌, ...남은 } = prev; return 남은; });
-                                      return;
-                                    }
-                                    //  안 담겼거나 **다른 그룹**에 담긴 것이면 지금 그룹으로 옮긴다(끝에 붙는다).
-                                    setPickerOrdering(prev => [...prev.filter(k => k !== wi.key), wi.key]);
-                                    setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
-                                  }}
-                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${isSelected ? 그룹색(pickerGroups, 담긴그룹).줄 : 'hover:bg-slate-50'}`}
-                                >
-                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-all ${isSelected ? `${그룹색(pickerGroups, 담긴그룹).번호} text-white` : 'border-slate-300 text-transparent'}`}>
-                                    {isSelected ? sectionPos : ''}
-                                  </div>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-bold text-slate-700">{wi.itemName}</span>
-                                    {isSelected && 담긴그룹 && <span className={`text-[10px] font-black ${그룹색(pickerGroups, 담긴그룹).글자}`}>{담긴그룹}</span>}
-                                  </span>
-                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                   <div className="p-4 border-t border-slate-100 flex gap-2">
                     <button onClick={() => setShowWorkOrderPicker(false)} className="flex-1 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">취소</button>

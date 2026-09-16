@@ -23,6 +23,7 @@ import { Partner, PartnerChannel, PartnerType } from '../types';
 import AddPartnerModal from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+import ShipToEditor from '../src/shared/components/ShipToEditor';
 
 interface PartnerManagerProps {
   partners: Partner[];
@@ -403,6 +404,13 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+
+              {/*  **배송지**(2026-09-16 사장님: "일반기능으로 넣고") — 한 거래처가 여러 곳으로
+                   나갈 때 답니다. 안 단 거래처는 화면이 하나도 안 바뀝니다. */}
+              <ShipToEditor
+                value={editForm.shipTos ?? []}
+                onChange={next => setEditForm(prev => prev ? { ...prev, shipTos: next } : null)}
+              />
 
               {/* 비고 */}
               <div>

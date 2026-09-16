@@ -103,6 +103,18 @@ export interface PurchaseItem {
 
 // ── 파트너-품목 매핑 (partner_item 컬렉션) ────────────────────────────────
 // Direction: 'in' = 매입(공급), 'out' = 매출(판매)
+/**
+ * **배송지** — 한 거래처 안에서 물건이 갈라져 가는 곳.
+ * 판정·표시는 [shipTo.ts](shipTo.ts) 한 곳이 한다.
+ */
+export interface ShipTo {
+  /** 거래처 안에서만 고유하면 된다. 옮길 때 **옛 거래처 id 를 그대로** 쓴다 — 주문이 그걸 가리킨다. */
+  id: string;
+  name: string;
+  /** 안 쓰는 배송지. **지우지 않는다** — 지난 주문이 가리키고 있다. */
+  archived?: boolean;
+}
+
 export interface PartnerItem {
   id: string;
   itemId: string;              // 품목 id (canonical)
@@ -119,6 +131,20 @@ export interface PartnerItem {
    * 정한 적 없는 것은 **정한 적 없는 채로** 남아야 사람이 보고 정한다.
    */
   taxType?: '과세' | '면세' | null;
+  /**
+   * **어느 배송지에 나가는 품목인가.** 비어 있으면 **전 배송지**다.
+   *
+   * 2026-09-16 사장님: "부모가 모든 품목과 단가를 들고있고 주문 넣거나 할때는
+   * 배송지마다 품목이 지금처럼 다르게 보이게" — 특정 배송지에만 나가는 품목이 있다.
+   *
+   * 단가·과세구분·라벨·박스규격은 **거래처 하나에 한 값**이라 이 칸이 안 붙는다.
+   * 해피유통 세 갈래를 재 보니 그것들은 충돌이 **0건**인데 취급 품목만 갈렸다
+   * (포천 29 · 쿠팡 25 · 네이버 4, 합쳐 30).
+   *
+   * **비었을 때를 "아무 데도 안 나감"으로 읽으면 안 된다** — 배송지를 안 쓰는 거래처가
+   * 대부분이고 그쪽은 이 칸이 영영 빈다. 판정은 [shipTo.itemGoesTo](shipTo.ts) 한 곳.
+   */
+  shipToIds?: string[];
   isSmartStore?: boolean;      // 스마트스토어 채널 여부
   // @deprecated → shipping_rule 컬렉션으로 이관 예정 (별도 정리)
   boxTypeId?: string;
@@ -134,6 +160,14 @@ export interface PartnerItem {
 
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
 export interface Partner {
+  /**
+   * **배송지** — 한 거래처 안에서 물건이 갈라져 가는 곳(포천·쿠팡 물류센터·네이버 물류센터).
+   *
+   * 2026-09-16 사장님: "우리 기준으로는 그냥 배송지가 다르다고 보는게 맞아".
+   * 거래처는 **돈 받을 상대**라 하나고, 물건이 가는 곳만 여럿이다.
+   * 셈과 판정은 [shipTo.ts](shipTo.ts) 한 곳이 한다 — 맨 앞이 기본 배송지다.
+   */
+  shipTos?: ShipTo[];
   id: string;
   name: string;
   email?: string;
@@ -235,6 +269,14 @@ export interface Order {
   source: OrderSource;
   pallets?: OrderPallet[];
   region?: string;
+  /**
+   * **어디로 가나** — 거래처 안의 배송지 id(`Partner.shipTos`).
+   *
+   * 2026-09-16. 안 적힌 주문은 배송지를 안 쓰는 거래처거나 옛 주문이다.
+   * 화면에 찍는 이름은 [shipTo.orderPartnerLabel](../shipTo.ts) 한 곳이 만든다 —
+   * 각자 조합하면 어떤 데선 `해피유통`, 어떤 데선 `해피유통(쿠팡)` 으로 갈린다.
+   */
+  shipToId?: string;
   deliveryBoxes?: DeliveryBox[];
   /** 어떻게 나가나 — 안 적혔으면 채널로 읽는다(`shipMethodOf`). */
   shipMethod?: ShipMethod;
@@ -635,7 +677,6 @@ export interface Employee {
   companyId?: CompanyId;
   name: string;
   username?: string;
-  password?: string;
   position: string;
   department: string;
   joinDate: string;
@@ -973,7 +1014,7 @@ export interface FixedCostTemplate {
 /**
  * **이 줄이 품목 줄인가 계정 줄인가.**
  *
- * 설계([전표-원가-원장-재무-통합설계](../../docs/전표-원가-원장-재무-통합설계.md) §3):
+ * 설계([전표-원가-원장-재무-통합설계](../../로컬전용/docs/전표-원가-원장-재무-통합설계.md) §3):
  * 품목 줄은 `itemId` 가 필수이고, 임대료·택배비처럼 실물이 아닌 **계정 줄은 `itemId` 없이
  * `accountCode` 가 필수**다.
  *

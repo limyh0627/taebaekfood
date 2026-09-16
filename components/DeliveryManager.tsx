@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { RotateCcw, Plus } from 'lucide-react';
 import { isDeliveryChannel, channelStyle, shipMethodOf } from '../src/shared/channelStyle';
+import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -512,7 +513,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       drag?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
     } = {},
   ) => {
-    const 이름 = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
+    //  **배송지까지 붙인다**(2026-09-16 사장님: "배송캘린더에서도 배송지명으로 들어가있게").
+    const 그거래처 = partners.find(c => c.id === o.partnerId);
+    const 이름 = partnerLabel(그거래처?.name || o.partnerName || '', shipToOf(그거래처, o.shipToId)?.name);
     const 끝났나 = o.status === OrderStatus.SHIPPED;
     return (
       <div
@@ -1399,7 +1402,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
                     {visibleDeliverySequenceOrders.length === 0 ? (
                       <p className="py-10 text-center text-sm text-slate-400">담을 주문이 없습니다.</p>
                     ) : visibleDeliverySequenceOrders.map(order => {
-                      const 이름 = partners.find(partner => partner.id === order.partnerId)?.name || order.partnerName || '';
+                      const 그곳 = partners.find(partner => partner.id === order.partnerId);
+                      const 이름 = partnerLabel(그곳?.name || order.partnerName || '', shipToOf(그곳, order.shipToId)?.name);
                       const 골랐나 = pickerDeliveryOrdering.includes(order.id);
                       const 번호 = pickerDeliveryOrdering.indexOf(order.id) + 1;
                       return (

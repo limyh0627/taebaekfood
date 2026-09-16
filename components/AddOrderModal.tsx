@@ -5,6 +5,7 @@ import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, La
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShipMethod } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
+import { defaultShipToId, activeShipTos, linksForShipTo, partnerLabel } from '../src/shared/shipTo';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { VOLUME_CHIP_COLORS, catOrder, renderColoredName } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -69,6 +70,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  /**
+   * **어디로 보내나**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고 토글로 세 개 중에
+   * 하나 고르게 하면 안되나? 디폴트는 포천이고").
+   *
+   * 배송지를 쓰는 거래처만 토글이 뜬다. 기본은 목록 맨 앞(`defaultShipToId`).
+   * 이 값이 바뀌면 **품목 목록이 따라 바뀐다** — 특정 배송지에만 나가는 품목이 있다.
+   */
+  const [shipToId, setShipToId] = useState<string | undefined>(undefined);
+  React.useEffect(() => { setShipToId(defaultShipToId(selectedPartner ?? undefined)); }, [selectedPartner?.id]);
   const [selectedItems, setSelectedItems] = useState<{ itemId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('전체');
@@ -199,8 +209,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
    * 볶음검정참깨가 그랬다(partnerIds는 비었고 partner_item에만 있다).
    */
   const partnerOutIds = useMemo(
-    () => new Set(partnerOut.filter((pi: any) => pi.partnerId === selectedPartner?.id).map((pi: any) => String(pi.itemId))),
-    [partnerOut, selectedPartner?.id]);
+    //  **배송지로 한 번 더 거른다**(2026-09-16) — 부모가 품목·단가를 다 들고 있고,
+    //  어느 배송지에 나가는지는 `shipToIds` 가 정한다. 그 칸이 비면 전 배송지다.
+    //  (사장님: "특정 배송지에만 나가는 품목이 있기 때문에")
+    () => new Set(
+      linksForShipTo(partnerOut.filter((pi: any) => pi.partnerId === selectedPartner?.id), shipToId)
+        .map((pi: any) => String(pi.itemId))),
+    [partnerOut, selectedPartner?.id, shipToId]);
   const orderableForPartner = (p: Item): boolean => {
     if (!selectedPartner) return false;
     //  **연결은 partner_item 하나가 근거다**(2026-09-06). 옛 방식(items.partnerIds)도
@@ -227,7 +242,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
         const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedPartner, partnerOutIds, items]);
+  }, [products, selectedPartner, partnerOutIds, items, shipToId]);
   const linkedProducts = useMemo(() => catalogProducts.filter(groupOrderable), [catalogProducts, selectedPartner, partnerOutIds, items]);
   const usingCatalogFallback = !!selectedPartner && linkedProducts.length === 0;
   const displayProducts = usingCatalogFallback ? catalogProducts : linkedProducts;
@@ -568,6 +583,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       await onSave({
         partnerId: selectedPartner.id,
         partnerName: selectedPartner.name || '이름 없음',
+        //  **어디로 가나**(2026-09-16) — 화면에 찍는 이름은 `shipTo.orderPartnerLabel` 이 만든다.
+        ...(shipToId ? { shipToId } : {}),
         email: selectedPartner.email || '',
         createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
         items: orderItems,
@@ -691,6 +708,35 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                     {selectedPartner.region && <p className="text-[10px] font-medium text-indigo-500">{selectedPartner.region}</p>}
                   </div>
                 </div>
+                {/*  **배송지 고르개**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고
+                     토글로 세 개 중에 하나 고르게 하면 안되나? 디폴트는 포천이고").
+                     배송지를 쓰는 거래처에만 뜬다 — 대부분은 안 쓰므로 화면이 안 바뀐다.
+
+                     **딱지처럼 크고 색 있게 둔다.** 예전엔 거래처 이름에 `(쿠팡)`이 박혀 있어
+                     잘못 고르면 눈에 띄었는데, 토글로 옮기면 그 브레이크가 사라진다.
+                     작은 회색 토글이면 기본값(포천)인 채로 쿠팡 주문을 넣어 버린다. */}
+                {activeShipTos(selectedPartner).length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">배송지</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeShipTos(selectedPartner).map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setShipToId(s.id)}
+                          aria-pressed={shipToId === s.id}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                            shipToId === s.id
+                              ? 'bg-amber-500 text-white shadow-sm'
+                              : 'bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100'}`}
+                        >{s.name}</button>
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[10px] font-bold text-amber-600">
+                      {partnerLabel(selectedPartner.name, activeShipTos(selectedPartner).find(s => s.id === shipToId)?.name)} 으로 주문합니다 · 배송지마다 나가는 품목이 다릅니다
+                    </p>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={changePartner}

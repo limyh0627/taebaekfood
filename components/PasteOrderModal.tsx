@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { validateExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
+import { defaultShipToId, activeShipTos, linksForShipTo } from '../src/shared/shipTo';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
 import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
@@ -130,6 +131,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
+  //  **어디로 보내나**(2026-09-16) — 주문 화면과 같은 규칙. 기본은 목록 맨 앞이고,
+  //  바꾸면 품목 목록이 따라 바뀐다.
+  const [shipToId, setShipToId] = useState<string | undefined>(undefined);
+  useEffect(() => { setShipToId(defaultShipToId(selectedClient ?? undefined)); }, [selectedClient?.id]);
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
@@ -177,17 +182,19 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
    * 여기는 `partnerIds` 만 봐서, 품목연결로 붙인 것이 통째로 빠졌다.
    */
   const partnerOutIds = useMemo(
-    () => new Set((partnerItems ?? [])
-      .filter((r: any) => r.partnerId === selectedClient?.id && r.Direction !== 'in')
-      .map((r: any) => String(r.itemId))),
-    [partnerItems, selectedClient?.id]);
+    //  **배송지로 한 번 더 거른다** — 주문 화면과 같은 규칙(`shipTo.linksForShipTo`).
+    () => new Set(linksForShipTo(
+      (partnerItems ?? []).filter((r: any) => r.partnerId === selectedClient?.id && r.Direction !== 'in'),
+      shipToId,
+    ).map((r: any) => String(r.itemId))),
+    [partnerItems, selectedClient?.id, shipToId]);
 
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
     const catalog = items.filter(p => !p.archived && ['product', 'goods', 'wip', 'raw', 'submaterial'].includes(p.type));
     const linked = catalog.filter(p => partnerOutIds.has(p.id) || (selectedClient.type === '스마트스토어' && isSmartStoreItem(p)));
     return linked.length ? linked : catalog;
-  }, [items, partnerOutIds, selectedClient]);
+  }, [items, partnerOutIds, selectedClient, shipToId]);
 
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
@@ -322,6 +329,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       await onSave({
         partnerId: selectedClient.id,
         partnerName: selectedClient.name,
+        ...(shipToId ? { shipToId } : {}),
         email: selectedClient.email || '',
         createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
         items: orderItems,
@@ -374,6 +382,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if (!selectedClient) return null;
     return (
       <div className="space-y-2">
+        {/*  **배송지 딱지 토글**(2026-09-16) — 주문 화면과 같은 모양·같은 자리다.
+             배송지를 쓰는 거래처에만 뜬다. 고르면 아래 품목 목록이 따라 바뀐다. */}
         <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3">
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex items-center gap-1.5">
@@ -391,6 +401,19 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             </button>
           </div>
         </div>
+        {activeShipTos(selectedClient).length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">배송지</p>
+            <div className="flex flex-wrap gap-1.5">
+              {activeShipTos(selectedClient).map(st => (
+                <button key={st.id} type="button" onClick={() => setShipToId(st.id)} aria-pressed={shipToId === st.id}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
+                    shipToId === st.id ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100'}`}
+                >{st.name}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <button type="button" onClick={changeClient}
           className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
           <User size={14} aria-hidden="true" />

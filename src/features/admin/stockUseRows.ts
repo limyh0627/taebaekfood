@@ -2,6 +2,7 @@ import type { Item, Order } from '../../shared/types';
 import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import { isGoodsItem } from './orderStockEngine';
 import { unreservedItemStock } from './orderItemStock';
+import { holdsUnitStock } from '../../shared/itemTaxonomy';
 
 /**
  * 작업완료 때 "이미 있는 재고 쓸까요?"를 물어볼 주문 라인들.
@@ -34,7 +35,7 @@ export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[])
   const rows: StockUseRow[] = [];
   order.items.forEach((item, idx) => {
     const product = allItems.find(p => p.id === item.itemId);
-    if (!product || product.type !== 'product') return;
+    if (!product || !holdsUnitStock(product)) return;
     if (isGoodsItem(product)) return;              // 생산을 안 하는 품목 — 물을 게 없다
 
     const uc = unpackComponent(product);
