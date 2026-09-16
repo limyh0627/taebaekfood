@@ -105,7 +105,13 @@ export const subscribeToRecentCollection = <T extends { id: string }>(
   cutoff.setDate(cutoff.getDate() - daysBack);
   // dateField이 ISO string이면 toISOString(), YYYY-MM-DD면 slice
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return subscribeToCollection<T>(collectionName, callback, [where(dateField, '>=', cutoffStr), ...extraConstraints]);
+  // 회사 분리용 복합 인덱스가 생성되는 동안에도 목록이 비지 않도록 회사 조건으로
+  // 먼저 구독하고 최근 날짜는 클라이언트에서 거른다.
+  return subscribeToCollection<T>(
+    collectionName,
+    rows => callback(rows.filter(row => String((row as Record<string, unknown>)[dateField] ?? '') >= cutoffStr)),
+    extraConstraints,
+  );
 };
 
 // 특정 날짜 범위 one-time fetch (과거 데이터 온디맨드)

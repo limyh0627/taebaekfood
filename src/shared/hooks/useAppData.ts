@@ -275,8 +275,17 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       const cutoff = new Date(Date.now() - ordersMonths * 30 * 86400000).toISOString();
       unsub = subscribeToCollection<Order>(
         'orders',
-        (data) => { setOrders(data); markLoaded('orders'); },
-        [where('createdAt', '>=', cutoff), where('companyId', '==', companyId)],
+        (data) => {
+          setOrders(data.filter(order => String(order.createdAt ?? '') >= cutoff));
+          markLoaded('orders');
+        },
+        [where('companyId', '==', companyId)],
+        (error) => {
+          console.error('[Firestore 구독 실패] orders', error);
+          // 인덱스 생성 지연이나 일시 오류가 있어도 앱 전체가 무한 로딩에 갇히면
+          // 로그인·다른 업무까지 못 하므로 로딩은 반드시 끝낸다.
+          markLoaded('orders');
+        },
       );
     });
     return () => {
