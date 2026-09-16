@@ -83,6 +83,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     phantom: initialData?.phantom ?? false,
+    unpackable: initialData?.unpackable ?? false,
     //  원가 출처 — 안 정했으면 롤업이 기본이다(구성·원료식에서 계산).
     costSource: (initialData?.costSource ?? 'rollup') as 'rollup' | 'manual',
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
@@ -293,6 +294,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       //  같이 쓰다가 둘이 어긋나 동우 볶음참깨가 10개입 대신 20개입으로 주문됐다.
       ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
+      unpackable: !!formData.unpackable,
       costSource: formData.costSource,
     };
 
@@ -789,6 +791,31 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               완제품의 배합은 위 구성품(BOM)이 정한다. 완제품에서 여기를 열어두면 품목 키로
               원료식이 다시 생기고(같은 품목을 쓰는 다른 완제품까지 덮어씀), 재고 계산 근거가
               BOM과 원료식 둘로 갈라진다. 서류 비율은 코드의 DOC_MIX 표가 갖는다. */}
+          {/*  **까서 벌크로 되돌릴 수 있나** (2026-09-16 사장님: "캔 종류를 보통 벌크로 까서
+               포장하는 경우가 많은데"). **구성으로는 못 가린다** — `참기름/병/350ml` 도
+               캔과 똑같이 `벌크 + 용기 + 뚜껑` 이라, 구성으로 판정했더니 운영 데이터에서
+               158개가 걸렸다. 라벨 붙여 밀봉한 소매 병은 까서 되돌리지 않는다.
+               그래서 **사람이 켠 것만** 깐다. 무엇이 얼마나 나오는지는 BOM 이 정한다. */}
+          {(formData.type === 'wip' || formData.type === 'product') && (
+            <button
+              type="button"
+              onClick={() => setFormData(fd => ({ ...fd, unpackable: !fd.unpackable }))}
+              className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition-all ${formData.unpackable ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}
+            >
+              <span className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-all ${formData.unpackable ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${formData.unpackable ? 'left-4' : 'left-0.5'}`} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-black text-slate-700">개봉해서 벌크로 되돌릴 수 있음</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">
+                  {formData.unpackable
+                    ? '재고현황에 개봉 단추가 생겨요. 깐 만큼 구성의 벌크로 돌아가고, 공캔·뚜껑은 버려집니다(재고로 안 돌아옴).'
+                    : '16.5kg 캔처럼 까서 도로 쓰는 것만 켜세요. 라벨 붙여 밀봉한 소매 병은 끄고 두세요.'}
+                </span>
+              </span>
+            </button>
+          )}
+
           {(formData.type === 'wip' || formData.type === 'raw') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">

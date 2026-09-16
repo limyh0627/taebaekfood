@@ -214,15 +214,13 @@ export const mutateRawMaterialLots = async (
   /**
    * Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
    *
-   * **`lotsAreTotal` 원료는 stock을 안 덮어쓴다.** 로트와 벌크 재고는 다른 숫자다:
-   *     로트·원료수불부   볶음참깨가 통틀어 몇 kg 있나 (벌크 + 낱개 + 박스)
-   *     items.stock       그중 자루로 남은 **벌크만**
-   * 부르는 쪽마다 챙기게 해 놨더니 orderStockEngine이 빠뜨려, 출고할 때마다 벌크 재고가
-   * 로트합으로 덮였다. 판정을 이 안으로 들여서 어느 경로로 들어와도 안 틀어지게 한다.
+   * **재고는 언제나 로트 합계다**(2026-09-16). 예전엔 `lotsAreTotal` 원료만 예외로
+   * 빼 뒀다 — "로트는 통틀어, stock 은 벌크만" 이라는 우회였는데, 그 예외를 켠 품목
+   * (볶음참깨)만 장부가 깨져 있었다. 품목마다 로트를 나눠 다는 이관이 끝나 예외를 없앴다.
    */
-  const buildPatch = (next: RawMaterialLot[], lotsAreTotal: boolean): { lots: RawMaterialLot[]; stock?: number } => {
+  const buildPatch = (next: RawMaterialLot[]): { lots: RawMaterialLot[]; stock?: number } => {
     const patch: { lots: RawMaterialLot[]; stock?: number } = { lots: stripUndefined(next) };
-    if (computeStock && !lotsAreTotal) patch.stock = computeStock(next);
+    if (computeStock) patch.stock = computeStock(next);
     return patch;
   };
   const next = await runTransaction(db, async (tx) => {
@@ -234,7 +232,7 @@ export const mutateRawMaterialLots = async (
     const stockBefore = Number(data.stock ?? 0);
     // #1 로트 배열 무한 증가 방지 — 오래된 depleted 로트 정리(모든 로트 쓰기 경로가 이 함수를 지남)
     const next = pruneDepletedLots(transform(current, stockBefore));
-    tx.update(ref, buildPatch(next, !!data.lotsAreTotal));
+    tx.update(ref, buildPatch(next));
     return next;
   });
   return next;

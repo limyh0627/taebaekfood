@@ -40,6 +40,8 @@ import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterial
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
+import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
+import { unpack, stocktakeByQty } from '../src/shared/services/unpackService';
 import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -565,11 +567,10 @@ const ItemList: React.FC<ItemListProps> = ({
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [draftOrders, setDraftOrders] = useState<{ id: string, quantity: number }[]>([]);
-  const [editingStockId, setEditingStockId] = useState<string | null>(null);
-  const [editingStockVal, setEditingStockVal] = useState<string>('');
-  // 재고 현황 모달 전용 편집 상태 — 마스터 목록(editingStockId)과 공유하면 안 된다.
-  //   같은 품목이 모달 뒤 목록에도 렌더되면 autoFocus 입력이 둘 생기고, 포커스를 뺏긴 쪽 onBlur가
-  //   즉시 편집을 닫아버려서 "눌러도 아무 반응 없음"이 된다(뒤 목록에 걸린 품목만 증상).
+  //  마스터 목록의 그 자리 편집(`editingStockId`)은 없앴다(2026-09-16) — 수량을 누르면
+  //  실사 창이 뜬다. 재고 현황 모달 쪽은 아직 그 자리에서 고친다.
+  //   (같은 품목이 모달 뒤 목록에도 렌더되면 autoFocus 입력이 둘 생기고, 포커스를 뺏긴 쪽 onBlur가
+  //    즉시 편집을 닫아버려서 "눌러도 아무 반응 없음"이 됐다 — 상태를 나눠 둔 까닭이다)
   const [editingClosingId, setEditingClosingId] = useState<string | null>(null);
   const [editingClosingVal, setEditingClosingVal] = useState<string>('');
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
@@ -674,7 +675,6 @@ const ItemList: React.FC<ItemListProps> = ({
     [partnerItems]
   );
 
-  const stockEditCancelled = useRef(false); // 재고 편집 취소(ESC) 여부 — blur 중복 커밋 방지
   const closingEditCancelled = useRef(false); // 재고 현황 모달 편집 취소(ESC) 여부
   const addToCart = (itemId: string, defaultQty: number, isBox?: boolean) => {
     if (!cart.some(c => c.id === itemId)) {
@@ -701,6 +701,24 @@ const ItemList: React.FC<ItemListProps> = ({
     setCart([]);
     setShowCartPanel(false);
     setActiveTab('inbound');
+  };
+
+  /**
+   * **실사 창을 여는 문은 하나다**(2026-09-16 사장님: "현재재고 클릭해서 수량 고치는걸
+   * 실사 조정이랑 합쳐야 할거 같은데 실사조정 버튼을 없애고 수량 버튼 눌렀을때
+   * 실사정정 모달이 뜨게 바꿔").
+   *
+   * 예전엔 길이 둘이었다 — 숫자를 눌러 **그 자리에서** 고치는 길과, '실사조정' 단추로
+   * 창을 여는 길. 둘이 저장문도 달라서 어느 길로 갔느냐에 따라 결과가 갈렸다.
+   * 이제 숫자를 누르면 창이 뜬다.
+   */
+  const openStocktake = (product: Item) => {
+    setRowEditProduct(product);
+    setRowEditForm({
+      name: product.name, type: product.type,
+      stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock,
+      minStock: product.minStock, unit: product.unit,
+    });
   };
 
   // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤.
@@ -745,7 +763,24 @@ const ItemList: React.FC<ItemListProps> = ({
       });
     } else {
       // 입력은 화면에 보인 재고 단위 그대로다. 개입수를 또 곱하면 1박스가 10박스로 저장된다.
-      onUpdateItem({ ...product, stock: stocktakeStoredQuantity(product, val, addStockUnits) });
+      const 목표 = stocktakeStoredQuantity(product, val, addStockUnits);
+      /**
+       * **로트를 쓰는 품목이면 로트도 같이 맞춘다**(2026-09-16 사장님: "볶음참깨는 재고관리에서
+       * 실제 수량으로 한번 맞춘거 같은데 왜 로트는 안 따라갔냐").
+       *
+       * 여기가 그 자리다. 예전엔 `stock` 만 덮어썼다. 원료(위쪽 갈래)에는 실사 앵커가
+       * 있는데 박스·캔·완제품에는 없어서, 맞춰도 로트는 그대로 남아 다음 출고부터 또
+       * 이월이 음수로 받았다 — stock 39 / 이월 −7 로 갈린 길이다.
+       *
+       * 로트를 안 쓰던 품목은 그대로 `stock` 만 고친다. 없는 로트를 억지로 세우면
+       * 그때부터 없던 이월 로트가 생겨 화면이 갑자기 달라진다.
+       */
+      if ((product.lots?.length ?? 0) > 0) {
+        const r = await stocktakeByQty({ itemId: product.id, itemName: product.name, targetQty: 목표 });
+        setToast({ message: r.message });
+        return;
+      }
+      onUpdateItem({ ...product, stock: 목표 });
     }
   };
 
@@ -774,6 +809,32 @@ const ItemList: React.FC<ItemListProps> = ({
       return;
     }
     setToast({ message: `${product.name} −1박스 → ${target.name} +${uc.count}개` });
+  };
+
+  /**
+   * **캔 개봉** — 캔을 까서 벌크로 되돌린다(2026-09-16 사장님: "캔 종류를 보통 벌크로
+   * 까서 포장하는 경우가 많은데"). 박스 개봉과 달리 **개수 → kg/L** 로 바뀌고,
+   * 벌크는 로트로 관리되므로 쓰기는 `unpackService` 가 원료 명령으로 한다.
+   *
+   * 몇 개를 깔지 먼저 묻는다 — 한 번에 여러 캔을 까는 일이 흔한데 한 개씩 눌러야 하면
+   * 중간에 실패했을 때 몇 개까지 갔는지 알 수가 없다.
+   */
+  const [unpackModal, setUnpackModal] = useState<{ item: Item; count: string } | null>(null);
+  const [unpackBusy, setUnpackBusy] = useState(false);
+
+  const 개봉확정 = async () => {
+    if (!unpackModal || unpackBusy) return;
+    const { item } = unpackModal;
+    const r = unpackPlan(item, Number(unpackModal.count), item.stock ?? 0);
+    if (!r.ok) return;                                  // 단추가 이미 막혀 있다
+    setUnpackBusy(true);
+    try {
+      const out = await unpack(r.plan);
+      setToast({ message: out.message });
+      if (out.ok) setUnpackModal(null);
+    } finally {
+      setUnpackBusy(false);
+    }
   };
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -1886,38 +1947,17 @@ const ItemList: React.FC<ItemListProps> = ({
                             </span>
                             <span className="text-[9px] font-bold text-emerald-500">원료 {Math.round(derivedRawKg! * 10) / 10}kg ≈ {Math.round(derivedCans * 10) / 10}캔</span>
                           </div>
-                        ) : editingStockId === product.id ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <input
-                              autoFocus
-                              type="number"
-                              value={editingStockVal}
-                              onChange={e => setEditingStockVal(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') { stockEditCancelled.current = false; e.currentTarget.blur(); }
-                                if (e.key === 'Escape') { stockEditCancelled.current = true; e.currentTarget.blur(); }
-                              }}
-                              onBlur={() => {
-                                if (!stockEditCancelled.current) commitStockEdit(product, parseFloat(editingStockVal));
-                                setEditingStockId(null);
-                                stockEditCancelled.current = false;
-                              }}
-                              onClick={e => e.stopPropagation()}
-                              className="w-20 text-right text-sm font-black border border-indigo-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                            />
-                            <span className="text-[10px] text-slate-400">{product.unit}</span>
-                          </div>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(displayStock)); }}
+                            onClick={e => { e.stopPropagation(); openStocktake(product); }}
                             className={`min-w-14 shrink-0 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
-                            title={`클릭하여 수량 수정 (${displayStock}${product.unit ?? ''})`}
+                            title={`눌러서 실사 (지금 ${displayStock}${product.unit ?? ''})`}
                           >
                             {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
                             {Math.round(displayStock)}
                           </button>
                         )}
-                        {derivedCans == null && editingStockId !== product.id && (
+                        {derivedCans == null && (
                           <span className="w-7 shrink-0 text-left text-[10px] text-slate-400">
                             {product.type !== '향미유' && product.unit}
                           </span>
@@ -1925,7 +1965,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         </div>
                         {/* 개봉 — 현재고 숫자 아랫줄. BOM에 낱개가 물린 '박스 품목' 행에만 뜬다.
                             재고가 0이면 눌러도 깔 게 없으니 비활성. */}
-                        {unpackComponent(product) && editingStockId !== product.id && (
+                        {unpackComponent(product) && (
                           <button
                             onClick={e => { e.stopPropagation(); unpackBox(product); }}
                             disabled={(product.stock ?? 0) < 1}
@@ -1933,6 +1973,20 @@ const ItemList: React.FC<ItemListProps> = ({
                             title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product)!.itemId)?.name ?? '낱개'} +${unpackComponent(product)!.count}개`}
                           >개봉 +{unpackComponent(product)!.count}</button>
                         )}
+                        {/* 캔 개봉 — '개봉 가능'을 켠 품목만. 박스 개봉과 같은 자리·같은 모양이다.
+                            대상·수량은 짐작하지 않는다 — BOM 의 벌크 줄이 근거다(`canUnpack`). */}
+                        {(() => {
+                          const r = unpackPlan(product, 1);
+                          if (!r.ok) return null;
+                          return (
+                            <button
+                              onClick={e => { e.stopPropagation(); setUnpackModal({ item: product, count: '1' }); }}
+                              disabled={(product.stock ?? 0) < 1}
+                              className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-600 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              title={unpackSummary(r.plan)}
+                            >개봉</button>
+                          );
+                        })()}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">
@@ -1981,10 +2035,14 @@ const ItemList: React.FC<ItemListProps> = ({
                               >+ 담기</button>
                             )
                           )}
-                          <button
-                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, type: product.type, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); }}
-                            className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
-                          >{productEditable ? '수정' : '실사조정'}</button>
+                          {/*  '실사조정' 단추는 없앴다 — 수량을 누르면 같은 창이 뜬다.
+                               문이 둘이면 저장문도 둘이 되고, 어느 길로 갔느냐에 따라 결과가 갈린다. */}
+                          {productEditable && (
+                            <button
+                              onClick={e => { e.stopPropagation(); openStocktake(product); }}
+                              className="rounded-xl border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-[10px] font-black text-slate-500 transition-all hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600"
+                            >수정</button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2124,10 +2182,11 @@ const ItemList: React.FC<ItemListProps> = ({
                                   >+ 발주담기</button>
                                 )
                               )}
+                              {/*  폰에서도 문은 하나 — 위 수량을 누르면 같은 창이 뜬다. */}
                               <button
-                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, type: product.type, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
-                                className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
-                              >{productEditable ? '수정' : '실사조정'}</button>
+                                onClick={() => { openStocktake(product); setExpandedRowId(null); }}
+                                className="flex-1 rounded-xl border border-slate-200 bg-slate-100 py-2 text-[11px] font-black text-slate-500"
+                              >{productEditable ? '수정' : '실사'}</button>
                             </div>
                           </div>
                         </td>
@@ -2161,7 +2220,7 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setRowEditProduct(null)} />
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-900">{productEditable ? '품목 수정' : '재고 실사조정'}</h3>
+                <h3 className="text-base font-black text-slate-900">{productEditable ? '품목 수정' : '재고 실사'}</h3>
                 <button onClick={() => setRowEditProduct(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
               <div className="p-5 space-y-4">
@@ -2949,6 +3008,58 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button onClick={commit} disabled={picked.length === 0 || makeBusy}
                   className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 disabled:opacity-30 transition-all">
                   {makeBusy ? '반영 중…' : '확정'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/*  **캔 개봉 창** — 몇 개를 깔지 받고, 무엇이 얼마나 나오는지 미리 보여 준다.
+           공캔이 안 돌아온다는 것도 여기서 말해 준다 — 나중에 "공캔 재고가 왜 안 늘지"
+           하고 찾게 두면 안 된다. */}
+      {unpackModal && (() => {
+        const r = unpackPlan(unpackModal.item, Number(unpackModal.count), unpackModal.item.stock ?? 0);
+        const 있는것 = unpackModal.item.stock ?? 0;
+        return (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => !unpackBusy && setUnpackModal(null)}>
+            <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-black text-slate-900">개봉</h3>
+              <p className="mt-1 truncate text-xs font-bold text-slate-500">{unpackModal.item.name}</p>
+
+              <label className="mt-4 block text-[11px] font-black text-slate-500">몇 개를 깔까요 <span className="font-bold text-slate-400">(있는 것 {있는것}개)</span></label>
+              <input
+                type="number" min={1} max={있는것} autoFocus
+                value={unpackModal.count}
+                onChange={e => setUnpackModal({ ...unpackModal, count: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter' && r.ok) 개봉확정(); }}
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-amber-300"
+              />
+
+              {r.ok ? (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                  {unpackSummary(r.plan)}
+                  {r.plan.discarded.length > 0 && (
+                    <p className="mt-1 text-[10px] font-bold text-amber-600">
+                      {r.plan.discarded.map(d => `${d.name} ${d.qty}개`).join(' · ')} 는 버립니다 — 재고로 안 돌아옵니다
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-600">
+                  {r.reason === 'NOT_ENOUGH' ? `깔 재고가 모자랍니다 — ${있는것}개까지 됩니다.`
+                    : r.reason === 'BAD_COUNT' ? '1개 이상 적어 주세요.'
+                    : r.reason === 'MANY_BULKS' ? '구성에 벌크가 여럿이라 무엇으로 되돌릴지 알 수 없습니다.'
+                    : '구성에 벌크가 없어 되돌릴 곳이 없습니다.'}
+                </p>
+              )}
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button onClick={() => setUnpackModal(null)} disabled={unpackBusy}
+                  className="rounded-xl px-3 py-2 text-xs font-black text-slate-500 hover:bg-slate-100 disabled:opacity-40">취소</button>
+                <button onClick={개봉확정} disabled={!r.ok || unpackBusy}
+                  className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-white hover:bg-amber-600 disabled:opacity-40">
+                  {unpackBusy ? '까는 중…' : '개봉'}
                 </button>
               </div>
             </div>

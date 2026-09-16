@@ -24,9 +24,16 @@ vi.mock('firebase/firestore', () => ({
 }));
 const { createOrderStockEngine } = await import('./orderStockEngine');
 
-/** 볶음참깨 — lotsAreTotal(로트합=통합재고, stock=벌크만) */
+/**
+ * 볶음참깨 — 벌크 반제품.
+ *
+ * **재고 = 로트 합계다**(2026-09-16). 예전 픽스처는 `stock 161` 에 로트합 500 으로
+ * 둘이 갈려 있었다 — `lotsAreTotal`("로트는 통틀어, stock 은 벌크만")을 켰기 때문이다.
+ * 그 우회를 걷어냈다. 켠 품목이 볶음참깨 하나뿐이었는데 **그 하나만 장부가 깨져 있었다**
+ * (운영: 로트합 −520 vs stock 14).
+ */
 const 볶음참깨 = (): Item => ({
-  id: 'bok', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 161, lotsAreTotal: true,
+  id: 'bok', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 500,
   lots: [{ id: 'l1', lotNo: '260801-01', supplierName: '청정식품', receivedDate: '2026-08-01', kgIn: 500, qtyIn: 0, kgRemaining: 500, status: 'active' }],
 } as unknown as Item);
 
@@ -95,12 +102,15 @@ describe('벌크를 그대로 파는 주문', () => {
     expect(rows[0].used).toBe(40);
   });
 
-  it('lotsAreTotal이면 벌크 재고(stock)에서도 빠진다 — 로트합은 통합재고라 stock을 안 덮는다', async () => {
+  it('**재고는 로트 합계를 따라간다** — 엔진이 따로 빼지 않는다', async () => {
+    //  예전엔 엔진이 `lotsAreTotal` 품목만 골라 stock 을 직접 깎았다. 그 예외를 걷어냈으니
+    //  이제는 로트를 깎으면 미러가 stock 을 로트합으로 맞춘다. 여기서 또 빼면 두 번 빠진다.
     const items = [볶음참깨()];
     const order = 주문(40);
-    const { engine } = harness(items, order);
+    const { engine, lotKg } = harness(items, order);
     await engine.reconcileOrderStock(order, OrderStatus.DELIVERED);
-    expect(dbx.stock.get('bok')).toBe(121);                          // 161 − 40
+    expect(lotKg('bok')).toBe(460);                                  // 500 − 40
+    expect(dbx.stock.get('bok')).toBe(460);                          // 로트합과 같다
   });
 
   it('출고까지 가도 두 번 빠지지 않는다 — 벌크는 완제품 출고 경로를 안 탄다', async () => {
@@ -110,6 +120,6 @@ describe('벌크를 그대로 파는 주문', () => {
     await engine.reconcileOrderStock(order, OrderStatus.DISPATCHED);
     await engine.reconcileOrderStock(order, OrderStatus.DELIVERED);
     expect(lotKg('bok')).toBe(460);
-    expect(dbx.stock.get('bok')).toBe(121);
+    expect(dbx.stock.get('bok')).toBe(460);
   });
 });

@@ -3108,7 +3108,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 요청 수량은 직원이 화면 단위(기름=L)로 넣은 값 → 저장 단위 kg으로
                     const reqKg = product.density ? req.requestedQuantity * product.density : req.requestedQuantity;
                     const deltaKg = reqKg - lotKgRemaining(product.lots);
-                    await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
+                    await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
                     await updateItem('items', req.itemId, { stock: req.requestedQuantity });
@@ -4825,7 +4825,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     if (target) {
                       // 요청 수량은 화면 단위(기름=L) → 저장 단위 kg으로
                       const addKg = product.density ? (req.requestedQuantity || 0) * product.density : (req.requestedQuantity || 0);
-                      await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg: addKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
+                      await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg: addKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
                       await adjustItemStock(collectionName, req.itemId, req.requestedQuantity || 0);

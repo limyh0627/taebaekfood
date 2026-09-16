@@ -1,0 +1,182 @@
+{
+ "PLDhkjOgcPIhO1hhReHm": {
+  "stock": 30,
+  "lots": [
+   {
+    "unitKg": 1,
+    "qtyIn": 2,
+    "poId": "oem-1787120076171",
+    "qtyRemaining": 0,
+    "status": "depleted",
+    "kgRemaining": 0,
+    "createdAt": "2026-08-28T00:02:10.346Z",
+    "kgIn": 2,
+    "id": "lot-PLDhkjOgcPIhO1hhReHm-1787875330346-vs4t",
+    "material": "볶음참깨",
+    "lotNo": "260828-01",
+    "supplierId": "c-1775615990718",
+    "supplierName": "푸미푸드",
+    "receivedDate": "2026-08-28"
+   },
+   {
+    "status": "active",
+    "supplierName": "이월",
+    "receivedDate": "2026-09-07",
+    "id": "lot-carry-1788768801737-c5v3",
+    "createdAt": "2026-09-07T08:13:21.737Z",
+    "qtyIn": 0,
+    "kgIn": 0,
+    "qtyRemaining": -14,
+    "kgRemaining": 0
+   }
+  ]
+ },
+ "p-1785907900413": {
+  "stock": 39,
+  "lots": [
+   {
+    "receivedDate": "2026-08-28",
+    "qtyIn": 21,
+    "id": "lot-carry-볶음참깨-1787875330496",
+    "supplierName": "이월",
+    "unitKg": 10,
+    "qtyRemaining": -7,
+    "kgRemaining": -70,
+    "createdAt": "2026-08-28T00:02:10.496Z",
+    "material": "볶음참깨",
+    "status": "active",
+    "kgIn": 210
+   },
+   {
+    "kgIn": 410,
+    "qtyIn": 41,
+    "kgRemaining": 0,
+    "poId": "oem-1787120076171",
+    "id": "lot-p-1785907900413-1787875330496-uiij",
+    "qtyRemaining": 0,
+    "lotNo": "260828-02",
+    "supplierId": "c-1775615990718",
+    "supplierName": "푸미푸드",
+    "material": "볶음참깨",
+    "receivedDate": "2026-08-28",
+    "createdAt": "2026-08-28T00:02:10.496Z",
+    "unitKg": 10,
+    "status": "depleted"
+   }
+  ]
+ },
+ "p-1785907940315": {
+  "stock": 14,
+  "lots": [
+   {
+    "qtyRemaining": -26,
+    "createdAt": "2026-08-28T00:02:10.568Z",
+    "id": "lot-carry-볶음참깨-1787875330568",
+    "material": "볶음참깨",
+    "status": "active",
+    "qtyIn": 10,
+    "receivedDate": "2026-08-28",
+    "kgIn": 200,
+    "supplierName": "이월",
+    "kgRemaining": -520,
+    "unitKg": 20
+   },
+   {
+    "createdAt": "2026-08-28T00:02:10.568Z",
+    "kgRemaining": 0,
+    "supplierId": "c-1775615990718",
+    "receivedDate": "2026-08-28",
+    "id": "lot-p-1785907940315-1787875330568-o7qs",
+    "lotNo": "260828-03",
+    "supplierName": "푸미푸드",
+    "status": "depleted",
+    "poId": "oem-1787120076171",
+    "qtyRemaining": 0,
+    "unitKg": 20,
+    "kgIn": 300,
+    "qtyIn": 15,
+    "material": "볶음참깨"
+   }
+  ]
+ },
+ "raw-볶음참깨": {
+  "stock": -59,
+  "lots": [
+   {
+    "material": "볶음참깨",
+    "createdAt": "2026-09-03T08:13:11.402Z",
+    "receivedDate": "2026-09-03",
+    "id": "lot-볶음참깨-1788423191402-u7oe",
+    "lotNo": "260903-01",
+    "kgRemaining": 48,
+    "qtyIn": 200,
+    "kgIn": 200,
+    "supplierName": "(인천)청정식품",
+    "poId": "po-1788422672634",
+    "status": "active",
+    "supplierId": "c-1779251336139"
+   },
+   {
+    "poId": "po-1787813062567",
+    "qtyIn": 200,
+    "supplierName": "(인천)청정식품",
+    "receivedDate": "2026-08-27",
+    "lotNo": "260827-01",
+    "material": "볶음참깨",
+    "id": "lot-볶음참깨-1787819367306-3ncj",
+    "supplierId": "c-1779251336139",
+    "createdAt": "2026-08-27T08:29:27.306Z",
+    "kgIn": 200,
+    "status": "depleted",
+    "kgRemaining": 0
+   },
+   {
+    "kgRemaining": 0,
+    "qtyIn": 10,
+    "status": "depleted",
+    "poId": "po-1787551517913",
+    "lotNo": "260824-01",
+    "id": "lot-볶음참깨-1787551543015-dv3a",
+    "receivedDate": "2026-08-24",
+    "createdAt": "2026-08-24T06:05:43.015Z",
+    "kgIn": 10,
+    "supplierId": "c-1779251336139",
+    "supplierName": "(인천)청정식품"
+   },
+   {
+    "supplierName": "실사(벌크로 통합)",
+    "receivedDate": "2026-08-23",
+    "status": "depleted",
+    "kgIn": 231,
+    "createdAt": "2026-08-22T19:27:41.796Z",
+    "qtyIn": 0,
+    "id": "lot-볶음참깨-실사-1787426861796",
+    "lotNo": "260823-실사",
+    "material": "볶음참깨",
+    "kgRemaining": 0
+   },
+   {
+    "status": "depleted",
+    "createdAt": "2026-08-20T14:52:10.469Z",
+    "supplierName": "이월",
+    "kgIn": 0,
+    "receivedDate": "2026-08-20",
+    "id": "lot-carry-1787237530469-4nag",
+    "kgRemaining": 0
+   },
+   {
+    "supplierName": "실사(청정벌크)",
+    "lotNo": "260812-실사",
+    "createdAt": "2026-08-12T23:57:50.494Z",
+    "kgIn": 10,
+    "qtyIn": 0,
+    "receivedDate": "2026-08-12",
+    "id": "lot-실사-1786579070494",
+    "material": "볶음참깨",
+    "kgRemaining": 0,
+    "status": "depleted"
+   }
+  ],
+  "lotsAreTotal": true
+ }
+}

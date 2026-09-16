@@ -173,7 +173,19 @@ export interface RawInventoryJob {
 
 export type RawSourceType =
   | 'purchase' | 'production' | 'manual' | 'adjustment'
-  | 'stocktake' | 'lot-delete' | 'reversal' | 'opening' | 'oem';
+  | 'stocktake' | 'lot-delete' | 'reversal' | 'opening' | 'oem'
+  /**
+   * **캔을 까서 벌크로 되돌린 것**(2026-09-16 사장님: "캔 종류를 보통 벌크로 까서 포장").
+   *
+   * 지금 개봉은 **로트를 안 건드린다** — 원료수불부와 로트는 '통틀어 몇 kg' 을 세고,
+   * 까는 것은 창고 안에서 포장만 바꾸는 일이라 총량이 안 변하기 때문이다
+   * (`services/unpackService` 머리말). 그래서 이 갈래로 들어오는 명령은 아직 없다.
+   *
+   * **그래도 남겨 둔다.** 우리가 **만든** 캔을 까는 경우는 사정이 다르다 — 벌크가
+   * 생산으로 빠져나갔다가 돌아오는 것이라 총량이 변한다. 그때 이 갈래가 필요하고,
+   * `toLedgerDoc` 이 이미 합계를 안 건드리게 가르고 있다.
+   */
+  | 'unpack';
 
 interface CommandBase {
   /** 같은 id + 같은 내용은 한 번만 먹는다. 같은 id 인데 다른 내용이면 `conflict`(§7). */

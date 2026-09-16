@@ -271,9 +271,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         const usedKg = unitToKg(stockUnits(item, product), raw);
         if (usedKg > 0) {
           rawUsage[raw] = Math.round(((rawUsage[raw] ?? 0) + usedKg) * 1000) / 1000;
-          // lotsAreTotal 원료는 로트합이 통합재고라 stock을 안 덮는다.
-          // 벌크로 나간 만큼은 벌크 재고에서도 빼 줘야 한다.
-          if (product.lotsAreTotal) addDelta(deltas, product.id, -usedKg);
+          //  **재고는 따로 안 뺀다** — 로트를 깎으면 `mutateRawMaterialLots` 가 stock 을
+          //  로트 합계로 맞춘다(2026-09-16 `lotsAreTotal` 예외를 걷어냈다). 여기서 또
+          //  빼면 **두 번 빠진다.**
         }
         continue;
       }

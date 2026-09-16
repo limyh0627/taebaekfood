@@ -34,6 +34,29 @@ describe('옛 원장 화면이 읽는 칸을 같이 채운다', () => {
     expect(d.used).toBe(30);
   });
 
+  it('**개봉은 입고도 사용도 아니다** — 총 kg 이 안 변하니 합계를 안 건드린다', () => {
+    //  2026-09-16 사장님: "캔으로 구매해서 입고할 때 이미 입고로 반영되니까
+    //  캔 벌크로 까거나 해도 상관없지 않나". 맞다 — 캔으로 사도 입고는 그날 이미 적혔고,
+    //  까는 것은 창고 안에서 포장만 바꾸는 일이라 원료가 들어오지도 나가지도 않는다.
+    //  입고로 적으면 사지도 않은 것을 산 것이 되고, 사용 음수면 쓰지도 않은 것을 무른 것이 된다.
+    const d = toLedgerDoc(이력({ reportedDeltaKg: 16.5, source: { type: 'unpack', id: '캔품목' } }));
+    expect(d.received).toBe(0);
+    expect(d.used).toBe(0);
+  });
+
+  it('그래도 줄은 남는다 — 누가 언제 몇 캔 깠는지 못 보면 어긋났을 때 짚을 데가 없다', () => {
+    const d = toLedgerDoc(이력({ reportedDeltaKg: 16.5, source: { type: 'unpack', id: '캔품목' } }));
+    expect(d.date).toBe('2026-09-10');
+    expect(d.reportedDeltaKg).toBe(16.5);      // 실제로 움직인 양은 그대로 남는다
+    expect((d.source as { type: string }).type).toBe('unpack');
+  });
+
+  it('같은 양이라도 매입 입고는 그대로 received 다 — 갈래로만 가른다', () => {
+    const d = toLedgerDoc(이력({ reportedDeltaKg: 16.5, source: { type: 'purchase', id: 'po-9' } }));
+    expect(d.received).toBe(16.5);
+    expect(d.used).toBe(0);
+  });
+
   it('날짜와 원료명도 옛 이름으로 같이 적는다', () => {
     const d = toLedgerDoc(이력());
     expect(d.date).toBe('2026-09-10');

@@ -46,7 +46,6 @@ export function rawInventoryJobTestDouble(input: {
       activeLots: current.filter(lot => Number(lot.kgRemaining ?? 0) > 0),
       recentDepletedLots: current.filter(lot => Number(lot.kgRemaining ?? 0) <= 0),
     };
-    if (item?.lotsAreTotal) state.stockKg = current.reduce((sum, lot) => sum + Number(lot.kgRemaining ?? 0), 0);
     states.set(command.rawItemId, state);
     return state;
   };
@@ -85,7 +84,7 @@ export function rawInventoryJobTestDouble(input: {
         const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
         input.lots.set(command.rawItemId, lots);
         const rawItem = input.items.find(x => x.id === command.rawItemId);
-        if (!rawItem?.lotsAreTotal) input.stock.set(command.rawItemId, result.state.stockKg);
+        input.stock.set(command.rawItemId, result.state.stockKg);
         input.ledger.set(command.operationId, {
           ...result.movement,
           material: result.movement.materialSnapshot,

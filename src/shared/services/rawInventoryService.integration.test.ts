@@ -159,10 +159,28 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
     });
   });
 
-  it('lotsAreTotal 원료는 items.stock 을 안 덮는다', async () => {
+  it('lotsAreTotal 원료는 입고·사용이 items.stock 을 안 덮는다', async () => {
     store.set('items/raw-x', 품목('raw-x', { lotsAreTotal: true, stock: 42 }));
     await executeRawInventoryCommand(명령({ kg: 5 }));
     expect(store.get('items/raw-x')).toMatchObject({ stock: 42 });   // 안 덮었다
+  });
+
+  it('**lotsAreTotal 이라도 실사는 items.stock 을 맞춘다** — 사람이 세어 보고 찍은 값이다', async () => {
+    //  2026-09-16 사장님: "볶음참깨는 재고관리에서 실제 수량으로 한번 맞춘거 같은데
+    //  왜 로트는 안 따라갔냐". 여기가 막고 있어서 실사를 해도 stock 이 −59 에 남았다
+    //  (로트합 48). 실사는 "이 둘을 맞춰라" 는 명령인데 코드가 거절하고 있었다.
+    const stateId = inventoryDocId('taebaek', 'raw-x');
+    store.set('items/raw-x', 품목('raw-x', { lotsAreTotal: true, stock: -59, lots: [] }));
+    store.set(`rawInventories/${stateId}`, {
+      id: stateId, companyId: 'taebaek', rawItemId: 'raw-x', materialSnapshot: 'x',
+      stockKg: 48, activeLots: [{
+        id: 'L1', supplierName: '(인천)청정식품', receivedDate: '2026-09-03',
+        qtyIn: 0, kgIn: 200, kgRemaining: 48, status: 'active', createdAt: '',
+      }], recentDepletedLots: [], revision: 0, lastProcessedAt: '',
+    });
+    const r = await executeRawInventoryCommand({ ...명령({ kg: 0 }), kind: 'stocktake', targetKg: 30 } as never);
+    expect(r.status).toBe('applied');
+    expect(store.get('items/raw-x')).toMatchObject({ stock: 30 });
   });
 
   it('commandHash 를 이력에 실어 저장한다', async () => {

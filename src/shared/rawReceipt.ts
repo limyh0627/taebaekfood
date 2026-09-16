@@ -185,8 +185,6 @@ export async function adjustRawLots(opts: {
   ledgerType?: 'auto' | 'manual' | 'correction';
   /** 어느 회사 창고인가 — 안 박으면 그 회사 수불부에서 사라진다 */
   companyId?: CompanyId;
-  /** @deprecated 명령이 품목 문서를 직접 읽어 판정한다 — 안 넘겨도 된다. */
-  lotsAreTotal?: boolean;
   /** 이 조정의 **작업 id**. 같은 id 로 두 번 보내면 한 번만 먹는다. 안 넘기면 그때그때 다르다. */
   operationId?: string;
 }): Promise<void> {

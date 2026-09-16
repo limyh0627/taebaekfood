@@ -52,12 +52,31 @@ export function toLedgerDoc(m: RawInventoryMovement, legacy: LegacyLedgerFields 
   //  실사는 잔량을 targetKg 로 다시 잡는 앵커라 입고·사용 합계를 안 건드린다(앱의 실사와 같은 모양).
   const 실사 = m.kind === 'stocktake';
   const d = m.reportedDeltaKg;
+  /**
+   * **개봉은 입고도 사용도 아니다 — 실사와 같이 합계를 안 건드린다**(2026-09-16).
+   *
+   * 2026-09-16 사장님: "캔으로 구매해서 입고할 때 이미 입고로 반영되니까 캔 벌크로
+   * 까거나 해도 상관없지 않나".
+   *
+   * **맞다.** 원료수불부는 원료가 창고에 **들어오고 나간 것**을 적는 장부다. 캔에
+   * 담겼든 포대에 담겼든 원료는 원료라, 캔으로 사도 입고는 그날 이미 적혔다.
+   * 까는 것은 창고 **안에서** 포장만 바꾸는 일이라 원료가 들어오지도 나가지도 않는다 —
+   * **총 kg 이 안 변한다.** 입고로 적으면 사지도 않은 것을 산 것이 되고, 사용 음수로
+   * 적으면 쓰지도 않은 것을 무른 것이 된다. 어느 쪽이든 관청에 내는 서류가 틀어진다.
+   *
+   * 그래도 **줄은 남긴다**(0 으로). 누가 언제 몇 캔 깠는지 못 보면 재고가 어긋났을 때
+   * 짚을 데가 없다. 실사가 잔량만 다시 잡고 합계를 안 건드리는 것과 같은 모양이다.
+   *
+   * 안 깐 캔이 몇 개인지는 **포장 현황**(캔 품목 재고)이 들고 있다 — 원료수불부와
+   * 다른 장부다. 둘을 더하면 늘 같은 kg 이 나온다.
+   */
+  const 개봉 = m.source?.type === 'unpack';
   return {
     ...m,
     date: m.effectiveAt.slice(0, 10),
     material: m.materialSnapshot,
-    received: 실사 ? 0 : (d > 0 ? d : 0),
-    used: 실사 ? 0 : (d < 0 ? -d : 0),
+    received: (실사 || 개봉) ? 0 : (d > 0 ? d : 0),
+    used: (실사 || 개봉) ? 0 : (d < 0 ? -d : 0),
     unit: 'kg',
     ...legacy,
   };
@@ -231,10 +250,9 @@ export async function executeRawInventoryCommand(
      * 사라진다.** 풍회 깻묵이 그런 상태다 — `items.stock` 8,000 인데 로트도 상태도 0 이다.
      * 그 원료에 입고 한 번 넣으면 8,000 이 날아간다.
      *
-     * `lotsAreTotal` 원료(볶음참깨)는 원래 둘이 다른 숫자라 안 본다 — stock 을 덮지도 않는다.
      * 어느 쪽이 맞는지는 코드가 못 정한다. 사람이 실사로 정하고 나서 다시 부른다.
      */
-    if (mirror && !원장전용 && command.kind !== 'stocktake' && itemSnap?.exists() && !itemSnap.data()?.lotsAreTotal) {
+    if (mirror && !원장전용 && command.kind !== 'stocktake' && itemSnap?.exists()) {
       const 품목재고 = Number(itemSnap.data()?.stock ?? 0);
       const 상태재고 = state?.stockKg ?? 0;
       if (Math.abs(품목재고 - 상태재고) > MIRROR_TOLERANCE_KG) {
@@ -261,8 +279,8 @@ export async function executeRawInventoryCommand(
       //  화면이 보는 `lots` 는 활성·소진이 한 배열이다. 활성을 앞에 둬야 FIFO 순서가 산다.
       const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
       const patch: Record<string, unknown> = { lots: stripUndefined(lots) };
-      //  `lotsAreTotal` 원료는 로트합이 통합재고라 stock 을 안 덮는다(mutateRawMaterialLots 와 같은 규칙).
-      if (!itemSnap.data()?.lotsAreTotal) patch.stock = result.state.stockKg;
+      //  **재고 = 로트 합계.** 예외는 없다(2026-09-16 `lotsAreTotal` 을 걷어냈다).
+      patch.stock = result.state.stockKg;
       tx.update(itemRef, patch);
     }
     return result;
