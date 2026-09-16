@@ -2484,3 +2484,12 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - 실행: `npx tsx scripts/fix-company-settings.mts --phase=cleanup --apply`
 - 검증: 삭제 4건과 회사별 설정 8건을 다시 읽어 확인했다.
 - 되돌리기: `npx tsx scripts/fix-company-settings.mts --undo`
+
+## 2026-09-16 — 보안 규칙 배포로 남은 재고 작업 실패 잠금 해제
+
+- 원인: 원자화된 재고 명령이 중복 실행 방지를 위해 아직 없는 작업 문서를 `get`했으나, 회사별 규칙이 존재하는 문서만 읽도록 막아 `Missing or insufficient permissions`가 발생했다.
+- 규칙 수정과 63개 규칙 시험을 먼저 마친 뒤, 실패 시각에 새 원료 이력·생산기록·재고예약이 없음을 확인했다.
+- 대상 주문 5건의 `inventoryOperation` 필드만 삭제했다. 주문 상태·품목 재고·로트·수불부는 바꾸지 않았다.
+- 실행: `npx tsx scripts/fix-failed-inventory-permission-locks.mts --apply`
+- 백업: `로컬전용/백업/failed-inventory-permission-locks-2026-09-16.json`
+- 되돌리기: `npx tsx scripts/fix-failed-inventory-permission-locks.mts --undo`

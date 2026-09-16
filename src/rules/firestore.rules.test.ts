@@ -99,6 +99,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
 
   describe('회사 경계', () => {
+    it('원자화 명령이 같은 회사의 아직 없는 작업 문서를 확인할 수 있다', async () => {
+      const snap = await assertSucceeds(getDoc(doc(태백직원(), 'rawMaterialLedger', 'op-아직없음')));
+      expect(snap.exists()).toBe(false);
+    });
+
+    it('로그인하지 않은 사용자는 없는 작업 문서도 확인할 수 없다', async () => {
+      await assertFails(getDoc(doc(미로그인(), 'rawMaterialLedger', 'op-아직없음')));
+    });
+
     it('태백 직원은 태백 것을 읽는다', async () => {
       await assertSucceeds(getDoc(doc(태백직원(), 'orders', 'o-taebaek')));
     });
