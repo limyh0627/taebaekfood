@@ -22,7 +22,11 @@ function fail(): never {
 export const employeeLogin = onCall({ region: REGION }, async request => {
   const username = String(request.data?.username ?? '').trim().toLowerCase();
   const password = String(request.data?.password ?? '');
+  const app = String(request.data?.app ?? '');
+  const requestedCompany = String(request.data?.companyId ?? '');
   if (!username || !password || username.length > 80 || password.length > 200) fail();
+  if (app !== 'admin' && app !== 'staff') fail();
+  if (app === 'admin' && !회사.has(requestedCompany)) fail();
 
   const db = admin.firestore();
   const attemptRef = db.collection('authLoginAttempts').doc(loginKey(username, request.rawRequest.ip ?? 'unknown'));
@@ -32,13 +36,18 @@ export const employeeLogin = onCall({ region: REGION }, async request => {
     throw new HttpsError('resource-exhausted', '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.');
   }
 
-  const snap = await db.collection('employees').where('usernameNormalized', '==', username).limit(2).get();
+  let employeeQuery: admin.firestore.Query = db.collection('employees')
+    .where('usernameNormalized', '==', username);
+  // 관리자 화면의 회사 선택은 장식이 아니다. 같은 아이디가 양사에 있어도 선택한 회사 한 곳만 찾는다.
+  if (app === 'admin') employeeQuery = employeeQuery.where('companyId', '==', requestedCompany);
+  const snap = await employeeQuery.limit(2).get();
   const employeeDoc = snap.size === 1 ? snap.docs[0] : null;
   const employee = employeeDoc?.data();
   const homeCompany = String(employee?.companyId ?? 'taebaek');
   const valid = !!employeeDoc
     && employee?.status !== 'out'
     && 회사.has(homeCompany)
+    && (app !== 'admin' || (homeCompany === requestedCompany && employee?.adminAccess === true))
     && typeof employee?.passwordHash === 'string'
     && verifyPassword(password, employee.passwordHash);
 

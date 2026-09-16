@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { AlertCircle, Eye, EyeOff, Lock, ShieldCheck, User } from 'lucide-react';
-import type { Employee } from '../types';
+import type { CompanyId, Employee } from '../types';
 import { loginEmployee } from '../employeeAuth';
 
-interface AuthPageProps { onLogin: (_user: Employee) => void }
+interface AuthPageProps {
+  onLogin: (_user: Employee) => void;
+  app: 'admin' | 'staff';
+}
 
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ onLogin, app }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loginData, setLoginData] = useState({ username: '', password: '' });
+  // 회사 선택은 로그인 요청에만 쓴다. 브라우저에 저장하면 다음 사람이 전 회사로 잘못 들어간다.
+  const [companyId, setCompanyId] = useState<CompanyId>('taebaek');
+  const isAdminApp = app === 'admin';
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -17,7 +23,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setBusy(true);
     setError('');
     try {
-      const employee = await loginEmployee(loginData.username, loginData.password);
+      const employee = await loginEmployee(
+        loginData.username,
+        loginData.password,
+        app,
+        isAdminApp ? companyId : undefined,
+      );
       onLogin(employee);
     } catch (cause: any) {
       setError(String(cause?.code ?? '').includes('resource-exhausted')
@@ -38,11 +49,35 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         </header>
 
         <section className="rounded-[40px] border border-slate-100 bg-white p-10 shadow-2xl shadow-slate-200/60">
+          <div className="mb-5 inline-flex rounded-full bg-indigo-50 px-3 py-1.5 text-[11px] font-black text-indigo-600">
+            {isAdminApp ? '관리자 앱' : '직원 앱'}
+          </div>
           <h2 className="text-2xl font-black text-slate-900">환영합니다</h2>
-          <p className="mt-1 text-xs font-medium text-slate-400">직원 계정으로 로그인하세요</p>
+          <p className="mt-1 text-xs font-medium text-slate-400">
+            {isAdminApp ? '회사와 관리자 계정을 확인해 주세요' : '직원 계정으로 로그인하세요'}
+          </p>
           {error && <div className="mt-6 flex items-center gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-rose-600"><AlertCircle size={18} /><span className="text-xs font-bold">{error}</span></div>}
 
           <form onSubmit={handleLogin} className="mt-8 space-y-4">
+            {isAdminApp && (
+              <fieldset className="space-y-2">
+                <legend className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">회사</legend>
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5" role="radiogroup" aria-label="로그인 회사 선택">
+                  {([
+                    ['taebaek', '태백식품'],
+                    ['punghoe', '풍회'],
+                  ] as const).map(([id, label]) => (
+                    <button key={id} type="button" role="radio" aria-checked={companyId === id}
+                      onClick={() => { setCompanyId(id); setError(''); }}
+                      className={`rounded-xl px-3 py-3 text-sm font-black transition-all ${companyId === id
+                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200'
+                        : 'text-slate-500 hover:text-slate-700'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <label className="block space-y-2">
               <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">아이디</span>
               <span className="relative block"><User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
@@ -66,7 +101,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               <ShieldCheck size={20} /><span>{busy ? '확인 중…' : '시스템 접속하기'}</span>
             </button>
           </form>
-          <p className="mt-6 border-t border-slate-100 pt-5 text-center text-xs font-bold leading-5 text-slate-400">아이디·비밀번호 변경은 관리자에게 요청해 주세요.</p>
+          <p className="mt-6 border-t border-slate-100 pt-5 text-center text-xs font-bold leading-5 text-slate-400">
+            {isAdminApp
+              ? '다른 회사로 들어가려면 로그아웃한 뒤 회사를 다시 선택하세요.'
+              : '아이디·비밀번호 변경은 관리자에게 요청해 주세요.'}
+          </p>
         </section>
       </div>
     </main>

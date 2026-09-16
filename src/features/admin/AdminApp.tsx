@@ -4913,6 +4913,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="flex flex-col h-full overflow-y-auto">
               {true && (
                 <ItemManager
+                  companyId={companyId}
                   isAdmin={isAdmin}
                   onCreateBoxItem={createBoxItem}
                   /* 원가계산기 — **원료식·전체 품목을 여기서 물려 넘긴다.**
@@ -5150,6 +5151,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {isProductModalOpen && (
         <ProductModal
+          companyId={companyId}
           initialData={editingProduct || undefined}
           allSubmaterials={itemsOfCompany(submaterials, companyId)}
           items={itemsOfCompany(products, companyId)}

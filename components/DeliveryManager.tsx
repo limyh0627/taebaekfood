@@ -760,6 +760,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         return (
           <div
             key={dateStr}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, dateStr)}
             className="border-r border-slate-100 p-1.5 sm:p-3 flex flex-col bg-indigo-50/30 relative"
             style={{ minHeight: 200 }}
           >

@@ -118,7 +118,7 @@ const AdminRoot: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <AuthPage onLogin={handleLogin} />
+      <AuthPage app="admin" onLogin={handleLogin} />
     );
   }
 

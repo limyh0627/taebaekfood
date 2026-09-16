@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { where } from 'firebase/firestore';
 import { X, Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw, Eye, EyeOff, Boxes } from 'lucide-react';
 import { fetchCollection, addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import {
   buildTaxonomy, defaultTaxonomyRows, CATEGORY_KEYS, DEFAULT_CATEGORY_LABELS, TaxonomyRow,
 } from '../src/shared/taxonomy';
+import type { CompanyId } from '../src/shared/types';
 
 const COL = 'itemTaxonomy';
 
@@ -12,31 +14,41 @@ interface Props {
   onSaved?: (rows: TaxonomyRow[]) => void;
   /** 쓰고 있는 품목 수 — 지울 때 경고용. 'type:product' / 'sub:product:낱개' / 'cat:product:참기름' */
   usage?: Record<string, number>;
+  companyId: CompanyId;
 }
 
-const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
+const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, companyId }) => {
   const [rows, setRows] = useState<TaxonomyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [sel, setSel] = useState<string>('product');
   const [addSub, setAddSub] = useState('');
   const [addCat, setAddCat] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const load = async () => {
-    const got = await fetchCollection<TaxonomyRow>(COL);
-    if (got.length === 0) {
-      const seeded: TaxonomyRow[] = [];
-      for (const r of defaultTaxonomyRows()) {
-        const id = await addItem(COL, r);
-        seeded.push({ ...r, id: String(id) } as TaxonomyRow);
+    setLoading(true);
+    setLoadError('');
+    try {
+      const got = await fetchCollection<TaxonomyRow>(COL, [where('companyId', '==', companyId)]);
+      if (got.length === 0) {
+        const seeded: TaxonomyRow[] = [];
+        for (const r of defaultTaxonomyRows()) {
+          const id = await addItem(COL, { ...r, companyId });
+          seeded.push({ ...r, id: String(id), companyId } as TaxonomyRow);
+        }
+        setRows(seeded);
+      } else {
+        setRows(got);
       }
-      setRows(seeded);
-    } else {
-      setRows(got);
+    } catch (error) {
+      console.error('[분류관리 조회 실패]', error);
+      setLoadError('분류를 불러오지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [companyId]);
 
   const taxo = useMemo(() => buildTaxonomy(rows), [rows]);
   const typeRow = (key: string) => rows.find(r => (r.kind === 'type' || (r.kind === 'category' && r.key && !r.parent)) && r.key === key);
@@ -59,7 +71,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
     setBusy(true);
     try {
       if (r.id.startsWith('tmp-')) {
-        const id = await addItem(COL, { kind: 'type', key, label, order: r.order ?? 0 });
+        const id = await addItem(COL, { kind: 'type', key, label, order: r.order ?? 0, companyId });
         setRows(rs => rs.map(x => x.id === r.id ? { ...x, id: String(id), label } : x));
       } else {
         await updateItem(COL, r.id, { label });
@@ -77,7 +89,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
       for (let n = 0; n < ordered.length; n++) {
         const k = ordered[n], r = typeRow(k);
         if (r && !r.id.startsWith('tmp-')) await updateItem(COL, r.id, { order: n });
-        else await addItem(COL, { kind: 'type', key: k, label: taxo.labelOf(k), order: n });
+        else await addItem(COL, { kind: 'type', key: k, label: taxo.labelOf(k), order: n, companyId });
       }
       await load();
     } finally { setBusy(false); }
@@ -93,7 +105,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
         await updateItem(COL, r.id, { hidden: next });
         setRows(rs => rs.map(x => x.id === r.id ? { ...x, hidden: next } : x));
       } else {
-        const id = await addItem(COL, { kind: 'type', key, label: taxo.labelOf(key), order: CATEGORY_KEYS.indexOf(key as never), hidden: next });
+        const id = await addItem(COL, { kind: 'type', key, label: taxo.labelOf(key), order: CATEGORY_KEYS.indexOf(key as never), hidden: next, companyId });
         setRows(rs => [...rs, { id: String(id), kind: 'type', key, label: taxo.labelOf(key), hidden: next } as TaxonomyRow]);
       }
     } finally { setBusy(false); }
@@ -117,7 +129,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
     setBusy(true);
     try {
       const order = cur.length ? Math.max(...cur.map(r => r.order ?? 0)) + 1 : 0;
-      const id = await addItem(COL, { kind, parent: sel, label: l, order });
+      const id = await addItem(COL, { kind, parent: sel, label: l, order, companyId });
       setRows(rs => [...rs, { id: String(id), kind, parent: sel, label: l, order }]);
       reset();
     } finally { setBusy(false); }
@@ -218,6 +230,11 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-sm font-bold text-slate-400">불러오는 중…</div>
+        ) : loadError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm font-bold text-rose-600">{loadError}</p>
+            <button type="button" onClick={() => void load()} className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white">다시 시도</button>
+          </div>
         ) : (
           /*  **폰에서는 위아래로 쌓는다**(2026-09-06 사장님: "모바일 ui 수정 좀").
               세 칸을 나란히 두니 폰에서 '타입' 이 한 글자씩 세로로 쪼개지고, 오른쪽

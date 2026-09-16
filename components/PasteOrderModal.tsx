@@ -12,6 +12,7 @@ import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
+import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -121,6 +122,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const savingRef = useRef(false);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) onClose(); };
@@ -304,6 +306,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       const cfg = getBoxConfig(line.selectedProductId!);
       const uPerBox = cfg.unitsPerBox;
       const actualQty = line.isBox && uPerBox > 0 ? line.qty * uPerBox : line.qty;
+      const price = boxDerivedUnitPrice(product, selectedClient.id, partnerOut) ?? 0;
       //  **그 집이 뭐라고 불렀는지 같이 적어 둔다**(2026-09-16) — 다음 주문을 읽을 때
       //  이 짝이 그대로 근거가 된다(`historyLines`). 사람이 확인 표에서 고른 뒤라
       //  **사람이 맞다고 한 답**이다. 우리 이름과 똑같으면 보탤 것이 없어 안 적는다.
@@ -313,7 +316,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         name: product.name,
         ...(그집말 && 그집말 !== product.name ? { orderedAs: 그집말.slice(0, 80) } : {}),
         quantity: actualQty,
-        price: 0,
+        price,
         ...(line.isBox ? {
           isBoxUnit: true,
           boxQuantity: line.qty,
@@ -325,6 +328,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     const totalAmount = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
     savingRef.current = true;
     setIsSaving(true);
+    setSaveError('');
     try {
       await onSave({
         partnerId: selectedClient.id,
@@ -340,6 +344,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         region: selectedClient.region || '미지정',
         ...(isDelivery ? { deliveryBoxes: [] } : {}),
       });
+    } catch (error) {
+      console.error('복사 주문 저장 실패', error);
+      setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');
     } finally {
       savingRef.current = false;
       setIsSaving(false);
@@ -675,6 +682,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             </div>
           )}
         </div>
+
+        {saveError && (
+          <div className="mx-5 mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+            저장하지 못했습니다: {saveError}
+          </div>
+        )}
 
         {/* 하단 버튼 */}
         <div className="rounded-b-3xl">

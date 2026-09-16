@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
@@ -607,34 +607,29 @@ const ItemList: React.FC<ItemListProps> = ({
   // 로트 탭 — 원료 홀더별 로트/수불부 확인 전용
   const [lotSearch, setLotSearch] = useState('');
   const [lotExpandedId, setLotExpandedId] = useState<string | null>(null);
+  const [lotKind, setLotKind] = useState<'all' | 'raw' | 'packed'>('all');
 
-  /**
-   * 로트 탭의 뼈대 — **물질(material) 축**으로 벌크 홀더와 박스 품목을 한 줄에 모은다.
-   *
-   * 로트 자체는 재고를 들고 있는 품목에 붙어 있다(박스 재고는 박스 품목에).
-   * 합치면 재고가 두 번 잡히고 FIFO가 kg·개수로 엉키기 때문이다.
-   * 회수·클레임은 품목이 아니라 물질 단위로 묻기 때문에, 저장은 나누고 여기서만 묶는다.
-   */
-  const lotMaterials = useMemo(() => {
-    const m = new Map<string, { raw?: Item; boxes: Item[] }>();
-    for (const p of items) {
-      if (isRawHolder(p)) {
-        const key = baseRawName(p.name);
-        const cur = m.get(key) ?? { boxes: [] };
-        if (!cur.raw) cur.raw = p;
-        m.set(key, cur);
-      }
-      // 완제품 박스 로트 — qtyRemaining이 있는 것만(벌크 로트는 kg만 쓴다)
-      const boxLots = (p.lots ?? []).filter(l => l.qtyRemaining != null);
-      if (boxLots.length === 0) continue;
-      for (const key of new Set(boxLots.map(l => l.material || baseRawName(p.name)).filter(Boolean))) {
-        const cur = m.get(key) ?? { boxes: [] };
-        if (!cur.boxes.some(b => b.id === p.id)) cur.boxes.push(p);
-        m.set(key, cur);
-      }
-    }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'));
-  }, [items]);
+  /** 로트의 소유자는 물질명이 아니라 품목 ID다. 같은 깨라도 벌크·낱개·박스를 합치면 실제 재고처럼 오해한다. */
+  const lotItems = useMemo(() => items
+    .filter(p => isRawHolder(p) || (p.lots ?? []).some(l => l.qtyRemaining != null))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+  [items]);
+  const visibleLotItems = useMemo(() => lotItems.filter(item => {
+    const raw = isRawHolder(item);
+    if (lotKind === 'raw' && !raw) return false;
+    if (lotKind === 'packed' && raw) return false;
+    return !lotSearch.trim() || `${item.name} ${item.spec ?? ''}`.includes(lotSearch.trim());
+  }), [lotItems, lotKind, lotSearch]);
+  const selectedLotItem = lotItems.find(item => item.id === lotExpandedId) ?? null;
+  const lotKgOf = (item: Item): number => {
+    const raw = isRawHolder(item);
+    return (item.lots ?? [])
+      .filter(l => l.status === 'active' && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0))
+      .reduce((sum, l) => {
+        if (raw || typeof l.kgRemaining === 'number') return sum + (l.kgRemaining ?? 0);
+        return sum + (stockKg(l.qtyRemaining ?? 0, item, id => items.find(x => x.id === id)) ?? 0);
+      }, 0);
+  };
 
   /** 로트id → 나간 곳. 주문의 출고 스냅샷을 거꾸로 읽는다 — 회수할 때 실제로 보는 값. */
   const shipmentsByLot = useMemo(() => {
@@ -779,12 +774,13 @@ const ItemList: React.FC<ItemListProps> = ({
        * 로트를 안 쓰던 품목은 그대로 `stock` 만 고친다. 없는 로트를 억지로 세우면
        * 그때부터 없던 이월 로트가 생겨 화면이 갑자기 달라진다.
        */
-      if ((product.lots?.length ?? 0) > 0) {
-        const r = await stocktakeByQty({ itemId: product.id, itemName: product.name, targetQty: 목표 });
-        setToast({ message: r.message });
-        return;
-      }
-      onUpdateItem({ ...product, stock: 목표 });
+      const r = await stocktakeByQty({
+        itemId: product.id,
+        itemName: product.name,
+        targetQty: 목표,
+        unitKg: stockKg(1, product, id => items.find(x => x.id === id)) ?? 0,
+      });
+      setToast({ message: r.message });
     }
   };
 
@@ -1617,115 +1613,105 @@ const ItemList: React.FC<ItemListProps> = ({
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {activeTab === 'lots' && (
         <div className="flex flex-col gap-3 flex-1 min-h-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative w-full sm:w-72">
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
-              <input
-                type="text"
-                placeholder="원료명 검색..."
-                value={lotSearch}
-                onChange={(e) => setLotSearch(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 shadow-sm transition-all"
-              />
+              <input type="text" placeholder="품목명·규격 검색" value={lotSearch} onChange={e => setLotSearch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400" />
             </div>
-            {/* 입출고 기록 — 창으로 띄운다. 창 안에서 원료를 골라볼 수 있어 버튼은 하나면 된다. */}
+            <div className="flex items-center rounded-xl bg-slate-100 p-1">
+              {([['all', '전체'], ['raw', '벌크'], ['packed', '완제품']] as const).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setLotKind(key)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotKind === key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <button onClick={() => setLedgerModalMaterial('참깨')}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-black text-slate-500 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 shadow-sm transition-all shrink-0">
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-50">
               <History size={13} />입출고 기록
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-2">
-            {lotMaterials
-              .filter(([mat]) => !lotSearch.trim() || mat.includes(lotSearch.trim()))
-              .map(([material, { raw, boxes }]) => {
-                const rowId = raw?.id ?? `mat-${material}`;
-                const unitLabel = raw ? (raw.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg')) : '';
-                const rawLotCount = (raw?.lots ?? []).filter(l => l.status === 'active' && (l.kgRemaining ?? 0) > 0).length;
-                const boxLotCount = boxes.reduce((n, b) => n + (b.lots ?? []).filter(l => l.status === 'active' && (l.qtyRemaining ?? 0) > 0).length, 0);
-                const boxQty = boxes.reduce((n, b) => n + lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active')), 0);
-                /*  **박스도 kg 으로 더한다**(2026-09-06 사장님) — 같은 물건인데 벌크는 kg,
-                 *  박스는 개수로 따로 보여서 "이 원료가 통틀어 몇 kg 있나"를 한눈에 못 봤다.
-                 *  환산은 [orderUnits.stockKg](../src/shared/orderUnits.ts) 가 한다.
-                 *  **kg 을 못 읽는 박스는 안 더한다** — 0 으로 치면 총량이 조용히 줄어든다. */
-                const 박스kg = boxes.reduce((sum, b) => {
-                  const qty = lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active'));
-                  if (!qty) return sum;
-                  const kg = stockKg(qty, b, id => items.find((x: Item) => x.id === id));
-                  return kg === undefined ? sum : sum + kg;
-                }, 0);
-                const 못센박스 = boxes.some(b => {
-                  const qty = lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active'));
-                  return qty > 0 && stockKg(qty, b, id => items.find((x: Item) => x.id === id)) === undefined;
-                });
-                const isOpen = lotExpandedId === rowId;
-                return (
-                  <div key={rowId} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                    <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50/60 transition-colors gap-2">
-                      <button onClick={() => setLotExpandedId(isOpen ? null : rowId)}
-                        className="flex items-center gap-2 min-w-0 flex-1 text-left">
-                        <ChevronRight size={14} className={`text-slate-300 transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`} />
-                        <Grape size={14} className="text-emerald-500 shrink-0" />
-                        <span className="text-sm font-black text-slate-700 truncate">{material}</span>
-                        {raw && <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">벌크 {rawLotCount}</span>}
-                        {/* 박스 로트는 재고를 들고 있는 품목이 달라 합치지 않는다 — 물질만 같다 */}
-                        {boxLotCount > 0 && <span className="text-[9px] font-black text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full shrink-0">박스 {boxLotCount}</span>}
-                      </button>
-                      {/*  **kg 이 메인, 박스·개수는 서브**(2026-09-06 사장님).
-                           벌크와 박스를 통틀어 몇 kg 인지가 먼저 읽혀야 한다. */}
-                      <span className="flex flex-col items-end shrink-0 leading-tight">
-                        {(() => {
-                          const 벌크 = raw ? displayStockOf(raw) : 0;
-                          const 통합 = 벌크 + 박스kg;
-                          return (
-                            <span className={`text-sm font-black tabular-nums ${통합 < 0 ? 'text-rose-600' : 'text-slate-800'}`}>
-                              {Math.round(통합)} {unitLabel || 'kg'}
-                            </span>
-                          );
-                        })()}
-                        {(박스kg !== 0 || boxQty !== 0) && (
-                          <span className="text-[10px] font-bold tabular-nums text-slate-400">
-                            {raw && <>벌크 {Math.round(displayStockOf(raw))} · </>}
-                            <span className="text-violet-600">박스 {Math.round(박스kg)}{unitLabel || 'kg'} ({Math.round(boxQty)}개)</span>
-                            {못센박스 && <span className="text-amber-600"> · 일부 못 셈</span>}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,340px)_minmax(0,1fr)] gap-3 flex-1 min-h-0">
+            <section className={`${selectedLotItem ? 'hidden lg:flex' : 'flex'} bg-white rounded-2xl border border-slate-200 overflow-hidden flex-col min-h-0`}>
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">로트 품목</h3>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">품목별 재고는 서로 합산하지 않습니다</p>
+                </div>
+                <span className="text-xs font-black text-indigo-600">{visibleLotItems.length}개</span>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5">
+                {visibleLotItems.map(item => {
+                  const raw = isRawHolder(item);
+                  const activeCount = (item.lots ?? []).filter(l => l.status === 'active' && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0)).length;
+                  const selected = selectedLotItem?.id === item.id;
+                  return (
+                    <button key={item.id} type="button" onClick={() => setLotExpandedId(item.id)}
+                      className={`w-full rounded-xl border px-3 py-3 text-left transition-all ${selected ? 'border-indigo-300 bg-indigo-50 shadow-sm' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}>
+                      <div className="flex items-start gap-2.5">
+                        <span className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>
+                          {raw ? <Grape size={15} /> : <Package size={15} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-xs font-black text-slate-800 truncate">{item.name}</span>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${raw ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>{raw ? '벌크' : '완제품'}</span>
                           </span>
-                        )}
-                      </span>
-                    </div>
-                    {isOpen && (
-                      <div className="px-4 pb-4 pt-1 bg-emerald-50/40 border-t border-emerald-100 flex flex-col gap-3">
-                        {/*  차례는 **벌크 로트 › 박스 로트 › 입출고 기록**이다(2026-09-06 사장님).
-                             전에는 입출고 기록이 벌크 판 안에 딸려 있어 박스 로트를 밑으로 밀어냈다.
-                             박스 로트를 판 안에 끼워 넣어 기록 앞에 세운다. */}
-                        {raw ? (
-                          <RawMaterialLotPanel
-                            linesUsingRaw={linesUsingRaw}
-                            product={raw}
-                            isAdmin={isAdmin}
-                            ledgerEntries={rawMaterialLedger.filter(e => e.material === material)}
-                            orders={orders}
-                            onDeleteEntry={onDeleteRawMaterialEntry}
-                            currentUserName={currentUser?.name}
-                            onLotChanged={onLedgerChanged}
-                            박스로트={boxes.length > 0
-                              ? <ProductLotPanel material={material} items={boxes} shipmentsByLot={shipmentsByLot} />
-                              : undefined}
-                          />
-                        ) : boxes.length > 0 ? (
-                          /* 벌크 없이 박스만 있는 원료 — 판이 없으니 그대로 놓는다 */
-                          <ProductLotPanel material={material} items={boxes} shipmentsByLot={shipmentsByLot} />
-                        ) : null}
+                          <span className="block text-[10px] font-bold text-slate-400 mt-1">{item.spec || '규격 없음'} · 활성 {activeCount}건</span>
+                        </span>
+                        <span className="text-xs font-black text-slate-700 tabular-nums shrink-0">{Math.round(lotKgOf(item) * 10) / 10} kg</span>
                       </div>
+                    </button>
+                  );
+                })}
+                {visibleLotItems.length === 0 && <div className="py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 품목이 없습니다.</div>}
+              </div>
+            </section>
+
+            <section className={`${selectedLotItem ? 'flex' : 'hidden lg:flex'} bg-white rounded-2xl border border-slate-200 overflow-hidden flex-col min-h-0`}>
+              {selectedLotItem ? (() => {
+                const item = selectedLotItem;
+                const raw = isRawHolder(item);
+                const material = baseRawName(item.name);
+                const activeCount = (item.lots ?? []).filter(l => l.status === 'active' && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0)).length;
+                return <>
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
+                    <button type="button" onClick={() => setLotExpandedId(null)} className="lg:hidden w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500">
+                      <ChevronRight size={16} className="rotate-180" />
+                    </button>
+                    <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>{raw ? <Grape size={17} /> : <Package size={17} />}</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-black text-slate-800 truncate">{item.name}</h3>
+                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">{item.spec || '규격 없음'} · 활성 로트 {activeCount}건</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-base font-black text-slate-900 tabular-nums">{Math.round(lotKgOf(item) * 10) / 10} kg</p>
+                      <p className="text-[9px] font-bold text-slate-400">현재 로트 합계</p>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50/60">
+                    {raw ? (
+                      <RawMaterialLotPanel linesUsingRaw={linesUsingRaw} product={item} isAdmin={isAdmin}
+                        ledgerEntries={rawMaterialLedger.filter(e => e.material === material)} orders={orders}
+                        onDeleteEntry={onDeleteRawMaterialEntry} currentUserName={currentUser?.name} onLotChanged={onLedgerChanged} />
+                    ) : (
+                      <ProductLotPanel material={material} items={[item]} shipmentsByLot={shipmentsByLot} />
                     )}
                   </div>
-                );
-              })}
-            {lotMaterials.length === 0 && (
-              <div className="text-center text-slate-400 text-xs font-bold py-16">원료 품목이 없습니다.</div>
-            )}
+                </>;
+              })() : (
+                <div className="m-auto text-center px-6">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-300 flex items-center justify-center mx-auto mb-3"><Layers size={21} /></div>
+                  <p className="text-sm font-black text-slate-600">품목을 선택하세요</p>
+                  <p className="text-xs font-bold text-slate-400 mt-1">로트별 입고·사용·출고처를 확인할 수 있습니다.</p>
+                </div>
+              )}
+            </section>
           </div>
         </div>
       )}
-
       {activeTab !== 'inbound' && activeTab !== 'lots' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
@@ -2329,7 +2315,10 @@ const ItemList: React.FC<ItemListProps> = ({
                     // 직원은 실사조정만 — 카테고리·품목명·단위는 UI뿐 아니라 저장에서도 막는다
                     const form = productEditable ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
                     const { stock: newStock, ...meta } = form;
-                    if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
+                    if (!productEditable && newStock !== undefined) {
+                      // 재고실사 모달과 목록 인라인 실사는 반드시 같은 명령을 쓴다.
+                      await commitStockEdit(p, newStock);
+                    } else if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
                       // 원료: 재고(stock)·로트(lots)는 commitStockEdit(트랜잭션)이 관리한다.
                       // 메타 저장이 옛 stock/lots로 덮어써 로트가 사라지는 경합을 막으려 둘을 제외하고 먼저 반영.
                       const { stock: _s, lots: _l, ...metaOnly } = { ...p, ...meta } as any;

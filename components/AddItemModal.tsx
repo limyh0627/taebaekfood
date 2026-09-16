@@ -1,6 +1,7 @@
-﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { where } from 'firebase/firestore';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
-import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, SubmaterialComponent } from '../types';
+import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
@@ -11,6 +12,7 @@ import { 묶음갈래of } from '../src/shared/orderUnits';
 import PickRow from '../src/shared/ui/PickRow';
 
 interface ProductModalProps {
+  companyId: CompanyId;
   initialData?: Item;
   allSubmaterials?: Item[];
   items?: Item[];
@@ -59,7 +61,7 @@ const normUnit = (u: string | undefined): SpecUnit =>
   SPEC_UNITS.find(x => x.toLowerCase() === String(u ?? '').toLowerCase()) ?? 'ml';
 
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
@@ -105,7 +107,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
   // 분류 체계 — 사용자가 정한 이름·하위 분류(itemTaxonomy). 저장본이 없으면 기본값.
   const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
-  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
+  useEffect(() => {
+    fetchCollection<TaxonomyRow>('itemTaxonomy', [where('companyId', '==', companyId)])
+      .then(setTaxonomyRows)
+      .catch(() => setTaxonomyRows([]));
+  }, [companyId]);
   const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
   /**
    * 구성품을 찾는 조회 맵 — **완제품만 담긴 `items`로는 부족하다.**
@@ -258,7 +264,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     // 박스·선물세트는 서류용 품목이 없어도 저장 가능 — 든 완제품으로 풀려 서류에 올라간다
     // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
-    if (formData.type === 'product' && !서류에서풀림 && !formData.품목) {
+    if ((formData.type === 'product' || formData.type === 'wip') && !서류에서풀림 && !formData.품목) {
       setPumokWarn(true);
       const go = window.confirm(
         '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
@@ -993,7 +999,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 </div>
               </div>
             {/* 서류용 품목명 (완제품) — 박스 묶음은 낱개로 풀리므로 숨김 */}
-            {formData.type === 'product' && !서류에서풀림 && (
+            {(formData.type === 'product' || formData.type === 'wip') && !서류에서풀림 && (
               <div className="space-y-2" ref={pumokRef}>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                   <Tag size={14} className="mr-2" /> 품목

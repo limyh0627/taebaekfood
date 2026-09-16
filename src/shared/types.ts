@@ -470,6 +470,15 @@ export interface ItemInventoryReservation {
   state: 'processing' | 'allocated';
 }
 
+export interface ItemStocktakeAnchor {
+  id: string;
+  date: string;
+  createdAt: string;
+  targetQty: number;
+  beforeQty: number;
+  deltaQty: number;
+}
+
 // ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────
 export interface Item {
   id: string;
@@ -535,6 +544,8 @@ export interface Item {
   stock: number;
   /** 생산 판단과 최종 재고 저장 사이에 다른 주문이 중복 배정하지 못하게 하는 짧은 예약. */
   inventoryReservations?: ItemInventoryReservation[];
+  /** 완제품·박스·캔 실사가 제품별 원장 잔량을 다시 세우는 근거. 최근 100건만 보관한다. */
+  stocktakeAnchors?: ItemStocktakeAnchor[];
   /**
    * 밀도 kg/L. **이 값이 있으면 화면에 L로 보여준다**(없으면 저장 단위 그대로).
    * 저장(stock·cost·BOM 수량)은 전부 kg이고, L은 표시·입력에서만 쓴다.

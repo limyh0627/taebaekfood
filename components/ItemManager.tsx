@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { where } from 'firebase/firestore';
 import { matchesSearch } from '../src/shared/hangul';
 //  검색조건 칸은 주문·배송과 **같은 부품**을 쓴다 — 한쪽만 고치면 두 화면이 갈린다
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft, Check, Calculator, RotateCcw } from 'lucide-react';
-import { Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
+import { CompanyId, Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
@@ -23,6 +24,7 @@ import FilterRow from '../src/shared/ui/FilterRow';
 import { partnersOfItem, isLinkedToPartner, partnerNamesByItem } from '../src/shared/partnerPrice';
 
 interface ItemManagerProps {
+  companyId: CompanyId;
   items: Item[];
   partners: Partner[];
   partnerItems?: PartnerItem[];
@@ -111,7 +113,7 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, onCalcCost, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, onCalcCost, isAdmin = true }) => {
   /* ── 원가계산기 ──
      아직 안 만든 품목의 원가를 미리 굴려 보는 자리. 구성품을 골라 넣으면 원가가 나오고,
      팔 값을 넣으면 마진이 나온다. 여기서 만든 건 아무 데도 저장되지 않는다 — 계산만 한다. */
@@ -243,7 +245,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false); // 분류 관리(품목관리로 이동)
   // 분류 체계 — 타입 탭 이름·순서·숨김, 부자재 칩 정렬이 전부 이걸 본다. 저장본이 없으면 기본값.
   const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
-  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, [categoryManagerOpen]);
+  useEffect(() => {
+    fetchCollection<TaxonomyRow>('itemTaxonomy', [where('companyId', '==', companyId)])
+      .then(setTaxonomyRows).catch(() => {});
+  }, [categoryManagerOpen, companyId]);
   const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
   //  분류 관리에서 그 타입이 사라지거나 순서가 바뀌면 빈 탭이 골라져 있을 수 있다 — 첫 타입으로 되돌린다.
   useEffect(() => {
@@ -1684,7 +1689,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
       {/* ── 분류 관리 (재고관리에서 이동) ── */}
       {categoryManagerOpen && (
-        <CategoryManager usage={taxonomyUsage} onClose={() => setCategoryManagerOpen(false)} />
+        <CategoryManager companyId={companyId} usage={taxonomyUsage} onClose={() => setCategoryManagerOpen(false)} />
       )}
 
       {/* 포장설정 모달 */}

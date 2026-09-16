@@ -112,8 +112,8 @@ const strip = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
  * 왜 로트는 안 따라갔냐". 따라갈 길이 없었다 — 원료에는 실사 앵커가 있는데
  * 박스·캔·완제품에는 없어서, 재고현황에서 숫자를 고치면 `stock` 만 바뀌었다.
  *
- * **로트를 안 쓰는 품목은 `stock` 만 맞춘다.** 로트가 없는데 억지로 세우면 그때부터
- * 없던 이월 로트가 생겨 화면이 갑자기 달라진다. 쓰던 품목만 따라가게 한다.
+ * 로트가 아직 없는 품목도 실사 시점부터 `실사조정` 로트를 세운다. 그렇지 않으면
+ * 같은 실사 모달인데 어떤 품목은 stock만 바뀌어 다음 출고부터 다시 갈라진다.
  *
  * 셈은 `shared/lotAnchor` 가 한다. 여기는 한 트랜잭션으로 **쓰기만** 한다 —
  * 재고와 로트가 따로 움직이면 지금 볶음참깨처럼 둘이 갈린다.
@@ -123,8 +123,10 @@ export async function stocktakeByQty(params: {
   itemName: string;
   /** 실제로 세어 본 수량(그 품목의 재고 단위) */
   targetQty: number;
+  /** 로트가 아직 없을 때 새 실사 로트에 기록할 1재고단위의 kg. */
+  unitKg?: number;
 }): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
-  const { itemId, itemName, targetQty } = params;
+  const { itemId, itemName, targetQty, unitKg = 0 } = params;
   const now = new Date().toISOString();
   const 오늘 = today();
 
@@ -135,32 +137,38 @@ export async function stocktakeByQty(params: {
       if (!snap.exists()) throw new Error(`${itemName} 품목을 찾을 수 없습니다.`);
       const data = snap.data();
       const lots = (data.lots ?? []) as RawMaterialLot[];
-
-      if (!lots.length) {
-        tx.update(ref, { stock: targetQty });
-        return { deltaQty: 0, 로트없음: true };
-      }
+      const stocktakeAnchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
 
       const a = anchorLotsByQty({
         lots,
         targetQty,
         //  1개당 kg — 로트가 들고 있던 값을 그대로 쓴다. 여기서 새로 짐작하면
         //  로트마다 다른 환산이 섞인다.
-        unitKg: lots.find(l => l.unitKg)?.unitKg ?? 0,
+        unitKg: lots.find(l => l.unitKg)?.unitKg ?? unitKg,
         det: { id: `anchor-${itemId}-${Date.parse(now)}`, createdAt: now, receivedDate: 오늘 },
       });
       //  **재고는 로트 합계로 다시 센다** — 목표값을 그대로 쓰지 않는다.
       //  둘이 갈리지 않는 유일한 길이다.
-      tx.update(ref, { lots: strip(pruneDepletedLots(a.lots)), stock: canStockAfter(a.lots) });
-      return { deltaQty: a.deltaQty, beforeQty: a.beforeQty, 로트없음: false };
+      const anchor = {
+        id: `stocktake-${itemId}-${Date.parse(now)}`,
+        date: 오늘,
+        createdAt: now,
+        targetQty,
+        beforeQty: a.beforeQty,
+        deltaQty: a.deltaQty,
+      };
+      tx.update(ref, {
+        lots: strip(pruneDepletedLots(a.lots)),
+        stock: canStockAfter(a.lots),
+        stocktakeAnchors: strip([...stocktakeAnchors, anchor].slice(-100)),
+      });
+      return { deltaQty: a.deltaQty, beforeQty: a.beforeQty };
     });
 
     return {
       ok: true,
       deltaQty: r.deltaQty,
-      message: r.로트없음
-        ? `${itemName} 재고를 ${targetQty}로 맞췄습니다`
-        : `${itemName} 실사 ${targetQty} — 로트도 ${r.deltaQty > 0 ? '+' : ''}${r.deltaQty} 맞췄습니다`,
+      message: `${itemName} 실사 ${targetQty} — 로트도 ${r.deltaQty > 0 ? '+' : ''}${r.deltaQty} 맞췄습니다`,
     };
   } catch (error) {
     console.error('[실사] 실패 — 아무것도 안 움직였다:', error);

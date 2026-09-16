@@ -21,6 +21,7 @@ const KIND_CLS: Record<ItemLedgerKind, string> = {
   '출고': 'bg-rose-100 text-rose-600',
   '자재사용': 'bg-amber-100 text-amber-700',
   '입고': 'bg-sky-100 text-sky-700',
+  '실사': 'bg-violet-100 text-violet-700',
 };
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });

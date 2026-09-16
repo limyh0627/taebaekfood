@@ -27,6 +27,35 @@ beforeEach(() => {
   ] as never));
 });
 
+describe('제품 재고 실사 앵커', () => {
+  it('실사 시점의 원장 잔량을 목표 수량으로 다시 세운다', () => {
+    const item = {
+      id: 'stocktake-item',
+      name: '실사 품목',
+      type: 'product',
+      unit: '개',
+      stock: 12,
+      stocktakeAnchors: [{
+        id: 'stocktake-1',
+        date: '2026-09-17',
+        createdAt: '2026-09-17T09:00:00.000Z',
+        targetQty: 12,
+        beforeQty: 0,
+        deltaQty: 12,
+      }],
+    } as unknown as Item;
+
+    const ledger = buildItemLedger(item.id, [], [item]);
+
+    expect(ledger.rows).toHaveLength(1);
+    expect(ledger.rows[0]).toMatchObject({ kind: '실사', qty: 12, balance: 12 });
+    expect(ledger.net).toBe(12);
+    expect(ledger.gap).toBe(0);
+    expect(ledger.inSum).toBe(0);
+    expect(ledger.outSum).toBe(0);
+  });
+});
+
 describe('제품별원장', () => {
   it('생산은 +, 출고는 −로 잡고 잔량을 굴린다', () => {
     const l = buildItemLedger('box', [

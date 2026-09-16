@@ -24,7 +24,7 @@ import type { ItemReceipt } from '../../shared/receipt';
  * 재고조정·실사처럼 주문 밖에서 움직인 것은 여기 안 잡힌다. 그래서 **맞춘 잔량이 아니라
  * 흐름**을 보여주고, 지금 재고와의 차이를 따로 밝힌다 — 억지로 맞추면 어디가 틀렸는지 가려진다.
  */
-export type ItemLedgerKind = '생산' | '먼저생산' | '출고' | '자재사용' | '입고';
+export type ItemLedgerKind = '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사';
 
 export interface ItemLedgerRow {
   date: string;
@@ -34,6 +34,8 @@ export interface ItemLedgerRow {
   orderId: string;
   note: string;
   balance: number;        // 첫 줄부터 굴린 누계 (0에서 시작)
+  /** 실사는 이전 계산 오차와 무관하게 잔량을 이 값으로 다시 세운다. */
+  targetBalance?: number;
 }
 
 export interface ItemLedger {
@@ -101,13 +103,30 @@ export function buildItemLedger(
     });
   }
 
+  const item = allItems.find(i => i.id === itemId);
+  for (const anchor of item?.stocktakeAnchors ?? []) {
+    rows.push({
+      date: dateOfLocal(anchor.createdAt || anchor.date), kind: '실사', qty: 0,
+      partnerName: '', orderId: anchor.id, note: '재고 실사', balance: 0,
+      targetBalance: r3(Number(anchor.targetQty ?? 0)),
+    });
+  }
+
   //  날짜 → 주문 id 순. 같은 날 여러 건이면 들어온 순서가 잔량을 가르므로 못 박는다.
   rows.sort((a, b) => a.date.localeCompare(b.date) || a.orderId.localeCompare(b.orderId) || a.kind.localeCompare(b.kind));
   let bal = 0;
-  for (const r of rows) { bal = r3(bal + r.qty); r.balance = bal; }
+  for (const r of rows) {
+    if (r.targetBalance != null) {
+      r.qty = r3(r.targetBalance - bal);
+      bal = r.targetBalance;
+    } else {
+      bal = r3(bal + r.qty);
+    }
+    r.balance = bal;
+  }
 
-  const inSum = r3(rows.filter(r => r.qty > 0).reduce((a, r) => a + r.qty, 0));
-  const outSum = r3(rows.filter(r => r.qty < 0).reduce((a, r) => a + r.qty, 0));
+  const inSum = r3(rows.filter(r => r.kind !== '실사' && r.qty > 0).reduce((a, r) => a + r.qty, 0));
+  const outSum = r3(rows.filter(r => r.kind !== '실사' && r.qty < 0).reduce((a, r) => a + r.qty, 0));
   const stock = Number(allItems.find(i => i.id === itemId)?.stock ?? 0);
-  return { rows, inSum, outSum, net: r3(inSum + outSum), gap: r3(stock - r3(inSum + outSum)) };
+  return { rows, inSum, outSum, net: r3(bal), gap: r3(stock - bal) };
 }

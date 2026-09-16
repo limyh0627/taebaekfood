@@ -73,4 +73,29 @@ describe('주간 배송 캘린더', () => {
     expect(screen.getByLabelText('출고예정일')).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: '출고 시간대' })).toBeInTheDocument();
   });
+
+  it('다른 날짜 주문을 오늘 칸에 놓으면 배송일을 오늘로 바꾼다', () => {
+    const onUpdateDeliveryDate = vi.fn();
+    render(
+      <DeliveryManager
+        companyId="taebaek"
+        orders={[주문('260909-01', 'p1', OrderStatus.DISPATCHED)]}
+        partners={partners}
+        items={items}
+        onUpdateDeliveryDate={onUpdateDeliveryDate}
+      />,
+    );
+
+    const todayCell = screen.getByRole('button', {
+      name: `${Number(today().slice(8, 10))}일 배송 상세 보기`,
+    }).parentElement!;
+    const dataTransfer = {
+      getData: (key: string) => key === 'orderId' ? '260909-01' : '',
+      dropEffect: 'none',
+    };
+    fireEvent.dragOver(todayCell, { dataTransfer });
+    fireEvent.drop(todayCell, { dataTransfer });
+
+    expect(onUpdateDeliveryDate).toHaveBeenCalledWith('260909-01', new Date(today()).toISOString());
+  });
 });

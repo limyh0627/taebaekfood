@@ -116,7 +116,7 @@ const StaffRoot: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <AuthPage onLogin={handleLogin} />
+      <AuthPage app="staff" onLogin={handleLogin} />
     );
   }
 

@@ -33,7 +33,7 @@ export interface BomCostCtx {
 }
 
 /** 종단 품목(자기 cost가 곧 원가, 롤업 안 함) */
-const TERMINAL = new Set(['goods', 'raw', 'wip', 'submaterial', 'box']);
+const TERMINAL = new Set(['goods', 'raw', 'submaterial', 'box']);
 
 /**
  * 원료/반제품 1kg당 원가. name=원료명(예 '통깨참기름','볶음참깨').
@@ -102,10 +102,11 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     if (cached != null) return cached;
     if (seen.has(item.id)) return 0; // 순환 방어 (BOM 사이클)
     const s2 = new Set(seen).add(item.id);
+    const subs = componentsOf(item);
 
     // 종단 품목 = 자기 cost가 원가 (매입·선제조 완료값)
     //   goods(완사입)·raw(원료)·wip(반제품)·submaterial(부자재)·box(겉박스)
-    if (TERMINAL.has(item.type as string)) {
+    if (TERMINAL.has(item.type as string) || (item.type === 'wip' && subs.length === 0)) {
       const stored = item.cost ?? 0;
       /**
        * **제조 반제품은 저장 원가보다 원료식이 세다.**
@@ -119,7 +120,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
        * 곱하면 0.37kg으로 잡혀 원가가 7배 작아진다.
        */
       if (item.type === 'wip' && ctx.formulaRowsOf) {
-        const rows = ctx.formulaRowsOf(docName(item));
+        const rows = ctx.formulaRowsOf(baseRawName(item.name));
         if (rows.length) {
           const blended = rows.reduce((sum, r) => {
             const src = byRawName.get(r.raw);
@@ -134,7 +135,6 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
       return stored;
     }
 
-    const subs = componentsOf(item);
     // 조립 구성품(완제품/박스/반제품)을 품으면 그 구성품이 원료원가를 이미 지님 → 원료식 중복 skip
     //   참기름 병입은 '참기름특A 1.8L + 병 + 캡'이 실제 공정이다. 여기에 원료식(깨분·통깨)까지
     //   더하면 기름값이 두 번 잡힌다 — 반제품이 이미 그 기름을 담고 있기 때문.
@@ -144,8 +144,10 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     });
 
     let total = 0;
-    if (!hasAssembled) {
-      for (const f of ctx.formulaOf(docName(item))) {
+    const hasDirectRaw = subs.some(s => byId.get(s.id)?.type === 'raw');
+    if (!hasAssembled && !hasDirectRaw) {
+      const formulaKey = item.type === 'wip' ? baseRawName(item.name) : docName(item);
+      for (const f of ctx.formulaOf(formulaKey)) {
         const kg = toKg(item.spec || '', f.raw, 1) * f.ratio;
         if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName);
       }
@@ -153,7 +155,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     for (const s of subs) {
       const comp = byId.get(s.id);
       if (!comp) continue;
-      if (comp.type === 'raw') continue;         // 원료는 원료식 경로
+      if (comp.type === 'raw' && item.type !== 'wip') continue; // 완제품은 원료식, 반제품은 직접 원료 BOM을 따른다.
       // 겉박스·테이프도 BOM에 있으면 그대로 원가에 넣는다 — 예전엔 낱개의 겉박스를 코드로 건너뛰었지만,
       // 이제 낱개 BOM에 그것들을 안 둔다(박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       const q = bomQty(s);
