@@ -167,9 +167,22 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
   // 개수로 세는 완제품·박스는 rawInventories가 없다. 로트를 쓰는 품목만 stock과 로트 개수를 대조한다.
   const rawStateItemIds = new Set(input.rawInventories.filter(state => state.companyId === input.companyId).map(state => state.rawItemId));
   for (const item of items) {
-    if (rawStateItemIds.has(item.id) || !item.lots?.some(lot => lot.qtyRemaining != null)) continue;
-    const lotQty = lotQtyRemaining(item.lots);
+    if (rawStateItemIds.has(item.id)) continue;
     const stock = Number(item.stock ?? 0);
+    if (stock < -QTY_EPS) out.push({
+      id: `item-stock-negative:${item.id}`, area: '입고·재고', severity: 'error',
+      title: '완제품 현재재고가 음수',
+      detail: `${item.name}: 재고관리 현재재고가 ${kg3(stock)}${item.unit ?? '개'}입니다. 생산·입고보다 출고가 먼저 반영됐거나 과거 부족분이 남아 있습니다.`,
+      reference: item.id,
+    });
+    if (!item.lots?.some(lot => lot.qtyRemaining != null)) continue;
+    const lotQty = lotQtyRemaining(item.lots);
+    if (lotQty < -QTY_EPS) out.push({
+      id: `item-lot-negative:${item.id}`, area: '입고·재고', severity: 'error',
+      title: '완제품 제품 로트가 음수',
+      detail: `${item.name}: 활성 제품 로트 합계가 ${kg3(lotQty)}${item.unit ?? '개'}입니다. 출고 당시 부족분이 이월 로트에 남아 있습니다.`,
+      reference: item.id,
+    });
     if (Math.abs(stock - lotQty) > QTY_EPS) out.push({
       id: `item-lot-gap:${item.id}`, area: '입고·재고', severity: 'error',
       title: '완제품 재고와 제품 로트 불일치',

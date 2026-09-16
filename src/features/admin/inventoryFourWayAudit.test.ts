@@ -18,4 +18,12 @@ describe('재고 4축 점검', () => {
     const item = { id: 'product-x', name: '볶음참깨-낱개/1kg', companyId: 'taebaek', type: 'product', stock: 30, unit: '개', lots: [{ id: 'lot-1', qtyRemaining: 14, kgRemaining: 14, status: 'active' }] } as unknown as Item;
     expect(auditDataIntegrity(base([item])).map(x => x.id)).toContain('item-lot-gap:product-x');
   });
+
+  it('stock과 로트가 같은 음수여도 각각 오류로 찾는다', () => {
+    const item = { id: 'negative-product', name: '음수 완제품', companyId: 'taebaek', type: 'product', stock: -4, unit: '개', lots: [{ id: 'carry', qtyRemaining: -4, kgRemaining: -4, status: 'active' }] } as unknown as Item;
+    const ids = auditDataIntegrity(base([item])).map(x => x.id);
+    expect(ids).toContain('item-stock-negative:negative-product');
+    expect(ids).toContain('item-lot-negative:negative-product');
+    expect(ids).not.toContain('item-lot-gap:negative-product');
+  });
 });

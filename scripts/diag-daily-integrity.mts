@@ -41,6 +41,8 @@ const causeOf = (issue: IntegrityIssue): string => {
   if (issue.id.startsWith('raw-lot-gap:')) return '현재고와 로트 중 한쪽만 변경됐거나 과거 이관값이 남았을 수 있습니다.';
   if (issue.id.startsWith('raw-item-state-gap:')) return '재고관리 품목값과 원자화 상태 중 한쪽만 변경된 기록이 있습니다.';
   if (issue.id.startsWith('item-lot-gap:')) return '완제품·박스 실사정정 또는 출고가 stock과 제품 로트 중 한쪽에만 반영됐을 수 있습니다.';
+  if (issue.id.startsWith('item-stock-negative:')) return '완제품 생산·입고보다 출고가 먼저 반영됐거나 과거 부족분이 현재재고에 남아 있습니다.';
+  if (issue.id.startsWith('item-lot-negative:')) return '출고 당시 제품 로트가 부족해 이월 음수 로트가 만들어졌고 아직 상계되지 않았습니다.';
   if (issue.id.startsWith('raw-ledger-state-gap:')) return '실제 원장 기록의 시각 순서가 뒤집혔거나 원장·현재고 중 한쪽만 움직인 기록이 있습니다.';
   if (issue.id.startsWith('raw-stock-negative:')) return '입고량보다 사용량이 많아 아직 상계되지 않은 원료 부족분이 남아 있습니다.';
   if (issue.id.startsWith('raw-carry-shortage:')) return '생산 당시 원료 입고가 부족해 시스템이 음수 이월 로트로 부족분을 기록했습니다.';
@@ -70,6 +72,7 @@ const actionOf = (issue: IntegrityIssue): string => {
   if (issue.id.startsWith('raw-ledger-state-gap:')) return '마지막 실사 이후 원장을 recordedAt·sequence 순으로 재계산하고 현재고·활성 로트 합계와 대조합니다.';
   if (issue.id.startsWith('raw-item-state-gap:')) return '재고관리, 원자화 상태, 활성 로트 중 실제 실사값을 기준으로 네 값을 한 트랜잭션에서 맞춥니다.';
   if (issue.id.startsWith('item-lot-gap:')) return '완제품 실사값을 확인한 뒤 제품 로트에 실사보정 로트를 생성하거나 FIFO로 차감해 stock과 맞춥니다.';
+  if (issue.id.startsWith('item-stock-negative:') || issue.id.startsWith('item-lot-negative:')) return '실제 완제품 수량과 미출고 완료 주문을 먼저 확인한 뒤 실사보정 또는 누락 입고를 같은 트랜잭션으로 반영합니다.';
   if (issue.id.startsWith('sales-log-')) return '대상 날짜의 배송완료 주문과 저장된 생산판매일지를 거래처·품목·용량·수량별로 대조하고 필요하면 일지를 다시 생성합니다.';
   if (issue.id.startsWith('doc-raw-ratio:')) return '표시된 서류용 품목의 PRODUCT_FORMULA 등록값과 비율 합계를 고친 뒤 원료수불부를 다시 생성합니다.';
   if (issue.id.startsWith('doc-fallback:')) return '품목관리에서 서류용 품목명과 서류용 용량을 확인해 명시적으로 등록합니다.';
