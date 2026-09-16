@@ -2476,3 +2476,11 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - 백업: `로컬전용/백업/create-punghoe-admin-backup.json` (Git 제외)
 - 실행: `npx tsx scripts/fix-create-punghoe-admin.mts --apply`
 - 되돌리기: `npx tsx scripts/fix-create-punghoe-admin.mts --undo`
+
+## 2026-09-16 — 회사별 설정 전환 마무리
+
+- 회사별 설정 문서와 새 앱·보안 규칙 배포를 확인한 뒤, 호환용으로 남겨둔 구형 공용 설정 4건을 삭제했다.
+- 삭제: `settings/company`, `settings/deliveryOrdering`, `settings/orgChart`, `settings/workGroups`
+- 실행: `npx tsx scripts/fix-company-settings.mts --phase=cleanup --apply`
+- 검증: 삭제 4건과 회사별 설정 8건을 다시 읽어 확인했다.
+- 되돌리기: `npx tsx scripts/fix-company-settings.mts --undo`
