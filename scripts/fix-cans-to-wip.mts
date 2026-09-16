@@ -28,7 +28,7 @@ import { adminDb, 실행모드 } from './_admin.mts';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const { APPLY, UNDO } = 실행모드();
-const BACKUP = 'scripts/fix-cans-to-wip-backup.json';
+const BACKUP = '로컬전용/백업/cans-to-wip-backup.json';
 
 const 태백벌크_깨분 = 'raw-깨분참기름';
 const 태백캔_깨분 = 'p-1779251603644';          // 깨분참기름/16.5kg (wip·캔) — 살릴 쪽

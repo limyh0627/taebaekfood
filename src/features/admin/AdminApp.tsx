@@ -23,7 +23,7 @@ import { today } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
-import { isBulkItem } from '../../shared/itemTaxonomy';
+import { isBulkItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
@@ -189,10 +189,12 @@ import {
   adjustItemStock,
   markNotificationForUser,
   claimOrderInventoryOperation,
+  commitCompanyWrites,
+  writeMany,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, deleteDoc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -203,6 +205,7 @@ import { planStatementWrites } from '../statements/domain/statementWrites';
 import { applyStatementWrites } from '../statements/infrastructure/applyStatementWrites';
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
+import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -215,7 +218,6 @@ const openPartnerPortal = () => {
 interface AdminAppProps {
   currentUser: Employee;
   companyId: CompanyId;
-  onCompanyChange: (companyId: CompanyId) => void;
   isAdmin: boolean;
   isAdminAuthenticated: boolean;
   onAdminAuth: (v: boolean) => void;
@@ -231,7 +233,6 @@ interface AdminAppProps {
 const AdminApp: React.FC<AdminAppProps> = ({
   currentUser,
   companyId,
-  onCompanyChange,
   isAdmin,
   isAdminAuthenticated,
   onAdminAuth,
@@ -264,10 +265,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 전표·자금만 가른다. 거래처·품목·계정과목은 한 벌을 같이 쓴다 —
    * 나중에 회사별로 완전히 나눌 때 이 필드가 그대로 나누는 기준이 된다.
    */
-  const switchCompany = (id: CompanyId) => {
-    onCompanyChange(id);
-    localStorage.setItem('tb_company', id);
-  };
   const issuedStatements = useMemo(
     () => allIssuedStatements.filter(s => companyOf(s) === companyId),
     [allIssuedStatements, companyId],
@@ -599,7 +596,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 회사가 뜻을 갖는 건 "지금 이 창고에 뭐가 얼마 있나"를 셀 때뿐이다.
    */
   const companyItems = useMemo(
-    () => allItems.filter(i => companyOf(i) === companyId),
+    () => itemsOfCompany(allItems, companyId),
     [allItems, companyId],
   );
 
@@ -712,10 +709,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
     unit: Item,
     opts: { name: string; count: number; components: { id: string; qty: number }[] },
   ) => {
+    const componentIds = new Set([unit.id, ...opts.components.map(component => component.id)]);
+    const wrongCompany = allItems.filter(item => componentIds.has(item.id) && companyOf(item) !== companyId);
+    if (wrongCompany.length > 0) {
+      throw new Error(`다른 회사 품목은 BOM에 넣을 수 없습니다: ${wrongCompany.map(item => item.name).join(', ')}`);
+    }
     const boxId = `box-${unit.id}-${opts.count}`;
     const box: Item = {
       ...unit,
       id: boxId,
+      companyId,
       name: opts.name,
       unit: '박스',
       stock: 0,
@@ -731,12 +734,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       { child_id: unit.id, quantity: opts.count },
       ...opts.components.map(c => ({ child_id: c.id, quantity: c.qty })),
     ];
-    const batch = writeBatch(db);
-    for (const r of rows) {
+    await writeMany(rows.map(r => {
       const bid = `bom-${boxId}__${r.child_id}`.replace(/[/#$[\].]/g, '_');
-      batch.set(doc(db, 'item_bom', bid), { parent_id: boxId, child_id: r.child_id, quantity: r.quantity });
-    }
-    await batch.commit();
+      return { collection: COL.itemBom, id: bid, data: { parent_id: boxId, child_id: r.child_id, quantity: r.quantity } };
+    }));
     refreshStaticData();
 
     // 방금 만든 구성으로 원가를 굴려 저장 — 구독 갱신을 기다리지 않는다.
@@ -745,7 +746,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       id: `bom-${boxId}__${r.child_id}`, parent_id: boxId, child_id: r.child_id, quantity: r.quantity,
     }))] as typeof itemBoms;
     await recomputeAllCosts(nextItems, itemFormulas, nextBoms);
-  }, [allItems, itemBoms, itemFormulas, recomputeAllCosts, refreshStaticData]);
+  }, [allItems, companyId, itemBoms, itemFormulas, recomputeAllCosts, refreshStaticData]);
 
   const cascadeItemCost = useCallback(async (itemId: string, cost: number) => {
     await updateItem('items', itemId, { cost });
@@ -775,7 +776,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!o.producedAt || o.shippedOut) continue;   // 작업완료 & 미출고만
       for (const it of o.items) {
         const product = allItems.find(p => p.id === it.itemId);
-        if (!product || product.type !== 'product' || isGoods(product)) continue;
+        if (!product || !holdsUnitStock(product) || isGoods(product)) continue;
         m[it.itemId] = Math.round(((m[it.itemId] ?? 0) + stockUnits(it, product)) * 1000) / 1000;
       }
     }
@@ -911,7 +912,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       } catch (e) {
         //  못 지웠으면 도장을 물러 다음 기기가 이어받게 한다. 조용히 넘기면 어제 것이 하루 남는다.
         console.error('[작업순서 초기화] 실패 — 도장을 되돌린다:', e);
-        try { await setDoc(resetRef, { date: '' }); } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
+        try {
+          // appMeta는 회사 업무문서가 아닌 전 기기 공용 잠금이라 회사 경계의 명시적 예외다.
+          await runTransaction(db, async tx => tx.set(resetRef, { date: '' }));
+        } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
       }
     })();
   }, []);
@@ -1023,7 +1027,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         continue;
       }
 
-      if (product.type !== 'product') continue;
+      //  캔 같은 개수 반제품도 원료가 든다 — 빠지면 캔 주문에 원료 부족 경고가 안 뜬다.
+      if (!holdsUnitStock(product)) continue;
       // 완사입=원료 무관, 임가공=외주가 볶아 옴(우리 원료 로트가 아님) → 둘 다 원료 부족 대상이 아니다
       if (product.procureType === '완사입' || product.procureType === '임가공') continue;
 
@@ -1117,8 +1122,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const ref = doc(db, 'items', item.id);  // 향미유는 products에 저장
         const snap = await getDoc(ref);
         if (!snap.exists()) {
-          const { id, ...rest } = item;
-          await setDoc(ref, rest);
+          await addItem('items', item);
         }
       }
     };
@@ -1432,11 +1436,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
       // 품목만 먼저 없어지면 BOM에 존재하지 않는 ID가 남아 생산 처리가 막힌다.
       // 품목과 현재 BOM·거래처 연결을 같은 batch에 넣어 전부 성공하거나 전부 실패하게 한다.
-      const batch = writeBatch(db);
-      batch.delete(doc(db, COL.items, ask.itemId));
-      ask.bomIds.forEach(id => batch.delete(doc(db, COL.itemBom, id)));
-      ask.partnerItemIds.forEach(id => batch.delete(doc(db, COL.partnerItem, id)));
-      await batch.commit();
+      await commitCompanyWrites([
+        { kind: 'delete', collection: COL.items, id: ask.itemId },
+        ...ask.bomIds.map(id => ({ kind: 'delete' as const, collection: COL.itemBom, id })),
+        ...ask.partnerItemIds.map(id => ({ kind: 'delete' as const, collection: COL.partnerItem, id })),
+      ]);
       setCatalogDeleteAsk(null);
       refreshStaticData();
     } catch (error) {
@@ -2015,7 +2019,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const next = window.prompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
     if (next == null) return;
     const title = next.trim();
-    await setDoc(doc(db, 'docSheetTitles', cat), { title }, { merge: true });
+    await setDocument('docSheetTitles', cat, { title });
     setSheetTitles(prev => ({ ...prev, [cat]: title }));
   };
 
@@ -2025,21 +2029,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
       alert(`이미 item_formula에 ${itemFormulas.length}개 항목이 있습니다.`);
       return;
     }
-    const batch = writeBatch(db);
+    const writes: { collection: typeof COL.itemFormula; id: string; data: Record<string, unknown> }[] = [];
     let count = 0;
     for (const [parentKey, rows] of Object.entries(PRODUCT_FORMULA)) {
       for (const row of rows) {
         const id = `formula-${parentKey}-${row.raw}`.replace(/\s/g, '_');
-        batch.set(doc(db, 'item_formula', id), {
+        writes.push({ collection: COL.itemFormula, id, data: {
           parent_key: parentKey,
           child_name: row.raw,
           ratio: row.ratio,
           yield_rate: 1.0,
-        });
+        } });
         count++;
       }
     }
-    await batch.commit();
+    await writeMany(writes);
     alert(`item_formula 시딩 완료: ${count}개 항목`);
   };
 
@@ -2148,17 +2152,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }`}>
         <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
-            {/* 회사 이름을 누르면 장부를 바꾼다 — 별도 사업자라 어느 장부를 보고 있는지가 제일 중요하다.
-                실수로 다른 회사에 전표를 끊으면 두 장부가 다 틀어지므로 한 번 물어본다. */}
-            <div className="flex items-center space-x-3 cursor-pointer"
+            {/* 로그인 계정의 회사로 고정한다. 회사 전환을 허용하면 별도 사업자의 장부가 섞인다. */}
+            <div className="flex items-center space-x-3"
               onClick={() => {
-                if (!isAdmin) { setCurrentView('orders'); return; }
-                const other = COMPANIES.find(c => c.id !== companyId)!;
-                if (window.confirm(`${other.name} 장부로 바꿀까요?\n\n지금  ${company.name}\n바꾸면  ${other.name}\n\n전표·자금·재무제표가 ${other.name} 것으로 바뀝니다.`)) {
-                  switchCompany(other.id);
-                }
+                if (!isAdmin) setCurrentView('orders');
               }}
-              title={isAdmin ? `${company.name} — 눌러서 회사 전환` : undefined}>
+              title={company.name}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 ${
                 companyId === TAEBAEK ? 'bg-cyan-600 shadow-cyan-200' : 'bg-orange-500 shadow-orange-200'}`}>
                 <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
@@ -2485,6 +2484,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'shipping' && (
             <DeliveryManager
+              companyId={companyId}
               orders={orders}
               partners={partners}
               items={allItems}
@@ -2506,6 +2506,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'orders' && (
             <OrdersList
+              companyId={companyId}
               //  주문 로그가 `createdBy`(사번)를 이름으로 풀 때 쓴다.
               employees={employees}
               /*  **캘린더 자리는 배송 캘린더가 채운다**(2026-09-11 사장님:
@@ -2514,6 +2515,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   오전·오후 시간대, 배송 순서 번호, 주소까지 배송 쪽 기능이 다 따라온다. */
               calendarSlot={sort => (
                 <DeliveryManager
+                  companyId={companyId}
                   calendarOnly
                   sortMode={sort}
                   orders={orders}
@@ -2999,7 +3001,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'file-cabinet' && (
             <DocumentManager
-              currentUser={{ id: currentUser.id, name: currentUser.name }}
+              currentUser={{ id: currentUser.id, name: currentUser.name, companyId }}
               seed={[{ category: '서류관리', subCategory: '생산판매기록부' }]}
               /* 같은 자리면 그대로 둔다 — 새 객체를 세우면 렌더가 한 번 더 돈다 */
               onSelect={(cat, sub) => setCabinetSel(p => (p.cat === cat && p.sub === sub ? p : { cat, sub }))}
@@ -3358,7 +3360,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
                 const p = allItems.find(pr => pr.id === item.itemId);
-                return p?.type === 'product' && !item.mfgDate;
+                return holdsUnitStock(p) && !item.mfgDate;
               }).map(item => item.name)
             );
 
@@ -3854,7 +3856,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 {docTab === 'haccp' && (
                   <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
-                    <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
+                    <HaccpChecklist companyId={companyId} currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
                   </React.Suspense>
                 )}
 
@@ -4771,7 +4773,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'haccp-checklist' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
+              <HaccpChecklist companyId={companyId} currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
             </React.Suspense>
           )}
           {currentView === 'return-management' && (
@@ -4852,11 +4854,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'sanitation-checklist' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <SanitationChecklistView currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : undefined} isAdmin={isAdmin} />
+              <SanitationChecklistView companyId={companyId} currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : undefined} isAdmin={isAdmin} />
             </React.Suspense>
           )}
           {currentView === 'leave-portal' && (
             <LeaveManager
+              companyId={companyId}
               currentUser={currentUser}
               isAdmin={isAdmin}
               employees={employees}
@@ -4931,9 +4934,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     refreshStaticData();
                   }}
                   onMergeItems={async (keepId, deleteIds) => {
-                    const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
+                    const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
-                    const batch = wb(fireDb);
+                    const writes: Parameters<typeof commitCompanyWrites>[0] = [];
 
                     for (const delId of deleteIds) {
                       const snap = await getDocs(q(col(fireDb, 'partner_item'), where('itemId', '==', delId)));
@@ -4942,17 +4945,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         const dir = data.Direction ?? 'out';
                         const pId = data.partnerId;
                         const newId = `${keepId}_${pId}_${dir}`;
-                        const newRef = d(fireDb, 'partner_item', newId);
                         const existing = partnerItems.find(pi => (pi.itemId) === keepId && (pi.partnerId) === pId && pi.Direction === dir);
                         if (!existing) {
                           const { itemId, partnerId, price, ...cleanData } = data as any;
-                          batch.set(newRef, { ...cleanData, itemId: keepId, id: newId });
+                          writes.push({ kind: 'set', collection: COL.partnerItem, id: newId, data: { ...cleanData, itemId: keepId, id: newId } });
                         }
-                        batch.delete(docSnap.ref);
+                        writes.push({ kind: 'delete', collection: COL.partnerItem, id: docSnap.id });
                       }
-                      batch.delete(d(fireDb, 'items', delId));
+                      writes.push({ kind: 'delete', collection: COL.items, id: delId });
                     }
-                    await batch.commit();
+                    await commitCompanyWrites(writes);
                   }}
                   itemBoms={itemBoms}
                   onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
@@ -5063,7 +5065,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         <AdminAuthModal
           onClose={() => setIsAdminAuthModalOpen(false)}
           onSuccess={onAdminAuthSuccess}
-          correctPassword={companyInfo?.adminPassword || '0000'}
+          correctPassword={companyInfo?.adminPassword && companyInfo.adminPassword !== '0000'
+            ? companyInfo.adminPassword
+            : undefined}
         />
       )}
       {isOrderCreateChooserOpen && (
@@ -5122,20 +5126,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {isProductModalOpen && (
         <ProductModal
           initialData={editingProduct || undefined}
-          allSubmaterials={submaterials}
-          items={products}
-          rawItems={allItems.filter(i => i.type === 'raw' || i.type === 'wip')}
+          allSubmaterials={itemsOfCompany(submaterials, companyId)}
+          items={itemsOfCompany(products, companyId)}
+          rawItems={companyItems.filter(i => i.type === 'raw' || i.type === 'wip')}
           itemFormulas={itemFormulas}
           rollupCostOf={rollupCostOf}
           onSaveItemFormula={async (parentKey, rows, prevKey) => {
-            const batch = writeBatch(db);
             const keys = new Set([parentKey, prevKey].filter(Boolean) as string[]);
-            itemFormulas.filter(f => keys.has(f.parent_key)).forEach(f => batch.delete(doc(db, 'item_formula', f.id)));
+            const writes: Parameters<typeof commitCompanyWrites>[0] = itemFormulas
+              .filter(f => keys.has(f.parent_key))
+              .map(f => ({ kind: 'delete', collection: COL.itemFormula, id: f.id }));
             rows.forEach(r => {
               const id = `formula-${parentKey}-${r.child_name}`.replace(/\s/g, '_');
-              batch.set(doc(db, 'item_formula', id), { parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate });
+              writes.push({ kind: 'set', collection: COL.itemFormula, id, data: { parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate } });
             });
-            await batch.commit();
+            await commitCompanyWrites(writes);
             refreshStaticData();
             // 배합식이 바뀌면 그 품목과 이걸 재료로 쓰는 상위 품목 원가를 다시 굴린다.
             const nextFormulas = [
@@ -5152,11 +5157,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
-            const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
+            const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '', companyId });
             return id as string;
           }}
           onSave={async (p) => {
             const collectionName = COL.items;
+            if (p.bomDraft) {
+              const draftBoms = p.bomDraft.map((line, index) => ({
+                id: `draft-${index}`, parent_id: p.id, child_id: line.childId, quantity: line.qty,
+              }));
+              const draftItems = allItems.some(item => item.id === p.id)
+                ? allItems
+                : [...allItems, { ...p, companyId }];
+              const crossed = crossCompanyBoms(draftBoms, draftItems);
+              if (crossed.length > 0) {
+                const names = crossed.map(row => allItems.find(item => item.id === row.childId)?.name ?? row.childId);
+                alert(`다른 회사 품목은 BOM에 넣을 수 없습니다: ${names.join(', ')}`);
+                return;
+              }
+            }
             // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
             if (editingProduct) {
               const prevCollection = COL.items;
@@ -5173,7 +5192,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // 폼이 모르는 필드(원료 lots·mixEnabled 등)가 통째로 지워진다(6/29 원료 로트 소실 사고 원인).
               // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
               const { stock: _staleStock, ...safeData } = productData;
-              await updateItem(collectionName, p.id, safeData);
+              await updateItem(collectionName, p.id, { ...safeData, companyId });
               /**
                * **낱개 규격을 고쳤으면 그 낱개를 문 박스도 따라간다.**
                *
@@ -5201,13 +5220,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
              */
             try {
               if (!bomDraft) throw new Error('__skip_bom__');
-              const bomBatch = writeBatch(db);
-              itemBoms.filter(b => b.parent_id === p.id).forEach(b => bomBatch.delete(doc(db, 'item_bom', b.id)));
+              const writes: Parameters<typeof commitCompanyWrites>[0] = itemBoms
+                .filter(b => b.parent_id === p.id)
+                .map(b => ({ kind: 'delete', collection: COL.itemBom, id: b.id }));
               bomDraft.forEach(l => {
                 const bid = `bom-${p.id}__${l.childId}`.replace(/[/#$[\].]/g, '_');
-                bomBatch.set(doc(db, 'item_bom', bid), { parent_id: p.id, child_id: l.childId, quantity: l.qty });
+                writes.push({ kind: 'set', collection: COL.itemBom, id: bid, data: { parent_id: p.id, child_id: l.childId, quantity: l.qty } });
               });
-              await bomBatch.commit();
+              await commitCompanyWrites(writes);
               refreshStaticData();
               // BOM이 바뀌면 원가도 바뀐다 — 방금 저장한 item_bom 구성으로 다시 굴린다.
               await recomputeAllCosts(allItems, itemFormulas, [

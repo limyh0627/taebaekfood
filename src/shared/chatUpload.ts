@@ -1,6 +1,7 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
-import type { ChatMessage } from './types';
+import type { ChatMessage, CompanyId } from './types';
+import { officeTalkStoragePath } from './companyStoragePath';
 
 //  **오피스톡 첨부는 Storage 를 지난다.**
 //  전에는 사진을 base64 로 바꿔 메시지 글자에 실어 Firestore 에 넣었다. Firestore 문서는
@@ -23,11 +24,11 @@ export interface ChatAttachment {
 /** Storage 경로에 못 들어가는 글자를 걷어낸다 — 한글 파일명은 그대로 둔다. */
 export const safeFileName = (name: string) => name.replace(/[#?%\/]/g, '_');
 
-export async function uploadChatFile(roomId: string, file: File): Promise<ChatAttachment> {
+export async function uploadChatFile(companyId: CompanyId, roomId: string, file: File): Promise<ChatAttachment> {
   if (file.size > CHAT_MAX_MB * 1024 * 1024) {
     throw new Error(`${CHAT_MAX_MB}MB 까지 보낼 수 있습니다 (${Math.round(file.size / 1024 / 1024)}MB)`);
   }
-  const path = `officetalk/${roomId}/${Date.now()}_${safeFileName(file.name)}`;
+  const path = officeTalkStoragePath(companyId, roomId, `${Date.now()}_${safeFileName(file.name)}`);
   await uploadBytes(ref(storage, path), file);
   const url = await getDownloadURL(ref(storage, path));
   return {

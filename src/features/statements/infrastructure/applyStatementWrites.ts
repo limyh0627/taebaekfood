@@ -2,11 +2,12 @@ import { doc, runTransaction } from 'firebase/firestore';
 import { db } from '../../../shared/firebase';
 import { statementBlockReason } from '../../../shared/statementGuard';
 import type { StatementWrite } from '../domain/statementWrites';
+import { companyScopedWriteData } from '../../../shared/services/firebaseService';
 
 /**
  * **전표가 만드는 쓰기를 한 덩이로 커밋한다.**
  *
- * 설계([전표-원가-원장-재무-통합설계](../../../../docs/전표-원가-원장-재무-통합설계.md) §2) 3단계.
+ * 설계([전표-원가-원장-재무-통합설계](../../../../로컬전용/docs/전표-원가-원장-재무-통합설계.md) §2) 3단계.
  *
  * 전에는 네 번을 차례로 저장했다 — 전표 본문 → 거래처 단가·품목 원가 → 주문 발행표시 →
  * 발주카드. 앞이 되고 뒤가 엎어지면 **주문에 발행표시가 안 찍혀 그 주문이 목록에 다시 뜨고,
@@ -47,6 +48,12 @@ export async function applyStatementWrites(
     if (reason) throw new Error(`전표를 만들 수 없습니다 — ${reason}`);
   }
 
+  // 원자 트랜잭션도 일반 addItem과 같은 claim 회사 경계를 통과한다.
+  const scopedWrites = await Promise.all(writes.map(async w => ({
+    ...w,
+    data: await companyScopedWriteData(w.collection, undefined걷기(w.data) as Record<string, unknown>),
+  })));
+
   return runTransaction(db, async tx => {
     //  **읽기가 먼저다** — Firestore 트랜잭션은 쓰기 뒤에 읽을 수 없다.
     const 전표자리 = doc(db, 'issuedStatements', statementId);
@@ -56,8 +63,8 @@ export async function applyStatementWrites(
       return 'duplicate' as const;
     }
 
-    for (const w of writes) {
-      tx.set(doc(db, w.collection, w.id), undefined걷기(w.data) as Record<string, unknown>, { merge: w.merge });
+    for (const w of scopedWrites) {
+      tx.set(doc(db, w.collection, w.id), w.data, { merge: w.merge });
     }
     return 'applied' as const;
   });

@@ -23,7 +23,6 @@ import type { CompanyId, Employee, ViewType } from '../../shared/types';
 interface StaffAppProps {
   currentUser: Employee;
   companyId: CompanyId;
-  onCompanyChange: (companyId: CompanyId) => void;
   isAdminAuthenticated: boolean;
   onAdminAuth: (v: boolean) => void;
   currentView: ViewType;

@@ -38,6 +38,7 @@ import { db } from '../src/firebase';
 import { actionsFor, replySnippet, deletePatch, isDeleted, type MessageAction } from '../src/shared/messageActions';
 import { REACTION_EMOJIS, toggleReaction, reactionChips, reactionTitle } from '../src/shared/messageReactions';
 import { matchesSearch } from '../src/shared/hangul';
+import { companyOf } from '../src/shared/types';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -332,7 +333,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setUploadCount({ done: 0, total: files.length });
     const 실패: string[] = [];
     const 올리기 = async (f: File) => {
-      try { return await uploadChatFile(activeRoomId, f); }
+      try { return await uploadChatFile(companyOf(currentUser), activeRoomId, f); }
       catch (err: any) { 실패.push(`${f.name}: ${err?.message || '네트워크 오류'}`); return null; }
       finally { setUploadCount(c => ({ ...c, done: c.done + 1 })); }
     };

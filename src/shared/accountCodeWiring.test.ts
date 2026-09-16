@@ -6,7 +6,7 @@ import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK, INVENTORY } f
  * **계정코드는 [autoJournal](autoJournal.ts) 한 곳에서 온다.**
  *
  * 번호를 화면에 그냥 박아 두면, **계정번호를 표준으로 옮길 때 한쪽만 고쳐진다**
- * (그 계획이 [docs/표준계정과목-이전계획.md](../../docs/표준계정과목-이전계획.md) 에 있고 아직 안 했다).
+ * (그 계획이 [로컬전용/docs/표준계정과목-이전계획.md](../../로컬전용/docs/표준계정과목-이전계획.md) 에 있고 아직 안 했다).
  *
  * 2026-09-05 에 훑어보니 cashLedger·interCompany 가 값을 손으로 옮겨 적었고,
  * ProfitAnalysis·financials 는 숫자를 그대로 견주고 있었다.

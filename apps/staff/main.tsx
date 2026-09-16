@@ -10,10 +10,11 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 import ReactDOM from 'react-dom/client';
+import { signOut } from 'firebase/auth';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
-import { addItem, updateItem } from '../../src/shared/services/firebaseService';
+import { addItem } from '../../src/shared/services/firebaseService';
 import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import PartnerPortal from '../../components/PartnerPortal';
@@ -24,7 +25,8 @@ import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
-import { normalizeCompanyId } from '../../src/shared/loginCompanyAccess';
+import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
+import { auth, authReady } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -50,12 +52,24 @@ const StaffRoot: React.FC = () => {
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
 
-  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
-    const saved = localStorage.getItem('tb_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [companyId, setCompanyId] = useState<CompanyId>(() =>
-    normalizeCompanyId(localStorage.getItem('tb_company')));
+  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  //  회사는 로그인 직원의 소속(`companyId`)으로 잠근다 — 화면에서 갈아탈 수 없다.
+  const companyId: CompanyId = currentUser?.companyId ?? 'taebaek';
+  // 옛 버전이 저장한 평문 비밀번호·연락처도 앱을 한 번 열면 즉시 최소 세션으로 덮는다.
+  useEffect(() => {
+    if (currentUser) localStorage.setItem('tb_user', JSON.stringify(employeeSession(currentUser)));
+  }, [currentUser]);
+  useEffect(() => {
+    void authReady.then(() => {
+      const saved = readEmployeeSession(localStorage.getItem('tb_user'));
+      if (auth.currentUser && !auth.currentUser.isAnonymous && saved) {
+        setCurrentUser(saved);
+      }
+      else localStorage.removeItem('tb_user');
+      setAuthChecked(true);
+    });
+  }, []);
   const [currentView, setCurrentView] = useState<ViewType>(() =>
     loadStartView<ViewType>('tb_staff_view', 'orders'));
   useEffect(() => { saveView('tb_staff_view', currentView); }, [currentView]);
@@ -64,26 +78,29 @@ const StaffRoot: React.FC = () => {
   //  배포한 게 폰에 안 오던 것 — 앱이 앞으로 나올 때 새 버전을 물어본다.
   useEffect(새버전확인붙이기, []);
 
-  const appData = useAppData();
-  const adminData = useAdminData(false);
+  //  **직원 앱은 관리자 구독을 아예 안 건다**(2026-09-16 코덱스 검수 6번) —
+  //  전표·자금·재무·문서함은 규칙이 관리자 전용으로 잠근다. `useAdminData(false, …)` 와 같은 태도다.
+  const appData = useAppData(currentUser !== null, companyId, false);
+  const adminData = useAdminData(false, companyId);
 
-  const handleLogin = (user: Employee, companyId: CompanyId) => {
-    setCurrentUser(user);
-    setCompanyId(companyId);
-    localStorage.setItem('tb_user', JSON.stringify(user));
-    localStorage.setItem('tb_company', companyId);
+  const handleLogin = (user: Employee) => {
+    const session = employeeSession(user);
+    setCurrentUser(session);
+    localStorage.setItem('tb_user', JSON.stringify(session));
+    localStorage.removeItem('tb_company');
   };
 
   const handleLogout = () => {
     //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
     //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
     if (currentUser) void unregisterPush(currentUser.id);
+    void signOut(auth);
     setCurrentUser(null);
     localStorage.removeItem('tb_user');
     setCurrentView('orders');
   };
 
-  if (currentView === 'partner-portal') {
+  if (currentUser && currentView === 'partner-portal') {
     return (
       <PartnerPortal
         partners={appData.partners}
@@ -95,21 +112,20 @@ const StaffRoot: React.FC = () => {
     );
   }
 
+  if (!authChecked) return <div className="min-h-screen bg-slate-50" />;
+
   if (!currentUser) {
     return (
-      <AuthPage
-        onLogin={handleLogin}
-        registeredEmployees={appData.employees}
-        onRegister={(e) => updateItem('employees', e.id, { username: e.username, password: e.password })}
-      />
+      <AuthPage onLogin={handleLogin} />
     );
   }
 
+  const runtimeUser = employeeRuntime(appData.employees.find(employee => employee.id === currentUser.id) ?? currentUser);
+
   return (
     <StaffApp
-      currentUser={currentUser}
+      currentUser={runtimeUser}
       companyId={companyId}
-      onCompanyChange={setCompanyId}
       isAdminAuthenticated={isAdminAuthenticated}
       onAdminAuth={() => {}}
       currentView={currentView}

@@ -19,7 +19,8 @@ import { adminDb, 실행모드 } from './_admin.mts';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const { APPLY, UNDO } = 실행모드();
-const BACKUP = 'scripts/delete-notifications-backup.json';
+//  **백업은 저장소 밖이다**(2026-09-16 코덱스 검수 8번) — `로컬전용/` 은 gitignore 된다.
+const BACKUP = '로컬전용/백업/delete-notifications-backup.json';
 const db = adminDb();
 
 if (UNDO) {

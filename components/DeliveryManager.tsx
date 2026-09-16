@@ -20,7 +20,7 @@ import {
   LayoutDashboard,
   AlertTriangle
 } from 'lucide-react';
-import { Order, Partner, OrderStatus, Item, ItemBom, PartnerItem, PalletStock, OrderPallet } from '../types';
+import { Order, Partner, OrderStatus, Item, ItemBom, PartnerItem, PalletStock, OrderPallet, CompanyId } from '../types';
 import { statusChip, statusLabel, STATUS_CARD_BORDER, STATUS_HEAD_LINE } from '../src/shared/orderStatusStyle';
 import { X } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
@@ -34,10 +34,12 @@ import { saveDeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
 import type { DayRow } from '../src/shared/deliveryPlan';
+import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
 import { OrderItem, InvoiceType } from '../types';
 
 interface DeliveryManagerProps {
+  companyId: CompanyId;
   /**
    * **캘린더만 그린다** — 주문·배송을 한 화면으로 합칠 때 쓴다(2026-09-11 사장님).
    *
@@ -83,7 +85,7 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -128,14 +130,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
   useEffect(() => {
     return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'>; orderingByDate?: Record<string, string[]> }>(
-      'settings', 'deliveryOrdering',
+      'settings', companySettingDocId(companyId, 'deliveryOrdering'),
       (data) => {
         setDeliveryOrdering(data?.ordering ?? []);
         setDeliveryTimeSlots(data?.timeSlots ?? {});
         setOrderingByDate(data?.orderingByDate ?? {});
       }
     );
-  }, []);
+  }, [companyId]);
   const [dragDeliveryIdx, setDragDeliveryIdx] = useState<number | null>(null);
   const [dragDeliveryId, setDragDeliveryId] = useState<string | null>(null);
   const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
@@ -290,7 +292,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
     try {
       await setDocument('deliveryScheduleAudits', auditId, { ...auditBase, outcome: 'PENDING' });
       await onUpdateDeliveryDate(editingOrder.id, new Date(`${newDate}T00:00:00+09:00`).toISOString());
-      await setDocument('settings', 'deliveryOrdering', { ordering: deliveryOrdering, timeSlots: nextTimeSlots });
+      await setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, { ordering: deliveryOrdering, timeSlots: nextTimeSlots }));
       await setDocument('deliveryScheduleAudits', auditId, { outcome: 'COMPLETED', completedAt: new Date().toISOString() });
       setDeliveryTimeSlots(nextTimeSlots);
       closeScheduleEditor();
@@ -467,7 +469,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
   const saveDayOrdering = (dateStr: string, next: string[]) => {
     setOrderingByDate(prev => ({ ...prev, [dateStr]: next }));
     //  merge 로 쓴다 — 다른 날짜와 `ordering`·`timeSlots` 는 그대로 남는다
-    void setDocument('settings', 'deliveryOrdering', { orderingByDate: { [dateStr]: next } });
+    void setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, { orderingByDate: { [dateStr]: next } }));
   };
 
   /** 담긴 차례를 먼저, 안 담긴 것은 뒤에 — 그 날 실제 주문만 남긴다 */
@@ -1026,6 +1028,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
       {!calendarOnly && deliveryTab === '리스트' && (
         <div className="order-5">
         <OrdersList
+          companyId={companyId}
           title="배송 목록"
           subtitle="오늘 나갈 주문 — 대기중부터 출고완료까지"
           groupBy="status"
@@ -1140,7 +1143,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ calendarOnly = false,
 
         const saveTimeSlots = (next: Record<string, '오전' | '오후'>) => {
           setDeliveryTimeSlots(next);
-          setDocument('settings', 'deliveryOrdering', { ordering: deliveryOrdering, timeSlots: next });
+          setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, { ordering: deliveryOrdering, timeSlots: next }));
         };
 
         const toggleTimeSlot = (id: string) => {

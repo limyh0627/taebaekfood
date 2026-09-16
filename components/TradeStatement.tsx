@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
-import { isSignedIn } from '../src/shared/firebase';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
@@ -44,6 +43,7 @@ import StatementComposerHeader from '../src/features/statements/ui/StatementComp
 import StatementOrderDateFilter from '../src/features/statements/ui/StatementOrderDateFilter';
 import StatementHistorySearchFields from '../src/features/statements/ui/StatementHistorySearchFields';
 import { statementHistoryRowView } from '../src/features/statements/domain/statementHistoryRowView';
+import { shipToOf, shipToSummary } from '../src/shared/shipTo';
 import { StatementPaymentMobileRow, StatementPaymentTableRow } from '../src/features/statements/ui/StatementPaymentRow';
 import { StatementCashMobileRow, StatementCashTableRow } from '../src/features/statements/ui/StatementCashRow';
 import { StatementTradeMobileRow, StatementTradeTableRow } from '../src/features/statements/ui/StatementTradeRow';
@@ -345,7 +345,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const 저장실패문구 = (error: any): string => {
     const 원문 = String(error?.message ?? error ?? '');
-    const 로그인풀림 = /permission|insufficient|unauthenticated/i.test(원문) || !isSignedIn();
+    const 로그인풀림 = /permission|insufficient|unauthenticated/i.test(원문);
     return 로그인풀림
       ? [
           '로그인이 풀려서 저장하지 못했습니다.',
@@ -510,6 +510,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   //  줄의 성격(수익·비용·입금·출금)은 [shared/timelineRows](../src/shared/timelineRows.ts) 가 안다.
   //  자금전표를 **줄로** 보는 규칙이 거기 있다 — 대출상환은 원금이 아니라 이자만 비용이다.
+  /**
+   * **그 전표가 어느 배송지로 간 건인가**(2026-09-16 사장님: "업체명 밑에 회색 글씨로
+   * 배송지명만 표시해주면 어떠냐").
+   *
+   * 전표는 `orderId` 로 주문과 이어진다(쉼표로 여럿 담는다). 그 주문들의 배송지를 모아
+   * 적는다 — 하나면 그 이름, 섞이면 `포천 외 2`. 사장님이 A 로 정하셨다: "실무에서 C로
+   * 거진 처리하기 때문에 A로 해놔도 될거 같아"(C = 배송지별로 끊는다).
+   *
+   * 자금·수금 줄은 주문이 없어 빈 글자가 되고, 그때는 줄을 아예 안 그린다.
+   */
+  const 줄배송지 = useCallback((row: TimelineRow): string | undefined => {
+    if (row.kind !== 'stmt') return undefined;
+    const 전표 = row.data;
+    const 그거래처 = partners.find(p => p.id === 전표.partnerId);
+    if (!그거래처?.shipTos?.length || !전표.orderId) return undefined;
+    const 이름들 = String(전표.orderId).split(/[,\s]+/).filter(Boolean)
+      .map(id => shipToOf(그거래처, orders.find(o => o.id === id)?.shipToId)?.name);
+    return shipToSummary(이름들) || undefined;
+  }, [partners, orders]);
+
   const classifyRow = useCallback((row: TimelineRow) => 성격판정(row, codeType), [codeType]);
 
   const { expandedJournal, journalOfStmt, renderJournal, journalTr, journalToggle } =
@@ -1965,7 +1985,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                  (머리는 13px). 한 곳에서 정하니 이렇게 통째로 키울 수 있다. 바탕색은 안 깐다. */}
             <tbody className="divide-y divide-slate-200 text-[12px]">
               {pagedHistory.map(row => {
-                const view = statementHistoryRowView(row, codeName);
+                const view = statementHistoryRowView(row, codeName, 줄배송지);
                 if (row.kind === 'cash') {
                   const lines = (row.entry.lines ?? []).filter(line => line.accountCode && line.amount !== 0);
                   const portion = accountPortion(row);
@@ -2026,7 +2046,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           {/* ── 모바일 카드 목록 ── */}
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
-              const view = statementHistoryRowView(row, codeName);
+              const view = statementHistoryRowView(row, codeName, 줄배송지);
               if (row.kind === 'cash') {
                 return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
                   journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}

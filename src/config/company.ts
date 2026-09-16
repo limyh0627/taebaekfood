@@ -71,8 +71,6 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   {
     id: 'e1',
     name: '홍길동',
-    username: 'admin',
-    password: 'password',
     position: '과장',
     department: '생산관리팀',
     joinDate: '2022-01-10',
@@ -83,8 +81,6 @@ export const INITIAL_EMPLOYEES: Employee[] = [
   {
     id: 'e2',
     name: '김태백',
-    username: 'tb01',
-    password: '1234',
     position: '대리',
     department: '물류팀',
     joinDate: '2023-11-01',

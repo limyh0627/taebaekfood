@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyChatMessage = exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = void 0;
+exports.notifyChatMessage = exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = exports.employeeLogin = exports.extractOrder = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
@@ -14,6 +14,12 @@ const db = admin.firestore();
 // 호출형(onCall) 함수는 실제 호출 시에만 과금되며 평소 비용은 0이다.
 // ─────────────────────────────────────────────────────────────────────────
 const REGION = 'asia-northeast3';
+//  **말로 온 주문을 읽어 표로 옮긴다** — 복사주문의 'AI로 다시 읽기'(2026-09-15 사장님).
+//  열쇠를 앱에 두면 브라우저에서 그대로 보이므로 서버에만 둔다. 자세한 것은 그 파일에.
+var extractOrder_1 = require("./extractOrder");
+Object.defineProperty(exports, "extractOrder", { enumerable: true, get: function () { return extractOrder_1.extractOrder; } });
+var employeeLogin_1 = require("./employeeLogin");
+Object.defineProperty(exports, "employeeLogin", { enumerable: true, get: function () { return employeeLogin_1.employeeLogin; } });
 // 아이디 찾기: 이름 + 연락처가 일치하는 계정의 username 반환
 exports.findUsername = (0, https_1.onCall)({ region: REGION }, async (request) => {
     var _a, _b, _c, _d, _e;

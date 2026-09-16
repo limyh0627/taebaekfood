@@ -10,10 +10,10 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 import ReactDOM from 'react-dom/client';
+import { signOut } from 'firebase/auth';
 import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
-import { updateItem } from '../../src/shared/services/firebaseService';
 import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import AdminApp from '../../src/features/admin/AdminApp';
@@ -25,7 +25,8 @@ import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
-import { normalizeCompanyId } from '../../src/shared/loginCompanyAccess';
+import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
+import { auth, authReady } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -51,12 +52,25 @@ const AdminRoot: React.FC = () => {
   //  수량·금액 칸이 51개인데 막은 데가 한 곳도 없었다(2026-09-07). 여기 한 번만 건다.
   useEffect(blockNumberWheel, []);
 
-  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
-    const saved = localStorage.getItem('tb_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [companyId, setCompanyId] = useState<CompanyId>(() =>
-    normalizeCompanyId(localStorage.getItem('tb_company')));
+  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  //  회사는 로그인 직원의 소속(`companyId`)으로 잠근다 — 화면에서 갈아탈 수 없다.
+  //  회사 전환 UI를 열어 두면 태백·풍회 장부가 한 화면에서 섞인다.
+  const companyId: CompanyId = currentUser?.companyId ?? 'taebaek';
+  // 옛 버전이 저장한 평문 비밀번호·연락처도 앱을 한 번 열면 즉시 최소 세션으로 덮는다.
+  useEffect(() => {
+    if (currentUser) localStorage.setItem('tb_user', JSON.stringify(employeeSession(currentUser)));
+  }, [currentUser]);
+  useEffect(() => {
+    void authReady.then(() => {
+      const saved = readEmployeeSession(localStorage.getItem('tb_user'));
+      if (auth.currentUser && !auth.currentUser.isAnonymous && saved) {
+        setCurrentUser(saved);
+      }
+      else localStorage.removeItem('tb_user');
+      setAuthChecked(true);
+    });
+  }, []);
   const [currentView, setCurrentView] = useState<ViewType>(() => {
     //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
     //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
@@ -70,39 +84,48 @@ const AdminRoot: React.FC = () => {
   //  배포한 게 폰에 안 오던 것 — 앱이 앞으로 나올 때 새 버전을 물어본다.
   useEffect(새버전확인붙이기, []);
 
-  const appData = useAppData();
-  const adminData = useAdminData(true);
+  /**
+   * **돈·인사·서류 구독은 관리자만**(2026-09-16 코덱스 검수 6번).
+   *
+   * 규칙이 그 컬렉션을 관리자 전용으로 잠그므로, 권한 없는 계정이 구독을 걸면
+   * `permission-denied` 가 난다. 판정 근거는 **로그인 세션의 `adminAccess`** 다 —
+   * `employeeLogin` 이 `isAdmin` claim 을 그 값으로 발급하므로 규칙과 짝이 맞는다.
+   * (`appData.employees` 로 다시 보는 아래 `접근가능` 은 구독이 있어야 읽히니 여기 못 쓴다)
+   */
+  const 관리자구독 = canEnterAdmin(currentUser);
+  const appData = useAppData(currentUser !== null, companyId, 관리자구독);
+  const adminData = useAdminData(currentUser !== null, companyId);
 
-  const handleLogin = (user: Employee, companyId: CompanyId) => {
-    setCurrentUser(user);
-    setCompanyId(companyId);
-    localStorage.setItem('tb_user', JSON.stringify(user));
-    localStorage.setItem('tb_company', companyId);
+  const handleLogin = (user: Employee) => {
+    const session = employeeSession(user);
+    setCurrentUser(session);
+    localStorage.setItem('tb_user', JSON.stringify(session));
+    localStorage.removeItem('tb_company');
   };
 
   const handleLogout = () => {
     //  이 폰의 FCM 표를 뺀다 — 안 빼면 **남의 알림이 이 폰으로 온다**
     //  (공용 태블릿에서 먼저 쓰던 사람 주문 알림이 계속 뜬다). 실패해도 로그아웃은 진행한다.
     if (currentUser) void unregisterPush(currentUser.id);
+    void signOut(auth);
     setCurrentUser(null);
     localStorage.removeItem('tb_user');
     setIsAdminAuthenticated(false);
     setCurrentView('dashboard');
   };
 
+  if (!authChecked) return <div className="min-h-screen bg-slate-50" />;
+
   if (!currentUser) {
     return (
-      <AuthPage
-        onLogin={handleLogin}
-        registeredEmployees={appData.employees}
-        onRegister={(e) => updateItem('employees', e.id, { username: e.username, password: e.password })}
-      />
+      <AuthPage onLogin={handleLogin} />
     );
   }
 
   //  들어갈 수 있는지는 직원 기록의 `adminAccess` 칸이 정한다(canEnterAdmin).
   //  localStorage 에 박힌 사본은 낡으니, 지금 목록의 권한으로 덮어 본다.
   const 접근가능 = canEnterAdmin(freshAccess(currentUser, appData.employees));
+  const runtimeUser = employeeRuntime(freshAccess(currentUser, appData.employees));
 
   if (!접근가능 && !isAdminAuthenticated) {
     return (
@@ -125,9 +148,8 @@ const AdminRoot: React.FC = () => {
 
   return (
     <AdminApp
-      currentUser={currentUser}
+      currentUser={runtimeUser}
       companyId={companyId}
-      onCompanyChange={setCompanyId}
       isAdmin={!previewAsStaff}
       isAdminAuthenticated={isAdminAuthenticated}
       onAdminAuth={setIsAdminAuthenticated}

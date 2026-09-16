@@ -8,7 +8,7 @@ import {
   ItemFormula, ItemBom, CompanyInfo, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
-  CashAccount, CashEntry, Settlement,
+  CashAccount, CashEntry, Settlement, CompanyId,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
@@ -16,6 +16,7 @@ import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 import { kstDateRangeUtc } from '../day';
+import { companySettingDocId } from '../companySettings';
 
 export interface WorkOrderItem {
   id: string;
@@ -96,7 +97,22 @@ export interface AppData {
   setOrdersMonths: (n: number) => void;
 }
 
-export function useAppData(): AppData {
+/**
+ * 로그인 직원의 소속 회사(`companyId`)에 잠긴 구독을 만든다.
+ * 모든 업무 컬렉션 질의에 `where('companyId', '==', companyId)`를 붙여
+ * 다른 회사 자료가 화면에 섞이지 않게 한다.
+ *
+ * **돈·인사·서류는 관리자만 구독한다**(2026-09-16 코덱스 검수 6번).
+ *
+ * 규칙이 그 컬렉션을 관리자 전용으로 잠그므로, 직원이 구독을 걸면 **그 순간
+ * `permission-denied`** 가 난다. 화면에서 메뉴만 숨기고 구독은 그대로 두면 규칙을
+ * 배포하는 날 직원 앱이 오류로 덮인다. 그래서 `isAdmin` 을 **조회 경계까지** 가져온다.
+ *
+ * 잠그는 컬렉션은 `firestore.rules.next` 의 `adminOnlyCollection()` 과 **같은 목록**이어야
+ * 한다. 둘이 갈리면 한쪽은 구독하는데 다른 쪽이 막는 꼴이 된다.
+ * (확인함: 이 컬렉션들은 관리자 화면에서만 쓰인다 — 직원 화면에는 한 곳도 없다)
+ */
+export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isAdmin = false): AppData {
   const [orders, setOrders] = useState<Order[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -163,13 +179,14 @@ export function useAppData(): AppData {
       const data = await fetchCollection<Order>('orders', [
         where('createdAt', '>=', range.startInclusive),
         where('createdAt', '<', range.endExclusive),
+        where('companyId', '==', companyId),
       ]);
       setHistoricalOrders(data);
       loadedHistoricalRangeRef.current = { start, end };
     } finally {
       setIsLoadingHistoricalOrders(false);
     }
-  }, []);
+  }, [companyId]);
 
   const markLoaded = (key: string) => {
     loadedRef.current.add(key);
@@ -180,28 +197,20 @@ export function useAppData(): AppData {
 
   // ── 실시간 구독 (자주 바뀌는 데이터) ──
   useEffect(() => {
+    if (!enabled) return;
     let unsubscribes: (() => void)[] = [];
     let cancelled = false;
 
+    //  모든 업무 컬렉션은 로그인 회사에 잠근다. `companyId`가 안 붙은 옛 문서는
+    //  이관 스크립트를 돌리기 전까지 목록에서 빠진다 — 이 훅이 아니라 데이터 이관으로 푼다.
+    const co = [where('companyId', '==', companyId)];
     authReady.then(() => {
       if (cancelled) return;
-      unsubscribes = [
-        subscribeToCollection<Post>('notices', setNoticePosts),
-        subscribeToCollection<PalletStock>('pallets', setPallets),
-        subscribeToRecentCollection<PalletTransaction>('palletTransactions', 'date', 7, setPalletTransactions),
-        subscribeToCollection<Employee>('employees', setEmployees),
-        subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
-        subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
-        subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders),
-        subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }),
-        subscribeToCollection<Partner>('partners', setPartners),
-        subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
-        subscribeToRecentCollection<ChatMessage>('chatMessages', 'createdAt', 7, setChatMessages),
-        // rawMaterialLedger: 전역 구독 제거 — 원료수불부/재고관리 화면이 열릴 때만 fetchDateRange로 전체 조회(AdminApp).
-        //   (앱 시작 시 모든 사용자가 7일치를 읽던 낭비 제거. 쓰기 시엔 ledgerReloadKey로 재조회.)
-        subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger),
-        subscribeToCollection<AppNotification>('notifications', setAppNotifications),
-        subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
+      /**
+       * **관리자만 거는 구독** — 전표·자금·재무·문서함. 직원 로그인이면 빈 배열로 둔다.
+       * 규칙(`adminOnlyCollection`)과 짝이 맞아야 한다.
+       */
+      const 관리자구독 = !isAdmin ? [] : [
         // 전표는 재무 원장(손익·현금흐름·미수금 원천) → 최근 며칠이 아니라 전체 로딩해야 월별/기간 집계가 맞음
         subscribeToCollection<IssuedStatement>('issuedStatements', (data) => {
           setIssuedStatements(data.map(s => {
@@ -215,17 +224,38 @@ export function useAppData(): AppData {
               issuedAt: s.issuedAt ?? '',
             };
           }));
-        }),
+        }, co),
         // 자금 원장 — 전표와 같은 이유로 전체 로딩. 잔액은 첫 거래부터 누적해야 맞다.
-        subscribeToCollection<CashAccount>('cashAccounts', setCashAccounts),
-        subscribeToCollection<CashEntry>('cashEntries', setCashEntries),
-        subscribeToCollection<Settlement>('settlements', setSettlements),
-        subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests),
-        subscribeToCollection<ItemReceipt>('itemReceipts', setItemReceipts),
-        subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
-        subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
-        subscribeToRecentCollection<ProductionSalesLog>('productionSalesLogs', 'date', 7, setProductionSalesLogs),
-        subscribeToRecentCollection<PendingStatementEdit>('pendingStatementEdits', 'createdAt', 7, setPendingStatementEdits),
+        subscribeToCollection<CashAccount>('cashAccounts', setCashAccounts, co),
+        subscribeToCollection<CashEntry>('cashEntries', setCashEntries, co),
+        subscribeToCollection<Settlement>('settlements', setSettlements, co),
+        subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots, co),
+        subscribeToRecentCollection<ProductionSalesLog>('productionSalesLogs', 'date', 7, setProductionSalesLogs, co),
+        subscribeToRecentCollection<PendingStatementEdit>('pendingStatementEdits', 'createdAt', 7, setPendingStatementEdits, co),
+      ];
+
+      unsubscribes = [
+        ...관리자구독,
+        subscribeToCollection<Post>('notices', setNoticePosts, co),
+        subscribeToCollection<PalletStock>('pallets', setPallets, co),
+        subscribeToRecentCollection<PalletTransaction>('palletTransactions', 'date', 7, setPalletTransactions, co),
+        subscribeToCollection<Employee>('employees', setEmployees, co),
+        subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests, co),
+        subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests, co),
+        subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders, co),
+        subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }, co),
+        subscribeToCollection<Partner>('partners', setPartners, co),
+        subscribeToCollection<ChatRoom>('chatRooms', setChatRooms, co),
+        subscribeToRecentCollection<ChatMessage>('chatMessages', 'createdAt', 7, setChatMessages, co),
+        // rawMaterialLedger: 전역 구독 제거 — 원료수불부/재고관리 화면이 열릴 때만 fetchDateRange로 전체 조회(AdminApp).
+        //   (앱 시작 시 모든 사용자가 7일치를 읽던 낭비 제거. 쓰기 시엔 ledgerReloadKey로 재조회.)
+        subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger, co),
+        subscribeToCollection<AppNotification>('notifications', setAppNotifications, co),
+        subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex)), co),
+        subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests, co),
+        subscribeToCollection<ItemReceipt>('itemReceipts', setItemReceipts, co),
+        //  회사별 설정 문서 — 문서 id 를 회사 id 로 둬 두 회사가 서로 덮어쓰지 않는다.
+        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), setCompanyInfo),
       ];
     });
 
@@ -233,10 +263,11 @@ export function useAppData(): AppData {
       cancelled = true;
       unsubscribes.forEach(u => u());
     };
-  }, []);
+  }, [enabled, companyId, isAdmin]);
 
   // ── orders 구독 — ordersMonths 변경 시 재구독 ──
   useEffect(() => {
+    if (!enabled) return;
     let unsub: (() => void) | null = null;
     let cancelled = false;
     authReady.then(() => {
@@ -245,30 +276,39 @@ export function useAppData(): AppData {
       unsub = subscribeToCollection<Order>(
         'orders',
         (data) => { setOrders(data); markLoaded('orders'); },
-        [where('createdAt', '>=', cutoff)],
+        [where('createdAt', '>=', cutoff), where('companyId', '==', companyId)],
       );
     });
     return () => {
       cancelled = true;
       if (unsub) unsub();
     };
-  }, [ordersMonths]);
+  }, [enabled, ordersMonths, companyId]);
 
   // ── 1회 읽기 (거의 안 바뀌는 정적 데이터) — refreshStaticData() 호출 시 재로드 ──
   useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    //  정적 데이터도 회사에 잠근다. 옛 연결 문서(partner_item·item_bom·item_pack 등)에는
+    //  companyId가 안 붙은 것이 많아 이관 전까지는 목록에서 빠진다.
+    const co = [where('companyId', '==', companyId)];
     authReady.then(() => {
       Promise.all([
-        fetchCollection<PartnerItem>('partner_item'),
-        fetchCollection<ItemBom>('item_bom'),
-        fetchCollection<PackRow & { id: string }>('item_pack'),
-        fetchCollection<ItemFormula>('item_formula'),
-        fetchCollection<AccountGroup>('accountGroups'),
-        fetchCollection<AccountCode>('accountCodes'),
-        fetchCollection<FixedCostTemplate>('fixedCostTemplates'),
-        fetchCollection<ExpensePreset>('expensePresets'),
-        fetchCollection<CashFlowManual>('cashFlowManual'),
+        fetchCollection<PartnerItem>('partner_item', co),
+        fetchCollection<ItemBom>('item_bom', co),
+        fetchCollection<PackRow & { id: string }>('item_pack', co),
+        fetchCollection<ItemFormula>('item_formula', co),
+        //  **계정과목·비용 기준정보는 관리자만 읽는다**(2026-09-16 코덱스 검수 6번).
+        //  규칙이 관리자 전용이라, 직원이 부르면 `permission-denied` 가 난다.
+        //  빈 배열로 두면 직원 화면은 예전과 똑같이 돈다 — 쓰는 화면이 관리자 것뿐이다.
+        isAdmin ? fetchCollection<AccountGroup>('accountGroups', co) : Promise.resolve([] as AccountGroup[]),
+        isAdmin ? fetchCollection<AccountCode>('accountCodes', co) : Promise.resolve([] as AccountCode[]),
+        isAdmin ? fetchCollection<FixedCostTemplate>('fixedCostTemplates', co) : Promise.resolve([] as FixedCostTemplate[]),
+        isAdmin ? fetchCollection<ExpensePreset>('expensePresets', co) : Promise.resolve([] as ExpensePreset[]),
+        isAdmin ? fetchCollection<CashFlowManual>('cashFlowManual', co) : Promise.resolve([] as CashFlowManual[]),
       ]).then(([piData, bomData, packData, ifData, agData, acData, fctData, epData, cfmData]) => {
         // partner_item은 canonical(itemId/partnerId/price)만 쓴다. 레거시 대문자 별칭 주입 안 함.
+        if (cancelled) return;
         setPartnerItems(piData);
         setItemBoms(bomData);
         setItemPacks(packData);
@@ -280,7 +320,8 @@ export function useAppData(): AppData {
         setCashFlowManual(cfmData);
       });
     });
-  }, [staticRefreshKey]);
+    return () => { cancelled = true; };
+  }, [enabled, staticRefreshKey, companyId, isAdmin]);
 
   /**
    * BOM 단일원천 — item_bom을 유일 소스로 세운다.

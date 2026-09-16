@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
 import { FlaskConical, Plus, Trash2, FileDown, Save, X } from 'lucide-react';
 import { db } from '../src/shared/firebase';
-import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { addItem } from '../src/shared/services/firebaseService';
 
 // 벤조피렌 시험 검사성적서 1건
 interface BenzopyreneTest {
@@ -53,7 +54,7 @@ const BenzopyreneLog: React.FC<Props> = ({ currentUserName, isAdmin = false }) =
     if (!draft.productName.trim()) { alert('제품명을 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await addDoc(collection(db, 'benzopyreneTests'), {
+      await addItem('benzopyreneTests', {
         ...draft,
         productName: draft.productName.trim(),
         result: draft.result.trim(),

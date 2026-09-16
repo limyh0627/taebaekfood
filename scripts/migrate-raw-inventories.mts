@@ -2,7 +2,7 @@
 //   기본 = --dry (미리보기, 쓰기 없음).  적용 = --apply.  되돌리기 = --undo.
 //   백업: scripts/migrate-raw-inventories-v2-backup.json
 //
-//   설계: docs/원료실제원장-로트-원자화-설계.md §15 의 4단계.
+//   설계: 로컬전용/docs/원료실제원장-로트-원자화-설계.md §15 의 4단계.
 //
 // 무엇을 만드나 —
 //   원료 홀더 하나당 `rawInventories/{companyId}__{rawItemId}` 문서 하나.

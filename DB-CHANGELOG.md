@@ -5,6 +5,41 @@
 
  
 ---
+## 2026-09-16 (4) — 회사 기준정보·설정·남은 문서·Storage 경로 분리
+
+**작업자:** Codex 에이전트 (사장님: "모두 회사 별로 나눠져야 함", 풍회 법인번호
+`301-81-69333` 확인)
+
+회사별 Firestore·Storage 규칙을 잠그기 전에 남아 있던 공용 자료를 분리했다. 모든 작업은
+기본 dry, 별도 로컬 백업, 적용 후 재조회 검증을 거쳤다.
+
+- `scripts/fix-reference-data-company-split.mts --apply`
+  - 태백 공용 기준정보 139건에 `companyId: taebaek`을 명시했다.
+  - 풍회용 독립 사본 139건을 `punghoe--<원본ID>`로 만들었다.
+  - `accountCodes.groupId`는 풍회 `accountGroups` ID로 치환했다.
+  - 업무자료에서 이 기준정보 ID를 참조하는 누락 후보는 0건이었다.
+  - 되돌리기: `npx tsx scripts/fix-reference-data-company-split.mts --undo`
+- `scripts/fix-company-settings.mts --phase=prepare --apply`
+  - 기존 앱이 쓰는 레거시 설정 4건은 유지하고, 태백·풍회 회사별 설정 8건을 만들었다.
+  - 풍회 회사정보: 풍회유통 · 대표 임기주 · 사업자번호 301-81-69333 ·
+    충북 청주시 흥덕구 옥산면 덕촌리 225-1 · punghoi@naver.com.
+  - 되돌리기: `npx tsx scripts/fix-company-settings.mts --phase=prepare --undo`
+  - 새 앱 배포·확인 뒤 `--phase=cleanup --apply`로 레거시 4건을 지운다.
+- `scripts/fix-company-backfill.mts --phase=remaining --apply`
+  - 1차 4,883건 백업은 그대로 보존하고 별도 2차 백업으로 433건을 채웠다.
+  - 원본 관계 판정 341건 · 태백 기본값 92건 · 충돌 0건.
+  - 인증·앱메타를 제외한 업무 컬렉션의 회사값 누락을 다시 읽어 **0건** 확인했다.
+  - 되돌리기: `npx tsx scripts/fix-company-backfill.mts --phase=remaining --undo`
+- `scripts/fix-storage-company-paths.mts --apply`
+  - 옛 파일 73개(문서함 66 · 오피스톡 7)를 모두
+    `companies/taebaek/...`로 복사하고 크기·MD5를 확인했다.
+  - `fileCabinetDocs`와 오피스톡 메시지의 참조 73건을 새 URL·경로로 바꿨다.
+  - **원본 파일은 삭제하지 않았다.** 되돌리기는 참조를 복원하고 복사본만 지운다.
+  - 되돌리기: `npx tsx scripts/fix-storage-company-paths.mts --undo`
+
+백업은 전부 `로컬전용/백업/`에 있으며 Git에 넣지 않는다.
+
+---
 ## 2026-09-16 (3) — 모든 업무 문서에 회사(`companyId`)를 채우고, 옛 알림을 지움
 
 **작업자:** Claude 에이전트 (코덱스 인수인계 「회사별·메뉴별 DB 권한 적용」 · 사장님:

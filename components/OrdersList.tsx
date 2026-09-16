@@ -44,7 +44,7 @@ import {
   ArrowUpDown,
   CheckCircle2
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit, OrderItemEdit } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem, InvoiceType, INVOICE_TYPES, OrderStatusAudit, OrderItemEdit, CompanyId } from '../types';
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -86,6 +86,7 @@ import Badge from '../src/shared/components/Badge';
 import CompletionStatusControl from '../src/shared/components/CompletionStatusControl';
 import OrderEditModalShell from './OrderEditModalShell';
 import DateChipButton from '../src/shared/components/DateChipButton';
+import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -225,6 +226,7 @@ const inventoryBoxPackCount = (product: Item | undefined): number | undefined =>
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
 interface OrdersListProps {
+  companyId: CompanyId;
   title: string;
   /**
    * 사번 → 이름. **주문 로그에서만 쓴다** — `Order.createdBy` 에는 이름이 아니라
@@ -1566,6 +1568,7 @@ const 정렬목록 = [
 ];
 
 const OrdersList: React.FC<OrdersListProps> = ({
+  companyId,
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
@@ -1662,10 +1665,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
       필요할때 펼치게"). 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
       창을 닫았다 열면 다시 접힌다. */
   const [showEditorPallet, setShowEditorPallet] = useState(false);
-  /*  배송 오전·오후는 배송순서 화면과 **같은 문서**를 본다(`settings/deliveryOrdering`).
+  /*  배송 오전·오후는 배송순서 화면과 **같은 회사별 문서**를 본다.
       읽고 쓰는 길은 [deliveryTimeSlot](../src/shared/deliveryTimeSlot.ts) 하나다. */
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, DeliveryTimeSlot>>({});
-  useEffect(() => subscribeDeliveryOrdering(doc => setDeliveryTimeSlots(doc?.timeSlots ?? {})), []);
+  useEffect(() => subscribeDeliveryOrdering(companyId, doc => setDeliveryTimeSlots(doc?.timeSlots ?? {})), [companyId]);
   const [listPalletEditorOrderId, setListPalletEditorOrderId] = useState<string | null>(null);
   const listTopScrollRef = React.useRef<HTMLDivElement>(null);
   const listBodyScrollRef = React.useRef<HTMLDivElement>(null);
@@ -1717,19 +1720,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
   /** 같이 만들 것으로 고른 줄들 — 두 개 이상 골라야 묶을 수 있다 */
   const [workGroupPick, setWorkGroupPick] = useState<string[]>([]);
   /**
-   * **작업 그룹 이름과 차례** — `settings/workGroups` 한 문서에 둔다.
+   * **작업 그룹 이름과 차례** — 회사별 settings 문서에 둔다.
    * 처음에는 여태 쓰던 세 갈래(기름·깨·미분류)로 시작한다. 사장님이 고치면 그때부터 그 이름이다.
    */
   const [workGroups, setWorkGroups] = useState<string[]>(['기름', '깨', '미분류']);
   useEffect(() => {
     if (embeddedListOnly) return;
-    return subscribeToDocument<{ names: string[] }>('settings', 'workGroups', doc => {
+    return subscribeToDocument<{ names: string[] }>('settings', companySettingDocId(companyId, 'workGroups'), doc => {
       if (doc?.names?.length) setWorkGroups(doc.names);
     });
-  }, [embeddedListOnly]);
+  }, [companyId, embeddedListOnly]);
   const saveWorkGroups = (names: string[]) => {
     setWorkGroups(names);
-    void setDocument('settings', 'workGroups', { names });
+    void setDocument('settings', companySettingDocId(companyId, 'workGroups'), companySettingPatch(companyId, { names }));
   };
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(() => new Set(['work-order']));
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -4223,7 +4226,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <span className="block text-[11px] font-bold leading-4 text-slate-600">배송 시간</span>
                     <select
                       value={deliveryTimeSlots[editorOrder.id] ?? ''}
-                      onChange={event => saveDeliveryTimeSlot(editorOrder.id, (event.target.value || null) as DeliveryTimeSlot | null)}
+                      onChange={event => saveDeliveryTimeSlot(companyId, editorOrder.id, (event.target.value || null) as DeliveryTimeSlot | null)}
                       aria-label="배송 시간"
                       className="mt-1 h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                     >

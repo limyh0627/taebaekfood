@@ -1,5 +1,6 @@
 import type { CompanyId, IssuedStatement } from '../../../shared/types';
 import type { StatementWrite } from '../../statements/domain/statementWrites';
+import { COL } from '../../../shared/collections';
 
 export type TaxIssueScope = 'all' | 'taxable' | 'exempt';
 
@@ -29,7 +30,7 @@ export function planTaxIssue(input: {
     const supply = relevant.reduce((sum, x) => sum + x.lines.reduce((s, line) => s + line.supply, 0), 0);
     const tax = relevant.reduce((sum, x) => sum + x.lines.reduce((s, line) => s + line.tax, 0), 0);
     writes.push({
-      collection: 'taxIssueRecords', id: `${input.operationId}_${kind}`, merge: false,
+      collection: COL.taxIssueRecords, id: `${input.operationId}_${kind}`, merge: false,
       data: {
         operationId: input.operationId, companyId: input.companyId, kind,
         statementIds: relevant.map(x => x.statement.id), supply, tax, amount: supply + tax,

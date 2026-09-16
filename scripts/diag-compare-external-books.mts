@@ -40,7 +40,7 @@ const 적기 = (a: string, b: string, c: string, d: string, e: unknown, f: unkno
   줄.push([a, b, c, d, e, f, g, h].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
 
 // ── ① 세액 맞대기 ──────────────────────────────────────────────────────
-const 전표시트 = 시트('docs/8월전표.xlsx').filter(r => r['전표구분'] === '매출' && 반(r['매출금액']) > 0);
+const 전표시트 = 시트('로컬전용/docs/8월전표.xlsx').filter(r => r['전표구분'] === '매출' && 반(r['매출금액']) > 0);
 console.log(`8월 전표(매출 발행) ${전표시트.length}줄`);
 
 const 우리팔월 = statements.filter(s => String(s.tradeDate ?? '').startsWith('2026-08'));
@@ -82,7 +82,7 @@ for (const c of 수금) {
   if (c.direction === 'in' || c.type === '수금' || 금액 > 0) 우리미수.set(c.partnerId, (우리미수.get(c.partnerId) ?? 0) - Math.abs(금액));
 }
 
-const 미수시트 = 시트('docs/8월 31일 미수.xlsx').filter(r => String(r['업체구분'] ?? '') === '매출처');
+const 미수시트 = 시트('로컬전용/docs/8월 31일 미수.xlsx').filter(r => String(r['업체구분'] ?? '') === '매출처');
 console.log(`\n8월 31일 미수 시트 매출처 ${미수시트.length}줄`);
 let 미수다름 = 0, 이름없음 = 0;
 for (const r of 미수시트) {

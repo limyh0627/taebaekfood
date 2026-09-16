@@ -1,8 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { today } from '../src/shared/day';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
-import { collection, addDoc, updateDoc, setDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { addItem, setDocument } from '../src/shared/services/firebaseService';
+import { haccpTemplateDocId } from '../src/shared/haccpTemplateId';
+import type { CompanyId } from '../src/shared/types';
+const HaccpCompanyContext = createContext<CompanyId>('taebaek');
+const useHaccpCompany = (): CompanyId => useContext(HaccpCompanyContext);
 
 // ── 공통 스타일 ────────────────────────────────────────────────────────────────
 const TH = 'border border-slate-400 bg-slate-100 p-1.5 text-xs font-bold text-center';
@@ -489,6 +494,7 @@ const defaultTempRows = (zones: StorageZone[] = STORAGE_ZONES): TempRow[] =>
   zones.map(z => ({ zone: z.name, temp: '', result: '' as '', corrective: '', inspector: '' }));
 
 export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const today = todayStr();
   const [records, setRecords] = useState<TempRecord[]>([]);
   const [selected, setSelected] = useState<TempRecord | null>(null);
@@ -504,7 +510,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'temp_zones'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
       if (snap.exists()) {
         const data = snap.data().zones;
         if (Array.isArray(data) && data.length > 0) setTemplateZones(data);
@@ -545,8 +551,8 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
     try {
       if (!selected.id) {
         const data = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
-        const ref = await addDoc(collection(db, 'haccp_temp'), data);
-        setSelected({ ...data, id: ref.id });
+        const id = await addItem('haccp_temp', data);
+        setSelected({ ...data, id });
       } else {
         const upd = { rows: selected.rows, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
         await updateDoc(doc(db, 'haccp_temp', selected.id), upd as any);
@@ -1084,7 +1090,7 @@ const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
     const userName = currentUser?.name ?? '알 수 없음';
     try {
       if (!currentRecord?.id) {
-        await addDoc(collection(db, 'haccp_incoming'), { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+        await addItem('haccp_incoming', { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
       } else {
         await updateDoc(doc(db, 'haccp_incoming', currentRecord.id), { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
       }
@@ -1374,7 +1380,7 @@ const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
     const userName = currentUser?.name ?? '알 수 없음';
     try {
       if (!currentRecord?.id) {
-        await addDoc(collection(db, 'haccp_cleaning'), { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+        await addItem('haccp_cleaning', { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
       } else {
         await updateDoc(doc(db, 'haccp_cleaning', currentRecord.id), { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
       }
@@ -1816,6 +1822,7 @@ const SanitationMonthlyCover: React.FC<{ ym: string; monthRecords: SanitationRec
 };
 
 export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const [records, setRecords] = useState<SanitationRecord[]>([]);
   const [selected, setSelected] = useState<SanitationRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1835,7 +1842,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'sanitation'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
@@ -1969,8 +1976,8 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           updatedAt: now,
           revisionCount: 0,
         };
-        const ref = await addDoc(collection(db, 'haccp_sanitation'), data);
-        setSelected({ ...data, id: ref.id });
+        const id = await addItem('haccp_sanitation', data);
+        setSelected({ ...data, id });
       } else {
         const newRev = (selected.revisionCount ?? 0) + 1;
         const update: Partial<SanitationRecord> = {
@@ -2492,6 +2499,7 @@ const emptyPersonalRecord = (cols: string[] = PERSONAL_HYGIENE_COLS): Omit<Perso
 });
 
 export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const [records, setRecords] = useState<PersonalHygieneRecord[]>([]);
   const [selected, setSelected] = useState<PersonalHygieneRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2509,7 +2517,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'personal_hygiene'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
       if (snap.exists()) {
         const data = snap.data().cols;
         if (Array.isArray(data) && data.length > 0) setTemplateCols(data);
@@ -2577,8 +2585,8 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     try {
       if (!selected.id) {
         const data: Omit<PersonalHygieneRecord, 'id'> = { ...selected, inspector: selected.inspector || userName, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
-        const ref = await addDoc(collection(db, 'haccp_personal_hygiene'), data);
-        setSelected({ ...data, id: ref.id });
+        const id = await addItem('haccp_personal_hygiene', data);
+        setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
         await updateDoc(doc(db, 'haccp_personal_hygiene', selected.id), update as any);
@@ -2846,13 +2854,14 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 // 개인위생 템플릿 에디터 (관리자 전용)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const PersonalHygieneTemplateEditor: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [cols, setCols] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [newCol, setNewCol] = useState('');
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'personal_hygiene'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
       if (snap.exists()) {
         const data = snap.data().cols;
         if (Array.isArray(data) && data.length > 0) { setCols(data); return; }
@@ -2866,7 +2875,7 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
     if (valid.length === 0) { alert('항목을 1개 이상 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'haccp_templates', 'personal_hygiene'), { cols: valid });
+      await setDocument('haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene'), { cols: valid });
       setEditing(false);
     } finally { setSaving(false); }
   };
@@ -2973,12 +2982,13 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
 // 온도관리 보관장소 템플릿 에디터 (관리자 전용)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const TempZoneTemplateEditor: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [zones, setZones] = useState<StorageZone[]>([]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'temp_zones'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
       if (snap.exists()) {
         const data = snap.data().zones;
         if (Array.isArray(data) && data.length > 0) { setZones(data); return; }
@@ -2992,7 +3002,7 @@ export const TempZoneTemplateEditor: React.FC = () => {
     if (valid.length === 0) { alert('보관장소를 1개 이상 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'haccp_templates', 'temp_zones'), { zones: valid });
+      await setDocument('haccp_templates', haccpTemplateDocId(companyId, 'temp_zones'), { zones: valid });
       setEditing(false);
     } finally { setSaving(false); }
   };
@@ -3108,12 +3118,13 @@ export const TempZoneTemplateEditor: React.FC = () => {
 // 작업장 위생 템플릿 에디터 (관리자 전용 — HACCP 체크리스트 탭에서 사용)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const SanitationTemplateEditor: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'sanitation'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
@@ -3127,7 +3138,7 @@ export const SanitationTemplateEditor: React.FC = () => {
     if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'haccp_templates', 'sanitation'), { items: validItems });
+      await setDocument('haccp_templates', haccpTemplateDocId(companyId, 'sanitation'), { items: validItems });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -3257,7 +3268,7 @@ export const SanitationTemplateEditor: React.FC = () => {
 
 // 직원용 위생점검 탭 뷰 (작업장 위생 + 개인위생)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
   const [activeTab, setActiveTab] = useState<'sanitation' | 'personal' | 'temp' | 'weekly-sanitation' | 'closing'>('sanitation');
   const STAFF_TABS = [
     { id: 'sanitation' as const,        label: '작업장 위생점검표',    desc: 'HACCP-PRP-001 · 작업장 위생 점검 (1일 2회)',   icon: <ShieldAlert size={13} />,   color: 'emerald' },
@@ -3278,7 +3289,7 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
   const [tabOrder, setTabOrder] = useState<string[]>([]);
   const pendingTabOrder = useRef<string[] | null>(null);
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'staff_tab_order'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'staff_tab_order')), snap => {
       const data = snap.exists() ? snap.data().order : null;
       if (Array.isArray(data)) setTabOrder(data);
     });
@@ -3299,12 +3310,13 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
     },
     () => {
       if (!pendingTabOrder.current) return;
-      setDoc(doc(db, 'haccp_templates', 'staff_tab_order'), { order: pendingTabOrder.current });
+      setDocument('haccp_templates', haccpTemplateDocId(companyId, 'staff_tab_order'), { order: pendingTabOrder.current });
       pendingTabOrder.current = null;
     }
   );
 
   return (
+    <HaccpCompanyContext.Provider value={companyId}>
     <div className="flex flex-col h-full bg-slate-50">
       <div className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center gap-3">
@@ -3356,6 +3368,7 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
         {activeTab === 'temp'       && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
       </div>
     </div>
+    </HaccpCompanyContext.Provider>
   );
 };
 
@@ -3418,6 +3431,7 @@ const emptyPeriodRecord = (cycle: PeriodCycle, period: string, items: { item: st
 });
 
 const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cycle }) => {
+  const companyId = useHaccpCompany();
   const templateKey = cycle === 'weekly' ? 'weekly_sanitation' : 'monthly_sanitation';
   const defaultItems = cycle === 'weekly' ? WEEKLY_ITEMS_DEFAULT : MONTHLY_ITEMS_DEFAULT;
   const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
@@ -3425,7 +3439,7 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', templateKey), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, templateKey)), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
@@ -3439,7 +3453,7 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
     if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'haccp_templates', templateKey), { items: validItems });
+      await setDocument('haccp_templates', haccpTemplateDocId(companyId, templateKey), { items: validItems });
       setEditing(false);
     } finally { setSaving(false); }
   };
@@ -3521,6 +3535,7 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
 };
 
 const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const [cycle, setCycle] = useState<PeriodCycle>('weekly');
   const [weekPeriod, setWeekPeriod] = useState(currentWeekStr());
   const [monthPeriod, setMonthPeriod] = useState(new Date().toISOString().slice(0, 7));
@@ -3546,7 +3561,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'weekly_sanitation'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setWeekItems(data);
@@ -3555,7 +3570,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'monthly_sanitation'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setMonthItems(data);
@@ -3627,8 +3642,8 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
     try {
       if (!selected.id) {
         const data: Omit<PeriodRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
-        const ref = await addDoc(collection(db, 'haccp_periodic_sanitation'), data);
-        setSelected({ ...data, id: ref.id });
+        const id = await addItem('haccp_periodic_sanitation', data);
+        setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update as any);
@@ -3978,12 +3993,13 @@ const emptyClosingRecord = (date: string, items: { item: string; standard: strin
 });
 
 const ClosingChecklistTemplateEditor: React.FC = () => {
+  const companyId = useHaccpCompany();
   const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'closing_checklist'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
@@ -3997,7 +4013,7 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
     if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
     setSaving(true);
     try {
-      await setDoc(doc(db, 'haccp_templates', 'closing_checklist'), { items: validItems });
+      await setDocument('haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist'), { items: validItems });
       setEditing(false);
     } finally { setSaving(false); }
   };
@@ -4074,6 +4090,7 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
 };
 
 const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const [checkDate, setCheckDate] = useState(todayStr());
   const [templateItems, setTemplateItems] = useState<{ item: string; standard: string }[]>(CLOSING_ITEMS_DEFAULT);
   const [records, setRecords] = useState<ClosingRecord[]>([]);
@@ -4092,7 +4109,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'closing_checklist'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), snap => {
       if (snap.exists()) {
         const data = snap.data().items;
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
@@ -4153,8 +4170,8 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
     try {
       if (!selected.id) {
         const data: Omit<ClosingRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
-        const ref = await addDoc(collection(db, 'haccp_closing_checklist'), data);
-        setSelected({ ...data, id: ref.id });
+        const id = await addItem('haccp_closing_checklist', data);
+        setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
         await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update as any);
@@ -4438,14 +4455,14 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
   { id: 'personal',          label: '개인위생점검표',          icon: <User size={14} />,           desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)' },
 ];
 
-const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
   // 탭 순서: 관리자가 드래그로 변경 → Firestore에 저장돼 모든 기기에서 동일하게 표시
   const [tabOrder, setTabOrder] = useState<string[]>([]);
   const pendingTabOrder = useRef<string[] | null>(null);
   useEffect(() => {
-    return onSnapshot(doc(db, 'haccp_templates', 'haccp_tab_order'), snap => {
+    return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'haccp_tab_order')), snap => {
       const data = snap.exists() ? snap.data().order : null;
       if (Array.isArray(data)) setTabOrder(data);
     });
@@ -4466,12 +4483,13 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
     },
     () => {
       if (!pendingTabOrder.current) return;
-      setDoc(doc(db, 'haccp_templates', 'haccp_tab_order'), { order: pendingTabOrder.current });
+      setDocument('haccp_templates', haccpTemplateDocId(companyId, 'haccp_tab_order'), { order: pendingTabOrder.current });
       pendingTabOrder.current = null;
     }
   );
 
   return (
+    <HaccpCompanyContext.Provider value={companyId}>
     <div className="flex flex-col h-full bg-slate-50">
       {/* 헤더 */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
@@ -4555,6 +4573,7 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
         )}
       </div>
     </div>
+    </HaccpCompanyContext.Provider>
   );
 };
 

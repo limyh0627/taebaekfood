@@ -22,13 +22,29 @@ import {
   documentId,
   arrayUnion,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { auth, authReady, db } from "../firebase";
 import { today } from '../day';
 import type { Order, OrderStatus, RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
 import type { CollectionName } from '../collections';
+import { withClaimCompany } from '../companyWriteBoundary';
+
+/**
+ * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
+ * 조작 가능한 상태값이므로 Firebase Auth가 서명한 custom claim을 기준으로 삼는다.
+ */
+export const companyScopedWriteData = async (
+  collectionName: CollectionName,
+  data: Record<string, unknown>,
+) => {
+  await authReady;
+  const user = auth.currentUser;
+  if (!user) throw new Error('로그인이 만료되어 저장하지 않았습니다. 다시 로그인해 주세요.');
+  const token = await user.getIdTokenResult();
+  return withClaimCompany(collectionName, data, { companyId: token.claims.companyId });
+};
 
 export const subscribeToDocument = <T>(
   collectionName: CollectionName,
@@ -41,21 +57,21 @@ export const subscribeToDocument = <T>(
 };
 
 export const setDocument = async (collectionName: CollectionName, docId: string, data: any) => {
-  await setDoc(doc(db, collectionName, docId), data, { merge: true });
+  const scoped = await companyScopedWriteData(collectionName, stripUndefined(data));
+  await setDoc(doc(db, collectionName, docId), scoped, { merge: true });
 };
 
 export const subscribeToCollection = <T extends { id: string }>(
   collectionName: CollectionName,
   callback: (data: T[]) => void,
-  constraints: QueryConstraint[] = []
+  constraints: QueryConstraint[] = [],
+  onError: (error: Error) => void = error => console.error(`[Firestore 구독 실패] ${collectionName}`, error),
 ) => {
   const q = query(collection(db, collectionName), ...constraints);
   const cache = new Map<string, T>();
 
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const changes = snapshot.docChanges();
-    if (changes.length === 0) return;
-
     for (const change of changes) {
       if (change.type === 'added' || change.type === 'modified') {
         cache.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as T);
@@ -64,7 +80,7 @@ export const subscribeToCollection = <T extends { id: string }>(
       }
     }
     callback(Array.from(cache.values()));
-  });
+  }, onError);
 };
 
 // 1회 읽기 (정적 데이터용)
@@ -82,13 +98,14 @@ export const subscribeToRecentCollection = <T extends { id: string }>(
   collectionName: CollectionName,
   dateField: string,
   daysBack: number,
-  callback: (data: T[]) => void
+  callback: (data: T[]) => void,
+  extraConstraints: QueryConstraint[] = [],
 ) => {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - daysBack);
   // dateField이 ISO string이면 toISOString(), YYYY-MM-DD면 slice
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return subscribeToCollection<T>(collectionName, callback, [where(dateField, '>=', cutoffStr)]);
+  return subscribeToCollection<T>(collectionName, callback, [where(dateField, '>=', cutoffStr), ...extraConstraints]);
 };
 
 // 특정 날짜 범위 one-time fetch (과거 데이터 온디맨드)
@@ -136,7 +153,7 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
     if (reason) throw new Error(`전표를 만들 수 없습니다 — ${reason}`);
   }
   const { id, ...raw } = item;
-  const data = stripUndefined(raw);
+  const data = await companyScopedWriteData(collectionName, stripUndefined(raw));
   if (id) {
     await setDoc(doc(db, collectionName, id), data);
     return id;
@@ -255,12 +272,13 @@ export const subscribeToSubcollection = <T extends { id: string }>(
 };
 
 export const addSubItem = async (
-  parentCollection: string,
+  parentCollection: CollectionName,
   parentId: string,
   subCollectionName: string,
   item: any
 ) => {
-  const { id, ...data } = item;
+  const { id, ...raw } = item;
+  const data = await companyScopedWriteData(parentCollection, stripUndefined(raw));
   if (id) {
     await setDoc(doc(db, parentCollection, parentId, subCollectionName, id), data);
     return id;
@@ -299,23 +317,22 @@ export const setProductClients = async (itemId: string, partnerIds: string[]) =>
   const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'out')));
   const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
-  const batch = writeBatch(db);
+  const ops: CompanyWriteOperation[] = [];
 
   // 연결 해제된 거래처 삭제
   existingMap.forEach((ref, partnerId) => {
-    if (!partnerIds.includes(partnerId)) batch.delete(ref);
+    if (!partnerIds.includes(partnerId)) ops.push({ kind: 'delete', collection: 'partner_item', id: ref.id });
   });
 
   // 새로 연결된 거래처만 추가 (기존 레코드는 건드리지 않아 박스/테이프 설정 보존)
   for (const partnerId of partnerIds) {
     if (!existingMap.has(partnerId)) {
       const id = `${itemId}_${partnerId}_out`;
-      const ref = doc(db, 'partner_item', id);
-      batch.set(ref, { id, itemId, partnerId, Direction: 'out' });
+      ops.push({ kind: 'set', collection: 'partner_item', id, data: { id, itemId, partnerId, Direction: 'out' } });
     }
   }
 
-  await batch.commit();
+  await commitCompanyWrites(ops);
 };
 
 // partner_item 컬렉션에 품목-거래처(Direction='in') 매핑 저장
@@ -325,21 +342,20 @@ export const setProductSuppliers = async (itemId: string, inboundPartnerIds: str
   const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'in')));
   const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
-  const batch = writeBatch(db);
+  const ops: CompanyWriteOperation[] = [];
 
   existingMap.forEach((ref, partnerId) => {
-    if (!inboundPartnerIds.includes(partnerId)) batch.delete(ref);
+    if (!inboundPartnerIds.includes(partnerId)) ops.push({ kind: 'delete', collection: 'partner_item', id: ref.id });
   });
 
   for (const partnerId of inboundPartnerIds) {
     if (!existingMap.has(partnerId)) {
       const id = `${itemId}_${partnerId}_in`;
-      const ref = doc(db, 'partner_item', id);
-      batch.set(ref, { id, itemId, partnerId, Direction: 'in' });
+      ops.push({ kind: 'set', collection: 'partner_item', id, data: { id, itemId, partnerId, Direction: 'in' } });
     }
   }
 
-  await batch.commit();
+  await commitCompanyWrites(ops);
 };
 
 export const syncInitialData = async (collectionName: CollectionName, initialData: any[]) => {
@@ -422,19 +438,32 @@ export const subscribeWhere = <T extends { id: string }>(
  * 여러 문서를 **한꺼번에** 쓴다 — 중간에 끊겨 반만 쓰이는 일이 없다.
  * 재고 차감처럼 여러 품목이 같이 움직일 때 쓴다.
  */
-export const writeMany = async (
-  ops: { collection: string; id: string; data: Record<string, unknown>; merge?: boolean }[],
-): Promise<void> => {
+export type CompanyWriteOperation =
+  | { kind: 'set'; collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }
+  | { kind: 'delete'; collection: CollectionName; id: string };
+
+/** 배치 생성도 단건 생성과 같은 claim 회사 경계를 반드시 통과한다. */
+export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise<void> => {
   if (!ops.length) return;
   //  Firestore 배치는 한 번에 500건까지다. 넘으면 나눠 보낸다.
   for (let i = 0; i < ops.length; i += 400) {
     const batch = writeBatch(db);
     for (const op of ops.slice(i, i + 400)) {
-      batch.set(doc(db, op.collection, op.id), op.data, { merge: op.merge ?? false });
+      const ref = doc(db, op.collection, op.id);
+      if (op.kind === 'delete') {
+        batch.delete(ref);
+      } else {
+        const data = await companyScopedWriteData(op.collection, stripUndefined(op.data));
+        batch.set(ref, data, { merge: op.merge ?? false });
+      }
     }
     await batch.commit();
   }
 };
+
+export const writeMany = async (
+  ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }[],
+): Promise<void> => commitCompanyWrites(ops.map(op => ({ kind: 'set' as const, ...op })));
 
 /**
  * 읽고 고쳐 쓰는 걸 **한 덩어리로** — 그 사이 남이 고치면 다시 돈다.

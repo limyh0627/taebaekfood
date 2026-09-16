@@ -4,7 +4,7 @@
 //   되돌리기  npx tsx scripts/fix-standard-chart.mts --undo
 //
 // ⚠ 2026-09-01 현재 **아직 안 돌렸다.** 사장님 지시: "지금은 안할거야 준비만 해둬".
-//   돌리기 전에 docs/표준계정과목-이전계획.md 를 먼저 읽을 것 — 코드 쪽도 같이 고쳐야 한다.
+//   돌리기 전에 로컬전용/docs/표준계정과목-이전계획.md 를 먼저 읽을 것 — 코드 쪽도 같이 고쳐야 한다.
 //
 // 무엇을 고치나:
 //   accountCodes          문서 id·code·name
@@ -183,7 +183,7 @@ for (const t of tpls) {
 
 console.log(`\n── 따라 고칠 것 ──`);
 console.log(`   전표 ${touchedStmt}건 · 자금전표 ${touchedCash}건 · 템플릿 ${touchedTpl}건`);
-console.log(`\n⚠ 코드도 같이 고쳐야 한다 — docs/표준계정과목-이전계획.md 의 '코드에 박힌 번호' 참고.`);
+console.log(`\n⚠ 코드도 같이 고쳐야 한다 — 로컬전용/docs/표준계정과목-이전계획.md 의 '코드에 박힌 번호' 참고.`);
 console.log(`   안 고치면 화면이 옛 번호를 찾다가 조용히 빈 값이 된다.`);
 
 if (!APPLY) { console.log('\n(--dry) 적용하려면 --apply'); process.exit(0); }

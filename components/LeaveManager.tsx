@@ -22,9 +22,10 @@ import {
   ArrowDown,
   Crown
 } from 'lucide-react';
-import { Employee, LeaveRequest, LeaveType, LeaveStatus } from '../types';
+import { Employee, LeaveRequest, LeaveType, LeaveStatus, CompanyId } from '../types';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 관리자 화면과 같은 함수를 쓴다
 import {
@@ -38,6 +39,7 @@ import {
 } from '../src/shared/leave';
 
 interface LeaveManagerProps {
+  companyId: CompanyId;
   currentUser: Employee;
   employees: Employee[];
   leaveRequests: LeaveRequest[];
@@ -50,7 +52,7 @@ interface LeaveManagerProps {
 
 type LeaveTab = 'my' | 'calendar' | 'orgchart';
 
-// ── 조직도 설정 (Firestore: settings/orgChart) ──
+// ── 조직도 설정 (Firestore: settings/{companyId}__orgChart) ──
 interface OrgDept {
   id: string;         // 안정적인 노드 id
   keys: string[];     // 이 박스에 묶을 employee.department 값들(여러 개 = 병합, 예: 생산관리팀+생산팀)
@@ -152,6 +154,7 @@ const normalizeOrg = (cfg: OrgChartConfig): OrgChartConfig => ({
 });
 
 const LeaveManager: React.FC<LeaveManagerProps> = ({
+  companyId,
   currentUser,
   employees,
   leaveRequests,
@@ -175,9 +178,9 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const [dirSearch, setDirSearch] = useState('');                          // 직원 연락처 검색어
 
   useEffect(() => {
-    const unsubOrg = subscribeToDocument<OrgChartConfig>('settings', 'orgChart', setOrgSaved);
+    const unsubOrg = subscribeToDocument<OrgChartConfig>('settings', companySettingDocId(companyId, 'orgChart'), setOrgSaved);
     return () => { unsubOrg(); };
-  }, []);
+  }, [companyId]);
 
   // 저장본이 없으면 실제 직원 명단에서 만든 기본 조직도를 보여준다. (레거시 저장본은 임원 계층 보정)
   const effectiveOrg = useMemo<OrgChartConfig>(
@@ -209,7 +212,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
   const saveOrg = async (cfg: OrgChartConfig) => {
     const payload = { ...cfg, updatedAt: new Date().toISOString() };
-    await setDocument('settings', 'orgChart', payload);
+    await setDocument('settings', companySettingDocId(companyId, 'orgChart'), companySettingPatch(companyId, payload));
     setOrgDraft(null);
   };
   // draft 부서 필드 수정 헬퍼

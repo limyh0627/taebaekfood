@@ -26,7 +26,13 @@ export function StatementPaymentTableRow(props: {
       <td className="whitespace-nowrap px-3 py-2" onClick={event => event.stopPropagation()}>{props.dateCell}</td>
       <td className="whitespace-nowrap px-3 py-2 text-slate-500">{view.owner ? <span className="font-bold">{view.owner}</span> : <span className="text-slate-300">—</span>}</td>
       <td className="px-3 py-2"><span className="inline-flex items-center gap-1 align-middle">{props.journalToggle}<span className={`whitespace-nowrap text-[12px] font-black ${statementType === '매출' ? 'text-lime-700' : 'text-orange-600'}`}>{view.label}</span></span></td>
-      <td className="max-w-[180px] truncate px-3 py-2 font-bold text-slate-800" title={view.partner}>{view.partner}</td>
+      <td className="max-w-[180px] px-3 py-2 font-bold text-slate-800" title={view.partner}>
+        {/*  **업체명 밑에 배송지**(2026-09-16 사장님: "업체명 밑에 회색 글씨로 배송지명만
+             표시해주면 어떠냐"). 배송지를 안 쓰는 거래처는 줄을 아예 안 그린다 —
+             빈 줄을 두면 줄 높이만 늘고 읽을 것이 없다. */}
+        <span className="block truncate">{view.partner}</span>
+        {view.shipTo && <span className="block truncate text-[10px] font-bold text-slate-400">{view.shipTo}</span>}
+      </td>
       <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500">{view.detail || '—'}</td>
       <td className="px-4 py-2 text-right font-black text-slate-800">{fmt(view.amount)}</td>
       <td className="px-4 py-2 text-right"><Balance amount={view.cumulative ?? 0} type={statementType}/></td>

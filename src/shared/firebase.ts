@@ -5,7 +5,7 @@
  */
 import { initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
-import { connectAuthEmulator, getAuth, signInAnonymously } from "firebase/auth";
+import { connectAuthEmulator, getAuth, onAuthStateChanged } from "firebase/auth";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
 import { assertLocalEmulatorTarget } from './firebaseEmulatorSafety';
 
@@ -34,47 +34,14 @@ if (usingFirebaseEmulators) {
   connectStorageEmulator(storage, host, 9199);
 }
 
-/**
- * **익명 로그인 — 될 때까지 다시 걸고, 풀리면 다시 건다.**
- *
- * 2026-09-11 사장님이 전표를 저장하다 받은 창:
- *   "전표 또는 거래처 단가 저장에 실패했습니다 … Missing or insufficient permissions."
- *
- * 규칙은 **인증만 되어 있으면 다 열려 있다**(firestore.rules). 그러니 저 글은 곧
- * **그 순간 로그인이 빠져 있었다**는 뜻이다. 여기가 그렇게 만들고 있었다 —
- *
- *     signInAnonymously(auth).then(() => {}).catch(console.error)
- *
- * 한 번만 걸고, 실패하면 **조용히 삼킨다**(콘솔에만 찍는다). 그런데 `authReady` 는 그래도
- * 이어지니 구독이 시작되고, Firestore 가 **캐시에 있던 것을 그대로 그려 준다.**
- * 그래서 화면은 멀쩡해 보이고 **쓰기만 전부 막힌다** — 사장님이 본 그림이다.
- * 앱을 켤 때 잠깐 끊겼거나(현장 와이파이), 나중에 토큰 갱신이 실패하면 이렇게 된다.
- *
- * 그래서 두 가지를 한다.
- *   ① **다시 건다** — 몇 번, 점점 뜸하게. 잠깐 끊긴 것은 이걸로 넘어간다.
- *   ② **풀리면 또 건다** — `onAuthStateChanged` 가 빈 사용자를 주면 새로 건다.
- *      쓰다가 세션이 죽는 경우가 여기에 걸린다.
- *
- * `authReady` 는 **실패해도 이어진다.** 영영 안 이어지면 화면이 통째로 안 뜬다 —
- * 읽기라도 캐시로 되는 편이 낫다. 대신 `isSignedIn()` 으로 지금 상태를 물어볼 수 있게 해
- * 쓰는 쪽이 "로그인이 풀렸다"고 제대로 말할 수 있게 한다.
- */
-const 로그인걸기 = async (): Promise<void> => {
-  for (let 번째 = 0; 번째 < 5; 번째 += 1) {
-    try { await signInAnonymously(auth); return; }
-    catch (error) {
-      console.error(`[인증] 익명 로그인 실패 (${번째 + 1}/5)`, error);
-      //  0.5초 → 1 → 2 → 4초. 현장 와이파이가 돌아올 만큼만 기다린다.
-      await new Promise(resolve => setTimeout(resolve, 500 * 2 ** 번째));
-    }
-  }
-  console.error('[인증] 익명 로그인을 끝내 못 걸었다 — 저장이 막힌다');
-};
+/** Firebase가 저장된 직원 세션을 복원했는지 한 번만 기다린다. 익명 계정은 더 만들지 않는다. */
+export const authReady = new Promise<void>(resolve => {
+  let unsubscribe = () => {};
+  unsubscribe = onAuthStateChanged(auth, () => {
+    unsubscribe();
+    resolve();
+  });
+});
 
-export const authReady: Promise<void> = 로그인걸기();
-
-/** 지금 로그인돼 있나 — 쓰기 전에 물어보면 "권한 없음" 대신 제대로 된 말을 할 수 있다. */
-export const isSignedIn = (): boolean => auth.currentUser !== null;
-
-//  쓰는 도중에 세션이 죽으면 다시 건다. 안 걸면 그때부터 모든 쓰기가 조용히 막힌다.
-auth.onAuthStateChanged(user => { if (!user) void 로그인걸기(); });
+/** 직원 Custom Token으로 로그인한 세션만 업무 인증으로 인정한다. */
+export const isSignedIn = (): boolean => !!auth.currentUser && !auth.currentUser.isAnonymous;

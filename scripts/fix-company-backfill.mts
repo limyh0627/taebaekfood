@@ -1,7 +1,8 @@
 // **모든 업무 문서에 회사(`companyId`)를 채운다.**
-//   미리보기  npx tsx scripts/fix-company-backfill.mts
-//   적용      … --apply          되돌리기  … --undo
-//   백업: scripts/fix-company-backfill-backup.json
+//   2차 미리보기  npx tsx scripts/fix-company-backfill.mts --phase=remaining
+//   2차 적용      … --phase=remaining --apply
+//   2차 되돌리기  … --phase=remaining --undo
+//   1차 되돌리기  … --phase=initial --undo
 //
 // 왜 (2026-09-16 코덱스 인수인계 · 사장님) — 회사별·메뉴별 권한을 **Firestore 규칙에서
 // 강제**하려면 문서마다 자기 회사를 알아야 한다. 화면에서 메뉴만 숨기는 건 권한이 아니다.
@@ -24,13 +25,25 @@
 // 그래서 되돌리기가 간단하다 — 우리가 찍은 자리의 `companyId` 를 지우면 원래대로다.
 // (문서 전체를 백업하지 않는 까닭이기도 하다. 4천 건을 통째로 떠 두면 그 파일이
 //  오히려 위험한 물건이 된다.)
-import { adminDb, 실행모드 } from './_admin.mts';
+import { adminDb } from './_admin.mts';
+import { companyBackfillBackupPath, parseCompanyBackfillOptions } from './company-backfill-options';
 import { FieldValue } from 'firebase-admin/firestore';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
-const { APPLY, UNDO } = 실행모드();
-const VERBOSE = process.argv.includes('--verbose');
-const BACKUP = 'scripts/fix-company-backfill-backup.json';
+let options;
+try {
+  options = parseCompanyBackfillOptions(process.argv.slice(2));
+} catch (error) {
+  console.error(`\n${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+const APPLY = options.mode === 'apply';
+const UNDO = options.mode === 'undo';
+const VERBOSE = options.verbose;
+//  **백업은 저장소 밖에 둔다**(gitignore `로컬전용/`). 문서 경로 목록이라 코드 저장소에
+//  묻어 두면 안 된다. 옛 경로 `scripts/fix-company-backfill-backup.json` 은 여기로 옮겨졌다.
+const BACKUP = companyBackfillBackupPath(options.phase);
 const 태백 = 'taebaek';
 const 회사들 = new Set([태백, 'punghoe']);
 const db = adminDb();
@@ -44,7 +57,7 @@ if (UNDO) {
     for (const 경로 of 찍은것.slice(i, i + 400)) { b.update(db.doc(경로), { companyId: FieldValue.delete() }); n++; }
     await b.commit();
   }
-  console.log(`\n${n}건에서 companyId 를 지웠다(원래 없던 자리).\n`);
+  console.log(`\n${options.phase} 단계 ${n}건에서 companyId 를 지웠다(원래 없던 자리).\n`);
   process.exit(0);
 }
 
@@ -66,12 +79,20 @@ const 하나로 = (후보: (string | undefined)[]): { 답?: string; 충돌?: str
 
 console.log('\n운영 DB 를 읽는다…');
 
-const 컬렉션들 = ['employees', 'partners', 'orders', 'items', 'issuedStatements', 'cashEntries', 'cashAccounts',
-  'item_bom', 'partner_item', 'rawMaterialLedger', 'productionRecords', 'returnRequests', 'orderStatusAudits',
-  'pendingStatementEdits', 'settlements', 'notices', 'chatRooms', 'chatMessages',
-  'leaveRequests', 'adjustmentRequests', 'purchaseOrders', 'pallets', 'palletTransactions'] as const;
-//  `notifications` 는 여기서 안 다룬다 — 옛 알림은 통째로 지운다
-//  (2026-09-16 사장님: "알림은 기존꺼 다 삭제해"). `scripts/delete-notifications.mts`
+/**
+ * **업무자료가 아닌 것** — 회사 개념이 없다. 인증(로그인 시도·아이디 매핑)과 앱 메타다.
+ * 여기 적은 것만 빼고 **나머지 전부**가 회사를 가져야 한다.
+ */
+const 대상아님 = new Set(['usernames', 'authLoginAttempts', '_meta', 'appMeta', 'schemaVersions']);
+
+/**
+ * **컬렉션 목록을 손으로 안 적는다**(2026-09-16 코덱스 검수 1번).
+ *
+ * 처음엔 23개를 적어 두고 돌렸는데, 그 안에서 "누락 0" 이 나왔을 뿐 **DB 전체는 아니었다** —
+ * 실제로는 33개 컬렉션 571건이 비어 있었다. 손으로 적은 목록은 새 컬렉션이 생기면
+ * 조용히 빠지고, 그 빠진 자리는 규칙을 잠그는 순간 아무도 못 읽는 자료가 된다.
+ */
+const 컬렉션들 = (await db.listCollections()).map(c => c.id).filter(c => !대상아님.has(c)).sort();
 
 const 자료 = new Map<string, Doc[]>();
 for (const c of 컬렉션들) 자료.set(c, await 읽기(c));
@@ -83,8 +104,23 @@ for (const c of 컬렉션들) {
 }
 const 보기 = (col: string, id: unknown): string | undefined => 정해짐.get(col)?.get(String(id ?? ''));
 
+/**
+ * **사람 이름 → 회사.** 옛 문서가 `createdBy: '박은지'` 처럼 **이름**을 남겼다(직원 id 가 아니다).
+ * 두 회사에 같은 이름이 있으면(이은경) 값이 갈려 충돌로 잡힌다 — 그게 맞다, 찍지 않는다.
+ */
+const 이름회사 = new Map<string, string>();
+for (const x of 자료.get('employees') ?? []) {
+  const n = String(x.d.name ?? '').trim(); const c = 회사(x.d);
+  if (!n || !c) continue;
+  이름회사.set(n, 이름회사.has(n) && 이름회사.get(n) !== c ? '__충돌__' : c);
+}
+const 사람 = (v: unknown): string | undefined => {
+  const c = 이름회사.get(String(v ?? '').trim());
+  return c === '__충돌__' ? undefined : c;
+};
+
 /** 이 문서의 회사를 무엇으로 볼 것인가 — 컬렉션마다 실마리가 다르다. */
-const 실마리: Record<string, (d: Record<string, unknown>) => (string | undefined)[]> = {
+const 실마리: Record<string, (d: Record<string, unknown>, id: string) => (string | undefined)[]> = {
   employees: () => [],
   partners: () => [],          // 아래에서 거래 기록을 모아 따로 채운다
   orders: d => [보기('partners', d.partnerId), ...((d.items as { itemId?: string }[] ?? []).map(i => 보기('items', i.itemId)))],
@@ -122,7 +158,49 @@ const 실마리: Record<string, (d: Record<string, unknown>) => (string | undefi
   purchaseOrders: d => [보기('partners', d.partnerId), ...((d.lines as { itemId?: string }[] ?? []).map(l => 보기('items', l.itemId)))],
   pallets: () => [],
   palletTransactions: d => [보기('partners', d.partnerId)],
+
+  //  ── 2026-09-16 코덱스 검수 1번으로 늘린 것 ──────────────────────
+  //  **만든 사람을 따라간다.** 옛 문서가 이름만 남겨서 `이름회사` 로 푼다.
+  productionSalesLogs: d => [사람(d.createdBy)],
+  stockClosings: d => [사람(d.closedBy ?? d.createdBy)],
+  benzopyreneTests: d => [사람(d.addedBy ?? d.createdBy)],
+  haccp_sanitation: d => [사람(d.createdBy ?? d.updatedBy)],
+  haccp_closing_checklist: d => [사람(d.createdBy ?? d.updatedBy)],
+  haccp_periodic_sanitation: d => [사람(d.createdBy ?? d.updatedBy)],
+  haccp_personal_hygiene: d => [사람(d.createdBy ?? d.updatedBy)],
+  haccp_temp: d => [사람(d.createdBy ?? d.updatedBy)],
+  haccp_incoming: d => [사람(d.createdBy ?? d.updatedBy)],
+  fileCabinetDocs: d => [사람(d.uploadedBy)],
+
+  //  **품목·전표를 따라간다.**
+  itemCostHistory: d => [보기('items', d.itemId), 보기('issuedStatements', d.sourceStatementId)],
+  item_formula: d => [이름품목(d.parent_key)],
+  item_pack: d => [보기('items', d.item_id ?? d.itemId)],
+  deliveryScheduleAudits: d => [보기('orders', d.orderId)],
+  //  거래처 포털 계정 — 어느 거래처에 붙었나로 안다.
+  users: d => [보기('partners', d.linkedPartnerId)],
+  /**
+   * **기초이월은 문서 id 가 회사를 말한다** — `main`(태백) · `main-punghoe`(풍회).
+   * 규칙은 `types.openingDocId()` 한 곳이 정한다. 여기서 다시 지어내지 않고 그 모양만 읽는다.
+   */
+  openingBalances: (_d, id) => [String(id).endsWith('-punghoe') ? 'punghoe' : 태백],
+  inventorySnapshots: (_d, id) => [String(id).includes('-punghoe') ? 'punghoe' : 태백],
 };
+
+/**
+ * **품목 이름 → 회사.** `item_formula.parent_key` 가 id 가 아니라 이름이다(`깨분참기름`).
+ * 두 회사에 같은 이름이 있으면 갈려 충돌로 잡힌다.
+ */
+const 이름품목맵 = new Map<string, string>();
+for (const x of 자료.get('items') ?? []) {
+  const n = String(x.d.name ?? '').trim(); const c = 회사(x.d);
+  if (!n || !c) continue;
+  이름품목맵.set(n, 이름품목맵.has(n) && 이름품목맵.get(n) !== c ? '__충돌__' : c);
+}
+function 이름품목(v: unknown): string | undefined {
+  const c = 이름품목맵.get(String(v ?? '').trim());
+  return c === '__충돌__' ? undefined : c;
+}
 
 //  ── 거래처: 그 거래처와 오간 전표·자금·주문의 회사를 모은다 ──────────
 const 거래처실마리 = new Map<string, (string | undefined)[]>();
@@ -144,7 +222,7 @@ const 풀기 = (col: string, 개별?: (x: Doc) => (string | undefined)[]) => {
   let 있음 = 0, 판정 = 0, 기본 = 0, 충돌 = 0;
   for (const x of docs) {
     if (회사(x.d)) { 있음++; continue; }
-    const r = 하나로(개별 ? 개별(x) : (실마리[col]?.(x.d) ?? []));
+    const r = 하나로(개별 ? 개별(x) : (실마리[col]?.(x.d, x.id) ?? []));
     if (r.충돌) { 충돌++; 충돌목록.push(`${col}/${x.id} (${r.충돌.join('/')})`); continue; }
     const 값 = r.답 ?? 태백;
     if (r.답) 판정++; else 기본++;
@@ -171,14 +249,14 @@ const 풀기 = (col: string, 개별?: (x: Doc) => (string | undefined)[]) => {
 });
 풀기('items');
 풀기('orders');
+const 먼저푼것 = new Set(['employees', 'partners', 'items', 'orders', 'issuedStatements', 'cashEntries', 'cashAccounts']);
 풀기('issuedStatements');
 풀기('cashEntries');
 풀기('cashAccounts');
-for (const c of ['item_bom', 'partner_item', 'rawMaterialLedger', 'productionRecords', 'returnRequests',
-  'orderStatusAudits', 'pendingStatementEdits', 'settlements', 'purchaseOrders', 'pallets', 'palletTransactions',
-  'notices', 'chatRooms', 'chatMessages', 'leaveRequests', 'adjustmentRequests']) 풀기(c);
+//  나머지는 **있는 대로 전부** 푼다. 차례가 중요한 것(방 → 메시지)만 앞에 세운다.
+for (const c of ['chatRooms', ...컬렉션들.filter(x => !먼저푼것.has(x) && x !== 'chatRooms')]) 풀기(c);
 
-console.log(`\n═══ ${APPLY ? '🔴 실제 적용(--apply)' : '🟢 미리보기(dry) — 쓰기 없음'} ═══\n`);
+console.log(`\n═══ ${options.phase} 단계 · ${APPLY ? '🔴 실제 적용(--apply)' : '🟢 미리보기(dry) — 쓰기 없음'} ═══\n`);
 console.log('컬렉션'.padEnd(24) + '이미있음'.padStart(10) + '원본으로판정'.padStart(14) + '태백기본값'.padStart(12) + '충돌'.padStart(7));
 console.log('─'.repeat(70));
 for (const r of 집계) {
@@ -200,10 +278,11 @@ if (VERBOSE) {
   for (const x of 찍을것.filter(v => v.기본값)) console.log(`   ${x.경로}`);
 }
 
-if (!APPLY) { console.log('\n미리보기였다. 적용하려면 --apply. 자세히 보려면 --verbose.\n'); process.exit(0); }
+if (!APPLY) { console.log(`\n미리보기였다. 적용하려면 --phase=${options.phase} --apply. 자세히 보려면 --verbose.\n`); process.exit(0); }
 
 if (existsSync(BACKUP)) { console.error(`\n이미 백업이 있다(${BACKUP}) — 옮기고 다시 실행한다.\n`); process.exit(1); }
 //  **백업은 '우리가 찍은 자리' 목록이다.** 원래 비어 있던 칸이라, 되돌리기는 그 칸을 지우는 것이다.
+mkdirSync(dirname(BACKUP), { recursive: true });
 writeFileSync(BACKUP, JSON.stringify(찍을것.map(x => x.경로), null, 1), 'utf-8');
 console.log(`\n백업(찍은 자리 목록) ${찍을것.length}건 → ${BACKUP}`);
 
@@ -213,6 +292,25 @@ for (let i = 0; i < 찍을것.length; i += 400) {
   await b.commit();
   console.log(`  ${Math.min(i + 400, 찍을것.length)} / ${찍을것.length}`);
 }
+
+// 전체 누락 수만 보면 다른 작업의 문서와 섞인다. 이번 단계에서 쓴 각 경로가 의도한
+// 회사값을 실제로 가졌는지 따로 확인해야 이 단계의 성공 여부를 확정할 수 있다.
+const 검증실패: string[] = [];
+for (let i = 0; i < 찍을것.length; i += 400) {
+  const 묶음 = 찍을것.slice(i, i + 400);
+  const snapshots = await db.getAll(...묶음.map(x => db.doc(x.경로)));
+  snapshots.forEach((snapshot, index) => {
+    if (!snapshot.exists || 회사(snapshot.data() as Record<string, unknown>) !== 묶음[index].값) {
+      검증실패.push(묶음[index].경로);
+    }
+  });
+}
+if (검증실패.length) {
+  console.error(`\n적용 후 검증 실패 ${검증실패.length}건. 백업은 보존했다: ${BACKUP}`);
+  for (const path of 검증실패.slice(0, 20)) console.error(`  ${path}`);
+  process.exit(1);
+}
+console.log(`\n✅ 이번 ${options.phase} 단계 적용값 ${찍을것.length}건을 다시 읽어 확인했다.`);
 
 //  **다시 읽어 확인한다** — 썼다고 믿지 않는다.
 console.log('\n═══ 다시 읽어 확인 ═══');

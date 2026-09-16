@@ -40,6 +40,7 @@ describe('주간 배송 캘린더', () => {
   it('캘린더를 기본 뷰로 열고 배송 대상 상태만 집계한다', () => {
     render(
       <DeliveryManager
+        companyId="taebaek"
         orders={[
           주문('260909-01', 'p1', OrderStatus.DISPATCHED),
           주문('260909-02', 'p2', OrderStatus.DISPATCHED),
@@ -58,6 +59,7 @@ describe('주간 배송 캘린더', () => {
   it('날짜 상세의 주문번호를 누르면 출고 일정 수정 창이 열린다', () => {
     render(
       <DeliveryManager
+        companyId="taebaek"
         orders={[주문('260909-01', 'p1', OrderStatus.DISPATCHED)]}
         partners={partners}
         items={items}

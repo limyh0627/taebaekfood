@@ -19,6 +19,7 @@ export const COL = {
   itemTaxonomy: 'itemTaxonomy',
   itemPack: 'item_pack',
   itemFormula: 'item_formula',
+  itemCostHistory: 'itemCostHistory',
 
   // ── 주문·발주 ──
   orders: 'orders',
@@ -43,6 +44,7 @@ export const COL = {
   fixedCostTemplates: 'fixedCostTemplates',
   expensePresets: 'expensePresets',
   quotations: 'quotations',
+  taxIssueRecords: 'taxIssueRecords',
   openingBalances: 'openingBalances',
   fixedCosts: 'fixedCosts',
   cashFlowManual: 'cashFlowManual',
@@ -52,7 +54,7 @@ export const COL = {
   productionSalesLogs: 'productionSalesLogs',
   rawMaterialLedger: 'rawMaterialLedger',
   //  원료 재고 코어(원자화) — 상태와 이력을 한 트랜잭션에 같이 쓴다.
-  //  docs/원료실제원장-로트-원자화-설계.md · src/shared/rawInventoryCore.ts
+  //  로컬전용/docs/원료실제원장-로트-원자화-설계.md · src/shared/rawInventoryCore.ts
   rawInventories: 'rawInventories',
   rawInventoryJobs: 'rawInventoryJobs',
   rawInventoryReversalGuards: 'rawInventoryReversalGuards',
@@ -90,6 +92,7 @@ export const COL = {
   haccpPersonalHygiene: 'haccp_personal_hygiene',
   haccpPeriodicSanitation: 'haccp_periodic_sanitation',
   haccpClosingChecklist: 'haccp_closing_checklist',
+  haccpTemplates: 'haccp_templates',
 } as const;
 
 export type CollectionName = typeof COL[keyof typeof COL];

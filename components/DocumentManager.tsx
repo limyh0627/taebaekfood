@@ -3,8 +3,9 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash2, Plus, Upload, Search, X, FolderPlus } from 'lucide-react';
 import { storage } from '../src/shared/firebase';
 import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection } from '../src/shared/services/firebaseService';
-import { CabinetCategory, CabinetSubCategory, CabinetDoc } from '../src/shared/types';
+import { CabinetCategory, CabinetSubCategory, CabinetDoc, companyOf, type CompanyId } from '../src/shared/types';
 import { dateOfLocal } from '../src/shared/day';
+import { cabinetStoragePath } from '../src/shared/companyStoragePath';
 
 const DEFAULT_CATEGORIES = ['직원용', '업무용', '거래처용'];
 /** 이번 탭에서 이미 세운 자리 — 화면을 드나들어도 두 번 안 만든다 */
@@ -12,7 +13,7 @@ const seededPaths = new Set<string>();
 const MAX_SIZE_MB = 30;
 
 interface DocumentManagerProps {
-  currentUser: { id: string; name: string };
+  currentUser: { id: string; name: string; companyId?: CompanyId };
   /**
    * 반드시 있어야 하는 자리 — 없으면 만든다.
    * 앱이 화면을 얹는 자리(서류관리 › 생산판매기록부)는 사람이 지워도 다시 서야 한다.
@@ -182,7 +183,9 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
     try {
       for (const file of list) {
         const safeName = file.name.replace(/[#?%]/g, '_');
-        const path = `file-cabinet/${activeCat}/${activeSub}/${Date.now()}_${safeName}`;
+        const path = cabinetStoragePath(
+          companyOf(currentUser), activeCat, activeSub, `${Date.now()}_${safeName}`,
+        );
         const storageRef = ref(storage, path);
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);

@@ -5,17 +5,16 @@ import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
 interface AdminAuthModalProps {
   onClose: () => void;
   onSuccess: () => void;
-  correctPassword?: string; // Firestore settings/company.adminPassword 에서 전달. 없으면 기본값 '0000'
+  correctPassword?: string;
 }
 
-const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, correctPassword = '0000' }) => {
+const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, correctPassword }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('[AdminAuth] 입력값:', password, '| DB 비밀번호:', correctPassword, '| 일치:', password === correctPassword);
-    if (password === correctPassword) {
+    if (correctPassword && password === correctPassword) {
       onSuccess();
     } else {
       setError(true);
@@ -46,7 +45,8 @@ const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, cor
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="비밀번호 입력 (기본: 0000)"
+              placeholder={correctPassword ? '비밀번호 입력' : '관리자 비밀번호 설정 필요'}
+              disabled={!correctPassword}
               className={`w-full bg-slate-50 border rounded-2xl px-6 py-4 text-center text-2xl tracking-[0.5em] font-black outline-none transition-all ${error ? 'border-rose-300 ring-4 ring-rose-50 text-rose-600' : 'border-slate-200 focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 text-slate-900'}`}
             />
           </div>
@@ -65,6 +65,7 @@ const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, cor
             </button>
             <button 
               type="submit"
+              disabled={!correctPassword}
               className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center space-x-2"
             >
               <ShieldCheck size={20} />

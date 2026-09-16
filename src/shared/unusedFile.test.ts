@@ -48,7 +48,7 @@ const 아직안붙임: Record<string, string> = {
   'src/shared/services/rawInventoryService.ts':
     '원료 재고 원자화 3단계. 호출부 교체(5단계)는 이관 스크립트(4단계)가 먼저다 — ' +
     '지금 갈려 있는 원료 7개(2,719kg)는 어느 숫자가 맞는지 사장님이 정해야 옮길 수 있다. ' +
-    'docs/원료실제원장-로트-원자화-설계.md §15',
+    '로컬전용/docs/원료실제원장-로트-원자화-설계.md §15',
 };
 
 /** 이 파일을 누군가 import 하나 */

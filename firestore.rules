@@ -1,35 +1,113 @@
 rules_version = '2';
-
 /**
- * Firestore 보안 규칙
+ * Firestore 보안 규칙 — **회사별·메뉴별 권한판**
  *
- * ─ 현재 인증 구조 ─
- * 이 앱은 Firebase Anonymous Auth를 사용합니다.
- * 모든 접속자는 익명 Firebase 계정을 발급받으며, 직원 구분은
- * Firestore employees 컬렉션에서 username/password로 인앱 처리합니다.
+ * 2026-09-16 코덱스 인수인계 · 사장님: **회사별 권한과 메뉴별 권한을 규칙에서 실제로
+ * 강제할 것. 화면 메뉴 숨김만으로 끝내면 안 된다.**
  *
- * ─ 한계 ─
- * Firebase Auth 레벨에서 "이 사용자가 admin인지" 알 수 없습니다.
- * 현재 규칙은 최소한 미인증(익명 포함) 접근을 요구합니다.
+ * 앱·Functions를 먼저 배포하고 이 규칙을 마지막에 배포한다.
+ * 시험은 `src/rules/firestore.rules.test.ts`가 이 파일을 직접 읽는다.
  *
- * ─ Phase 3 권장 사항 ─
- * Firebase Authentication Custom Claims 도입 후
- * request.auth.token.isAdmin == true 조건으로 강화 필요
+ * ─ 무엇이 바뀌나 ─
+ * 지금 규칙은 **로그인한 직원이면 업무 데이터가 전부 열린다.** 태백 직원이 풍회 전표를
+ * 읽을 수 있고, 일반 직원이 자금원장·급여를 읽을 수 있다. 여기서 둘을 막는다:
+ *
+ *   회사   **내 회사 문서만. 관리자도 못 넘는다** — 회사마다 관리자 계정이 따로 있다.
+ *   메뉴   돈·인사·서류는 관리자만. 현장(주문·재고·품목·오피스톡)은 직원도.
+ *
+ * ─ 규칙은 필터가 아니다 ─
+ * `list` 질의는 **질의 자체가** 규칙을 만족해야 통과한다. 전체 컬렉션을 구독한 채 규칙만
+ * 잠그면 목록 조회가 통째로 `permission-denied` 난다. 그래서 `useAppData` 가 모든 구독에
+ * `where('companyId','==',companyId)` 를 붙인다(코덱스 작업). 그 짝이 안 맞으면 화면이 빈다.
+ *
+ * ─ claim ─
+ * `employeeLogin` Callable 이 `employeeId` · `companyId` · `isAdmin` 을 발급한다.
+ * `allowedCompanies` 는 **필요 없다** — 한 계정은 한 회사에만 속한다.
  */
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAuthenticated() {
-      return request.auth != null;
+
+    // ── 누구인가 ────────────────────────────────────────────────
+    function isEmployee() {
+      return request.auth != null && request.auth.token.employeeId is string;
+    }
+    function isAdmin() {
+      return isEmployee() && request.auth.token.isAdmin == true;
+    }
+    function myCompany() {
+      return request.auth.token.companyId;
+    }
+    function me() {
+      return request.auth.token.employeeId;
     }
 
-    // 아이디(username) → { uid, email } 공개 조회용 매핑 컬렉션
-    // 거래처 홈페이지(taebaekfood-web)의 회원가입 중복확인 / 로그인이
-    // 미인증 상태에서도 단일 문서를 조회할 수 있도록 get만 공개한다.
-    // - get  : 누구나 (특정 username을 알아야만 조회 가능)
-    // - list : 차단 (전체 아이디 열거 방지)
-    // - create: 회원가입 직후(인증됨) 본인 uid로만 생성
-    // - update/delete: 금지 (아이디 도용/탈취 방지, 관리는 콘솔/서버에서)
+    // ── 어느 회사 것인가 ────────────────────────────────────────
+    /**
+     * **회사 경계는 관리자도 못 넘는다**(2026-09-16 사장님: "관리자가 회사를 골라보는
+     * 구조가 아니잖아 지금 관리자 계정은 그냥 회사 내의 관리자 아니야?").
+     *
+     * 운영 계정이 그 모양이다 — `admin`(태백)과 `admin-punghoe`(풍회)가 **따로** 있고,
+     * 이은경 상무도 `lek861215`(태백)·`lek861215_p`(풍회) 두 계정이다. 회사를 바꾸려면
+     * **그 회사 계정으로 로그인**한다.
+     *
+     * 그래서 `isAdmin` 은 **메뉴만** 가른다(돈·인사·서류). 회사 경계를 넘는 열쇠가 아니다.
+     * 처음엔 관리자를 양쪽 다 보게 짰는데, 그러면 태백 관리자가 풍회 장부를 읽는다.
+     *
+     * 회사값이 없는 문서는 아무도 못 본다 — 목록에 없으면 거짓이다.
+     */
+    function canSee(company) {
+      return company in ['taebaek', 'punghoe'] && company == myCompany();
+    }
+    function readOk() {
+      return isEmployee() && canSee(resource.data.companyId);
+    }
+    /**
+     * 만들기·고치기 — **들어오는 값과 저장된 값을 둘 다** 본다.
+     * 들어오는 값만 보면 풍회 문서를 태백으로 덮어써 제 것으로 만들 수 있고,
+     * 저장된 값만 보면 내 회사 문서를 남의 회사로 넘길 수 있다.
+     */
+    function createUpdateOk() {
+      return isEmployee()
+             && canSee(request.resource.data.companyId)
+             && (resource == null || canSee(resource.data.companyId));
+    }
+    //  **지우기에는 들어오는 값이 없다**(`request.resource` 가 null) — 저장된 값만 본다.
+    //  `createUpdateOk` 를 그대로 쓰면 지우기가 통째로 막힌다(시험이 잡았다).
+    function deleteOk() {
+      return isEmployee() && canSee(resource.data.companyId);
+    }
+
+    // ── 메뉴별 — 돈·인사·서류는 관리자만 ─────────────────────────
+    //  사장님이 정한 관리자 전용 메뉴 그대로다: 전표·세금계산서·견적, 인사관리, 문서함,
+    //  현금출납장·거래처원장·제품별원장, 재무제표, 분석 화면들.
+    function adminOnlyCollection(c) {
+      return c in [
+        'issuedStatements', 'pendingStatementEdits', 'settlements', 'quotations',
+        'cashEntries', 'cashAccounts', 'cashFlowManual',
+        'payrolls', 'fixedCosts', 'fixedCostTemplates', 'expensePresets',
+        'accountCodes', 'accountGroups',
+        'inventorySnapshots', 'productionSalesLogs',
+        //  **실제 컬렉션 이름이다**(2026-09-16 코덱스 검수 3번). `fileCabinet` 하나로 적었더니
+        //  아무것도 안 걸려 포괄 규칙으로 떨어졌다 — 문서함이 일반 직원에게 열려 있었다.
+        'fileCabinetDocs', 'fileCabinetCategories', 'fileCabinetSubCategories',
+        'users', 'partnerSignups'
+      ];
+    }
+
+    //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
+    //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
+    function hasOwnRule(c) {
+      return c in ['employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+                   'chatRooms', 'chatMessages', 'notifications'];
+    }
+
+    //  다른 문서를 읽어 견주는 자리가 셋 있다(오피스톡 방·메시지·알림).
+    //  `get()`·`exists()` 는 규칙 한 번에 **10회까지**라 그 한도가 방 인원 제한의 까닭이다.
+
+    // ── 아이디 매핑 — 로그인 전에도 한 건은 봐야 한다 ───────────────
+    //  거래처 홈페이지 회원가입 중복확인·로그인이 미인증 상태에서 단일 문서를 조회한다.
+    //  `list` 는 막는다 — 전체 아이디를 훑어 가는 것을 막기 위해서다.
     match /usernames/{username} {
       allow get: if true;
       allow list: if false;
@@ -38,8 +116,154 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    match /{document=**} {
-      allow read, write: if isAuthenticated();
+    //  로그인 시도 기록 — 서버(Functions)만 쓴다. 클라이언트는 아무것도 못 한다.
+    match /authLoginAttempts/{attemptId} {
+      allow read, write: if false;
+    }
+
+    // ── 직원 ───────────────────────────────────────────────────
+    //  **같은 회사 직원만 서로 본다.** 로그인 화면이 목록을 훑던 구조는 Callable 로 옮겼다.
+    //  본인은 **푸시 표만** 고칠 수 있다 — 권한·급여를 스스로 못 바꾸게.
+    match /employees/{employeeId} {
+      allow read: if readOk();
+      allow create: if isAdmin() && canSee(request.resource.data.companyId);
+      allow delete: if isAdmin() && deleteOk();
+      allow update: if (isAdmin() && createUpdateOk())
+                    || (isEmployee()
+                        && me() == employeeId
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['fcmTokens', 'fcmDevices']));
+    }
+
+    // ── 연차 — 본인이 내고, 관리자가 결재한다 ────────────────────
+    match /leaveRequests/{id} {
+      allow read: if readOk();
+      //  낼 때는 **본인 것으로만.** 남의 이름으로 못 낸다.
+      allow create: if isEmployee()
+                    && canSee(request.resource.data.companyId)
+                    && request.resource.data.employeeId == me();
+      /**
+       * 본인은 아직 결재 안 된 자기 신청만 고친다.
+       *
+       * **고칠 수 있는 칸을 못 박는다**(2026-09-16 코덱스 검수 4번). `status` 만 보다가
+       * 본인이 **신청자를 남으로 바꾸거나**(남의 연차를 만들어 냄) **회사를 옮기거나**
+       * 결재 칸(`approvedBy`)을 직접 채울 수 있었다. 바꿔도 되는 칸을 적고,
+       * 신청자·회사는 **바뀌지 않았는지** 따로 확인한다.
+       */
+      allow update: if (isAdmin() && createUpdateOk())
+                    || (isEmployee()
+                        && resource.data.employeeId == me()
+                        && canSee(resource.data.companyId)
+                        && resource.data.status == 'pending'
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.employeeId == resource.data.employeeId
+                        && request.resource.data.companyId == resource.data.companyId
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['startDate', 'endDate', 'days', 'reason', 'type', 'note', 'updatedAt']));
+      allow delete: if (isAdmin() && deleteOk())
+                            || (isEmployee()
+                                && resource.data.employeeId == me()
+                                && canSee(resource.data.companyId)
+                                && resource.data.status == 'pending');
+    }
+
+    // ── 재고 조정 요청 — 직원이 올리고, 관리자가 처리한다 ──────────
+    match /adjustmentRequests/{id} {
+      allow read: if readOk();
+      allow create: if isEmployee() && canSee(request.resource.data.companyId);
+      /**
+       * 처리(승인·반려)는 관리자만. 직원은 아직 처리 안 된 요청의 **내용만** 고친다.
+       * 연차와 같은 까닭으로 칸을 못 박는다(코덱스 검수 4번) — 요청자·회사는 불변이고
+       * 처리 칸(`processedBy`)은 직원이 못 건드린다.
+       */
+      allow update: if (isAdmin() && createUpdateOk())
+                    || (isEmployee()
+                        && canSee(resource.data.companyId)
+                        && resource.data.status == 'pending'
+                        && request.resource.data.status == 'pending'
+                        && request.resource.data.companyId == resource.data.companyId
+                        && request.resource.data.requestedBy == resource.data.requestedBy
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['qty', 'quantity', 'reason', 'note', 'type', 'updatedAt']));
+      allow delete: if isAdmin() && deleteOk();
+    }
+
+    // ── 오피스톡 방 ────────────────────────────────────────────
+    /**
+     * **참여자를 하나씩 검사하지는 못한다** — 그래도 회사는 새지 않는다.
+     *
+     * 2026-09-16 코덱스 검수 5번이 "참여자 회사 = 방 회사" 를 요구했는데, 규칙으로는
+     * **못 한다.** `get()`·`exists()` 는 규칙 한 번에 **10회까지**인데 운영 방이 최대
+     * **9명**이다(`ROOM-1775809388278`). 하나씩 읽으면 18회라 한도를 넘는다.
+     *
+     * **대신 경계는 읽기가 지킨다.** 풍회 사람 id 가 태백 방 참여자에 적혀 있어도,
+     * 그 사람이 방을 **읽으려는 순간** `readOk()` 가 막는다(방의 회사 ≠ 자기 회사).
+     * 메시지도 마찬가지다. 그러니 목록에 이름이 잘못 올라가는 것은 **표시 문제**지
+     * 자료가 새는 문제가 아니다.
+     *
+     * 목록에 잘못 올리는 것 자체를 막으려면 방 문서에 참여자 회사를 같이 적어 두고
+     * (`participantCompanies`) 그것과 견주는 길이 있다 — 앱이 같이 써야 하므로
+     * 여기서 혼자 정하지 않고 남겨 둔다.
+     *
+     * 칸 이름은 **`participantIds`** 다(`members` 가 아니다 — 운영 데이터 확인함).
+     */
+    match /chatRooms/{roomId} {
+      allow read: if readOk();
+      allow create, update: if createUpdateOk()
+                            && request.resource.data.participantIds is list
+                            //  터무니없이 큰 방을 막는다 — 지금 제일 큰 방이 9명이다.
+                            && request.resource.data.participantIds.size() <= 30;
+      allow delete: if deleteOk();
+    }
+
+    // ── 오피스톡 메시지 — 방을 따라간다 ──────────────────────────
+    /**
+     * **메시지 회사 = 방 회사.** 회사 검사만으로는 *풍회 방에 태백 메시지* 를 못 막는다.
+     * 방을 직접 읽어 견준다. 없는 방에는 못 넣는다 — 방 없는 메시지는 아무도 못 읽는다.
+     */
+    match /chatMessages/{msgId} {
+      allow read: if readOk();
+      allow create, update: if createUpdateOk()
+                            && exists(/databases/$(database)/documents/chatRooms/$(request.resource.data.roomId))
+                            && get(/databases/$(database)/documents/chatRooms/$(request.resource.data.roomId)).data.companyId
+                               == request.resource.data.companyId;
+      allow delete: if deleteOk();
+    }
+
+    // ── 알림 — 개인 수신 또는 회사 전체 방송 ───────────────────
+    /**
+     * 실제 수신자 필드는 `targetId`다. 값이 없으면 같은 회사 전체 방송이다.
+     * 개인 알림은 수신 직원의 회사와 알림 회사가 같아야 한다.
+     */
+    match /notifications/{nid} {
+      allow read: if readOk();
+      allow create: if createUpdateOk()
+                    && (!('targetId' in request.resource.data)
+                        || (request.resource.data.targetId is string
+                            && exists(/databases/$(database)/documents/employees/$(request.resource.data.targetId))
+                            && get(/databases/$(database)/documents/employees/$(request.resource.data.targetId)).data.companyId
+                               == request.resource.data.companyId));
+      // 알림 본문·수신자·회사는 만든 뒤 못 바꾼다. 확인 상태만 누적한다.
+      allow update: if createUpdateOk()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['readBy', 'dismissedBy']);
+      allow delete: if deleteOk();
+    }
+
+    // ── 나머지 업무 컬렉션 ──────────────────────────────────────
+    //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워
+    //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
+    //  안 붙이면 저장하는 족족 여기서 막힌다(그게 의도다. 조용히 새는 것보다 낫다).
+    match /{collection}/{document=**} {
+      allow read: if !hasOwnRule(collection)
+                  && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
+                  && readOk();
+      allow create, update: if !hasOwnRule(collection)
+                            && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
+                            && createUpdateOk();
+      allow delete: if !hasOwnRule(collection)
+                    && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
+                    && deleteOk();
     }
   }
 }

@@ -1,10 +1,11 @@
 import type { IssuedStatement } from '../../../shared/types';
 import type { StatementCommand } from './statementCommand';
+import { COL, type CollectionName } from '../../../shared/collections';
 
 /**
  * **전표 한 장이 만들어 내는 쓰기를 전부 적는다.**
  *
- * 설계([전표-원가-원장-재무-통합설계](../../../../docs/전표-원가-원장-재무-통합설계.md) §2 저장 규칙)
+ * 설계([전표-원가-원장-재무-통합설계](../../../../로컬전용/docs/전표-원가-원장-재무-통합설계.md) §2 저장 규칙)
  * 3단계. 지금은 [TradeStatement](../../../../components/TradeStatement.tsx) 가 네 번을
  * **차례로** 저장한다 — 전표 본문 → 거래처 단가·품목 원가 → 주문 발행표시 → 발주카드.
  * 앞이 되고 뒤가 엎어지면 **주문에 발행표시가 안 찍혀 그 주문이 목록에 다시 뜨고, 다시 누르면
@@ -14,7 +15,7 @@ import type { StatementCommand } from './statementCommand';
  */
 
 export interface StatementWrite {
-  collection: string;
+  collection: CollectionName;
   id: string;
   data: Record<string, unknown>;
   /** `true` 면 적힌 칸만 덮는다. 전표 본문처럼 통째로 쓰는 것은 `false`. */
@@ -85,7 +86,7 @@ export function planStatementWrites(input: PlanInput): StatementWritePlan {
     if (c.beforeCost !== undefined && c.beforeCost !== c.price) {
       const lineIndex = c.sourceLineIndex ?? command.lines.findIndex(line => line.itemId === c.itemId);
       writes.push({
-        collection: 'itemCostHistory',
+        collection: COL.itemCostHistory,
         // 같은 전표 명령을 재시도해도 같은 이력 문서를 덮어써 한 건만 남긴다.
         id: `${command.statementId}_${c.itemId}_${Math.max(0, lineIndex)}`,
         data: {
