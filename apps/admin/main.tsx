@@ -10,7 +10,7 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 import ReactDOM from 'react-dom/client';
-import { Employee, ViewType } from '../../src/shared/types';
+import { CompanyId, Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
 import { useAdminData } from '../../src/hooks/useAdminData';
 import { updateItem } from '../../src/shared/services/firebaseService';
@@ -25,6 +25,7 @@ import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
+import { normalizeCompanyId } from '../../src/shared/loginCompanyAccess';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -54,6 +55,8 @@ const AdminRoot: React.FC = () => {
     const saved = localStorage.getItem('tb_user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [companyId, setCompanyId] = useState<CompanyId>(() =>
+    normalizeCompanyId(localStorage.getItem('tb_company')));
   const [currentView, setCurrentView] = useState<ViewType>(() => {
     //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
     //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
@@ -70,9 +73,11 @@ const AdminRoot: React.FC = () => {
   const appData = useAppData();
   const adminData = useAdminData(true);
 
-  const handleLogin = (user: Employee) => {
+  const handleLogin = (user: Employee, companyId: CompanyId) => {
     setCurrentUser(user);
+    setCompanyId(companyId);
     localStorage.setItem('tb_user', JSON.stringify(user));
+    localStorage.setItem('tb_company', companyId);
   };
 
   const handleLogout = () => {
@@ -121,6 +126,8 @@ const AdminRoot: React.FC = () => {
   return (
     <AdminApp
       currentUser={currentUser}
+      companyId={companyId}
+      onCompanyChange={setCompanyId}
       isAdmin={!previewAsStaff}
       isAdminAuthenticated={isAdminAuthenticated}
       onAdminAuth={setIsAdminAuthenticated}

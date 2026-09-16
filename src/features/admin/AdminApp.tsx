@@ -214,6 +214,8 @@ const openPartnerPortal = () => {
 
 interface AdminAppProps {
   currentUser: Employee;
+  companyId: CompanyId;
+  onCompanyChange: (companyId: CompanyId) => void;
   isAdmin: boolean;
   isAdminAuthenticated: boolean;
   onAdminAuth: (v: boolean) => void;
@@ -228,6 +230,8 @@ interface AdminAppProps {
 
 const AdminApp: React.FC<AdminAppProps> = ({
   currentUser,
+  companyId,
+  onCompanyChange,
   isAdmin,
   isAdminAuthenticated,
   onAdminAuth,
@@ -260,9 +264,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 전표·자금만 가른다. 거래처·품목·계정과목은 한 벌을 같이 쓴다 —
    * 나중에 회사별로 완전히 나눌 때 이 필드가 그대로 나누는 기준이 된다.
    */
-  const [companyId, setCompanyId] = useState<CompanyId>(() =>
-    (localStorage.getItem('tb_company') as CompanyId) || TAEBAEK);
-  const switchCompany = (id: CompanyId) => { setCompanyId(id); localStorage.setItem('tb_company', id); };
+  const switchCompany = (id: CompanyId) => {
+    onCompanyChange(id);
+    localStorage.setItem('tb_company', id);
+  };
   const issuedStatements = useMemo(
     () => allIssuedStatements.filter(s => companyOf(s) === companyId),
     [allIssuedStatements, companyId],

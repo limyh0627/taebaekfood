@@ -15,11 +15,12 @@ import {
   Search,
   KeyRound
 } from 'lucide-react';
-import { Employee } from '../types';
+import { COMPANIES, Employee, TAEBAEK, type CompanyId, companyOf } from '../types';
 import { usingFirebaseEmulators } from '../firebase';
+import { canLoginToCompany, findCompanyLogin, normalizeCompanyId } from '../loginCompanyAccess';
 
 interface AuthPageProps {
-  onLogin: (_user: Employee) => void;
+  onLogin: (_user: Employee, _companyId: CompanyId) => void;
   registeredEmployees: Employee[];
   onRegister: (_newEmployee: Employee) => void;
 }
@@ -35,6 +36,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
 
   // Login form state
   const [loginData, setLoginData] = useState({ username: '', password: '' });
+  const [loginCompanyId, setLoginCompanyId] = useState<CompanyId>(() =>
+    normalizeCompanyId(localStorage.getItem('tb_company')));
 
   // Register state
   const [registerStep, setRegisterStep] = useState<RegisterStep>('verify');
@@ -56,12 +59,10 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
     e.preventDefault();
     setError('');
 
-    const user = registeredEmployees.find(
-      emp => emp.username === loginData.username && emp.password === loginData.password
-    );
+    const user = findCompanyLogin(registeredEmployees, loginData.username, loginData.password, loginCompanyId);
 
     if (user) {
-      onLogin(user);
+      onLogin(user, loginCompanyId);
     } else {
       setError('아이디 또는 비밀번호가 일치하지 않습니다.');
     }
@@ -70,7 +71,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
   const handleQuickLogin = () => {
     // Default to the first employee (admin) for quick development access
     if (registeredEmployees.length > 0) {
-      onLogin(registeredEmployees[0]);
+      const user = registeredEmployees.find(employee => canLoginToCompany(employee, loginCompanyId));
+      if (user) onLogin(user, loginCompanyId);
     }
   };
 
@@ -82,7 +84,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
       emp =>
         emp.name === verifyData.name &&
         emp.birthDate === verifyData.birthDate &&
-        emp.phone === verifyData.phone
+        emp.phone === verifyData.phone &&
+        companyOf(emp) === loginCompanyId
     );
 
     if (!found) {
@@ -122,7 +125,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
     setFoundInfo(null);
 
     const user = registeredEmployees.find(
-      emp => emp.name === findData.name && emp.phone === findData.phone
+      emp => emp.name === findData.name && emp.phone === findData.phone && canLoginToCompany(emp, loginCompanyId)
     );
 
     if (user && user.username && user.password) {
@@ -195,6 +198,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
 
             {view === 'login' && (
               <form onSubmit={handleLogin} className="space-y-4">
+                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                  {COMPANIES.map(company => (
+                    <button key={company.id} type="button" onClick={() => { setLoginCompanyId(company.id); setError(''); }}
+                      className={`rounded-xl py-2.5 text-xs font-black transition-all ${loginCompanyId === company.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {company.name}
+                    </button>
+                  ))}
+                </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">아이디 (ID)</label>
                   <div className="relative">

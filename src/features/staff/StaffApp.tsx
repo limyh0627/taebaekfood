@@ -18,10 +18,12 @@ import React from 'react';
 import AdminApp from '../admin/AdminApp';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import type { Employee, ViewType } from '../../shared/types';
+import type { CompanyId, Employee, ViewType } from '../../shared/types';
 
 interface StaffAppProps {
   currentUser: Employee;
+  companyId: CompanyId;
+  onCompanyChange: (companyId: CompanyId) => void;
   isAdminAuthenticated: boolean;
   onAdminAuth: (v: boolean) => void;
   currentView: ViewType;

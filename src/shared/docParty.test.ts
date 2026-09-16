@@ -109,11 +109,13 @@ describe('공급자 · 공급받는자 가르기', () => {
 describe('서류 화면의 공용 모듈 연결', () => {
   it('거래명세서와 세금계산서가 모두 ID 공용 진입점을 쓴다', () => {
     const 거래명세서 = readFileSync(new URL('../../components/TradeStatement.tsx', import.meta.url), 'utf8');
+    const 거래명세서인쇄 = readFileSync(new URL('../features/statements/infrastructure/statementPrint.ts', import.meta.url), 'utf8');
     const 세금계산서 = readFileSync(new URL('../../components/TaxStatement.tsx', import.meta.url), 'utf8');
 
-    expect(거래명세서).toContain('서류당사자스냅샷우선(');
+    expect(거래명세서).toContain('buildStatementPrintHtml(');
+    expect(거래명세서인쇄).toContain('서류당사자스냅샷우선(');
     expect(세금계산서).toContain('서류당사자스냅샷우선(');
-    expect(거래명세서).not.toMatch(/partners\.find\([^\n]*\.name\s*===/);
+    expect(거래명세서인쇄).not.toMatch(/partners\.find\([^\n]*\.name\s*===/);
     expect(세금계산서).not.toContain('taxBuyerInfo');
   });
 });
