@@ -5,15 +5,21 @@ if (!projectId.startsWith('demo-') || !/^127\.0\.0\.1:\d+$/.test(firestoreHost))
   throw new Error('가상 데이터는 로컬 demo 에뮬레이터에만 넣을 수 있습니다.');
 }
 process.env.FIRESTORE_EMULATOR_HOST = firestoreHost;
+process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 process.env.GCLOUD_PROJECT = projectId;
 
 const flush = await fetch(`http://${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`, { method: 'DELETE' });
 if (!flush.ok && flush.status !== 404) throw new Error(`로컬 데이터 초기화 실패: ${flush.status}`);
 
-const [{ initializeApp }, { getFirestore }] = await Promise.all([
-  import('firebase-admin/app'), import('firebase-admin/firestore'),
+const [{ initializeApp }, { getFirestore }, { getAuth }] = await Promise.all([
+  import('firebase-admin/app'), import('firebase-admin/firestore'), import('firebase-admin/auth'),
 ]);
-const db = getFirestore(initializeApp({ projectId }));
+const adminApp = initializeApp({ projectId });
+const db = getFirestore(adminApp);
+const auth = getAuth(adminApp);
+try { await auth.deleteUser('local-admin'); } catch { /* 첫 실행에는 없다 */ }
+await auth.createUser({ uid: 'local-admin', email: 'testadmin@local.test', password: 'localtest', displayName: '테스트 관리자' });
+await auth.setCustomUserClaims('local-admin', { employeeId: 'local-admin', companyId: 'taebaek', isAdmin: true });
 const atDay = (offset: number, hour = 9) => {
   const value = new Date();
   value.setHours(hour, 0, 0, 0);
@@ -24,6 +30,11 @@ const day = (offset: number) => atDay(offset).slice(0, 10);
 const docs: Array<[string, string, Record<string, unknown>]> = [
   ['settings', 'company', { name:'로컬 테스트 식품', ceoName:'테스트', bizNo:'000-00-00000', bizType:'제조업', bizItem:'식품', address:'운영 DB와 분리된 가상 주소', adminPassword:'0000' }],
   ['employees', 'local-admin', { name:'테스트 관리자', username:'testadmin', password:'localtest', position:'관리자', department:'테스트', joinDate:day(-365), status:'working', phone:'010-0000-0000', adminAccess:true, companyId:'taebaek' }],
+  ['employees', 'local-staff', { name:'테스트 직원', username:'teststaff', password:'localtest', position:'사원', department:'생산', joinDate:day(-120), status:'working', phone:'010-0000-0001', adminAccess:false, companyId:'taebaek' }],
+  // 오피스톡 초대·전송·모바일 줄바꿈을 운영 자료 없이 검수하기 위한 방이다.
+  ['chatRooms', 'local-chat-room', { name:'로컬 검수방', participantIds:['local-admin'], participantCompanies:{'local-admin':'taebaek'}, createdBy:'local-admin', lastUpdatedAt:atDay(-1), isGroup:false, companyId:'taebaek' }],
+  ['chatMessages', 'local-chat-message', { roomId:'local-chat-room', senderId:'local-admin', senderName:'테스트 관리자', text:'오피스톡 검수용 메시지입니다.', createdAt:atDay(-1), companyId:'taebaek' }],
+  ['appMeta', 'workOrderReset_taebaek', { date:new Date().toLocaleDateString('ko-KR', { timeZone:'Asia/Seoul' }).replace(/\. /g, '-').replace('.', ''), companyId:'taebaek' }],
   ['partners', 'partner-direct', { name:'가상직배송마트', type:'일반', partnerType:'매출처', address:'강원특별자치도 태백시 테스트로 1', region:'태백시', companyId:'taebaek' }],
   ['partners', 'partner-courier', { name:'가상온라인몰', type:'스마트스토어', partnerType:'매출처', address:'서울특별시 중구 테스트로 2', region:'서울 중구', companyId:'taebaek' }],
   ['partners', 'partner-unlinked', { name:'연결품목없는거래처', type:'택배', partnerType:'매출처', address:'부산광역시 중구 테스트로 3', region:'부산 중구', companyId:'taebaek' }],
@@ -38,8 +49,8 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['accountCodes', '800', { code:'800', name:'상품매출', type:'revenue', normalBalance:'credit' }],
   ['accountCodes', '108', { code:'108', name:'외상매출금', type:'asset', normalBalance:'debit' }],
   ['accountCodes', '251', { code:'251', name:'외상매입금', type:'liability', normalBalance:'credit' }],
-  ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[{id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),remainingKg:100,kg:100}] }],
-  ['items', 'oil-350', { name:'가상 참기름/350ml', type:'product', category:'참기름', subtype:'낱개', stock:20, minStock:5, unit:'병', image:'', spec:'350ml', netContent:'350ml', weightInKg:0.32 }],
+  ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[{id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),createdAt:atDay(-10),kgIn:120,qtyIn:6,packageKg:20,packageType:'포',kgRemaining:100,status:'active'}] }],
+  ['items', 'oil-350', { name:'가상 참기름/350ml', type:'product', category:'참기름', subtype:'낱개', stock:20, minStock:5, unit:'병', image:'', spec:'350ml', netContent:'350ml', weightInKg:0.32, lots:[{id:'local-product-lot-1',lotNo:'LOCAL-P01',supplierName:'자체생산',receivedDate:day(-3),createdAt:atDay(-3),qtyIn:26,qtyRemaining:20,kgRemaining:6.4,unitKg:0.32,status:'active'}] }],
   ['items', 'oil-box', { name:'가상 참기름/350ml (12개입)', type:'product', category:'참기름', subtype:'박스', stock:3, minStock:1, unit:'박스', image:'', spec:'350ml' }],
   ['items', 'powder-1kg', { name:'가상 고춧가루/1kg', type:'goods', category:'고춧가루', subtype:'낱개', stock:30, minStock:5, unit:'개', image:'', spec:'1kg' }],
   ['items', 'bottle-350', { name:'가상 350ml 병', type:'submaterial', category:'용기', stock:200, minStock:20, unit:'개', image:'' }],
@@ -97,7 +108,13 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['cashEntries', 'cash-expense', { docNo:'L-자금-0001', date:day(-2), dir:'출금', amount:84000, accountCode:'505', note:'로컬 소모품 구입', method:'계좌', createdAt:atDay(-2, 9), companyId:'taebaek' }],
   ['cashEntries', 'cash-collect', { docNo:'L-자금-0002', date:day(-1), dir:'입금', amount:132000, partnerId:'partner-direct', partnerName:'가상직배송마트', note:'매출 대금 수금', method:'계좌', createdAt:atDay(-1, 15), companyId:'taebaek' }],
   ['cashEntries', 'cash-pay', { docNo:'L-자금-0003', date:day(0), dir:'출금', amount:33000, partnerId:'partner-supplier', partnerName:'가상부자재상사', note:'부자재 대금 지불', method:'현금', createdAt:atDay(0, 9), companyId:'taebaek' }],
+  ['rawMaterialLedger', 'local-raw-in', { rawItemId:'raw-sesame', material:'가상 참깨 원료', date:day(-10), received:120, used:0, note:'가상원료상사 입고', createdAt:atDay(-10), recordedAt:atDay(-10), sequence:1, balanceAfterKg:120, type:'manual', unit:'kg' }],
+  ['rawMaterialLedger', 'local-raw-use', { rawItemId:'raw-sesame', material:'가상 참깨 원료', date:day(-3), received:0, used:20, note:'가상 참기름 생산 사용', createdAt:atDay(-3), recordedAt:atDay(-3), sequence:2, balanceAfterKg:100, type:'auto', unit:'kg', orderId:'order-done' }],
 ];
-for (const [collection, id, data] of docs) await db.collection(collection).doc(id).set(data);
+for (const [collection, id, data] of docs) {
+  // 회사 분리 규칙을 실제로 통과하는 시드여야 화면 검수가 된다. 옛 시드처럼 회사값이 없으면 전부 빈 목록이 된다.
+  const scoped = collection === 'settings' ? data : { companyId: 'taebaek', ...data };
+  await db.collection(collection).doc(id).set(scoped);
+}
 console.log(`로컬 테스트 데이터 ${docs.length}건 준비 완료`);
 console.log('로그인: testadmin / localtest');

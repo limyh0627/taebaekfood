@@ -42,7 +42,7 @@ export function oemLedgerKg(
 /** 주문 스냅샷에는 실제 Firestore 원장 문서 ID를 남긴다. */
 export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): string[] {
   return [...new Set(traces.flatMap(trace =>
-    trace.operationId ? [operationDocId(trace.operationId)] : [],
+    trace.ledgerId ? [trace.ledgerId] : trace.operationId ? [operationDocId(trace.operationId)] : [],
   ))];
 }
 
@@ -158,6 +158,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
             material,
             rawItemId: input.command.rawItemId,
             operationId: input.command.operationId,
+            ledgerId: result.movement.id,
             supplierName: '임가공',
             kg: kg3(Math.abs(result.movement.reportedDeltaKg)),
             ledgerOnly: true,
@@ -170,6 +171,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
             material,
             rawItemId: input.command.rawItemId,
             operationId: input.command.operationId,
+            ledgerId: result.movement.id,
             supplierName: change.supplierName ?? '',
             kg: kg3(-change.deltaKg),
             ...(change.lotId ? { lotId: change.lotId } : {}),

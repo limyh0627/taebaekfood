@@ -69,8 +69,11 @@ export async function registerPush(employeeId: string): Promise<PushResult> {
     return { ok: false, reason: '알림을 먼저 켜 주세요.' };
   }
   try {
-    //  FCM 은 제 서비스워커를 따로 쓴다 — 워크박스 것과 안 부딪히게 직접 등록해 넘긴다
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    // FCM 일꾼이 `/` 범위를 차지하면 PWA 일꾼과 서로 교체되며 앱이 무한 새로고침된다.
+    // 알림 일꾼은 별도 범위에만 두고 getToken에 직접 넘긴다.
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+      scope: '/firebase-cloud-messaging-push-scope/',
+    });
     const token = await getToken(getMessaging(app), { vapidKey: VAPID, serviceWorkerRegistration: reg });
     if (!token) return { ok: false, reason: '표를 받지 못했습니다. 알림 권한을 확인해 주세요.' };
 

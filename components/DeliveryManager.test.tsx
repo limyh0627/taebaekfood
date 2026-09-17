@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeliveryManager from './DeliveryManager';
 import { today } from '../src/shared/day';
 import { OrderStatus, type Item, type Order, type Partner } from '../src/shared/types';
+import { setDocument } from '../src/shared/services/firebaseService';
 
 vi.mock('../src/shared/services/firebaseService', () => ({
   subscribeToDocument: vi.fn(() => () => undefined),
@@ -37,6 +38,8 @@ const 주문 = (id: string, partnerId: string, status: OrderStatus): Order => ({
 });
 
 describe('주간 배송 캘린더', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('캘린더를 기본 뷰로 열고 배송 대상 상태만 집계한다', () => {
     render(
       <DeliveryManager
@@ -97,5 +100,36 @@ describe('주간 배송 캘린더', () => {
     fireEvent.drop(todayCell, { dataTransfer });
 
     expect(onUpdateDeliveryDate).toHaveBeenCalledWith('260909-01', new Date(today()).toISOString());
+  });
+
+  it('날짜 상세에서 고른 주문을 회사별 날짜 묶음으로 저장한다', () => {
+    render(
+      <DeliveryManager
+        companyId="taebaek"
+        orders={[
+          주문('260909-01', 'p1', OrderStatus.DISPATCHED),
+          주문('260909-02', 'p2', OrderStatus.DISPATCHED),
+        ]}
+        partners={partners}
+        items={items}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: `${Number(today().slice(8, 10))}일 배송 상세 보기` }));
+    const 묶기 = screen.getAllByRole('button', { name: '묶을 것 고르기' });
+    fireEvent.click(묶기[0]);
+    fireEvent.click(묶기[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: '고른 2건 한 차로 묶기' }).at(-1)!);
+
+    expect(setDocument).toHaveBeenCalledWith(
+      'settings',
+      'taebaek__deliveryOrdering',
+      expect.objectContaining({
+        companyId: 'taebaek',
+        groupsByDate: {
+          [today()]: [expect.objectContaining({ orderIds: ['260909-01', '260909-02'] })],
+        },
+      }),
+    );
   });
 });

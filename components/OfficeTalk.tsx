@@ -40,6 +40,7 @@ import { REACTION_EMOJIS, toggleReaction, reactionChips, reactionTitle } from '.
 import { matchesSearch } from '../src/shared/hangul';
 import { companyOf } from '../src/shared/types';
 import { participantCompaniesOf } from '../src/shared/chatParticipants';
+import { isTouchLikeDevice, shouldSendChatOnEnter } from '../src/shared/chatComposer';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -48,10 +49,10 @@ interface OfficeTalkProps {
   chatMessages: ChatMessage[];
   initialRoomId?: string | null;
   onRoomOpened?: () => void;
-  onAddRoom: (_room: ChatRoom) => void;
-  onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void;
+  onAddRoom: (_room: ChatRoom) => void | Promise<unknown>;
+  onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void | Promise<unknown>;
   onDeleteRoom: (_id: string) => void;
-  onSendMessage: (_msg: ChatMessage) => void;
+  onSendMessage: (_msg: ChatMessage) => void | Promise<unknown>;
   /** 말 지우기 — 줄은 남기고 내용만 비운다(shared/messageActions) */
   onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void;
   /** 관리자면 남의 말도 지울 수 있다 */
@@ -90,15 +91,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteSelected, setInviteSelected] = useState<string[]>([]);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  // 서버 스냅샷이 도착하기 전까지 내가 보낸 말을 보존한다. 다음 스냅샷이 목록을 통째로
+  // 덮어쓰면서 방금 보낸 말이 사라졌다 다시 나타나는 깜빡임을 막는다.
+  const pendingMessages = useRef(new Map<string, ChatMessage>());
+  const activeRoomIdRef = useRef<string | null>(activeRoomId);
+  activeRoomIdRef.current = activeRoomId;
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -128,6 +135,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
 
   //  종에서 권한을 켜면 이 화면 표시도 따라간다 — 화면을 다시 볼 때 한 번 확인한다
+  const currentUserId = currentUser.id;
+  const currentCompanyId = companyOf(currentUser);
   useEffect(() => {
     const 다시읽기 = () => setNotifPermission(notifyPermission());
     window.addEventListener('focus', 다시읽기);
@@ -157,6 +166,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
     setNoticeOpen(false);
     if (!activeRoomId) return;
+    // 방을 새로 열 때만 처음부터 최신 말로 간다. 같은 방에서 위 기록을 읽는 중에는
+    // 스냅샷이 와도 사용자의 위치를 건드리지 않는다.
+    stickToBottomRef.current = true;
 
     // 방 열릴 때 읽음 처리
     markRoomAsRead(activeRoomId);
@@ -165,6 +177,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
     const q = query(
       collection(db, 'chatMessages'),
+      where('companyId', '==', currentCompanyId),
       where('roomId', '==', activeRoomId)
     );
 
@@ -172,7 +185,13 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       const msgs = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage))
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      setLocalMessages(msgs);
+      const confirmed = new Set(msgs.map(message => message.id));
+      for (const id of confirmed) pendingMessages.current.delete(id);
+      setLocalMessages(previous => {
+        const pending = [...pendingMessages.current.values()]
+          .filter(message => message.roomId === activeRoomId && !confirmed.has(message.id));
+        return [...msgs, ...pending].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      });
       setIsLoadingMore(false);
       setFirestoreError(null);
     }, (error) => {
@@ -184,7 +203,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     return () => {
       unsubscribeRef.current?.();
     };
-  }, [activeRoomId]);
+  }, [activeRoomId, currentUserId, currentCompanyId]);
 
 
   /** 내가 위에 붙여 둔 방인가 — 사람마다 따로다(`pinnedBy`). */
@@ -210,8 +229,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   }, [chatRooms, activeRoomId]);
 
   useEffect(() => {
-    if (!isLoadingMore) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isLoadingMore && stickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
     }
   }, [localMessages, isLoadingMore]);
 
@@ -229,7 +248,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setIsEditingRoomName(false);
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (selectedParticipants.length === 0) return;
     
     const participantIds = [...new Set([...selectedParticipants, currentUser.id])];
@@ -261,10 +280,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       isGroup: participantIds.length > 2
     };
 
-    onAddRoom(newRoom);
-    setActiveRoomId(newRoom.id);
-    setIsNewChatModalOpen(false);
-    setSelectedParticipants([]);
+    try {
+      await onAddRoom(newRoom);
+      setActiveRoomId(newRoom.id);
+      setIsNewChatModalOpen(false);
+      setSelectedParticipants([]);
+    } catch (err: any) {
+      setFirestoreError(`대화방을 만들지 못했습니다: ${err?.message || '네트워크 오류'}`);
+    }
   };
 
   useEffect(() => {
@@ -285,13 +308,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   ) => {
     e?.preventDefault();
     const 사진있음 = !!(photos?.imageUrl || photos?.images?.length);
-    if ((!messageText.trim() && !attach && !사진있음) || !activeRoomId || isSending) return;
+    if ((!messageText.trim() && !attach && !사진있음) || !activeRoomId) return;
 
     //  누가 불렸나 — 이름 겹침·@관리자까지 shared/mention 이 혼자 판단한다
     const mentions = mentionedIds(messageText, employees);
 
     const newMessage: ChatMessage = {
-      id: `MSG-${Date.now()}`,
+      id: `MSG-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
+      companyId: companyOf(currentUser),
       roomId: activeRoomId,
       senderId: currentUser.id,
       senderName: currentUser.name,
@@ -305,18 +329,22 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       ...(replyTo ? { replyTo: replySnippet(replyTo) } : {}),
     };
 
-    setIsSending(true);
     const savedText = messageText;
+    // 서버 왕복을 기다린 뒤 목록에 붙이면 모바일망에서는 눌렀는지조차 늦게 보인다.
+    // 같은 id의 서버 스냅샷이 곧 전체 목록을 확정하므로 먼저 화면에만 낙관적으로 붙인다.
+    pendingMessages.current.set(newMessage.id, newMessage);
+    stickToBottomRef.current = true;
+    setLocalMessages(prev => prev.some(message => message.id === newMessage.id) ? prev : [...prev, newMessage]);
     setMessageText('');
     setReplyTo(null);
     try {
       await (onSendMessage as (_msg: ChatMessage) => Promise<void>)(newMessage);
     } catch (err: any) {
       console.error('메시지 전송 오류:', err);
-      setMessageText(savedText);
+      pendingMessages.current.delete(newMessage.id);
+      setLocalMessages(prev => prev.filter(message => message.id !== newMessage.id));
+      setMessageText(current => current || (activeRoomIdRef.current === newMessage.roomId ? savedText : current));
       setFirestoreError(`메시지 전송 실패: ${err?.message || '네트워크 오류'}`);
-    } finally {
-      setIsSending(false);
     }
   };
 
@@ -816,7 +844,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 {showRoomMenu && (
                   <div className="absolute right-0 top-full mt-1 bg-white rounded-2xl border border-slate-100 shadow-xl z-50 overflow-hidden w-36">
                     <button
-                      onClick={() => { setInviteSelected([]); setShowInviteModal(true); setShowRoomMenu(false); }}
+                      onClick={() => { setInviteSelected([]); setInviteError(null); setShowInviteModal(true); setShowRoomMenu(false); }}
                       className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                     >
                       멤버 초대
@@ -877,7 +905,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             })()}
 
             {/* Messages List */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-0.5 custom-scrollbar bg-slate-50/30">
+            <div onScroll={event => {
+                const el = event.currentTarget;
+                stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              }}
+              className="flex-1 min-h-0 touch-pan-y overscroll-y-contain overflow-y-auto p-3 sm:p-4 space-y-0.5 custom-scrollbar bg-slate-50/30">
               {firestoreError && (
                 <div className="flex items-center space-x-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-xs font-bold text-rose-600">
                   <X size={14} className="shrink-0" />
@@ -934,6 +966,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         //  **마우스로는 꾹 눌러도 창이 안 뜬다**(2026-09-07 사장님) — 글자를 긁으려고
                         //  누르고 끄는 데 0.45초가 넘게 걸려서, 긁는 도중에 창이 튀어나왔다.
                         onPointerDown={(e) => { if (e.pointerType !== 'mouse') startLongPress(msg); }}
+                        onPointerMove={cancelLongPress}
                         onPointerUp={cancelLongPress}
                         onPointerLeave={cancelLongPress}
                         onPointerCancel={cancelLongPress}
@@ -1178,7 +1211,12 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     value={messageText}
                     onChange={handleInputChange}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
+                      if (shouldSendChatOnEnter({
+                        key: e.key,
+                        shiftKey: e.shiftKey,
+                        isComposing: e.nativeEvent.isComposing,
+                        touchLike: isTouchLikeDevice(),
+                      })) {
                         e.preventDefault();
                         handleSendMessage();
                       }
@@ -1191,10 +1229,10 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 </div>
                 <button
                   type="submit"
-                  disabled={!messageText.trim() || isSending}
+                  disabled={!messageText.trim()}
                   className="w-11 h-11 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95 shrink-0"
                 >
-                  {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  <Send size={20} />
                 </button>
               </form>
             </div>
@@ -1229,6 +1267,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <button onClick={() => setShowInviteModal(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
             </div>
             <div className="p-4 max-h-72 overflow-y-auto space-y-1">
+              {inviteError && (
+                <div className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">
+                  {inviteError}
+                </div>
+              )}
               {employees
                 .filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id))
                 .map(emp => (
@@ -1255,13 +1298,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <button onClick={() => setShowInviteModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
               <button
                 disabled={inviteSelected.length === 0}
-                onClick={() => {
+                onClick={async () => {
                   const participantIds = [...new Set([...activeRoom.participantIds, ...inviteSelected])];
-                  onUpdateRoom(activeRoom.id, {
-                    participantIds,
-                    participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
-                  });
-                  setShowInviteModal(false);
+                  try {
+                    await onUpdateRoom(activeRoom.id, {
+                      companyId: companyOf(currentUser),
+                      participantIds,
+                      participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
+                    });
+                    setInviteSelected([]);
+                    setShowInviteModal(false);
+                  } catch (err: any) {
+                    const message = `멤버를 초대하지 못했습니다: ${err?.message || '네트워크 오류'}`;
+                    setInviteError(message);
+                    setFirestoreError(message);
+                  }
                 }}
                 className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm disabled:opacity-40 hover:bg-indigo-700 transition-all"
               >

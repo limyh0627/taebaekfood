@@ -1,5 +1,34 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-09-17 — 옛 원료원장 34건에 원료 품목 ID 연결
+
+**작업자:** Codex 에이전트 (사장님이 3번까지 진행 승인)
+
+- `rawItemId`가 없던 실제 원료원장 34건을 회사·원료명 기준 단일 홀더에 연결했다.
+- 통깨참기름 9, 수입들기름 6, 통들깨들기름 6, 깨분참기름 4, 볶음참깨 4,
+  참깨 2, 볶음들깨·탈피들깨가루·볶음검정참깨 각 1건이다.
+- 애매하거나 매칭하지 못한 줄은 0건이었고 적용 후 재조회에서 남은 누락은 0건이다.
+- 스크립트: `scripts/fix-raw-ledger-keys.mts --missing-only --apply`
+- 백업: `로컬전용/백업/raw-ledger-missing-keys-2026-09-17.json`
+- 되돌리기: `scripts/fix-raw-ledger-keys.mts --missing-only --undo`
+
+---
+
+## 2026-09-17 — 다미원 주문의 권한 실패 잠금 해제
+
+**작업자:** Codex 에이전트 (사장님 적용 승인)
+
+- 대상: 다미원 `orders/ORD-1789455093683` (`ORD-260915-016`).
+- 실패 원문은 `Missing or insufficient permissions.`였으며 벌크 부족이 아니었다.
+- 실패 전에 깨분참기름 455.124kg 차감 작업표와 원료수불부가 결정적 작업번호로 이미 완료된 것을 확인했다.
+- 주문 체크·완제품 예약·생산실적·상태감사 기록은 0건이었다. 재시도 시 기존 작업번호가 원료 중복 차감을 막는다.
+- 기존 원료 차감과 작업표는 유지하고 주문의 `inventoryOperation` 실패 잠금만 삭제한 뒤 재조회했다.
+- 스크립트: `scripts/fix-damiwon-inventory-lock.mts --apply`
+- 백업: `로컬전용/백업/damiwon-inventory-lock-2026-09-17.json`
+- 되돌리기: `scripts/fix-damiwon-inventory-lock.mts --undo`
+
+---
+
 ## 2026-09-17 — 해피유통 세 거래처를 배송지 구조로 통합
 
 **작업자:** Codex 에이전트 (사장님 적용 승인)

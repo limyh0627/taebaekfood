@@ -4197,8 +4197,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
             : current);
         };
         const closeEditor = () => setListOrderEditor(null);
+        const 주문수량 = (item: OrderItem) => item.isBoxUnit ? (item.boxQuantity ?? item.quantity) : item.quantity;
         const saveEditor = () => {
-          if (!listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId)) return;
+          if (!listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId || 주문수량(item) <= 0)) return;
           if (listOrderEditor.deliveryDate !== editorOrder.deliveryDate.split('T')[0]) {
             onUpdateDeliveryDate(editorOrder.id, new Date(listOrderEditor.deliveryDate).toISOString());
           }
@@ -4208,7 +4209,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const addDraftItem = () => setListOrderEditor(current => current && current.orderId === editorOrder.id
           ? { ...current, items: [...current.items, { itemId: '', name: '', quantity: 1, price: 0 }] }
           : current);
-        const saveDisabled = !listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId);
+        const saveDisabled = !listOrderEditor.deliveryDate || listOrderEditor.items.length === 0 || listOrderEditor.items.some(item => !item.itemId || 주문수량(item) <= 0);
         return (
           <OrderEditModalShell title="거래처 주문 수정" partnerName={partnerName} context={`주문일 ${fmtYYMMDD(new Date(editorOrder.createdAt))}`} onClose={closeEditor} onSave={saveEditor} saveDisabled={saveDisabled}
             headerAction={(
@@ -4275,17 +4276,29 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       >
                         {!orderItem.itemId && <option value="">품목을 선택하세요</option>}
                         {orderItem.itemId && !orderableItems.some(item => item.id === orderItem.itemId) && <option value={orderItem.itemId}>{orderItem.name}</option>}
-                        {orderableItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        {orderableItems.map(item => {
+                          const 규격 = specText(item.spec);
+                          return <option key={item.id} value={item.id}>{item.name}{규격 ? ` · ${규격}` : ''}</option>;
+                        })}
                       </select>
                       </label>
                       <label className="min-w-0 text-[10px] font-black text-slate-500 sm:contents"><span className="mb-1 block sm:hidden">수량</span><span className="relative block min-w-0">
                         <input
                           type="number"
                           min={1}
-                          value={orderItem.isBoxUnit ? (orderItem.boxQuantity ?? orderItem.quantity) : orderItem.quantity}
+                          value={주문수량(orderItem) > 0 ? 주문수량(orderItem) : ''}
                           onChange={event => {
-                            const quantity = Math.max(1, Number(event.target.value) || 1);
+                            /* 숫자를 전부 지운 찰나에는 빈칸을 둔다. 여기서 곧바로 1로 되돌리면
+                               기존 1을 지우고 20처럼 새 수량을 적을 수 없다. 저장은 위에서 막고,
+                               빈칸인 채 칸을 벗어날 때만 1로 복구한다. */
+                            const quantity = event.target.value === '' ? 0 : Math.max(1, Number(event.target.value) || 1);
                             updateDraftItem(index, orderItem.isBoxUnit ? { boxQuantity: quantity, quantity: quantity * (orderItem.unitsPerBox || 1) } : { quantity });
+                          }}
+                          onBlur={() => {
+                            if (주문수량(orderItem) > 0) return;
+                            updateDraftItem(index, orderItem.isBoxUnit
+                              ? { boxQuantity: 1, quantity: orderItem.unitsPerBox || 1 }
+                              : { quantity: 1 });
                           }}
                           className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-2 pr-9 text-right text-xs font-black tabular-nums text-indigo-600 outline-none [appearance:textfield] focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           aria-label={`${orderItem.name} 주문 수량 (${orderItem.isBoxUnit ? '박스' : (items.find(item => item.id === orderItem.itemId)?.unit || '개')})`}

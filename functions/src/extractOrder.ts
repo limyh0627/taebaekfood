@@ -13,22 +13,25 @@ import { defineSecret } from 'firebase-functions/params';
  * 물릴 수 있다. 그래서 키는 **Firebase 시크릿**에만 두고, 앱은 이 함수를 부른다.
  * (스마트스토어 열쇠 때 정한 규칙 그대로 — "그 값은 저장소에 넣지 않는다")
  *
- *   설정:  npx firebase functions:secrets:set ANTHROPIC_API_KEY
+ *   설정:  npx firebase functions:secrets:set GEMINI_API_KEY
  *   배포:  cd functions && npm run deploy
  *
  * **읽어 온 것을 여기서 믿지 않는다.** 모양만 JSON 으로 받아 넘기고, 우리 품목 목록에
  * 비추어 거르는 일은 화면 쪽 `shared/orderExtract.validateExtract` 가 한다 — 그래야
  * 네트워크 없이 시험할 수 있고 무엇을 믿는지가 한 곳에 모인다.
  */
-const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 
 const REGION = 'asia-northeast3';
+// 2.5 Flash는 2026-09부터 신규 사용자 호출에 404를 돌려준다. API가 안내한 현행 Flash를 쓴다.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
 /** 한 번에 받을 수 있는 글·목록 크기. 넘치면 값이 비싸지고 읽기도 나빠진다. */
 const 글자한도 = 4000;
 const 품목한도 = 400;
 /** 지난 주문 줄 수. 한 줄이 15토큰쯤이라 이만큼 붙여도 한 건에 몇 원이다. */
 const 기록한도 = 60;
+const 잠깐 = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 interface 들어온것 {
   text?: string;
@@ -75,7 +78,7 @@ JSON 형식(이것만 출력한다. 설명·코드블록 금지):
 {"partnerId":"","deliveryDate":"","note":"","lines":[{"itemId":"","qty":0,"isBox":true,"source":""}]}`;
 
 export const extractOrder = onCall(
-  { region: REGION, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 60 },
+  { region: REGION, secrets: [GEMINI_API_KEY], timeoutSeconds: 60 },
   async (request) => {
     //  **로그인한 사람만** — 열쇠를 대신 써 주는 함수라 아무나 부르면 요금이 샌다.
     if (!request.auth) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -105,28 +108,65 @@ export const extractOrder = onCall(
 
     let 답: string;
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const 요청 = {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY.value(),
-          'anthropic-version': '2023-06-01',
+          'x-goog-api-key': GEMINI_API_KEY.value(),
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-5',
-          max_tokens: 2000,
-          //  **0 에 가깝게** — 주문은 창의력이 필요한 일이 아니다. 같은 글은 같게 읽혀야 한다.
-          temperature: 0,
-          messages: [{ role: 'user', content: 본문 }],
+          contents: [{ role: 'user', parts: [{ text: 본문 }] }],
+          generationConfig: {
+            // 주문 추출은 깊은 추론보다 빠르고 완결된 JSON이 중요하다. 기본 medium은 2천 토큰에서 답을 잘랐다.
+            thinkingConfig: { thinkingLevel: 'MINIMAL' },
+            temperature: 0,
+            maxOutputTokens: 8192,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                partnerId: { type: 'STRING' },
+                deliveryDate: { type: 'STRING' },
+                note: { type: 'STRING' },
+                lines: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      itemId: { type: 'STRING' },
+                      qty: { type: 'NUMBER' },
+                      isBox: { type: 'BOOLEAN' },
+                      source: { type: 'STRING' },
+                    },
+                    required: ['itemId', 'qty', 'source'],
+                  },
+                },
+              },
+              required: ['partnerId', 'deliveryDate', 'note', 'lines'],
+            },
+          },
         }),
-      });
+      } satisfies RequestInit;
+
+      let res: Response | undefined;
+      // 503은 Gemini가 고수요 때 잠깐 돌려주는 응답이다. 직원이 다시 누르게 하지 않고 서버에서 두 번 더 시도한다.
+      for (let 시도 = 0; 시도 < 3; 시도 += 1) {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, 요청);
+        if (res.status !== 503 || 시도 === 2) break;
+        await 잠깐(500 * (시도 + 1));
+      }
+      if (!res) throw new Error('Gemini 응답이 없습니다.');
       if (!res.ok) {
         const 사유 = await res.text().catch(() => '');
         console.error('[주문 읽기] API 응답 실패', res.status, 사유.slice(0, 300));
         throw new HttpsError('internal', `주문을 읽지 못했습니다(${res.status}).`);
       }
-      const json = await res.json() as { content?: { type?: string; text?: string }[] };
-      답 = (json.content ?? []).filter(c => c.type === 'text').map(c => c.text ?? '').join('').trim();
+      const json = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[] };
+      답 = (json.candidates?.[0]?.content?.parts ?? []).map(part => part.text ?? '').join('').trim();
+      if (json.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+        console.error('[주문 읽기] 출력 한도 초과', 답.slice(0, 300));
+        throw new HttpsError('internal', '주문 내용이 너무 길어 끝까지 읽지 못했습니다. 주문 부분만 다시 넣어주세요.');
+      }
     } catch (error) {
       if (error instanceof HttpsError) throw error;
       console.error('[주문 읽기] 부르지 못함', error);

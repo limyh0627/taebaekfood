@@ -11,6 +11,8 @@ import RawLedgerList from './RawLedgerList';
 interface Props {
   /** 그 주문에서 이 원료를 쓰는 줄만 골라 준다 — RawLedgerList 로 그대로 넘긴다. */
   linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
+  /** 로트 관리 상세에서는 원장 표 대신 별도 타임라인을 쓴다. */
+  showLedger?: boolean;
   product: Item;        // 로트가 저장된 원료(raw) 품목
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
@@ -26,7 +28,7 @@ interface Props {
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw, showLedger = true }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -159,11 +161,11 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       ? `${lot.packageKg}kg × ${lot.qtyIn}${lot.packageType ?? '개'}`
       : null;
     return (
-      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-emerald-50' : ''}`}>
-        <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-slate-100' : ''}`}>
+        <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
           {lot.supplierName === '이월'
-            ? <Layers size={13} className="text-emerald-600" />
-            : <Truck size={13} className="text-emerald-600" />}
+            ? <Layers size={13} className="text-slate-500" />
+            : <Truck size={13} className="text-slate-500" />}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -204,7 +206,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           <span className="text-[10px] text-slate-400">입고 {lot.receivedDate}</span>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-sm font-black text-emerald-700">{fmt(remUnit)} {unitLabel}</div>
+          <div className="text-sm font-black text-slate-800">{fmt(remUnit)} {unitLabel}</div>
           {isOil && <div className="text-[10px] text-slate-400">{fmt(lot.kgRemaining)} kg</div>}
         </div>
         {!dim && (
@@ -213,13 +215,13 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
               <button
                 disabled={busy || idx === 0}
                 onClick={(e) => { e.stopPropagation(); move(idx, -1); }}
-                className="p-1 rounded-md bg-white border border-emerald-200 text-emerald-600 disabled:opacity-30 hover:bg-emerald-50 transition-colors"
+                className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 transition-colors"
                 title="먼저 사용 (위로)"
               ><ArrowUp size={12} /></button>
               <button
                 disabled={busy || idx === total - 1}
                 onClick={(e) => { e.stopPropagation(); move(idx, 1); }}
-                className="p-1 rounded-md bg-white border border-emerald-200 text-emerald-600 disabled:opacity-30 hover:bg-emerald-50 transition-colors"
+                className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50 transition-colors"
                 title="나중에 사용 (아래로)"
               ><ArrowDown size={12} /></button>
             </div>
@@ -240,15 +242,15 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   return (
     <div className="flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
       {linkedNote && (
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2.5 py-1.5">
+        <div className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-600">
           <CornerDownRight size={12} className="shrink-0" />
           <span>{linkedNote}</span>
         </div>
       )}
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">입고 로트 {mixEnabled ? '(혼합 사용)' : '(선입선출)'}</span>
-        <span className="text-sm font-black text-emerald-800">
-          합계 {fmt(totalUnit)} {unitLabel}{isOil && <span className="text-[11px] font-bold text-emerald-500"> ({fmt(totalKg)} kg)</span>}
+        <span className="text-[11px] font-black uppercase tracking-wide text-slate-600">입고 로트 {mixEnabled ? '(혼합 사용)' : '(선입선출)'}</span>
+        <span className="text-sm font-black text-slate-800">
+          합계 {fmt(totalUnit)} {unitLabel}{isOil && <span className="text-[11px] font-bold text-slate-400"> ({fmt(totalKg)} kg)</span>}
         </span>
       </div>
 
@@ -265,7 +267,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         return (
           <div className="flex flex-wrap gap-1.5">
             {[...byPkg.entries()].sort((a, b) => a[0] - b[0]).map(([pkgKg, v]) => (
-              <span key={pkgKg} className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
+              <span key={pkgKg} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600">
                 {pkgKg}kg{v.type} 잔량 {fmt(v.kg)}kg (≈{Math.floor(v.kg / pkgKg * 10) / 10}{v.type})
               </span>
             ))}
@@ -300,13 +302,13 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       )}
 
       {active.length === 0 ? (
-        <div className="bg-white rounded-xl border border-emerald-100 px-3 py-6 text-center text-xs font-bold text-slate-300">
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-xs font-bold text-slate-300">
           등록된 로트가 없습니다. 거래처 입고 시 자동 생성됩니다.
         </div>
       ) : (
         <>
-          <p className="text-[10px] font-bold text-emerald-500">↑ 위 로트부터 사용됩니다 · ▲▼로 순서 변경</p>
-          <div className="bg-white rounded-xl border border-emerald-100 overflow-hidden">
+          <p className="text-[10px] font-bold text-slate-400">↑ 위 로트부터 사용됩니다 · ▲▼로 순서 변경</p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             {active.map((lot, i) => lotRow(lot, i, active.length, false))}
           </div>
         </>
@@ -334,7 +336,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       {박스로트}
 
       {/* 이 원료의 입출고(수불) 기록 — 수동/자동/정정 모두 */}
-      {ledgerEntries && (
+      {showLedger && ledgerEntries && (
         <div className="pt-1">
           <div className="flex items-center gap-1.5 mb-1.5">
             <History size={12} className="text-slate-400" />

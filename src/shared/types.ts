@@ -229,6 +229,8 @@ export interface OrderRawInventoryTrace {
   rawItemId?: string;
   /** 이 원료 작업의 원자 명령. 취소는 이 명령을 reverse 한다. */
   operationId?: string;
+  /** 실제 Firestore 원장 문서 ID. 옛 ID로 저장된 명령을 재개하면 현재 계산 ID와 다를 수 있다. */
+  ledgerId?: string;
   /** 임가공 완제품에서 이미 실물이 빠져 원료 로트는 건드리지 않고 수불부에만 남긴 줄. */
   ledgerOnly?: boolean;
   lotId?: string;
@@ -329,6 +331,10 @@ export interface Order {
   /** 여러 창에서 같은 주문 상태를 동시에 바꾸지 못하게 하는 짧은 작업 잠금. */
   inventoryOperation?: {
     id: string;
+    /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */
+    kind?: 'line' | 'status';
+    lineId?: string;
+    stage?: 'claim' | 'reservation' | 'raw-inventory' | 'production-record' | 'final-stock';
     targetStatus: OrderStatus;
     state: 'processing' | 'failed';
     startedAt: string;
@@ -477,6 +483,7 @@ export interface ItemStocktakeAnchor {
   targetQty: number;
   beforeQty: number;
   deltaQty: number;
+  note?: string;
 }
 
 // ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────
@@ -826,6 +833,7 @@ export interface LeaveRequest {
 
 export interface ChatMessage {
   id: string;
+  companyId?: CompanyId;
   roomId: string;
   senderId: string;
   senderName: string;

@@ -3,9 +3,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { 새버전확인, 새버전확인붙이기, 확인시각비우기 } from './swUpdate';
 
 const 일꾼심기 = (update: () => Promise<void>) => {
+  const events = new EventTarget();
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
-    value: { getRegistration: () => Promise.resolve({ update }) },
+    value: {
+      controller: { scriptURL: 'https://example.com/sw.js' },
+      getRegistration: () => Promise.resolve({ update }),
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+      dispatchEvent: events.dispatchEvent.bind(events),
+    },
   });
 };
 
@@ -55,5 +62,38 @@ describe('앞으로 나올 때 걸기', () => {
     window.dispatchEvent(new Event('focus'));
     await Promise.resolve();
     expect(update, '뗀 뒤에는 안 물어야 한다').toHaveBeenCalledOnce();
+  });
+
+  it('새 서비스워커가 제어권을 잡으면 현재 화면을 한 번만 다시 연다', () => {
+    일꾼심기(() => Promise.resolve());
+    const reload = vi.fn();
+    const 떼기 = 새버전확인붙이기(reload);
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    expect(reload).toHaveBeenCalledOnce();
+    떼기();
+  });
+
+  it('최초 설치는 옛 버전 교체가 아니므로 다시 열지 않는다', () => {
+    일꾼심기(() => Promise.resolve());
+    Object.defineProperty(navigator.serviceWorker, 'controller', { value: null });
+    const reload = vi.fn();
+    const 떼기 = 새버전확인붙이기(reload);
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    expect(reload).not.toHaveBeenCalled();
+    떼기();
+  });
+
+  it('알림 서비스워커 교체는 앱 버전이 아니므로 다시 열지 않는다', () => {
+    일꾼심기(() => Promise.resolve());
+    Object.defineProperty(navigator.serviceWorker, 'controller', {
+      configurable: true,
+      value: { scriptURL: 'https://example.com/firebase-messaging-sw.js' },
+    });
+    const reload = vi.fn();
+    const 떼기 = 새버전확인붙이기(reload);
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    expect(reload).not.toHaveBeenCalled();
+    떼기();
   });
 });

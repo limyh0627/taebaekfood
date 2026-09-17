@@ -5,6 +5,7 @@ import type {
   IssuedStatement, Item, Order, OrderInventorySnapshot, OrderItemInventoryState,
   OrderRawInventoryTrace, ProductionSalesLog, PurchaseOrder, RawMaterialEntry,
 } from '../../shared/types';
+import { operationDocId } from '../../shared/rawInventoryCore';
 import { auditDataIntegrity, expectedProductionDeltas, isStaleInventoryProcessing, PROCESSING_STALE_MS, type IntegrityAuditInput } from './dataIntegrityAudit';
 
 const productItem = (over: Partial<Item> = {}): Item => ({
@@ -335,6 +336,16 @@ describe('auditDataIntegrity — P0.2 원료 원장 대조', () => {
       rawMaterialLedger: [ledger()],
     }));
     expect(issues.map(issue => issue.id).filter(id => id.startsWith('raw-ledger-mismatch'))).toEqual([]);
+  });
+
+  it('옛 문서 ID여도 같은 operationId 원장이 있으면 연결 누락으로 오인하지 않는다', () => {
+    const operationId = 'production:order-1::a1:raw-1';
+    const trace: OrderRawInventoryTrace = { material: '볶음참깨', rawItemId: 'raw-1', operationId, supplierName: '거래처', kg: 10 };
+    const issues = auditDataIntegrity(input({
+      orders: [traceOrder(trace, [operationDocId(operationId)])],
+      rawMaterialLedger: [ledger({ id: 'rm-auto-order-1-raw-1', operationId })],
+    }));
+    expect(issues.map(issue => issue.id).filter(id => id.startsWith('raw-ledger-missing'))).toEqual([]);
   });
 
   it('같은 작업번호의 여러 로트 trace 는 합산해서 원장 한 건과 대조한다', () => {

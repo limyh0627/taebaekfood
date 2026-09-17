@@ -221,7 +221,16 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
       for (const delta of snap?.stockDeltas || []) if (!itemIds.has(delta.itemId)) out.push({ id: `missing-delta:${order.id}:${line.lineId}:${delta.itemId}`, area: '작업완료·BOM', severity: 'error', title: '재고 증감 품목이 품목 목록에 없음', detail: `저장된 증감 ${delta.delta}의 품목 ${delta.itemId}를 찾을 수 없습니다.`, date: snap.capturedAt, reference });
       for (const bom of snap?.bomLines || []) if (!itemIds.has(bom.parentItemId) || !itemIds.has(bom.childItemId)) out.push({ id: `missing-bom:${order.id}:${line.lineId}:${bom.parentItemId}:${bom.childItemId}`, area: '작업완료·BOM', severity: 'error', title: '저장된 BOM 품목이 품목 목록에 없음', detail: `${nameOf(items, bom.parentItemId)} → ${nameOf(items, bom.childItemId)} 연결을 확인할 수 없습니다.`, date: snap.capturedAt, reference });
       if ((snap?.rawConsumedLots?.length || 0) > 0 && !snap?.rawLedgerIds?.length) out.push({ id: `raw-no-ledger:${order.id}:${line.lineId}`, area: '작업완료·BOM', severity: 'error', title: '원료 사용은 있으나 수불부 연결 없음', detail: `${line.name}의 원료 로트 차감은 기록됐지만 원료수불부 문서 ID가 없습니다.`, date: snap.capturedAt, reference });
-      for (const ledgerId of snap?.rawLedgerIds || []) if (!rawLedgerIds.has(ledgerId)) out.push({ id: `raw-ledger-missing:${order.id}:${line.lineId}:${ledgerId}`, area: '작업완료·BOM', severity: 'error', title: '연결된 원료수불부 기록을 찾을 수 없음', detail: `${line.name}이 가리키는 수불부 문서 ${ledgerId}가 없습니다.`, date: snap.capturedAt, reference });
+      for (const ledgerId of snap?.rawLedgerIds || []) {
+        if (rawLedgerIds.has(ledgerId)) continue;
+        // 옛 앱은 같은 operationId를 다른 문서 ID로 저장했다. 재개 시 새 계산 ID를 스냅샷에
+        // 남긴 주문은 문서 ID만 보면 누락처럼 보이므로, 원자 작업번호가 실제 존재하는지도 본다.
+        const matchingTrace = snap.rawConsumedLots?.find(trace =>
+          trace.operationId && operationDocId(trace.operationId) === ledgerId
+        );
+        if (matchingTrace?.operationId && rawLedgerByOperationId.has(matchingTrace.operationId)) continue;
+        out.push({ id: `raw-ledger-missing:${order.id}:${line.lineId}:${ledgerId}`, area: '작업완료·BOM', severity: 'error', title: '연결된 원료수불부 기록을 찾을 수 없음', detail: `${line.name}이 가리키는 수불부 문서 ${ledgerId}가 없습니다.`, date: snap.capturedAt, reference });
+      }
 
       // ── P0.1 · 스냅샷 산술 정합성 ─────────────────────────────────────
       // 기존 재고로만 충당한 완료 줄(producedUnits·autoBuilt·stockDeltas 가 모두 비어 있음)은

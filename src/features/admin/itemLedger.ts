@@ -24,7 +24,7 @@ import type { ItemReceipt } from '../../shared/receipt';
  * 재고조정·실사처럼 주문 밖에서 움직인 것은 여기 안 잡힌다. 그래서 **맞춘 잔량이 아니라
  * 흐름**을 보여주고, 지금 재고와의 차이를 따로 밝힌다 — 억지로 맞추면 어디가 틀렸는지 가려진다.
  */
-export type ItemLedgerKind = '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사';
+export type ItemLedgerKind = '기초' | '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사';
 
 export interface ItemLedgerRow {
   date: string;
@@ -34,6 +34,8 @@ export interface ItemLedgerRow {
   orderId: string;
   note: string;
   balance: number;        // 첫 줄부터 굴린 누계 (0에서 시작)
+  /** 같은 날의 실제 적용 순서. 날짜만 비교하면 실사 앞뒤가 뒤집힌다. */
+  occurredAt?: string;
   /** 실사는 이전 계산 오차와 무관하게 잔량을 이 값으로 다시 세운다. */
   targetBalance?: number;
 }
@@ -45,6 +47,11 @@ export interface ItemLedger {
   net: number;
   /** 지금 재고 − 흐름 합계. 0이 아니면 주문 밖에서 움직인 몫(실사·조정·수동입력)이다. */
   gap: number;
+  opening: number;
+  /** 실사 앵커 뒤의 흐름만으로 현재 재고를 대조할 수 있는지. */
+  independentlyVerified: boolean;
+  /** 독립 검증의 출발점인 가장 최근 실사 날짜. */
+  verifiedFrom?: string;
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -68,12 +75,12 @@ export function buildItemLedger(
     //  ① 그때 실제로 만든 양
     for (const p of (o.producedUnits ?? [])) {
       if (p.itemId !== itemId || !Number(p.qty)) continue;
-      rows.push({ date, kind: '생산', qty: r3(Number(p.qty)), partnerName, orderId: o.id, note: '작업완료', balance: 0 });
+      rows.push({ date, kind: '생산', qty: r3(Number(p.qty)), partnerName, orderId: o.id, note: '작업완료', balance: 0, occurredAt: o.producedAt || o.createdAt });
     }
     //  ② 모자라서 먼저 만든 양
     for (const b of (o.autoBuilt ?? [])) {
       if (b.itemId !== itemId || !Number(b.qty)) continue;
-      rows.push({ date, kind: '먼저생산', qty: r3(Number(b.qty)), partnerName, orderId: o.id, note: '구성품이 모자라 먼저 만듦', balance: 0 });
+      rows.push({ date, kind: '먼저생산', qty: r3(Number(b.qty)), partnerName, orderId: o.id, note: '구성품이 모자라 먼저 만듦', balance: 0, occurredAt: o.producedAt || o.createdAt });
     }
     //  ③ 출고 — 주문 줄에 이 품목이 있으면 판 만큼 빠진다
     if (o.shippedOut) {
@@ -81,7 +88,7 @@ export function buildItemLedger(
         if (it.itemId !== itemId) continue;
         const p = allItems.find(x => x.id === itemId);
         const q = p ? stockUnits(it, p) : it.quantity;
-        if (q) rows.push({ date, kind: '출고', qty: -r3(q), partnerName, orderId: o.id, note: '출고', balance: 0 });
+        if (q) rows.push({ date, kind: '출고', qty: -r3(q), partnerName, orderId: o.id, note: '출고', balance: 0, occurredAt: o.shipmentConfirmedAt || o.deliveredAt || o.createdAt });
       }
     }
     //  ④ 상위 품목을 만들면서 이 품목이 구성품으로 빠져나간 양
@@ -89,7 +96,7 @@ export function buildItemLedger(
       const line = bomOf(p.itemId).find(l => l.childId === itemId);
       if (!line || !Number(p.qty)) continue;
       const used = r3(Number(p.qty) * Number(line.qty));
-      if (used) rows.push({ date, kind: '자재사용', qty: -used, partnerName, orderId: o.id, note: `${nameOf(p.itemId)} ${r3(Number(p.qty))} 생산에 씀`, balance: 0 });
+      if (used) rows.push({ date, kind: '자재사용', qty: -used, partnerName, orderId: o.id, note: `${nameOf(p.itemId)} ${r3(Number(p.qty))} 생산에 씀`, balance: 0, occurredAt: o.producedAt || o.createdAt });
     }
   }
 
@@ -99,7 +106,7 @@ export function buildItemLedger(
     rows.push({
       date: dateOfLocal(r.date), kind: '입고', qty: r3(Number(r.quantity)),
       partnerName: r.partnerName ?? '', orderId: r.poId ?? '',
-      note: r.poId ? '발주 입고' : '입고', balance: 0,
+      note: r.poId ? '발주 입고' : '입고', balance: 0, occurredAt: r.createdAt || r.date,
     });
   }
 
@@ -108,12 +115,30 @@ export function buildItemLedger(
     rows.push({
       date: dateOfLocal(anchor.createdAt || anchor.date), kind: '실사', qty: 0,
       partnerName: '', orderId: anchor.id, note: '재고 실사', balance: 0,
+      occurredAt: anchor.createdAt || anchor.date,
       targetBalance: r3(Number(anchor.targetQty ?? 0)),
     });
   }
 
   //  날짜 → 주문 id 순. 같은 날 여러 건이면 들어온 순서가 잔량을 가르므로 못 박는다.
-  rows.sort((a, b) => a.date.localeCompare(b.date) || a.orderId.localeCompare(b.orderId) || a.kind.localeCompare(b.kind));
+  rows.sort((a, b) => a.date.localeCompare(b.date)
+    || String(a.occurredAt ?? '').localeCompare(String(b.occurredAt ?? ''))
+    || a.orderId.localeCompare(b.orderId) || a.kind.localeCompare(b.kind));
+
+  const stock = Number(item?.stock ?? 0);
+  const firstAnchorIndex = rows.findIndex(r => r.targetBalance != null);
+  const beforeFirstAnchor = firstAnchorIndex >= 0
+    ? rows.slice(0, firstAnchorIndex).reduce((sum, row) => sum + row.qty, 0)
+    : rows.reduce((sum, row) => sum + row.qty, 0);
+  const opening = r3(firstAnchorIndex >= 0
+    ? Number(item?.stocktakeAnchors?.find(a => a.id === rows[firstAnchorIndex].orderId)?.beforeQty ?? 0) - beforeFirstAnchor
+    : stock - beforeFirstAnchor);
+
+  if (opening || rows.length) rows.unshift({
+    date: rows[0]?.date ?? '', kind: '기초', qty: opening, partnerName: '', orderId: 'opening',
+    note: '현재 재고에서 역산한 시작 잔량', balance: opening, occurredAt: '',
+  });
+
   let bal = 0;
   for (const r of rows) {
     if (r.targetBalance != null) {
@@ -125,8 +150,13 @@ export function buildItemLedger(
     r.balance = bal;
   }
 
-  const inSum = r3(rows.filter(r => r.kind !== '실사' && r.qty > 0).reduce((a, r) => a + r.qty, 0));
-  const outSum = r3(rows.filter(r => r.kind !== '실사' && r.qty < 0).reduce((a, r) => a + r.qty, 0));
-  const stock = Number(allItems.find(i => i.id === itemId)?.stock ?? 0);
-  return { rows, inSum, outSum, net: r3(bal), gap: r3(stock - bal) };
+  const inSum = r3(rows.filter(r => r.kind !== '기초' && r.kind !== '실사' && r.qty > 0).reduce((a, r) => a + r.qty, 0));
+  const outSum = r3(rows.filter(r => r.kind !== '기초' && r.kind !== '실사' && r.qty < 0).reduce((a, r) => a + r.qty, 0));
+  const anchors = rows.filter(row => row.targetBalance != null);
+  const latestAnchor = anchors.at(-1);
+  return {
+    rows, inSum, outSum, net: r3(bal), gap: r3(stock - bal), opening,
+    independentlyVerified: Boolean(latestAnchor),
+    verifiedFrom: latestAnchor?.date,
+  };
 }

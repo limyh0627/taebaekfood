@@ -127,6 +127,7 @@ export async function stocktakeByQty(params: {
   unitKg?: number;
 }): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
   const { itemId, itemName, targetQty, unitKg = 0 } = params;
+  if (!Number.isFinite(targetQty) || targetQty < 0) return { ok: false, message: '실사 수량은 0 이상의 숫자여야 합니다.' };
   const now = new Date().toISOString();
   const 오늘 = today();
 
@@ -173,5 +174,48 @@ export async function stocktakeByQty(params: {
   } catch (error) {
     console.error('[실사] 실패 — 아무것도 안 움직였다:', error);
     return { ok: false, message: `실사하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+/** 수동 증감도 실사와 같은 앵커 형식으로 남긴다. stock 숫자만 바꾸면 제품별 원장에서 사라진다. */
+export async function adjustStockByQty(params: {
+  itemId: string;
+  itemName: string;
+  deltaQty: number;
+  unitKg?: number;
+  note?: string;
+}): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
+  const { itemId, itemName, deltaQty, unitKg = 0, note = '재고 조정' } = params;
+  if (!Number.isFinite(deltaQty)) return { ok: false, message: '조정 수량이 올바른 숫자가 아닙니다.' };
+  const now = new Date().toISOString();
+  const 오늘 = today();
+  try {
+    await runTransaction(db, async tx => {
+      const itemRef = doc(db, 'items', itemId);
+      const snap = await tx.get(itemRef);
+      if (!snap.exists()) throw new Error(`${itemName} 품목을 찾을 수 없습니다.`);
+      const data = snap.data();
+      const lots = (data.lots ?? []) as RawMaterialLot[];
+      const beforeQty = Number(data.stock ?? 0);
+      const targetQty = beforeQty + deltaQty;
+      if (targetQty < 0) throw new Error('조정 후 재고가 음수가 됩니다.');
+      const anchored = anchorLotsByQty({
+        lots, targetQty,
+        unitKg: lots.find(lot => lot.unitKg)?.unitKg ?? unitKg,
+        det: { id: `adjust-${itemId}-${Date.parse(now)}`, createdAt: now, receivedDate: 오늘 },
+      });
+      const anchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
+      tx.update(itemRef, {
+        lots: strip(pruneDepletedLots(anchored.lots)),
+        stock: canStockAfter(anchored.lots),
+        stocktakeAnchors: strip([...anchors, {
+          id: `adjust-${itemId}-${Date.parse(now)}`, date: 오늘, createdAt: now,
+          targetQty, beforeQty, deltaQty, note,
+        }].slice(-100)),
+      });
+    });
+    return { ok: true, deltaQty, message: `${itemName} ${deltaQty > 0 ? '+' : ''}${deltaQty} — 기록과 로트에 반영했습니다.` };
+  } catch (error) {
+    return { ok: false, message: `재고를 조정하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}` };
   }
 }

@@ -20,6 +20,23 @@ export function hasCompleteOrderItems(items: Order['items']) {
   return items.length > 0 && items.every(item => item.checked === true);
 }
 
+/** 작업 전 세 단계는 별도 선택값이 아니라 품목 체크 수의 결과다. */
+export function workStatusFromItems(items: Order['items']): OrderStatus {
+  const checked = items.filter(item => item.checked === true).length;
+  if (items.length > 0 && checked === items.length) return OrderStatus.DISPATCHED;
+  return checked > 0 ? OrderStatus.PROCESSING : OrderStatus.PENDING;
+}
+
+/** 결정적 작업번호가 있는 품목 작업끼리만 실패 지점에서 자동 재개한다. */
+export function canResumeFailedInventoryOperation(
+  previous: NonNullable<Order['inventoryOperation']>,
+  next: NonNullable<Order['inventoryOperation']>,
+) {
+  return previous.state === 'failed'
+    && next.kind === 'line'
+    && (previous.kind === 'line' || previous.id.startsWith('order-line-'));
+}
+
 /** 조회 효과가 아니라 클릭 한 번의 결과만 계산한다. 생산·재고 처리는 호출자가 기존 승인 경로로 넘긴다. */
 export function planOrderItemToggle(order: Order, index: number, actor: string | undefined, now: string) {
   if (!order.items[index]) return null;
@@ -41,9 +58,7 @@ export function planOrderItemToggle(order: Order, index: number, actor: string |
    *  재고로 덮은 주문이면 생산한 게 없어 되돌릴 것도 없다 — 스냅샷이 비어 있어 저절로 넘어간다. */
   let status = order.status;
   if (status === OrderStatus.PENDING || status === OrderStatus.PROCESSING || status === OrderStatus.DISPATCHED) {
-    const checked = items.filter(item => item.checked).length;
-    status = checked === items.length ? OrderStatus.DISPATCHED
-      : checked ? OrderStatus.PROCESSING : OrderStatus.PENDING;
+    status = workStatusFromItems(items);
   }
   return { items, status };
 }

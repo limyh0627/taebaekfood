@@ -33,7 +33,8 @@ import DeliveryDayList from './DeliveryDayList';
 import { saveDeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
-import type { DayRow } from '../src/shared/deliveryPlan';
+import { ungroup, withGroup, type DayRow, type DeliveryGroup } from '../src/shared/deliveryPlan';
+import { clusterByGroup } from '../src/shared/rowGroup';
 import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
 import { OrderItem, InvoiceType } from '../types';
@@ -117,6 +118,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>({});
+  const [groupsByDate, setGroupsByDate] = useState<Record<string, DeliveryGroup[]>>({});
+  const [groupPick, setGroupPick] = useState<{ date: string; ids: string[] }>({ date: '', ids: [] });
   /**
    * 금일 배송순서의 정렬 — **기본은 직접 정렬**(2026-09-11 사장님:
    * "금일배송순서랑 금일작업순서는 직접정렬이 디폴트로").
@@ -129,12 +132,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const [showCompletedDeliveryOrders, setShowCompletedDeliveryOrders] = useState(false);
 
   useEffect(() => {
-    return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'>; orderingByDate?: Record<string, string[]> }>(
+    return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'>; orderingByDate?: Record<string, string[]>; groupsByDate?: Record<string, DeliveryGroup[]> }>(
       'settings', companySettingDocId(companyId, 'deliveryOrdering'),
       (data) => {
         setDeliveryOrdering(data?.ordering ?? []);
         setDeliveryTimeSlots(data?.timeSlots ?? {});
         setOrderingByDate(data?.orderingByDate ?? {});
+        setGroupsByDate(data?.groupsByDate ?? {});
       }
     );
   }, [companyId]);
@@ -472,6 +476,45 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
     void setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, { orderingByDate: { [dateStr]: next } }));
   };
 
+  /** 한 차 묶음도 순서처럼 회사 설정의 날짜 칸에 둔다. 다른 회사·다른 날짜를 덮지 않는다. */
+  const saveDayGroups = (dateStr: string, groups: DeliveryGroup[]) => {
+    setGroupsByDate(previous => ({ ...previous, [dateStr]: groups }));
+    void setDocument('settings', companySettingDocId(companyId, 'deliveryOrdering'), companySettingPatch(companyId, {
+      groupsByDate: { [dateStr]: groups },
+    }));
+  };
+
+  const groupedIds = (dateStr: string, ids: string[]) => {
+    const groups = groupsByDate[dateStr] ?? [];
+    if (!groups.length) return ids;
+    const groupOf = new Map<string, DeliveryGroup>();
+    for (const group of groups) for (const id of group.orderIds) groupOf.set(id, group);
+    return clusterByGroup(ids.map(id => ({ id })), row => row.id, id => groupOf.get(id)).map(row => row.id);
+  };
+
+  const toggleGroupPick = (dateStr: string, orderId: string) => {
+    const groups = groupsByDate[dateStr] ?? [];
+    if (groups.some(group => group.orderIds.includes(orderId))) {
+      const plan = ungroup({ ordering: [], timeSlots: {}, done: [], groups }, orderId);
+      saveDayGroups(dateStr, plan.groups ?? []);
+      return;
+    }
+    setGroupPick(previous => {
+      const ids = previous.date === dateStr ? previous.ids : [];
+      return { date: dateStr, ids: ids.includes(orderId) ? ids.filter(id => id !== orderId) : [...ids, orderId] };
+    });
+  };
+
+  const confirmGroup = (dateStr: string) => {
+    if (groupPick.date !== dateStr || groupPick.ids.length < 2) return;
+    const plan = withGroup(
+      { ordering: [], timeSlots: {}, done: [], groups: groupsByDate[dateStr] ?? [] },
+      groupPick.ids,
+    );
+    saveDayGroups(dateStr, plan.groups ?? []);
+    setGroupPick({ date: '', ids: [] });
+  };
+
   /** 담긴 차례를 먼저, 안 담긴 것은 뒤에 — 그 날 실제 주문만 남긴다 */
   const 하루차례 = (dateStr: string, ids: string[], saved: string[]) =>
     [...saved.filter(id => ids.includes(id)), ...ids.filter(id => !saved.includes(id))];
@@ -510,6 +553,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       번호?: number; 띠?: string; 번호색?: string;
       /** 그 묶음에 몇 장인가 — 번호 고르개에 세울 숫자들. */
       번호총수?: number;
+      /** 같은 차 묶음 — 캘린더에서도 붙어 있다는 표시를 남긴다. */
+      한차?: boolean;
       /** 번호를 눌러 자리를 옮긴다(0부터). 안 주면 번호는 글자로만 뜬다. */
       onGotoNumber?: (목표: number) => void;
       drag?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
@@ -536,7 +581,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
              알린다(`STATUS_CARD_BORDER`·`STATUS_HEAD_LINE`) — 같은 규칙을 쓴다.
              오전·오후는 번호 색으로 남는다(`opt.번호색`). */
         title={`${이름} · ${DELIVERY_STATUS_LABEL[o.status] ?? o.status} — 눌러서 출고 일정 수정`}
-        className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${STATUS_CARD_BORDER[o.status] ?? 'border-slate-200'} ${끝났나 ? 'opacity-50' : ''}`}
+        className={`flex items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 shadow-sm transition-all hover:brightness-95 cursor-pointer ${STATUS_CARD_BORDER[o.status] ?? 'border-slate-200'} ${opt.한차 ? 'border-l-4 border-l-indigo-400' : ''} ${끝났나 ? 'opacity-50' : ''}`}
       >
         {/*  **번호를 눌러 자리를 고른다**(2026-09-15 사장님: "배송캘린더에 배송순서 숫자 눌러서
              번호 타겟할 수 있게 바꿔주고"). 좁은 칸에서 카드를 끌어 옮기는 것보다 확실하다 —
@@ -621,6 +666,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
    * 오전·오후는 묶음 **안에서** 차례를 가르는 데 그대로 쓴다(오전 먼저, 오후 나중).
    */
   const renderDaySequence = (dateStr: string, ids: string[], 저장: (_next: string[]) => void) => {
+    const 붙인ids = groupedIds(dateStr, ids);
     const 방식 = (id: string) => {
       const o = orders.find(x => x.id === id);
       return o ? shipMethodOf(o) : '배송';
@@ -630,21 +676,21 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         차례가 나온다. 아래에 두면 배송 목록이 길 때 택배가 몇 건인지 보려고 칸을 굴려야 한다.
         나머지는 칸에 서는 차례 그대로. */
     const 묶음이름: string[] = [];
-    for (const id of ids) { const m = 방식(id); if (!묶음이름.includes(m)) 묶음이름.push(m); }
+    for (const id of 붙인ids) { const m = 방식(id); if (!묶음이름.includes(m)) 묶음이름.push(m); }
     묶음이름.sort((a, b) => (a === '택배' ? 0 : 1) - (b === '택배' ? 0 : 1));
 
     const 놓기 = (놓인id: string) => {
       const 끈것 = 끄는카드.current;
       끄는카드.current = null;
       if (!끈것 || 끈것.date !== dateStr || 끈것.id === 놓인id) return;   // 다른 날 → 바깥 칸이 받는다
-      const next = ids.filter(id => id !== 끈것.id);
+      const next = 붙인ids.filter(id => id !== 끈것.id);
       next.splice(Math.max(0, next.indexOf(놓인id)), 0, 끈것.id);
       저장(next);
     };
 
     return 묶음이름.map(이름 => {
       //  그 묶음 것만, 오전 먼저 오후 나중으로.
-      const 묶음ids = ids.filter(id => 방식(id) === 이름);
+      const 묶음ids = 붙인ids.filter(id => 방식(id) === 이름);
       const 오전 = 묶음ids.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
       const 오후 = 묶음ids.filter(id => deliveryTimeSlots[id] === '오후');
       const 차례 = [...오전, ...오후];
@@ -663,7 +709,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         새차례.splice(목표, 0, 옮길것);
         //  전체 목록에서 **이 묶음 자리들만** 새 차례로 갈아 끼운다.
         let n = 0;
-        저장(ids.map(원래 => 방식(원래) === 이름 ? 새차례[n++] : 원래));
+        저장(붙인ids.map(원래 => 방식(원래) === 이름 ? 새차례[n++] : 원래));
       };
 
       return (
@@ -697,6 +743,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
               onGotoNumber: 목표 => 자리바꾸기(id, 목표),
               띠: 오후인가 ? 'border-indigo-100' : 'border-amber-100',
               번호색: 오후인가 ? 'text-indigo-500' : 'text-amber-500',
+              한차: (groupsByDate[dateStr] ?? []).some(group => group.orderIds.includes(id)),
               drag: {
                 draggable: true,
                 onDragStart: e => { 끄는카드.current = { id, date: dateStr }; handleDragStart(e, id); },
@@ -1124,9 +1171,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         const numberingIds = 하루차례(todayKey, deliverySequenceOrders.map(order => order.id), 오늘차례)
           .filter(id => !차례밖(id));
         const manualIds = 하루차례(todayKey, visibleDeliverySequenceOrders.map(order => order.id), 오늘차례);
-        const visibleIds = deliverySortMode === 'recommended'
+        const visibleIds = groupedIds(todayKey, deliverySortMode === 'recommended'
           ? recommendedOrders.map(order => order.id)
-          : manualIds;
+          : manualIds);
         /*  **세는 것과 보여 주는 것이 같아야 한다**(2026-09-11 사장님: "출고완료 n건
             출고미완료 n건이 실제 금일배송순서에 있는 주문 개수랑 안 맞는거 같어").
             맞다 — 숫자는 **오늘 출고예정일인 것만** 세는데 목록은 날짜와 무관하게 운영 중인
@@ -1184,6 +1231,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           const sequenceNumber = numberingIds.indexOf(id) + 1;
           const 끌수있나 = deliverySortMode === 'manual' && !차례밖(id);
           const slotTone = slot === '오전' ? 'amber' : 'indigo';
+          const 한차 = (groupsByDate[todayKey] ?? []).find(group => group.orderIds.includes(id));
+          const 묶으려고고름 = groupPick.date === todayKey && groupPick.ids.includes(id);
           return (
             <div
               key={id}
@@ -1195,7 +1244,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
               }}
               onDragOver={event => 끌수있나 && event.preventDefault()}
               onDrop={() => { if (끌수있나) moveDeliveryOrder(id, slot); }}
-              className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 shadow-sm ${slotTone === 'amber' ? 'border-amber-100' : 'border-indigo-100'} ${끌수있나 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              className={`grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 shadow-sm ${한차 ? 'border-l-4 border-l-indigo-400' : slotTone === 'amber' ? 'border-amber-100' : 'border-indigo-100'} ${묶으려고고름 ? 'ring-2 ring-indigo-300' : ''} ${끌수있나 ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
               {/*  **숫자를 눌러 순서를 직접 고른다**(2026-09-11 사장님: "숫자 눌러서 직접 순서 입력해서
                    바꿀 수 있게 해"). 좁은 카드끼리 끌어 옮기는 것보다 확실하다 —
@@ -1242,6 +1291,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                 </span>
               </button>
               <div className="flex items-center gap-1.5">
+                {!택배인가 && deliverySortMode === 'manual' && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupPick(todayKey, id)}
+                    className={`min-h-7 rounded-md px-2 text-[10px] font-black ${한차 ? 'bg-indigo-100 text-indigo-700' : 묶으려고고름 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                  >{한차 ? '묶음 해제' : 묶으려고고름 ? '선택됨' : '한 차'}</button>
+                )}
                 <button type="button" onClick={() => toggleTimeSlot(id)} className={`min-h-7 rounded-md px-2 text-[10px] font-black ${slotTone === 'amber' ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}>{slot}</button>
                 {끌수있나 && <GripVertical size={14} className="text-slate-300" aria-label="순서 이동" />}
               </div>
@@ -1355,6 +1411,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                           {/*  몇 집 중 몇 집을 보고 있나 — 탭의 수는 전체라, '출고 완료 n건' 을
                                안 눌렀을 때 몇 집이 빠져 있는지는 여기서만 알 수 있다(작업순서와 같다). */}
                           <div className="mb-0.5 flex items-center justify-end px-1">
+                            {묶음.key === '일반' && groupPick.date === todayKey && groupPick.ids.length > 0 && (
+                              <button
+                                type="button"
+                                disabled={groupPick.ids.length < 2}
+                                onClick={() => confirmGroup(todayKey)}
+                                className="mr-auto rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-black text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                              >고른 {groupPick.ids.length}건 한 차로 묶기</button>
+                            )}
                             <span className="text-[10px] font-bold text-slate-400">{묶음.ids.length}/{묶음.전체}</span>
                           </div>
                           {묶음.ids.length === 0
@@ -1691,13 +1755,16 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         const 완료 = deliveredSchedules[dayModal] || [];
         const d = new Date(dayModal + 'T00:00:00');
         const 제목 = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayLabels[d.getDay()]})`;
-        const 진행Rows: DayRow[] = 진행.map(order => ({
+        const 이날묶음 = groupsByDate[dayModal] ?? [];
+        const 묶음찾기 = new Map<string, DeliveryGroup>();
+        for (const group of 이날묶음) for (const id of group.orderIds) 묶음찾기.set(id, group);
+        const 진행Rows: DayRow[] = clusterByGroup(진행.map(order => ({
           orderId: order.id,
           //  차례에 손으로 담긴 적 없는 줄 — 이제 날짜별 차례를 본다(전역 목록이 아니다).
           auto: !날짜차례(dayModal).includes(order.id),
           slot: deliveryTimeSlots[order.id] || '오전',
           done: order.status === OrderStatus.SHIPPED,
-        }));
+        })), row => row.orderId, id => 묶음찾기.get(id));
         const 줄 = (order: Order, done: boolean) => {
           return (
             <button key={order.id} type="button"
@@ -1726,6 +1793,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                 <button onClick={() => setDayModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {groupPick.date === dayModal && groupPick.ids.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={groupPick.ids.length < 2}
+                    onClick={() => confirmGroup(dayModal)}
+                    className="w-full rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                  >고른 {groupPick.ids.length}건 한 차로 묶기</button>
+                )}
                 {진행.length === 0 && 완료.length === 0 && (
                   <p className="py-12 text-center text-sm font-bold text-slate-300">이 날은 배송이 없습니다.</p>
                 )}
@@ -1735,9 +1810,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                     orders={orders}
                     partners={partners}
                     dateStr={dayModal}
+                    selected={groupPick.date === dayModal ? new Set(groupPick.ids) : new Set()}
                     on={{
                       open: order => { setDayModal(null); handleOrderClick(order); },
                       toggleDone: id => onToggleShipmentComplete?.(id, orders.find(order => order.id === id)?.status !== OrderStatus.SHIPPED),
+                      reorder: next => saveDayOrdering(dayModal, next),
+                      select: id => toggleGroupPick(dayModal, id),
                     }}
                   />
                 )}

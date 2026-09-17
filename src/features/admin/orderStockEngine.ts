@@ -10,7 +10,7 @@ import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../.
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
-import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
+import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { createOrderRawInventoryOperations, oemLedgerKg, rawLedgerDocIds } from './orderRawInventory';
 import { createOrderProductLotOperations, type OrderProductLotMutation } from './orderProductLots';
 import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
@@ -634,6 +634,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     let reservation: Awaited<ReturnType<typeof reserveOrderStock>> | undefined;
     let stockCommitted = false;
     let live: Order | undefined;
+    let failureStage: NonNullable<Order['inventoryOperation']>['stage'] = 'claim';
     try {
       const cached = allOrders.find(order => order.id === id) || orders.find(order => order.id === id);
       live = await getFreshOrder(id, true) ?? cached;
@@ -648,8 +649,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const now = new Date().toISOString();
       const operationId = `order-line-${id}-${lineId}-${Date.now()}`;
       const operation = {
-        id: operationId, targetStatus: nextStatus, state: 'processing' as const,
-        startedAt: now, actor: actorName ?? '미기록',
+        id: operationId, kind: 'line' as const, lineId, stage: 'claim' as const,
+        targetStatus: nextStatus, state: 'processing' as const, startedAt: now, actor: actorName ?? '미기록',
       };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
@@ -665,9 +666,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       nextItems = liveItems.map((item, index) => index === itemIndex ? after : item);
       let effectiveStatus = nextStatus;
       if (operationOrder.status === OrderStatus.PENDING || operationOrder.status === OrderStatus.PROCESSING || operationOrder.status === OrderStatus.DISPATCHED) {
-        const checkedCount = nextItems.filter(item => item.checked).length;
-        effectiveStatus = checkedCount === nextItems.length ? OrderStatus.DISPATCHED
-          : checkedCount > 0 ? OrderStatus.PROCESSING : OrderStatus.PENDING;
+        effectiveStatus = workStatusFromItems(nextItems);
       }
       const currentStates = { ...(operationOrder.itemInventory ?? {}) };
       const previousState = currentStates[lineId];
@@ -692,6 +691,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         ...Object.values(currentStates).flatMap(state => state.production.stockDeltas.map(row => row.itemId)),
         ...(operationOrder.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
       ];
+      failureStage = 'reservation';
       reservation = await reserveOrderStock(
         inventoryOrder,
         operationId,
@@ -723,9 +723,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
           const production = planOrderProduction(
             single, deltas, reservation.stockSnapshot, row.index === itemIndex ? plan : undefined,
           );
+          failureStage = 'raw-inventory';
           const consumedLots = await applyOrderRawUsage(
             single, production.rawUsage, attempt, production.rawUsageLedgerOnly, rowLineId,
           );
+          failureStage = 'production-record';
           await createProductionRecordsForOrder(single);
           const rowDeltas = new Map<string, number>();
           for (const [itemId, value] of deltas) addDelta(rowDeltas, itemId, value - (rowBefore.get(itemId) ?? 0));
@@ -769,6 +771,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         ...aggregate,
         inventoryOperation: null,
       };
+      failureStage = 'final-stock';
       await applyItemStockDeltas(deltas, [], reservation, { orderId: id, patch: orderPatch });
       stockCommitted = true;
 
@@ -793,14 +796,14 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         try { await releaseOrderStockReservation(reservation); }
         catch (releaseError) { console.error(`[품목 재고 예약 해제 실패] ${id}`, releaseError); }
       }
-      // 이미 실패 잠금이 있는 주문을 다시 누르면 claim 단계가 막는다. 그 2차 오류로 최초 실패
-      // 사유를 덮어쓰면 무엇을 고쳐야 하는지 영영 알 수 없으므로 기존 기록을 그대로 둔다.
+      // 재개 가능한 품목 작업은 새 실패 단계까지 남겨, 다음 재시도가 어디부터 이어지는지 알 수 있게 한다.
       const existingFailure = live?.inventoryOperation?.state === 'failed';
       if (!existingFailure && error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
         await updateItem('orders', id, {
           inventoryOperation: {
-            id: `order-line-failed-${Date.now()}`, targetStatus: nextStatus, state: 'failed',
-            startedAt: new Date().toISOString(), actor: actorName ?? '미기록', error: error.message,
+            id: `order-line-failed-${Date.now()}`, kind: 'line', lineId: requestedItems[itemIndex]?.lineId,
+            stage: failureStage, targetStatus: nextStatus, state: 'failed', startedAt: new Date().toISOString(),
+            actor: actorName ?? '미기록', error: error.message,
           },
         });
       }
@@ -843,7 +846,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const approvedAt = context.approvedAt ?? new Date().toISOString();
       const approvedBy = context.approvedBy ?? actorName ?? '미기록';
       const auditId = `order-status-${id}-${Date.now()}`;
-      const operation = { id: auditId, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
+      const operation = { id: auditId, kind: 'status' as const, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
       if (context.approvedPlan) {

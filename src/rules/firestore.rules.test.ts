@@ -328,6 +328,14 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertSucceeds(setDoc(doc(태백직원(), 'chatRooms', 'room-새것2'), { companyId: 'taebaek', participantIds: ['e1'], participantCompanies: { e1: 'taebaek' } }));
     });
 
+    it('기존 방에 같은 회사 멤버를 초대한다', async () => {
+      await assertSucceeds(updateDoc(doc(태백직원(), 'chatRooms', 'room-taebaek'), {
+        companyId: 'taebaek',
+        participantIds: ['e1', 'e2'],
+        participantCompanies: { e1: 'taebaek', e2: 'taebaek' },
+      }));
+    });
+
     it('**다른 회사 참여자 회사값이나 누락된 회사값을 쓰지 못한다**', async () => {
       await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-섞임'), { companyId: 'taebaek', participantIds: ['e1', 'e9'], participantCompanies: { e1: 'taebaek', e9: 'punghoe' } }));
       await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-누락'), { companyId: 'taebaek', participantIds: ['e1'] }));

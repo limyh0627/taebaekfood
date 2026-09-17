@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { OrderStatus, type Order } from './types';
-import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange } from './orderCompletion';
+import { canResumeFailedInventoryOperation, hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from './orderCompletion';
 
 const make = (status: OrderStatus, checked: boolean[]) => ({
   status, items: checked.map((value, i) => ({itemId: String(i), name: '품목', quantity: 1, price: 0, checked: value, checkedBy: '이전', checkedAt: '이전'})),
 }) as Order;
 describe('작업 체크의 승인 전 계획', () => {
+  it('작업 상태는 체크 수로만 정한다', () => {
+    expect(workStatusFromItems(make(OrderStatus.PROCESSING, [false, false]).items)).toBe(OrderStatus.PENDING);
+    expect(workStatusFromItems(make(OrderStatus.PENDING, [true, false]).items)).toBe(OrderStatus.PROCESSING);
+    expect(workStatusFromItems(make(OrderStatus.PENDING, [true, true]).items)).toBe(OrderStatus.DISPATCHED);
+    expect(workStatusFromItems([])).toBe(OrderStatus.PENDING);
+  });
   it('첫 체크는 작업중, 마지막 체크는 작업완료', () => {
     expect(planOrderItemToggle(make(OrderStatus.PENDING, [false,false]),0,'담당자','지금')?.status).toBe(OrderStatus.PROCESSING);
     expect(planOrderItemToggle(make(OrderStatus.PROCESSING, [true,false]),1,'담당자','지금')?.status).toBe(OrderStatus.DISPATCHED);
@@ -49,5 +55,22 @@ describe('작업완료 상태 진입 검증', () => {
     expect(requiresCompleteItemsForStatusChange(OrderStatus.PENDING, OrderStatus.DISPATCHED)).toBe(true);
     expect(requiresCompleteItemsForStatusChange(OrderStatus.PROCESSING, OrderStatus.SHIPPED)).toBe(true);
     expect(requiresCompleteItemsForStatusChange(OrderStatus.DISPATCHED, OrderStatus.SHIPPED)).toBe(false);
+  });
+});
+
+describe('실패한 재고 작업 재개 범위', () => {
+  const op = (id: string, kind?: 'line' | 'status') => ({
+    id, kind, targetStatus: OrderStatus.PROCESSING, state: 'failed' as const,
+    startedAt: '2026-09-17T00:00:00.000Z', actor: '담당자',
+  });
+
+  it('품목 작업은 새 형식과 옛 order-line 실패 기록 모두 재개한다', () => {
+    expect(canResumeFailedInventoryOperation(op('new', 'line'), { ...op('retry', 'line'), state: 'processing' })).toBe(true);
+    expect(canResumeFailedInventoryOperation(op('order-line-failed-old'), { ...op('retry', 'line'), state: 'processing' })).toBe(true);
+  });
+
+  it('주문 전체 상태 작업과 종류가 다른 재시도는 자동으로 풀지 않는다', () => {
+    expect(canResumeFailedInventoryOperation(op('status', 'status'), { ...op('retry', 'line'), state: 'processing' })).toBe(false);
+    expect(canResumeFailedInventoryOperation(op('line', 'line'), { ...op('retry', 'status'), state: 'processing' })).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Info, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, LoaderCircle, RotateCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import type { IntegrityArea, IntegrityAuditInput, IntegritySeverity } from './dataIntegrityAudit';
 import { auditDataIntegrity } from './dataIntegrityAudit';
 
@@ -7,11 +7,11 @@ const AREAS: IntegrityArea[] = ['작업완료·BOM', '입고·재고', '전표·
 const label: Record<IntegritySeverity, string> = { error: '오류', warning: '확인 필요', info: '참고' };
 const color: Record<IntegritySeverity, string> = { error: 'bg-rose-50 text-rose-700 border-rose-200', warning: 'bg-amber-50 text-amber-700 border-amber-200', info: 'bg-slate-50 text-slate-600 border-slate-200' };
 
-const DataIntegrityMonitor: React.FC<IntegrityAuditInput & { onRefresh?: () => void }> = props => {
+const DataIntegrityMonitor: React.FC<IntegrityAuditInput & { onRefresh?: () => void; loading?: boolean }> = props => {
   const today = useMemo(() => new Date().toLocaleDateString('sv-SE'), []);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const issues = useMemo(() => auditDataIntegrity({
+  const issues = useMemo(() => props.loading ? [] : auditDataIntegrity({
     ...props,
     dateFrom: from,
     dateTo: to,
@@ -21,6 +21,7 @@ const DataIntegrityMonitor: React.FC<IntegrityAuditInput & { onRefresh?: () => v
   const shown = issues.filter(issue => (area === '전체' || issue.area === area) && `${issue.title} ${issue.detail} ${issue.reference || ''}`.toLowerCase().includes(query.toLowerCase()));
   const errors = issues.filter(issue => issue.severity === 'error').length;
   const warnings = issues.filter(issue => issue.severity === 'warning').length;
+  if (props.loading) return <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-slate-500"><LoaderCircle className="animate-spin text-indigo-500" size={32} /><p className="font-bold">재고·원장 자료를 같은 시점으로 맞춰 불러오는 중입니다.</p><p className="text-xs">모두 도착하기 전에는 오류를 계산하지 않습니다.</p></div>;
   return <div className="space-y-4 pb-10">
     <div className="flex flex-col gap-3 md:flex-row md:items-end"><div><h1 className="text-xl font-black text-slate-900">데이터 점검</h1><p className="mt-1 text-sm text-slate-500">하루 동안 저장된 처리 근거를 서로 대조합니다. 이 화면에서는 데이터를 변경하지 않습니다.</p></div><div className="flex flex-wrap items-center gap-2 md:ml-auto"><input aria-label="점검 시작일" type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700" /><span className="text-slate-400">~</span><input aria-label="점검 종료일" type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700" />{props.onRefresh && <button type="button" onClick={props.onRefresh} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:border-indigo-300 hover:text-indigo-600"><RotateCcw size={14} />새로고침</button>}</div></div>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{AREAS.map(name => { const rows = issues.filter(i => i.area === name); const bad = rows.filter(i => i.severity === 'error').length; return <button key={name} onClick={() => setArea(name)} className={`rounded-2xl border bg-white p-4 text-left transition ${area === name ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'}`}><div className="flex items-center justify-between"><span className="text-sm font-bold text-slate-700">{name}</span>{bad ? <XCircle size={18} className="text-rose-500" /> : <CheckCircle2 size={18} className="text-emerald-500" />}</div><div className="mt-3 text-2xl font-black text-slate-900">{rows.length}<span className="ml-1 text-xs font-medium text-slate-400">건</span></div></button>; })}</div>

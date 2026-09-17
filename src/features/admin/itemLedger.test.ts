@@ -4,9 +4,8 @@ import { buildBomIndex, setBomIndex } from '../../shared/bomIndex';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 
 /**
- * 제품별원장 — 근거는 **주문에 남은 스냅샷**뿐이다. 짐작하지 않는다.
- * 재고조정·실사처럼 주문 밖에서 움직인 것은 안 잡히므로, 맞춘 잔량이 아니라 흐름을 보여주고
- * 지금 재고와의 차이(gap)를 따로 밝힌다.
+ * 제품별원장 — 주문 스냅샷·입고 기록·실사 앵커만 근거로 삼고 짐작하지 않는다.
+ * 옛 수동 변경처럼 근거가 남지 않은 값은 기초 잔량으로 드러낸다.
  */
 const items = [
   { id: 'box', name: '참기름/350ml', spec: '350ml * 20', unit: '박스', type: 'product', stock: 5 },
@@ -47,12 +46,30 @@ describe('제품 재고 실사 앵커', () => {
 
     const ledger = buildItemLedger(item.id, [], [item]);
 
-    expect(ledger.rows).toHaveLength(1);
-    expect(ledger.rows[0]).toMatchObject({ kind: '실사', qty: 12, balance: 12 });
+    expect(ledger.rows).toHaveLength(2);
+    expect(ledger.rows[0]).toMatchObject({ kind: '기초', qty: 0, balance: 0 });
+    expect(ledger.rows[1]).toMatchObject({ kind: '실사', qty: 12, balance: 12 });
     expect(ledger.net).toBe(12);
     expect(ledger.gap).toBe(0);
     expect(ledger.inSum).toBe(0);
     expect(ledger.outSum).toBe(0);
+    expect(ledger.independentlyVerified).toBe(true);
+    expect(ledger.verifiedFrom).toBe('2026-09-17');
+  });
+
+  it('같은 날 실사 뒤에 발생한 입고를 실사 뒤에 놓는다', () => {
+    const item = {
+      id: 'stocktake-item', name: '실사 품목', type: 'product', unit: '개', stock: 15,
+      stocktakeAnchors: [{ id: 'stocktake-1', date: '2026-09-17', createdAt: '2026-09-17T09:00:00.000Z', targetQty: 10, beforeQty: 8, deltaQty: 2 }],
+    } as unknown as Item;
+    const receipt = { id: 'receipt-1', itemId: item.id, itemName: item.name, quantity: 5,
+      date: '2026-09-17', createdAt: '2026-09-17T11:00:00.000Z' } as never;
+
+    const ledger = buildItemLedger(item.id, [], [item], [receipt]);
+
+    expect(ledger.rows.map(row => row.kind)).toEqual(['기초', '실사', '입고']);
+    expect(ledger.rows.map(row => row.balance)).toEqual([8, 10, 15]);
+    expect(ledger.gap).toBe(0);
   });
 });
 
@@ -62,8 +79,8 @@ describe('제품별원장', () => {
       order('o1', { producedUnits: [{ itemId: 'box', qty: 3 }], shippedOut: true,
         items: [{ itemId: 'box', name: '참기름/350ml', quantity: 3 } as never] } as never),
     ], items);
-    expect(l.rows.map(r => [r.kind, r.qty])).toEqual([['생산', 3], ['출고', -3]]);
-    expect(l.rows.at(-1)!.balance).toBe(0);
+    expect(l.rows.map(r => [r.kind, r.qty])).toEqual([['기초', 5], ['생산', 3], ['출고', -3]]);
+    expect(l.rows.at(-1)!.balance).toBe(5);
     expect(l.inSum).toBe(3);
     expect(l.outSum).toBe(-3);
   });
@@ -72,10 +89,10 @@ describe('제품별원장', () => {
     const l = buildItemLedger('cap', [
       order('o1', { producedUnits: [{ itemId: 'box', qty: 3 }] } as never),
     ], items);
-    expect(l.rows).toHaveLength(1);
-    expect(l.rows[0].kind).toBe('자재사용');
-    expect(l.rows[0].qty).toBe(-60);                        // 3박스 × 캡 20
-    expect(l.rows[0].note).toContain('참기름/350ml 3 생산에 씀');
+    expect(l.rows).toHaveLength(2);
+    expect(l.rows[1].kind).toBe('자재사용');
+    expect(l.rows[1].qty).toBe(-60);                        // 3박스 × 캡 20
+    expect(l.rows[1].note).toContain('참기름/350ml 3 생산에 씀');
   });
 
   it('먼저 만든 구성품도 잡는다 — 그것도 실제로 만든 것이다', () => {
@@ -83,7 +100,7 @@ describe('제품별원장', () => {
       order('o1', { producedUnits: [{ itemId: 'box', qty: 2 }], autoBuilt: [{ itemId: 'loose', qty: 40 }] } as never),
     ], items);
     //  먼저 40병을 만들고(+40) 박스 2개를 만들며 40병을 썼다(−40)
-    expect(l.rows.map(r => r.kind).sort()).toEqual(['먼저생산', '자재사용']);
+    expect(l.rows.map(r => r.kind).sort()).toEqual(['기초', '먼저생산', '자재사용']);
     expect(l.net).toBe(0);
   });
 
@@ -92,16 +109,19 @@ describe('제품별원장', () => {
       order('o1', { producedUnits: [{ itemId: 'box', qty: 3 }],
         items: [{ itemId: 'box', name: 'x', quantity: 3 } as never] } as never),
     ], items);
-    expect(l.rows.map(r => r.kind)).toEqual(['생산']);
+    expect(l.rows.map(r => r.kind)).toEqual(['기초', '생산']);
   });
 
-  it('지금 재고와 흐름이 다르면 차이를 밝힌다 — 억지로 맞추지 않는다', () => {
-    //  흐름은 +3인데 재고는 5 → 주문 밖에서 2가 움직였다(실사·조정)
+  it('첫 기록 전 재고는 기초로 세운다', () => {
+    //  흐름은 +3이고 재고는 5 → 시작 잔량 2에서 이어진 원장이다.
     const l = buildItemLedger('box', [
       order('o1', { producedUnits: [{ itemId: 'box', qty: 3 }] } as never),
     ], items);
-    expect(l.net).toBe(3);
-    expect(l.gap).toBe(2);
+    expect(l.opening).toBe(2);
+    expect(l.net).toBe(5);
+    expect(l.gap).toBe(0);
+    expect(l.independentlyVerified).toBe(false);
+    expect(l.verifiedFrom).toBeUndefined();
   });
 
   it('날짜·주문 순으로 못 박는다 — 순서가 흔들리면 잔량이 달라진다', () => {
@@ -109,8 +129,8 @@ describe('제품별원장', () => {
       order('o2', { deliveredAt: '2026-08-20', producedUnits: [{ itemId: 'box', qty: 1 }] } as never),
       order('o1', { deliveredAt: '2026-08-05', producedUnits: [{ itemId: 'box', qty: 2 }] } as never),
     ], items);
-    expect(l.rows.map(r => r.date)).toEqual(['2026-08-05', '2026-08-20']);
-    expect(l.rows.map(r => r.balance)).toEqual([2, 3]);
+    expect(l.rows.map(r => r.date)).toEqual(['2026-08-05', '2026-08-05', '2026-08-20']);
+    expect(l.rows.map(r => r.balance)).toEqual([2, 4, 5]);
   });
 });
 
@@ -129,41 +149,44 @@ describe('사 온 것도 원장에 선다', () => {
 
   it('입고가 +로 잡히고 gap 이 사라진다 — 이게 이 변경의 값어치다', () => {
     const l = buildItemLedger('b1', [], [병], [입고()]);
-    expect(l.rows).toHaveLength(1);
-    expect(l.rows[0].kind).toBe('입고');
-    expect(l.rows[0].qty).toBe(500);
+    expect(l.rows).toHaveLength(2);
+    expect(l.rows[1].kind).toBe('입고');
+    expect(l.rows[1].qty).toBe(500);
     expect(l.inSum).toBe(500);
     expect(l.gap).toBe(0);            // 재고 500 = 흐름 500
   });
 
-  it('**입고를 안 넘기면 예전 그대로** — 옛 호출부가 안 깨진다', () => {
+  it('입고 기록이 없던 옛 재고는 기초로 표시한다', () => {
     const l = buildItemLedger('b1', [], [병]);
-    expect(l.rows).toHaveLength(0);
-    expect(l.gap).toBe(500);          // 설명 안 되는 차이로 남는다
+    expect(l.rows).toEqual([expect.objectContaining({ kind: '기초', qty: 500, balance: 500 })]);
+    expect(l.opening).toBe(500);
+    expect(l.gap).toBe(0);
   });
 
   it('다른 품목의 입고는 안 담는다', () => {
-    expect(buildItemLedger('b1', [], [병], [입고({ itemId: 'other' })]).rows).toHaveLength(0);
+    expect(buildItemLedger('b1', [], [병], [입고({ itemId: 'other' })]).rows)
+      .toEqual([expect.objectContaining({ kind: '기초', qty: 500 })]);
   });
 
   it('수량이 0이면 줄을 안 만든다', () => {
-    expect(buildItemLedger('b1', [], [병], [입고({ quantity: 0 })]).rows).toHaveLength(0);
+    expect(buildItemLedger('b1', [], [병], [입고({ quantity: 0 })]).rows)
+      .toEqual([expect.objectContaining({ kind: '기초', qty: 500 })]);
   });
 
   it('발주에서 온 것은 그렇게 적는다 — 되짚을 근거다', () => {
     const l = buildItemLedger('b1', [], [병], [입고({ poId: 'po-9' })]);
-    expect(l.rows[0].note).toBe('발주 입고');
-    expect(l.rows[0].orderId).toBe('po-9');
+    expect(l.rows[1].note).toBe('발주 입고');
+    expect(l.rows[1].orderId).toBe('po-9');
   });
 
   it('**날짜는 로컬로 읽는다** — 밤에 넣은 입고가 하루 앞으로 밀리면 안 된다', () => {
     const l = buildItemLedger('b1', [], [병], [입고({ date: '2026-09-02T15:00:00.000Z' })]);
-    expect(l.rows[0].date).toBe('2026-09-03');
+    expect(l.rows[1].date).toBe('2026-09-03');
   });
 
   it('반품 재입고(음수)도 그대로 — 감추면 어긋난 재고를 못 본다', () => {
     const l = buildItemLedger('b1', [], [병], [입고({ quantity: -20 })]);
-    expect(l.rows[0].qty).toBe(-20);
+    expect(l.rows[1].qty).toBe(-20);
     expect(l.outSum).toBe(-20);
   });
 });

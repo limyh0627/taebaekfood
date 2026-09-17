@@ -27,6 +27,7 @@ import { today } from '../day';
 import type { Order, OrderStatus, RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
+import { canResumeFailedInventoryOperation } from '../orderCompletion';
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
 import type { CollectionName } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
@@ -175,7 +176,10 @@ export const updateItem = async (collectionName: CollectionName, id: string, dat
   const docRef = doc(db, collectionName, id);
   // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
-  await updateDoc(docRef, stripUndefined(data));
+  // 수정도 로그인 claim의 회사를 함께 보낸다. 생성만 회사 경계를 지나고 수정은 화면값에 맡기면
+  // 오피스톡 초대처럼 강화된 규칙에서 저장 경로마다 동작이 갈린다.
+  const scoped = await companyScopedWriteData(collectionName, stripUndefined(data));
+  await updateDoc(docRef, scoped);
 };
 
 export const deleteItem = async (collectionName: CollectionName, id: string) => {
@@ -526,7 +530,12 @@ export const claimOrderInventoryOperation = async (
   const current = { id: snap.id, ...snap.data() } as Order;
   if (current.status !== expectedStatus) throw new Error('주문 상태가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
   if (current.inventoryOperation?.state === 'processing') throw new Error('이 주문의 재고 작업이 이미 진행 중입니다.');
-  if (current.inventoryOperation?.state === 'failed') throw new Error('이 주문의 이전 재고 작업이 실패 상태입니다. 재고·로트·수불부를 점검한 뒤 작업 잠금을 해제해 주세요.');
+  if (current.inventoryOperation?.state === 'failed') {
+    // 품목 한 줄 작업은 원료·생산실적 ID가 결정적이라 같은 체크를 다시 누르면 이미 끝난 단계는
+    // duplicate로 건너뛴다. 반면 옛 주문 전체 상태 작업은 재실행 범위가 불명확하므로 계속 막는다.
+    const retryableLine = canResumeFailedInventoryOperation(current.inventoryOperation, operation);
+    if (!retryableLine) throw new Error('이 주문의 이전 재고 작업이 실패 상태입니다. 재고·로트·수불부를 점검한 뒤 작업 잠금을 해제해 주세요.');
+  }
   tx.update(ref, { inventoryOperation: operation });
-  return current;
+  return { ...current, inventoryOperation: operation };
 });

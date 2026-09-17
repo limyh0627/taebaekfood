@@ -1,6 +1,7 @@
 // 실제 원장(rawMaterialLedger)에 **열쇠**를 채운다 — companyId + rawItemId.
-//   기본 = --dry (미리보기, 쓰기 없음).  실제 적용 = --apply.
-//   적용 전 값은 scripts/fix-raw-ledger-keys-backup.json 에 통째로 남긴다.
+//   기본 = --dry (미리보기, 쓰기 없음).  실제 적용 = --apply. 복원 = --undo.
+//   적용 전 값은 scripts/fix-raw-ledger-keys-backup.json 에 통째로 남기며,
+//   백업이 이미 있으면 두 번 적용하지 않는다.
 //
 // 왜 —
 //   원장에는 **품목 id 가 아예 없었다.** `material` 이라는 이름만 있고 companyId 조차
@@ -23,21 +24,47 @@
 //
 //   `material` 은 **안 건드린다.** 그건 보여주기용 스냅샷이고, 서류가 이름으로 묶는 자리가
 //   아직 남아 있어 지금 바꾸면 그쪽이 흔들린다.
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, writeBatch, doc } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
-import { writeFileSync } from 'node:fs';
+import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { baseRawName } from '../src/constants/formula';
 
 const APPLY = process.argv.includes('--apply');
-const BACKUP = 'scripts/fix-raw-ledger-keys-backup.json';
+const UNDO = process.argv.includes('--undo');
+const MISSING_ONLY = process.argv.includes('--missing-only');
+// 1차 대량 이관 백업을 덮지 않는다. 이후 새로 생긴 누락분은 별도 백업으로 적용·복원한다.
+const BACKUP = MISSING_ONLY
+  ? '로컬전용/백업/raw-ledger-missing-keys-2026-09-17.json'
+  : 'scripts/fix-raw-ledger-keys-backup.json';
 //  이름이 안 맞아 홀더를 못 찾는 줄 — 사람이 확인해 정한 것만 여기 적는다.
 const 이름보정: Record<string, string> = { 검정깨: 'raw-검정깨' };
 
-const app = initializeApp({ apiKey: 'AIzaSyBOppTpeiRV1lQDU9ijQGVHQRS-zQW-OOE', authDomain: 'taebaek-3abe4.firebaseapp.com', projectId: 'taebaek-3abe4' });
+const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const credential = keyPath
+  ? cert(JSON.parse(readFileSync(keyPath, 'utf8')))
+  : applicationDefault();
+const app = getApps()[0] ?? initializeApp({ credential, projectId: 'taebaek-3abe4' });
 const db = getFirestore(app);
-await signInAnonymously(getAuth(app));
-const load = async (c: string) => (await getDocs(collection(db, c))).docs.map(d => ({ id: d.id, ...d.data() } as any));
+const load = async (c: string) => (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+if (UNDO) {
+  if (!existsSync(BACKUP)) throw new Error(`백업이 없다: ${BACKUP}`);
+  const backup = JSON.parse(readFileSync(BACKUP, 'utf8')) as {
+    before: { id: string; companyId: string | null; rawItemId: string | null }[];
+  };
+  for (let i = 0; i < backup.before.length; i += 400) {
+    const batch = db.batch();
+    for (const row of backup.before.slice(i, i + 400)) {
+      batch.update(db.collection('rawMaterialLedger').doc(row.id), {
+        companyId: row.companyId ?? FieldValue.delete(),
+        rawItemId: row.rawItemId ?? FieldValue.delete(),
+      });
+    }
+    await batch.commit();
+  }
+  console.log(`✅ ${backup.before.length}줄을 적용 전 상태로 되돌렸다.`);
+  process.exit(0);
+}
 const [items, ledger] = await Promise.all([load('items'), load('rawMaterialLedger')]);
 
 console.log(`\n═══ ${APPLY ? '🔴 실제 적용(--apply)' : '🟢 미리보기(dry) — 쓰기 없음'} ═══\n`);
@@ -90,7 +117,10 @@ for (const e of ledger) {
 }
 
 //  이미 옳게 채워져 있는 줄은 건너뛴다 — 다시 돌려도 안전하게.
-const 바꿀것 = plans.filter(p => p.row.companyId !== p.companyId || p.row.rawItemId !== p.rawItemId);
+const 바꿀것 = plans.filter(p =>
+  (p.row.companyId !== p.companyId || p.row.rawItemId !== p.rawItemId)
+  && (!MISSING_ONLY || !p.row.rawItemId)
+);
 
 const 근거별 = new Map<string, number>();
 for (const p of plans) 근거별.set(p.근거, (근거별.get(p.근거) ?? 0) + 1);
@@ -119,6 +149,10 @@ if (!APPLY) {
   process.exit(0);
 }
 
+if (existsSync(BACKUP)) {
+  throw new Error(`백업이 이미 있다. 두 번 적용하지 않는다: ${BACKUP}`);
+}
+
 writeFileSync(BACKUP, JSON.stringify({
   적은때: new Date().toISOString(),
   설명: '원장에 companyId·rawItemId 채우기 — 적용 전 원본(바꾼 줄만)',
@@ -131,9 +165,9 @@ console.log(`\n백업 → ${BACKUP}`);
 
 //  Firestore 배치는 500개 한도
 for (let i = 0; i < 바꿀것.length; i += 400) {
-  const batch = writeBatch(db);
+  const batch = db.batch();
   for (const p of 바꿀것.slice(i, i + 400)) {
-    batch.update(doc(db, 'rawMaterialLedger', p.row.id), { companyId: p.companyId, rawItemId: p.rawItemId });
+    batch.update(db.collection('rawMaterialLedger').doc(p.row.id), { companyId: p.companyId, rawItemId: p.rawItemId });
   }
   await batch.commit();
   console.log(`  ${Math.min(i + 400, 바꿀것.length)} / ${바꿀것.length}`);

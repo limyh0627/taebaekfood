@@ -7,6 +7,7 @@ import { initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectAuthEmulator, getAuth, onAuthStateChanged } from "firebase/auth";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 import { assertLocalEmulatorTarget } from './firebaseEmulatorSafety';
 
 const firebaseConfig = {
@@ -23,6 +24,7 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export const functions = getFunctions(app, 'asia-northeast3');
 
 /** 로컬 검수는 demo 프로젝트와 에뮬레이터를 함께 써야만 켜진다. 운영 프로젝트로 우회 연결하지 않는다. */
 export const usingFirebaseEmulators = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';

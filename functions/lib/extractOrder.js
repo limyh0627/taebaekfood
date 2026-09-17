@@ -15,20 +15,23 @@ const params_1 = require("firebase-functions/params");
  * 물릴 수 있다. 그래서 키는 **Firebase 시크릿**에만 두고, 앱은 이 함수를 부른다.
  * (스마트스토어 열쇠 때 정한 규칙 그대로 — "그 값은 저장소에 넣지 않는다")
  *
- *   설정:  npx firebase functions:secrets:set ANTHROPIC_API_KEY
+ *   설정:  npx firebase functions:secrets:set GEMINI_API_KEY
  *   배포:  cd functions && npm run deploy
  *
  * **읽어 온 것을 여기서 믿지 않는다.** 모양만 JSON 으로 받아 넘기고, 우리 품목 목록에
  * 비추어 거르는 일은 화면 쪽 `shared/orderExtract.validateExtract` 가 한다 — 그래야
  * 네트워크 없이 시험할 수 있고 무엇을 믿는지가 한 곳에 모인다.
  */
-const ANTHROPIC_API_KEY = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
+const GEMINI_API_KEY = (0, params_1.defineSecret)('GEMINI_API_KEY');
 const REGION = 'asia-northeast3';
+// 2.5 Flash는 2026-09부터 신규 사용자 호출에 404를 돌려준다. API가 안내한 현행 Flash를 쓴다.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 /** 한 번에 받을 수 있는 글·목록 크기. 넘치면 값이 비싸지고 읽기도 나빠진다. */
 const 글자한도 = 4000;
 const 품목한도 = 400;
 /** 지난 주문 줄 수. 한 줄이 15토큰쯤이라 이만큼 붙여도 한 건에 몇 원이다. */
 const 기록한도 = 60;
+const 잠깐 = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const 지침 = (오늘) => `너는 식품 제조사의 주문 접수 담당이다.
 거래처가 카카오톡·문자로 보낸 글에서 **주문**을 뽑아 JSON 으로만 답한다.
 
@@ -58,8 +61,8 @@ const 지침 = (오늘) => `너는 식품 제조사의 주문 접수 담당이�
 
 JSON 형식(이것만 출력한다. 설명·코드블록 금지):
 {"partnerId":"","deliveryDate":"","note":"","lines":[{"itemId":"","qty":0,"isBox":true,"source":""}]}`;
-exports.extractOrder = (0, https_1.onCall)({ region: REGION, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 60 }, async (request) => {
-    var _a, _b;
+exports.extractOrder = (0, https_1.onCall)({ region: REGION, secrets: [GEMINI_API_KEY], timeoutSeconds: 60 }, async (request) => {
+    var _a, _b, _c, _d, _e, _f, _g;
     //  **로그인한 사람만** — 열쇠를 대신 써 주는 함수라 아무나 부르면 요금이 샌다.
     if (!request.auth)
         throw new https_1.HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -87,28 +90,66 @@ exports.extractOrder = (0, https_1.onCall)({ region: REGION, secrets: [ANTHROPIC
     ].join('\n');
     let 답;
     try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        const 요청 = {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
-                'x-api-key': ANTHROPIC_API_KEY.value(),
-                'anthropic-version': '2023-06-01',
+                'x-goog-api-key': GEMINI_API_KEY.value(),
             },
             body: JSON.stringify({
-                model: 'claude-sonnet-5',
-                max_tokens: 2000,
-                //  **0 에 가깝게** — 주문은 창의력이 필요한 일이 아니다. 같은 글은 같게 읽혀야 한다.
-                temperature: 0,
-                messages: [{ role: 'user', content: 본문 }],
+                contents: [{ role: 'user', parts: [{ text: 본문 }] }],
+                generationConfig: {
+                    // 주문 추출은 깊은 추론보다 빠르고 완결된 JSON이 중요하다. 기본 medium은 2천 토큰에서 답을 잘랐다.
+                    thinkingConfig: { thinkingLevel: 'MINIMAL' },
+                    temperature: 0,
+                    maxOutputTokens: 8192,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'OBJECT',
+                        properties: {
+                            partnerId: { type: 'STRING' },
+                            deliveryDate: { type: 'STRING' },
+                            note: { type: 'STRING' },
+                            lines: {
+                                type: 'ARRAY',
+                                items: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        itemId: { type: 'STRING' },
+                                        qty: { type: 'NUMBER' },
+                                        isBox: { type: 'BOOLEAN' },
+                                        source: { type: 'STRING' },
+                                    },
+                                    required: ['itemId', 'qty', 'source'],
+                                },
+                            },
+                        },
+                        required: ['partnerId', 'deliveryDate', 'note', 'lines'],
+                    },
+                },
             }),
-        });
+        };
+        let res;
+        // 503은 Gemini가 고수요 때 잠깐 돌려주는 응답이다. 직원이 다시 누르게 하지 않고 서버에서 두 번 더 시도한다.
+        for (let 시도 = 0; 시도 < 3; 시도 += 1) {
+            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, 요청);
+            if (res.status !== 503 || 시도 === 2)
+                break;
+            await 잠깐(500 * (시도 + 1));
+        }
+        if (!res)
+            throw new Error('Gemini 응답이 없습니다.');
         if (!res.ok) {
             const 사유 = await res.text().catch(() => '');
             console.error('[주문 읽기] API 응답 실패', res.status, 사유.slice(0, 300));
             throw new https_1.HttpsError('internal', `주문을 읽지 못했습니다(${res.status}).`);
         }
         const json = await res.json();
-        답 = ((_b = json.content) !== null && _b !== void 0 ? _b : []).filter(c => c.type === 'text').map(c => { var _a; return (_a = c.text) !== null && _a !== void 0 ? _a : ''; }).join('').trim();
+        답 = ((_e = (_d = (_c = (_b = json.candidates) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.content) === null || _d === void 0 ? void 0 : _d.parts) !== null && _e !== void 0 ? _e : []).map(part => { var _a; return (_a = part.text) !== null && _a !== void 0 ? _a : ''; }).join('').trim();
+        if (((_g = (_f = json.candidates) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.finishReason) === 'MAX_TOKENS') {
+            console.error('[주문 읽기] 출력 한도 초과', 답.slice(0, 300));
+            throw new https_1.HttpsError('internal', '주문 내용이 너무 길어 끝까지 읽지 못했습니다. 주문 부분만 다시 넣어주세요.');
+        }
     }
     catch (error) {
         if (error instanceof https_1.HttpsError)
@@ -127,7 +168,7 @@ exports.extractOrder = (0, https_1.onCall)({ region: REGION, secrets: [ANTHROPIC
         //  **그대로 넘긴다** — 우리 품목에 비추어 거르는 일은 화면 쪽(`validateExtract`)이 한다.
         return JSON.parse(답.slice(열림, 닫힘 + 1));
     }
-    catch (_c) {
+    catch (_h) {
         console.error('[주문 읽기] JSON 을 못 풀었다', 답.slice(0, 300));
         throw new https_1.HttpsError('internal', '주문을 알아보지 못했습니다. 글을 조금 다듬어 다시 시도해 주세요.');
     }

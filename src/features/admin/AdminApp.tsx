@@ -1,5 +1,5 @@
 import ConfirmModal from '../../shared/components/ConfirmModal';
-import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange } from '../../shared/orderCompletion';
+import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 ﻿
 // ============================================================
@@ -28,6 +28,7 @@ import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/r
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
+import { adjustStockByQty, stocktakeByQty } from '../../shared/services/unpackService';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -457,10 +458,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [pendingSignupCount, setPendingSignupCount] = useState(0);
   useEffect(() => {
     if (!isAdmin) return;
-    const qy = query(collection(db, 'users'), where('status', '==', 'pending'));
+    const qy = query(collection(db, 'users'), where('companyId', '==', companyId), where('status', '==', 'pending'));
     const unsub = onSnapshot(qy, (snap) => setPendingSignupCount(snap.size), () => setPendingSignupCount(0));
     return unsub;
-  }, [isAdmin]);
+  }, [isAdmin, companyId]);
 
   // 라이브 구독은 7일치만 → 서류관리 > 생산판매기록부 월별 조회를 위해 24개월치 온디맨드 로드
   const [extraProductionLogs, setExtraProductionLogs] = useState<import('../../shared/types').ProductionSalesLog[]>([]);
@@ -498,12 +499,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 수불부 탭을 열 때만 1회 온디맨드 조회하여 라이브 7일 구독분과 merge. (다른 페이지는 7일 유지)
   const [extraRawMaterialLedger, setExtraRawMaterialLedger] = useState<import('../../shared/types').RawMaterialEntry[]>([]);
   const [rawInventoryStates, setRawInventoryStates] = useState<RawInventoryState[]>([]);
+  const [integritySnapshot, setIntegritySnapshot] = useState<{
+    items: Item[];
+    ledger: import('../../shared/types').RawMaterialEntry[];
+    states: RawInventoryState[];
+    key: string;
+  } | null>(null);
   const [ledgerReloadKey, setLedgerReloadKey] = useState(0);
   // 원료수불부/재고관리 화면에 들어올 때(또는 원장 쓰기로 reloadKey 변경 시)마다 전체 이력을 fresh하게 조회.
   //   전역 7일 구독을 제거했으므로, 이 화면 진입 시 재조회가 유일한 최신화 경로 —
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
-    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory' && currentView !== 'data-integrity') return;
+    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory') return;
     const to = today();
     // 전체 이력이 필요한 화면이라 회사 범위만 서버에서 제한하고 날짜는 클라이언트에서 거른다.
     // companyId+date 복합 인덱스 배포 여부 때문에 원장이 통째로 비는 일을 피한다.
@@ -513,12 +520,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
       .then(rows => setExtraRawMaterialLedger(rows.filter(row => row.date >= '2020-01-01' && row.date <= to)))
       .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); });
   }, [docTab, currentView, ledgerReloadKey, companyId]);
+  const integrityKey = `${companyId}:${ledgerReloadKey}`;
   useEffect(() => {
     if (currentView !== 'data-integrity') return;
-    getDocs(query(collection(db, 'rawInventories'), where('companyId', '==', companyId)))
-      .then(snapshot => setRawInventoryStates(snapshot.docs.map(row => ({ id: row.id, ...row.data() } as RawInventoryState))))
-      .catch(error => console.error('[AdminApp] 원료 현재고 점검 로드 실패:', error));
-  }, [currentView, companyId, ledgerReloadKey]);
+    let cancelled = false;
+    setIntegritySnapshot(null);
+    Promise.all([
+      fetchCollection<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', [where('companyId', '==', companyId)]),
+      getDocs(query(collection(db, 'rawInventories'), where('companyId', '==', companyId))),
+      getDocs(collection(db, 'items')),
+    ]).then(([ledger, stateSnapshot, itemSnapshot]) => {
+      if (cancelled) return;
+      const states = stateSnapshot.docs.map(row => ({ id: row.id, ...row.data() } as RawInventoryState));
+      const snapshotItems = itemSnapshot.docs.map(row => ({ id: row.id, ...row.data() } as Item));
+      setExtraRawMaterialLedger(ledger);
+      setRawInventoryStates(states);
+      setIntegritySnapshot({ items: snapshotItems, ledger, states, key: integrityKey });
+    }).catch(error => console.error('[AdminApp] 데이터 점검 묶음 로드 실패:', error));
+    return () => { cancelled = true; };
+  }, [currentView, companyId, ledgerReloadKey, integrityKey]);
   const mergedRawMaterialLedger = useMemo(() => {
     const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
     extraRawMaterialLedger.forEach(e => map.set(e.id, e));
@@ -914,28 +934,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
    */
   useEffect(() => {
     const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
-    const resetRef = doc(db, 'appMeta', 'workOrderReset');
+    // 회사 분리 뒤에도 한 문서를 같이 쓰면 한 회사의 날짜 도장이 다른 회사 초기화를 막는다.
+    // 보안 규칙도 회사 업무문서에는 companyId를 요구하므로 회사별 잠금으로 둔다.
+    const resetRef = doc(db, 'appMeta', `workOrderReset_${companyId}`);
     (async () => {
       try {
         const 내차례 = await runTransaction(db, async (tx: Transaction) => {
           const snap = await tx.get(resetRef);
           if ((snap.exists() ? snap.data().date : null) === today) return false;
-          tx.set(resetRef, { date: today });
+          tx.set(resetRef, { date: today, companyId });
           return true;
         });
         if (!내차례) return;
-        const snap = await getDocs(collection(db, 'workOrderItems'));
+        const snap = await getDocs(query(collection(db, 'workOrderItems'), where('companyId', '==', companyId)));
         await Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
       } catch (e) {
         //  못 지웠으면 도장을 물러 다음 기기가 이어받게 한다. 조용히 넘기면 어제 것이 하루 남는다.
         console.error('[작업순서 초기화] 실패 — 도장을 되돌린다:', e);
         try {
-          // appMeta는 회사 업무문서가 아닌 전 기기 공용 잠금이라 회사 경계의 명시적 예외다.
-          await runTransaction(db, async tx => tx.set(resetRef, { date: '' }));
+          await runTransaction(db, async tx => tx.set(resetRef, { date: '', companyId }));
         } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
       }
     })();
-  }, []);
+  }, [companyId]);
 
   /**
    * **앱을 열 때 이 폰의 푸시 표를 받아 둔다.**
@@ -1149,7 +1170,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // s-auto 접두사 중복 문서 정리
   useEffect(() => {
     const cleanupDuplicates = async () => {
-      const snap = await getDocs(collection(db, 'items'));
+      const snap = await getDocs(query(collection(db, 'items'), where('companyId', '==', companyId)));
       for (const d of snap.docs) {
         if (d.id.startsWith('s-auto')) {
           await deleteDoc(doc(db, 'items', d.id));
@@ -1158,7 +1179,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     };
     cleanupDuplicates();
-  }, []);
+  }, [companyId]);
 
   // --- 재고 관리 핸들러 (purchaseOrders 기반) ---
   const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
@@ -1541,10 +1562,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (goBack) setIsOrderCreateChooserOpen(true);
   };
 
-  const requestOrderStatus = async (id: string, status: OrderStatus, orderPatch?: Partial<Order>) => {
-    const prepared = await prepareOrderStatusChange(id, status);
+  const requestOrderStatus = async (id: string, requestedStatus: OrderStatus, orderPatch?: Partial<Order>) => {
+    const prepared = await prepareOrderStatusChange(id, requestedStatus);
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
     const nextItems = orderPatch?.items ?? cur?.items ?? [];
+    // 대기중·작업중·작업완료는 사람이 고르는 값이 아니다. 남아 있는 옛 호출 경로가 어떤
+    // 상태를 요구해도 품목 체크 수에서 다시 정해 거산 주문 같은 불일치를 만들지 않는다.
+    const status = [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED].includes(requestedStatus)
+      ? workStatusFromItems(nextItems)
+      : requestedStatus;
     if (cur && requiresCompleteItemsForStatusChange(cur.status, status) && !hasCompleteOrderItems(nextItems)) {
       alert('모든 주문 품목의 작업완료 여부를 확인한 뒤 상태를 변경해 주세요.');
       return;
@@ -2004,14 +2030,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
         + `이미 끝낸 ${되돌릴수}개 품목의 작업완료와 재고는 그대로 둡니다.\n`
         + `새로 더한 품목이 남아 있으므로 주문은 '작업중' 으로 돌아갑니다.\n\n계속할까요?`
       )) return;
-      updateItem('orders', orderId, { status: OrderStatus.PROCESSING });
     }
     /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
         작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
         자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
     const 지금 = new Date().toISOString();
     const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, 지금) : items;
-    updateItem('orders', orderId, { items: 찍은items });
+    const 작업상태 = o && [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED].includes(o.status)
+      ? workStatusFromItems(찍은items)
+      : o?.status;
+    updateItem('orders', orderId, { items: 찍은items, ...(작업상태 ? { status: 작업상태 } : {}) });
     /*  **수량·단가·품목 교체·줄 추가/삭제는 밖에 적는다**(2026-09-14 사장님: "2번도 했으면").
         지워진 줄은 주문 문서에 남길 자리가 아예 없고, 주문 안에 쌓으면 문서가 계속 커진다.
         주문 저장을 막지는 않는다 — 기록을 못 남겼다고 고친 것까지 되돌리면 더 나쁘다. */
@@ -2027,10 +2055,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
   useEffect(() => {
-    getDocs(collection(db, 'docSheetTitles'))
+    getDocs(query(collection(db, 'docSheetTitles'), where('companyId', '==', companyId)))
       .then(s => setSheetTitles(Object.fromEntries(s.docs.map(d => [d.id, (d.data() as { title?: string }).title ?? '']))))
       .catch(() => {});
-  }, []);
+  }, [companyId]);
   const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
   const renameSheet = async (cat: string) => {
     const next = window.prompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
@@ -2504,15 +2532,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <DataIntegrityMonitor
               companyId={companyId}
               orders={allOrders}
-              items={allItems}
+              items={integritySnapshot?.items ?? []}
               itemBoms={itemBoms}
               purchaseOrders={purchaseOrders}
               itemReceipts={itemReceipts}
-              rawMaterialLedger={mergedRawMaterialLedger}
-              rawInventories={rawInventoryStates}
+              rawMaterialLedger={integritySnapshot?.ledger ?? []}
+              rawInventories={integritySnapshot?.states ?? []}
               issuedStatements={issuedStatements}
               productionSalesLogs={mergedProductionSalesLogs}
               onRefresh={() => setLedgerReloadKey(key => key + 1)}
+              loading={!integritySnapshot || integritySnapshot.key !== integrityKey}
             />
           )}
           {currentView === 'shipping' && (
@@ -3152,7 +3181,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
-                    await updateItem('items', req.itemId, { stock: req.requestedQuantity });
+                    const result = await stocktakeByQty({
+                      itemId: product.id,
+                      itemName: product.name,
+                      targetQty: req.requestedQuantity,
+                    });
+                    if (!result.ok) { alert(result.message); return; }
                   }
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
@@ -3405,12 +3439,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 salesRows: rightRows.map(r => ({ 상호: r.상호, 품목: r.품목, 용량: r.spec, 수량: r.수량, 소비기한: r.소비기한 })),
                 extraRows: extraSalesRows.map(r => ({ 품목: r.품목, 용량: r.용량, 수량: r.qty, 거래처: r.거래처 })),
               };
-              await downloadSalesJournal(journal);
-
               // 생산판매기록 로그 저장 (관리자 서류 조회용)
               const logId = `psl-${Date.now()}`;
               await addItem('productionSalesLogs', {
                 id: logId,
+                // 회사 분리 규칙은 새 문서에 companyId가 없으면 관리자도 저장을 거절한다.
+                // 파일을 먼저 내려받으면 사용자는 처리가 끝난 줄 알지만 주문은 출고에 남으므로,
+                // 로그 저장을 먼저 확정하고 성공한 뒤에만 파일을 내려받는다.
+                companyId,
                 date: docDate,
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser.name,
@@ -3426,6 +3462,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   items: o.items.map(i => ({ name: i.name, qty: i.quantity ?? 1 })),
                 })),
               });
+              await downloadSalesJournal(journal);
 
               // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동.
               // 재고 조정(생산/출고)은 이미 각 상태 전환 때 반영됨 — 여기선 상태만 이동하되,
@@ -4695,10 +4732,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'item-ledger' && (
             <div className="h-full flex flex-col overflow-hidden">
-              <PageHeader title="제품별원장" subtitle="품목 하나가 언제 얼마나 들고 났나 — 주문에 남은 기록 기준" />
+              <PageHeader title="제품별원장" subtitle="품목별 기초·입고·생산·사용·출고·실사 기록" />
               <div className="flex-1 min-h-0 p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-                  <ItemLedger items={companyItems} orders={allOrders} receipts={appData.itemReceipts} />
+              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={rawMaterialLedger} />
                 </React.Suspense>
               </div>
             </div>
@@ -4860,7 +4897,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg: addKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
-                      await adjustItemStock(collectionName, req.itemId, req.requestedQuantity || 0);
+                      const result = await adjustStockByQty({
+                        itemId: product.id,
+                        itemName: product.name,
+                        deltaQty: req.requestedQuantity || 0,
+                        note: '재고조정 승인',
+                      });
+                      if (!result.ok) { alert(result.message); return; }
                     }
                   } else if (req.type === 'cancel_receipt') {
                     // 입고 취소 승인 시, 아무것도 하지 않음 (이미 반영 전이므로 리스트에서만 제거)
@@ -5046,50 +5089,41 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 // 메시지 저장 (핵심 동작 — 실패 시 에러 전파)
                 await addItem('chatMessages', msg);
 
-                // 대화방 마지막 메시지 업데이트 (부가 동작 — 실패해도 메시지 저장은 유지)
-                const room = chatRooms.find(r => r.id === msg.roomId);
-                if (room) {
-                  const now = new Date().toISOString();
-                  updateItem('chatRooms', room.id, {
-                    lastMessage: msg.text,
-                    lastUpdatedAt: now,
-                    lastReadBy: { ...(room.lastReadBy ?? {}), [msg.senderId]: now }
-                  }).catch(console.error);
+                // 방 요약·수신 알림은 본문 저장과 별개다. 참여자가 많을수록 알림 쓰기를 전부
+                // 기다리느라 전송 버튼이 수초간 잠겼다. 본문 성공 즉시 입력을 풀고 뒤에서 처리한다.
+                void (async () => {
+                  const room = chatRooms.find(r => r.id === msg.roomId);
+                  if (room) {
+                    const now = new Date().toISOString();
+                    await updateItem('chatRooms', room.id, {
+                      lastMessage: msg.text,
+                      lastUpdatedAt: now,
+                      lastReadBy: { ...(room.lastReadBy ?? {}), [msg.senderId]: now }
+                    });
 
-                  // 채팅 알림 — 본인 제외 참여자에게 전송
-                  const recipients = room.participantIds.filter(id => id !== msg.senderId);
-                  const roomName = room.name || (room.participantIds.length === 2
-                    ? (employees.find(e => e.id === recipients[0])?.name ?? '알 수 없음')
-                    : `단체 채팅`);
-                  const preview = msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text;
-                  await Promise.all(recipients.map(recipientId =>
-                    addItem('notifications', {
-                      type: 'mention',
-                      title: `${msg.senderName} (${roomName})`,
-                      body: preview,
-                      readBy: [],
-                      createdAt: new Date().toISOString(),
-                      senderId: msg.senderId,
-                      linkedId: msg.roomId,
-                      targetId: recipientId,
-                    } as Omit<AppNotification, 'id'> & { targetId: string })
-                  )).catch(console.error);
-                }
+                    const recipients = room.participantIds.filter(id => id !== msg.senderId);
+                    const roomName = room.name || (room.participantIds.length === 2
+                      ? (employees.find(e => e.id === recipients[0])?.name ?? '알 수 없음')
+                      : `단체 채팅`);
+                    const preview = msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text;
+                    await Promise.all(recipients.map(recipientId =>
+                      addItem('notifications', {
+                        type: 'mention', title: `${msg.senderName} (${roomName})`, body: preview,
+                        readBy: [], createdAt: new Date().toISOString(), senderId: msg.senderId,
+                        linkedId: msg.roomId, targetId: recipientId,
+                      } as Omit<AppNotification, 'id'> & { targetId: string })
+                    ));
+                  }
 
-                // @관리자 멘션 처리 (부가 동작)
-                if (msg.text.includes('@관리자')) {
-                  const adminRequest: AdjustmentRequest = {
-                    id: `MENTION-${Date.now()}`,
-                    itemId: 'chat-mention',
-                    itemName: `[채팅 언급] ${msg.senderName}`,
-                    originalQuantity: 0,
-                    type: 'chat_mention',
-                    reason: msg.text,
-                    status: 'pending',
-                    requestedAt: new Date().toISOString()
-                  };
-                  addItem('adjustmentRequests', adminRequest).catch(console.error);
-                }
+                  if (msg.text.includes('@관리자')) {
+                    await addItem('adjustmentRequests', {
+                      id: `MENTION-${Date.now()}`, itemId: 'chat-mention',
+                      itemName: `[채팅 언급] ${msg.senderName}`, originalQuantity: 0,
+                      type: 'chat_mention', reason: msg.text, status: 'pending',
+                      requestedAt: new Date().toISOString()
+                    } as AdjustmentRequest);
+                  }
+                })().catch(error => console.error('[오피스톡 부가 처리 실패]', error));
               }}
             />
           )}

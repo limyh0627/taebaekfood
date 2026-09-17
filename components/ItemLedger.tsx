@@ -1,21 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import type { Item, Order } from '../src/shared/types';
+import { companyOf, type CompanyId, type Item, type Order, type RawMaterialEntry } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
 import type { ItemReceipt } from '../src/shared/receipt';
 import { filterItems, ALL } from '../src/shared/itemFilter';
 
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
+import RawLedgerList from './RawLedgerList';
+import { isRawHolder } from '../src/shared/rawHolder';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
  *
  * 원료·벌크는 원료수불부가 이미 있다. 여긴 **완제품·부자재**를 본다.
- * 근거는 주문 스냅샷과 입고 기록이다(itemLedger.ts 참조). 재고조정·실사는 안 잡힌다.
+ * 근거는 주문 스냅샷·입고 기록·품목에 남긴 실사 앵커다(itemLedger.ts 참조).
  * 입고는 2026-09-03부터다 — 그 전에 산 것은 여전히 '차이'로 남는다.
  * 그래서 잔량을 억지로 맞추지 않고 **지금 재고와의 차이를 그대로 밝힌다** — 가리면 못 찾는다.
  */
 const KIND_CLS: Record<ItemLedgerKind, string> = {
+  '기초': 'bg-slate-100 text-slate-600',
   '생산': 'bg-emerald-100 text-emerald-700',
   '먼저생산': 'bg-teal-100 text-teal-700',
   '출고': 'bg-rose-100 text-rose-600',
@@ -31,7 +34,10 @@ const ItemLedger: React.FC<{
   orders: Order[];
   /** 사 온 기록 — 없으면 예전처럼 주문만 본다 */
   receipts?: ItemReceipt[];
-}> = ({ items, orders, receipts = [] }) => {
+  /** 원료 원장도 같은 화면에서 고른다. 로트 화면에는 타임라인만 남긴다. */
+  rawEntries?: RawMaterialEntry[];
+  companyId: CompanyId;
+}> = ({ items, orders, receipts = [], rawEntries = [], companyId }) => {
   const [q, setQ] = useState('');
   const [pickedId, setPickedId] = useState('');
   //  **분류 필터**(2026-09-03 사장님) — 품목이 많아 이름으로만 찾기 어렵다.
@@ -47,9 +53,15 @@ const ItemLedger: React.FC<{
     [pickable, type, cat, q]);
 
   const picked = items.find(i => i.id === pickedId);
+  const pickedRawEntries = useMemo(() => picked
+    ? rawEntries.filter(entry => companyOf(entry) === companyId
+      && (entry.rawItemId === picked.id || (!entry.rawItemId && entry.material === picked.name)))
+    : [], [picked, rawEntries, companyId]);
+  const companyOrders = useMemo(() => orders.filter(order => companyOf(order) === companyId), [orders, companyId]);
+  const companyReceipts = useMemo(() => receipts.filter(receipt => companyOf(receipt) === companyId), [receipts, companyId]);
   const ledger = useMemo(
-    () => (pickedId ? buildItemLedger(pickedId, orders, items, receipts) : null),
-    [pickedId, orders, items, receipts]);
+    () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts) : null),
+    [pickedId, companyOrders, items, companyReceipts]);
 
   //  좁은 화면에서는 위아래로 — 가로로 두면 오른쪽 표가 찌그러진다(shared/ui/table)
   return (
@@ -93,7 +105,16 @@ const ItemLedger: React.FC<{
             <Package size={36} className="opacity-40"/>
             <p className="text-sm font-bold">왼쪽에서 품목을 고르세요</p>
           </div>
-        ) : (<>
+        ) : isRawHolder(picked) ? (<>
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-black text-slate-800">{picked.name}</span>
+            <span className="text-[11px] font-bold text-slate-400">{picked.spec || '원료'}</span>
+            <span className="ml-auto text-xs font-black text-slate-700 tabular-nums">현재 {fmt(Number(picked.stock ?? 0))}kg</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
+            <RawLedgerList entries={pickedRawEntries} allEntries={pickedRawEntries} orders={companyOrders} pageSize={20} emptyText="이 원료의 입출고 기록이 없습니다" />
+          </div>
+        </>) : (<>
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
             <span className="text-sm font-black text-slate-800">{picked.name}</span>
             <span className="text-[11px] font-bold text-slate-400">{picked.spec || picked.unit}</span>
@@ -101,7 +122,7 @@ const ItemLedger: React.FC<{
                  (2026-09-03 사장님). '기초'는 이 원장이 못 본 몫이다 — 주문 스냅샷이 없던
                  옛 생산, 실사·조정, 그리고 2026-09-03 전에 산 것. 감추지 않고 첫 칸에 놓는다. */}
             <div className="ml-auto flex items-center gap-2.5 text-[11px] font-black flex-wrap">
-              <span className="text-slate-400">기초 <span className="text-slate-500 tabular-nums">{fmt(ledger.gap)}</span></span>
+              <span className="text-slate-400" title="과거 기록이 완전하지 않아 현재 재고에서 역산한 시작 잔량입니다">기초(역산) <span className="text-slate-500 tabular-nums">{fmt(ledger.opening)}</span></span>
               <span className="text-slate-300">+</span>
               <span className="text-emerald-600">들어옴 <span className="tabular-nums">{fmt(ledger.inSum)}</span></span>
               <span className="text-slate-300">−</span>
@@ -110,11 +131,24 @@ const ItemLedger: React.FC<{
               <span className="text-slate-700">재고 <span className="tabular-nums">{fmt(Number(picked.stock ?? 0))}</span>{picked.unit}</span>
             </div>
           </div>
-          {/* 차이를 가리지 않는다 — 주문 밖에서 움직인 몫이 곧 실사·조정이다 */}
+          {ledger.independentlyVerified ? (
+            <div className={`px-5 py-2 border-b text-[11px] font-bold ${
+              Math.abs(ledger.gap) <= 0.001
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                : 'bg-rose-50 border-rose-100 text-rose-700'
+            }`}>
+              {ledger.verifiedFrom} 실사부터 기록으로 대조했습니다. 현재 재고와 계산 잔량이
+              {Math.abs(ledger.gap) <= 0.001 ? ' 일치합니다.' : ` ${fmt(Math.abs(ledger.gap))}${picked.unit} 다릅니다.`}
+            </div>
+          ) : (
+            <div className="px-5 py-2 bg-slate-50 border-b border-slate-100 text-[11px] font-bold text-slate-500">
+              독립 검증 기준이 없습니다. 현재 재고에 맞춰 기초를 역산한 원장이므로, 다음 재고 실사 이후부터 실제 기록과 대조됩니다.
+            </div>
+          )}
+          {/* 차이를 가리지 않는다 — 옛 기록처럼 근거가 없는 재고 변경은 여기 남는다. */}
           {Math.abs(ledger.gap) > 0.001 && (
             <div className="px-5 py-2 bg-amber-50 border-b border-amber-100 text-[11px] font-bold text-amber-700">
-              흐름과 지금 재고가 <b>{fmt(ledger.gap)}{picked.unit}</b> 다릅니다 — 주문 밖에서 움직인 몫입니다(실사·재고조정·수동입력).
-              이 원장은 주문에 남은 기록만 셉니다.
+              마지막 기록과 지금 재고가 <b>{fmt(ledger.gap)}{picked.unit}</b> 다릅니다 — 기록 없이 바뀐 재고가 남아 있습니다.
             </div>
           )}
           <div className="flex-1 overflow-y-auto">
@@ -134,7 +168,9 @@ const ItemLedger: React.FC<{
                       <td className="px-4 py-2 whitespace-nowrap"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[r.kind]}`}>{r.kind}</span></td>
                       <td className="px-4 py-2 text-[11px] font-bold text-slate-600 truncate max-w-[140px]">{r.partnerName || '—'}</td>
                       <td className="px-4 py-2 text-[11px] text-slate-400 truncate max-w-[240px]">{r.note}</td>
-                      <td className={`px-4 py-2 text-xs text-right font-black ${r.qty > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <td className={`px-4 py-2 text-xs text-right font-black ${
+                        r.kind === '기초' ? 'text-slate-500' : r.qty > 0 ? 'text-emerald-600' : 'text-rose-600'
+                      }`}>
                         {r.qty > 0 ? '+' : ''}{fmt(r.qty)}
                       </td>
                       <td className="px-4 py-2 text-xs text-right font-black text-slate-700 tabular-nums">{fmt(r.balance)}</td>
