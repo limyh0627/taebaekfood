@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { buildCostFn } from './bomCost';
 import type { Item } from './types';
 
@@ -34,5 +35,13 @@ describe('반제품 원가 롤업', () => {
     });
 
     expect(cost(wip)).toBeCloseTo((172000 / 16.5) / 0.4, 5);
+  });
+
+  it('품목관리 원가 열도 저장값 대신 공통 롤업 원가를 받는다', () => {
+    const adminApp = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
+    const itemManager = readFileSync('components/ItemManager.tsx', 'utf8');
+
+    expect(adminApp).toContain('costOf={inventoryCostOf}');
+    expect(itemManager).toContain('shownCostOf(item)');
   });
 });

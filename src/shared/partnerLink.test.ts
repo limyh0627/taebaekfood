@@ -62,4 +62,20 @@ describe('옛 배열을 다시 읽지 않는다', () => {
     // 여기서 [] fallback으로 전체 동기화하면 이름·규격만 고쳐도 기존 연결이 모두 삭제된다.
     expect(adminApp).not.toMatch(/setProductClients\s*\(\s*p\.id\s*,\s*p\.partnerIds\s*\?\?\s*\[\]\s*\)/);
   });
+
+  it('품목 연결 조회는 로그인 회사 조건을 반드시 포함한다', () => {
+    const service = readFileSync('src/shared/services/firebaseService.ts', 'utf8');
+    const sales = service.slice(
+      service.indexOf('export const setProductClients'),
+      service.indexOf('export const setProductSuppliers'),
+    );
+    const purchase = service.slice(
+      service.indexOf('export const setProductSuppliers'),
+      service.indexOf('export const syncInitialData'),
+    );
+
+    // Firestore 규칙은 필터가 아니므로 companyId 없는 컬렉션 질의는 결과가 같은 회사뿐이어도 거부된다.
+    expect(sales).toContain("where('companyId', '==', companyId)");
+    expect(purchase).toContain("where('companyId', '==', companyId)");
+  });
 });

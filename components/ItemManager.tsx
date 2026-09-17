@@ -50,6 +50,8 @@ interface ItemManagerProps {
     _rows: CostCalcRow[],
     _opts: { price?: number; taxType?: '과세' | '면세'; fee?: number },
   ) => CostCalcResult;
+  /** 품목 목록의 원가는 재고평가와 같은 BOM 롤업 결과를 표시한다. */
+  costOf?: (_item: Item) => number;
   isAdmin?: boolean;
 }
 
@@ -113,7 +115,12 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, onCalcCost, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, onCalcCost, costOf, isAdmin = true }) => {
+  const shownCostOf = (item: Item): number | undefined => {
+    const rolled = costOf?.(item);
+    if (typeof rolled === 'number' && Number.isFinite(rolled) && rolled > 0) return Math.round(rolled);
+    return item.cost == null ? undefined : Math.round(item.cost);
+  };
   /* ── 원가계산기 ──
      아직 안 만든 품목의 원가를 미리 굴려 보는 자리. 구성품을 골라 넣으면 원가가 나오고,
      팔 값을 넣으면 마진이 나온다. 여기서 만든 건 아무 데도 저장되지 않는다 — 계산만 한다. */
@@ -882,7 +889,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                                크기가 다르면 어느 게 큰 값인지 눈이 먼저 속는다. 이름표만 옅게 둔다. */}
                           {isAdmin && (
                             <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
-                              <span className="text-slate-300">원가</span> {item.cost != null ? item.cost.toLocaleString() : '-'}
+                              <span className="text-slate-300">원가</span> {shownCostOf(item)?.toLocaleString() ?? '-'}
                             </span>
                           )}
                           {isAdmin && partnerScopeTab === 'sales' && (() => {
@@ -912,8 +919,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                                 {(() => {
                                   if (curPrice == null) return null;
                                   const pp = priceParts(curPrice, psOut?.taxType === '면세');
-                                  const m = item.cost != null && item.cost > 0
-                                    ? marginFromSupply(pp.supply, item.cost) : null;
+                                  const shownCost = shownCostOf(item);
+                                  const m = shownCost != null && shownCost > 0
+                                    ? marginFromSupply(pp.supply, shownCost) : null;
                                   return (
                                     <>
                                       {pp.showSupply && (
@@ -1115,8 +1123,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     </td>
                     {isAdmin && (
                       <td className="px-2 py-3 text-right">
-                        {item.cost != null
-                          ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
+                        {shownCostOf(item) != null
+                          ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{shownCostOf(item)!.toLocaleString()}원</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}

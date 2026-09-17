@@ -321,8 +321,18 @@ export const deleteSubItem = async (
 export const setProductClients = async (itemId: string, partnerIds: string[]) => {
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
+  // 회사별 보안 규칙은 목록 질의 자체에 companyId 조건이 있어야 허용한다.
+  // 화면에서 이미 태백 품목만 보고 있어도 여기서 전체 회사를 조회하면 permission-denied가 난다.
+  const scoped = await companyScopedWriteData('partner_item', {});
+  const companyId = scoped.companyId as string;
+
   // 기존 레코드 조회 (Direction='out' 필터)
-  const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'out')));
+  const existing = await getDocs(q(
+    col(db, 'partner_item'),
+    where('companyId', '==', companyId),
+    where('itemId', '==', itemId),
+    where('Direction', '==', 'out'),
+  ));
   const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
   const ops: CompanyWriteOperation[] = [];
@@ -347,7 +357,15 @@ export const setProductClients = async (itemId: string, partnerIds: string[]) =>
 export const setProductSuppliers = async (itemId: string, inboundPartnerIds: string[]) => {
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
-  const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'in')));
+  const scoped = await companyScopedWriteData('partner_item', {});
+  const companyId = scoped.companyId as string;
+
+  const existing = await getDocs(q(
+    col(db, 'partner_item'),
+    where('companyId', '==', companyId),
+    where('itemId', '==', itemId),
+    where('Direction', '==', 'in'),
+  ));
   const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
   const ops: CompanyWriteOperation[] = [];

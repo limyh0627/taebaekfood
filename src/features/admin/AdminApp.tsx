@@ -4924,6 +4924,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems),
                     formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas),
                   })}
+                  costOf={inventoryCostOf}
                   /**
                    * **목록은 회사 것만.** BOM 조회는 여기 안 걸린다 — bomIndex가 allItems로
                    * 따로 만들어져 있어서 남의 회사 품목을 물고 있어도 안 끊긴다.
@@ -4936,16 +4937,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
                   onDeleteItem={requestCatalogItemDelete}
                   onLinkItem={async (itemId, partnerId) => {
-                    const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
-                    if (!current.includes(partnerId)) {
-                      await setProductClients(itemId, [...current, partnerId]);
-                      refreshStaticData();
+                    try {
+                      const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
+                      if (!current.includes(partnerId)) {
+                        await setProductClients(itemId, [...current, partnerId]);
+                        await refreshStaticData();
+                      }
+                    } catch (error: any) {
+                      console.error('품목 연결 실패:', error);
+                      alert(`품목을 연결하지 못했습니다.\n${error?.message ?? String(error)}`);
                     }
                   }}
                   onUnlinkItem={async (itemId, partnerId) => {
-                    const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
-                    await setProductClients(itemId, current.filter(id => id !== partnerId));
-                    refreshStaticData();
+                    try {
+                      const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
+                      await setProductClients(itemId, current.filter(id => id !== partnerId));
+                      await refreshStaticData();
+                    } catch (error: any) {
+                      console.error('품목 연결 해제 실패:', error);
+                      alert(`품목 연결을 해제하지 못했습니다.\n${error?.message ?? String(error)}`);
+                    }
                   }}
                   onLinkSupplier={async (itemId, partnerId) => {
                     const current = partnerItems.filter(pi => pi.itemId === itemId && pi.Direction === 'in').map(pi => pi.partnerId);
