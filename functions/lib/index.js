@@ -151,6 +151,9 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
     let created = 0;
     for (const doc of tplSnap.docs) {
         const t = doc.data();
+        // 옛 템플릿은 태백 자료로 이관됐고 새 템플릿은 반드시 회사를 가진다. 서버가 만든
+        // 전표도 같은 회사 경계를 가져야 강화된 규칙 뒤 클라이언트에서 다시 읽을 수 있다.
+        const companyId = t.companyId === 'punghoe' ? 'punghoe' : 'taebaek';
         const id = doc.id;
         if (!t.autoIssue || !t.accountCode)
             continue;
@@ -208,6 +211,7 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
             });
             await ref.set({
                 id: key,
+                companyId,
                 issuedAt: new Date().toISOString(),
                 tradeDate: today,
                 type: dir === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
@@ -230,7 +234,7 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
             const ref = db.collection('cashEntries').doc(key);
             if ((await ref.get()).exists)
                 continue;
-            await ref.set(Object.assign(Object.assign({ id: key, date: today, cashAccountId: '', dir,
+            await ref.set(Object.assign(Object.assign({ id: key, companyId, date: today, cashAccountId: '', dir,
                 amount, accountCode: t.accountCode }, (t.partnerId ? { partnerId: t.partnerId, partnerName: (_d = t.partnerName) !== null && _d !== void 0 ? _d : '' } : {})), { note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`, createdAt: new Date().toISOString() }));
         }
         created++;

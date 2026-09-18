@@ -70,7 +70,7 @@ import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
-import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts } from '../src/features/admin/cashLedger';
+import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts, buildPartnerLedger } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { templateAccrRows } from '../src/shared/cashTemplates';
 import { buildCashEditPatch, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
@@ -918,7 +918,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 이 화면의 모든 기능이 같은 목록·같은 잔액을 봐야 해서 한 군데로 모았다.
    */
   const {
-    mergedStatements, journalBySource, partnerBalances,
+    mergedStatements, journalBySource, partnerBalances, partnerJournals,
     getBalance, canSettle, isVouchered, isFetchingHistory, forgetStatement,
   } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo });
 
@@ -1527,8 +1527,31 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
   };
 
+  const printBalance = (type: StatementType, partnerId: string, amount: number, statement?: IssuedStatement) => {
+    if (type !== '매출' && type !== '매입') {
+      return { previous: 0, currentTrade: amount, received: 0, closing: amount };
+    }
+    const key = type === '매출' ? 'receivable' : 'payable';
+    if (!statement) {
+      const previous = partnerBalances.get(partnerId)?.[key] ?? 0;
+      const received = issuePay ? Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0 : 0;
+      return { previous, currentTrade: amount, received, closing: previous + amount - received };
+    }
+    const ledger = buildPartnerLedger(partnerId, type, mergedStatements, cashEntries, partnerJournals);
+    const index = ledger.rows.findIndex(row => row.sourceId === statement.id);
+    const previous = index > 0 ? ledger.rows[index - 1].balance : 0;
+    const sameDayCashIds = new Set(cashEntries
+      .filter(entry => entry.date === statement.tradeDate)
+      .map(entry => entry.id));
+    const received = settlements
+      .filter(settlement => settlement.statementId === statement.id && sameDayCashIds.has(settlement.cashEntryId))
+      .reduce((sum, settlement) => sum + Number(settlement.amount || 0), 0);
+    return { previous, currentTrade: amount, received, closing: previous + amount - received };
+  };
+
   const handlePrint = () => {
-    const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems });
+    const balance = printBalance(stmtType, selectedClient?.id || '', totalAmount, editingStmt ?? undefined);
+    const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems, balance });
     printStatementViaIframe(html, `${stmtType}전표`);
     // 인쇄는 '출력'만 — 발행(저장)은 '저장' 버튼(markIssued) 한 곳에서만. 저장된 전표만 인쇄 가능.
   };
@@ -1536,7 +1559,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-    const html = buildStatementPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId, stmt.partySnapshot, { companyInfo, partners, allItems });
+    const balance = printBalance(stmt.type, stmt.partnerId, stmt.totalAmount, stmt);
+    const html = buildStatementPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId, stmt.partySnapshot, { companyInfo, partners, allItems, balance });
     printStatementViaIframe(html, `${stmt.type}전표`);
   };
 

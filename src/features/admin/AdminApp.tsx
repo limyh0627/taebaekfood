@@ -109,6 +109,7 @@ import { shipQtyOfLine } from '../../shared/shipDeduction';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
+import { ordersPendingDocumentClose } from './salesJournalOrders';
 import { buildRollbackPlan, buildStatusChangeAsk, type RollbackPlan } from './rollbackSummary';
 import type { AlertTone } from '../../shared/components/AlertModalShell';
 import { statusLabel } from '../../shared/orderStatusStyle';
@@ -3214,14 +3215,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <PartnerSignupApproval partners={partners} />
           )}
           {(currentView === 'documents' || inCabinetDoc) && (() => {
-            const shippedOrders = orders.filter(o =>
-              o.status === OrderStatus.SHIPPED &&
-              o.partnerName !== '생산기록' &&
-              o.items.some(item => {
-                const p = allItems.find(pr => pr.id === item.itemId);
-                return isSalesJournalProduct(p);
-              })
-            );
+            // 원료만 있는 출고 주문도 서류 처리 뒤 이력으로 이동해야 한다. 품목 유형 필터는
+            // 아래 판매 줄 생성에만 둔다. 예전에는 둘을 묶어 들깨 1000kg 주문이 영원히 남았다.
+            const shippedOrders = ordersPendingDocumentClose(orders);
 
             // 소비기한 계산 헬퍼 (제조일자 + 1년)
             const calcExpiry = (mfgDate: string) => {

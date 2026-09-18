@@ -163,6 +163,9 @@ export const dailyAutoVoucher = onSchedule(
 
     for (const doc of tplSnap.docs) {
       const t = doc.data() as Record<string, any>;
+      // 옛 템플릿은 태백 자료로 이관됐고 새 템플릿은 반드시 회사를 가진다. 서버가 만든
+      // 전표도 같은 회사 경계를 가져야 강화된 규칙 뒤 클라이언트에서 다시 읽을 수 있다.
+      const companyId = t.companyId === 'punghoe' ? 'punghoe' : 'taebaek';
       const id = doc.id;
       if (!t.autoIssue || !t.accountCode) continue;
       if (!(Number(t.amount) > 0)) continue;
@@ -215,6 +218,7 @@ export const dailyAutoVoucher = onSchedule(
         });
         await ref.set({
           id: key,
+          companyId,
           issuedAt: new Date().toISOString(),
           tradeDate: today,
           type: dir === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
@@ -237,6 +241,7 @@ export const dailyAutoVoucher = onSchedule(
         if ((await ref.get()).exists) continue;
         await ref.set({
           id: key,
+          companyId,
           date: today,
           cashAccountId: '',
           dir,

@@ -19,6 +19,7 @@
     "deploy:all": "npm run build:all && npx firebase deploy --only hosting",
     "preview": "npx vite preview --config vite.admin.config.ts",
     "test": "vitest run",
+    "test:rules": "npx firebase emulators:exec --only firestore --config firebase.local.json --project demo-taebaekfood-local \"npx vitest run src/rules/firestore.rules.test.ts\"",
     "test:watch": "vitest",
     "audit:daily": "tsx scripts/diag-daily-integrity.mts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

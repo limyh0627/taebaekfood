@@ -162,6 +162,13 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
 
   describe('메뉴 경계 — 돈·인사는 관리자만', () => {
+    it('생산판매일지는 관리자만 자기 회사값을 붙여 저장한다', async () => {
+      await assertFails(setDoc(doc(태백직원(), 'productionSalesLogs', 'psl-직원'), { companyId: 'taebaek', date: '2026-09-17' }));
+      await assertFails(setDoc(doc(관리자(), 'productionSalesLogs', 'psl-회사없음'), { date: '2026-09-17' }));
+      await assertFails(setDoc(doc(관리자(), 'productionSalesLogs', 'psl-풍회'), { companyId: 'punghoe', date: '2026-09-17' }));
+      await assertSucceeds(setDoc(doc(관리자(), 'productionSalesLogs', 'psl-태백'), { companyId: 'taebaek', date: '2026-09-17' }));
+    });
+
     it('**일반 직원은 자금원장을 못 읽는다**', async () => {
       await assertFails(getDoc(doc(태백직원(), 'cashEntries', 'c-taebaek')));
     });

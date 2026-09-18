@@ -286,7 +286,7 @@ export function useVoucherLedger({
   }, []);
 
   return {
-    mergedStatements, journalBySource, partnerBalances,
+    mergedStatements, journalBySource, partnerBalances, partnerJournals,
     getBalance, canSettle, isVouchered, isFetchingHistory, forgetStatement,
   };
 }

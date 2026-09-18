@@ -2599,3 +2599,19 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - 실행: `npx tsx scripts/fix-failed-inventory-permission-locks.mts --apply`
 - 백업: `로컬전용/백업/failed-inventory-permission-locks-2026-09-16.json`
 - 되돌리기: `npx tsx scripts/fix-failed-inventory-permission-locks.mts --undo`
+# 2026-09-18 — 가득찬 서류 마감·거산 들향기름 연결 회사값 복구
+
+- `scripts/fix-gadeukchan-document-close.mts --apply`
+  - `ORD-260917-007`을 원래 서류일 `2026-09-17`로 `DELIVERED` 처리했다.
+  - 기존 생산판매일지 `psl-1789633165983`의 주문 수와 주문 요약에 가득찬식품 들깨 1000kg를 추가했다.
+  - 백업: `로컬전용/백업/gadeukchan-document-close-2026-09-18.json`
+  - 되돌리기: `npx tsx scripts/fix-gadeukchan-document-close.mts --undo`
+- `scripts/fix-geosan-deulhyang-company.mts --apply`
+  - 거래처 품목 `f5_C005_out`은 `C005(거산농산) → f5(들향기름)` 연결이 맞았지만 `companyId`가 없어 규칙에서 보이지 않았다.
+  - 주문·재고는 건드리지 않고 `companyId: taebaek`만 보충했다.
+  - 백업: `로컬전용/백업/geosan-deulhyang-company-2026-09-18.json`
+  - 되돌리기: `npx tsx scripts/fix-geosan-deulhyang-company.mts --undo`
+- 재발 방지
+  - 원료·상품만 있는 출고 주문도 생산판매일지 처리 후 주문 이력으로 이동하도록 마감 대상과 판매 표 필터를 분리했다.
+  - 클라이언트 직접 `addDoc`·`setDoc` 생성을 막는 정적 감사와 생산판매일지 회사 경계 Emulator 시험을 추가했다.
+  - 정기 자동전표·자금전표에 템플릿의 `companyId`를 저장하도록 보완했다.

@@ -8,11 +8,17 @@ interface StatementPrintDeps {
   companyInfo?: CompanyInfo | null;
   partners: Partner[];
   allItems: Item[];
+  balance?: {
+    previous: number;
+    currentTrade: number;
+    received: number;
+    closing: number;
+  };
 }
 const fmt = (value: number) => value.toLocaleString('ko-KR');
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '', partnerIdStr = '', snapshot: IssuedStatement['partySnapshot'] | undefined, deps: StatementPrintDeps) => {
-  const { companyInfo, partners, allItems } = deps;
+  const { companyInfo, partners, allItems, balance } = deps;
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
     const yyyy = m ? m[1] : '';
     const mmN  = m ? m[2] : '';
@@ -47,13 +53,13 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     const makePage = (borderColor: string, pageLabel: string, stripeColor: string) => {
       const BC = borderColor;
       const SC = stripeColor;
-      const LB = '#efefef';
+      const LB = '#f5f6f8';
 
       // ── 헤더 (테두리 바깥) ──
       const headerHtml = `
 <div style="display:flex;align-items:flex-end;margin-bottom:0.5mm;">
   <span style="flex:1;font-size:10px;"></span>
-  <span style="font-size:22px;font-weight:bold;letter-spacing:6px;color:${BC};">거&nbsp;&nbsp;래&nbsp;&nbsp;명&nbsp;&nbsp;세&nbsp;&nbsp;서</span>
+  <span style="font-size:21px;font-weight:800;letter-spacing:4px;color:${BC};">거&nbsp;래&nbsp;명&nbsp;세&nbsp;서</span>
   <span style="flex:1;font-size:10px;text-align:right;">[재발행]</span>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:0.5mm;">
@@ -124,7 +130,9 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         <td colspan="6" style="border:1px solid ${BC};font-size:10px;padding:0 3px;color:${BC};">*&nbsp;*&nbsp;*&nbsp;*&nbsp;&nbsp;이&nbsp;하&nbsp;여&nbsp;백&nbsp;&nbsp;*&nbsp;*&nbsp;*&nbsp;*</td>
       </tr>`;
 
-      const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 1);
+      // 하단 미수·미지급 표를 키운 만큼 빈 품목 두 줄을 내준다. 반쪽 용지 경계를 넘으면
+      // 첫 장 발행일시와 둘째 장 제목이 절취선에서 겹친다.
+      const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 3);
       const eRows = Array.from({length:emptyCount}).map((_,idx)=>{
         const bg = (itemList.length+1+idx)%2===0 ? '#ffffff' : SC;
         return `<tr style="height:5.5mm;background:${bg};">
@@ -175,6 +183,13 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       const h = now.getHours(); const mn = now.getMinutes(); const sc2 = now.getSeconds();
       const ampm = h<12?'오전':'오후'; const hh = h%12||12;
 
+      const balanceLabels = isSale
+        ? ['전일미수', '금일판매', '금일입금', '미수잔액']
+        : ['전일미지급', '금일매입', '금일지급', '미지급잔액'];
+      const previous = balance?.previous ?? 0;
+      const currentTrade = balance?.currentTrade ?? amt;
+      const received = balance?.received ?? 0;
+      const closing = balance?.closing ?? previous + currentTrade - received;
       const bottomHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup><col/><col style="width:28mm;"/></colgroup>
@@ -182,16 +197,14 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     <td style="border:1px solid ${BC};padding:0;vertical-align:top;">
       <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
         <colgroup><col style="width:22mm;"/><col/></colgroup>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;white-space:nowrap;">전일미수</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;">금일판매</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">${fmt(amt)}</td></tr>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;">금일입금</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;font-weight:bold;padding:1.5px 4px;">금일미수</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:1.5px 5px;">${fmt(amt)}</td></tr>
-        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:${bankAccount ? '6mm' : '10mm'};vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:normal;font-size:9px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
-        ${bankAccount ? `<tr><td colspan="2" style="border-top:1px solid ${BC};font-size:9.5px;padding:1px 4px;height:4mm;vertical-align:middle;"><strong>계좌번호</strong>&nbsp;&nbsp;${esc(bankAccount)}</td></tr>` : ''}
+        ${balanceLabels.map((label, index) => {
+          const value = [previous, currentTrade, received, closing][index];
+          const last = index === 3;
+          return `<tr style="height:5.2mm;"><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:11px;font-weight:${last ? '800' : '600'};padding:1.5px 5px;white-space:nowrap;">${label}</td>
+            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:${last ? '13px' : '11.5px'};font-weight:${last ? '800' : '600'};padding:1.5px 6px;">${fmt(value)}</td></tr>`;
+        }).join('')}
+        <tr><td colspan="2" style="font-size:10.5px;font-weight:700;padding:2px 5px;height:${bankAccount ? '6mm' : '10mm'};vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:400;font-size:10px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
+        ${bankAccount ? `<tr><td colspan="2" style="border-top:1px solid ${BC};font-size:10.5px;padding:1px 5px;height:4.5mm;vertical-align:middle;"><strong>계좌번호</strong>&nbsp;&nbsp;${esc(bankAccount)}</td></tr>` : ''}
       </table>
     </td>
     <td style="border:1px solid ${BC};text-align:center;vertical-align:middle;font-size:11px;font-weight:bold;letter-spacing:3px;">인<br/>수<br/>확<br/>인</td>
@@ -203,16 +216,16 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 </div>`;
 
       return `
-<div style="font-family:'맑은 고딕',sans-serif;color:#000;box-sizing:border-box;">
+<div style="font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;color:#172033;box-sizing:border-box;">
   ${headerHtml}
   <div style="border:1.5px solid ${BC};">${infoHtml}${itemsHtml}${totalsHtml}${bottomHtml}</div>
 </div>`;
     };
 
     return `
-<div style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;padding:5mm 6mm;display:flex;flex-direction:column;font-family:'맑은 고딕',sans-serif;">
+<div style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;padding:5mm 6mm;display:flex;flex-direction:column;font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;">
   <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
-    ${makePage('#cc0000','(공급자용)','#f5d8b0')}
+    ${makePage('#b96363','(공급자용)','#fbf1ed')}
   </div>
   <div style="flex:0 0 auto;display:flex;align-items:center;gap:2mm;padding:1mm 0;color:#666;">
     <span style="flex:1;border-top:1.2px dashed #999;"></span>
@@ -220,7 +233,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     <span style="flex:1;border-top:1.2px dashed #999;"></span>
   </div>
   <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
-    ${makePage('#0044cc','(공급받는자용)','#c4d4f0')}
+    ${makePage('#5577a5','(공급받는자용)','#eef3f9')}
   </div>
 </div>`;
   };
@@ -236,7 +249,7 @@ export const printStatementViaIframe = (html: string, title: string) => {
       <style>
         @page{size:A4 portrait;margin:0;}
         *{margin:0;padding:0;box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
-        body{font-family:'맑은 고딕',sans-serif;font-size:8px;color:#000;}
+        body{font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;font-size:8px;color:#172033;}
         table{border-collapse:collapse;}
       </style></head><body>${html}</body></html>`);
     doc.close();
