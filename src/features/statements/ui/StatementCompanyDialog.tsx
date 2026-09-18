@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Save, X } from 'lucide-react';
 import type { CompanyInfo } from '../../../shared/types';
+import { bankAccountOf } from '../../../shared/companyInfo';
 
 const EMPTY_COMPANY: CompanyInfo = {
-  name: '', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '', fax: '', email: '',
+  name: '', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '', fax: '', email: '', bankAccount: '',
 };
 
 const FIELDS: { key: keyof CompanyInfo; label: string; placeholder: string }[] = [
@@ -16,6 +17,7 @@ const FIELDS: { key: keyof CompanyInfo; label: string; placeholder: string }[] =
   { key: 'phone', label: '전화번호', placeholder: '031-000-0000' },
   { key: 'fax', label: '팩스번호', placeholder: '031-000-0000' },
   { key: 'email', label: '이메일', placeholder: 'info@company.com' },
+  { key: 'bankAccount', label: '계좌번호', placeholder: '은행 000-0000-0000 ; 예금주' },
 ];
 
 export default function StatementCompanyDialog({ initial, onClose, onSave }: {
@@ -25,11 +27,15 @@ export default function StatementCompanyDialog({ initial, onClose, onSave }: {
 }) {
   // 창이 열릴 때 새로 마운트되므로 당시 회사정보를 한 번 복사한다. 입력 중 외부 구독 갱신이
   // 폼을 덮으면 사용자가 적던 주소가 사라질 수 있어 이후에는 로컬 값만 편집한다.
-  const [form, setForm] = useState<CompanyInfo>(() => ({ ...EMPTY_COMPANY, ...(initial ?? {}) }));
+  const [form, setForm] = useState<CompanyInfo>(() => {
+    const next = { ...EMPTY_COMPANY, ...(initial ?? {}) };
+    next.bankAccount = bankAccountOf(next);
+    return next;
+  });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div role="dialog" aria-modal="true" aria-labelledby="statement-company-title"
-        className="w-full max-w-lg rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 id="statement-company-title" className="font-black text-slate-900">회사 정보 설정</h2>
           <button type="button" aria-label="닫기" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={18}/></button>

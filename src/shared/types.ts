@@ -1248,6 +1248,7 @@ export interface CompanyInfo {
   phone?: string;         // 전화번호
   fax?: string;           // 팩스번호
   email?: string;         // 이메일
+  bankAccount?: string;   // 거래명세서 비고 아래에 표시할 입금 계좌
   adminPassword?: string; // 관리자 인증 비밀번호 (기본값: '0000')
 }
 

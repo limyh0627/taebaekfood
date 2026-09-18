@@ -2,6 +2,7 @@ import type { CompanyInfo, IssuedStatement, Item, Partner } from '../../../../ty
 import type { LineItem, StatementType } from '../../../shared/statementLines';
 import { withDocNames } from '../../../shared/docName';
 import { 서류당사자스냅샷우선 } from '../../../shared/docParty';
+import { bankAccountOf } from '../../../shared/companyInfo';
 
 interface StatementPrintDeps {
   companyInfo?: CompanyInfo | null;
@@ -19,6 +20,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     const dateLabel = `${yyyy}-${mmN.padStart(2,'0')}-${dd.padStart(2,'0')}`;
 
     const ci = companyInfo;
+    const bankAccount = bankAccountOf(ci);
     const isSale = type === '매출';
 
     //  **거래처 칸을 저장된 값으로 채운다**(2026-09-06 사장님: "저장된 거래처 정보가
@@ -188,7 +190,8 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
             <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
         <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;font-weight:bold;padding:1.5px 4px;">금일미수</td>
             <td style="border-bottom:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:1.5px 5px;">${fmt(amt)}</td></tr>
-        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:10mm;vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:normal;font-size:9px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
+        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:${bankAccount ? '6mm' : '10mm'};vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:normal;font-size:9px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
+        ${bankAccount ? `<tr><td colspan="2" style="border-top:1px solid ${BC};font-size:9.5px;padding:1px 4px;height:4mm;vertical-align:middle;"><strong>계좌번호</strong>&nbsp;&nbsp;${esc(bankAccount)}</td></tr>` : ''}
       </table>
     </td>
     <td style="border:1px solid ${BC};text-align:center;vertical-align:middle;font-size:11px;font-weight:bold;letter-spacing:3px;">인<br/>수<br/>확<br/>인</td>
