@@ -205,6 +205,7 @@ import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
 import { planStatementWrites } from '../statements/domain/statementWrites';
 import { applyStatementWrites } from '../statements/infrastructure/applyStatementWrites';
+import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
@@ -4662,6 +4663,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onRemoveConfirmedOrder={(id) => deleteItem('purchaseOrders', id)}
               onRemoveOrderRequest={handleRemoveOrderRequest}
+              companyInfo={companyInfo}
+              onSaveCompanyInfo={info => setDocument(
+                'settings',
+                companySettingDocId(companyId, 'company'),
+                companySettingPatch(companyId, { ...info }),
+              )}
               onUpdateItemCost={(itemId, cost) => cascadeItemCost(itemId, cost)}
             />
           )}
