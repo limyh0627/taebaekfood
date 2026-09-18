@@ -8,12 +8,13 @@ import type { CompanyInfo } from './shared/types';
 
 export const DEFAULT_COMPANY_INFO: CompanyInfo = {
   name: '태백식품',
-  ceoName: '',
-  bizNo: '',
-  bizType: '제조업',
-  bizItem: '식품',
-  address: '',
-  phone: '',
-  fax: '',
-  email: '',
+  ceoName: '임기주',
+  bizNo: '139-04-37157',
+  bizType: '제조 도소매',
+  bizItem: '참기름 외',
+  address: '경기도 안산시 상록구 동막길 69-7',
+  phone: '031-485-8270',
+  fax: '031-485-8296',
+  email: 'taebaekfood@naver.com',
+  bankAccount: '농협 351-0526-3164-13 ; 임기주(태백식품)',
 };
