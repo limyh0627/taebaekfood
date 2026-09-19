@@ -1359,7 +1359,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
-  const markIssued = async (): Promise<IssuedStatement | null> => {
+  const markIssued = async (registerInbound = true): Promise<IssuedStatement | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
@@ -1415,8 +1415,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }));
     const 결과 = await onApplyStatement({
       command, statement: stmt, costUpdates,
-      poIds: stmtType === '매입' ? loadedPoIds : [],
-      newPoItems,
+      poIds: stmtType === '매입' && registerInbound ? loadedPoIds : [],
+      newPoItems: registerInbound ? newPoItems : [],
     });
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
     if (결과 === 'applied') await applyPriceSync(stmtType);
@@ -1462,10 +1462,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       );
       if (!ok) return;
     }
+    const registerInbound = stmtType !== '매입' || window.confirm(
+      '이 매입전표의 품목을 입고대기에 등록할까요?\n\n' +
+      '예: 입고대기에 등록\n아니오: 매입전표만 발행'
+    );
     saveBusyRef.current = true;
     setIsSaving(true);
     try {
-      const stmt = await markIssued();
+      const stmt = await markIssued(registerInbound);
       if (!stmt) return;
       //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
       if (issuePay) {

@@ -219,7 +219,7 @@ export interface ReceiveLotInput {
 
 export type RawInventoryCommand = CommandBase & (
   | { kind: 'receive'; kg: number; lot: ReceiveLotInput }
-  | { kind: 'consume'; kg: number; mix?: { topPercent: number } }
+  | { kind: 'consume'; kg: number; mix?: { topPercent?: number; ratios?: { lotId: string; percent: number }[] } }
   /** 임가공 완제품 출고처럼 실물은 완제품 로트에서 빠지고 원료수불부에만 사용량을 남기는 경우. */
   | { kind: 'ledger-consume'; kg: number }
   | { kind: 'stocktake'; targetKg: number }

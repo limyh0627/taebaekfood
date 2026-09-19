@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
-import { ArrowDownRight, ArrowUpRight, ClipboardCheck, Package, Truck } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, Truck } from 'lucide-react';
 import type { Item, RawMaterialEntry } from '../src/shared/types';
 import type { LotShipment } from './ProductLotPanel';
-import { applyLedgerRow, sortLedger } from '../src/shared/rawLedgerBalance';
+import { sortLedger } from '../src/shared/rawLedgerBalance';
 
 type TimelineRow = {
   id: string; date: string; title: string; note: string;
@@ -15,28 +15,29 @@ const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
 /** 로트 상세는 원장 표를 복제하지 않고, 해당 품목에서 실제로 일어난 사건만 시간순으로 보여준다. */
 const LotTimeline: React.FC<{
   item: Item;
+  lotId: string;
   rawEntries?: RawMaterialEntry[];
   shipmentRows?: Array<LotShipment & { lotId: string }>;
-}> = ({ item, rawEntries = [], shipmentRows = [] }) => {
+}> = ({ item, lotId, rawEntries = [], shipmentRows = [] }) => {
+  const [showAll, setShowAll] = useState(false);
   const rows = useMemo<TimelineRow[]>(() => {
     if (rawEntries.length) {
-      let balance = 0;
-      return sortLedger(rawEntries).map<TimelineRow>(entry => {
-        const before = balance;
-        balance = applyLedgerRow(balance, entry);
-        const delta = Math.round((balance - before) * 1000) / 1000;
-        const stocktake = entry.targetKg != null;
+      return sortLedger(rawEntries).flatMap<TimelineRow>(entry => {
+        const change = (entry as any).lotChanges?.find((row: any) => row.lotId === lotId);
+        if (!change) return [];
+        const delta = Math.round(Number(change.deltaKg ?? 0) * 1000) / 1000;
+        const stocktake = entry.targetKg != null || (entry as any).kind === 'stocktake';
         return {
           id: entry.id || `${entry.date}-${entry.createdAt}`,
           date: entry.recordedAt || entry.createdAt || entry.date,
           title: stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
-          note: entry.note || entry.addedBy || '', delta, balance,
+          note: entry.note || entry.addedBy || '', delta, balance: Number(change.afterKg ?? 0),
           kind: stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
         };
       }).reverse();
     }
     const packed: TimelineRow[] = [];
-    for (const lot of item.lots ?? []) {
+    for (const lot of (item.lots ?? []).filter(row => row.id === lotId)) {
       if (lot.id.startsWith('anchor-') || lot.id.startsWith('adjust-')) continue;
       packed.push({
         id: `lot-${lot.id}`, date: lot.createdAt || lot.receivedDate || '',
@@ -46,17 +47,12 @@ const LotTimeline: React.FC<{
         kind: lot.supplierName === '실사조정' ? 'stocktake' : 'lot',
       });
     }
-    for (const anchor of item.stocktakeAnchors ?? []) packed.push({
-      id: anchor.id, date: anchor.createdAt || anchor.date,
-      title: anchor.note ? '재고 조정' : '재고 실사', note: anchor.note || '',
-      delta: anchor.deltaQty, balance: anchor.targetQty, kind: 'stocktake',
-    });
-    for (const shipment of shipmentRows) packed.push({
+    for (const shipment of shipmentRows.filter(row => row.lotId === lotId)) packed.push({
       id: `ship-${shipment.lotId}-${shipment.orderId}`, date: shipment.date,
       title: '출고', note: shipment.partnerName, delta: -shipment.qty, kind: 'out',
     });
     return packed.sort((a, b) => b.date.localeCompare(a.date));
-  }, [item, rawEntries, shipmentRows]);
+  }, [item, lotId, rawEntries, shipmentRows]);
 
   if (!rows.length) return <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-[11px] font-bold text-slate-400">아직 남은 이력이 없습니다.</div>;
   const style = {
@@ -66,8 +62,10 @@ const LotTimeline: React.FC<{
     lot: { icon: Truck, dot: 'bg-sky-500', text: 'text-sky-600' },
   } as const;
 
-  return <ol className="relative ml-2 border-l border-slate-200 pl-5 space-y-5">
-    {rows.slice(0, 50).map(row => {
+  const visible = showAll ? rows : rows.slice(0, 5);
+  return <>
+  <ol className="relative ml-2 border-l border-slate-200 pl-5 space-y-5">
+    {visible.map(row => {
       const s = style[row.kind]; const Icon = s.icon;
       return <li key={row.id} className="relative">
         <span className={`absolute -left-[25px] top-1 w-2 h-2 rounded-full ring-4 ring-white ${s.dot}`} />
@@ -84,8 +82,12 @@ const LotTimeline: React.FC<{
         </div>
       </li>;
     })}
-    {rows.length > 50 && <li className="text-[10px] font-bold text-slate-400"><Package size={11} className="inline mr-1" />최근 50건만 표시합니다.</li>}
-  </ol>;
+  </ol>
+  {rows.length > 5 && <button type="button" onClick={() => setShowAll(value => !value)}
+    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-[11px] font-black text-slate-600 hover:bg-slate-100">
+    {showAll ? <><ChevronUp size={13} />최근 5개만 보기</> : <><ChevronDown size={13} />나머지 {rows.length - 5}개 펼쳐 보기</>}
+  </button>}
+  </>;
 };
 
 export default LotTimeline;

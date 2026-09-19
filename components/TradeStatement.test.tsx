@@ -45,7 +45,7 @@ function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
     pendingInvoice={pendingInvoice} onAddIssuedStatement={onAddIssuedStatement}
     onApplyStatement={onApplyStatement}
     onUpsertPartnerItem={onUpsertPartnerItem} {...extra} />);
-  return { onAddIssuedStatement, onUpsertPartnerItem };
+  return { onAddIssuedStatement, onUpsertPartnerItem, onApplyStatement };
 }
 
 beforeEach(() => {
@@ -66,6 +66,17 @@ describe('전표 목록 화면 구성', () => {
 });
 
 describe('전표와 거래처 단가의 저장 완료', () => {
+  it('매입전표 발행 때 거절하면 전표만 저장하고 입고대기는 만들지 않는다', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    const { onAddIssuedStatement, onApplyStatement } = setup();
+
+    fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+
+    await waitFor(() => expect(onAddIssuedStatement).toHaveBeenCalledTimes(1));
+    expect(onApplyStatement).toHaveBeenCalledWith(expect.objectContaining({ poIds: [], newPoItems: [] }));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('입고대기에 등록할까요?'));
+  });
+
   it('기존 전표 수정도 ID와 과세 변경을 보존하고 단가 저장 완료까지 기다린다', async () => {
     const gate = deferred();
     const upsert = vi.fn((_p: PartnerItem) => gate.promise);

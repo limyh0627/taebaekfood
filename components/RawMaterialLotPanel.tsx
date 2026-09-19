@@ -23,12 +23,14 @@ interface Props {
   onDeleteEntry?: (id: string) => void;      // 기록 삭제(관리자)
   currentUserName?: string;
   onLotChanged?: () => void;                 // 로트 삭제 등 원장 쓰기 후 상위 화면 재조회 트리거
+  /** 로트 상세 화면에서 눌러 들어온 로트를 강조한다. 차감 순서 조정을 위해 활성 목록은 모두 보여준다. */
+  focusLotId?: string;
 }
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw, showLedger = true }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw, showLedger = true, focusLotId }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -43,9 +45,23 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
 
   // 기름 혼합 사용 설정 (상위 2개 로트 비율 배분)
   const mixEnabled = !!product.mixEnabled;
-  const topPct = product.mixTopPercent ?? 50;
-  const [pctDraft, setPctDraft] = useState<string>(String(topPct));
-  React.useEffect(() => { setPctDraft(String(product.mixTopPercent ?? 50)); }, [product.mixTopPercent]);
+  const initialMixDraft = () => {
+    const saved = (product.mixLotRatios ?? []).filter(row => active.some(lot => lot.id === row.lotId));
+    if (product.mixLotRatios !== undefined) return Object.fromEntries(saved.map(row => [row.lotId, String(row.percent)]));
+    const firstTwo = active.slice(0, 2);
+    if (firstTwo.length < 2) return {};
+    const top = product.mixTopPercent ?? 50;
+    return { [firstTwo[0].id]: String(top), [firstTwo[1].id]: String(100 - top) };
+  };
+  const [mixDraft, setMixDraft] = useState<Record<string, string>>(initialMixDraft);
+  React.useEffect(() => { setMixDraft(initialMixDraft()); }, [product.mixLotRatios, product.mixTopPercent, product.lots]);
+
+  const selectedMixIds = active.filter(lot => mixDraft[lot.id] != null).map(lot => lot.id);
+  const mixTotal = selectedMixIds.reduce((sum, id) => sum + (Number(mixDraft[id]) || 0), 0);
+  const equalMix = (ids: string[]) => Object.fromEntries(ids.map((id, index) => {
+    const base = Math.floor(10000 / ids.length) / 100;
+    return [id, String(index === ids.length - 1 ? Math.round((100 - base * index) * 100) / 100 : base)];
+  }));
 
   const totalKg = lotKgRemaining(active);
   const totalUnit = isOil ? kgToUnit(totalKg, material) : totalKg;
@@ -55,18 +71,30 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   //  끝나서 예외가 필요 없어졌다. 켜 둔 품목만 장부가 깨져 있었다(`shared/types` 참고).
 
   const setMixEnabled = async (on: boolean) => {
-    try { await updateItem('items', product.id, { mixEnabled: on, mixTopPercent: product.mixTopPercent ?? 50 }); }
+    if (on && active.length < 2) { alert('혼합하려면 잔량이 있는 로트가 2개 이상 필요합니다.'); return; }
+    // 켜는 순간에는 FIFO 1번만 선택한다. 두 번째부터는 사용자가 직접 혼합 대상을 고른다.
+    const ratios = on && active[0] ? [{ lotId: active[0].id, percent: 100 }] : [];
+    if (on) setMixDraft(Object.fromEntries(ratios.map(row => [row.lotId, String(row.percent)])));
+    try { await updateItem('items', product.id, { mixEnabled: on, ...(on ? { mixLotRatios: ratios } : {}) }); }
     catch (err) { console.error('[혼합 설정 실패]', err); }
   };
-  const commitPct = async () => {
-    let v = parseInt(pctDraft, 10);
-    if (isNaN(v)) v = 50;
-    v = Math.max(0, Math.min(100, v));
-    setPctDraft(String(v));
-    if (v !== topPct) {
-      try { await updateItem('items', product.id, { mixTopPercent: v }); }
-      catch (err) { console.error('[혼합 비율 저장 실패]', err); }
+  const toggleMixLot = (lotId: string) => {
+    const ids = selectedMixIds.includes(lotId) ? selectedMixIds.filter(id => id !== lotId) : [...selectedMixIds, lotId];
+    setMixDraft(ids.length ? equalMix(ids) : {});
+  };
+  const saveMixRatios = async () => {
+    if (selectedMixIds.length < 2) { alert('혼합할 로트를 2개 이상 선택해 주세요.'); return; }
+    if (selectedMixIds.some(id => !(Number(mixDraft[id]) > 0)) || Math.abs(mixTotal - 100) > 0.01) {
+      alert('각 비율은 0보다 커야 하고 합계는 100%여야 합니다.'); return;
     }
+    setBusy(true);
+    try {
+      await updateItem('items', product.id, {
+        mixEnabled: true,
+        mixLotRatios: selectedMixIds.map(lotId => ({ lotId, percent: Number(mixDraft[lotId]) })),
+      });
+    } catch (err) { console.error('[혼합 비율 저장 실패]', err); }
+    finally { setBusy(false); }
   };
 
   // active[i]와 active[i+dir]의 위치를 (id 기준으로) 전체 배열 안에서 교환 → 동시 입고와 충돌 방지
@@ -161,7 +189,8 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       ? `${lot.packageKg}kg × ${lot.qtyIn}${lot.packageType ?? '개'}`
       : null;
     return (
-      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-slate-100' : ''}`}>
+      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-slate-100' : ''} ${focusLotId === lot.id ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-200' : ''}`}>
+        {!dim && <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-black text-white">{idx + 1}</span>}
         <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
           {lot.supplierName === '이월'
             ? <Layers size={13} className="text-slate-500" />
@@ -171,9 +200,9 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-black text-slate-800">{lot.supplierName}</span>
             {pkg && <span className="text-[10px] font-bold text-slate-400">{pkg}</span>}
-            {/* 혼합 비율 배지 — 상위 2개 active 로트 */}
-            {mixEnabled && !dim && idx < 2 && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">혼합 {idx === 0 ? topPct : 100 - topPct}%</span>
+            {/* 선택한 모든 혼합 로트의 실제 저장 예정 비율을 같은 자리에서 확인한다. */}
+            {mixEnabled && !dim && mixDraft[lot.id] != null && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">혼합 {mixDraft[lot.id]}%</span>
             )}
             {/* 로트번호 — 클릭(관리자)하면 인라인 편집 */}
             {editingId === lot.id ? (
@@ -211,6 +240,15 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         </div>
         {!dim && (
           <div className="flex items-center gap-1 shrink-0">
+            {mixEnabled && (
+              <label className="mr-1 inline-flex items-center gap-1 text-[9px] font-black text-blue-600">
+                <input type="checkbox" checked={mixDraft[lot.id] != null} onChange={() => toggleMixLot(lot.id)} />
+                {mixDraft[lot.id] != null && <input type="number" min="0.01" max="100" step="0.01" value={mixDraft[lot.id]}
+                  onClick={e => e.stopPropagation()} onChange={e => setMixDraft(current => ({ ...current, [lot.id]: e.target.value }))}
+                  className="w-14 rounded-md border border-blue-200 bg-white px-1 py-0.5 text-right text-[10px] outline-none focus:ring-2 focus:ring-blue-200" />}
+                {mixDraft[lot.id] != null && '%'}
+              </label>
+            )}
             <div className="flex flex-col gap-0.5">
               <button
                 disabled={busy || idx === 0}
@@ -275,27 +313,17 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         );
       })()}
 
-      {/* 기름 혼합 사용 — 상위 2개 로트를 비율대로 차감 (관리자, 기름만) */}
-      {isOil && isAdmin && (
-        <div className="flex items-center gap-2 flex-wrap bg-amber-50/60 border border-amber-100 rounded-xl px-3 py-2">
+      {/* 원료 혼합 사용 — 원료 종류와 무관하게 선택한 여러 로트를 저장 비율대로 차감한다. */}
+      {isAdmin && (
+        <div className="flex items-center gap-2 flex-wrap px-1 py-1">
           <button
             onClick={(e) => { e.stopPropagation(); setMixEnabled(!mixEnabled); }}
-            className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors ${mixEnabled ? 'bg-amber-500 text-white' : 'bg-white text-amber-600 border border-amber-200'}`}
+            className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors ${mixEnabled ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 border border-blue-200'}`}
           >혼합 사용 {mixEnabled ? 'ON' : 'OFF'}</button>
           {mixEnabled && (
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
-              <span>상위 2개 로트 비율</span>
-              <input
-                type="number" min={0} max={100}
-                value={pctDraft}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setPctDraft(e.target.value)}
-                onBlur={commitPct}
-                onKeyDown={(e) => { if (e.key === 'Enter') commitPct(); }}
-                className="w-12 text-center border border-amber-300 rounded-md px-1 py-0.5 outline-none focus:ring-2 focus:ring-amber-400"
-              />
-              <span>: {100 - (parseInt(pctDraft, 10) || 0)}</span>
-              {active.length < 2 && <span className="text-amber-400">(로트 2개 이상일 때 적용)</span>}
+            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500">
+              <span>로트 <b className="text-blue-600">{selectedMixIds.length}</b>개 선택 · 합계 {Math.round(mixTotal * 100) / 100}%</span>
+              <button disabled={busy} onClick={saveMixRatios} className="px-1 py-1 font-black text-blue-600 hover:text-blue-700 disabled:opacity-40">비율 저장</button>
             </div>
           )}
         </div>

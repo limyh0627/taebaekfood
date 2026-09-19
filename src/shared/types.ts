@@ -599,6 +599,7 @@ export interface Item {
   lots?: RawMaterialLot[];    // 원료(raw) 로트 목록 — 배열 순서 = 선입선출 순서(앞=먼저 사용)
   mixEnabled?: boolean;       // 기름 혼합 사용: ON이면 차감 시 상위 2개 로트를 비율대로 배분(OFF=선입선출)
   mixTopPercent?: number;     // 혼합 시 상위 로트 비율(%) — 두 번째 로트는 100-이 값. 기본 50(5:5)
+  mixLotRatios?: { lotId: string; percent: number }[]; // 혼합 대상 로트별 비율. 합계 100, 없으면 예전 상위 2개 설정을 읽는다.
   phantom?: boolean;          // 즉석배합(무재고) 반제품: 재고를 안 들고, 상위 품목 출고 시 item_formula 배합비대로 원료로 전개·차감
 
   variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }

@@ -608,7 +608,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set()); // 낱개 밑 박스 접기
   // 로트 탭 — 원료 홀더별 로트/수불부 확인 전용
   const [lotSearch, setLotSearch] = useState('');
-  const [lotExpandedId, setLotExpandedId] = useState<string | null>(null);
+  const [selectedLot, setSelectedLot] = useState<{ itemId: string; lotId: string } | null>(null);
   const [lotKind, setLotKind] = useState<'all' | 'raw' | 'packed'>('all');
   const [lotView, setLotView] = useState<'list' | 'board'>('list');
 
@@ -623,17 +623,29 @@ const ItemList: React.FC<ItemListProps> = ({
     if (lotKind === 'packed' && raw) return false;
     return !lotSearch.trim() || `${item.name} ${item.spec ?? ''}`.includes(lotSearch.trim());
   }), [lotItems, lotKind, lotSearch]);
-  const lotFamilyOf = (item: Item) => (item.rawMaterialName || baseRawName(item.name))
-    .replace(/[\s-]*(벌크|캔|낱개|박스)$/u, '').trim() || item.name;
-  const lotBoardGroups = useMemo(() => {
-    const grouped = new Map<string, Item[]>();
-    for (const item of visibleLotItems) {
-      const key = lotFamilyOf(item);
-      grouped.set(key, [...(grouped.get(key) ?? []), item]);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b, 'ko'));
-  }, [visibleLotItems]);
-  const selectedLotItem = lotItems.find(item => item.id === lotExpandedId) ?? null;
+  /** 화면의 한 줄은 품목이 아니라 로트 한 건이다. 같은 품목의 입고를 합치면 추적 단위가 사라진다. */
+  const visibleLotRows = useMemo(() => visibleLotItems.flatMap(item => {
+    return (item.lots ?? []).map(lot => ({ item, lot }));
+  }), [visibleLotItems]);
+  const lotStateOf = (item: Item, lot: NonNullable<Item['lots']>[number]) => {
+    const raw = isRawHolder(item);
+    const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
+    if (lot.status === 'depleted' || remaining <= 0.0001) return '완료' as const;
+    const activeLots = (item.lots ?? []).filter(candidate => {
+      const candidateRemaining = Number(raw ? candidate.kgRemaining ?? 0 : candidate.qtyRemaining ?? 0);
+      return candidate.status === 'active' && candidateRemaining > 0.0001;
+    });
+    // 배열 순서가 FIFO 차감 순서다. 혼합 사용이면 저장된 혼합 대상들이 모두 현재 사용 로트다.
+    const configuredIds = raw && item.mixEnabled
+      ? (item.mixLotRatios ?? []).filter(row => row.percent > 0 && activeLots.some(candidate => candidate.id === row.lotId)).map(row => row.lotId)
+      : [];
+    const usingIds = item.mixLotRatios !== undefined && configuredIds.length > 0
+      ? configuredIds
+      : activeLots.slice(0, raw && item.mixEnabled && item.mixLotRatios === undefined ? 2 : 1).map(candidate => candidate.id);
+    return usingIds.includes(lot.id) ? '사용중' as const : '대기중' as const;
+  };
+  const selectedLotItem = selectedLot ? lotItems.find(item => item.id === selectedLot.itemId) ?? null : null;
+  const selectedLotData = selectedLotItem?.lots?.find(lot => lot.id === selectedLot?.lotId) ?? null;
   const lotKgOf = (item: Item): number => {
     const raw = isRawHolder(item);
     return (item.lots ?? [])
@@ -648,11 +660,6 @@ const ItemList: React.FC<ItemListProps> = ({
     return (item.lots ?? []).filter(l => l.status === 'active'
       && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0));
   };
-  const latestLotDateOf = (item: Item): string => (item.lots ?? [])
-    .map(lot => lot.receivedDate || lot.createdAt?.slice(0, 10) || '')
-    .filter(Boolean)
-    .sort((a, b) => b.localeCompare(a))[0] ?? '';
-
   /** 로트id → 나간 곳. 주문의 출고 스냅샷을 거꾸로 읽는다 — 회수할 때 실제로 보는 값. */
   const shipmentsByLot = useMemo(() => {
     const m = new Map<string, LotShipment[]>();
@@ -1677,114 +1684,127 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] gap-3 items-start">
             <div className="min-w-0">
             {lotView === 'list' ? (
               <section>
-                <h3 className="mb-2 px-1 text-sm font-black text-slate-900">조회 결과 <span className="text-indigo-600">{visibleLotItems.length}건</span></h3>
+                <h3 className="mb-2 px-1 text-sm font-black text-slate-900">조회 결과 <span className="text-indigo-600">{visibleLotRows.length}건</span></h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-sm [border-collapse:separate] [border-spacing:0]">
+                  <table className="w-full min-w-[800px] overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-sm [border-collapse:separate] [border-spacing:0]">
                     <thead className="bg-slate-100">
                       <tr>
+                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">입고일</th>
+                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">공급처</th>
+                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">로트번호</th>
+                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">상태</th>
+                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">분류</th>
                         <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">품목</th>
                         <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">규격</th>
-                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-center text-[11px] font-black text-slate-600">활성 로트</th>
-                        <th className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-black text-slate-600">최근 입고</th>
-                        <th className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-[11px] font-black text-slate-600">현재 재고</th>
+                        <th className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-[11px] font-black text-slate-600">로트 잔량</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleLotItems.map(item => {
-                        const activeCount = activeLotsOf(item).length;
-                        const selected = selectedLotItem?.id === item.id;
-                        return <tr key={item.id} onClick={() => setLotExpandedId(selected ? null : item.id)}
-                          className={`cursor-pointer text-[10px] text-slate-700 transition-colors ${selected ? 'bg-indigo-50' : 'even:bg-slate-50/40 hover:bg-indigo-50/60'}`}>
+                      {visibleLotRows.map(({ item, lot }, index) => {
+                        const raw = isRawHolder(item);
+                        const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
+                        const lotState = lotStateOf(item, lot);
+                        return <tr key={`${item.id}-${lot.id}`} onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
+                          className={`cursor-pointer text-[10px] text-slate-700 transition-colors ${index % 2 ? 'bg-slate-50/40 hover:bg-indigo-50/60' : 'hover:bg-indigo-50/60'}`}>
+                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{lot.receivedDate || '-'}</td>
+                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-600">{lot.supplierName || '미입력'}</td>
+                          <td className={`border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold whitespace-nowrap ${lot.lotNo ? 'text-slate-700' : 'text-amber-600'}`}>{lot.lotNo || '미입력'}</td>
+                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 whitespace-nowrap">
+                            <span className={`text-[10px] font-black ${lotState === '완료' ? 'text-slate-400' : lotState === '사용중' ? 'text-indigo-600' : 'text-emerald-600'}`}>{lotState}</span>
+                          </td>
+                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5">
+                            <span className="whitespace-nowrap text-[10px] font-black text-slate-500">
+                              {[item.subtype, item.category].filter(Boolean).join(' · ') || '-'}
+                            </span>
+                          </td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-xs font-black text-slate-800">{item.name}</td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500">{item.spec || '-'}</td>
-                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-600">{activeCount}건</td>
-                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500">{latestLotDateOf(item) || '-'}</td>
-                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg<ChevronRight size={14} className={`text-slate-300 ${selected ? 'rotate-90' : ''}`} /></span></td>
+                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{(Math.round(kg * 10) / 10).toLocaleString()} kg{!raw && <small className="text-[9px] text-slate-400">({lot.qtyRemaining ?? 0}{item.unit || '개'})</small>}<ChevronRight size={14} className="text-slate-300" /></span></td>
                         </tr>;
                       })}
                     </tbody>
                   </table>
                 </div>
-                {visibleLotItems.length === 0 && <div className="py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 품목이 없습니다.</div>}
+                {visibleLotRows.length === 0 && <div className="py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 로트가 없습니다.</div>}
               </section>
             ) : (
               <section>
                 <div className="mb-3 flex items-center justify-between px-1">
-                  <div><h3 className="text-sm font-black text-slate-800">로트 보드</h3><p className="text-[10px] font-bold text-slate-400 mt-0.5">품목별 현재 상태를 카드로 봅니다</p></div>
-                  <span className="text-xs font-black text-indigo-600">{visibleLotItems.length}개</span>
+                  <div><h3 className="text-sm font-black text-slate-800">로트 보드</h3><p className="text-[10px] font-bold text-slate-400 mt-0.5">품목 종류별로 행을 나누고 로트 한 건씩 표시합니다</p></div>
+                  <span className="text-xs font-black text-indigo-600">{visibleLotItems.reduce((sum, item) => sum + activeLotsOf(item).length, 0)}건</span>
                 </div>
                 <div className="space-y-4">
-                  {lotBoardGroups.map(([family, familyItems]) => <section key={family} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                    <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                      <div><h4 className="text-xs font-black text-slate-800">{family}</h4><p className="text-[9px] font-bold text-slate-400">연결 품목 {familyItems.length}개</p></div>
-                      <span className="text-xs font-black text-slate-700 tabular-nums">{(Math.round(familyItems.reduce((sum, item) => sum + lotKgOf(item), 0) * 10) / 10).toLocaleString()} kg</span>
-                    </header>
-                    <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {familyItems.map(item => {
+                  {visibleLotItems.map(item => {
                     const raw = isRawHolder(item);
                     const activeLots = activeLotsOf(item);
-                    const selected = selectedLotItem?.id === item.id;
-                    return <button key={item.id} type="button" onClick={() => setLotExpandedId(selected ? null : item.id)}
-                      className={`rounded-2xl border bg-white p-4 text-left transition-all ${selected ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-md' : 'border-slate-200 hover:border-indigo-200 hover:shadow-sm'}`}>
+                    return <section key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
+                      <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · 활성 로트 {activeLots.length}건</p></div>
+                      <span className="text-xs font-black text-slate-700 tabular-nums">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg</span>
+                    </header>
+                    <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {activeLots.map(lot => {
+                    const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
+                    return <button key={`${item.id}-${lot.id}`} type="button" onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-sm">
                       <div className="flex items-start gap-3">
                         <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>{raw ? <Grape size={16} /> : <Package size={16} />}</span>
-                        <span className="min-w-0 flex-1"><span className="block text-sm font-black text-slate-800 truncate">{item.name}</span><span className="block mt-0.5 text-[10px] font-bold text-slate-400">{item.spec || '규격 없음'}</span></span>
-                        <span className={`text-[9px] font-black px-2 py-1 rounded-full ${raw ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>{raw ? '벌크' : '포장'}</span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-black text-slate-800 truncate">{lot.supplierName || '공급처 미입력'}</span><span className="block mt-0.5 text-[10px] font-bold text-slate-400">{lot.lotNo || '로트번호 없음'} <span className="mx-1 text-slate-300">·</span> {lot.receivedDate || '입고일 없음'}</span></span>
+                        <span className={`shrink-0 text-base font-black ${raw ? 'text-emerald-600' : 'text-violet-600'}`}>{raw ? '벌크' : '포장'}</span>
                       </div>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        <span className="rounded-xl bg-slate-50 p-3"><span className="block text-[9px] font-black text-slate-400">현재 재고</span><span className="block mt-1 text-base font-black text-slate-900 tabular-nums">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg</span></span>
-                        <span className="rounded-xl bg-slate-50 p-3"><span className="block text-[9px] font-black text-slate-400">활성 로트</span><span className="block mt-1 text-base font-black text-slate-900">{activeLots.length}<small className="ml-1 text-[10px] text-slate-400">건</small></span></span>
+                      <div className="mt-4">
+                        <span className="block text-[9px] font-black text-slate-400">로트 잔량</span>
+                        <span className="mt-1 block text-base font-black text-slate-900 tabular-nums">{(Math.round(kg * 10) / 10).toLocaleString()} kg</span>
                       </div>
-                      <span className="mt-3 flex items-center justify-between text-[10px] font-bold text-slate-400"><span>최근 입고 {latestLotDateOf(item) || '-'}</span><span className="text-indigo-500">상세 보기</span></span>
+                      <span className="mt-3 flex items-center justify-end text-[10px] font-bold text-indigo-500">로트 상세 보기</span>
                     </button>;
                   })}
                     </div>
-                  </section>)}
+                  </section>;})}
                 </div>
-                {visibleLotItems.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 품목이 없습니다.</div>}
+                {visibleLotRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 활성 로트가 없습니다.</div>}
               </section>
             )}
             </div>
-
-            {selectedLotItem && (() => {
-              const item = selectedLotItem;
-              const raw = isRawHolder(item);
-              const material = baseRawName(item.name);
-              const activeCount = activeLotsOf(item).length;
-              const rawEntries = raw
-                ? rawMaterialLedger.filter(e => e.rawItemId === item.id || (!e.rawItemId && e.material === material))
-                : [];
-              return <aside className="bg-white rounded-2xl border border-slate-200 overflow-hidden xl:sticky xl:top-0">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
-                  <span className={`w-9 h-9 rounded-xl flex items-center justify-center ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>{raw ? <Grape size={17} /> : <Package size={17} />}</span>
-                  <div className="min-w-0 flex-1"><h3 className="text-sm font-black text-slate-800 truncate">{item.name}</h3><p className="text-[10px] font-bold text-slate-400 mt-0.5">{item.spec || '규격 없음'} · 활성 로트 {activeCount}건</p></div>
-                  <div className="text-right shrink-0"><p className="text-base font-black text-slate-900 tabular-nums">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg</p><p className="text-[9px] font-bold text-slate-400">현재 로트 합계</p></div>
-                  <button type="button" onClick={() => setLotExpandedId(null)} className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500"><X size={14} /></button>
-                </div>
-                <div className="p-4 bg-slate-50/60 max-h-[38vh] overflow-y-auto custom-scrollbar">
-                  {raw ? <RawMaterialLotPanel linesUsingRaw={linesUsingRaw} product={item} isAdmin={isAdmin}
-                    ledgerEntries={rawMaterialLedger.filter(e => e.material === material)} orders={orders}
-                    onDeleteEntry={onDeleteRawMaterialEntry} currentUserName={currentUser?.name} onLotChanged={onLedgerChanged} showLedger={false} />
-                    : <ProductLotPanel material={material} items={[item]} shipmentsByLot={shipmentsByLot} />}
-                </div>
-                <div className="border-t border-slate-100 p-4">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div><h4 className="text-xs font-black text-slate-800">이력 타임라인</h4><p className="mt-0.5 text-[9px] font-bold text-slate-400">입고·사용·실사·출고 순서</p></div>
-                    <History size={15} className="text-slate-300" />
-                  </div>
-                  <LotTimeline item={item} rawEntries={rawEntries} shipmentRows={shipmentRowsByItem.get(item.id)} />
-                </div>
-              </aside>;
-            })()}
-            {!selectedLotItem && <aside className="hidden xl:flex min-h-[360px] rounded-2xl border border-dashed border-slate-200 bg-white items-center justify-center text-center px-8">
-              <div><Layers size={24} className="mx-auto text-slate-200" /><p className="mt-3 text-xs font-black text-slate-500">품목을 선택하세요</p><p className="mt-1 text-[10px] font-bold text-slate-400">로트와 이력 타임라인을 확인합니다.</p></div>
-            </aside>}
-            </div>
           </div>
+
+          {selectedLotItem && selectedLotData && (() => {
+            const item = selectedLotItem;
+            const lot = selectedLotData;
+            const raw = isRawHolder(item);
+            const material = baseRawName(item.name);
+            const rawEntries = raw
+              ? rawMaterialLedger.filter(e => (e.rawItemId === item.id || (!e.rawItemId && e.material === material))
+                && (e as any).lotChanges?.some((change: any) => change.lotId === lot.id))
+              : [];
+            return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-3 sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedLot(null); }}>
+              <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>{raw ? <Grape size={18} /> : <Package size={18} />}</span>
+                  <div className="min-w-0 flex-1"><h3 className="truncate text-base font-black text-slate-900">{item.name}</h3><p className="mt-0.5 text-[11px] font-bold text-slate-400">{item.spec || '규격 없음'} · {lot.supplierName || '공급처 미입력'}{lot.lotNo ? ` · ${lot.lotNo}` : ''}</p></div>
+                  <button type="button" onClick={() => setSelectedLot(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><X size={16} /></button>
+                </div>
+                <div className="overflow-y-auto custom-scrollbar">
+                  <div className="bg-slate-50/70 p-5">
+                    {raw ? <RawMaterialLotPanel linesUsingRaw={linesUsingRaw} product={item} isAdmin={isAdmin}
+                      focusLotId={lot.id} ledgerEntries={rawEntries} orders={orders}
+                      onDeleteEntry={onDeleteRawMaterialEntry} currentUserName={currentUser?.name} onLotChanged={onLedgerChanged} showLedger={false} />
+                      : <ProductLotPanel material={material} items={[{ ...item, lots: [lot] }]} shipmentsByLot={shipmentsByLot} />}
+                  </div>
+                  <div className="border-t border-slate-100 p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div><h4 className="text-sm font-black text-slate-800">이력 타임라인</h4><p className="mt-0.5 text-[10px] font-bold text-slate-400">이 로트에서 일어난 기록만 표시</p></div>
+                      <History size={16} className="text-slate-300" />
+                    </div>
+                    <LotTimeline item={item} lotId={lot.id} rawEntries={rawEntries} shipmentRows={shipmentRowsByItem.get(item.id)} />
+                  </div>
+                </div>
+              </div>
+            </div>;
+          })()}
         </div>
       )}
       {activeTab !== 'inbound' && activeTab !== 'lots' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">

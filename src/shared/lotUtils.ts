@@ -1,4 +1,19 @@
-import type { RawMaterialLot } from './types';
+import type { Item, RawMaterialLot } from './types';
+
+export interface LotMixSetting {
+  topPercent?: number;
+  ratios?: { lotId: string; percent: number }[];
+}
+
+/** 새 로트별 혼합비를 우선하고, 예전 상위 2개 설정도 계속 읽는다. */
+export function lotMixSettingOf(item: Pick<Item, 'mixEnabled' | 'mixTopPercent' | 'mixLotRatios'>): LotMixSetting | undefined {
+  if (!item.mixEnabled) return undefined;
+  const ratios = (item.mixLotRatios ?? []).filter(row => row.lotId && Number(row.percent) > 0);
+  // 새 형식이 한 번이라도 저장됐으면 2개 이상 고르기 전에는 혼합하지 않는다.
+  // 필드 자체가 없는 옛 자료만 예전 상위 2개 설정으로 호환한다.
+  if (item.mixLotRatios !== undefined) return ratios.length >= 2 ? { ratios } : undefined;
+  return { topPercent: item.mixTopPercent ?? 50 };
+}
 import { today as todayStr } from './day';
 import { unitToKg } from '../constants/formula';
 
@@ -80,8 +95,8 @@ export function buildReceiveLot(params: {
 /**
  * 로트 차감.
  * - 기본: 선입선출(FIFO) — 앞쪽 active 로트부터.
- * - 혼합(mix) 지정 시: 상위 2개 active 로트에 비율(topPercent: 첫 로트 %)대로 먼저 배분하고,
- *   부족분은 FIFO로 이어서 차감(한쪽 소진 시 다음 순서로). active 로트가 1개뿐이면 FIFO와 동일.
+ * - 혼합(mix) 지정 시: 지정된 여러 active 로트에 비율대로 먼저 배분한다.
+ *   예전 topPercent 설정도 상위 2개 비율로 계속 읽는다. 부족분은 FIFO로 이어서 차감한다.
  * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 실제 공급사 로트는 0에서 정상 소진되고,
  * 초과분은 '이월(미상)' 버킷이 음수로 흡수한다 → 로트 합계가 실제 사용분을 그대로 따라가 수불부와 어긋나지 않음.
  * (음수 이월은 이후 입고 시 settleCarryOver로 상쇄됨)
@@ -90,7 +105,7 @@ export function buildReceiveLot(params: {
 export function deductFromLots(
   lots: RawMaterialLot[],
   kgToUse: number,
-  mix?: { topPercent: number },
+  mix?: LotMixSetting,
   /**
    * 초과 출고 때 새로 세우는 '이월(미상)' 버킷의 id·시각을 밖에서 정한다.
    * 트랜잭션 안에서는 반드시 넘긴다 — 재시도마다 버킷이 하나씩 더 생기면 안 된다(§6).
@@ -121,12 +136,25 @@ export function deductFromLots(
     else dist.push({ idx, lotId: l.id, supplierName: l.supplierName, lotNo: l.lotNo, receivedDate: l.receivedDate, kg: round3(t) });
   };
 
-  // 혼합: 상위 2개 로트에 비율 배분 우선
+  // 혼합: 선택한 여러 로트에 비율 배분 우선. 합계가 100이 아니어도 정규화해 안전하게 처리한다.
   if (mix && activeIdx.length >= 2 && remaining > 0) {
+    const configured = (mix.ratios ?? [])
+      .map(row => ({ idx: next.findIndex(lot => lot.id === row.lotId), percent: Math.max(0, Number(row.percent) || 0) }))
+      .filter(row => activeIdx.includes(row.idx) && row.percent > 0);
+    const targets = configured.length >= 2
+      ? configured
+      : [
+          { idx: activeIdx[0], percent: Math.max(0, Math.min(100, mix.topPercent ?? 50)) },
+          { idx: activeIdx[1], percent: 100 - Math.max(0, Math.min(100, mix.topPercent ?? 50)) },
+        ];
+    const percentTotal = targets.reduce((sum, row) => sum + row.percent, 0);
     const total = round3(kgToUse);
-    const topAmt = round3(total * Math.max(0, Math.min(100, mix.topPercent)) / 100);
-    take(activeIdx[0], topAmt);
-    take(activeIdx[1], round3(total - topAmt));
+    targets.forEach((row, index) => {
+      const amount = index === targets.length - 1
+        ? round3(total - targets.slice(0, index).reduce((sum, prior) => sum + round3(total * prior.percent / percentTotal), 0))
+        : round3(total * row.percent / percentTotal);
+      take(row.idx, amount);
+    });
   }
   // 나머지(또는 비혼합): FIFO로 잔여 차감
   for (const idx of activeIdx) {

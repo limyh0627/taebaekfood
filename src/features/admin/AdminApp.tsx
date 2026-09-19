@@ -171,7 +171,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
-import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
+import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
 import { buildPaymentEntry } from '../../shared/payment';
@@ -2754,7 +2754,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   : (entry.received ?? 0) > 0
                     ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'receive' as const, kg: entry.received, lot: { supplierName: entry.note?.trim() || '직접입고', qtyIn: entry.canCount ?? 0, packageKg: entry.canSize, packageType: entry.canSizeTag } }
                     : (entry.used ?? 0) > 0
-                      ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume' as const, kg: entry.used, ...(홀더.mixEnabled ? { mix: { topPercent: 홀더.mixTopPercent ?? 50 } } : {}) }
+                      ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume' as const, kg: entry.used, ...(lotMixSettingOf(홀더) ? { mix: lotMixSettingOf(홀더) } : {}) }
                       : null;
                 if (!명령) return { ok: false, reason: '수량이 0이다' };
 

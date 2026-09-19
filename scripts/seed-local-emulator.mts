@@ -49,7 +49,29 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['accountCodes', '800', { code:'800', name:'상품매출', type:'revenue', normalBalance:'credit' }],
   ['accountCodes', '108', { code:'108', name:'외상매출금', type:'asset', normalBalance:'debit' }],
   ['accountCodes', '251', { code:'251', name:'외상매입금', type:'liability', normalBalance:'credit' }],
-  ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[{id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),createdAt:atDay(-10),kgIn:120,qtyIn:6,packageKg:20,packageType:'포',kgRemaining:100,status:'active'}] }],
+  // 혼합 사용·FIFO 순서·대기/사용중 상태를 화면에서 직접 검수할 수 있도록 한 품목에 활성 로트 3개를 둔다.
+  ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[
+    {id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),createdAt:atDay(-10),kgIn:50,qtyIn:2.5,packageKg:20,packageType:'포',kgRemaining:30,status:'active'},
+    {id:'local-lot-2',lotNo:'LOCAL-002',supplierName:'가상곡물유통',receivedDate:day(-7),createdAt:atDay(-7),kgIn:40,qtyIn:2,packageKg:20,packageType:'포',kgRemaining:40,status:'active'},
+    {id:'local-lot-3',lotNo:'LOCAL-003',supplierName:'가상농산',receivedDate:day(-3),createdAt:atDay(-3),kgIn:30,qtyIn:1.5,packageKg:20,packageType:'포',kgRemaining:30,status:'active'},
+  ] }],
+  // 기름만 제공되는 다중 혼합 UI를 검수하는 전용 품목. 배열 순서가 실제 FIFO 차감 순서다.
+  ['items', 'raw-oil', { name:'가상 참기름 원액', rawMaterialName:'가상 참기름 원액', isRawMaterial:true, type:'raw', category:'참기름', subtype:'벌크', stock:100, minStock:10, unit:'L', density:0.92, image:'', lots:[
+    {id:'local-oil-lot-1',lotNo:'OIL-001',supplierName:'가상압착소A',receivedDate:day(-12),createdAt:atDay(-12),kgIn:40,qtyIn:2,packageKg:20,packageType:'캔',kgRemaining:25,status:'active'},
+    {id:'local-oil-lot-2',lotNo:'OIL-002',supplierName:'가상압착소B',receivedDate:day(-8),createdAt:atDay(-8),kgIn:40,qtyIn:2,packageKg:20,packageType:'캔',kgRemaining:40,status:'active'},
+    {id:'local-oil-lot-3',lotNo:'OIL-003',supplierName:'가상압착소C',receivedDate:day(-4),createdAt:atDay(-4),kgIn:35,qtyIn:1.75,packageKg:20,packageType:'캔',kgRemaining:35,status:'active'},
+  ] }],
+  // FIFO 순서 변경은 items 사본뿐 아니라 원자재 상태도 함께 갱신한다. 둘 다 있어야 실제 저장 경로를 검수할 수 있다.
+  ['rawInventories', 'taebaek__raw-sesame', { id:'taebaek__raw-sesame', rawItemId:'raw-sesame', materialSnapshot:'가상 참깨 원료', stockKg:100, revision:0, lastProcessedAt:atDay(-1), recentDepletedLots:[], activeLots:[
+    {id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),createdAt:atDay(-10),kgIn:50,qtyIn:2.5,packageKg:20,packageType:'포',kgRemaining:30,status:'active'},
+    {id:'local-lot-2',lotNo:'LOCAL-002',supplierName:'가상곡물유통',receivedDate:day(-7),createdAt:atDay(-7),kgIn:40,qtyIn:2,packageKg:20,packageType:'포',kgRemaining:40,status:'active'},
+    {id:'local-lot-3',lotNo:'LOCAL-003',supplierName:'가상농산',receivedDate:day(-3),createdAt:atDay(-3),kgIn:30,qtyIn:1.5,packageKg:20,packageType:'포',kgRemaining:30,status:'active'},
+  ] }],
+  ['rawInventories', 'taebaek__raw-oil', { id:'taebaek__raw-oil', rawItemId:'raw-oil', materialSnapshot:'가상 참기름 원액', stockKg:100, revision:0, lastProcessedAt:atDay(-1), recentDepletedLots:[], activeLots:[
+    {id:'local-oil-lot-1',lotNo:'OIL-001',supplierName:'가상압착소A',receivedDate:day(-12),createdAt:atDay(-12),kgIn:40,qtyIn:2,packageKg:20,packageType:'캔',kgRemaining:25,status:'active'},
+    {id:'local-oil-lot-2',lotNo:'OIL-002',supplierName:'가상압착소B',receivedDate:day(-8),createdAt:atDay(-8),kgIn:40,qtyIn:2,packageKg:20,packageType:'캔',kgRemaining:40,status:'active'},
+    {id:'local-oil-lot-3',lotNo:'OIL-003',supplierName:'가상압착소C',receivedDate:day(-4),createdAt:atDay(-4),kgIn:35,qtyIn:1.75,packageKg:20,packageType:'캔',kgRemaining:35,status:'active'},
+  ] }],
   ['items', 'oil-350', { name:'가상 참기름/350ml', type:'product', category:'참기름', subtype:'낱개', stock:20, minStock:5, unit:'병', image:'', spec:'350ml', netContent:'350ml', weightInKg:0.32, lots:[{id:'local-product-lot-1',lotNo:'LOCAL-P01',supplierName:'자체생산',receivedDate:day(-3),createdAt:atDay(-3),qtyIn:26,qtyRemaining:20,kgRemaining:6.4,unitKg:0.32,status:'active'}] }],
   ['items', 'oil-box', { name:'가상 참기름/350ml (12개입)', type:'product', category:'참기름', subtype:'박스', stock:3, minStock:1, unit:'박스', image:'', spec:'350ml' }],
   ['items', 'powder-1kg', { name:'가상 고춧가루/1kg', type:'goods', category:'고춧가루', subtype:'낱개', stock:30, minStock:5, unit:'개', image:'', spec:'1kg' }],
@@ -70,7 +92,7 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['partner_item', 'supplier-cap', { partnerId:'partner-supplier', itemId:'cap-350', Direction:'in', price:88, taxType:'과세', Account_Code:'505' }],
   ['partner_item', 'direct-box', { partnerId:'partner-direct', itemId:'oil-box', Direction:'out', price:60000, taxType:'과세' }],
   ['partner_item', 'courier-powder', { partnerId:'partner-courier', itemId:'powder-1kg', Direction:'out', price:12000, taxType:'면세', isSmartStore:true }],
-  ['item_bom', 'bom-oil-raw', { parent_id:'oil-350', child_id:'raw-sesame', quantity:0.4 }],
+  ['item_bom', 'bom-oil-raw', { parent_id:'oil-350', child_id:'raw-oil', quantity:0.4 }],
   ['item_bom', 'bom-oil-bottle', { parent_id:'oil-350', child_id:'bottle-350', quantity:1 }],
   ['item_bom', 'bom-oil-cap', { parent_id:'oil-350', child_id:'cap-350', quantity:1 }],
   ['item_bom', 'bom-oil-label', { parent_id:'oil-350', child_id:'label-350', quantity:1 }],

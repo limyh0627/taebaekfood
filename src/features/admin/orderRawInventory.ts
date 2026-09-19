@@ -6,6 +6,7 @@ import { baseRawName, toKg } from '../../constants/formula';
 import { isBoxStockItem, unpackQty } from '../../shared/orderUnits';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { operationDocId } from '../../shared/rawInventoryCore';
+import { lotMixSettingOf } from '../../shared/lotUtils';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
 
 export type RawUsageKg = Record<string, number>;
@@ -98,7 +99,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
           source: { type: 'production', id: order.id },
           kind: 'consume',
           kg: kg3(physicalUsage[material]),
-          ...(rawItem.mixEnabled ? { mix: { topPercent: rawItem.mixTopPercent ?? 50 } } : {}),
+          ...(lotMixSettingOf(rawItem) ? { mix: lotMixSettingOf(rawItem) } : {}),
         },
         options: {
           newLotId: `lot-${operationId}`,

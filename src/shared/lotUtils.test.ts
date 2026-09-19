@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { deductFromLots, pruneDepletedLots, withCarryOverLot, settleCarryOver } from './lotUtils';
+import { deductFromLots, lotMixSettingOf, pruneDepletedLots, withCarryOverLot, settleCarryOver } from './lotUtils';
 import type { RawMaterialLot } from './types';
 
 const lot = (id: string, kg: number, date = '2026-01-01'): RawMaterialLot =>
   ({ id, supplierName: id, qtyIn: 0, kgIn: kg, kgRemaining: kg, receivedDate: date, status: 'active', createdAt: '' } as RawMaterialLot);
 
 describe('deductFromLots — 선입선출(FIFO)', () => {
+  it('새 혼합 설정은 로트를 2개 고르기 전까지 FIFO를 유지한다', () => {
+    expect(lotMixSettingOf({ mixEnabled: true, mixTopPercent: 50, mixLotRatios: [{ lotId: 'a', percent: 100 }] })).toBeUndefined();
+    expect(lotMixSettingOf({ mixEnabled: true, mixTopPercent: 60 })).toEqual({ topPercent: 60 });
+  });
+
   it('앞 로트부터 소진, 다음 로트에서 나머지', () => {
     const r = deductFromLots([lot('a', 100), lot('b', 50)], 120);
     expect(r.shortageKg).toBe(0);
@@ -34,6 +39,24 @@ describe('deductFromLots — 선입선출(FIFO)', () => {
     const r = deductFromLots([lot('a', 100), lot('b', 100)], 60, { topPercent: 50 });
     expect(r.lots[0].kgRemaining).toBe(70); // 30 사용
     expect(r.lots[1].kgRemaining).toBe(70); // 30 사용
+  });
+
+  it('여러 로트를 선택한 비율대로 차감한다', () => {
+    const r = deductFromLots([lot('a', 100), lot('b', 100), lot('c', 100)], 100, {
+      ratios: [{ lotId: 'a', percent: 50 }, { lotId: 'b', percent: 30 }, { lotId: 'c', percent: 20 }],
+    });
+    expect(r.lots.map(row => row.kgRemaining)).toEqual([50, 70, 80]);
+    expect(r.distribution.map(row => ({ lotId: row.lotId, kg: row.kg }))).toEqual([
+      { lotId: 'a', kg: 50 }, { lotId: 'b', kg: 30 }, { lotId: 'c', kg: 20 },
+    ]);
+  });
+
+  it('혼합 대상 하나가 부족하면 남은 양을 FIFO 로트에서 이어서 차감한다', () => {
+    const r = deductFromLots([lot('a', 10), lot('b', 100), lot('c', 100)], 100, {
+      ratios: [{ lotId: 'a', percent: 50 }, { lotId: 'b', percent: 30 }, { lotId: 'c', percent: 20 }],
+    });
+    expect(r.lots.map(row => row.kgRemaining)).toEqual([0, 30, 80]);
+    expect(r.shortageKg).toBe(0);
   });
 });
 
