@@ -38,10 +38,10 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     });
     const supName = 파는쪽.name, supCeo = 파는쪽.ceo, supBizNo = 파는쪽.bizNo;
     const supBizType = 파는쪽.bizType, supBizItem = 파는쪽.bizItem;
-    const supAddr = 파는쪽.addr, supPhone = 파는쪽.tel, supFax = 파는쪽.fax;
+    const supAddr = 파는쪽.addr;
     const buyName = 사는쪽.name, buyCeo = 사는쪽.ceo, buyBizNo = 사는쪽.bizNo;
     const buyBizType = 사는쪽.bizType, buyBizItem = 사는쪽.bizItem;
-    const buyAddr = 사는쪽.addr, buyPhone = 사는쪽.tel, buyFax = 사는쪽.fax;
+    const buyAddr = 사는쪽.addr;
 
     const MAX_ROWS = 11;
     //  **인쇄에만** 서류용 품목명으로 바꾼다 — 화면·저장은 실제 이름 그대로다.
@@ -54,6 +54,10 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
       const BC = borderColor;
       const SC = stripeColor;
       const LB = '#f5f6f8';
+      const now = new Date();
+      const h = now.getHours(); const mn = now.getMinutes(); const sc2 = now.getSeconds();
+      const ampm = h<12?'오전':'오후'; const hh = h%12||12;
+      const issuedAt = `${dateLabel} ${ampm} ${hh}:${String(mn).padStart(2,'0')}:${String(sc2).padStart(2,'0')}`;
 
       // ── 헤더 (테두리 바깥) ──
       const headerHtml = `
@@ -63,7 +67,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
   <span style="flex:1;font-size:10px;text-align:right;">[재발행]</span>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:0.5mm;">
-  <span>전표일자 : <strong>${dateLabel}</strong></span>
+  <span>전표일자 : <strong>${dateLabel}</strong>&nbsp;&nbsp;&nbsp;발행일시 : <strong>${issuedAt}</strong></span>
   <span style="color:${BC};font-weight:bold;font-size:12px;">${pageLabel}</span>
   <span>전표NO. : <strong>${docNoStr}</strong></span>
 </div>`;
@@ -82,9 +86,9 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
   </colgroup>
   <tbody>
     <tr style="height:5.5mm;">
-      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
+      <td rowspan="4" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
       ${L('상&nbsp;&nbsp;호')}${V(buyName,'font-weight:bold;font-size:11px;')}
-      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
+      <td rowspan="4" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
       ${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:11px;')}
     </tr>
     <tr style="height:5mm;">
@@ -98,10 +102,6 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
     <tr style="height:5mm;">
       ${L('주&nbsp;&nbsp;소')}${V(buyAddr,'font-size:9.5px;')}
       ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:9.5px;')}
-    </tr>
-    <tr style="height:5mm;">
-      ${L('전화번호')}${V((buyPhone?buyPhone:'')+(buyFax?'&nbsp;&nbsp;FAX:'+buyFax:''),'font-size:9.5px;')}
-      ${L('전화번호')}${V(supPhone+(supFax?'&nbsp;&nbsp;FAX:'+supFax:''),'font-size:9.5px;')}
     </tr>
   </tbody>
 </table>`;
@@ -179,10 +179,6 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
 </table>`;
 
       // ── 하단: (좌) 미수금 표 + 비고 / (우) 인수확인 ──
-      const now = new Date();
-      const h = now.getHours(); const mn = now.getMinutes(); const sc2 = now.getSeconds();
-      const ampm = h<12?'오전':'오후'; const hh = h%12||12;
-
       const balanceLabels = isSale
         ? ['전일미수', '금일판매', '금일입금', '미수잔액']
         : ['전일미지급', '금일매입', '금일지급', '미지급잔액'];
@@ -200,20 +196,16 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         ${balanceLabels.map((label, index) => {
           const value = [previous, currentTrade, received, closing][index];
           const last = index === 3;
-          return `<tr style="height:5.2mm;"><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:11px;font-weight:${last ? '800' : '600'};padding:1.5px 5px;white-space:nowrap;">${label}</td>
+          return `<tr style="height:6.8mm;"><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:11px;font-weight:${last ? '800' : '600'};padding:1.5px 5px;white-space:nowrap;">${label}</td>
             <td style="border-bottom:1px solid ${BC};text-align:right;font-size:${last ? '13px' : '11.5px'};font-weight:${last ? '800' : '600'};padding:1.5px 6px;">${fmt(value)}</td></tr>`;
         }).join('')}
-        <tr><td colspan="2" style="font-size:10.5px;font-weight:700;padding:2px 5px;height:${bankAccount ? '6mm' : '10mm'};vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:400;font-size:10px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
+        <tr><td colspan="2" style="font-size:10.5px;font-weight:700;padding:2px 5px;height:${bankAccount ? '7.5mm' : '12mm'};vertical-align:middle;white-space:nowrap;overflow:hidden;">비&nbsp;고${memoText ? `<span style="font-weight:400;font-size:10px;margin-left:10px;">${esc(memoText).replace(/\r?\n/g, ' / ')}</span>` : ''}</td></tr>
         ${bankAccount ? `<tr><td colspan="2" style="border-top:1px solid ${BC};font-size:10.5px;padding:1px 5px;height:4.5mm;vertical-align:middle;"><strong>계좌번호</strong>&nbsp;&nbsp;${esc(bankAccount)}</td></tr>` : ''}
       </table>
     </td>
     <td style="border:1px solid ${BC};text-align:center;vertical-align:middle;font-size:11px;font-weight:bold;letter-spacing:3px;">인<br/>수<br/>확<br/>인</td>
   </tr>
-</table>
-<div style="display:flex;justify-content:space-between;font-size:9px;margin-top:0.5mm;color:#555;padding:0 1mm;">
-  <span>발행일시 : ${dateLabel} ${ampm} ${hh}:${String(mn).padStart(2,'0')}:${String(sc2).padStart(2,'0')}</span>
-  <span>${ci?.name||''}&nbsp;/&nbsp;${ci?.phone||''}</span>
-</div>`;
+</table>`;
 
       return `
 <div style="font-family:Pretendard,'Noto Sans KR','맑은 고딕',sans-serif;color:#172033;box-sizing:border-box;">
