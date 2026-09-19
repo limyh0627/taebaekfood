@@ -109,6 +109,8 @@ interface PasteOrderModalProps {
   orders?: HistoryOrder[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   palletStocks: PalletStock[];
+  /** 오피스톡에서 넘긴 메시지처럼 창을 열 때 이미 채워 둘 주문 원문. */
+  initialText?: string;
   onClose: () => void;
   onBack?: () => void;
   onSave: (_order: Omit<Order, 'id' | 'status'>) => Promise<void>;
@@ -117,7 +119,7 @@ interface PasteOrderModalProps {
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, orders, partnerItems, palletStocks, onClose, onBack, onSave,
+  items, partners, orders, partnerItems, palletStocks, initialText = '', onClose, onBack, onSave,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -137,7 +139,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   //  바꾸면 품목 목록이 따라 바뀐다.
   const [shipToId, setShipToId] = useState<string | undefined>(undefined);
   useEffect(() => { setShipToId(defaultShipToId(selectedClient ?? undefined)); }, [selectedClient?.id]);
-  const [pasteText, setPasteText] = useState('');
+  const [pasteText, setPasteText] = useState(initialText);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
   const [aiBusy, setAiBusy] = useState(false);

@@ -212,6 +212,7 @@ import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIss
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
 import DataIntegrityMonitor from './DataIntegrityMonitor';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
+import { rawLedgerExcelRows } from './rawLedgerExcel';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -881,6 +882,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isOrderCreateChooserOpen, setIsOrderCreateChooserOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
   const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
+  const [pasteOrderInitialText, setPasteOrderInitialText] = useState('');
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const directOrderCreation = useRef(newOrderCreationSession());
   const pasteOrderCreation = useRef(newOrderCreationSession());
@@ -1538,7 +1540,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (result.status === 'busy') return;
       setNewOrderId(result.identity.id);
       if (kind === 'direct') setIsAddOrderOpen(false);
-      else setIsPasteOrderOpen(false);
+      else {
+        setIsPasteOrderOpen(false);
+        setPasteOrderInitialText('');
+      }
       if (result.failedFollowUps.length > 0) {
         setAppNotice({
           message: '주문은 정상적으로 저장됐습니다',
@@ -1560,7 +1565,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (session.busy) return;
     resetOrderCreationSession(session);
     if (kind === 'direct') setIsAddOrderOpen(false);
-    else setIsPasteOrderOpen(false);
+    else {
+      setIsPasteOrderOpen(false);
+      setPasteOrderInitialText('');
+    }
     if (goBack) setIsOrderCreateChooserOpen(true);
   };
 
@@ -4087,34 +4095,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     for (const mat of RM_TABS) {
                       const ws = wb.addWorksheet(mat);
                       ws.columns = [
-                        { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
+                        { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
                       ];
                       // 수불부는 모든 원료를 kg로 통일 표시 (L 입력 데이터는 buildRawDocSheet에서 환산됨)
-                      const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '현재고(kg)', '비고']);
+                      const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '정정량(kg)', '현재고(kg)', '비고']);
                       hRow.font = { bold: true, size: 9 };
                       const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
                       hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
                       const sheet = buildRawDocSheet(mat);
+                      const excelRows = rawLedgerExcelRows(docYearMonth, sheet);
                       // 전월이월 행 — 전달 마지막 현재고를 전재고로 (매달 1일)
-                      const openRow = ws.addRow([`${docYearMonth}-01 (전월이월)`, sheet.opening, 0, 0, sheet.opening, '전월 말 현재고']);
+                      const openRow = ws.addRow(excelRows.opening);
                       openRow.font = { size: 9, bold: true };
                       openRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
-                      sheet.rows.forEach((row) => {
-                        const r = ws.addRow([
-                          row.date,
-                          row.prevBalance || 0,
-                          row.received || 0,
-                          row.used || 0,
-                          row.currentBalance,   // 잔량 = 계산값 직접(실사정정 앵커 반영) — 수식 대신
-                          row.note || ''
-                        ]);
+                      excelRows.details.forEach((values) => {
+                        const r = ws.addRow(values);
                         r.font = { size: 9 };
                         r.eachCell(c => { c.border = border; });
                         r.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-                        r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+                        r.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
                       });
                       // 합계 행 — 당월 총 입고·사용
-                      const sumRow = ws.addRow(['합계', '', sheet.totalIn, sheet.totalOut, sheet.closing, '당월 총 입고·사용']);
+                      const sumRow = ws.addRow(excelRows.total);
                       sumRow.font = { size: 9, bold: true };
                       sumRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
                     }
@@ -5088,6 +5090,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteRoom={(id) => deleteItem('chatRooms', id)}
               isAdmin={isAdmin || isAdminAuthenticated}
               onUpdateMessage={(id, data) => updateItem('chatMessages', id, data)}
+              onExtractOrder={(text) => {
+                resetOrderCreationSession(pasteOrderCreation.current);
+                setPasteOrderInitialText(text);
+                setIsOrderCreateChooserOpen(false);
+                setIsAddOrderOpen(false);
+                setIsPasteOrderOpen(true);
+              }}
               onSendMessage={async (msg) => {
                 // 메시지 저장 (핵심 동작 — 실패 시 에러 전파)
                 await addItem('chatMessages', msg);
@@ -5158,7 +5167,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <span className="mt-1 block text-xs font-bold text-slate-500">거래처와 주문 품목을 직접 선택합니다.</span>
                 </span>
               </button>
-              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setIsPasteOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setPasteOrderInitialText(''); setIsPasteOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><ClipboardPaste size={19} /></span>
                 <span className="min-w-0">
                   <strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">주문 내역 붙여넣기</strong>
@@ -5192,6 +5201,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           orders={orders}
           partnerItems={partnerItems}
           palletStocks={pallets}
+          initialText={pasteOrderInitialText}
           onClose={() => closeOrderCreation('paste')}
           onBack={() => closeOrderCreation('paste', true)}
           onSave={(order) => saveNewOrder('paste', order)}

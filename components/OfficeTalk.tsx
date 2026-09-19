@@ -57,6 +57,8 @@ interface OfficeTalkProps {
   onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void;
   /** 관리자면 남의 말도 지울 수 있다 */
   isAdmin?: boolean;
+  /** 메시지 본문을 복사주문 창으로 바로 넘긴다. */
+  onExtractOrder?: (_text: string) => void;
 }
 
 
@@ -72,6 +74,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   onSendMessage,
   onUpdateMessage,
   isAdmin,
+  onExtractOrder,
 }) => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
@@ -1438,6 +1441,19 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   );
                 })}
               </div>
+            )}
+            {!isDeleted(actionMsg) && actionMsg.text?.trim() && onExtractOrder && (
+              <button
+                type="button"
+                onClick={() => {
+                  const text = actionMsg.text.trim();
+                  setActionMsg(null);
+                  onExtractOrder(text);
+                }}
+                className="w-full px-5 py-3.5 text-left text-sm font-black text-indigo-700 border-b border-slate-50 hover:bg-indigo-50 transition-colors"
+              >
+                주문 추출하기
+              </button>
             )}
             {actionsFor({ msg: actionMsg, me: currentUser, isAdmin, pinned: isPinned(activeRoom, actionMsg) }).map(act => (
               <button key={act} onClick={() => doAction(act, actionMsg)}
