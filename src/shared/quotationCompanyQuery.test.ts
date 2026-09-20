@@ -21,4 +21,12 @@ describe('견적서 회사별 구독', () => {
     expect(source).toContain("editingId ? '수정 저장' : '저장'");
     expect(source).toContain('date: keepDates && base ? base.date : today()');
   });
+
+  it('인쇄할 때 견적서 본문만 인쇄 대상으로 표시한다', () => {
+    const source = readFileSync('components/QuotationManager.tsx', 'utf8');
+    const css = readFileSync('src/index.css', 'utf8');
+    expect(source).toContain('id="quotation-print-area"');
+    expect(source).toContain("document.body.classList.add('printing-quotation')");
+    expect(css).toContain('body.printing-quotation #quotation-print-area');
+  });
 });

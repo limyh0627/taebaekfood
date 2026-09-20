@@ -145,6 +145,14 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   );
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
+  const printQuotation = () => {
+    // window.print()만 부르면 앱 전체 DOM이 인쇄돼 사이드바·목록까지 종이에 찍힌다.
+    // 인쇄하는 동안에만 body에 표식을 붙여 아래 전용 CSS가 견적서 본문만 남기게 한다.
+    const cleanup = () => document.body.classList.remove('printing-quotation');
+    document.body.classList.add('printing-quotation');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+  };
 
   /**
    * 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다.
@@ -618,12 +626,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0"
           onClick={() => setViewing(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
+          <div id="quotation-print-area" className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 print:hidden">
               <h3 className="font-black text-slate-900 text-sm">{viewing.quoteNo}</h3>
               <div className="flex items-center gap-2">
-                <button onClick={() => window.print()}
+                <button onClick={printQuotation}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800">
                   <Printer size={13} />인쇄
                 </button>

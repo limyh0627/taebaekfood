@@ -104,3 +104,27 @@ input[type="month"] { min-width: 7rem; }
   input[type="date"].date-narrow::-webkit-datetime-edit { font-size: 10px; padding: 0; }
   input[type="date"].date-narrow::-webkit-calendar-picker-indicator { padding: 0; margin-left: 0; }
 }
+
+/* 견적서는 앱 화면이 아니라 종이 한 장이다. 사이드바·목록·회색 배경을 모두 감추고
+   모달의 견적 본문만 용지 왼쪽 위에서 전체 폭으로 인쇄한다. */
+@media print {
+  body.printing-quotation * {
+    visibility: hidden !important;
+  }
+
+  body.printing-quotation #quotation-print-area,
+  body.printing-quotation #quotation-print-area * {
+    visibility: visible !important;
+  }
+
+  body.printing-quotation #quotation-print-area {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
