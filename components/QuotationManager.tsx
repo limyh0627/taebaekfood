@@ -13,6 +13,7 @@ import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
 import { quoteRecipient } from '../src/shared/quoteRecipient';
+import { where } from 'firebase/firestore';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -105,12 +106,14 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   useEffect(() => subscribeToCollection<Quotation>(
     'quotations',
     rows => { setQuotes(rows); setQuoteError(''); },
-    [],
+    // Firestore 규칙은 목록을 결과에서 거르는 필터가 아니다. 회사 조건 없는 전체 조회는
+    // 다른 회사 문서까지 읽을 가능성이 있어, 현재 태백 문서만 있어도 규칙이 거부한다.
+    [where('companyId', '==', companyId)],
     error => {
       console.error('[견적서 목록 불러오기 실패]', error);
       setQuoteError(`견적서 목록을 불러오지 못했습니다. ${error.message}`);
     },
-  ), []);
+  ), [companyId]);
 
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<Quotation | null>(null);
@@ -406,11 +409,29 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   return (
                     <div key={i} className="grid grid-cols-[minmax(150px,1fr)_64px_88px_96px_58px_88px_100px_44px_28px] min-w-[740px] border-t border-slate-100 items-center">
                       <div className="px-3 py-2 min-w-0">
-                        <button onClick={() => { setPickIdx(i); setItemSearch(''); }}
-                          className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${l.name ? 'border-slate-200 text-slate-700 hover:border-indigo-300' : 'border-dashed border-slate-300 text-slate-400'}`}>
-                          {l.name || '품목 고르기'}
-                          {l.spec && <span className="text-slate-400 font-normal ml-1">{l.spec}</span>}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={l.name}
+                            onChange={e => setLine(i, { name: e.target.value, itemId: undefined, cost: undefined })}
+                            placeholder="품목명 직접 입력"
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => { setPickIdx(i); setItemSearch(''); }}
+                            title="등록 품목에서 찾기"
+                            aria-label={`${i + 1}번째 줄 등록 품목에서 찾기`}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600"
+                          >
+                            <Search size={13} />
+                          </button>
+                        </div>
+                        <input
+                          value={l.spec}
+                          onChange={e => setLine(i, { spec: e.target.value })}
+                          placeholder="규격 직접 입력"
+                          className="mt-1 w-full rounded-md border-0 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-500 outline-none focus:ring-1 focus:ring-indigo-200"
+                        />
                       </div>
                       <input value={String(l.qty)} inputMode="decimal" onChange={e => setLine(i, { qty: num(e.target.value) })}
                         className="mx-1 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
@@ -582,7 +603,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               })}
             </div>
             <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400">목록에 없으면 줄에 직접 적어도 됩니다</span>
+              <span className="text-[11px] font-bold text-slate-400">목록에 없으면 창을 닫고 품목명·규격을 직접 입력하세요</span>
               <button onClick={() => setPickIdx(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
             </div>
           </div>
