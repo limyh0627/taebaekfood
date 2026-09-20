@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, X, Trash2, Search, Printer, FileText, Copy, Pencil } from 'lucide-react';
-import { Item, Partner, PartnerItem, CompanyId, COMPANIES, companyOf } from '../src/shared/types';
+import { Item, Partner, PartnerItem, CompanyId, CompanyInfo, COMPANIES, companyOf } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
@@ -30,6 +30,8 @@ export interface QuotationLine {
   itemId?: string;
   name: string;
   spec: string;
+  /** 견적 당시 단위 스냅샷 — 품목의 단위가 나중에 바뀌어도 발행본은 그대로 남긴다. */
+  unit?: string;
   qty: number;
   price: number;
   /** 낼 때의 원가 — 나중에 원료값이 바뀌어도 그때 얼마로 셈했는지 남는다 */
@@ -52,11 +54,15 @@ export interface Quotation {
   /** 등록 거래처면 ID, 미등록 문의처 견적이면 빈 문자열 */
   partnerId: string;
   partnerName: string;
+  /** 받는 업체 연락처 — 등록 거래처 값 또는 미등록 업체에 직접 적은 값을 견적에 남긴다. */
+  recipientPhone?: string;
   /**
    * 담당자 — **이 견적을 낸 우리 쪽 사람.** 받는 쪽이 물어볼 데가 있어야 한다.
    * 새로 쓸 때는 쓰는 사람 이름이 저절로 들어간다(2026-09-05 사장님).
    */
   attention?: string;
+  deliveryTerms?: string;
+  paymentTerms?: string;
   lines: QuotationLine[];
   totalSupply: number;
   totalTax: number;
@@ -74,6 +80,7 @@ interface Props {
   partnerItems?: PartnerItem[];
   companyId?: CompanyId;
   currentUser?: { id: string; name: string };
+  companyInfo?: CompanyInfo | null;
   /** 품목 원가 — 재고평가와 같은 롤업을 쓴다(AdminApp이 넘긴다) */
   costOf?: (_item: Item) => number;
 }
@@ -100,7 +107,7 @@ function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
 //  합계 셈은 [shared/quoteTotals](../src/shared/quoteTotals.ts) 하나다.
 const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 });
 
-export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, costOf }: Props) {
+export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, companyInfo, costOf }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
   const [quoteError, setQuoteError] = useState('');
   useEffect(() => subscribeToCollection<Quotation>(
@@ -118,12 +125,13 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<Quotation | null>(null);
   const [form, setForm] = useState<{
-    date: string; validUntil?: string; partnerId: string; partnerName: string;
-    attention?: string; lines: QuotationLine[]; note?: string;
+    date: string; validUntil?: string; partnerId: string; partnerName: string; recipientPhone?: string;
+    attention?: string; deliveryTerms?: string; paymentTerms?: string; lines: QuotationLine[]; note?: string;
   }>({
     date: today(), validUntil: plusDays(today(), 30),
     //  담당자는 **쓰는 사람**이 기본이다 — 매번 제 이름을 치게 할 일이 아니다
-    partnerId: '', partnerName: '', attention: currentUser?.name ?? '', lines: [emptyLine()], note: '',
+    partnerId: '', partnerName: '', recipientPhone: '', attention: currentUser?.name ?? '',
+    deliveryTerms: '', paymentTerms: '', lines: [emptyLine()], note: '',
   });
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -174,8 +182,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const resetForm = (base?: Quotation, keepDates = false) => setForm({
     date: keepDates && base ? base.date : today(),
     validUntil: keepDates && base ? base.validUntil : plusDays(today(), 30),
-    partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '',
+    partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '', recipientPhone: base?.recipientPhone ?? '',
     attention: base?.attention ?? currentUser?.name ?? '',
+    deliveryTerms: base?.deliveryTerms ?? '', paymentTerms: base?.paymentTerms ?? '',
     lines: base ? base.lines.map(l => ({ ...l })) : [emptyLine()],
     note: base?.note ?? '',
   });
@@ -206,7 +215,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
         quoteNo: prev?.quoteNo ?? nextQuoteNo(form.date, mine),
         date: form.date, validUntil: form.validUntil || undefined,
         partnerId: recipient.partnerId, partnerName: recipient.partnerName,
+        recipientPhone: form.recipientPhone?.trim() || undefined,
         attention: form.attention || undefined,
+        deliveryTerms: form.deliveryTerms?.trim() || undefined,
+        paymentTerms: form.paymentTerms?.trim() || undefined,
         lines, totalSupply: t.supply, totalTax: t.tax, totalAmount: t.total, totalCost: t.cost,
         note: form.note || undefined,
         createdAt: prev?.createdAt ?? new Date().toISOString(),
@@ -359,7 +371,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-black">{form.partnerName}</span>
                     {!form.partnerId && <span className="text-[10px] font-bold text-slate-400">미등록 업체</span>}
-                    <button onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: '' }))}
+                    <button onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: '', recipientPhone: '' }))}
                       className="text-[11px] font-black text-slate-400 hover:text-slate-600">바꾸기</button>
                   </div>
                 ) : (
@@ -368,13 +380,13 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       onKeyDown={e => {
                         if (e.key !== 'Enter' || !partnerSearch.trim()) return;
                         e.preventDefault();
-                        setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim() }));
+                        setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim(), recipientPhone: '' }));
                       }}
                       className="w-full px-3 py-2 text-xs font-bold border-b border-slate-100 outline-none" />
                     {partnerSearch.trim() && (
                       <button
                         type="button"
-                        onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim() }))}
+                        onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim(), recipientPhone: '' }))}
                         className="w-full border-b border-slate-100 bg-slate-50 px-3 py-2 text-left text-[11px] font-black text-indigo-600 hover:bg-indigo-50"
                       >
                         ‘{partnerSearch.trim()}’ 미등록 업체명으로 사용
@@ -384,13 +396,20 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     <div className="h-40 overflow-y-auto">
                       {partners.filter(p => !partnerSearch.trim() || matchesSearch(p.name, partnerSearch.trim()))
                         .slice(0, 200).map(p => (
-                        <button key={p.id} onClick={() => { setForm(f => ({ ...f, partnerId: p.id, partnerName: p.name })); setPartnerSearch(''); }}
+                        <button key={p.id} onClick={() => { setForm(f => ({ ...f, partnerId: p.id, partnerName: p.name, recipientPhone: p.tel || p.phone || p.mobile || '' })); setPartnerSearch(''); }}
                           className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-indigo-50 truncate">{p.name}</button>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">받는 업체 연락처</span>
+                <input value={form.recipientPhone ?? ''} onChange={e => setForm(f => ({ ...f, recipientPhone: e.target.value }))}
+                  placeholder="등록 거래처는 자동 입력 · 미등록 업체는 직접 입력"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+              </label>
 
               {/* 품목 — 원가와 마진율을 줄마다 보여준다. 값을 매기는 자리라 이게 안 보이면 감으로 적게 된다. */}
               {/*  **옆으로 민다**(2026-09-05 사장님) — 폰에서 품목 칸이 0으로 눌려
@@ -444,6 +463,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                           placeholder="규격 직접 입력"
                           className="mt-1 w-full rounded-md border-0 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-500 outline-none focus:ring-1 focus:ring-indigo-200"
                         />
+                        <input
+                          value={l.unit ?? ''}
+                          onChange={e => setLine(i, { unit: e.target.value })}
+                          placeholder="단위 (예: 박스, 개, kg)"
+                          className="mt-1 w-full rounded-md border-0 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-500 outline-none focus:ring-1 focus:ring-indigo-200"
+                        />
                       </div>
                       <input value={String(l.qty)} inputMode="decimal" onChange={e => setLine(i, { qty: num(e.target.value) })}
                         className="mx-1 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
@@ -478,10 +503,25 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   className="w-full min-w-[740px] py-2 border-t border-slate-100 text-[11px] font-black text-indigo-600 hover:bg-indigo-50">+ 줄 추가</button>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">납기</span>
+                  <input value={form.deliveryTerms ?? ''} onChange={e => setForm(f => ({ ...f, deliveryTerms: e.target.value }))}
+                    placeholder="예: 발주 후 7일, 2026-09-30"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">결제조건</span>
+                  <input value={form.paymentTerms ?? ''} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))}
+                    placeholder="예: 선입금, 월말 현금 결제"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+                </label>
+              </div>
+
               <label className="block space-y-1">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">비고</span>
                 <textarea value={form.note ?? ''} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} rows={2}
-                  placeholder="결제 조건, 납기 등"
+                  placeholder="그 밖의 전달사항"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               </label>
 
@@ -573,7 +613,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   <button key={x.id}
                     onClick={() => {
                       setLine(pickIdx, {
-                        itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
+                        itemId: x.id, name: x.name, spec: String(x.spec ?? ''), unit: String(x.unit ?? ''),
                         cost: c,
                         //  **거래처 판매단가를 그대로 넣는다**(세포함). 단가 칸이 판매단가라
                         //  변환할 게 없다 — 공급가액은 줄마다 역산해서 낸다(2026-09-10 사장님).
@@ -638,56 +678,89 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 <button onClick={() => setViewing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-6 print:overflow-visible">
-              <h2 className="text-center text-2xl font-black tracking-[0.4em] text-slate-900 mb-6">견 적 서</h2>
-              <div className="flex justify-between gap-6 mb-5 text-xs">
-                <div className="space-y-1">
-                  <p className="font-black text-slate-800 text-sm">{viewing.partnerName} 귀중</p>
-                  {viewing.attention && <p className="text-slate-500">담당 {viewing.attention}</p>}
-                  <p className="text-slate-400">아래와 같이 견적합니다.</p>
-                </div>
-                <div className="text-right space-y-0.5 text-slate-500 whitespace-nowrap">
-                  <p><span className="text-slate-400">견적번호</span> <b className="font-mono text-slate-700">{viewing.quoteNo}</b></p>
-                  <p><span className="text-slate-400">일자</span> <b className="font-mono text-slate-700">{viewing.date}</b></p>
-                  {viewing.validUntil && <p><span className="text-slate-400">유효기한</span> <b className="font-mono text-slate-700">{viewing.validUntil}</b></p>}
-                  <p className="pt-1 font-black text-slate-800">{companyName}</p>
+            <div className="flex-1 overflow-y-auto px-7 py-6 print:overflow-visible print:px-0 print:py-0">
+              <div className="mb-4 flex items-end justify-between border-b-2 border-slate-900 pb-3">
+                <h2 className="text-3xl font-black tracking-[0.32em] text-slate-950">견 적 서</h2>
+                <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
+                  <span className="font-bold text-slate-400">견적번호</span><b className="font-mono text-slate-800">{viewing.quoteNo}</b>
+                  <span className="font-bold text-slate-400">견적일자</span><b className="font-mono text-slate-800">{viewing.date}</b>
+                  <span className="font-bold text-slate-400">유효기간</span><b className="font-mono text-slate-800">{viewing.validUntil ?? '별도 협의'}</b>
                 </div>
               </div>
-              <table className="w-full text-xs border-t-2 border-slate-800">
+
+              <div className="mb-4 grid grid-cols-2 gap-3 text-[11px]">
+                <section className="border border-slate-300">
+                  <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">공급받는 자</h3>
+                  <div className="space-y-2 px-3 py-3">
+                    <p><span className="mr-3 font-bold text-slate-400">수신</span><b className="text-base text-slate-900">{viewing.partnerName} 귀하</b></p>
+                    <p><span className="mr-3 font-bold text-slate-400">연락처</span><span className="text-slate-700">{viewing.recipientPhone || '—'}</span></p>
+                    <p className="text-slate-600">아래와 같이 견적합니다.</p>
+                  </div>
+                </section>
+                <section className="border border-slate-300">
+                  <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">공급자</h3>
+                  <dl className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-1 px-3 py-2 text-slate-700">
+                    <dt className="font-bold text-slate-400">등록번호</dt><dd>{companyInfo?.bizNo || '—'}</dd>
+                    <dt className="font-bold text-slate-400">상호</dt><dd className="font-black">{companyInfo?.name || companyName}</dd>
+                    <dt className="font-bold text-slate-400">대표자</dt><dd>{companyInfo?.ceoName || '—'}</dd>
+                    <dt className="font-bold text-slate-400">주소</dt><dd>{companyInfo?.address || '—'}</dd>
+                    <dt className="font-bold text-slate-400">연락처</dt><dd>{companyInfo?.phone || '—'}{companyInfo?.fax ? ` · FAX ${companyInfo.fax}` : ''}</dd>
+                    {viewing.attention && <><dt className="font-bold text-slate-400">담당자</dt><dd>{viewing.attention}</dd></>}
+                  </dl>
+                </section>
+              </div>
+
+              <div className="mb-4 flex items-center justify-between border-y-2 border-slate-900 px-3 py-3">
+                <span className="text-sm font-black text-slate-700">견적금액 <span className="ml-1 text-[11px] font-bold text-slate-400">(부가세 포함)</span></span>
+                <strong className="text-2xl font-black tabular-nums text-slate-950">₩ {fmt(viewing.totalAmount)}</strong>
+              </div>
+
+              <table className="w-full table-fixed text-[11px] border-t-2 border-slate-800">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500">
-                    <th className="px-3 py-2 text-left font-black whitespace-nowrap">품목</th>
-                    <th className="px-3 py-2 text-left font-black whitespace-nowrap">규격</th>
-                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">수량</th>
-                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">단가</th>
-                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">금액</th>
+                  <tr className="bg-slate-100 text-slate-600">
+                    <th className="w-[22%] border-b border-slate-300 px-2 py-2 text-left font-black">품명</th>
+                    <th className="w-[13%] border-b border-slate-300 px-2 py-2 text-left font-black">규격</th>
+                    <th className="w-[8%] border-b border-slate-300 px-2 py-2 text-center font-black">단위</th>
+                    <th className="w-[8%] border-b border-slate-300 px-2 py-2 text-right font-black">수량</th>
+                    <th className="w-[13%] border-b border-slate-300 px-2 py-2 text-right font-black">단가</th>
+                    <th className="w-[14%] border-b border-slate-300 px-2 py-2 text-right font-black">공급가액</th>
+                    <th className="w-[10%] border-b border-slate-300 px-2 py-2 text-right font-black">세액</th>
+                    <th className="w-[12%] border-b border-slate-300 px-2 py-2 text-right font-black">합계</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {viewing.lines.map((l, i) => (
-                    <tr key={i} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">
-                        {l.name}{l.isTaxExempt && <span className="ml-1 text-[10px] font-black text-indigo-500">면세</span>}
-                      </td>
-                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{l.spec}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(l.qty)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(l.price)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-black text-slate-800">{fmt(l.qty * l.price)}</td>
-                    </tr>
-                  ))}
+                  {viewing.lines.map((l, i) => {
+                    const amount = lineAmount(l.qty, l.price, l.isTaxExempt);
+                    return <tr key={i} className="border-b border-slate-200">
+                      <td className="break-words px-2 py-2.5 font-bold text-slate-800">{l.name}{l.isTaxExempt && <span className="ml-1 text-[9px] font-black text-indigo-500">면세</span>}</td>
+                      <td className="break-words px-2 py-2.5 text-slate-500">{l.spec || '—'}</td>
+                      <td className="px-2 py-2.5 text-center text-slate-600">{l.unit || '—'}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(l.qty)}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(l.price)}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(amount.supply)}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(amount.tax)}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums font-black text-slate-900">{fmt(amount.gross)}</td>
+                    </tr>;
+                  })}
                 </tbody>
-                <tfoot className="border-t-2 border-slate-800">
-                  <tr><td colSpan={4} className="px-3 py-1.5 text-right font-bold text-slate-500">공급가액</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(viewing.totalSupply)}</td></tr>
-                  <tr><td colSpan={4} className="px-3 py-1.5 text-right font-bold text-slate-500">부가세</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(viewing.totalTax)}</td></tr>
-                  <tr className="bg-slate-50"><td colSpan={4} className="px-3 py-2 text-right font-black text-slate-800">합계</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-black text-base">{fmt(viewing.totalAmount)}</td></tr>
+                <tfoot className="border-y-2 border-slate-800">
+                  <tr className="bg-slate-50">
+                    <td colSpan={5} className="px-2 py-2 text-right font-black text-slate-600">합계</td>
+                    <td className="px-2 py-2 text-right tabular-nums font-black">{fmt(viewing.totalSupply)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums font-black">{fmt(viewing.totalTax)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-sm font-black">{fmt(viewing.totalAmount)}</td>
+                  </tr>
                 </tfoot>
               </table>
-              {viewing.note && (
-                <p className="mt-4 text-[11px] text-slate-500 whitespace-pre-wrap border-t border-slate-100 pt-3">{viewing.note}</p>
-              )}
+              <section className="mt-4 border border-slate-300 text-[11px]">
+                <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">거래 조건 및 비고</h3>
+                <dl className="grid grid-cols-[70px_1fr] gap-x-2 gap-y-1 border-b border-slate-200 px-3 py-2 text-slate-700">
+                  <dt className="font-bold text-slate-400">납기</dt><dd>{viewing.deliveryTerms || '별도 협의'}</dd>
+                  <dt className="font-bold text-slate-400">결제조건</dt><dd>{viewing.paymentTerms || '별도 협의'}</dd>
+                  <dt className="font-bold text-slate-400">유효기간</dt><dd>{viewing.validUntil ?? '별도 협의'}</dd>
+                </dl>
+                {viewing.note && <p className="min-h-10 whitespace-pre-wrap px-3 py-2 leading-5 text-slate-600">{viewing.note}</p>}
+              </section>
               {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
               {quoteTotals(viewing.lines).cost > 0 && (
                 <p className="mt-3 text-[11px] font-bold text-slate-400 print:hidden">

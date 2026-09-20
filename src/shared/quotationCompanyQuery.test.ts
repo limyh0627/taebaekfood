@@ -29,4 +29,19 @@ describe('견적서 회사별 구독', () => {
     expect(source).toContain("document.body.classList.add('printing-quotation')");
     expect(css).toContain('body.printing-quotation #quotation-print-area');
   });
+
+  it('정식 견적서 인쇄 항목을 한 장에 배치한다', () => {
+    const source = readFileSync('components/QuotationManager.tsx', 'utf8');
+    for (const label of ['공급받는 자', '공급자', '등록번호', '견적금액', '공급가액', '거래 조건 및 비고']) {
+      expect(source).toContain(label);
+    }
+    expect(source).toContain('companyInfo?.bizNo');
+    expect(source).toContain('{viewing.partnerName} 귀하');
+    expect(source).toContain('아래와 같이 견적합니다.');
+    expect(source).toContain("viewing.recipientPhone || '—'");
+    expect(source).toContain("viewing.deliveryTerms || '별도 협의'");
+    expect(source).toContain("viewing.paymentTerms || '별도 협의'");
+    expect(source).toContain("{l.unit || '—'}");
+  });
+
 });

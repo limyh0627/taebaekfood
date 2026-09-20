@@ -3066,6 +3066,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 partners={companyPartners}
                 partnerItems={partnerItems}
                 companyId={companyId}
+                companyInfo={companyInfo}
                 currentUser={{ id: currentUser.id, name: currentUser.name }}
                 /* 원가는 재고평가와 같은 롤업을 쓴다 — 견적에서 본 마진과 실제 마진이 갈리면 안 된다 */
                 costOf={inventoryCostOf}
