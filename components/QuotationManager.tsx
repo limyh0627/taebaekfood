@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, X, Trash2, Search, Printer, FileText, Copy } from 'lucide-react';
+import { Plus, X, Trash2, Search, Printer, FileText, Copy, Pencil } from 'lucide-react';
 import { Item, Partner, PartnerItem, CompanyId, COMPANIES, companyOf } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
@@ -163,8 +163,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   };
   const costFor = (it: Item) => Math.round(costOf?.(it) ?? Number(it.cost ?? 0));
 
-  const resetForm = (base?: Quotation) => setForm({
-    date: today(), validUntil: plusDays(today(), 30),
+  const resetForm = (base?: Quotation, keepDates = false) => setForm({
+    date: keepDates && base ? base.date : today(),
+    validUntil: keepDates && base ? base.validUntil : plusDays(today(), 30),
     partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '',
     attention: base?.attention ?? currentUser?.name ?? '',
     lines: base ? base.lines.map(l => ({ ...l })) : [emptyLine()],
@@ -172,6 +173,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   });
   const openNew = () => { setEditingId(null); resetForm(); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
   const openCopy = (q: Quotation) => { setEditingId(null); resetForm(q); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
+  const openEdit = (q: Quotation) => { setEditingId(q.id); resetForm(q, true); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
 
   const setLine = (i: number, patch: Partial<QuotationLine>) =>
     setForm(f => ({ ...f, lines: f.lines.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
@@ -294,6 +296,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => setViewing(q)} title="보기 · 인쇄"
                           className="p-1.5 text-slate-300 hover:text-indigo-600"><Printer size={13} /></button>
+                        <button onClick={() => openEdit(q)} title="견적서 수정"
+                          className="p-1.5 text-slate-300 hover:text-indigo-600"><Pencil size={13} /></button>
                         <button onClick={() => openCopy(q)} title="이대로 새 견적"
                           className="p-1.5 text-slate-300 hover:text-emerald-600"><Copy size={13} /></button>
                         <button onClick={() => { if (window.confirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
@@ -315,7 +319,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-indigo-600" />
-                <h3 className="font-black text-slate-900">견적서 작성</h3>
+                <h3 className="font-black text-slate-900">{editingId ? '견적서 수정' : '견적서 작성'}</h3>
               </div>
               <button onClick={() => setOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
             </div>
@@ -501,7 +505,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button onClick={save} disabled={saving}
                 className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-60">
-                {saving ? '저장 중…' : '저장'}
+                {saving ? '저장 중…' : editingId ? '수정 저장' : '저장'}
               </button>
             </div>
           </div>
