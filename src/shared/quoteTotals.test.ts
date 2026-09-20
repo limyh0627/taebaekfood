@@ -30,6 +30,7 @@ describe('견적 합계', () => {
     expect(t.margin).toBe(4000);
     //  marginRate 는 **비율**이다(0.4 = 40%). 화면은 shared/margin.ratePct 로 % 를 붙인다.
     expect(t.marginRate).toBeCloseTo(0.4, 5);
+    expect(t.markupRate).toBeCloseTo(4 / 6, 5);
   });
 });
 

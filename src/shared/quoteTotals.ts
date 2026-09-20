@@ -35,6 +35,8 @@ export interface QuoteTotals {
   cost: number;
   margin: number;
   marginRate: number;
+  /** 원가 대비 붙인 이익률 — 마진율과 분모가 다르므로 화면에서 이름을 갈라 표시한다. */
+  markupRate: number;
   /** 과세·면세를 아직 안 고른 줄 수 — 0 이 아니면 저장을 막는다 */
   undecided: number;
 }
@@ -63,5 +65,8 @@ export function quoteTotals(lines: readonly QuoteLineLike[]): QuoteTotals {
   //  마진은 **공급가 기준**이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
   //  셈은 shared/margin 한 곳에 있다. 여기는 줄마다 세액을 따로 셌으니 공급가를 그대로 넘긴다.
   const m = marginFromSupply(supply, cost);
-  return { supply, tax, total: supply + tax, cost, margin: m.margin, marginRate: m.marginRate, undecided };
+  return {
+    supply, tax, total: supply + tax, cost,
+    margin: m.margin, marginRate: m.marginRate, markupRate: m.markupRate, undecided,
+  };
 }

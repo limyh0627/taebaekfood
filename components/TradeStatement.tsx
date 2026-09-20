@@ -8,6 +8,7 @@ import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../s
 import { today, dateOfLocal, weekMonday, weekSunday } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy } from '../src/shared/taxonomy';
+import { hasInboundInventoryLines, isInboundInventoryItem } from '../src/shared/inboundInventory';
 import {
   FileText, Printer, Search, CalendarDays,
   Package, ClipboardList, CheckCircle2, Edit2, Plus, X, ArrowLeft,
@@ -1391,7 +1392,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       ? lineItems
           .map(item => {
             const product = allItems.find(p => p.id === item.itemId);
-            return product ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, unit: product.unit || '개' } : null;
+            return product && isInboundInventoryItem(product)
+              ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, unit: product.unit || '개' }
+              : null;
           })
           .filter((it): it is NonNullable<typeof it> => it !== null)
       : [];
@@ -1462,8 +1465,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       );
       if (!ok) return;
     }
-    const registerInbound = stmtType !== '매입' || window.confirm(
-      '이 매입전표의 품목을 입고대기에 등록할까요?\n\n' +
+    // 매입전표라고 무조건 묻지 않는다. 현재는 품목 분류를 기준으로 실물 재고 줄이 있거나,
+    // 이미 발주카드에서 넘어온 전표일 때만 묻는다. 대상 선정 방식 자체는 추후 개선한다.
+    const 입고확인필요 = stmtType === '매입' && (
+      loadedPoIds.length > 0 || hasInboundInventoryLines(lineItems, allItems)
+    );
+    const registerInbound = !입고확인필요 || window.confirm(
+      '이 매입전표의 재고 품목을 입고대기에 등록할까요?\n\n' +
       '예: 입고대기에 등록\n아니오: 매입전표만 발행'
     );
     saveBusyRef.current = true;

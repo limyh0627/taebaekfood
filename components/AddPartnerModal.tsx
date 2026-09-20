@@ -22,6 +22,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
     mobile: '',
     type: '일반' as PartnerChannel,
     address: '',
+    addressDetail: '',
     note: '',
     partnerType: '매출처' as PartnerType
   });
@@ -49,6 +50,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
       mobile: formData.mobile,
       type: formData.type,
       address: formData.address,
+      addressDetail: formData.addressDetail,
       note: formData.note,
       partnerType: formData.partnerType
     };
@@ -125,6 +127,14 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
                 주소 검색
               </button>
             </div>
+            <input
+              type="text"
+              value={formData.addressDetail}
+              onChange={(e) => setFormData({ ...formData, addressDetail: e.target.value })}
+              placeholder="상세 주소 (동/호수 등)"
+              aria-label="상세주소"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
           </div>
 
           <div className="space-y-2">

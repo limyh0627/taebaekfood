@@ -156,7 +156,14 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const printQuotation = () => {
     // window.print()만 부르면 앱 전체 DOM이 인쇄돼 사이드바·목록까지 종이에 찍힌다.
     // 인쇄하는 동안에만 body에 표식을 붙여 아래 전용 CSS가 견적서 본문만 남기게 한다.
-    const cleanup = () => document.body.classList.remove('printing-quotation');
+    // 브라우저가 문서 제목을 종이 맨 위에 자동 인쇄해 `Flow-It`이 붙었다. 인쇄하는 동안만
+    // 제목을 비우고, 끝나면 앱 제목을 그대로 돌려놓는다.
+    const oldTitle = document.title;
+    const cleanup = () => {
+      document.body.classList.remove('printing-quotation');
+      document.title = oldTitle;
+    };
+    document.title = '';
     document.body.classList.add('printing-quotation');
     window.addEventListener('afterprint', cleanup, { once: true });
     window.print();
@@ -539,7 +546,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     <span className="text-[11px] font-bold text-slate-400">
                       마진{' '}
                       <b className={`tabular-nums ${totals.margin < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{fmt(totals.margin)}</b>
-                      <b className={`ml-2 ${totals.margin < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{(totals.marginRate * 100).toFixed(1)}%</b>
+                      <b className={`ml-2 ${totals.margin < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        마진율 {(totals.marginRate * 100).toFixed(1)}%
+                      </b>
+                      <b className={`ml-2 ${totals.margin < 0 ? 'text-rose-400' : 'text-sky-400'}`}>
+                        원가 대비 {(totals.markupRate * 100).toFixed(1)}%
+                      </b>
                     </span>
                   </div>
                 )}
@@ -761,6 +773,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 </dl>
                 {viewing.note && <p className="min-h-10 whitespace-pre-wrap px-3 py-2 leading-5 text-slate-600">{viewing.note}</p>}
               </section>
+              <p className="mt-6 text-right text-sm font-black tracking-wide text-slate-900">
+                {companyInfo?.name || companyName} 대표 {companyInfo?.ceoName || ''}
+              </p>
               {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
               {quoteTotals(viewing.lines).cost > 0 && (
                 <p className="mt-3 text-[11px] font-bold text-slate-400 print:hidden">

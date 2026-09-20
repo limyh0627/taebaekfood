@@ -32,6 +32,7 @@ describe('견적서 회사별 구독', () => {
 
   it('정식 견적서 인쇄 항목을 한 장에 배치한다', () => {
     const source = readFileSync('components/QuotationManager.tsx', 'utf8');
+    const css = readFileSync('src/index.css', 'utf8');
     for (const label of ['공급받는 자', '공급자', '등록번호', '견적금액', '공급가액', '거래 조건 및 비고']) {
       expect(source).toContain(label);
     }
@@ -42,6 +43,10 @@ describe('견적서 회사별 구독', () => {
     expect(source).toContain("viewing.deliveryTerms || '별도 협의'");
     expect(source).toContain("viewing.paymentTerms || '별도 협의'");
     expect(source).toContain("{l.unit || '—'}");
+    expect(source).toContain("document.title = ''");
+    expect(source).toContain("{companyInfo?.name || companyName} 대표 {companyInfo?.ceoName || ''}");
+    expect(css).toContain('margin: 0;');
+    expect(css).toContain('padding: 10mm');
   });
 
 });

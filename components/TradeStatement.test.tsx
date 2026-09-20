@@ -77,6 +77,17 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('입고대기에 등록할까요?'));
   });
 
+  it('비용성 매입만 있으면 입고대기를 묻지 않는다', async () => {
+    const 비용품목 = { ...item, type: 'service' } as Item;
+    const { onApplyStatement } = setup(undefined, undefined, { allItems: [비용품목] });
+
+    fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+
+    await waitFor(() => expect(onApplyStatement).toHaveBeenCalledTimes(1));
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(onApplyStatement).toHaveBeenCalledWith(expect.objectContaining({ poIds: [], newPoItems: [] }));
+  });
+
   it('기존 전표 수정도 ID와 과세 변경을 보존하고 단가 저장 완료까지 기다린다', async () => {
     const gate = deferred();
     const upsert = vi.fn((_p: PartnerItem) => gate.promise);
