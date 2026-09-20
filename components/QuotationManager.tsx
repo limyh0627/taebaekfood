@@ -185,6 +185,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     const cleanup = () => {
       frame.remove();
     };
+    frame.srcdoc = `<!doctype html><html><head><meta charset="UTF-8"><title></title>${styleTags}<style>${printCss}</style></head><body>${source.outerHTML}</body></html>`;
     frame.onload = () => {
       const printWindow = frame.contentWindow;
       if (!printWindow) { cleanup(); return; }
@@ -192,8 +193,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       printWindow.focus();
       printWindow.print();
     };
+    // srcdoc를 넣기 전에 DOM에 붙이면 iframe의 첫 about:blank 로드가 onload를 먼저 불러
+    // 빈 종이를 인쇄한다. 완성된 문서를 지정한 뒤 붙여야 견적서가 든 로드 한 번만 일어난다.
     document.body.appendChild(frame);
-    frame.srcdoc = `<!doctype html><html><head><meta charset="UTF-8"><title></title>${styleTags}<style>${printCss}</style></head><body>${source.outerHTML}</body></html>`;
   };
 
   /**

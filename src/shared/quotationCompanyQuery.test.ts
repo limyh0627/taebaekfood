@@ -29,6 +29,7 @@ describe('견적서 회사별 구독', () => {
     expect(source).toContain("frame.id = 'quotation-print-frame'");
     expect(source).toContain('frame.srcdoc = `<!doctype html>');
     expect(source).toContain('printWindow.print()');
+    expect(source.indexOf('frame.srcdoc = `<!doctype html>')).toBeLessThan(source.indexOf('document.body.appendChild(frame)'));
   });
 
   it('정식 견적서 인쇄 항목을 한 장에 배치한다', () => {
