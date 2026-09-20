@@ -12,6 +12,7 @@ import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
+import { quoteRecipient } from '../src/shared/quoteRecipient';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -47,6 +48,7 @@ export interface Quotation {
   date: string;                 // 'YYYY-MM-DD'
   /** 이 날까지 이 값이다 — 비우면 안 적는다 */
   validUntil?: string;
+  /** 등록 거래처면 ID, 미등록 문의처 견적이면 빈 문자열 */
   partnerId: string;
   partnerName: string;
   /**
@@ -99,7 +101,16 @@ const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 }
 
 export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, costOf }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
-  useEffect(() => subscribeToCollection<Quotation>('quotations', setQuotes), []);
+  const [quoteError, setQuoteError] = useState('');
+  useEffect(() => subscribeToCollection<Quotation>(
+    'quotations',
+    rows => { setQuotes(rows); setQuoteError(''); },
+    [],
+    error => {
+      console.error('[견적서 목록 불러오기 실패]', error);
+      setQuoteError(`견적서 목록을 불러오지 못했습니다. ${error.message}`);
+    },
+  ), []);
 
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<Quotation | null>(null);
@@ -163,7 +174,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     setForm(f => ({ ...f, lines: f.lines.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
 
   const save = async () => {
-    if (!form.partnerId) { alert('거래처를 고르세요.'); return; }
+    const recipient = quoteRecipient(form.partnerId, form.partnerName);
+    if (!recipient) { alert('견적 받을 업체명을 입력하세요.'); return; }
     const lines = form.lines.filter(l => l.name.trim() && Number(l.qty) > 0);
     if (!lines.length) { alert('품목을 한 줄 이상 넣으세요.'); return; }
     //  과세·면세를 안 고르면 세액이 정해지지 않는다 — 값이 틀린 견적서가 나가면 안 된다
@@ -175,19 +187,29 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     try {
       const t = quoteTotals(lines);
       const prev = editingId ? mine.find(q => q.id === editingId) : undefined;
-      await addItem('quotations', {
+      const saved: Quotation = {
         id: prev?.id ?? `quo-${Date.now()}`,
         companyId,
         quoteNo: prev?.quoteNo ?? nextQuoteNo(form.date, mine),
         date: form.date, validUntil: form.validUntil || undefined,
-        partnerId: form.partnerId, partnerName: form.partnerName,
+        partnerId: recipient.partnerId, partnerName: recipient.partnerName,
         attention: form.attention || undefined,
         lines, totalSupply: t.supply, totalTax: t.tax, totalAmount: t.total, totalCost: t.cost,
         note: form.note || undefined,
         createdAt: prev?.createdAt ?? new Date().toISOString(),
         createdBy: currentUser?.name,
-      } as never);
+      };
+      await addItem('quotations', saved as never);
+      // 저장은 끝났는데 구독 왕복이 늦으면 목록이 비어 보여 실패로 오해한다. 먼저 화면에
+      // 넣고, 뒤이어 오는 Firestore 스냅샷이 같은 ID의 확정값으로 맞춘다.
+      setQuotes(current => [saved, ...current.filter(quote => quote.id !== saved.id)]);
+      setQuoteError('');
       setOpen(false);
+    } catch (error) {
+      console.error('[견적서 저장 실패]', error);
+      const reason = error instanceof Error ? error.message : String(error);
+      setQuoteError(`견적서를 저장하지 못했습니다. ${reason}`);
+      alert(`견적서를 저장하지 못했습니다.\n${reason}`);
     } finally { setSaving(false); }
   };
 
@@ -220,6 +242,12 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           <Plus size={14} />견적서 작성
         </button>
       </div>
+
+      {quoteError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+          {quoteError}
+        </div>
+      )}
 
       {/* 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -308,24 +336,40 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 </label>
               </div>
 
-              {/* 거래처 */}
+              {/* 견적은 신규 문의처에도 먼저 낼 수 있다. 등록 거래처 선택과 업체명 직접 입력을
+                  함께 두되, 직접 입력한 곳은 partnerId 없이 저장해 원장과 섞지 않는다. */}
               <div className="space-y-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</span>
-                {form.partnerId ? (
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">견적 받을 곳</span>
+                {form.partnerName ? (
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-black">{form.partnerName}</span>
+                    {!form.partnerId && <span className="text-[10px] font-bold text-slate-400">미등록 업체</span>}
                     <button onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: '' }))}
                       className="text-[11px] font-black text-slate-400 hover:text-slate-600">바꾸기</button>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-slate-200 overflow-hidden">
-                    <input autoFocus value={partnerSearch} onChange={e => setPartnerSearch(e.target.value)} placeholder="거래처명 검색..."
+                    <input autoFocus value={partnerSearch} onChange={e => setPartnerSearch(e.target.value)} placeholder="등록 거래처 검색 또는 업체명 직접 입력"
+                      onKeyDown={e => {
+                        if (e.key !== 'Enter' || !partnerSearch.trim()) return;
+                        e.preventDefault();
+                        setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim() }));
+                      }}
                       className="w-full px-3 py-2 text-xs font-bold border-b border-slate-100 outline-none" />
+                    {partnerSearch.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, partnerId: '', partnerName: partnerSearch.trim() }))}
+                        className="w-full border-b border-slate-100 bg-slate-50 px-3 py-2 text-left text-[11px] font-black text-indigo-600 hover:bg-indigo-50"
+                      >
+                        ‘{partnerSearch.trim()}’ 미등록 업체명으로 사용
+                      </button>
+                    )}
                     {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다 */}
                     <div className="h-40 overflow-y-auto">
                       {partners.filter(p => !partnerSearch.trim() || matchesSearch(p.name, partnerSearch.trim()))
                         .slice(0, 200).map(p => (
-                        <button key={p.id} onClick={() => setForm(f => ({ ...f, partnerId: p.id, partnerName: p.name }))}
+                        <button key={p.id} onClick={() => { setForm(f => ({ ...f, partnerId: p.id, partnerName: p.name })); setPartnerSearch(''); }}
                           className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-indigo-50 truncate">{p.name}</button>
                       ))}
                     </div>
@@ -352,8 +396,11 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   <span />
                 </div>
                 {form.lines.map((l, i) => {
-                  const lineMargin = l.price - (l.cost ?? 0);
-                  const lineRate = l.price > 0 ? lineMargin / l.price : 0;
+                  // 품목 선택창·합계와 같은 셈이다. 판매가는 세금 포함이므로 과세 줄은
+                  // 공급가를 역산한 뒤 원가와 비교해야 마진율이 두 개로 갈리지 않는다.
+                  const lineMargin = l.price > 0 && (l.cost ?? 0) > 0 && l.isTaxExempt !== undefined
+                    ? marginOf(l.price, l.cost ?? 0, l.isTaxExempt)
+                    : null;
                   //  줄마다 세액·판매가를 낸다 — 셈은 shared/lineAmount 한 곳이다
                   const amt = lineAmount(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
                   return (
@@ -372,8 +419,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       </span>
                       <input value={String(l.price)} inputMode="numeric" onChange={e => setLine(i, { price: num(e.target.value) })}
                         className="mx-1 text-right bg-white border-2 border-indigo-100 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-indigo-300" />
-                      <span className={`px-2 text-right text-xs font-black tabular-nums ${!l.cost || !l.price ? 'text-slate-300' : lineMargin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
-                        {l.cost && l.price ? `${(lineRate * 100).toFixed(1)}%` : '—'}
+                      <span className={`px-2 text-right text-xs font-black tabular-nums ${!lineMargin ? 'text-slate-300' : lineMargin.margin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                        {lineMargin ? `${(lineMargin.marginRate * 100).toFixed(1)}%` : '—'}
                       </span>
                       <span className={`px-2 text-right text-xs font-bold tabular-nums ${amt.tax ? 'text-slate-500' : 'text-slate-300'}`}>
                         {amt.tax ? fmt(amt.tax) : '—'}

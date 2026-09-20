@@ -516,6 +516,23 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             <div className="space-y-5">
               {clientSectionHeading}
               {renderSelectedClient()}
+              {/* 품목별 잘린 문장만 보면 누락·오인식을 찾기 어렵다. 판독 전 원문 전체를
+                  결과 바로 위에 남겨 사용자가 원문과 매칭 결과를 직접 대조하게 한다. */}
+              <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-4" aria-labelledby="original-order-title">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h3 id="original-order-title" className="text-sm font-black text-slate-700">원본 주문</h3>
+                  <button
+                    type="button"
+                    onClick={() => setStep('paste')}
+                    className="shrink-0 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                  >
+                    원문 수정
+                  </button>
+                </div>
+                <p className="max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium leading-5 text-slate-700">
+                  {pasteText}
+                </p>
+              </section>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-slate-700">
                   <ShoppingBag size={16} />
@@ -544,21 +561,21 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
               </div>
               {aiNote && (
                 <p className={`rounded-lg px-3 py-2 text-[11px] font-bold leading-4 ${
-                  aiNote.tone === 'good' ? 'bg-emerald-50 text-emerald-700'
+                  aiNote.tone === 'good' ? 'border border-slate-200 bg-white text-slate-600'
                   : aiNote.tone === 'warn' ? 'bg-amber-50 text-amber-700'
                   : 'bg-rose-50 text-rose-700'}`}>
                   {aiNote.text}
                 </p>
               )}
-              <div className={`rounded-xl border px-3 py-3 ${unmatchedLineCount === 0 ? 'border-emerald-200 bg-emerald-50' : matchedLineCount === 0 ? 'border-rose-200 bg-rose-50' : 'border-amber-200 bg-amber-50'}`} role="status">
+              <div className={`rounded-xl border bg-white px-3 py-3 ${unmatchedLineCount === 0 ? 'border-slate-200' : matchedLineCount === 0 ? 'border-rose-200' : 'border-amber-200'}`} role="status">
                 <div className="flex items-start gap-2.5">
                   {unmatchedLineCount === 0 ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <AlertCircle size={18} className={`mt-0.5 shrink-0 ${matchedLineCount === 0 ? 'text-rose-600' : 'text-amber-600'}`} aria-hidden="true" />}
                   <div className="min-w-0">
-                    <p className={`text-xs font-black ${unmatchedLineCount === 0 ? 'text-emerald-800' : matchedLineCount === 0 ? 'text-rose-800' : 'text-amber-800'}`}>
+                    <p className="text-xs font-black text-slate-800">
                       {unmatchedLineCount === 0 ? '모든 주문 품목을 분석했습니다.' : matchedLineCount === 0 ? '자동으로 매칭된 품목이 없습니다.' : '일부 품목의 확인이 필요합니다.'}
                     </p>
-                    <p className={`mt-0.5 text-[11px] font-medium ${unmatchedLineCount === 0 ? 'text-emerald-700' : matchedLineCount === 0 ? 'text-rose-700' : 'text-amber-700'}`}>
-                      전체 {parsedLines.length}건 · 성공 {matchedLineCount}건 · 확인 필요 {unmatchedLineCount}건
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                      전체 <span className="font-black text-indigo-600">{parsedLines.length}건</span> · 성공 <span className="font-black text-emerald-600">{matchedLineCount}건</span> · 확인 필요 <span className={unmatchedLineCount > 0 ? 'font-black text-amber-600' : 'font-black text-slate-500'}>{unmatchedLineCount}건</span>
                       {unmatchedLineCount > 0 && ' — 확인이 필요한 행에서 품목을 직접 선택해주세요.'}
                     </p>
                   </div>
@@ -572,7 +589,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                     {/* 원문 + 상태 */}
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-xs font-medium text-slate-500">"{line.rawText}"</span>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-none ${line.selectedProductId ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      <span className={`shrink-0 px-1 py-1 text-[11px] font-bold leading-none ${line.selectedProductId ? 'text-emerald-700' : 'text-amber-700'}`}>
                         {line.selectedProductId ? '분석 성공' : '확인 필요'}
                       </span>
                     </div>
