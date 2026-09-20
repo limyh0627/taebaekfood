@@ -44,8 +44,10 @@ describe('견적서 회사별 구독', () => {
     expect(source).toContain("viewing.paymentTerms || '별도 협의'");
     expect(source).toContain("{l?.unit || ''}");
     expect(source).toContain('const printCompany = companyInfo ?? DEFAULT_COMPANY_INFO');
-    expect(source).toContain('태백식품');
+    expect(source).not.toContain('tracking-[0.32em]">견 적 서');
     expect(source).not.toContain('태백식품 대표 임기주');
+    expect(source).toContain("printCompany.fax && <><br />FAX {printCompany.fax}</>");
+    expect(source).toContain('className="h-9"');
     expect(source).not.toContain('>등록번호<');
     for (const label of ['참조', '업태·종목', '입금계좌', '비고', 'No']) {
       expect(source).toContain(label);

@@ -722,8 +722,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             <div id="quotation-print-document" className="flex-1 overflow-y-auto px-7 py-6 text-slate-900 print:overflow-visible print:px-0 print:py-0">
               {/* 현장에서 익숙한 표준 견적서 구조를 그대로 따른다. 카드형 배치는 인쇄 때 빈 공간이 커지고
                   항목 위치를 한눈에 대조하기 어려웠다. */}
-              <h2 className="mb-3 text-center text-3xl font-black tracking-[0.32em]">견 적 서</h2>
-              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-1.5">
+              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-2">
                 <tbody>
                   <tr><td colSpan={4} className="text-center text-lg font-black tracking-[0.3em]">견 적 서</td></tr>
                   <tr>
@@ -744,7 +743,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   </tr>
                   <tr>
                     <td className="bg-slate-100 text-center font-black">결제 조건</td><td>{viewing.paymentTerms || '별도 협의'}</td>
-                    <td className="bg-slate-100 text-center font-black">연락처</td><td>{printCompany.phone || '—'}{printCompany.fax ? ` · FAX ${printCompany.fax}` : ''}</td>
+                    <td className="bg-slate-100 text-center font-black">연락처</td><td>{printCompany.phone || '—'}{printCompany.fax && <><br />FAX {printCompany.fax}</>}</td>
                   </tr>
                   <tr>
                     <td colSpan={2} className="font-bold">아래와 같이 견적합니다.</td>
@@ -771,7 +770,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   {Array.from({ length: Math.max(12, viewing.lines.length) }, (_, i) => {
                     const l = viewing.lines[i];
                     const amount = l ? lineAmount(l.qty, l.price, l.isTaxExempt) : null;
-                    return <tr key={i} className="h-7">
+                    return <tr key={i} className="h-9">
                       <td className="text-center">{i + 1}</td><td className="font-bold">{l?.name || ''}</td><td>{l?.spec || ''}</td>
                       <td className="text-right tabular-nums">{l ? fmt(l.qty) : ''}</td><td className="text-center">{l?.unit || ''}</td>
                       <td className="text-right tabular-nums">{l ? fmt(l.price) : ''}</td>
@@ -789,12 +788,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 <tbody>
                   <tr><td className="w-[22%] bg-slate-100 text-center font-black">납기</td><td>{viewing.deliveryTerms || '별도 협의'}</td></tr>
                   <tr><td className="bg-slate-100 text-center font-black">입금계좌</td><td>{printCompany.bankAccount || '별도 안내'}</td></tr>
-                  <tr><td className="bg-slate-100 text-center font-black">비고</td><td className="h-16 whitespace-pre-wrap align-top">{viewing.note || ''}</td></tr>
+                  <tr><td className="bg-slate-100 text-center font-black">비고</td><td className="h-24 whitespace-pre-wrap align-top">{viewing.note || ''}</td></tr>
                 </tbody>
               </table>
-              <p className="mt-4 text-right text-sm font-black tracking-wide">
-                태백식품
-              </p>
               {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
               {quoteTotals(viewing.lines).cost > 0 && (
                 <p className="mt-3 text-[11px] font-bold text-slate-400 print:hidden">
