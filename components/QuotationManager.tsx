@@ -14,6 +14,7 @@ import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
 import { quoteRecipient } from '../src/shared/quoteRecipient';
 import { where } from 'firebase/firestore';
+import { DEFAULT_COMPANY_INFO } from '../src/config';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -153,20 +154,46 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   );
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
+  // 인쇄본의 공급자 정보는 사용자가 견적마다 다시 치는 값이 아니다. 회사 설정을 쓰고,
+  // 설정 구독 전에도 빈칸이 생기지 않도록 태백식품 기본정보를 받친다.
+  const printCompany = companyInfo ?? DEFAULT_COMPANY_INFO;
   const printQuotation = () => {
-    // window.print()만 부르면 앱 전체 DOM이 인쇄돼 사이드바·목록까지 종이에 찍힌다.
-    // 인쇄하는 동안에만 body에 표식을 붙여 아래 전용 CSS가 견적서 본문만 남기게 한다.
-    // 브라우저가 문서 제목을 종이 맨 위에 자동 인쇄해 `Flow-It`이 붙었다. 인쇄하는 동안만
-    // 제목을 비우고, 끝나면 앱 제목을 그대로 돌려놓는다.
-    const oldTitle = document.title;
+    // 앱 화면을 인쇄하지 않는다. 견적서 본문과 스타일만 담은 독립 문서를 iframe에 만든 뒤
+    // 그 문서를 인쇄한다. 그래야 모달의 가운데 정렬·크기·스크롤이 A4에 섞이지 않는다.
+    const source = document.getElementById('quotation-print-document');
+    if (!source) return;
+    document.getElementById('quotation-print-frame')?.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'quotation-print-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    Object.assign(frame.style, {
+      position: 'fixed', width: '1px', height: '1px', right: '0', bottom: '0',
+      border: '0', opacity: '0', pointerEvents: 'none',
+    });
+    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(node => node.outerHTML).join('\n');
+    const printCss = `
+      @page { size: A4 portrait; margin: 0; }
+      html, body { width: 210mm; margin: 0; padding: 0; background: white; }
+      #quotation-print-document {
+        display: block !important; width: 210mm !important; min-height: 0 !important;
+        margin: 0 !important; padding: 10mm !important; box-sizing: border-box !important;
+        overflow: visible !important; font-family: Arial, "Noto Sans KR", sans-serif;
+      }
+      .print\\:hidden { display: none !important; }
+    `;
     const cleanup = () => {
-      document.body.classList.remove('printing-quotation');
-      document.title = oldTitle;
+      frame.remove();
     };
-    document.title = '';
-    document.body.classList.add('printing-quotation');
-    window.addEventListener('afterprint', cleanup, { once: true });
-    window.print();
+    frame.onload = () => {
+      const printWindow = frame.contentWindow;
+      if (!printWindow) { cleanup(); return; }
+      printWindow.addEventListener('afterprint', cleanup, { once: true });
+      printWindow.focus();
+      printWindow.print();
+    };
+    document.body.appendChild(frame);
+    frame.srcdoc = `<!doctype html><html><head><meta charset="UTF-8"><title></title>${styleTags}<style>${printCss}</style></head><body>${source.outerHTML}</body></html>`;
   };
 
   /**
@@ -690,91 +717,81 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 <button onClick={() => setViewing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-7 py-6 print:overflow-visible print:px-0 print:py-0">
-              <div className="mb-4 flex items-end justify-between border-b-2 border-slate-900 pb-3">
-                <h2 className="text-3xl font-black tracking-[0.32em] text-slate-950">견 적 서</h2>
-                <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
-                  <span className="font-bold text-slate-400">견적번호</span><b className="font-mono text-slate-800">{viewing.quoteNo}</b>
-                  <span className="font-bold text-slate-400">견적일자</span><b className="font-mono text-slate-800">{viewing.date}</b>
-                  <span className="font-bold text-slate-400">유효기간</span><b className="font-mono text-slate-800">{viewing.validUntil ?? '별도 협의'}</b>
-                </div>
-              </div>
-
-              <div className="mb-4 grid grid-cols-2 gap-3 text-[11px]">
-                <section className="border border-slate-300">
-                  <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">공급받는 자</h3>
-                  <div className="space-y-2 px-3 py-3">
-                    <p><span className="mr-3 font-bold text-slate-400">수신</span><b className="text-base text-slate-900">{viewing.partnerName} 귀하</b></p>
-                    <p><span className="mr-3 font-bold text-slate-400">연락처</span><span className="text-slate-700">{viewing.recipientPhone || '—'}</span></p>
-                    <p className="text-slate-600">아래와 같이 견적합니다.</p>
-                  </div>
-                </section>
-                <section className="border border-slate-300">
-                  <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">공급자</h3>
-                  <dl className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-1 px-3 py-2 text-slate-700">
-                    <dt className="font-bold text-slate-400">등록번호</dt><dd>{companyInfo?.bizNo || '—'}</dd>
-                    <dt className="font-bold text-slate-400">상호</dt><dd className="font-black">{companyInfo?.name || companyName}</dd>
-                    <dt className="font-bold text-slate-400">대표자</dt><dd>{companyInfo?.ceoName || '—'}</dd>
-                    <dt className="font-bold text-slate-400">주소</dt><dd>{companyInfo?.address || '—'}</dd>
-                    <dt className="font-bold text-slate-400">연락처</dt><dd>{companyInfo?.phone || '—'}{companyInfo?.fax ? ` · FAX ${companyInfo.fax}` : ''}</dd>
-                    {viewing.attention && <><dt className="font-bold text-slate-400">담당자</dt><dd>{viewing.attention}</dd></>}
-                  </dl>
-                </section>
-              </div>
-
-              <div className="mb-4 flex items-center justify-between border-y-2 border-slate-900 px-3 py-3">
-                <span className="text-sm font-black text-slate-700">견적금액 <span className="ml-1 text-[11px] font-bold text-slate-400">(부가세 포함)</span></span>
-                <strong className="text-2xl font-black tabular-nums text-slate-950">₩ {fmt(viewing.totalAmount)}</strong>
-              </div>
-
-              <table className="w-full table-fixed text-[11px] border-t-2 border-slate-800">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-600">
-                    <th className="w-[22%] border-b border-slate-300 px-2 py-2 text-left font-black">품명</th>
-                    <th className="w-[13%] border-b border-slate-300 px-2 py-2 text-left font-black">규격</th>
-                    <th className="w-[8%] border-b border-slate-300 px-2 py-2 text-center font-black">단위</th>
-                    <th className="w-[8%] border-b border-slate-300 px-2 py-2 text-right font-black">수량</th>
-                    <th className="w-[13%] border-b border-slate-300 px-2 py-2 text-right font-black">단가</th>
-                    <th className="w-[14%] border-b border-slate-300 px-2 py-2 text-right font-black">공급가액</th>
-                    <th className="w-[10%] border-b border-slate-300 px-2 py-2 text-right font-black">세액</th>
-                    <th className="w-[12%] border-b border-slate-300 px-2 py-2 text-right font-black">합계</th>
-                  </tr>
-                </thead>
+            <div id="quotation-print-document" className="flex-1 overflow-y-auto px-7 py-6 text-slate-900 print:overflow-visible print:px-0 print:py-0">
+              {/* 현장에서 익숙한 표준 견적서 구조를 그대로 따른다. 카드형 배치는 인쇄 때 빈 공간이 커지고
+                  항목 위치를 한눈에 대조하기 어려웠다. */}
+              <h2 className="mb-3 text-center text-3xl font-black tracking-[0.32em]">견 적 서</h2>
+              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-1.5">
                 <tbody>
-                  {viewing.lines.map((l, i) => {
-                    const amount = lineAmount(l.qty, l.price, l.isTaxExempt);
-                    return <tr key={i} className="border-b border-slate-200">
-                      <td className="break-words px-2 py-2.5 font-bold text-slate-800">{l.name}{l.isTaxExempt && <span className="ml-1 text-[9px] font-black text-indigo-500">면세</span>}</td>
-                      <td className="break-words px-2 py-2.5 text-slate-500">{l.spec || '—'}</td>
-                      <td className="px-2 py-2.5 text-center text-slate-600">{l.unit || '—'}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(l.qty)}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(l.price)}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(amount.supply)}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums text-slate-700">{fmt(amount.tax)}</td>
-                      <td className="px-2 py-2.5 text-right tabular-nums font-black text-slate-900">{fmt(amount.gross)}</td>
+                  <tr><td colSpan={4} className="text-center text-lg font-black tracking-[0.3em]">견 적 서</td></tr>
+                  <tr>
+                    <td className="w-[16%] bg-slate-100 text-center font-black">수신</td><td className="w-[34%] font-bold">{viewing.partnerName} 귀하</td>
+                    <td className="w-[16%] bg-slate-100 text-center font-black">상호</td><td className="w-[34%] font-black">{printCompany.name || companyName}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">참조</td><td>{viewing.recipientPhone || '—'}</td>
+                    <td className="bg-slate-100 text-center font-black">대표자</td><td>{printCompany.ceoName}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">견적일</td><td>{viewing.date}</td>
+                    <td className="bg-slate-100 text-center font-black">주소</td><td>{printCompany.address}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">유효기간</td><td>{viewing.validUntil ?? '별도 협의'}</td>
+                    <td className="bg-slate-100 text-center font-black">업태·종목</td><td>{printCompany.bizType} · {printCompany.bizItem}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">결제 조건</td><td>{viewing.paymentTerms || '별도 협의'}</td>
+                    <td className="bg-slate-100 text-center font-black">연락처</td><td>{printCompany.phone || '—'}{printCompany.fax ? ` · FAX ${printCompany.fax}` : ''}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan={2} className="font-bold">아래와 같이 견적합니다.</td>
+                    <td className="bg-slate-100 text-center font-black">담당자</td><td>{viewing.attention || '—'}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">견적번호</td><td>{viewing.quoteNo}</td>
+                    <td className="bg-slate-100 text-center font-black">납기</td><td>{viewing.deliveryTerms || '별도 협의'}</td>
+                  </tr>
+                  <tr>
+                    <td className="bg-slate-100 text-center font-black">합계금액</td>
+                    <td colSpan={3} className="text-center text-base font-black">일금 ₩ {fmt(viewing.totalAmount)}정</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <table className="w-full table-fixed border-collapse text-[10px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-1.5 [&_td]:py-1.5 [&_th]:border [&_th]:border-slate-400 [&_th]:bg-slate-100 [&_th]:px-1 [&_th]:py-1.5">
+                <thead><tr>
+                  <th className="w-[5%]">No</th><th className="w-[22%]">품명</th><th className="w-[12%]">규격</th>
+                  <th className="w-[8%]">수량</th><th className="w-[7%]">단위</th><th className="w-[13%]">단가</th>
+                  <th className="w-[14%]">공급가액</th><th className="w-[10%]">세액</th><th className="w-[9%]">비고</th>
+                </tr></thead>
+                <tbody>
+                  {Array.from({ length: Math.max(12, viewing.lines.length) }, (_, i) => {
+                    const l = viewing.lines[i];
+                    const amount = l ? lineAmount(l.qty, l.price, l.isTaxExempt) : null;
+                    return <tr key={i} className="h-7">
+                      <td className="text-center">{i + 1}</td><td className="font-bold">{l?.name || ''}</td><td>{l?.spec || ''}</td>
+                      <td className="text-right tabular-nums">{l ? fmt(l.qty) : ''}</td><td className="text-center">{l?.unit || ''}</td>
+                      <td className="text-right tabular-nums">{l ? fmt(l.price) : ''}</td>
+                      <td className="text-right tabular-nums">{amount ? fmt(amount.supply) : ''}</td>
+                      <td className="text-right tabular-nums">{amount ? fmt(amount.tax) : ''}</td>
+                      <td className="text-center">{l?.isTaxExempt ? '면세' : l?.note || ''}</td>
                     </tr>;
                   })}
+                  <tr className="font-black"><td colSpan={6} className="bg-slate-100 text-center">합계</td>
+                    <td className="text-right">{fmt(viewing.totalSupply)}</td><td className="text-right">{fmt(viewing.totalTax)}</td><td /></tr>
                 </tbody>
-                <tfoot className="border-y-2 border-slate-800">
-                  <tr className="bg-slate-50">
-                    <td colSpan={5} className="px-2 py-2 text-right font-black text-slate-600">합계</td>
-                    <td className="px-2 py-2 text-right tabular-nums font-black">{fmt(viewing.totalSupply)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums font-black">{fmt(viewing.totalTax)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-sm font-black">{fmt(viewing.totalAmount)}</td>
-                  </tr>
-                </tfoot>
               </table>
-              <section className="mt-4 border border-slate-300 text-[11px]">
-                <h3 className="border-b border-slate-300 bg-slate-100 px-3 py-1.5 font-black text-slate-700">거래 조건 및 비고</h3>
-                <dl className="grid grid-cols-[70px_1fr] gap-x-2 gap-y-1 border-b border-slate-200 px-3 py-2 text-slate-700">
-                  <dt className="font-bold text-slate-400">납기</dt><dd>{viewing.deliveryTerms || '별도 협의'}</dd>
-                  <dt className="font-bold text-slate-400">결제조건</dt><dd>{viewing.paymentTerms || '별도 협의'}</dd>
-                  <dt className="font-bold text-slate-400">유효기간</dt><dd>{viewing.validUntil ?? '별도 협의'}</dd>
-                </dl>
-                {viewing.note && <p className="min-h-10 whitespace-pre-wrap px-3 py-2 leading-5 text-slate-600">{viewing.note}</p>}
-              </section>
-              <p className="mt-6 text-right text-sm font-black tracking-wide text-slate-900">
-                {companyInfo?.name || companyName} 대표 {companyInfo?.ceoName || ''}
+
+              <table className="w-full table-fixed border-collapse text-[11px] [&_td]:border [&_td]:border-slate-400 [&_td]:px-2 [&_td]:py-2">
+                <tbody>
+                  <tr><td className="w-[22%] bg-slate-100 text-center font-black">납기</td><td>{viewing.deliveryTerms || '별도 협의'}</td></tr>
+                  <tr><td className="bg-slate-100 text-center font-black">입금계좌</td><td>{printCompany.bankAccount || '별도 안내'}</td></tr>
+                  <tr><td className="bg-slate-100 text-center font-black">비고</td><td className="h-16 whitespace-pre-wrap align-top">{viewing.note || ''}</td></tr>
+                </tbody>
+              </table>
+              <p className="mt-4 text-right text-sm font-black tracking-wide">
+                태백식품
               </p>
               {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
               {quoteTotals(viewing.lines).cost > 0 && (
