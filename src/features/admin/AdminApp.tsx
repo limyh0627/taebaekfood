@@ -2311,6 +2311,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   </NavGroup>
                   <NavGroup title="업무 관리" storageKey="work" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
+                      <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
                       <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
@@ -2319,6 +2320,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   </NavGroup>
                   <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
+                      <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />

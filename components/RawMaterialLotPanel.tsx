@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
+import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History, GitMerge } from 'lucide-react';
 import { Item, Order, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
 import { updateItem } from '../src/shared/services/firebaseService';
 import { updateRawInventoryLotMetadata } from '../src/shared/services/rawInventoryService';
@@ -38,10 +38,11 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   const allLots: RawMaterialLot[] = product.lots ?? [];
   const active = allLots.filter(l => l.status === 'active');
   const depleted = allLots.filter(l => l.status !== 'active');
-  const [showDepleted, setShowDepleted] = useState(false);
+  const [showDepleted, setShowDepleted] = useState(() => !!focusLotId && depleted.some(lot => lot.id === focusLotId));
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [mergeSourceId, setMergeSourceId] = useState<string | null>(null);
 
   // 기름 혼합 사용 설정 (상위 2개 로트 비율 배분)
   const mixEnabled = !!product.mixEnabled;
@@ -161,6 +162,55 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
     }
   };
 
+  /**
+   * 사람이 고른 두 로트를 하나로 모은다. 자동 상계는 하지 않는다 — 음수 로트가 무엇을
+   * 뜻하는지 현장 판단 없이 코드가 정하면 다른 입고 이력까지 섞일 수 있기 때문이다.
+   * 먼저 누른 로트의 잔량을 두 번째로 누른 로트에 합치며, 첫 로트는 0·소진으로 이력에 남긴다.
+   */
+  const mergeInto = async (target: RawMaterialLot) => {
+    if (busy) return;
+    if (!mergeSourceId) { setMergeSourceId(target.id); return; }
+    if (mergeSourceId === target.id) { setMergeSourceId(null); return; }
+    const source = active.find(lot => lot.id === mergeSourceId);
+    if (!source) { setMergeSourceId(null); return; }
+    const sourceUnit = isOil ? kgToUnit(source.kgRemaining, material) : source.kgRemaining;
+    const targetUnit = isOil ? kgToUnit(target.kgRemaining, material) : target.kgRemaining;
+    const mergedUnit = sourceUnit + targetUnit;
+    if (!confirm(
+      `[${source.supplierName}${source.lotNo ? ` · ${source.lotNo}` : ''}] 로트를\n`
+      + `[${target.supplierName}${target.lotNo ? ` · ${target.lotNo}` : ''}] 로트에 합칠까요?\n\n`
+      + `${fmt(sourceUnit)} + ${fmt(targetUnit)} = ${fmt(mergedUnit)}${unitLabel}\n`
+      + '첫 로트는 0·소진으로 남고, 두 번째 로트의 정보가 유지됩니다.',
+    )) return;
+    setBusy(true);
+    try {
+      const r = await executeRawInventoryCommand({
+        operationId: `merge-lots:${product.id}:${source.id}:${target.id}:${Date.now()}`,
+        ...rawLedgerKeys(product),
+        materialSnapshot: material,
+        effectiveAt: new Date().toISOString(),
+        ...(currentUserName ? { actorName: currentUserName } : {}),
+        source: { type: 'adjustment', id: `${source.id}->${target.id}` },
+        kind: 'merge-lots', sourceLotId: source.id, targetLotId: target.id,
+      }, {
+        legacy: {
+          note: `로트 합침: ${source.lotNo ?? source.supplierName} → ${target.lotNo ?? target.supplierName}`,
+          type: 'correction',
+          ...(currentUserName ? { addedBy: currentUserName } : {}),
+        },
+      });
+      if (r.status === 'rejected') { alert(`로트 합치기 거절 — ${r.code}: ${r.message}`); return; }
+      if (r.status === 'conflict') { alert('같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
+      setMergeSourceId(null);
+      onLotChanged?.();
+    } catch (err) {
+      console.error('[로트 합치기 실패]', err);
+      alert(`로트를 합치지 못했습니다 — ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // 로트번호 저장 — 캔/포대 라벨의 제조사 로트번호를 직접 입력 (빈 값이면 키 제거)
   const saveLotNo = async (lot: RawMaterialLot) => {
     const v = editVal.trim();
@@ -189,7 +239,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       ? `${lot.packageKg}kg × ${lot.qtyIn}${lot.packageType ?? '개'}`
       : null;
     return (
-      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-slate-100' : ''} ${focusLotId === lot.id ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-200' : ''}`}>
+      <div key={lot.id} className={`flex items-center gap-2 px-3 py-2.5 ${dim ? 'opacity-50' : ''} ${idx > 0 ? 'border-t border-slate-100' : ''} ${focusLotId === lot.id ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-200' : ''} ${mergeSourceId === lot.id ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : ''}`}>
         {!dim && <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-black text-white">{idx + 1}</span>}
         <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
           {lot.supplierName === '이월'
@@ -266,6 +316,14 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
             {isAdmin && (
               <button
                 disabled={busy}
+                onClick={(e) => { e.stopPropagation(); mergeInto(lot); }}
+                className={`p-1.5 rounded-md border disabled:opacity-30 transition-colors ${mergeSourceId === lot.id ? 'border-blue-500 bg-blue-600 text-white' : mergeSourceId ? 'border-blue-200 bg-white text-blue-600 hover:bg-blue-50' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                title={mergeSourceId === lot.id ? '합치기 취소' : mergeSourceId ? '이 로트에 합치기' : '이 로트를 다른 로트에 합치기'}
+              ><GitMerge size={12} /></button>
+            )}
+            {isAdmin && (
+              <button
+                disabled={busy}
                 onClick={(e) => { e.stopPropagation(); remove(lot); }}
                 className="p-1.5 rounded-md bg-white border border-rose-200 text-rose-400 disabled:opacity-30 hover:bg-rose-50 hover:text-rose-500 transition-colors"
                 title="로트 삭제"
@@ -335,7 +393,9 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         </div>
       ) : (
         <>
-          <p className="text-[10px] font-bold text-slate-400">↑ 위 로트부터 사용됩니다 · ▲▼로 순서 변경</p>
+          <p className="text-[10px] font-bold text-slate-400">
+            {mergeSourceId ? '합쳐 넣을 대상 로트의 합치기 단추를 누르세요 · 선택한 로트를 다시 누르면 취소' : '↑ 위 로트부터 사용됩니다 · ▲▼로 순서 변경 · 합치기는 원본을 먼저 선택'}
+          </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             {active.map((lot, i) => lotRow(lot, i, active.length, false))}
           </div>

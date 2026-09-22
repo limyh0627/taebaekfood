@@ -97,7 +97,7 @@ export interface LotChange {
 
 export type RawMovementKind =
   | 'receive' | 'consume' | 'ledger-consume'
-  | 'stocktake' | 'deplete-lot' | 'reverse' | 'opening';
+  | 'stocktake' | 'deplete-lot' | 'merge-lots' | 'reverse' | 'opening';
 
 /**
  * **변경 이력이자 중복 방지 표다.** `rawMaterialLedger/{operationDocId}`.
@@ -224,6 +224,7 @@ export type RawInventoryCommand = CommandBase & (
   | { kind: 'ledger-consume'; kg: number }
   | { kind: 'stocktake'; targetKg: number }
   | { kind: 'deplete-lot'; lotId: string }
+  | { kind: 'merge-lots'; sourceLotId: string; targetLotId: string }
   | { kind: 'reverse'; originalOperationId: string }
   | { kind: 'opening'; kg: number; supplierName?: string }
 );
@@ -324,6 +325,8 @@ function hashPayload(c: RawInventoryCommand): Record<string, unknown> {
       return { ...base, targetKg: r3(c.targetKg) };
     case 'deplete-lot':
       return { ...base, lotId: c.lotId };
+    case 'merge-lots':
+      return { ...base, sourceLotId: c.sourceLotId, targetLotId: c.targetLotId };
     case 'reverse':
       return { ...base, originalOperationId: c.originalOperationId };
   }
@@ -622,6 +625,27 @@ export function applyRawCommand(input: {
         receivedDate: gone.receivedDate, deltaKg: r3(-removed),
         beforeKg: removed, afterKg: 0, lotSnapshot: { ...gone },
       }], -removed);
+    }
+
+    case 'merge-lots': {
+      if (c.sourceLotId === c.targetLotId) {
+        return { status: 'rejected', code: 'TARGET_MISMATCH', message: '같은 로트끼리는 합칠 수 없다' };
+      }
+      const sourceIdx = working.findIndex(l => l.id === c.sourceLotId);
+      const targetIdx = working.findIndex(l => l.id === c.targetLotId);
+      if (sourceIdx < 0 || targetIdx < 0) {
+        return { status: 'rejected', code: 'LOT_NOT_FOUND', message: '합칠 활성 로트를 찾을 수 없다' };
+      }
+      const source = working[sourceIdx];
+      const target = working[targetIdx];
+      const mergedKg = r3(Number(source.kgRemaining ?? 0) + Number(target.kgRemaining ?? 0));
+      const after = working.map((lot, idx) => {
+        if (idx === sourceIdx) return { ...lot, kgRemaining: 0, status: 'depleted' as const };
+        if (idx !== targetIdx) return lot;
+        return { ...lot, kgRemaining: mergedKg, status: mergedKg === 0 ? 'depleted' as const : 'active' as const };
+      });
+      // 합치기는 총재고를 바꾸지 않는다. 어느 로트로 모았는지는 두 로트의 변화 이력으로 남긴다.
+      return commit('merge-lots', after, changesBetween(working, after), 0);
     }
 
     case 'reverse': {

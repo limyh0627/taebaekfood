@@ -225,7 +225,7 @@ const CLIENT_BADGE_COLORS = [
   'bg-orange-50 text-orange-500',
   'bg-indigo-50 text-indigo-500',
 ];
-type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots';
+type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots' | 'lot-history';
 
 /**
  * 필터 드롭다운 하나 — 라벨 + 고른 값 요약 + 펼치면 선택지.
@@ -611,6 +611,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [selectedLot, setSelectedLot] = useState<{ itemId: string; lotId: string } | null>(null);
   const [lotKind, setLotKind] = useState<'all' | 'raw' | 'packed'>('all');
   const [lotView, setLotView] = useState<'list' | 'board'>('list');
+  const [lotPage, setLotPage] = useState(1);
+  const LOT_PAGE_SIZE = 20;
 
   /** 로트의 소유자는 물질명이 아니라 품목 ID다. 같은 깨라도 벌크·낱개·박스를 합치면 실제 재고처럼 오해한다. */
   const lotItems = useMemo(() => items
@@ -625,12 +627,33 @@ const ItemList: React.FC<ItemListProps> = ({
   }), [lotItems, lotKind, lotSearch]);
   /** 화면의 한 줄은 품목이 아니라 로트 한 건이다. 같은 품목의 입고를 합치면 추적 단위가 사라진다. */
   const visibleLotRows = useMemo(() => visibleLotItems.flatMap(item => {
-    return (item.lots ?? []).map(lot => ({ item, lot }));
-  }), [visibleLotItems]);
+    const raw = isRawHolder(item);
+    return (item.lots ?? []).filter(lot => {
+      const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
+      // 음수 로트는 아직 정리해야 할 활성 빚이다. 0 또는 명시적 소진만 이력으로 보낸다.
+      const complete = lot.status === 'depleted' || Math.abs(remaining) <= 0.0001;
+      return activeTab === 'lot-history' ? complete : !complete;
+    }).map(lot => ({ item, lot }));
+  }).sort((a, b) => {
+    // 목록은 조회 화면이므로 최근 입고부터 찾는다. 실제 차감 순서는 item.lots 배열 그대로이며,
+    // 이 정렬이 FIFO·혼합 순서를 바꾸거나 DB에 저장되지는 않는다.
+    const byDate = String(b.lot.receivedDate ?? '').localeCompare(String(a.lot.receivedDate ?? ''));
+    if (byDate !== 0) return byDate;
+    const byLotNo = String(b.lot.lotNo ?? '').localeCompare(String(a.lot.lotNo ?? ''), 'ko', { numeric: true });
+    if (byLotNo !== 0) return byLotNo;
+    return String(a.item.name ?? '').localeCompare(String(b.item.name ?? ''), 'ko');
+  }), [visibleLotItems, activeTab]);
+  const lotPageCount = Math.max(1, Math.ceil(visibleLotRows.length / LOT_PAGE_SIZE));
+  const pagedLotRows = useMemo(
+    () => visibleLotRows.slice((lotPage - 1) * LOT_PAGE_SIZE, lotPage * LOT_PAGE_SIZE),
+    [visibleLotRows, lotPage],
+  );
+  useEffect(() => { setLotPage(1); }, [lotSearch, lotKind, activeTab]);
+  useEffect(() => { if (lotPage > lotPageCount) setLotPage(lotPageCount); }, [lotPage, lotPageCount]);
   const lotStateOf = (item: Item, lot: NonNullable<Item['lots']>[number]) => {
     const raw = isRawHolder(item);
     const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
-    if (lot.status === 'depleted' || remaining <= 0.0001) return '완료' as const;
+    if (lot.status === 'depleted' || Math.abs(remaining) <= 0.0001) return '완료' as const;
     const activeLots = (item.lots ?? []).filter(candidate => {
       const candidateRemaining = Number(raw ? candidate.kgRemaining ?? 0 : candidate.qtyRemaining ?? 0);
       return candidate.status === 'active' && candidateRemaining > 0.0001;
@@ -659,6 +682,14 @@ const ItemList: React.FC<ItemListProps> = ({
     const raw = isRawHolder(item);
     return (item.lots ?? []).filter(l => l.status === 'active'
       && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0));
+  };
+  const displayedLotsOf = (item: Item) => {
+    const raw = isRawHolder(item);
+    return (item.lots ?? []).filter(lot => {
+      const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
+      const complete = lot.status === 'depleted' || Math.abs(remaining) <= 0.0001;
+      return activeTab === 'lot-history' ? complete : !complete;
+    });
   };
   /** 로트id → 나간 곳. 주문의 출고 스냅샷을 거꾸로 읽는다 — 회수할 때 실제로 보는 값. */
   const shipmentsByLot = useMemo(() => {
@@ -1133,6 +1164,12 @@ const ItemList: React.FC<ItemListProps> = ({
             >
               <Layers size={13} /><span>로트</span>
             </button>
+            <button
+              onClick={() => setActiveTab('lot-history')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'lot-history' ? 'bg-white text-slate-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <History size={13} /><span>로트 이력</span>
+            </button>
           </div>
         }
       />
@@ -1153,7 +1190,7 @@ const ItemList: React.FC<ItemListProps> = ({
       <div className="flex flex-col space-y-4">
 
         {/* 카테고리 토글 + 검색 행 (입고/반품·로트 탭에서는 숨김) */}
-        {!zeroStockOnly && activeTab !== 'inbound' && activeTab !== 'lots' && (
+        {!zeroStockOnly && activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {/* 탭 = 분류 관리의 타입 그대로 — 이름·순서·숨김이 다 따라온다.
@@ -1239,7 +1276,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
             서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}
-        {activeTab !== 'inbound' && activeTab !== 'lots' && (
+        {activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
             {subtypeTabs.length > 0 && (
@@ -1651,7 +1688,7 @@ const ItemList: React.FC<ItemListProps> = ({
       )}
 
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
-      {activeTab === 'lots' && (
+      {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-1 min-h-0">
           <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
             <div className="relative flex-1 min-w-[220px]">
@@ -1703,7 +1740,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleLotRows.map(({ item, lot }, index) => {
+                      {pagedLotRows.map(({ item, lot }, index) => {
                         const raw = isRawHolder(item);
                         const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
                         const lotState = lotStateOf(item, lot);
@@ -1728,21 +1765,31 @@ const ItemList: React.FC<ItemListProps> = ({
                     </tbody>
                   </table>
                 </div>
+                {visibleLotRows.length > LOT_PAGE_SIZE && (
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <button type="button" disabled={lotPage === 1} onClick={() => setLotPage(page => Math.max(1, page - 1))}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-30">이전</button>
+                    <span className="min-w-16 text-center text-[11px] font-black text-slate-500">{lotPage} / {lotPageCount}</span>
+                    <button type="button" disabled={lotPage === lotPageCount} onClick={() => setLotPage(page => Math.min(lotPageCount, page + 1))}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-600 disabled:opacity-30">다음</button>
+                  </div>
+                )}
                 {visibleLotRows.length === 0 && <div className="py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 로트가 없습니다.</div>}
               </section>
             ) : (
               <section>
                 <div className="mb-3 flex items-center justify-between px-1">
                   <div><h3 className="text-sm font-black text-slate-800">로트 보드</h3><p className="text-[10px] font-bold text-slate-400 mt-0.5">품목 종류별로 행을 나누고 로트 한 건씩 표시합니다</p></div>
-                  <span className="text-xs font-black text-indigo-600">{visibleLotItems.reduce((sum, item) => sum + activeLotsOf(item).length, 0)}건</span>
+                  <span className="text-xs font-black text-indigo-600">{visibleLotItems.reduce((sum, item) => sum + displayedLotsOf(item).length, 0)}건</span>
                 </div>
                 <div className="space-y-4">
                   {visibleLotItems.map(item => {
                     const raw = isRawHolder(item);
-                    const activeLots = activeLotsOf(item);
+                    const activeLots = displayedLotsOf(item);
+                    if (activeLots.length === 0) return null;
                     return <section key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                      <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · 활성 로트 {activeLots.length}건</p></div>
+                      <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · {activeTab === 'lot-history' ? '완료' : '활성'} 로트 {activeLots.length}건</p></div>
                       <span className="text-xs font-black text-slate-700 tabular-nums">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg</span>
                     </header>
                     <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -1765,7 +1812,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                   </section>;})}
                 </div>
-                {visibleLotRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 활성 로트가 없습니다.</div>}
+                {visibleLotRows.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-xs font-bold text-slate-400">조건에 맞는 {activeTab === 'lot-history' ? '완료' : '활성'} 로트가 없습니다.</div>}
               </section>
             )}
             </div>
@@ -1807,7 +1854,7 @@ const ItemList: React.FC<ItemListProps> = ({
           })()}
         </div>
       )}
-      {activeTab !== 'inbound' && activeTab !== 'lots' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">

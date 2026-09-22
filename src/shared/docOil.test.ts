@@ -45,6 +45,7 @@ describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
     expect(addOilByRaw({}, '시골향참기름4', 100)).toEqual({ 통깨참기름: 10, 깨분참기름: 90 });
     expect(addOilByRaw({}, '시골향들기름2', 100)).toEqual({ 수입들기름: 100 });   // 수입산 100% (2026-08-12)
     expect(addOilByRaw({}, '하남댁들기름', 100)).toEqual({ 통들깨들기름: 25, 수입들기름: 75 });
+    expect(addOilByRaw({}, '하남댁맑음들기름', 100)).toEqual({ 통들깨들기름: 50, 수입들기름: 50 });
   });
 
   it('하남댁·해달 참기름은 통깨 100%', () => {

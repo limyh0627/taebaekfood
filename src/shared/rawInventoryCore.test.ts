@@ -514,6 +514,57 @@ describe('로트 소진(deplete-lot) — 지우지 않고 소진 처리 (설계 
   });
 });
 
+describe('로트 합치기(merge-lots) — 사람이 고른 두 로트를 하나로 모은다', () => {
+  it('원본은 소진으로 남기고 대상 로트에 잔량을 더하되 총재고는 바꾸지 않는다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in-1', kg: 60 }), { newLotId: 'L1' });
+    const second = 적용(first.state, 명령({ operationId: 'in-2', kg: 40, lot: { supplierName: '대성' } } as never), { newLotId: 'L2' });
+    const merged = 적용(second.state, 명령({
+      operationId: 'merge-1', kind: 'merge-lots', sourceLotId: 'L1', targetLotId: 'L2',
+    } as never));
+
+    expect(merged.state.stockKg).toBe(100);
+    expect(merged.state.activeLots).toEqual([expect.objectContaining({ id: 'L2', kgRemaining: 100 })]);
+    expect(merged.state.recentDepletedLots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'L1', kgRemaining: 0, status: 'depleted' }),
+    ]));
+    expect(merged.movement).toMatchObject({
+      kind: 'merge-lots', reportedDeltaKg: 0, appliedDeltaKg: 0, balanceAfterKg: 100,
+    });
+    expect(merged.movement.lotChanges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lotId: 'L1', deltaKg: -60, beforeKg: 60, afterKg: 0 }),
+      expect.objectContaining({ lotId: 'L2', deltaKg: 60, beforeKg: 40, afterKg: 100 }),
+    ]));
+  });
+
+  it('음수와 양수도 자동이 아니라 사람이 선택했을 때만 상계한다', () => {
+    const before = 상태({
+      stockKg: 20,
+      activeLots: [
+        { id: '빚', supplierName: '과거 공급처', kgIn: 0, kgRemaining: -30, receivedDate: '2026-09-01', status: 'active', createdAt: NOW },
+        { id: '입고', supplierName: '새 공급처', kgIn: 50, kgRemaining: 50, receivedDate: '2026-09-02', status: 'active', createdAt: NOW },
+      ],
+    });
+    const merged = 적용(before, 명령({
+      operationId: 'merge-debt', kind: 'merge-lots', sourceLotId: '빚', targetLotId: '입고',
+    } as never));
+    expect(merged.state.stockKg).toBe(20);
+    expect(merged.state.activeLots).toEqual([expect.objectContaining({ id: '입고', kgRemaining: 20 })]);
+  });
+
+  it('같은 로트 또는 없는 로트는 거절한다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in-1', kg: 60 }), { newLotId: 'L1' });
+    for (const [sourceLotId, targetLotId, code] of [['L1', 'L1', 'TARGET_MISMATCH'], ['L1', '없음', 'LOT_NOT_FOUND']] as const) {
+      const r = applyRawCommand({
+        state: first.state,
+        command: 명령({ operationId: `merge-${targetLotId}`, kind: 'merge-lots', sourceLotId, targetLotId } as never),
+        det: { now: NOW },
+      });
+      expect(r.status).toBe('rejected');
+      if (r.status === 'rejected') expect(r.code).toBe(code);
+    }
+  });
+});
+
 describe('트랜잭션 안에서 여러 번 돌아도 같다', () => {
   it('같은 입력이면 결과가 글자 하나까지 같다', () => {
     //  §6 — 콜백은 경합하면 여러 번 돈다. 안에서 Date.now()·난수를 쓰면 재시도마다 달라진다.
