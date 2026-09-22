@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
-import type { Order } from '../src/shared/types';
+import { OrderStatus, type Order } from '../src/shared/types';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
@@ -98,6 +98,26 @@ const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; classN
       {sp && <span className="shrink-0 text-slate-500">{sp}</span>}
     </span>
   );
+};
+
+// 상품은 낱개로 주문하되, 입력값을 판단할 때 필요한 박스 환산치만 짧게 보여준다.
+const boxEquivalentLabel = (qty: number, unitsPerBox: number): string => {
+  const boxes = qty / unitsPerBox;
+  const value = Number.isInteger(boxes) ? String(boxes) : boxes.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return `${value}박스 분량`;
+};
+
+const inventoryNameSpec = (p: { name: string; spec?: string }): { name: string; spec: string } => {
+  const { base, vol } = splitNameVolume(p);
+  const nameCount = p.name.match(/\(?\s*(\d+)\s*개입\s*\)?/i)?.[1];
+  const cleanName = base
+    .replace(/\/?\s*\d+(?:\.\d+)?\s*(?:ml|kg|g|l)\s*(?:\(\s*\d+\s*개입\s*\))?\s*$/i, '')
+    .replace(/\(\s*\d+\s*개입\s*\)\s*$/i, '')
+    .trim();
+  const baseSpec = specText(p.spec) || vol || '-';
+  const specCount = parseSpecCount(p.spec);
+  const count = specCount > 1 ? specCount : Number(nameCount || 0);
+  return { name: cleanName || base, spec: count > 1 && !baseSpec.includes(String(count)) ? `${baseSpec} × ${count}` : baseSpec };
 };
 
 const withSpec = (p: { name: string; spec?: string }): string => {
@@ -330,6 +350,17 @@ const ItemList: React.FC<ItemListProps> = ({
   onOemIssueFee,
 }) => {
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
+  const scheduledOutboundQty = useMemo(() => {
+    const result = new Map<string, number>();
+    const scheduledStatuses = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED]);
+    for (const order of orders ?? []) {
+      if (!scheduledStatuses.has(order.status)) continue;
+      for (const line of order.items ?? []) {
+        result.set(line.itemId, (result.get(line.itemId) ?? 0) + (Number(line.quantity) || 0));
+      }
+    }
+    return result;
+  }, [orders]);
   // 품목 → 매출처 이름들(공백연결). 재고 현황 거래처 검색용. Direction='out' + 품목의 partnerIds 둘 다.
   const salesPartnerNames = useMemo(() => {
     const nameById = new Map(partners.map(c => [c.id, c.name]));
@@ -1951,29 +1982,32 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
         {/* ── 재고 현황: 테이블 뷰 ── */}
         {activeTab === 'master' && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-4">
+          <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left text-[11px] text-slate-700">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
+                <tr className="border-b-2 border-slate-400 bg-slate-100 text-xs font-black text-slate-600">
                   {/* 좁은 폰에서 머리글이 **한 글자씩 세로로 쪼개졌다**(2026-09-06 사장님).
                       tracking-widest 로 글자를 벌려 놓은 데다 칸이 좁아서 그렇다.
                       안 쪼개지게 못 박고, 대신 표가 옆으로 밀리게 둔다(바깥에 overflow-x-auto). */}
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">서브타입</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap hidden sm:table-cell">거래처</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">품목명</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap hidden sm:table-cell">라벨</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">현재 재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap hidden sm:table-cell">최소 수량</th>
+                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">서브타입</th>
+                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">카테고리</th>
+                  <th className="hidden border-r border-slate-300 px-3 py-3 whitespace-nowrap sm:table-cell">거래처</th>
+                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">품목명</th>
+                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">규격</th>
+                  <th className="border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap">현재 재고</th>
+                  <th className="border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap">출고예정수량</th>
+                  <th className="hidden border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap sm:table-cell">최소 수량</th>
                   <th className="px-4 py-3 hidden sm:table-cell"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pagedRows.map(({ p: product, isChild, boxCount }) => {
+              <tbody>
+                {pagedRows.map(({ p: product, isChild, boxCount }, rowIndex) => {
                   const confInfo = confirmedOrders.find(c => (c.itemId ?? c.id) === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
+                  // 상품은 거래처에 낱개 수량으로만 발주한다. 박스 토글은 완제품 박스 SKU에만 쓴다.
+                  const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
                   const lotRaw = isRawHolder(product)
                     ? product
@@ -2010,21 +2044,19 @@ const ItemList: React.FC<ItemListProps> = ({
                   return (
                     <React.Fragment key={product.id}>
                     <tr
-                      className={`transition-colors cursor-pointer sm:cursor-default ${inCart ? 'bg-indigo-50/40' : isCritical ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}
+                      className={`min-h-10 border-b-2 border-slate-400 transition-colors cursor-pointer sm:cursor-default ${inCart ? 'bg-indigo-50/40' : rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
                       onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
                     >
                       {/* 서브타입·카테고리는 **다른 칸**이다 — 한 칸에 겹쳐 두면 무엇이 무엇인지 안 갈린다 */}
-                      <td className="px-4 py-3">
+                      <td className="border-r border-slate-300 px-3 py-3">
                         {product.subtype
-                          ? <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 whitespace-nowrap">{product.subtype}</span>
-                          : <span className="text-[10px] text-slate-200">-</span>}
+                          ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{product.subtype}</span>
+                          : <span className="text-[11px] text-slate-200">-</span>}
                       </td>
-                      <td className="px-4 py-3">
-                        {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
-                            예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
-                        <CategoryChip item={product} />
+                      <td className="border-r border-slate-300 px-3 py-3">
+                        <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{categoryOf(product) || '-'}</span>
                       </td>
-                      <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
+                      <td className="hidden border-r border-slate-300 px-3 py-3 sm:table-cell" onClick={e => e.stopPropagation()}>
                         {normCat(product.type) === '완제품' ? (
                           // 완제품: 매출처 (Direction='out', partnerIds 기반)
                           (() => { const 걸린곳 = partnersOfItem(partnerItems, product.id); return 걸린곳.length > 0; })() ? (() => {
@@ -2035,39 +2067,41 @@ const ItemList: React.FC<ItemListProps> = ({
                               : 걸린곳;
                             const shown = isExp ? sorted : sorted.slice(0, 1);
                             return (
-                              <div className="flex flex-wrap gap-1 items-center">
+                              <div className="flex flex-wrap gap-x-1 items-center text-[11px] font-bold text-slate-500">
                                 {shown.map(cid => {
                                   const cIdx = partners.findIndex(c => c.id === cid);
                                   const cname = cIdx >= 0 ? partners[cIdx].name : null;
                                   if (!cname) return null;
-                                  return <span key={cid} className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${CLIENT_BADGE_COLORS[cIdx % CLIENT_BADGE_COLORS.length]}`}>{cname}</span>;
+                                  return <span key={cid}>{cname}</span>;
                                 })}
                                 {!isExp && 걸린곳.length > 1 && (
-                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{걸린곳.length - 1}</button>
+                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold text-slate-400 hover:text-indigo-600">+{걸린곳.length - 1}</button>
                                 )}
                                 {isExp && (
-                                  <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
+                                  <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold text-slate-400 hover:text-indigo-600">접기</button>
                                 )}
                               </div>
                             );
-                          })() : <span className="text-[10px] text-slate-200">-</span>
+                          })() : <span className="text-[11px] text-slate-200">-</span>
                         ) : (
                           // 상품/부자재: 매입처 (Direction='in', psMap 기반)
                           (() => {
                             const partnerId = psMap.get(product.id);
                             const sname = partnerId ? inboundPartnerMap.get(partnerId)?.name : null;
                             return sname
-                              ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">{sname}</span>
-                              : <span className="text-[10px] text-slate-200">-</span>;
+                              ? <span className="text-[11px] font-bold text-slate-500">{sname}</span>
+                              : <span className="text-[11px] text-slate-200">-</span>;
                           })()
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="border-r border-slate-300 px-3 py-3">
                         <div className={`flex items-center gap-2 ${isChild ? 'pl-5' : ''}`}>
                           {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
-                          <NameSpec p={product} className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`} />
+                          <span className={`truncate font-black ${isChild ? 'text-slate-500' : 'text-slate-800'}`}>
+                            {inventoryNameSpec(product).name}
+                          </span>
                           {/* '박스'는 박스 품목 줄에 단다 — 낱개 줄에 붙어 있으면 그 줄이 박스인 줄 안다 */}
-                          {isChild && <span className="text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">박스</span>}
+                          {isChild && <span className="text-[9px] font-black text-indigo-500 shrink-0">박스</span>}
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
                           {/* 묶음 펼치기 — 왼쪽 화살표는 이름에 묻혀 안 보여서 오른쪽 끝에 버튼으로 세운다 */}
                           {boxCount > 0 && (
@@ -2081,73 +2115,65 @@ const ItemList: React.FC<ItemListProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        {product.품목 ? (
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-bold text-slate-600">{product.품목}</span>
-                            {product.spec && <span className="text-[10px] text-slate-400">{product.spec}</span>}
-                          </div>
-                        ) : <span className="text-[10px] text-slate-200">-</span>}
+                      <td className="border-r border-slate-300 px-3 py-3">
+                        <span className="font-bold text-slate-500 whitespace-nowrap">
+                          {inventoryNameSpec(product).spec}
+                        </span>
                       </td>
                       {/* 재고 — 숫자는 폭 고정 칸에 오른쪽 정렬해 세로로 줄을 맞추고,
                           단위는 그 옆 자기 칸으로 밀어낸다(숫자 자릿수가 달라도 안 흔들린다).
                           개봉 버튼은 숫자 아랫줄로 내린다 — 같은 줄에 두면 숫자 칸을 밀어 세로 정렬이 깨진다. */}
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center justify-end gap-1">
-                        {derivedCans != null ? (
-                          // 원료에서 파생된 캔 수 (읽기전용) — 입고/사용에 자동 연동
-                          <div className="flex flex-col items-end leading-tight" onClick={e => e.stopPropagation()}
-                            title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
-                            <span className="flex items-center">
-                              <span className={`w-14 text-right text-base font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}>{Math.floor(derivedCans)}</span>
-                              <span className="w-7 text-left text-[10px] text-slate-400 ml-0.5">{product.unit || '개'}</span>
-                            </span>
-                            <span className="text-[9px] font-bold text-emerald-500">원료 {Math.round(derivedRawKg! * 10) / 10}kg ≈ {Math.round(derivedCans * 10) / 10}캔</span>
+                      <td className="border-r border-slate-300 px-3 py-3">
+                        <div className="grid grid-cols-[44px_56px_28px] items-center justify-end gap-1">
+                          <div className="flex justify-end">
+                          {unpackComponent(product) ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); unpackBox(product); }}
+                              disabled={(product.stock ?? 0) < 1}
+                              className="shrink-0 text-[9px] font-black text-amber-600 hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+                              title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product)!.itemId)?.name ?? '낱개'} +${unpackComponent(product)!.count}개`}
+                            >개봉</button>
+                          ) : (() => {
+                            const r = unpackPlan(product, 1);
+                            if (!r.ok) return null;
+                            return (
+                              <button
+                                onClick={e => { e.stopPropagation(); setUnpackModal({ item: product, count: '1' }); }}
+                                disabled={(product.stock ?? 0) < 1}
+                                className="shrink-0 text-[9px] font-black text-amber-600 hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                title={unpackSummary(r.plan)}
+                              >개봉</button>
+                            );
+                          })()}
                           </div>
+                        {derivedCans != null ? (
+                          <span className={`text-right text-[13px] font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            onClick={e => e.stopPropagation()}
+                            title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
+                            {Math.floor(derivedCans)}
+                          </span>
                         ) : (
                           <button
                             onClick={e => { e.stopPropagation(); openStocktake(product); }}
-                            className={`min-w-14 shrink-0 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            className={`w-14 text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title={`눌러서 실사 (지금 ${displayStock}${product.unit ?? ''})`}
                           >
                             {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
                             {Math.round(displayStock)}
                           </button>
                         )}
-                        {derivedCans == null && (
-                          <span className="w-7 shrink-0 text-left text-[10px] text-slate-400">
-                            {product.type !== '향미유' && product.unit}
-                          </span>
-                        )}
-                        </div>
-                        {/* 개봉 — 현재고 숫자 아랫줄. BOM에 낱개가 물린 '박스 품목' 행에만 뜬다.
-                            재고가 0이면 눌러도 깔 게 없으니 비활성. */}
-                        {unpackComponent(product) && (
-                          <button
-                            onClick={e => { e.stopPropagation(); unpackBox(product); }}
-                            disabled={(product.stock ?? 0) < 1}
-                            className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product)!.itemId)?.name ?? '낱개'} +${unpackComponent(product)!.count}개`}
-                          >개봉 +{unpackComponent(product)!.count}</button>
-                        )}
-                        {/* 캔 개봉 — '개봉 가능'을 켠 품목만. 박스 개봉과 같은 자리·같은 모양이다.
-                            대상·수량은 짐작하지 않는다 — BOM 의 벌크 줄이 근거다(`canUnpack`). */}
-                        {(() => {
-                          const r = unpackPlan(product, 1);
-                          if (!r.ok) return null;
-                          return (
-                            <button
-                              onClick={e => { e.stopPropagation(); setUnpackModal({ item: product, count: '1' }); }}
-                              disabled={(product.stock ?? 0) < 1}
-                              className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-600 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
-                              title={unpackSummary(r.plan)}
-                            >개봉</button>
-                          );
-                        })()}
+                        <span className="text-left text-[11px] text-slate-400">
+                          {derivedCans != null ? (product.unit || '개') : (product.type !== '향미유' && product.unit)}
+                        </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right hidden sm:table-cell">
+                      <td className="border-r border-slate-300 px-3 py-3 text-right">
+                        <span className="font-black tabular-nums text-slate-600">
+                          {scheduledOutboundQty.get(product.id) ?? 0}
+                        </span>
+                        <span className="ml-1 text-slate-400">{product.unit || '개'}</span>
+                      </td>
+                      <td className="hidden border-r border-slate-300 px-3 py-3 text-right sm:table-cell">
                         {product.type !== '완제품'
                           ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
@@ -2161,8 +2187,9 @@ const ItemList: React.FC<ItemListProps> = ({
                                 className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-sm"
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
-                              <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                                {unitsPerBoxOf(product) > 0 && (
+                              <div className="flex flex-col items-end gap-0.5" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-1 justify-end">
+                                {canOrderByBox && (
                                   <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
                                     <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                     <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2174,17 +2201,21 @@ const ItemList: React.FC<ItemListProps> = ({
                                   value={inlineCartQty}
                                   onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, unitsPerBoxOf(product) > 0 ? inlineCartIsBox : undefined); setInlineCartId(null); }
+                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
                                   }}
                                   className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                 />
-                                <span className="text-[10px] text-slate-400">{unitsPerBoxOf(product) > 0 && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                <span className="text-[10px] text-slate-400">{canOrderByBox && inlineCartIsBox ? 'BOX' : (product.unit || '개')}</span>
                                 <button
-                                  onClick={() => { addToCart(product.id, inlineCartQty, unitsPerBoxOf(product) > 0 ? inlineCartIsBox : undefined); setInlineCartId(null); }}
+                                  onClick={() => { addToCart(product.id, inlineCartQty, canOrderByBox ? inlineCartIsBox : false); setInlineCartId(null); }}
                                   className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
                                 >담기</button>
                                 <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                                </div>
+                                {product.type === 'goods' && unitsPerBoxOf(product) > 1 && inlineCartQty > 0 && (
+                                  <span className="pr-5 text-[9px] font-bold text-slate-400">{boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product))}</span>
+                                )}
                               </div>
                             ) : (
                               <button
