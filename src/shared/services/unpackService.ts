@@ -1,12 +1,15 @@
 import { doc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { RawMaterialLot } from '../types';
+import { COL } from '../collections';
+import { companyOf, type RawMaterialLot } from '../types';
 import type { UnpackPlan } from '../canUnpack';
 import { unpackSummary } from '../canUnpack';
 import { unpackLots, canStockAfter, bulkStockAfter, type UnpackLotMove } from '../unpackLots';
 import { pruneDepletedLots, withCarryOverProductLot, withCarryOverLot } from '../lotUtils';
 import { anchorLotsByQty } from '../lotAnchor';
 import { today } from '../day';
+import { inventoryDocId, operationDocId, type LotChange, type RawInventoryMovement } from '../rawInventoryCore';
+import { normalizeRawInventoryState, toLedgerDoc } from './rawInventoryService';
 
 /**
  * **캔을 까서 벌크로 되돌린다 — 실제로 쓰는 자리.**
@@ -29,6 +32,10 @@ import { today } from '../day';
  * 맞아 돌아온다. 델타로 더하면 어긋남이 그대로 따라다닌다 —
  * 볶음참깨가 로트합 −520 vs stock 14 로 갈린 것이 그 길이다.
  *
+ * 벌크 원료는 `items`만 고치지 않는다. 원자화 이후에는 `rawInventories`가 수량의 본체고
+ * `items`는 화면용 사본이다. 2026-09-22 깨분참기름 80캔 개봉이 `items`에만 1,320kg을
+ * 더해 둘이 갈렸으므로, 캔·벌크 품목·원자화 상태·원장 이력을 이 트랜잭션 하나에 묶는다.
+ *
  * **트랜잭션 콜백은 경합하면 여러 번 돈다.** 그래서 id·시각을 밖에서 정해 넣는다
  * (설계 §6). 안에서 `Date.now()` 로 만들면 재시도마다 다른 로트가 생긴다.
  */
@@ -42,20 +49,40 @@ export interface UnpackOutcome {
 export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
   const now = new Date().toISOString();
   const 오늘 = today();
-  //  개봉 한 번에 하나 — 재시도해도 같은 값이라야 로트가 하나만 선다.
-  const lotIdPrefix = `unpack-${plan.canItemId}-${Date.parse(now)}`;
+  //  같은 호출을 Firestore가 재시도해도 작업번호·로트번호는 바뀌지 않는다.
+  const operationId = `unpack:${plan.canItemId}:${Date.parse(now)}`;
+  const operationDocumentId = operationDocId(operationId);
+  const lotIdPrefix = `lot-${operationDocumentId}`;
 
   try {
     const moves = await runTransaction(db, async tx => {
       const canRef = doc(db, 'items', plan.canItemId);
       const bulkRef = doc(db, 'items', plan.bulkItemId);
-      //  **읽기를 먼저 다 한다** — Firestore 트랜잭션은 쓰기 뒤에 읽을 수 없다.
-      const [canSnap, bulkSnap] = await Promise.all([tx.get(canRef), tx.get(bulkRef)]);
+      const movementRef = doc(db, COL.rawMaterialLedger, operationDocumentId);
+      // 원자화 상태 문서 열쇠에는 회사가 필요하다. 벌크 품목을 읽은 뒤 다시 읽으면
+      // Firestore의 '모든 읽기는 쓰기 전' 규칙은 지키지만 왕복이 늘 뿐 안전성은 같다.
+      const [canSnap, bulkSnap, movementSnap] = await Promise.all([
+        tx.get(canRef), tx.get(bulkRef), tx.get(movementRef),
+      ]);
       if (!canSnap.exists()) throw new Error(`${plan.canName} 품목을 찾을 수 없습니다.`);
       if (!bulkSnap.exists()) throw new Error(`${plan.bulkName} 품목을 찾을 수 없습니다.`);
 
+      // 모바일에서 성공 응답을 못 받고 같은 호출이 재시도돼도 두 번 까지 않는다.
+      if (movementSnap.exists()) return (movementSnap.data().unpackMoves ?? []) as UnpackLotMove[];
+
       const canData = canSnap.data();
       const bulkData = bulkSnap.data();
+      const canCompany = companyOf(canData);
+      const bulkCompany = companyOf(bulkData);
+      if (canCompany !== bulkCompany) throw new Error('캔과 벌크 품목의 회사가 다릅니다.');
+
+      const stateRef = doc(db, COL.rawInventories, inventoryDocId(bulkCompany, plan.bulkItemId));
+      const stateSnap = await tx.get(stateRef);
+      if (!stateSnap.exists()) throw new Error(`${plan.bulkName} 원료가 아직 원자화되지 않았습니다.`);
+      const state = normalizeRawInventoryState(stateSnap.data());
+      if (Math.abs(Number(bulkData.stock ?? 0) - state.stockKg) > 1) {
+        throw new Error(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
+      }
 
       /**
        * **로트를 안 쓰던 재고를 먼저 이월 로트로 세운다.**
@@ -70,11 +97,8 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
         plan.perCan,
         { id: `${lotIdPrefix}-can-carry`, createdAt: now, receivedDate: 오늘 },
       );
-      const bulkLots = withCarryOverLot(
-        (bulkData.lots ?? []) as RawMaterialLot[],
-        Number(bulkData.stock ?? 0),
-        plan.bulkName,
-      );
+      // 벌크는 원자화 상태가 본체다. items.lots를 다시 근거로 삼으면 두 경로가 또 생긴다.
+      const bulkLots = withCarryOverLot(state.activeLots, state.stockKg, plan.bulkName);
 
       const r = unpackLots({
         canLots, bulkLots,
@@ -84,9 +108,61 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
         det: { now, receivedDate: 오늘, lotIdPrefix },
       });
 
-      //  소진 로트를 쳐낸다 — 안 하면 문서가 계속 커져 FIFO 보다 문서 한도가 먼저 걸린다(§3).
+      const activeLots = r.bulkLots.filter(l => l.status !== 'depleted');
+      const addedIds = new Set(r.moves.map((_, i) => `${lotIdPrefix}-${i}`));
+      const beforeById = new Map(state.activeLots.map(l => [l.id, l]));
+      const lotChanges: LotChange[] = activeLots.flatMap(lot => {
+        const before = beforeById.get(lot.id);
+        const beforeKg = Number(before?.kgRemaining ?? 0);
+        const afterKg = Number(lot.kgRemaining ?? 0);
+        const deltaKg = Math.round((afterKg - beforeKg) * 1000) / 1000;
+        if (deltaKg === 0 && !addedIds.has(lot.id)) return [];
+        return [{
+          lotId: lot.id, supplierName: lot.supplierName, lotNo: lot.lotNo,
+          receivedDate: lot.receivedDate, deltaKg, beforeKg, afterKg,
+          lotSnapshot: before ?? { ...lot, kgRemaining: 0 },
+        }];
+      });
+      const balanceAfterKg = bulkStockAfter(activeLots);
+      const movement: RawInventoryMovement = {
+        id: operationDocumentId,
+        operationId,
+        commandHash: `unpack:${plan.canItemId}:${plan.bulkItemId}:${plan.cans}:${plan.perCan}`,
+        companyId: bulkCompany,
+        rawItemId: plan.bulkItemId,
+        materialSnapshot: String(bulkData.rawMaterialName || plan.bulkName),
+        effectiveAt: now,
+        recordedAt: now,
+        sequence: state.revision + 1,
+        kind: 'unpack',
+        reportedDeltaKg: plan.bulkQty,
+        appliedDeltaKg: plan.bulkQty,
+        balanceAfterKg,
+        lotChanges,
+        source: { type: 'unpack', id: plan.canItemId },
+      };
+      const recentDepletedLots = state.recentDepletedLots.slice(0, 40);
+      const nextState = {
+        ...state,
+        materialSnapshot: movement.materialSnapshot,
+        stockKg: balanceAfterKg,
+        activeLots,
+        recentDepletedLots,
+        revision: movement.sequence,
+        lastProcessedAt: now,
+      };
+
+      // 네 문서가 한 트랜잭션이다. 하나라도 실패하면 캔도 벌크도 전혀 움직이지 않는다.
       tx.update(canRef, { lots: strip(pruneDepletedLots(r.canLots)), stock: canStockAfter(r.canLots) });
-      tx.update(bulkRef, { lots: strip(pruneDepletedLots(r.bulkLots)), stock: bulkStockAfter(r.bulkLots) });
+      tx.update(bulkRef, { lots: strip([...activeLots, ...recentDepletedLots]), stock: balanceAfterKg });
+      tx.set(stateRef, strip(nextState));
+      tx.set(movementRef, strip({
+        ...toLedgerDoc(movement, {
+          note: unpackSummary(plan), type: 'manual', addedBy: '캔 개봉',
+          canSize: plan.perCan, canCount: plan.cans,
+        }),
+        unpackMoves: r.moves,
+      }));
       return r.moves;
     });
 

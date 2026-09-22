@@ -15,6 +15,8 @@ const reviewedTransactionWriters = new Set([
   // 명령/상태 계약 자체에 companyId가 있고 서로 다르면 트랜잭션 전에 거부한다.
   'src/shared/services/rawInventoryJob.ts',
   'src/shared/services/rawInventoryService.ts',
+  // 캔·벌크의 companyId가 같은지 확인하고 회사가 박힌 rawInventories 열쇠만 쓴다.
+  'src/shared/services/unpackService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {
