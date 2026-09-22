@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, Truck } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, PackageOpen, Truck } from 'lucide-react';
 import type { Item, RawMaterialEntry } from '../src/shared/types';
 import type { LotShipment } from './ProductLotPanel';
 import { sortLedger } from '../src/shared/rawLedgerBalance';
@@ -7,7 +7,8 @@ import { sortLedger } from '../src/shared/rawLedgerBalance';
 type TimelineRow = {
   id: string; date: string; title: string; note: string;
   delta?: number; balance?: number;
-  kind: 'in' | 'out' | 'stocktake' | 'lot';
+  details?: { id: string; partnerName: string; qty: number }[];
+  kind: 'in' | 'out' | 'stocktake' | 'lot' | 'unpack';
 };
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
@@ -20,6 +21,7 @@ const LotTimeline: React.FC<{
   shipmentRows?: Array<LotShipment & { lotId: string }>;
 }> = ({ item, lotId, rawEntries = [], shipmentRows = [] }) => {
   const [showAll, setShowAll] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const rows = useMemo<TimelineRow[]>(() => {
     if (rawEntries.length) {
       return sortLedger(rawEntries).flatMap<TimelineRow>(entry => {
@@ -27,12 +29,13 @@ const LotTimeline: React.FC<{
         if (!change) return [];
         const delta = Math.round(Number(change.deltaKg ?? 0) * 1000) / 1000;
         const stocktake = entry.targetKg != null || (entry as any).kind === 'stocktake';
+        const unpack = (entry as any).kind === 'unpack' || (entry as any).source?.type === 'unpack';
         return {
           id: entry.id || `${entry.date}-${entry.createdAt}`,
           date: entry.recordedAt || entry.createdAt || entry.date,
-          title: stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
+          title: unpack ? '캔 개봉' : stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
           note: entry.note || entry.addedBy || '', delta, balance: Number(change.afterKg ?? 0),
-          kind: stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
+          kind: unpack ? 'unpack' : stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
         };
       }).reverse();
     }
@@ -47,9 +50,21 @@ const LotTimeline: React.FC<{
         kind: lot.supplierName === '실사조정' ? 'stocktake' : 'lot',
       });
     }
-    for (const shipment of shipmentRows.filter(row => row.lotId === lotId)) packed.push({
-      id: `ship-${shipment.lotId}-${shipment.orderId}`, date: shipment.date,
-      title: '출고', note: shipment.partnerName, delta: -shipment.qty, kind: 'out',
+    const byDate = new Map<string, { qty: number; rows: Array<LotShipment & { lotId: string }> }>();
+    for (const shipment of shipmentRows.filter(row => row.lotId === lotId)) {
+      const date = shipment.date?.slice(0, 10) || '-';
+      const grouped = byDate.get(date) ?? { qty: 0, rows: [] };
+      grouped.qty += Number(shipment.qty ?? 0);
+      grouped.rows.push(shipment);
+      byDate.set(date, grouped);
+    }
+    for (const [date, grouped] of byDate) packed.push({
+      id: `ship-${lotId}-${date}`, date,
+      title: '출고', note: `${new Set(grouped.rows.map(row => row.partnerName).filter(Boolean)).size}개 거래처`,
+      delta: -grouped.qty, kind: 'out',
+      details: grouped.rows.map((row, index) => ({
+        id: `${row.orderId}-${index}`, partnerName: row.partnerName || '거래처 미입력', qty: Number(row.qty ?? 0),
+      })),
     });
     return packed.sort((a, b) => b.date.localeCompare(a.date));
   }, [item, lotId, rawEntries, shipmentRows]);
@@ -60,6 +75,7 @@ const LotTimeline: React.FC<{
     out: { icon: ArrowDownRight, dot: 'bg-rose-500', text: 'text-rose-600' },
     stocktake: { icon: ClipboardCheck, dot: 'bg-violet-500', text: 'text-violet-600' },
     lot: { icon: Truck, dot: 'bg-sky-500', text: 'text-sky-600' },
+    unpack: { icon: PackageOpen, dot: 'bg-blue-500', text: 'text-blue-600' },
   } as const;
 
   const visible = showAll ? rows : rows.slice(0, 5);
@@ -78,6 +94,21 @@ const LotTimeline: React.FC<{
             </div>
             <p className="mt-0.5 text-[10px] font-bold text-slate-400">{row.date ? row.date.slice(0, 16).replace('T', ' ') : '-'}{row.note ? ` · ${row.note}` : ''}</p>
             {row.balance != null && <p className="mt-1 text-[10px] font-black text-slate-500">처리 후 {fmt(row.balance)} kg</p>}
+            {row.details && row.details.length > 0 && <>
+              <button type="button" onClick={() => setExpandedRows(current => {
+                const next = new Set(current);
+                if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+                return next;
+              })} className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-black text-indigo-500">
+                {expandedRows.has(row.id) ? <><ChevronUp size={11} />상세 닫기</> : <><ChevronDown size={11} />거래처별 상세보기</>}
+              </button>
+              {expandedRows.has(row.id) && <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-100 bg-slate-50 px-2.5">
+                {row.details.map(detail => <div key={detail.id} className="flex items-center justify-between gap-3 py-1.5 text-[10px] font-bold">
+                  <span className="truncate text-slate-500">{detail.partnerName}</span>
+                  <span className="shrink-0 tabular-nums text-rose-600">-{fmt(detail.qty)} {item.unit || '개'}</span>
+                </div>)}
+              </div>}
+            </>}
           </div>
         </div>
       </li>;

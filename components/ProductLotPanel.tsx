@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, History, Package, Tag, Truck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Tag, Truck } from 'lucide-react';
 import { Item, RawMaterialLot } from '../src/shared/types';
 
 export interface LotShipment {
@@ -35,8 +35,8 @@ const ProductLotPanel: React.FC<Props> = ({ items, shipmentsByLot, emptyHint }) 
   }
 
   const renderLot = (item: Item, lot: RawMaterialLot, dim = false) => {
-    const shipments = shipmentsByLot?.get(lot.id) ?? [];
     const shortage = (lot.qtyRemaining ?? 0) < 0 || (lot.kgRemaining ?? 0) < 0;
+    const goods = item.type === 'goods';
     return <article key={`${item.id}-${lot.id}`} className={`rounded-xl border bg-white overflow-hidden ${shortage ? 'border-rose-200' : 'border-slate-200'} ${dim ? 'opacity-60' : ''}`}>
       <div className="p-3 flex items-start gap-3">
         <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${shortage ? 'bg-rose-50 text-rose-600' : 'bg-violet-50 text-violet-600'}`}><Truck size={14} /></span>
@@ -49,25 +49,21 @@ const ProductLotPanel: React.FC<Props> = ({ items, shipmentsByLot, emptyHint }) 
           <p className="mt-1 text-[10px] font-bold text-slate-400">입고 {lot.receivedDate || '-'}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className={`text-sm font-black tabular-nums ${shortage ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(lot.kgRemaining ?? 0)} kg</p>
-          <p className="text-[10px] font-bold text-slate-400">{fmt(lot.qtyRemaining ?? 0)} {item.unit || '개'}</p>
+          {goods ? <p className={`text-sm font-black tabular-nums ${shortage ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(lot.qtyRemaining ?? 0)} {item.unit || '개'}</p> : <>
+            <p className={`text-sm font-black tabular-nums ${shortage ? 'text-rose-600' : 'text-slate-900'}`}>{fmt(lot.kgRemaining ?? 0)} kg</p>
+            <p className="text-[10px] font-bold text-slate-400">{fmt(lot.qtyRemaining ?? 0)} {item.unit || '개'}</p>
+          </>}
         </div>
       </div>
-      {shipments.length > 0 && <div className="border-t border-slate-100 bg-slate-50 px-3 py-2">
-        <div className="mb-1.5 flex items-center gap-1 text-[9px] font-black text-slate-400"><History size={10} />출고처</div>
-        <div className="flex flex-wrap gap-1">
-          {shipments.map((shipment, index) => <span key={`${shipment.orderId}-${index}`} className="rounded-md border border-violet-100 bg-white px-2 py-1 text-[10px] font-bold text-violet-700">
-            {shipment.partnerName} · {shipment.date?.slice(5) || '-'} · {fmt(shipment.qty)}{item.unit || '개'}
-          </span>)}
-        </div>
-      </div>}
     </article>;
   };
 
   return <div className="space-y-3">
     <div className="grid grid-cols-2 gap-2">
       <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-black text-slate-400">활성 로트</p><p className="mt-1 text-lg font-black text-slate-900">{active.length}<span className="ml-1 text-xs text-slate-400">건</span></p></div>
-      <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-black text-slate-400">총 잔량</p><p className="mt-1 text-lg font-black text-violet-700">{fmt(kgOf(active.map(x => x.lot)))}<span className="ml-1 text-xs">kg</span></p></div>
+      <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-black text-slate-400">총 잔량</p><p className="mt-1 text-lg font-black text-violet-700">{items.every(item => item.type === 'goods')
+        ? fmt(active.reduce((sum, row) => sum + Number(row.lot.qtyRemaining ?? 0), 0))
+        : fmt(kgOf(active.map(x => x.lot)))}<span className="ml-1 text-xs">{items.every(item => item.type === 'goods') ? (items[0]?.unit || '개') : 'kg'}</span></p></div>
     </div>
     <div className="space-y-2">{active.map(({ item, lot }) => renderLot(item, lot))}</div>
     {active.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 bg-white py-8 text-center text-xs font-bold text-slate-400">남은 로트가 없습니다.</div>}

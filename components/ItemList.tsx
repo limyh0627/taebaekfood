@@ -610,9 +610,14 @@ const ItemList: React.FC<ItemListProps> = ({
   const [lotSearch, setLotSearch] = useState('');
   const [selectedLot, setSelectedLot] = useState<{ itemId: string; lotId: string } | null>(null);
   const [lotKind, setLotKind] = useState<'all' | 'raw' | 'packed'>('all');
+  const [lotStatus, setLotStatus] = useState<'all' | 'using' | 'waiting' | 'complete'>('all');
   const [lotView, setLotView] = useState<'list' | 'board'>('list');
   const [lotPage, setLotPage] = useState(1);
-  const LOT_PAGE_SIZE = 20;
+  const LOT_PAGE_SIZE = 30;
+  useEffect(() => {
+    if (activeTab === 'lot-history' && lotStatus !== 'complete') setLotStatus('complete');
+    if (activeTab === 'lots' && lotStatus === 'complete') setLotStatus('all');
+  }, [activeTab]); // 상단의 기존 로트/로트 이력 탭을 직접 눌러도 상태 탭이 엇갈리지 않게 한다.
 
   /** 로트의 소유자는 물질명이 아니라 품목 ID다. 같은 깨라도 벌크·낱개·박스를 합치면 실제 재고처럼 오해한다. */
   const lotItems = useMemo(() => items
@@ -625,6 +630,22 @@ const ItemList: React.FC<ItemListProps> = ({
     if (lotKind === 'packed' && raw) return false;
     return !lotSearch.trim() || `${item.name} ${item.spec ?? ''}`.includes(lotSearch.trim());
   }), [lotItems, lotKind, lotSearch]);
+  const lotStateOf = (item: Item, lot: NonNullable<Item['lots']>[number]) => {
+    const raw = isRawHolder(item);
+    const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
+    if (lot.status === 'depleted' || Math.abs(remaining) <= 0.0001) return '완료' as const;
+    const activeLots = (item.lots ?? []).filter(candidate => {
+      const candidateRemaining = Number(raw ? candidate.kgRemaining ?? 0 : candidate.qtyRemaining ?? 0);
+      return candidate.status === 'active' && candidateRemaining > 0.0001;
+    });
+    const configuredIds = raw && item.mixEnabled
+      ? (item.mixLotRatios ?? []).filter(row => row.percent > 0 && activeLots.some(candidate => candidate.id === row.lotId)).map(row => row.lotId)
+      : [];
+    const usingIds = item.mixLotRatios !== undefined && configuredIds.length > 0
+      ? configuredIds
+      : activeLots.slice(0, raw && item.mixEnabled && item.mixLotRatios === undefined ? 2 : 1).map(candidate => candidate.id);
+    return usingIds.includes(lot.id) ? '사용중' as const : '대기중' as const;
+  };
   /** 화면의 한 줄은 품목이 아니라 로트 한 건이다. 같은 품목의 입고를 합치면 추적 단위가 사라진다. */
   const visibleLotRows = useMemo(() => visibleLotItems.flatMap(item => {
     const raw = isRawHolder(item);
@@ -632,7 +653,10 @@ const ItemList: React.FC<ItemListProps> = ({
       const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
       // 음수 로트는 아직 정리해야 할 활성 빚이다. 0 또는 명시적 소진만 이력으로 보낸다.
       const complete = lot.status === 'depleted' || Math.abs(remaining) <= 0.0001;
-      return activeTab === 'lot-history' ? complete : !complete;
+      if (activeTab === 'lot-history') return complete && (lotStatus === 'all' || lotStatus === 'complete');
+      if (complete || lotStatus === 'complete') return false;
+      const state = lotStateOf(item, lot);
+      return lotStatus === 'all' || (lotStatus === 'using' ? state === '사용중' : state === '대기중');
     }).map(lot => ({ item, lot }));
   }).sort((a, b) => {
     // 목록은 조회 화면이므로 최근 입고부터 찾는다. 실제 차감 순서는 item.lots 배열 그대로이며,
@@ -642,31 +666,14 @@ const ItemList: React.FC<ItemListProps> = ({
     const byLotNo = String(b.lot.lotNo ?? '').localeCompare(String(a.lot.lotNo ?? ''), 'ko', { numeric: true });
     if (byLotNo !== 0) return byLotNo;
     return String(a.item.name ?? '').localeCompare(String(b.item.name ?? ''), 'ko');
-  }), [visibleLotItems, activeTab]);
+  }), [visibleLotItems, activeTab, lotStatus]);
   const lotPageCount = Math.max(1, Math.ceil(visibleLotRows.length / LOT_PAGE_SIZE));
   const pagedLotRows = useMemo(
     () => visibleLotRows.slice((lotPage - 1) * LOT_PAGE_SIZE, lotPage * LOT_PAGE_SIZE),
     [visibleLotRows, lotPage],
   );
-  useEffect(() => { setLotPage(1); }, [lotSearch, lotKind, activeTab]);
+  useEffect(() => { setLotPage(1); }, [lotSearch, lotKind, lotStatus, activeTab]);
   useEffect(() => { if (lotPage > lotPageCount) setLotPage(lotPageCount); }, [lotPage, lotPageCount]);
-  const lotStateOf = (item: Item, lot: NonNullable<Item['lots']>[number]) => {
-    const raw = isRawHolder(item);
-    const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
-    if (lot.status === 'depleted' || Math.abs(remaining) <= 0.0001) return '완료' as const;
-    const activeLots = (item.lots ?? []).filter(candidate => {
-      const candidateRemaining = Number(raw ? candidate.kgRemaining ?? 0 : candidate.qtyRemaining ?? 0);
-      return candidate.status === 'active' && candidateRemaining > 0.0001;
-    });
-    // 배열 순서가 FIFO 차감 순서다. 혼합 사용이면 저장된 혼합 대상들이 모두 현재 사용 로트다.
-    const configuredIds = raw && item.mixEnabled
-      ? (item.mixLotRatios ?? []).filter(row => row.percent > 0 && activeLots.some(candidate => candidate.id === row.lotId)).map(row => row.lotId)
-      : [];
-    const usingIds = item.mixLotRatios !== undefined && configuredIds.length > 0
-      ? configuredIds
-      : activeLots.slice(0, raw && item.mixEnabled && item.mixLotRatios === undefined ? 2 : 1).map(candidate => candidate.id);
-    return usingIds.includes(lot.id) ? '사용중' as const : '대기중' as const;
-  };
   const selectedLotItem = selectedLot ? lotItems.find(item => item.id === selectedLot.itemId) ?? null : null;
   const selectedLotData = selectedLotItem?.lots?.find(lot => lot.id === selectedLot?.lotId) ?? null;
   const lotKgOf = (item: Item): number => {
@@ -688,7 +695,10 @@ const ItemList: React.FC<ItemListProps> = ({
     return (item.lots ?? []).filter(lot => {
       const remaining = Number(raw ? lot.kgRemaining ?? 0 : lot.qtyRemaining ?? 0);
       const complete = lot.status === 'depleted' || Math.abs(remaining) <= 0.0001;
-      return activeTab === 'lot-history' ? complete : !complete;
+      if (activeTab === 'lot-history') return complete && (lotStatus === 'all' || lotStatus === 'complete');
+      if (complete || lotStatus === 'complete') return false;
+      const state = lotStateOf(item, lot);
+      return lotStatus === 'all' || (lotStatus === 'using' ? state === '사용중' : state === '대기중');
     });
   };
   /** 로트id → 나간 곳. 주문의 출고 스냅샷을 거꾸로 읽는다 — 회수할 때 실제로 보는 값. */
@@ -1704,6 +1714,16 @@ const ItemList: React.FC<ItemListProps> = ({
                 </button>
               ))}
             </div>
+            <div className="flex items-center rounded-xl bg-slate-100 p-1">
+              {([['all', '전체'], ['using', '사용중'], ['waiting', '대기중'], ['complete', '완료']] as const).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => {
+                  setLotStatus(key);
+                  setActiveTab(key === 'complete' ? 'lot-history' : 'lots');
+                }} className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotStatus === key ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1">
               <button type="button" onClick={() => setLotView('list')} title="리스트 보기"
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${lotView === 'list' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-400 hover:text-slate-700'}`}>
@@ -1742,6 +1762,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <tbody>
                       {pagedLotRows.map(({ item, lot }, index) => {
                         const raw = isRawHolder(item);
+                        const goods = item.type === 'goods';
                         const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
                         const lotState = lotStateOf(item, lot);
                         return <tr key={`${item.id}-${lot.id}`} onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
@@ -1759,7 +1780,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           </td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-xs font-black text-slate-800">{item.name}</td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500">{item.spec || '-'}</td>
-                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{(Math.round(kg * 10) / 10).toLocaleString()} kg{!raw && <small className="text-[9px] text-slate-400">({lot.qtyRemaining ?? 0}{item.unit || '개'})</small>}<ChevronRight size={14} className="text-slate-300" /></span></td>
+                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{goods ? `${Number(lot.qtyRemaining ?? 0).toLocaleString()} ${item.unit || '개'}` : <>{(Math.round(kg * 10) / 10).toLocaleString()} kg{!raw && <small className="text-[9px] text-slate-400">({lot.qtyRemaining ?? 0}{item.unit || '개'})</small>}</>}<ChevronRight size={14} className="text-slate-300" /></span></td>
                         </tr>;
                       })}
                     </tbody>
@@ -1785,12 +1806,15 @@ const ItemList: React.FC<ItemListProps> = ({
                 <div className="space-y-4">
                   {visibleLotItems.map(item => {
                     const raw = isRawHolder(item);
+                    const goods = item.type === 'goods';
                     const activeLots = displayedLotsOf(item);
                     if (activeLots.length === 0) return null;
                     return <section key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
                       <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · {activeTab === 'lot-history' ? '완료' : '활성'} 로트 {activeLots.length}건</p></div>
-                      <span className="text-xs font-black text-slate-700 tabular-nums">{(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg</span>
+                      <span className="text-xs font-black text-slate-700 tabular-nums">{goods
+                        ? `${activeLots.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0).toLocaleString()} ${item.unit || '개'}`
+                        : `${(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg`}</span>
                     </header>
                     <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">
                   {activeLots.map(lot => {
@@ -1804,7 +1828,9 @@ const ItemList: React.FC<ItemListProps> = ({
                       </div>
                       <div className="mt-4">
                         <span className="block text-[9px] font-black text-slate-400">로트 잔량</span>
-                        <span className="mt-1 block text-base font-black text-slate-900 tabular-nums">{(Math.round(kg * 10) / 10).toLocaleString()} kg</span>
+                        <span className="mt-1 block text-base font-black text-slate-900 tabular-nums">{goods
+                          ? `${Number(lot.qtyRemaining ?? 0).toLocaleString()} ${item.unit || '개'}`
+                          : `${(Math.round(kg * 10) / 10).toLocaleString()} kg`}</span>
                       </div>
                       <span className="mt-3 flex items-center justify-end text-[10px] font-bold text-indigo-500">로트 상세 보기</span>
                     </button>;
