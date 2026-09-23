@@ -39,14 +39,16 @@ import {
   Check,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
-import { PurchaseOrder, poLines } from '../src/shared/types';
+import { PurchaseOrder, ReturnRequest, poLines } from '../src/shared/types';
 import { OrderStatus, type Order } from '../src/shared/types';
+import { shipQtyOfLine } from '../src/shared/shipDeduction';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
 import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
+import ModalShell from '../src/shared/components/ModalShell';
 import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
@@ -107,7 +109,7 @@ const boxEquivalentLabel = (qty: number, unitsPerBox: number): string => {
   return `${value}박스 분량`;
 };
 
-const inventoryNameSpec = (p: { name: string; spec?: string }): { name: string; spec: string } => {
+const inventoryNameSpec = (p: { name: string; spec?: string; subtype?: string }): { name: string; spec: string } => {
   const { base, vol } = splitNameVolume(p);
   const nameCount = p.name.match(/\(?\s*(\d+)\s*개입\s*\)?/i)?.[1];
   const cleanName = base
@@ -117,7 +119,10 @@ const inventoryNameSpec = (p: { name: string; spec?: string }): { name: string; 
   const baseSpec = specText(p.spec) || vol || '-';
   const specCount = parseSpecCount(p.spec);
   const count = specCount > 1 ? specCount : Number(nameCount || 0);
-  return { name: cleanName || base, spec: count > 1 && !baseSpec.includes(String(count)) ? `${baseSpec} × ${count}` : baseSpec };
+  const countedSpec = count > 1 && !baseSpec.includes(String(count)) ? `${baseSpec} × ${count}` : baseSpec;
+  // 선물세트의 1호·2호는 규격이 아니라 품목 구분명이다. 규격 칸에는 포장 형태만 적는다.
+  const giftSpec = p.subtype === '선물세트' ? '선물세트' : countedSpec;
+  return { name: cleanName || base, spec: giftSpec };
 };
 
 const withSpec = (p: { name: string; spec?: string }): string => {
@@ -176,6 +181,7 @@ interface StockClosing { id: string; date: string; closedBy: string; createdAt: 
  */
 
 interface ItemListProps {
+  mode?: 'inventory' | 'lots';
   companyId: import('../src/shared/types').CompanyId;
   items: Item[];
   orderRequests: PurchaseOrder[];
@@ -224,6 +230,7 @@ interface ItemListProps {
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Item>) => void;
   receivedOrders?: PurchaseOrder[];
+  returnRequests?: ReturnRequest[];
   returnContent?: React.ReactNode;
   returnBadge?: number;
   // 임가공(OEM) — 발주는 입고대기에, 이력은 입고이력에 함께 표시된다(별도 목록 없음)
@@ -245,7 +252,7 @@ const CLIENT_BADGE_COLORS = [
   'bg-orange-50 text-orange-500',
   'bg-indigo-50 text-indigo-500',
 ];
-type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots' | 'lot-history';
+type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'production' | 'lots' | 'lot-history';
 
 /**
  * 필터 드롭다운 하나 — 라벨 + 고른 값 요약 + 펼치면 선택지.
@@ -285,7 +292,9 @@ const FilterDrop: React.FC<{
     </div>
   );
 };
-type InboundSubTab = '입고' | '반품';
+type FlowTypeFilter = '전체' | '입고' | '반품';
+type FlowStatusFilter = '전체' | '예정' | '대기' | '완료';
+type InboundSubTab = '입고' | '반품'; // 옛 카드 화면 제거 전 컴파일 호환용
 //  상단 탭 = 품목 **타입 키** 그대로. 예전엔 finished/rawmaterial 같은 별칭을 따로 뒀는데
 //  분류 관리에서 타입을 숨기거나 이름을 바꿔도 안 따라오고, 매핑 표만 늘었다.
 type TopTab = string;
@@ -305,6 +314,7 @@ const displayStockOf = (p: any): number => {
 };
 
 const ItemList: React.FC<ItemListProps> = ({
+  mode = 'inventory',
   companyId,
   items,
   orderRequests,
@@ -318,6 +328,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onUpdatePoItemQty,
   onRemovePoItem,
   onRequestPoEdit,
+  onConfirmRequest,
   onBulkAddConfirmedOrders,
   onConfirmAllRequests,
   onFinishConfirmedOrder,
@@ -340,6 +351,7 @@ const ItemList: React.FC<ItemListProps> = ({
   isAdmin = false,
   onUpdateSubmaterial,
   receivedOrders = [],
+  returnRequests = [],
   partnerItems = [],
   returnContent,
   returnBadge = 0,
@@ -352,15 +364,19 @@ const ItemList: React.FC<ItemListProps> = ({
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const scheduledOutboundQty = useMemo(() => {
     const result = new Map<string, number>();
-    const scheduledStatuses = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED]);
+    const beforeShipment = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED]);
     for (const order of orders ?? []) {
-      if (!scheduledStatuses.has(order.status)) continue;
+      // 주문 전체 상태가 아니라 **품목 줄의 작업완료**를 본다. 한 주문 안에서도 완료된 품목만 예약한다.
+      if (!beforeShipment.has(order.status)) continue;
       for (const line of order.items ?? []) {
-        result.set(line.itemId, (result.get(line.itemId) ?? 0) + (Number(line.quantity) || 0));
+        if (!line.checked) continue;
+        const product = items.find(candidate => candidate.id === line.itemId);
+        const quantity = shipQtyOfLine(line, product);
+        result.set(line.itemId, (result.get(line.itemId) ?? 0) + quantity);
       }
     }
     return result;
-  }, [orders]);
+  }, [items, orders]);
   // 품목 → 매출처 이름들(공백연결). 재고 현황 거래처 검색용. Direction='out' + 품목의 partnerIds 둘 다.
   const salesPartnerNames = useMemo(() => {
     const nameById = new Map(partners.map(c => [c.id, c.name]));
@@ -563,8 +579,12 @@ const ItemList: React.FC<ItemListProps> = ({
   };
 
   const [topTab, setTopTab] = useState<TopTab>('product');
-  const [activeTab, setActiveTab] = useState<MainTab>('master');
-  const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
+  const [activeTab, setActiveTab] = useState<MainTab>(mode === 'lots' ? 'production' : 'master');
+  useEffect(() => { setActiveTab(mode === 'lots' ? 'production' : 'master'); }, [mode]);
+  const [flowTypeFilter, setFlowTypeFilter] = useState<FlowTypeFilter>('전체');
+  const [flowStatusFilter, setFlowStatusFilter] = useState<FlowStatusFilter>('전체');
+  const [flowPage, setFlowPage] = useState(1);
+  const [inboundSubTab] = useState<InboundSubTab>('입고');
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
   const [showReturnOverlay, setShowReturnOverlay] = useState(false);
   // 임가공(OEM) 모달 — 목록은 입고대기·입고이력에 녹아 있고 여기선 모달만 연다
@@ -612,6 +632,10 @@ const ItemList: React.FC<ItemListProps> = ({
   const [editingClosingVal, setEditingClosingVal] = useState<string>('');
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
   const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
+  const [detailProduct, setDetailProduct] = useState<Item | null>(null);
+  const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
+  const [detailOrderIsBox, setDetailOrderIsBox] = useState<boolean>(false);
+  const [detailStocktakeQty, setDetailStocktakeQty] = useState<number>(0);
 
   React.useEffect(() => {
     if (!rowEditProduct) return;
@@ -949,7 +973,7 @@ const ItemList: React.FC<ItemListProps> = ({
     }
   };
 
-  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ title?: string; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   // 분류 체계 — 이름·하위 분류는 사용자가 정한다(itemTaxonomy). 저장본이 없으면 기본값.
@@ -1182,9 +1206,9 @@ const ItemList: React.FC<ItemListProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col relative">
       <PageHeader
-        title="재고 관리"
-        subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
-        right={
+        title={mode === 'lots' ? '생산 관리' : '재고 관리'}
+        subtitle={mode === 'lots' ? '원료 사용과 활성·완료 로트를 한곳에서 관리하세요.' : '실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.'}
+        right={mode === 'inventory' ? (
           <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
             <button
               onClick={() => setActiveTab('master')}
@@ -1199,21 +1223,17 @@ const ItemList: React.FC<ItemListProps> = ({
               <Inbox size={13} /><span>입고/반품</span>
               {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
             </button>
-            <button
-              onClick={() => setActiveTab('lots')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'lots' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Layers size={13} /><span>로트</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('lot-history')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'lot-history' ? 'bg-white text-slate-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <History size={13} /><span>로트 이력</span>
-            </button>
           </div>
-        }
+        ) : undefined}
       />
+
+      {mode === 'lots' && (
+        <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
+          <button onClick={() => setActiveTab('production')} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'production' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}><Factory size={13} className="mr-1.5 inline" />생산</button>
+          <button onClick={() => { setLotStatus('all'); setActiveTab('lots'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lots' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}><Layers size={13} className="mr-1.5 inline" />로트</button>
+          <button onClick={() => { setLotStatus('complete'); setActiveTab('lot-history'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lot-history' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}><History size={13} className="mr-1.5 inline" />로트 이력</button>
+        </div>
+      )}
 
       {/* 장바구니 FAB (fixed — 위치 무관하므로 헤더 뒤에 두어 space-y 마진 영향 제거) */}
       {activeTab === 'master' && (
@@ -1231,7 +1251,7 @@ const ItemList: React.FC<ItemListProps> = ({
       <div className="flex flex-col space-y-4">
 
         {/* 카테고리 토글 + 검색 행 (입고/반품·로트 탭에서는 숨김) */}
-        {!zeroStockOnly && activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && (
+        {mode === 'inventory' && !zeroStockOnly && activeTab !== 'inbound' && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {/* 탭 = 분류 관리의 타입 그대로 — 이름·순서·숨김이 다 따라온다.
@@ -1260,7 +1280,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 />
               </div>
             )}
-            {/* 우측 액션: 재고 현황(마감·만들기 통합) + (원료재고 탭) 입고/사용 기록 */}
+            {/* 재고 화면은 조회·실사만 맡는다. 원료 사용 기록은 생산 관리로 옮겼다. */}
             <div className="flex items-center gap-2 ml-auto">
               <button
                 // 열 때마다 '재고' 뷰로 — 평소 보고 세는 숫자가 작업완료 제외한 가용 재고라서.
@@ -1269,15 +1289,6 @@ const ItemList: React.FC<ItemListProps> = ({
               >
                 <Box size={13} /> 재고 현황
               </button>
-              {activeTab === 'master' && topTab === 'raw' && (
-                <button
-                  type="button"
-                  onClick={() => setRawEntryModal({ mode: 'usage' })}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                >
-                  <FileDown size={13} /><span>사용 기록</span>
-                </button>
-              )}
               {/* 분류 관리는 품목 관리(관리자)로 이동 */}
             </div>
           </div>
@@ -1288,7 +1299,7 @@ const ItemList: React.FC<ItemListProps> = ({
           <div className="flex items-center justify-end gap-2">
             {returnContent && (
               <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
-                <RotateCcw size={13} /><span>반품처리</span>
+                <RotateCcw size={13} /><span>반품 처리</span>
                 {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
               </button>
             )}
@@ -1300,58 +1311,11 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
-        {/* 입고/반품 서브탭 (필터 행 위치) */}
-        {activeTab === 'inbound' && returnContent && (
-          <div className="flex items-center gap-2">
-            {returnContent && (
-              <button
-                onClick={() => setInboundSubTab('반품')}
-                className={`px-4 py-2 rounded-2xl border text-xs font-black transition-all ${inboundSubTab === '반품' ? 'bg-rose-50 border-rose-200 text-rose-700 ring-2 ring-rose-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-              >
-                반품
-                {returnBadge > 0 && <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{returnBadge}</span>}
-              </button>
-            )}
-          </div>
-        )}
-
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
             서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}
-        {activeTab !== 'inbound' && activeTab !== 'lots' && activeTab !== 'lot-history' && (
+        {mode === 'inventory' && activeTab !== 'inbound' && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
-            {subtypeTabs.length > 0 && (
-              <FilterDrop label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype}>
-                {close => (
-                  <div className="max-h-[280px] overflow-y-auto py-1">
-                    {['전체', ...subtypeTabs].map(v => (
-                      <FilterRow key={v} on={activeSubtype === v}
-                        onClick={() => { setActiveSubtype(v); close(); }}>{v}</FilterRow>
-                    ))}
-                  </div>
-                )}
-              </FilterDrop>
-            )}
-
-            {subCategories.length > 0 && (
-              <FilterDrop label="분류" active={catSel.size > 0}
-                summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${[...catSel][0]} 외 ${catSel.size - 1}`}>
-                {close => (
-                  <div className="max-h-[280px] overflow-y-auto py-1">
-                    {catSel.size > 0 && (
-                      <button onClick={() => setCatSel(new Set())}
-                        className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
-                    )}
-                    {/* 하나만 고른다 — 여러 개를 섞으면 지금 무엇을 보고 있는지 흐려진다 */}
-                    {subCategories.map(c => (
-                      <FilterRow key={c.id} on={catSel.has(c.id)}
-                        onClick={() => { setCatSel(new Set(catSel.has(c.id) ? [] : [c.id])); close(); }}>{c.label}</FilterRow>
-                    ))}
-                  </div>
-                )}
-              </FilterDrop>
-            )}
-
             {specOptions.length > 0 && (
               <FilterDrop label="용량" active={specSel.size > 0}
                 summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
@@ -1484,233 +1448,127 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       )}
 
-      {/* 입고/반품 탭 콘텐츠 */}
-      {activeTab === 'inbound' && (
-        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
-          {inboundSubTab === '입고' && (() => {
-            const history = (receivedOrders ?? [])
-              .filter(r => (r.receivedAt ?? '').slice(0, 7) === historyMonth)
-              .sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
-            const HISTORY_PAGE_SIZE = 10;
-            const historyTotalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
-            const historySafePage = Math.min(historyPage, historyTotalPages);
-            const pagedHistory = history.slice((historySafePage - 1) * HISTORY_PAGE_SIZE, historySafePage * HISTORY_PAGE_SIZE);
-            return (
-              <>
-                {/* ── 발주 예정 목록 (Firestore pending) ── */}
-                {orderRequests.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
-                    <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
-                    <p>발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아 확정하세요</p>
-                  </div>
-                ) : (() => {
-                  const groups = new Map<string, { partnerName: string; items: typeof orderRequests }>();
-                  orderRequests.forEach(po => {
-                    const key = po.partnerName || '거래처 미지정';
-                    if (!groups.has(key)) groups.set(key, { partnerName: key, items: [] });
-                    groups.get(key)!.items.push(po);
-                  });
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 px-1">
-                        <ClipboardCheck size={16} className="text-indigo-500" />
-                        <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{orderRequests.length}건</span>
-                      </div>
-                      {Array.from(groups.values()).map(group => (
-                        <div key={group.partnerName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                          <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
-                            <span className="text-xs font-black text-orange-700">{group.partnerName}</span>
-                            <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
-                          </div>
-                          <div className="divide-y divide-slate-50">
-                            {group.items.flatMap(po => poLines(po).map((line, idx) => {
-                              const product = productMap.get(line.itemId);
-                              const lineKey = `${po.id}-${idx}`;
-                              const isEditing = editingReqLine === lineKey;
-                              const setQty = (q: number) => onUpdatePoItemQty ? onUpdatePoItemQty(po.id, idx, q) : onUpdateOrderRequestQty(po.id, q);
-                              const removeLine = () => onRemovePoItem ? onRemovePoItem(po.id, idx) : onRemoveOrderRequest(po.id);
-                              const saveEdit = () => { const q = Math.max(1, parseInt(editingReqVal) || 1); setQty(q); setEditingReqLine(null); };
-                              return (
-                                <div key={lineKey} className="px-4 py-3 flex items-center gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{line.name}</p>
-                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product ? displayStockOf(product) : '-'} {product?.unit ?? ''}</p>
-                                  </div>
-                                  {isEditing ? (
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <input type="number" autoFocus value={editingReqVal}
-                                        onChange={e => setEditingReqVal(e.target.value)}
-                                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingReqLine(null); }}
-                                        className="w-16 text-center text-sm font-black border border-teal-300 rounded-lg px-1 py-1 outline-none focus:ring-2 focus:ring-teal-400" />
-                                      <span className="text-[11px] text-slate-400">{product?.unit ?? ''}{line.boxQuantity ? ` (${line.boxQuantity}B)` : ''}</span>
-                                      <button onClick={saveEdit} className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[11px] font-black hover:bg-teal-600">저장</button>
-                                      <button onClick={() => setEditingReqLine(null)} className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[11px] font-black hover:bg-slate-200">취소</button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <span className="text-sm font-black text-slate-800">{line.quantity}</span>
-                                      <span className="text-[11px] text-slate-400">{product?.unit ?? ''}{line.boxQuantity ? ` (${line.boxQuantity}B)` : ''}</span>
-                                      <button onClick={() => { setEditingReqLine(lineKey); setEditingReqVal(String(line.quantity)); }}
-                                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all" title="수정"><Edit size={13} /></button>
-                                      <button onClick={removeLine} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all" title="삭제"><Trash2 size={13} /></button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            }))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {/* ── 입고대기 (발주카드 invoiced) ── */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText size={14} className="text-amber-500" />
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고대기</span>
-                    {confirmedOrders.length > 0 && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>}
-                  </div>
-                  {confirmedOrders.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">입고 대기 없음</div>
-                  ) : (() => {
-                    const groups = new Map<string, { partnerName: string; orders: typeof confirmedOrders }>();
-                    confirmedOrders.forEach(po => {
-                      const key = po.partnerName || '거래처 미지정';
-                      if (!groups.has(key)) groups.set(key, { partnerName: key, orders: [] });
-                      groups.get(key)!.orders.push(po);
-                    });
-                    return (
-                      <div className="space-y-2">
-                        {Array.from(groups.values()).map(group => (
-                          <div key={group.partnerName} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-3">
-                            <p className="font-black text-slate-800 text-sm">{group.partnerName}</p>
-                            {group.orders.map(po => {
-                              // 임가공 배치 — 우리 원료가 나가 있는 것. 입고확정 대신 가공입고.
-                              if (po.poType === 'oem') return (
-                                <div key={po.id} className="rounded-xl border border-violet-200 bg-violet-50/40 p-2.5 space-y-2">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] font-black text-violet-600 bg-violet-100 px-2 py-0.5 rounded">임가공 · 외주 나감</span>
-                                    <button onClick={() => setOemReceiveTarget(po)}
-                                      className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-[11px] font-black hover:bg-violet-700 transition-all shrink-0">
-                                      가공입고
-                                    </button>
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 font-bold">출고일 {dateOfLocal(po.oemSentAt || po.createdAt)}</p>
-                                  {(po.oemSent ?? []).map((s, idx) => (
-                                    <div key={idx} className="flex justify-between text-xs text-slate-600 bg-white rounded-lg px-3 py-1.5">
-                                      <span>{s.material} <span className="text-slate-400">보냄</span></span>
-                                      <span className="font-bold">{s.kg.toLocaleString()} kg</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                              return (
-                              <div key={po.id} className="rounded-xl border border-slate-100 p-2.5 space-y-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] text-slate-400 font-bold">발주일 {dateOfLocal(po.createdAt)}</span>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <button onClick={() => onFinishConfirmedOrder(po.id)}
-                                      className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-black hover:bg-emerald-600 transition-all">
-                                      입고확정
-                                    </button>
-                                    {po.linkedStatementId && onRequestPoEdit && (
-                                      <button onClick={() => setPoEditModal({ po, rows: poLines(po).map(l => ({ itemId: l.itemId, name: l.name, qty: String(l.quantity) })), reason: '' })}
-                                        className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-black hover:bg-slate-200 transition-all">
-                                        수정
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                                {poLines(po).map((line, idx) => {
-                                  const product = productMap.get(line.itemId);
-                                  //  수량은 재고 단위다 — '몇 박스'는 boxQuantity 가 따로 들고 있다
-                                  const unit = line.unit || product?.unit || '';
-                                  return (
-                                    <div key={`${po.id}-${idx}`} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                                      <span>{line.name || product?.name}</span>
-                                      <span className="font-bold">{line.quantity.toLocaleString()} {unit}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* ── 입고이력 ── */}
-                <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <History size={14} className="text-slate-400" />
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고이력</span>
-                    {history.length > 0 && <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{history.length}건</span>}
-                    <input type="month" value={historyMonth} onChange={e => { setHistoryMonth(e.target.value); setHistoryPage(1); }} className="border border-slate-200 rounded-xl px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 ml-auto" />
-                  </div>
-                  {history.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">해당 월의 입고 이력 없음</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {pagedHistory.map(r => {
-                        const isOem = r.poType === 'oem';
-                        const oemSentTotal = (r.oemSent ?? []).reduce((a, s) => a + (s.kg || 0), 0);
-                        return (
-                        <div key={r.id} className={`bg-white rounded-2xl border p-4 shadow-sm space-y-2 ${isOem ? 'border-violet-200' : 'border-slate-100'}`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-black text-slate-800 text-sm">
-                                {r.partnerName}
-                                {isOem && <span className="ml-1.5 text-[10px] font-black text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">임가공</span>}
-                              </p>
-                              <p className="text-xs text-slate-400">
-                                {(r.receivedAt ?? '').slice(0, 10)}
-                                {isOem && ` · 보낸 원료 ${oemSentTotal.toLocaleString()}kg → 받은 ${(r.oemReceivedKg ?? 0).toLocaleString()}kg (로스 ${Math.max(0, Math.round((oemSentTotal - (r.oemReceivedKg ?? 0)) * 1000) / 1000).toLocaleString()}kg)`}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                {r.linkedStatementId ? '✓ 전표 연결됨' : (isOem ? '가공비 전표 → 확인사항' : '전표 미작성')}
-                              </span>
-                              {/* 가공비 전표 발행은 확인사항에서 — 여기 버튼 없음(경로 하나로) */}
-                            </div>
-                          </div>
-                          {(r.items ?? []).map((item, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                              <span>{item.name}</span>
-                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
-                            </div>
-                          ))}
-                        </div>
-                        );
-                      })}
-                      {historyTotalPages > 1 && (
-                        <div className="flex items-center justify-center gap-1 pt-2">
-                          <button onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historySafePage === 1}
-                            className="px-3 h-8 rounded-lg text-xs font-black text-slate-500 bg-white border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all">이전</button>
-                          {Array.from({ length: historyTotalPages }, (_, i) => i + 1).map(p => (
-                            <button key={p} onClick={() => setHistoryPage(p)}
-                              className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${historySafePage === p ? 'bg-teal-600 text-white shadow' : 'text-slate-400 bg-white border border-slate-200 hover:bg-slate-50'}`}>{p}</button>
-                          ))}
-                          <button onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))} disabled={historySafePage === historyTotalPages}
-                            className="px-3 h-8 rounded-lg text-xs font-black text-slate-500 bg-white border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all">다음</button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
-          {inboundSubTab === '반품' && returnContent && returnContent}
-        </div>
-      )}
+      {/* 입고·반품은 주문관리처럼 한 목록에서 유형/상태로 거른다. */}
+      {activeTab === 'inbound' && (() => {
+        type FlowRow = {
+          key: string;
+          id: string;
+          type: '입고' | '반품';
+          status: '예정' | '대기' | '완료';
+          date: string;
+          partnerName: string;
+          itemSummary: string;
+          quantitySummary: string;
+          source: PurchaseOrder | ReturnRequest;
+        };
+        const purchaseRow = (po: PurchaseOrder, status: FlowRow['status'], date: string): FlowRow => {
+          const lines = poLines(po);
+          return {
+            key: `입고-${status}-${po.id}`,
+            id: po.id,
+            type: '입고',
+            status,
+            date,
+            partnerName: po.partnerName || '거래처 미지정',
+            itemSummary: lines.map(line => line.name || productMap.get(line.itemId)?.name || '품목 미지정').join(', '),
+            quantitySummary: lines.length === 1
+              ? `${lines[0].quantity.toLocaleString()} ${lines[0].unit || productMap.get(lines[0].itemId)?.unit || ''}`.trim()
+              : `${lines.length}개 품목`,
+            source: po,
+          };
+        };
+        const rows: FlowRow[] = [
+          ...orderRequests.map(po => purchaseRow(po, '예정', po.createdAt)),
+          ...confirmedOrders.map(po => purchaseRow(po, '대기', po.createdAt)),
+          ...receivedOrders.map(po => purchaseRow(po, '완료', po.receivedAt || po.createdAt)),
+          ...returnRequests.map(request => ({
+            key: `반품-${request.id}`,
+            id: request.id,
+            type: '반품' as const,
+            status: request.status === 'processed' ? '완료' as const : '대기' as const,
+            date: request.processedAt || request.createdAt,
+            partnerName: request.partnerName || '거래처 미지정',
+            itemSummary: request.items.map(item => item.name).join(', '),
+            quantitySummary: `${request.items.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()}개`,
+            source: request,
+          })),
+        ]
+          .filter(row => flowTypeFilter === '전체' || row.type === flowTypeFilter)
+          .filter(row => flowStatusFilter === '전체' || row.status === flowStatusFilter)
+          .sort((a, b) => b.date.localeCompare(a.date));
+        const pageSize = 30;
+        const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+        const currentPage = Math.min(flowPage, pageCount);
+        const visible = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        const requestTransition = (row: FlowRow) => {
+          if (row.status === '완료') return;
+          if (row.type === '입고' && row.status === '예정') {
+            setConfirmModal({
+              title: '입고대기 전환',
+              message: `${row.partnerName} 발주를 입고대기로 옮길까요?`,
+              subMessage: row.itemSummary,
+              confirmText: '입고대기로',
+              onConfirm: () => { setConfirmModal(null); onConfirmRequest(row.id); },
+            });
+            return;
+          }
+          if (row.type === '입고') {
+            setConfirmModal({
+              title: '입고확정',
+              message: `${row.partnerName} 품목을 입고 완료 처리할까요?`,
+              subMessage: '확인하면 재고와 입고 이력에 반영됩니다.',
+              confirmText: '입고확정',
+              onConfirm: () => { setConfirmModal(null); onFinishConfirmedOrder(row.id); },
+            });
+            return;
+          }
+          setConfirmModal({
+            title: '반품 처리',
+            message: `${row.partnerName} 반품 내용을 확인하고 처리할까요?`,
+            subMessage: row.itemSummary,
+            confirmText: '내용 확인',
+            onConfirm: () => { setConfirmModal(null); setShowReturnOverlay(true); },
+          });
+        };
+        return (
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-[10px] font-black text-slate-400">유형</span>
+              {(['전체', '입고', '반품'] as FlowTypeFilter[]).map(value => (
+                <button key={value} type="button" onClick={() => { setFlowTypeFilter(value); setFlowPage(1); }} className={`rounded-lg px-3 py-2 text-xs font-black ${flowTypeFilter === value ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>
+              ))}
+              <span className="ml-3 mr-1 text-[10px] font-black text-slate-400">상태</span>
+              {(['전체', '예정', '대기', '완료'] as FlowStatusFilter[]).map(value => (
+                <button key={value} type="button" onClick={() => { setFlowStatusFilter(value); setFlowPage(1); }} className={`rounded-lg px-3 py-2 text-xs font-black ${flowStatusFilter === value ? 'bg-slate-800 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>
+              ))}
+              <span className="ml-auto text-xs font-bold text-slate-400">{rows.length}건</span>
+            </div>
+            <div className="overflow-x-auto border-y-2 border-slate-400 bg-white">
+              <table className="w-full min-w-[760px] table-fixed text-left">
+                <thead className="border-b-2 border-slate-400 bg-slate-50 text-[11px] font-black text-slate-500">
+                  <tr><th className="w-20 px-4 py-3">유형</th><th className="w-24 px-3 py-3">상태</th><th className="w-28 px-3 py-3">일자</th><th className="w-40 px-3 py-3">거래처</th><th className="px-3 py-3">품목</th><th className="w-28 px-3 py-3 text-right">수량</th></tr>
+                </thead>
+                <tbody>
+                  {visible.map(row => (
+                    <tr key={row.key} className="border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70">
+                      <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
+                      <td className="px-3 py-3">
+                        <button type="button" disabled={row.status === '완료'} onClick={() => requestTransition(row)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
+                      </td>
+                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
+                      <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
+                      <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
+                      <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
+                    </tr>
+                  ))}
+                  {visible.length === 0 && <tr><td colSpan={6} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {pageCount > 1 && <div className="flex justify-center gap-1">{Array.from({ length: pageCount }, (_, index) => index + 1).map(value => <button key={value} type="button" onClick={() => setFlowPage(value)} className={`h-8 w-8 rounded-lg text-xs font-black ${currentPage === value ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>)}</div>}
+          </div>
+        );
+      })()}
 
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
       {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
@@ -1726,6 +1584,20 @@ const ItemList: React.FC<ItemListProps> = ({
           onReceive={onOemReceive}
           onIssueFee={onOemIssueFee}
         />
+      )}
+
+      {activeTab === 'production' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-black text-slate-900">원료 사용 기록</h3>
+              <p className="mt-1 text-xs font-bold text-slate-400">생산에 사용한 원료를 선택하고 사용량을 기록합니다.</p>
+            </div>
+            <button type="button" onClick={() => setRawEntryModal({ mode: 'usage' })} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-indigo-700">
+              <FileDown size={14} />사용 기록
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
@@ -1990,15 +1862,12 @@ const ItemList: React.FC<ItemListProps> = ({
                   {/* 좁은 폰에서 머리글이 **한 글자씩 세로로 쪼개졌다**(2026-09-06 사장님).
                       tracking-widest 로 글자를 벌려 놓은 데다 칸이 좁아서 그렇다.
                       안 쪼개지게 못 박고, 대신 표가 옆으로 밀리게 둔다(바깥에 overflow-x-auto). */}
-                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">서브타입</th>
-                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">카테고리</th>
-                  <th className="hidden border-r border-slate-300 px-3 py-3 whitespace-nowrap sm:table-cell">거래처</th>
                   <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">품목명</th>
                   <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">규격</th>
+                  <th className="border-r border-slate-300 px-3 py-3 whitespace-nowrap">거래처</th>
                   <th className="border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap">현재 재고</th>
-                  <th className="border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap">출고예정수량</th>
+                  <th className="border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap">출고예정　가용재고</th>
                   <th className="hidden border-r border-slate-300 px-3 py-3 text-right whitespace-nowrap sm:table-cell">최소 수량</th>
-                  <th className="px-4 py-3 hidden sm:table-cell"></th>
                 </tr>
               </thead>
               <tbody>
@@ -2044,19 +1913,15 @@ const ItemList: React.FC<ItemListProps> = ({
                   return (
                     <React.Fragment key={product.id}>
                     <tr
-                      className={`min-h-10 border-b-2 border-slate-400 transition-colors cursor-pointer sm:cursor-default ${inCart ? 'bg-indigo-50/40' : rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
-                      onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
+                      className={`min-h-10 border-b-2 border-slate-400 transition-colors cursor-pointer ${inCart ? 'bg-indigo-50/40' : rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
+                      onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
                     >
-                      {/* 서브타입·카테고리는 **다른 칸**이다 — 한 칸에 겹쳐 두면 무엇이 무엇인지 안 갈린다 */}
+                      {/* 카테고리와 서브타입은 필터에서만 쓴다. 현장 목록은 품목명부터 시작한다. */}
                       <td className="border-r border-slate-300 px-3 py-3">
-                        {product.subtype
-                          ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{product.subtype}</span>
-                          : <span className="text-[11px] text-slate-200">-</span>}
+                        <span className={`font-black ${isChild ? 'text-slate-500' : 'text-slate-800'}`}>{inventoryNameSpec(product).name}</span>
                       </td>
+                      <td className="border-r border-slate-300 px-3 py-3"><span className="font-bold text-slate-500 whitespace-nowrap">{inventoryNameSpec(product).spec}</span></td>
                       <td className="border-r border-slate-300 px-3 py-3">
-                        <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{categoryOf(product) || '-'}</span>
-                      </td>
-                      <td className="hidden border-r border-slate-300 px-3 py-3 sm:table-cell" onClick={e => e.stopPropagation()}>
                         {normCat(product.type) === '완제품' ? (
                           // 완제품: 매출처 (Direction='out', partnerIds 기반)
                           (() => { const 걸린곳 = partnersOfItem(partnerItems, product.id); return 걸린곳.length > 0; })() ? (() => {
@@ -2075,26 +1940,29 @@ const ItemList: React.FC<ItemListProps> = ({
                                   return <span key={cid}>{cname}</span>;
                                 })}
                                 {!isExp && 걸린곳.length > 1 && (
-                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold text-slate-400 hover:text-indigo-600">+{걸린곳.length - 1}</button>
+                                  <button onClick={e => { e.stopPropagation(); setExpandedClientRowId(product.id); }} className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700">외 {걸린곳.length - 1}곳 펼치기</button>
                                 )}
                                 {isExp && (
-                                  <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold text-slate-400 hover:text-indigo-600">접기</button>
+                                  <button onClick={e => { e.stopPropagation(); setExpandedClientRowId(null); }} className="text-[9px] font-bold text-slate-400 hover:text-indigo-600">접기</button>
                                 )}
                               </div>
                             );
-                          })() : <span className="text-[11px] text-slate-200">-</span>
+                          })() : <span className="text-[11px] text-slate-400">판매처 미연결</span>
                         ) : (
                           // 상품/부자재: 매입처 (Direction='in', psMap 기반)
                           (() => {
-                            const partnerId = psMap.get(product.id);
-                            const sname = partnerId ? inboundPartnerMap.get(partnerId)?.name : null;
-                            return sname
-                              ? <span className="text-[11px] font-bold text-slate-500">{sname}</span>
-                              : <span className="text-[11px] text-slate-200">-</span>;
+                            const ids = [...new Set(partnerItems.filter(pi => pi.Direction === 'in' && pi.itemId === product.id).map(pi => pi.partnerId).filter(Boolean))];
+                            const names = ids.map(id => inboundPartnerMap.get(id)?.name).filter(Boolean) as string[];
+                            const isExp = expandedClientRowId === product.id;
+                            if (names.length === 0) return <span className="text-[11px] text-slate-400">매입처 미연결</span>;
+                            return <div className="flex flex-col items-start gap-0.5 text-[11px] font-bold text-slate-500">
+                              {(isExp ? names : names.slice(0, 1)).map(name => <span key={name}>{name}</span>)}
+                              {names.length > 1 && <button onClick={e => { e.stopPropagation(); setExpandedClientRowId(isExp ? null : product.id); }} className="text-[9px] text-indigo-500">{isExp ? '접기' : `외 ${names.length - 1}곳 펼치기`}</button>}
+                            </div>;
                           })()
                         )}
                       </td>
-                      <td className="border-r border-slate-300 px-3 py-3">
+                      <td className="hidden">
                         <div className={`flex items-center gap-2 ${isChild ? 'pl-5' : ''}`}>
                           {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
                           <span className={`truncate font-black ${isChild ? 'text-slate-500' : 'text-slate-800'}`}>
@@ -2115,7 +1983,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           )}
                         </div>
                       </td>
-                      <td className="border-r border-slate-300 px-3 py-3">
+                      <td className="hidden">
                         <span className="font-bold text-slate-500 whitespace-nowrap">
                           {inventoryNameSpec(product).spec}
                         </span>
@@ -2124,8 +1992,8 @@ const ItemList: React.FC<ItemListProps> = ({
                           단위는 그 옆 자기 칸으로 밀어낸다(숫자 자릿수가 달라도 안 흔들린다).
                           개봉 버튼은 숫자 아랫줄로 내린다 — 같은 줄에 두면 숫자 칸을 밀어 세로 정렬이 깨진다. */}
                       <td className="border-r border-slate-300 px-3 py-3">
-                        <div className="grid grid-cols-[44px_56px_28px] items-center justify-end gap-1">
-                          <div className="flex justify-end">
+                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                          <div className="hidden">
                           {unpackComponent(product) ? (
                             <button
                               onClick={e => { e.stopPropagation(); unpackBox(product); }}
@@ -2148,14 +2016,14 @@ const ItemList: React.FC<ItemListProps> = ({
                           </div>
                         {derivedCans != null ? (
                           <span className={`text-right text-[13px] font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
-                            onClick={e => e.stopPropagation()}
+                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
                             title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
                             {Math.floor(derivedCans)}
                           </span>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); openStocktake(product); }}
-                            className={`w-14 text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
+                            className={`min-w-[52px] text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title={`눌러서 실사 (지금 ${displayStock}${product.unit ?? ''})`}
                           >
                             {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
@@ -2168,17 +2036,18 @@ const ItemList: React.FC<ItemListProps> = ({
                         </div>
                       </td>
                       <td className="border-r border-slate-300 px-3 py-3 text-right">
-                        <span className="font-black tabular-nums text-slate-600">
-                          {scheduledOutboundQty.get(product.id) ?? 0}
-                        </span>
-                        <span className="ml-1 text-slate-400">{product.unit || '개'}</span>
+                        <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                          <div><span className="mr-1 text-[9px] font-bold text-slate-400">출고예정</span><span className="font-black tabular-nums text-slate-600">{scheduledOutboundQty.get(product.id) ?? 0}</span><span className="ml-1 text-slate-400">{product.unit || '개'}</span></div>
+                          <span className="text-slate-200">|</span>
+                          <div><span className="mr-1 text-[9px] font-bold text-slate-400">가용재고</span><span className="font-black tabular-nums text-slate-800">{Math.round((effStock - (scheduledOutboundQty.get(product.id) ?? 0)) * 100) / 100}</span><span className="ml-1 text-slate-400">{product.unit || '개'}</span></div>
+                        </div>
                       </td>
                       <td className="hidden border-r border-slate-300 px-3 py-3 text-right sm:table-cell">
                         {product.type !== '완제품'
                           ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
-                      <td className="px-3 py-3 text-right hidden sm:table-cell">
+                      <td className="hidden">
                         <div className="flex items-center justify-end gap-1.5">
                           {purchasableIds.has(product.id) && (
                             inCart ? (
@@ -2235,158 +2104,13 @@ const ItemList: React.FC<ItemListProps> = ({
                         </div>
                       </td>
                     </tr>
-                    {/* 볶음참깨 규격별 재고 패널 */}
-                    {isExpanded && product.isRawMaterial && (() => {
-                      const ics = partnerItems.filter(pi => pi.Direction === 'out' && pi.itemId === product.id);
-                      // 고유 (displaySize, labelId) 조합
-                      const variantMap = new Map<string, { displaySize: string; labelId: string; labelName: string; weightInKg: number }>();
-                      for (const ic of ics) {
-                        const key = `${ic.displaySize}||${ic.labelId ?? ''}`;
-                        if (!variantMap.has(key)) {
-                          const labelName = items.find(p => p.id === ic.labelId)?.name ?? (ic.labelId ? ic.labelId : '무라벨');
-                          variantMap.set(key, { displaySize: ic.displaySize ?? '', labelId: ic.labelId ?? '', labelName, weightInKg: ic.weightInKg ?? 0 });
-                        }
-                      }
-                      const variants = Array.from(variantMap.entries()).sort((a, b) => a[1].weightInKg - b[1].weightInKg);
-                      const editing = editingVariantStocks[product.id] ?? {};
-                      const currentStocks = product.variantStocks ?? {};
-                      const totalKg = variants.reduce((sum, [key, v]) => {
-                        const qty = editing[key] !== undefined ? editing[key] : (currentStocks[key] ?? 0);
-                        return sum + qty * v.weightInKg;
-                      }, 0);
-                      const isDirty = variants.some(([key]) => editing[key] !== undefined);
-                      return (
-                        <tr className="bg-emerald-50/40">
-                          <td colSpan={8} className="px-4 py-3">
-                            <div className="flex flex-col gap-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">규격별 재고</span>
-                                <span className="text-sm font-black text-emerald-800">합계 {totalKg.toFixed(1)} kg</span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {variants.map(([key, v]) => {
-                                  const val = editing[key] !== undefined ? editing[key] : (currentStocks[key] ?? 0);
-                                  return (
-                                    <div key={key} className="flex flex-col gap-1 bg-white rounded-xl border border-emerald-100 px-3 py-2">
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className="text-[10px] font-black text-emerald-700">{v.displaySize}</span>
-                                        <span className="text-[9px] font-bold text-slate-400 truncate max-w-[70px]">{v.labelName}</span>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          value={val === 0 && editing[key] === undefined ? '' : val}
-                                          placeholder="0"
-                                          onClick={e => e.stopPropagation()}
-                                          onChange={e => {
-                                            const n = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0);
-                                            setEditingVariantStocks(prev => ({ ...prev, [product.id]: { ...(prev[product.id] ?? {}), [key]: n } }));
-                                          }}
-                                          className="w-full text-right text-sm font-black border border-emerald-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
-                                        />
-                                        <span className="text-[10px] text-slate-400 shrink-0">개</span>
-                                      </div>
-                                      <span className="text-[9px] text-slate-400 text-right">{(val * v.weightInKg).toFixed(1)} kg</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {isDirty && (
-                                <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
-                                  <button
-                                    onClick={() => setEditingVariantStocks(prev => { const n = { ...prev }; delete n[product.id]; return n; })}
-                                    className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200 transition-all"
-                                  >취소</button>
-                                  <button
-                                    onClick={async () => {
-                                      const newStocks = { ...currentStocks, ...editing };
-                                      await onUpdateItem({ ...product, variantStocks: newStocks });
-                                      setEditingVariantStocks(prev => { const n = { ...prev }; delete n[product.id]; return n; });
-                                    }}
-                                    className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-sm"
-                                  >저장</button>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })()}
                     {/* 로트 확인은 상단 '로트' 탭으로 이동 (여기선 표시하지 않음) */}
-                    {/* 모바일 펼침 행 */}
-                    {isExpanded && (
-                      <tr className="sm:hidden bg-slate-50/80">
-                        <td colSpan={3} className="px-4 py-3">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black text-slate-400 uppercase">최소수량</span>
-                              <span className="text-xs font-bold text-slate-500">
-                                {product.type !== '완제품' ? `${product.minStock} ${product.unit}` : '-'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black text-slate-400 uppercase">상태</span>
-                              <div>{statusBadge}</div>
-                            </div>
-                            <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
-                              {purchasableIds.has(product.id) && (
-                                inCart ? (
-                                  <button
-                                    onClick={() => removeFromCart(product.id)}
-                                    className="flex-1 text-[11px] font-black py-2 rounded-xl bg-indigo-500 text-white"
-                                  >담김 ✓</button>
-                                ) : inlineCartId === product.id ? (
-                                  <div className="flex-1 flex flex-col gap-1">
-                                    {unitsPerBoxOf(product) > 0 && (
-                                      <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[10px] font-black self-start">
-                                        <button onClick={() => setInlineCartIsBox(false)} className={`px-2 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
-                                        <button onClick={() => setInlineCartIsBox(true)} className={`px-2 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
-                                      </div>
-                                    )}
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        autoFocus
-                                        type="number"
-                                        value={inlineCartQty}
-                                        onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
-                                        onKeyDown={e => {
-                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, unitsPerBoxOf(product) > 0 ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
-                                          if (e.key === 'Escape') setInlineCartId(null);
-                                        }}
-                                        className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                                      />
-                                      <span className="text-[10px] text-slate-400">{unitsPerBoxOf(product) > 0 && inlineCartIsBox ? 'BOX' : product.unit}</span>
-                                      <button
-                                        onClick={() => { addToCart(product.id, inlineCartQty, unitsPerBoxOf(product) > 0 ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
-                                        className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
-                                      >담기</button>
-                                      <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); setInlineCartIsBox(false); }}
-                                    className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
-                                  >+ 발주담기</button>
-                                )
-                              )}
-                              {/*  폰에서도 문은 하나 — 위 수량을 누르면 같은 창이 뜬다. */}
-                              <button
-                                onClick={() => { openStocktake(product); setExpandedRowId(null); }}
-                                className="flex-1 rounded-xl border border-slate-200 bg-slate-100 py-2 text-[11px] font-black text-slate-500"
-                              >{productEditable ? '수정' : '실사'}</button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                     </React.Fragment>
                   );
                 })}
                 {pagedRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-16 text-center">
+                    <td colSpan={6} className="px-4 py-16 text-center">
                       <div className="flex flex-col items-center gap-2 text-slate-300">
                         <Package size={32} strokeWidth={1.5} />
                         <p className="text-sm font-bold">등록된 품목이 없습니다</p>
@@ -2402,6 +2126,106 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
 
 
+
+        {/* ── 재고 품목 상세 ── 목록은 조회에 집중하고, 실제 동작은 이 카드 한곳에서 한다. */}
+        {detailProduct && (() => {
+          const product = detailProduct;
+          const reserved = scheduledOutboundQty.get(product.id) ?? 0;
+          const detailRaw = isRawHolder(product) ? product : rawHolderByName(items, product.rawMaterialName || product.name);
+          const detailPackageKg = detailRaw && detailRaw.id !== product.id && product.type !== 'product'
+            ? (product.packageKg ?? parsePackageKg(product.spec) ?? parsePackageKg(product.name) ?? null)
+            : null;
+          const detailRawKg = detailPackageKg ? lotKgRemaining((detailRaw!.lots ?? []).filter(lot => lot.status === 'active')) : null;
+          const detailLotStock = isRawHolder(product) && (product.lots ?? []).length > 0
+            ? (product.density ? Math.round((lotKgRemaining(product.lots ?? []) / product.density) * 1000) / 1000 : lotKgRemaining(product.lots ?? []))
+            : null;
+          const detailStock = detailPackageKg && detailRawKg != null ? detailRawKg / detailPackageKg : (detailLotStock ?? product.stock ?? 0);
+          const inboundNames = [...new Set(partnerItems
+            .filter(pi => pi.Direction === 'in' && pi.itemId === product.id)
+            .map(pi => inboundPartnerMap.get(pi.partnerId)?.name)
+            .filter(Boolean))] as string[];
+          const salesNames = partnersOfItem(partnerItems, product.id)
+            .map(id => partners.find(partner => partner.id === id)?.name)
+            .filter(Boolean) as string[];
+          const partnerNames = normCat(product.type) === '완제품' ? salesNames : inboundNames;
+          const canPurchase = purchasableIds.has(product.id) || inboundNames.length > 0;
+          const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
+          const directUnpack = unpackComponent(product);
+          const plannedUnpack = unpackPlan(product, 1);
+          return (
+            <ModalShell
+              title="재고 상세"
+              onClose={() => setDetailProduct(null)}
+              bodyClassName="space-y-4"
+              footer={(
+                <div className="flex gap-2">
+                  {(directUnpack || plannedUnpack.ok) && <button onClick={() => {
+                    setDetailProduct(null);
+                    if (directUnpack) void unpackBox(product); else setUnpackModal({ item: product, count: '1' });
+                  }} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-black text-slate-600">개봉</button>}
+                  <button onClick={() => setDetailProduct(null)} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-black text-white">닫기</button>
+                </div>
+              )}
+            >
+                  <div>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <p className="text-base font-black text-slate-900">{inventoryNameSpec(product).name}</p>
+                      {(categoryOf(product) || product.subtype) && (
+                        <span className="text-xs font-black text-indigo-600">
+                          {[categoryOf(product), product.subtype].filter(Boolean).join(' ')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs font-bold text-slate-500">규격: {inventoryNameSpec(product).spec}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[
+                      ['현재 재고', Math.round(detailStock * 100) / 100],
+                      ['출고 예약', reserved],
+                      ['가용 재고', Math.round((detailStock - reserved) * 100) / 100],
+                      ['최소 수량', product.minStock ?? 0],
+                    ].map(([label, value]) => <div key={String(label)} className="rounded-2xl bg-slate-50 px-3 py-3">
+                      <p className="text-[10px] font-black text-slate-400">{label}</p>
+                      <p className="mt-1 text-lg font-black tabular-nums text-slate-800">{value} <span className="text-xs text-slate-400">{product.unit || '개'}</span></p>
+                    </div>)}
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 px-4 py-3">
+                    <p className="text-[10px] font-black text-slate-400">{normCat(product.type) === '완제품' ? '판매 거래처' : '매입 거래처'}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {partnerNames.length > 0 ? partnerNames.map(name => <span key={name} className="text-xs font-bold text-slate-600">{name}</span>) : <span className="text-xs font-bold text-amber-600">{normCat(product.type) === '완제품' ? '판매처 미연결' : '매입처 미연결'}</span>}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-slate-700">재고 실사</p>
+                        <p className="mt-1 text-[10px] font-bold text-slate-400">별도의 입출고, 생산과정 없이 재고수량이 변경됩니다.</p>
+                      </div>
+                      <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
+                        <input type="number" step="any" value={detailStocktakeQty} onChange={e => setDetailStocktakeQty(Number(e.target.value) || 0)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400 sm:w-24 sm:flex-none" />
+                        <span className="text-xs font-bold text-slate-400">{product.unit || '개'}</span>
+                        <button onClick={async () => { await commitStockEdit(product, detailStocktakeQty); setDetailProduct(null); }} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-600 hover:bg-indigo-50">실사 반영</button>
+                      </div>
+                    </div>
+                  </div>
+                  {canPurchase && (
+                    <div className="rounded-2xl border border-slate-200 p-3">
+                      <p className="mb-2 text-xs font-black text-slate-700">매입 발주 담기</p>
+                      <div className="flex items-center gap-2">
+                        {canOrderByBox && <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[10px] font-black">
+                          <button onClick={() => setDetailOrderIsBox(false)} className={`px-2 py-2 ${!detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>낱개</button>
+                          <button onClick={() => setDetailOrderIsBox(true)} className={`px-2 py-2 ${detailOrderIsBox ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}>BOX</button>
+                        </div>}
+                        <input type="number" min={1} value={detailOrderQty} onChange={e => setDetailOrderQty(Math.max(0, Number(e.target.value) || 0))} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
+                        <span className="text-xs font-bold text-slate-400">{canOrderByBox && detailOrderIsBox ? 'BOX' : product.unit || '개'}</span>
+                        <button onClick={() => { addToCart(product.id, detailOrderQty, canOrderByBox && detailOrderIsBox); setDetailProduct(null); }} disabled={detailOrderQty <= 0} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40">담기</button>
+                      </div>
+                      {product.type === 'goods' && unitsPerBoxOf(product) > 1 && detailOrderQty > 0 && <p className="mt-1 text-right text-[10px] font-bold text-slate-400">{boxEquivalentLabel(detailOrderQty, unitsPerBoxOf(product))}</p>}
+                    </div>
+                  )}
+            </ModalShell>
+          );
+        })()}
 
         {/* ── 행 수정 모달 ── */}
         {rowEditProduct && (
@@ -3266,8 +3090,10 @@ const ItemList: React.FC<ItemListProps> = ({
 
       {confirmModal && (
         <ConfirmModal
+          title={confirmModal.title}
           message={confirmModal.message}
           subMessage={confirmModal.subMessage}
+          confirmText={confirmModal.confirmText}
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />

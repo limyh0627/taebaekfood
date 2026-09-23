@@ -85,6 +85,7 @@ import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileIte
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
+import LargeModalShell from '../../shared/components/LargeModalShell';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
@@ -2321,6 +2322,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
+                      <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
@@ -2390,6 +2392,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                          `shipping` 권한이 있는 사람도 이 칸으로 들어온다. */}
                     <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
+                    <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
                     <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('leave-portal')} />
@@ -2436,7 +2439,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <p className="text-[15px] font-black text-slate-800 truncate">
               {(({
                 'dashboard': '비즈니스 현황', 'data-integrity': '데이터 점검', 'ai-consultant': 'AI 인사이트',
-                'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리',
+                'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리', 'lot-management': '생산 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
                 'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)',
@@ -2676,10 +2679,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
             />
           )}
-          {currentView === 'inventory' && (
+          {(currentView === 'inventory' || currentView === 'lot-management') && (
             <>
-            <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />
+            {currentView === 'inventory' && <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />}
             <ItemList
+              mode={currentView === 'lot-management' ? 'lots' : 'inventory'}
               companyId={companyId}
               items={companyItems}
               orders={allOrders}
@@ -2853,6 +2857,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
               receivedOrders={보이는입고이력}
+              returnRequests={returnRequests}
               returnBadge={returnRequests.filter(r => r.status === 'pending').length}
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
@@ -2915,12 +2920,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const isLegacy = !selectedLog.seedRows && !selectedLog.salesRows;
             const cell = 'border border-slate-200 px-2.5 py-1';
             return (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedLog(null)}>
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[88vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 gap-3">
+            <LargeModalShell title="생산작업판매일지" onClose={() => setSelectedLog(null)} className="h-[88vh]" bodyClassName="p-0">
+                <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 gap-3">
                   <div className="min-w-0">
-                    <span className="text-base font-black text-slate-800">생산작업판매일지</span>
-                    <span className="ml-3 text-sm text-slate-500">{selectedLog.date}</span>
+                    <span className="text-sm font-black text-slate-700">{selectedLog.date}</span>
                     <span className="ml-2 text-xs text-slate-400">· {selectedLog.createdBy} · 주문 {selectedLog.orderCount}건</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -2932,7 +2935,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       })}
                       className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[11px] font-black hover:bg-emerald-600 transition-colors"
                     >엑셀로 저장</button>
-                    <button onClick={() => setSelectedLog(null)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 text-lg font-black">✕</button>
                   </div>
                 </div>
 
@@ -3055,8 +3057,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+            </LargeModalShell>
             );
           })()}
           {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}

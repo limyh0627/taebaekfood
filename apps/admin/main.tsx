@@ -25,6 +25,7 @@ import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
+import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
 import { auth, authReady } from '../../src/shared/firebase';
 
@@ -169,6 +170,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <AdminRoot />
     </ErrorBoundary>
+    <AppAlertHost />
     <LocalTestBanner />
   </React.StrictMode>
 );

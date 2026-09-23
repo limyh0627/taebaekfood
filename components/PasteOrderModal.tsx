@@ -12,7 +12,7 @@ import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
-import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
+import { boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -296,6 +296,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if (pc?.boxTypeId) return { unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId };
     const p = items.find(pr => pr.id === itemId);
     if (p?.defaultBoxConfig?.unitsPerBox) return p.defaultBoxConfig;
+    // 향미유·고춧가루는 별도 박스 SKU가 없고 item_pack 환산표가 개입수를 안다.
+    // 일반 주문과 같은 공용 함수를 써야 복사 주문만 8박스→8개로 저장되는 일이 없다.
+    const unitsPerBox = unitsPerBoxOf(p);
+    if (unitsPerBox > 1) return { unitsPerBox, boxType: '', boxSubId: undefined };
     return { unitsPerBox: 0, boxType: '' };
   };
 

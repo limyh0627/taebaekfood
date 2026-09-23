@@ -2880,9 +2880,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 붙을 일이 없다 — 늘 한쪽만 쓰던 두 칸이라 자리를 반으로 먹고 있었다. */
             'label', 'packaging', 'shipOut', 'note',
           ];
-          const listGridTemplate = visibleListColumns.map(column => `${listColumnWidths[column]}px`).join(' ');
+          /* 태블릿에서도 모든 열을 한눈에 보되, 큰 화면에서는 표가 가운데에 작게 뭉치지 않게 한다.
+             각 값은 태블릿에서 CSS 비율만큼 줄어들고, 남는 화면 폭은 원래 열 비율대로 나눠 갖는다. */
+          const listGridTemplate = visibleListColumns.map(column => {
+            const width = listColumnWidths[column];
+            return `minmax(calc(${width}px * var(--order-list-scale)), ${width}fr)`;
+          }).join(' ');
           const listMinWidth = visibleListColumns.reduce((total, column) => total + listColumnWidths[column], 0);
-          const listGridStyle = { gridTemplateColumns: listGridTemplate, width: listMinWidth, minWidth: listMinWidth };
+          const scaledListMinWidth = `calc(${listMinWidth}px * var(--order-list-scale))`;
+          const listGridStyle = { gridTemplateColumns: listGridTemplate, width: '100%', minWidth: scaledListMinWidth };
           const startListColumnResize = (column: string, event: React.MouseEvent<HTMLSpanElement>) => {
             event.preventDefault();
             event.stopPropagation();
@@ -2906,7 +2912,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               title="드래그해서 열 너비 조정"
               onMouseDown={event => startListColumnResize(column, event)}
               onClick={event => { event.preventDefault(); event.stopPropagation(); }}
-              className="absolute -right-1 top-0 z-30 h-full w-2 cursor-col-resize select-none after:absolute after:bottom-0 after:left-1/2 after:top-0 after:w-px after:-translate-x-1/2 after:bg-slate-300 hover:after:w-0.5 hover:after:bg-indigo-500"
+              className="absolute right-0 top-0 z-30 h-full w-2 cursor-col-resize select-none after:absolute after:bottom-0 after:left-1/2 after:top-0 after:w-px after:-translate-x-1/2 after:bg-slate-300 hover:after:w-0.5 hover:after:bg-indigo-500"
             />
           );
           /*  **정렬할 수 있는 표 머리**(2026-09-14 사장님). 누를 때마다 다음 단계로 돌고,
@@ -3197,17 +3203,17 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     </button>
                   )}
                 </div>
-              <div className="w-fit max-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
+              <div className="order-list-responsive w-full max-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div
                   ref={listTopScrollRef}
                   onScroll={event => { if (listBodyScrollRef.current && listBodyScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listBodyScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }}
                   className="h-4 overflow-x-scroll overflow-y-hidden rounded-t-lg border-b border-slate-200 bg-slate-50 [scrollbar-color:#cbd5e1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300"
                   aria-label="표 가로 스크롤"
                 >
-                  <div style={{ width: listMinWidth, height: 1 }} />
+                  <div style={{ width: scaledListMinWidth, minWidth: '100%', height: 1 }} />
                 </div>
               <div ref={listBodyScrollRef} onScroll={event => { if (listTopScrollRef.current && listTopScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listTopScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }} className="no-scrollbar overflow-x-auto overflow-y-hidden rounded-b-lg" role="table" aria-label="주문 리스트">
-                <div role="row" style={listGridStyle} className="sticky top-0 z-10 grid border-b-2 border-slate-400 bg-slate-100 text-[11px] font-black text-slate-600">
+                <div role="row" style={listGridStyle} className="sticky top-0 z-10 grid border-b-2 border-slate-400 bg-slate-100 text-[9px] font-black text-slate-600 xl:text-[10px] 2xl:text-xs">
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주문번호{resizeHandle('orderNo')}</div>
                   <div role="columnheader" className="relative flex min-h-10 flex-col justify-center border-r border-slate-300 px-3 leading-tight">
                     {/*  **주문일만 정렬한다** — 아래 출고예정일은 눌러 고치는 칸이라 정렬을 얹으면
@@ -3252,7 +3258,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         /*  **주문과 주문 사이를 진하게 가른다**(2026-09-11 사장님).
                             한 주문이 품목 수만큼 세로로 늘어나는데 줄 경계가 옅어, 어디까지가 한 주문인지
                             눈으로 못 끊었다. 주문 경계만 굵고 진하게 두고 품목 줄은 옅게 둔다. */
-                        className={`grid min-h-10 border-b-2 border-slate-400 text-[10px] text-slate-700 transition-colors ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
+                        className={`grid min-h-10 border-b-2 border-slate-400 text-[9px] text-slate-700 transition-colors xl:text-[10px] 2xl:text-xs ${rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
                       >
                         {/*  **주문번호(위) · 상태(아래)** — 주문을 짚어 말할 때 쓰는 번호와
                              지금 어디까지 왔는지를 한 칸에 둔다(2026-09-11 사장님). */}

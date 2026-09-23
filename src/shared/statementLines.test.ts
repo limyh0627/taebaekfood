@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
+import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
+
+afterEach(() => resetPackIndex());
 
 const 품목 = (o: any) => o as any;
 const 주문 = (items: any[]) => ({ id: 'o1', items } as any);
@@ -103,6 +106,16 @@ describe('orderLines — 박스를 낱개로 푼다', () => {
   it('박스 단위로 적힌 주문은 boxQuantity 를 쓴다', () => {
     const r = orderLines({ ...공통, order: 주문([{ itemId: 'box', name: '박스', quantity: 3, isBoxUnit: true, boxQuantity: 2, price: 10000 }]) });
     expect(r[0].qty).toBe(20);   // 2박스 × 10
+  });
+
+  it('향미유 8박스의 옛 복사 주문도 환산표를 읽어 전표에 96개로 넣는다', () => {
+    const 향미유 = 품목({ id: 'flavor-oil', name: '향미유', type: 'goods', unit: '개' });
+    setPackIndex(buildPackIndex([{ item_id: 'flavor-oil', units_per_box: 12 }]));
+    const r = orderLines({ ...공통, allItems: [향미유], order: 주문([{
+      itemId: 'flavor-oil', name: '향미유', quantity: 8,
+      isBoxUnit: true, boxQuantity: 8, price: 12000,
+    }]) });
+    expect(r[0]).toMatchObject({ qty: 96, price: 1000 });
   });
 
   it('품목을 못 찾으면 표시를 단다 — 박스가 안 풀린 채 들어가면 수량이 10배 틀린다', () => {

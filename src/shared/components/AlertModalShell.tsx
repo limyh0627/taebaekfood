@@ -55,7 +55,7 @@ const AlertModalShell: React.FC<Props> = ({ title, tone, icon: Icon, onClose, wi
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative flex max-h-[85vh] w-full ${wide ? 'max-w-lg' : 'max-w-sm'} flex-col overflow-hidden rounded-3xl bg-white shadow-2xl animate-in zoom-in-95 duration-200`}
+        className={`relative flex max-h-[85vh] w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200`}
       >
         <div className="flex items-center gap-4 border-b border-slate-100 p-6 pb-4">
           <div className={`shrink-0 rounded-2xl p-2.5 ${색.바탕}`}>

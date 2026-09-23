@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem, PartnerItem, StatementLineKind } from './types';
 import { lineAmount } from './lineAmount';
-import { unpackComponent, boxDerivedUnitPrice, boxCountOf } from './orderUnits';
+import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf } from './orderUnits';
 
 /**
  * **전표 품목 줄을 세우는 셈.**
@@ -151,6 +151,14 @@ export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): Re
       product = loose;
       qty = boxCount * uc.count;
       perBox = uc.count;
+    }
+  } else if (item.isBoxUnit && item.boxQuantity) {
+    // 향미유처럼 재고는 낱개지만 주문은 박스로 받는 품목. 복사 주문의 옛 줄은
+    // quantity에도 박스 수가 들어가 있으므로 환산표를 읽어 전표에서 낱개로 바로잡는다.
+    const pack = item.unitsPerBox ?? unitsPerBoxOf(product);
+    if (pack > 1) {
+      qty = item.boxQuantity * pack;
+      perBox = pack;
     }
   }
   return { product, qty, perBox, unknownItem };
