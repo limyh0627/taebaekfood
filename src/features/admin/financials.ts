@@ -2,6 +2,7 @@ import {
   AccountCode, AccountGroup, AccountGroupCfSection, JournalEntry,
 } from '../../shared/types';
 import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, INVENTORY, BANK } from '../../shared/autoJournal';
+import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 
 /**
  * 손익 계산 순수 도메인 모듈 — 부수효과 없음(입력 → 값). 단위 테스트 용이.
@@ -42,7 +43,7 @@ export function makeCodeToGroup(
  */
 export function isCashAccountCode(code: string | undefined, accountCodes: AccountCode[] = []): boolean {
   if (!code) return false;
-  if (code === '101' || code === BANK) return true;
+  if (code === STANDARD_ACCOUNT.CASH || code === BANK) return true;
   return /현금|보통예금|당좌예금|제예금/.test(accountCodes.find(a => a.code === code)?.name ?? '');
 }
 
@@ -201,15 +202,14 @@ const OPERATING_CODES = new Set([
   AR,    // 외상매출금
   AP,    // 외상매입금
   OTHER_PAYABLE, // 미지급금
-  '254', // 예수금(원천세)
+  STANDARD_ACCOUNT.WITHHOLDING, // 예수금(원천세)
   VAT_PAYABLE,    // 부가세예수금
   VAT_RECEIVABLE, // 부가세대급금
-  '262', // 미지급비용
-  '263', // 미지급급여 — 급여 지급은 영업이다. 부채라고 재무로 찍히면 급여가 재무활동에 선다
+  STANDARD_ACCOUNT.ACCRUED_EXPENSE, // 미지급비용·급여 — 급여 지급은 영업활동이다
   '261', // 미지급세금 — 부가세·소득세 납부
-  '259', // 선수금 — 고객에게 미리 받은 돈
+  STANDARD_ACCOUNT.ADVANCE_RECEIVED, // 선수금 — 고객에게 미리 받은 돈
   '295', // 퇴직급여충당부채
-  '131', // 선급금
+  STANDARD_ACCOUNT.PREPAID, // 선급금
   INVENTORY, // 재고자산
 ]);
 

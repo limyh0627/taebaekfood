@@ -2,13 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, PackageOpen, Truck } from 'lucide-react';
 import type { Item, RawMaterialEntry } from '../src/shared/types';
 import type { LotShipment } from './ProductLotPanel';
-import { sortLedger } from '../src/shared/rawLedgerBalance';
 
 type TimelineRow = {
   id: string; date: string; title: string; note: string;
   delta?: number; balance?: number;
   details?: { id: string; partnerName: string; qty: number }[];
-  kind: 'in' | 'out' | 'stocktake' | 'lot' | 'unpack';
+  kind: 'in' | 'out' | 'stocktake' | 'correction' | 'lot' | 'unpack';
 };
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
@@ -24,20 +23,23 @@ const LotTimeline: React.FC<{
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const rows = useMemo<TimelineRow[]>(() => {
     if (rawEntries.length) {
-      return sortLedger(rawEntries).flatMap<TimelineRow>(entry => {
+      return rawEntries.flatMap<TimelineRow>(entry => {
         const change = (entry as any).lotChanges?.find((row: any) => row.lotId === lotId);
         if (!change) return [];
         const delta = Math.round(Number(change.deltaKg ?? 0) * 1000) / 1000;
         const stocktake = entry.targetKg != null || (entry as any).kind === 'stocktake';
+        const correction = entry.type === 'correction' || (entry as any).kind === 'adjust-lot'
+          || (entry as any).kind === 'merge-lots' || (entry as any).kind === 'deplete-lot';
         const unpack = (entry as any).kind === 'unpack' || (entry as any).source?.type === 'unpack';
+        const timestamp = entry.recordedAt || entry.createdAt || entry.effectiveAt || entry.date;
         return {
           id: entry.id || `${entry.date}-${entry.createdAt}`,
-          date: entry.recordedAt || entry.createdAt || entry.date,
-          title: unpack ? '캔 개봉' : stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
+          date: timestamp,
+          title: unpack ? '캔 개봉' : correction ? '재고 정정' : stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
           note: entry.note || entry.addedBy || '', delta, balance: Number(change.afterKg ?? 0),
-          kind: unpack ? 'unpack' : stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
+          kind: unpack ? 'unpack' : correction ? 'correction' : stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
         };
-      }).reverse();
+      }).sort((a, b) => b.date.localeCompare(a.date));
     }
     const packed: TimelineRow[] = [];
     for (const lot of (item.lots ?? []).filter(row => row.id === lotId)) {
@@ -74,6 +76,7 @@ const LotTimeline: React.FC<{
     in: { icon: ArrowUpRight, dot: 'bg-emerald-500', text: 'text-emerald-600' },
     out: { icon: ArrowDownRight, dot: 'bg-rose-500', text: 'text-rose-600' },
     stocktake: { icon: ClipboardCheck, dot: 'bg-violet-500', text: 'text-violet-600' },
+    correction: { icon: ClipboardCheck, dot: 'bg-amber-500', text: 'text-amber-600' },
     lot: { icon: Truck, dot: 'bg-sky-500', text: 'text-sky-600' },
     unpack: { icon: PackageOpen, dot: 'bg-blue-500', text: 'text-blue-600' },
   } as const;

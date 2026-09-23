@@ -29,6 +29,7 @@ import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { adjustStockByQty, stocktakeByQty } from '../../shared/services/unpackService';
+import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -2764,13 +2765,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 //  실사(targetKg)가 먼저다 — 잔량을 그 값으로 다시 잡는 앵커라 입고·사용과 다르다.
                 const 명령 = entry.targetKg != null
-                  ? { ...공통, operationId: entry.id, source: { type: 'stocktake' as const, id: entry.id }, kind: 'stocktake' as const, targetKg: entry.targetKg }
+                  ? entry.targetLotId
+                    ? { ...공통, operationId: entry.id, source: { type: 'adjustment' as const, id: entry.id }, kind: 'adjust-lot' as const, lotId: entry.targetLotId, targetKg: entry.targetKg }
+                    : { ...공통, operationId: entry.id, source: { type: 'stocktake' as const, id: entry.id }, kind: 'stocktake' as const, targetKg: entry.targetKg }
                   : (entry.received ?? 0) > 0
                     ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'receive' as const, kg: entry.received, lot: { supplierName: entry.note?.trim() || '직접입고', qtyIn: entry.canCount ?? 0, packageKg: entry.canSize, packageType: entry.canSizeTag } }
                     : (entry.used ?? 0) > 0
-                      ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume' as const, kg: entry.used, ...(lotMixSettingOf(홀더) ? { mix: lotMixSettingOf(홀더) } : {}) }
+                      ? entry.targetLotId
+                        ? { ...공통, operationId: entry.id, source: { type: 'manual' as const, id: entry.id }, kind: 'consume-lot' as const, kg: entry.used, lotId: entry.targetLotId }
+                        : null
                       : null;
-                if (!명령) return { ok: false, reason: '수량이 0이다' };
+                if (!명령) return {
+                  ok: false,
+                  reason: (entry.used ?? 0) > 0 ? '사용할 로트를 선택해야 한다' : '수량이 0이다',
+                };
 
                 const r = await executeRawInventoryCommand(명령, {
                   newLotId: `lot-${entry.id}`, carryOverLotId: `carry-${entry.id}`, legacy: 옛칸,
@@ -3116,8 +3124,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               /* 급여대장 → 자금기록 한 건. 공제는 음수 줄이라 통장에서 나간 돈은 실지급액이다.
                  (차) 515 급여 지급계  (대) 254 예수금 공제계 + 103 보통예금 실지급계 */
               onCreatePayrollEntry={async ({ date, gross, deduct, net, note }) => {
-                const salaryCode = appData.accountCodes.find(c => c.name === '급여')?.code ?? '515';
-                const withholdCode = appData.accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+                const salaryCode = appData.accountCodes.find(c => c.name === '급여')?.code ?? STANDARD_ACCOUNT.SALARY;
+                const withholdCode = appData.accountCodes.find(c => c.name === '예수금')?.code ?? STANDARD_ACCOUNT.WITHHOLDING;
                 const id = `cash-${Date.now()}`;
                 await addCashEntry({
                   id, date, dir: '출금', amount: net,
@@ -3147,9 +3155,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   totalSupply: gross, totalTax: 0, totalAmount: gross,
                   // 차·대를 명시한다 — 대체전표는 짐작하지 않는다
                   items: [
-                    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: code('급여', '515'), side: '차변' as const },
-                    ...(deduct > 0 ? [{ name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: code('예수금', '254'), side: '대변' as const }] : []),
-                    { name: '미지급급여', spec: '', qty: 1, price: net, supply: net, tax: 0, total: net, isTaxExempt: true, accountCode: code('미지급급여', '263'), side: '대변' as const },
+                    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: code('급여', STANDARD_ACCOUNT.SALARY), side: '차변' as const },
+                    ...(deduct > 0 ? [{ name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: code('예수금', STANDARD_ACCOUNT.WITHHOLDING), side: '대변' as const }] : []),
+                    { name: '미지급비용', spec: '', qty: 1, price: net, supply: net, tax: 0, total: net, isTaxExempt: true, accountCode: code('미지급비용', STANDARD_ACCOUNT.ACCRUED_EXPENSE), side: '대변' as const },
                   ],
                 });
                 return id;

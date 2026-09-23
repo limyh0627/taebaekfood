@@ -32,4 +32,15 @@ describe('로트 상세 타임라인', () => {
     expect(screen.getByText(/기록-1/)).toBeTruthy();
     expect(screen.queryByText(/기록-8/)).toBeNull();
   });
+
+  it('화면에 표시하는 기록시각으로 정렬하고 정정은 사용이 아니라 재고 정정으로 표시한다', () => {
+    const rows = [
+      { ...entry(17), id: 'late-business', date: '2026-09-17', recordedAt: '2026-09-13T14:20:00+09:00', note: '늦게 표시되면 안 됨' },
+      { ...entry(13), id: 'new-record', date: '2026-09-13', recordedAt: '2026-09-17T08:00:00+09:00', note: '먼저 표시', type: 'correction', kind: 'adjust-lot' },
+    ] as unknown as RawMaterialEntry[];
+    const { container } = render(<LotTimeline item={item} lotId="lot-a" rawEntries={rows} />);
+
+    expect(container.textContent!.indexOf('먼저 표시')).toBeLessThan(container.textContent!.indexOf('늦게 표시되면 안 됨'));
+    expect(screen.getByText('재고 정정')).toBeTruthy();
+  });
 });

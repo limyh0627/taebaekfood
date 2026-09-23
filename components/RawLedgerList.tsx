@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Order, RawMaterialEntry } from '../types';
 import { unitOf, kgToUnit, DENSITY } from '../src/constants/formula';
-import { applyLedgerRow, sortLedger } from '../src/shared/rawLedgerBalance';
+import { applyLedgerRowByBusinessDate, sortLedger } from '../src/shared/rawLedgerBalance';
 import { ledgerTrace, orderIndex } from '../src/shared/ledgerTrace';
 import { ChevronRight } from 'lucide-react';
 
@@ -89,7 +89,9 @@ const RawLedgerList: React.FC<Props> = ({
         const prev = bal;
         // 잔량 규칙은 shared/rawLedgerBalance.ts 한 곳에만 둔다 — 화면과 테스트가 같은 함수를 쓴다.
         // (재고실사(targetKg)는 잔량을 실제로 센 값으로 리셋하는 앵커다)
-        bal = applyLedgerRow(bal, e, density);
+        // 이 표는 문서 날짜순이다. 처리 당시 스냅샷(balanceAfterKg)을 날짜 자리에서 쓰면
+        // 소급 입력 뒤 중간 잔량이 튄다. 날짜별 수량과 실사 앵커만 누적한다.
+        bal = applyLedgerRowByBusinessDate(bal, e, density);
         // 정정·실사는 입고·사용이 아니다 — 섞으면 사용량이 부풀려진다
         if (isCorr) g.adj = r3(g.adj + (bal - prev));
         else { g.received = r3(g.received + toKg(e.received ?? 0)); g.used = r3(g.used + toKg(e.used ?? 0)); }

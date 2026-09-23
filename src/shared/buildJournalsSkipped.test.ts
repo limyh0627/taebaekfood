@@ -55,7 +55,7 @@ describe('**분개가 안 되면 적어 둔다**', () => {
     expect(r.skipped[0].sourceType).toBe('매출');
     expect(r.skipped[0].id).toBe('s1');
     //  이유가 적혀 있어야 사람이 찾아간다
-    expect(r.skipped[0].reason).toMatch(/계정|빈 전표|차대/);
+    expect(r.skipped[0].reason).toBe('품목이 없는 빈 전표');
   });
 
   it('계정이 안 붙은 매입도 적힌다', () => {
@@ -64,6 +64,7 @@ describe('**분개가 안 되면 적어 둔다**', () => {
     expect(r.entries).toHaveLength(0);
     expect(r.skipped.map(s => s.id)).toEqual(['s2']);
     expect(r.skipped[0].sourceType).toBe('매입');
+    expect(r.skipped[0].reason).toContain('참깨');
   });
 
   it('대체전표(비용)가 안 서면 **`대체` 로 적힌다** — 갈래를 알아야 어디를 볼지 안다', () => {
@@ -73,13 +74,24 @@ describe('**분개가 안 되면 적어 둔다**', () => {
     expect(r.entries).toHaveLength(0);
     expect(r.skipped).toHaveLength(1);
     expect(r.skipped[0].sourceType).toBe('대체');
-    expect(r.skipped[0].reason).toContain('상대계정');
+    expect(r.skipped[0].reason).toContain('차변·대변');
   });
 
   it('계정 없는 자금 줄은 **`자금` 으로 적힌다**', () => {
     const r = build({ statements: [], cashEntries: [돈({ accountCode: '' } as never)] });
     expect(r.entries).toHaveLength(0);
-    expect(r.skipped).toEqual([{ sourceType: '자금', id: 'c1', reason: '계정 미지정' }]);
+    expect(r.skipped).toEqual([{ sourceType: '자금', id: 'c1', reason: '계정과목이 지정되지 않음' }]);
+  });
+
+  it('옛 미발행 정리용 더미는 경고하지 않는다 — 새 제외는 주문에 직접 기록한다', () => {
+    const r = build({ statements: [매출({ id: 'stmt-hide-20260828', items: [], totalAmount: 0, totalSupply: 0 })] });
+    expect(r.entries).toEqual([]);
+    expect(r.skipped).toEqual([]);
+  });
+
+  it('전표 머리와 품목 합계가 다르면 실제 금액을 알려 준다', () => {
+    const r = build({ statements: [매출({ totalAmount: 900_000 })] });
+    expect(r.skipped[0].reason).toBe('전표 합계 900,000원과 품목 합계 1,000,000원이 다름');
   });
 
   it('여러 건이 빠지면 전부 적힌다 — 하나만 적고 말면 나머지를 못 찾는다', () => {

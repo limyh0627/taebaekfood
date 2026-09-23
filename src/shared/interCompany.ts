@@ -1,5 +1,6 @@
 
-import { stampFor } from './voucherStamp';import type { CashEntry, IssuedStatement, CompanyId } from './types';
+import { stampFor } from './voucherStamp';
+import type { CashEntry, IssuedStatement, CompanyId } from './types';
 
 /**
  * 회사 간 이체 — 한 회사 통장에서 **다른 회사 통장으로** 돈을 보내는 것.
@@ -23,8 +24,8 @@ import { stampFor } from './voucherStamp';import type { CashEntry, IssuedStateme
 import { AR, AP } from './autoJournal';
 import { companyOf } from './types';
 export { AR, AP };
-export const PREPAID = '131';    // 선급금 — 미리 준 물건값
-export const ADVANCE_IN = '259'; // 선수금 — 미리 받은 물건값
+export const PREPAID = STANDARD_ACCOUNT.PREPAID; // 선급금 — 미리 준 물건값
+export const ADVANCE_IN = STANDARD_ACCOUNT.ADVANCE_RECEIVED; // 선수금 — 미리 받은 물건값
 export const LOAN_OUT = '137';   // 관계회사대여금 — 빌려준 것(자산)
 export const LOAN_IN = '267';    // 관계회사차입금 — 빌린 것(부채)
 
@@ -129,3 +130,4 @@ export function interCompanyBalance(companyId: CompanyId, cashEntries: CashEntry
       return v ? a + (e.dir === plus ? v : -v) : a;
     }, 0);
 }
+import { STANDARD_ACCOUNT } from './accountChart';

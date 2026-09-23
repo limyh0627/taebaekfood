@@ -1,6 +1,7 @@
 import type { Item, Order, OrderItem, PartnerItem, StatementLineKind } from './types';
 import { lineAmount } from './lineAmount';
 import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf } from './orderUnits';
+import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
  * **전표 품목 줄을 세우는 셈.**
@@ -51,8 +52,8 @@ export interface LineItem {
   taxUnknown?: boolean;
 }
 
-/** 매출이면 기본 계정이 800(일반매출)이다. 매입은 줄마다 골라야 한다. */
-const 기본계정 = (t: StatementType) => (t === '매출' ? '800' : undefined);
+/** 매출이면 기본 계정이 404(제품매출)이다. 매입은 줄마다 골라야 한다. */
+const 기본계정 = (t: StatementType) => (t === '매출' ? STANDARD_ACCOUNT.SALES_PRODUCT : undefined);
 
 /**
  * **이름이 정확히 맞으면 그 품목으로 본다** — 그 거래처에 **연결된 품목** 안에서만.

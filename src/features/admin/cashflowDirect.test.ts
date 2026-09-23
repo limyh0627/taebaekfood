@@ -11,15 +11,15 @@ const groups: AccountGroup[] = [
 ];
 const accounts: AccountCode[] = [
   { id: '103', code: '103', name: '보통예금', type: '자산', normalBalance: 'debit', groupId: 'g-asset', isCash: true },
-  { id: '101', code: '101', name: '현금', type: '자산', normalBalance: 'debit', groupId: 'g-asset', isCash: true },
+  { id: '102', code: '102', name: '현금', type: '자산', normalBalance: 'debit', groupId: 'g-asset', isCash: true },
   { id: '108', code: '108', name: '외상매출금', type: '자산', normalBalance: 'debit', groupId: 'g-asset' },
-  { id: '206', code: '206', name: '기계장치', type: '자산', normalBalance: 'debit', groupId: 'g-asset' },
+  { id: '126', code: '126', name: '기계장치', type: '자산', normalBalance: 'debit', groupId: 'g-asset' },
   { id: '260', code: '260', name: '단기차입금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
-  { id: '951', code: '951', name: '이자비용', type: '비용', normalBalance: 'debit', groupId: 'g-other-exp' },
-  { id: '520', code: '520', name: '전력비', type: '비용', normalBalance: 'debit', groupId: 'g-sgna' },
-  { id: '263', code: '263', name: '미지급급여', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
+  { id: '931', code: '931', name: '이자비용', type: '비용', normalBalance: 'debit', groupId: 'g-other-exp' },
+  { id: '815', code: '815', name: '수도광열비', type: '비용', normalBalance: 'debit', groupId: 'g-sgna' },
+  { id: '275', code: '275', name: '미지급비용', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
   { id: '261', code: '261', name: '미지급세금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
-  { id: '259', code: '259', name: '선수금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
+  { id: '254', code: '254', name: '선수금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
   { id: '295', code: '295', name: '퇴직급여충당부채', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
 ] as AccountCode[];
 const gById = new Map(groups.map(g => [g.id, g]));
@@ -54,7 +54,7 @@ describe('computeCashFlowDirect', () => {
 
   it('기계 구입은 투자활동', () => {
     const r = run([je('3', '2026-08-03', [
-      { accountCode: '206', debit: 5_000_000 },
+      { accountCode: '126', debit: 5_000_000 },
       { accountCode: '103', credit: 5_000_000 },
     ])]);
     expect(r.invOut).toBe(5_000_000);
@@ -72,7 +72,7 @@ describe('computeCashFlowDirect', () => {
 
   it('계좌 간 이체는 순증감 0이라 제외된다', () => {
     const r = run([je('5', '2026-08-05', [
-      { accountCode: '101', debit: 200_000 },
+      { accountCode: '102', debit: 200_000 },
       { accountCode: '103', credit: 200_000 },
     ])]);
     expect(r.net).toBe(0);
@@ -109,7 +109,7 @@ describe('영업부채는 재무가 아니다 — 부채라고 다 재무로 찍
    */
   it('미지급급여 지급은 영업활동', () => {
     const r = run([je('j1', '2026-08-10', [
-      { accountCode: '263', debit: 12_860_310 },
+      { accountCode: '275', debit: 12_860_310 },
       { accountCode: '103', credit: 12_860_310 },
     ])]);
     expect(r.op).toBe(-12_860_310);
@@ -119,7 +119,7 @@ describe('영업부채는 재무가 아니다 — 부채라고 다 재무로 찍
   it('미지급세금·선수금·퇴직급여충당부채도 영업활동', () => {
     const r = run([
       je('j2', '2026-08-11', [{ accountCode: '261', debit: 3_000_000 }, { accountCode: '103', credit: 3_000_000 }]),
-      je('j3', '2026-08-12', [{ accountCode: '103', debit: 1_000_000 }, { accountCode: '259', credit: 1_000_000 }]),
+      je('j3', '2026-08-12', [{ accountCode: '103', debit: 1_000_000 }, { accountCode: '254', credit: 1_000_000 }]),
       je('j4', '2026-08-13', [{ accountCode: '295', debit: 500_000 }, { accountCode: '103', credit: 500_000 }]),
     ]);
     expect(r.op).toBe(-2_500_000);   // −3,000,000 +1,000,000 −500,000
@@ -139,7 +139,7 @@ describe('영업부채는 재무가 아니다 — 부채라고 다 재무로 찍
     const r = run([
       je('j6', '2026-08-15', [{ accountCode: '263', debit: 1_000_000 }, { accountCode: '103', credit: 1_000_000 }]),
       je('j7', '2026-08-16', [{ accountCode: '260', debit: 2_000_000 }, { accountCode: '103', credit: 2_000_000 }]),
-      je('j8', '2026-08-17', [{ accountCode: '206', debit: 3_000_000 }, { accountCode: '103', credit: 3_000_000 }]),
+      je('j8', '2026-08-17', [{ accountCode: '126', debit: 3_000_000 }, { accountCode: '103', credit: 3_000_000 }]),
     ]);
     expect(r.net).toBe(-6_000_000);
     expect(r.op + r.inv + r.fin).toBe(r.net);

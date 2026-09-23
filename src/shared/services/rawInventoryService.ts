@@ -252,7 +252,7 @@ export async function executeRawInventoryCommand(
      *
      * 어느 쪽이 맞는지는 코드가 못 정한다. 사람이 실사로 정하고 나서 다시 부른다.
      */
-    if (mirror && !원장전용 && command.kind !== 'stocktake' && itemSnap?.exists()) {
+    if (mirror && !원장전용 && command.kind !== 'stocktake' && command.kind !== 'adjust-lot' && itemSnap?.exists()) {
       const 품목재고 = Number(itemSnap.data()?.stock ?? 0);
       const 상태재고 = state?.stockKg ?? 0;
       if (Math.abs(품목재고 - 상태재고) > MIRROR_TOLERANCE_KG) {

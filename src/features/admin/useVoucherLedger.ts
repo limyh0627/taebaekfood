@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { IssuedStatement, CashEntry, Settlement, AccountCode, CompanyId, JournalEntry } from '../../shared/types';
 import { openingDocId } from '../../shared/types';
-import { fetchDateRange, fetchByIds, fetchWhere, fetchCollection } from '../../shared/services/firebaseService';
+import { fetchDateRange, fetchByIds, fetchWhere } from '../../shared/services/firebaseService';
 import { buildJournals } from '../../shared/buildJournals';
 import { allocatePartnerCash } from './cashLedger';
 import { mergeStatements, voucheredOrderIds, canSettleStatement } from './voucherMerge';
@@ -77,7 +77,7 @@ export function useVoucherLedger({
    */
   const [openingDate, setOpeningDate] = useState<string | null>(null);
   useEffect(() => {
-    fetchCollection<{ id: string; date: string }>('openingBalances')
+    fetchWhere<{ id: string; date: string }>('openingBalances', 'companyId', companyId)
       .then(rows => setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null))
       .catch(() => setOpeningDate(null));
   }, [companyId]);

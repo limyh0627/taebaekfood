@@ -110,7 +110,7 @@ describe('상환 템플릿 자동발행', () => {
     expect(e.amount).toBe(470_280);
     expect(e.lines).toEqual([
       { accountCode: '253', amount: 440_000, note: '원금' },
-      { accountCode: '951', amount: 30_280, note: '이자' },
+      { accountCode: '931', amount: 30_280, note: '이자' },
     ]);
     expect(e.accountCode).toBeUndefined();   // 줄이 둘이면 머리 계정은 안 쓴다
   });

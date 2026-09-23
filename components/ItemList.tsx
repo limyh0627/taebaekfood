@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -361,6 +361,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onOemReceive,
   onOemIssueFee,
 }) => {
+  const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material)?.lots ?? [], [items]);
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const scheduledOutboundQty = useMemo(() => {
     const result = new Map<string, number>();
@@ -632,10 +633,10 @@ const ItemList: React.FC<ItemListProps> = ({
   const [editingClosingVal, setEditingClosingVal] = useState<string>('');
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
   const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
+  const [stocktakeLotId, setStocktakeLotId] = useState('');
   const [detailProduct, setDetailProduct] = useState<Item | null>(null);
   const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
   const [detailOrderIsBox, setDetailOrderIsBox] = useState<boolean>(false);
-  const [detailStocktakeQty, setDetailStocktakeQty] = useState<number>(0);
 
   React.useEffect(() => {
     if (!rowEditProduct) return;
@@ -848,10 +849,15 @@ const ItemList: React.FC<ItemListProps> = ({
    * 이제 숫자를 누르면 창이 뜬다.
    */
   const openStocktake = (product: Item) => {
+    const activeLot = isRawHolder(product)
+      ? (product.lots ?? []).find(lot => lot.status !== 'depleted')
+      : undefined;
+    setStocktakeLotId(activeLot?.id ?? '');
+    const stockKg = activeLot ? Number(activeLot.kgRemaining ?? 0) : Number(product.stock ?? 0);
     setRowEditProduct(product);
     setRowEditForm({
       name: product.name, type: product.type,
-      stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock,
+      stock: product.density ? Math.round((stockKg / product.density) * 1000) / 1000 : stockKg,
       minStock: product.minStock, unit: product.unit,
     });
   };
@@ -860,13 +866,16 @@ const ItemList: React.FC<ItemListProps> = ({
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
-  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0) => {
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string) => {
     if (isNaN(val) || val < 0) return;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
       // 로트와 원장은 한 몸 — 실사하면 둘 다 같은 목표값으로 간다.
-      if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
+      const targetLot = targetLotId ? (product.lots ?? []).find(lot => lot.id === targetLotId) : undefined;
+      if (!confirm(targetLot
+        ? `[${targetLot.lotNo || targetLot.supplierName}] 로트 잔량을 ${val}${unitLabel}로 맞출까요?\n선택한 로트와 타임라인에 '재고 정정'으로 반영됩니다.`
+        : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
       const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
       /**
@@ -883,7 +892,10 @@ const ItemList: React.FC<ItemListProps> = ({
         received: 0,
         used: 0,
         targetKg,
-        note: `재고실사 (${val}${unitLabel}로 맞춤)`,
+        ...(targetLotId ? { targetLotId } : {}),
+        note: targetLot
+          ? `로트 재고정정 (${targetLot.lotNo || targetLot.supplierName} · ${val}${unitLabel}로 맞춤)`
+          : `재고실사 (${val}${unitLabel}로 맞춤)`,
         createdAt: new Date().toISOString(),
         type: 'correction',
         unit: 'kg',
@@ -1914,7 +1926,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <React.Fragment key={product.id}>
                     <tr
                       className={`min-h-10 border-b-2 border-slate-400 transition-colors cursor-pointer ${inCart ? 'bg-indigo-50/40' : rowIndex % 2 === 0 ? 'bg-white hover:bg-indigo-50/60' : 'bg-slate-50/40 hover:bg-indigo-50/70'}`}
-                      onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
+                      onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); }}
                     >
                       {/* 카테고리와 서브타입은 필터에서만 쓴다. 현장 목록은 품목명부터 시작한다. */}
                       <td className="border-r border-slate-300 px-3 py-3">
@@ -2016,13 +2028,13 @@ const ItemList: React.FC<ItemListProps> = ({
                           </div>
                         {derivedCans != null ? (
                           <span className={`text-right text-[13px] font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
-                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
+                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); }}
                             title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
                             {Math.floor(derivedCans)}
                           </span>
                         ) : (
                           <button
-                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); setDetailStocktakeQty(displayStockOf(product)); }}
+                            onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); }}
                             className={`min-w-[52px] text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title={`눌러서 실사 (지금 ${displayStock}${product.unit ?? ''})`}
                           >
@@ -2201,11 +2213,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <p className="text-xs font-black text-slate-700">재고 실사</p>
                         <p className="mt-1 text-[10px] font-bold text-slate-400">별도의 입출고, 생산과정 없이 재고수량이 변경됩니다.</p>
                       </div>
-                      <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
-                        <input type="number" step="any" value={detailStocktakeQty} onChange={e => setDetailStocktakeQty(Number(e.target.value) || 0)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400 sm:w-24 sm:flex-none" />
-                        <span className="text-xs font-bold text-slate-400">{product.unit || '개'}</span>
-                        <button onClick={async () => { await commitStockEdit(product, detailStocktakeQty); setDetailProduct(null); }} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-600 hover:bg-indigo-50">실사 반영</button>
-                      </div>
+                      <button onClick={() => { setDetailProduct(null); openStocktake(product); }} className="w-full rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-600 hover:bg-indigo-50 sm:w-auto sm:shrink-0">실사 반영</button>
                     </div>
                   </div>
                   {canPurchase && (
@@ -2275,11 +2283,32 @@ const ItemList: React.FC<ItemListProps> = ({
                     </p>
                   </div>
                 )}
+                {!productEditable && isRawHolder(rowEditProduct) && (
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">정정할 로트</label>
+                    <select value={stocktakeLotId} onChange={event => {
+                      const id = event.target.value;
+                      const lot = (rowEditProduct.lots ?? []).find(candidate => candidate.id === id);
+                      setStocktakeLotId(id);
+                      if (lot) {
+                        const kg = Number(lot.kgRemaining ?? 0);
+                        setRowEditForm(form => ({ ...form, stock: rowEditProduct.density ? Math.round((kg / rowEditProduct.density) * 1000) / 1000 : kg }));
+                      }
+                    }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400">
+                      {(rowEditProduct.lots ?? []).filter(lot => lot.status !== 'depleted').map((lot, index) => (
+                        <option key={lot.id} value={lot.id}>
+                          {index === 0 ? '사용 중 · ' : ''}{lot.lotNo || lot.supplierName || lot.id} · {Number(lot.kgRemaining ?? 0).toLocaleString()}kg
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[10px] font-bold text-slate-400">기본은 현재 FIFO 1순위 로트입니다. 선택한 로트만 정정됩니다.</p>
+                  </div>
+                )}
                 {/* 현재 재고 + 최소 수량 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                      현재 재고 <span className="text-indigo-400">({rowEditProduct.unit || '개'})</span>
+                      {isRawHolder(rowEditProduct) ? '선택 로트 실사 잔량' : '현재 재고'} <span className="text-indigo-400">({rowEditProduct.unit || '개'})</span>
                     </label>
                     {/* 저장은 kg — 밀도 있는 품목(기름)은 L로 보여주고 L로 받는다 */}
                     <div className="relative">
@@ -2300,7 +2329,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <span className="text-slate-300"> · 밀도 {rowEditProduct.density}</span>
                       </p>
                     )}
-                    {!productEditable && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
+                    {!productEditable && !isRawHolder(rowEditProduct) && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
                       <p className="text-[10px] font-black text-amber-600 mt-1">
                         앱 재고 {rowEditProduct.stock ?? 0} → {rowEditForm.stock ?? 0}
                         {' '}({(rowEditForm.stock ?? 0) > (rowEditProduct.stock ?? 0) ? '+' : ''}{(rowEditForm.stock ?? 0) - (rowEditProduct.stock ?? 0)})
@@ -2340,13 +2369,13 @@ const ItemList: React.FC<ItemListProps> = ({
                     const { stock: newStock, ...meta } = form;
                     if (!productEditable && newStock !== undefined) {
                       // 재고실사 모달과 목록 인라인 실사는 반드시 같은 명령을 쓴다.
-                      await commitStockEdit(p, newStock);
+                      await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined);
                     } else if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
                       // 원료: 재고(stock)·로트(lots)는 commitStockEdit(트랜잭션)이 관리한다.
                       // 메타 저장이 옛 stock/lots로 덮어써 로트가 사라지는 경합을 막으려 둘을 제외하고 먼저 반영.
                       const { stock: _s, lots: _l, ...metaOnly } = { ...p, ...meta } as any;
                       await onUpdateItem(metaOnly as Item);
-                      await commitStockEdit(p, newStock);
+                      await commitStockEdit(p, newStock, 0, stocktakeLotId);
                     } else {
                       // 인라인 수정과 같은 변환을 쓴다 — 두 저장문이 갈리면 박스·밀도 품목이 다시 어긋난다.
                       const storedStock = newStock === undefined ? undefined : stocktakeStoredQuantity(p, newStock);
@@ -3104,6 +3133,7 @@ const ItemList: React.FC<ItemListProps> = ({
         mode={rawEntryModal?.mode ?? 'inbound'}
         materials={RM_LIST as unknown as string[]}
         currentUserName={currentUser?.name}
+        lotsForMaterial={rawLotsForMaterial}
         onClose={() => setRawEntryModal(null)}
         onSubmit={async (entry) => {
           /**

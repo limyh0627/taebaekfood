@@ -39,6 +39,8 @@ export interface PeriodPickerProps {
    * 거기서는 뺀다. 없는 갈래를 그리면 같은 일을 두 자리에서 하게 된다.
    */
   당월?: boolean;
+  /** 손익 화면은 시작·종료일을 늘 보여 주고, 빠른 기간 버튼을 그 옆에 둔다. */
+  alwaysShowDates?: boolean;
 }
 
 const 갈래버튼 = (고름: boolean, 잠김: boolean) =>
@@ -60,6 +62,7 @@ export const PeriodPicker: React.FC<PeriodPickerProps> = ({
   selectedQuarter, setSelectedQuarter, selectedHalf, setSelectedHalf,
   customStart, setCustomStart, customEnd, setCustomEnd,
   quarterAvailable, halfAvailable, yearlyAvailable = true, 당월 = true,
+  alwaysShowDates = false,
 }) => {
   //  '당년' 한 이름으로 쓴다 — 같은 값을 화면마다 달리 부르면 같은 것인 줄 모른다.
   const 갈래 = ([
@@ -74,6 +77,16 @@ export const PeriodPicker: React.FC<PeriodPickerProps> = ({
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
+      {alwaysShowDates && (
+        <div className="flex items-center gap-1">
+          <input aria-label="조회 시작일" type="date" value={customStart}
+            onChange={e => { setCustomStart(e.target.value); setPeriod('custom'); }} className={입력} />
+          <span className="text-slate-400 text-xs font-black">~</span>
+          <input aria-label="조회 종료일" type="date" value={customEnd}
+            onChange={e => { setCustomEnd(e.target.value); setPeriod('custom'); }} className={입력} />
+        </div>
+      )}
+
       <div className={통}>
         {갈래.map(([val, label]) => {
           const off = 잠김(val);
@@ -112,12 +125,12 @@ export const PeriodPicker: React.FC<PeriodPickerProps> = ({
         </div>
       )}
 
-      {period === 'custom' && (
+      {period === 'custom' && !alwaysShowDates && (
         /* 날짜로 고른다 — 전표 화면과 같은 모양. 셈은 달 단위라 고른 날짜가 걸친 달을 쓴다. */
         <div className="flex items-center gap-1">
-          <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className={입력} />
+          <input aria-label="조회 시작일" type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className={입력} />
           <span className="text-slate-400 text-xs font-black">~</span>
-          <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className={입력} />
+          <input aria-label="조회 종료일" type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className={입력} />
         </div>
       )}
     </div>

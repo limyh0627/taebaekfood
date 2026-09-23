@@ -22,6 +22,52 @@ export interface BuildJournalsResult {
   skipped: { sourceType: string; id: string; reason: string }[];   // 분개 못 만든 것(계정없음 등)
 }
 
+const sum = (xs: number[]) => Math.round(xs.reduce((a, b) => a + (b || 0), 0) * 100) / 100;
+
+/** 예전에 미발행 주문을 숨기려고 만든 0원 전표 한 장. 신규 제외는 주문 필드로 처리한다. */
+const isLegacyExclusionPlaceholder = (s: IssuedStatement): boolean =>
+  s.id.startsWith('stmt-hide-') && (s.items?.length ?? 0) === 0 && (s.totalAmount ?? 0) === 0;
+
+export function statementJournalFailureReason(s: IssuedStatement): string {
+  const items = s.items ?? [];
+  if (!items.length) return '품목이 없는 빈 전표';
+  const missing = items.filter(it => !it.accountCode);
+  if (missing.length) {
+    const names = missing.map(it => it.name || '이름 없음').slice(0, 3).join(', ');
+    return `계정과목이 없는 품목 ${missing.length}줄 (${names}${missing.length > 3 ? ' 외' : ''})`;
+  }
+  if (s.type === '비용') {
+    const noSide = items.filter(it => it.side !== '차변' && it.side !== '대변');
+    if (noSide.length) return `차변·대변이 지정되지 않은 줄 ${noSide.length}개`;
+    const debit = sum(items.filter(it => it.side === '차변').map(it => it.total));
+    const credit = sum(items.filter(it => it.side === '대변').map(it => it.total));
+    if (debit !== credit) return `대체전표 차변 ${debit.toLocaleString()}원과 대변 ${credit.toLocaleString()}원이 다름`;
+    return '대체전표에 금액이 있는 상대계정 줄이 부족함';
+  }
+  const itemGross = sum(items.map(it => it.total ?? ((it.supply ?? 0) + (it.tax ?? 0))));
+  const headerGross = Math.round((s.totalAmount ?? 0) * 100) / 100;
+  if (itemGross !== headerGross) return `전표 합계 ${headerGross.toLocaleString()}원과 품목 합계 ${itemGross.toLocaleString()}원이 다름`;
+  const supplyAndTax = sum(items.map(it => it.supply)) + sum(items.map(it => it.tax));
+  if (Math.round(supplyAndTax * 100) / 100 !== headerGross) return `공급가·세액 합계 ${supplyAndTax.toLocaleString()}원과 전표 합계 ${headerGross.toLocaleString()}원이 다름`;
+  return '분개 줄을 만들 수 없음 — 품목 금액과 세액을 확인';
+}
+
+export function cashJournalFailureReason(e: CashEntry): string {
+  const lines = e.lines ?? [];
+  if (!lines.length && !e.accountCode) return '계정과목이 지정되지 않음';
+  if (!lines.length && !(e.amount > 0)) return '금액이 0원이거나 비어 있음';
+  const missing = lines.filter(line => !line.accountCode);
+  if (missing.length) return `계정과목이 없는 분할 줄 ${missing.length}개`;
+  if (e.dir === '대체') {
+    const noSide = lines.filter(line => line.side !== '차변' && line.side !== '대변');
+    if (noSide.length) return `차변·대변이 지정되지 않은 대체 줄 ${noSide.length}개`;
+    const debit = sum(lines.filter(line => line.side === '차변').map(line => Math.abs(line.amount)));
+    const credit = sum(lines.filter(line => line.side === '대변').map(line => Math.abs(line.amount)));
+    return `대체 차변 ${debit.toLocaleString()}원과 대변 ${credit.toLocaleString()}원이 다름`;
+  }
+  return '분할 금액 합계가 0원이거나 차변·대변 구성이 올바르지 않음';
+}
+
 export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
   const { statements, cashEntries = [], accounts, opening, cashAccountMap = {}, inventorySnapshots = [] } = input;
   const normalOf = (code: string): 'debit' | 'credit' =>
@@ -35,12 +81,12 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
   for (const s of statements) {
     const je = journalizeStatement(s);
     if (je) entries.push(je);
-    else if (s.type === '매출' || s.type === '매입') skipped.push({ sourceType: s.type, id: s.id, reason: '계정 미지정 · 빈 전표 · 차대 불일치(품목 합계와 전표 합계가 다름)' });
+    else if ((s.type === '매출' || s.type === '매입') && !isLegacyExclusionPlaceholder(s)) skipped.push({ sourceType: s.type, id: s.id, reason: statementJournalFailureReason(s) });
     else if (s.type === '비용') {
       // 대체전표 — 감가상각·퇴직급여충당 등 현금 없는 내부 대체
       const tj = journalizeTransfer(s, normalOf);
       if (tj) entries.push(tj);
-      else skipped.push({ sourceType: '대체', id: s.id, reason: '차·대 불일치 또는 계정 미지정 (상대계정 줄이 빠졌는지 확인)' });
+      else skipped.push({ sourceType: '대체', id: s.id, reason: statementJournalFailureReason(s) });
     }
     // 수금/지불은 전표가 아니라 자금원장에만 있다 — 아래 cashEntries 루프에서 분개된다.
   }
@@ -48,7 +94,7 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
   for (const e of cashEntries) {
     const cj = journalizeCashEntry(e, cashAccountMap);
     if (cj) entries.push(cj);
-    else skipped.push({ sourceType: '자금', id: e.id, reason: '계정 미지정' });
+    else skipped.push({ sourceType: '자금', id: e.id, reason: cashJournalFailureReason(e) });
   }
 
   // 월말 재고 조정 — 매입을 비용으로 턴 것 중 안 팔리고 남은 만큼을 재고자산으로 되돌린다.

@@ -51,6 +51,21 @@ export function ledgerBalanceKg(entries: RawMaterialEntry[], density = 1): numbe
 }
 
 /**
+ * 문서 날짜순 표에 한 줄을 적용한 뒤의 잔량.
+ *
+ * `balanceAfterKg`는 **DB에서 작업을 실행한 순간**의 확정 잔량이라 소급 입력된 줄을
+ * 문서 날짜 자리로 옮겨 놓으면 그 날짜의 잔량으로 쓸 수 없다. 참깨 원장에서 9/21 사용을
+ * 9/23에 처리한 뒤 9/21 잔량이 오히려 늘어난 것처럼 보인 이유가 이것이었다.
+ * 날짜별 입출고 표는 입고·사용량과 실사 앵커만 다시 누적하고, 현재고 판단은 기존
+ * `authoritativeLedgerBalanceKg`를 계속 사용한다.
+ */
+export function applyLedgerRowByBusinessDate(bal: number, e: RawMaterialEntry, density = 1): number {
+  if (e.targetKg != null) return Number(e.targetKg);
+  const toKg = (v: number) => (e.unit === 'L' && density !== 1 ? v * density : v);
+  return round3(bal + toKg(e.received ?? 0) - toKg(e.used ?? 0));
+}
+
+/**
  * 원자화 이후 원장의 확정 잔량. 원자화 줄은 트랜잭션이 적용된 직후의 잔량을
  * `balanceAfterKg`로 남기므로, 과거 legacy 줄을 날짜순으로 다시 더하는 것보다 이 값이 우선이다.
  * 원자화 줄이 아직 없는 원료만 예전 누적 계산을 사용한다.

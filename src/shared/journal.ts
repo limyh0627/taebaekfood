@@ -96,7 +96,14 @@ export function balancesByType(entries: JournalEntry[], accounts: AccountCode[])
   for (const t of tally.values()) {
     const acc = byCode.get(String(t.accountCode));
     if (!acc?.type) continue;
-    out[acc.type] = round(out[acc.type] + accountBalance(t, acc.normalBalance ?? 'debit'));
+    /*
+     * 보고서의 부호는 계정 자체의 정상잔액이 아니라 재무제표 구분으로 정한다.
+     * 인출금은 자본의 차감계정이라 차변 정상이고, 감가상각누계액은 자산의
+     * 차감계정이라 대변 정상이다. normalBalance로 더하면 둘 다 오히려 자본·자산을
+     * 늘려 재무상태표 차이가 정확히 두 배로 벌어진다.
+     */
+    const statementSide = acc.type === '자산' || acc.type === '비용' ? 'debit' : 'credit';
+    out[acc.type] = round(out[acc.type] + accountBalance(t, statementSide));
   }
   return out;
 }

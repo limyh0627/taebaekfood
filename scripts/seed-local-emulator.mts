@@ -44,9 +44,11 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   //  **계정과목이 없으면 매입전표를 발행할 수 없다** — 줄마다 계정을 골라야 하는데 고르개가
   //  비어 있어 "계정과목이 설정되지 않았다"에서 영영 막힌다(2026-09-13 검수 때 막혔다).
   //  전표·분개를 로컬에서 보려면 최소 이 넷은 있어야 한다.
-  ['accountCodes', '500', { code:'500', name:'상품매입', type:'expense', normalBalance:'debit' }],
-  ['accountCodes', '505', { code:'505', name:'소모품비', type:'expense', normalBalance:'debit' }],
-  ['accountCodes', '800', { code:'800', name:'상품매출', type:'revenue', normalBalance:'credit' }],
+  ['accountCodes', '500', { code:'500', name:'원료매입', type:'비용', normalBalance:'debit' }],
+  ['accountCodes', '505', { code:'505', name:'부자재매입', type:'비용', normalBalance:'debit' }],
+  ['accountCodes', '404', { code:'404', name:'제품매출', type:'수익', normalBalance:'credit' }],
+  ['accountCodes', '122', { code:'122', name:'비품', type:'자산', normalBalance:'debit', note:'오래 사용하는 컴퓨터·책상·장비' }],
+  ['accountCodes', '830', { code:'830', name:'소모품비', type:'비용', normalBalance:'debit', note:'짧게 쓰고 소모되는 문구·청소용품·소형도구' }],
   ['accountCodes', '108', { code:'108', name:'외상매출금', type:'asset', normalBalance:'debit' }],
   ['accountCodes', '251', { code:'251', name:'외상매입금', type:'liability', normalBalance:'credit' }],
   // 혼합 사용·FIFO 순서·대기/사용중 상태를 화면에서 직접 검수할 수 있도록 한 품목에 활성 로트 3개를 둔다.
@@ -114,14 +116,14 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   //  띄워 보는 수밖에 없었다. 표에 서는 **세 갈래를 다 넣는다** —
   //  매출·매입 전표 · 자금(입금/출금) · 수금/지불. 줄마다 그리는 코드가 달라 하나로는 못 본다.
   ['issuedStatements', 'stmt-sale-1', { docNo:'L-매출-0001', type:'매출', partnerId:'partner-direct', partnerName:'가상직배송마트', tradeDate:day(-3), issuedAt:atDay(-3, 14),
-    items:[{ itemId:'oil-box', name:'가상 참기름/350ml (12개입)', spec:'350ml', qty:2, price:60000, supply:120000, tax:12000, total:132000, accountCode:'800' }],
+    items:[{ itemId:'oil-box', name:'가상 참기름/350ml (12개입)', spec:'350ml', qty:2, price:60000, supply:120000, tax:12000, total:132000, accountCode:'404' }],
     totalSupply:120000, totalTax:12000, totalAmount:132000, companyId:'taebaek' }],
   ['issuedStatements', 'stmt-sale-2', { docNo:'L-매출-0002', type:'매출', partnerId:'partner-courier', partnerName:'가상온라인몰', tradeDate:day(-1), issuedAt:atDay(-1, 10),
-    items:[{ itemId:'powder-1kg', name:'가상 고춧가루/1kg', spec:'1kg', qty:10, price:12000, supply:120000, tax:0, total:120000, isTaxExempt:true, accountCode:'800' }],
+    items:[{ itemId:'powder-1kg', name:'가상 고춧가루/1kg', spec:'1kg', qty:10, price:12000, supply:120000, tax:0, total:120000, isTaxExempt:true, accountCode:'404' }],
     totalSupply:120000, totalTax:0, totalAmount:120000, companyId:'taebaek' }],
   //  반품(음수 수량) — 표에서 빨갛게 서는 줄이 있어야 색을 확인할 수 있다.
   ['issuedStatements', 'stmt-return', { docNo:'L-매출-0003', type:'매출', partnerId:'partner-direct', partnerName:'가상직배송마트', tradeDate:day(-1), issuedAt:atDay(-1, 16),
-    items:[{ itemId:'oil-350', name:'가상 참기름/350ml', spec:'350ml', qty:-2, price:5000, supply:-10000, tax:-1000, total:-11000, accountCode:'800' }],
+    items:[{ itemId:'oil-350', name:'가상 참기름/350ml', spec:'350ml', qty:-2, price:5000, supply:-10000, tax:-1000, total:-11000, accountCode:'404' }],
     totalSupply:-10000, totalTax:-1000, totalAmount:-11000, companyId:'taebaek' }],
   ['issuedStatements', 'stmt-buy-1', { docNo:'L-매입-0001', type:'매입', partnerId:'partner-supplier', partnerName:'가상부자재상사', tradeDate:day(-5), issuedAt:atDay(-5, 11),
     items:[{ itemId:'bottle-350', name:'가상 350ml 병', qty:200, price:150, supply:30000, tax:3000, total:33000, accountCode:'500' }],

@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X, ChevronDown } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId } from '../src/shared/types';
 import { openingDocId } from '../src/shared/types';
 import { buildJournals } from '../src/shared/buildJournals';
 import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { BANK } from '../src/shared/autoJournal';
-import { fetchCollection, setDocument } from '../src/shared/services/firebaseService';
+import { fetchWhere, setDocument } from '../src/shared/services/firebaseService';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
 interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; }
@@ -36,6 +36,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     return [...s].sort().reverse();
   }, [statements, cashEntries]);
   const [month, setMonth] = useState<string>('전체');
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [showReverseBalances, setShowReverseBalances] = useState(false);
+  const [expandedReverse, setExpandedReverse] = useState<Set<string>>(() => new Set());
 
   // ── 기초잔액 문서 (openingBalances/main) ──
   const [openingDoc, setOpeningDoc] = useState<OpeningDoc | null>(null);
@@ -44,7 +47,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const [saving, setSaving] = useState(false);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
   useEffect(() => {
-    fetchCollection<OpeningDoc>('openingBalances')
+    // 회사 규칙은 list 질의에도 companyId 조건이 있어야 허용한다. 전체 컬렉션을 읽으면
+    // permission-denied가 나는데 예전 코드는 오류를 삼켜 실제 기초잔액을 '미입력'으로 보였다.
+    fetchWhere<OpeningDoc>('openingBalances', 'companyId', companyId)
       .then(rows => setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null))
       .catch(() => {});
   }, [companyId]);
@@ -96,6 +101,18 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening, inventorySnapshots }),
     [statements, cashEntries, accounts, opening, inventorySnapshots]);
 
+  // 실패 건을 숫자만 보여주면 어떤 전표를 고쳐야 하는지 알 수 없다. 원본에서 날짜·문서번호를
+  // 붙여 사람이 바로 찾게 한다. 선택 월과 무관한 실패 건까지 경고하지 않도록 월 필터도 맞춘다.
+  const visibleSkipped = useMemo(() => built.skipped.map(s => {
+    const statement = statements.find(x => x.id === s.id);
+    const cash = cashEntries.find(x => x.id === s.id);
+    return {
+      ...s,
+      date: statement?.tradeDate ?? cash?.date ?? '',
+      label: statement?.docNo ?? statement?.partnerName ?? cash?.partnerName ?? cash?.note ?? s.id,
+    };
+  }).filter(s => month === '전체' || s.date.slice(0, 7) === month), [built.skipped, statements, cashEntries, month]);
+
   const entries = useMemo(() => {
     if (month === '전체') return built.entries;
     // 기초분개는 항상 포함, 나머지는 선택월
@@ -105,6 +122,25 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const tb = useMemo(() => trialBalance(entries, accounts), [entries, accounts]);
   const is = useMemo(() => incomeStatement(entries, accounts), [entries, accounts]);
   const bs = useMemo(() => balanceSheet(entries, accounts), [entries, accounts]);
+
+  // 정상 방향 잔액이 음수면 원인을 합계만으로는 못 찾는다. 해당 계정을 건드린 원본까지
+  // 바로 펼쳐 보여 기초잔액 누락인지 지급·상환 전표 오류인지 대조하게 한다.
+  const reverseBalances = useMemo(() => tb.rows.filter(row => row.balance < 0).map(row => {
+    const account = accounts.find(a => String(a.code) === String(row.accountCode));
+    // 계정표에 없는 옛 코드를 차변으로 짐작하면 부가세예수금 같은 부채가 오탐이 된다.
+    // 정상 방향을 계정표에서 확인할 수 있는 것만 경고한다.
+    if (!account) return null;
+    const normalBalance = account.normalBalance ??
+      (account.type === '부채' || account.type === '자본' || account.type === '수익' ? 'credit' : 'debit');
+    const sources = entries.flatMap(entry => {
+      const lines = entry.lines.filter(line => String(line.accountCode) === String(row.accountCode));
+      if (!lines.length) return [];
+      const debit = lines.reduce((n, line) => n + (line.debit ?? 0), 0);
+      const credit = lines.reduce((n, line) => n + (line.credit ?? 0), 0);
+      return [{ entry, debit, credit }];
+    }).sort((a, b) => b.entry.date.localeCompare(a.entry.date));
+    return { ...row, normalBalance, sources };
+  }).filter((row): row is NonNullable<typeof row> => row !== null), [tb.rows, accounts, entries]);
 
   const typeColor: Record<string, string> = {
     자산: 'text-blue-600', 부채: 'text-rose-600', 자본: 'text-violet-600', 수익: 'text-emerald-600', 비용: 'text-amber-600',
@@ -129,9 +165,66 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
         </div>
       </div>
 
-      {built.skipped.length > 0 && (
-        <div className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-          분개 못 만든 원본 {built.skipped.length}건 (계정 미지정 등) — 재무제표에서 빠짐
+      {visibleSkipped.length > 0 && (
+        <div className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+          <button type="button" onClick={() => setShowSkipped(v => !v)}
+            className="w-full px-3 py-2 flex items-center justify-between text-left">
+            <span>분개 못 만든 원본 {visibleSkipped.length}건 — 재무제표에서 빠짐</span>
+            <ChevronDown size={14} className={`transition-transform ${showSkipped ? 'rotate-180' : ''}`} />
+          </button>
+          {showSkipped && (
+            <div className="border-t border-amber-200 bg-white divide-y divide-amber-100">
+              {visibleSkipped.map(s => (
+                <div key={`${s.sourceType}-${s.id}`} className="px-3 py-2 grid grid-cols-[72px_90px_minmax(0,1fr)] gap-2 items-start">
+                  <span className="text-slate-400 tabular-nums">{s.date || '날짜 없음'}</span>
+                  <span className="font-black text-slate-700 truncate" title={s.id}>{s.label}</span>
+                  <span className="text-amber-700">{s.sourceType} · {s.reason} <span className="text-slate-300">({s.id})</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {reverseBalances.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-rose-200 bg-rose-50 text-[11px] font-bold text-rose-700">
+          <button type="button" onClick={() => setShowReverseBalances(value => !value)}
+            className="flex w-full items-center justify-between px-3 py-2 text-left">
+            <span>정상 방향과 반대인 계정 잔액 {reverseBalances.length}건 — 기초잔액·원본 전표 확인 필요</span>
+            <ChevronDown size={14} className={`transition-transform ${showReverseBalances ? 'rotate-180' : ''}`} />
+          </button>
+          {showReverseBalances && (
+            <div className="divide-y divide-rose-100 border-t border-rose-200 bg-white">
+              {reverseBalances.map(row => {
+                const expanded = expandedReverse.has(row.accountCode);
+                return (
+                  <div key={row.accountCode}>
+                    <button type="button" onClick={() => setExpandedReverse(current => {
+                      const next = new Set(current); if (next.has(row.accountCode)) next.delete(row.accountCode); else next.add(row.accountCode); return next;
+                    })} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-rose-50/50">
+                      <span className="w-10 text-slate-400">{row.accountCode}</span>
+                      <span className="min-w-0 flex-1 font-black text-slate-700">{row.name}</span>
+                      <span className="text-slate-400">정상 {row.normalBalance === 'debit' ? '차변' : '대변'}</span>
+                      <span className="font-black tabular-nums text-rose-600">-{won(Math.abs(row.balance))}원</span>
+                      <ChevronDown size={13} className={`transition-transform ${expanded ? 'rotate-180' : ''}`}/>
+                    </button>
+                    {expanded && (
+                      <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/60">
+                        {row.sources.map(({ entry, debit, credit }) => (
+                          <div key={entry.id} className="grid grid-cols-[72px_minmax(0,1fr)_90px_90px] gap-2 px-4 py-2 text-slate-500">
+                            <span className="tabular-nums">{entry.date}</span>
+                            <span className="truncate font-bold text-slate-700" title={entry.sourceId ?? entry.id}>{entry.memo || entry.sourceId || entry.id}</span>
+                            <span className="text-right tabular-nums">차 {debit ? won(debit) : '-'}</span>
+                            <span className="text-right tabular-nums">대 {credit ? won(credit) : '-'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

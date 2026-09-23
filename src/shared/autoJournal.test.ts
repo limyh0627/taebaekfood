@@ -27,6 +27,11 @@ describe('매출 전표 → 분개', () => {
     expect(j.lines.find(l => l.accountCode === '103')!.debit).toBe(1_100_000);
     expect(j.lines.some(l => l.accountCode === AR)).toBe(false);
   });
+  it('다시 계산해도 원본 발행시각을 유지한다', () => {
+    const source = { ...s, issuedAt: '2026-07-01T03:04:05.000Z' };
+    expect(journalizeStatement(source)?.createdAt).toBe('2026-07-01T03:04:05.000Z');
+    expect(journalizeStatement(source)?.createdAt).toBe(journalizeStatement(source)?.createdAt);
+  });
 });
 
 describe('매입 전표 → 분개', () => {
@@ -131,6 +136,10 @@ describe('자금원장 CashEntry → 분개', () => {
   });
   it('계정 없으면 null', () => {
     expect(journalizeCashEntry(ce({ amount: 100 }))).toBeNull();
+  });
+  it('원본 시각이 없으면 회계일 자정으로 고정한다', () => {
+    const je = journalizeCashEntry(ce({ dir: '출금', amount: 100, accountCode: '520', createdAt: '' }))!;
+    expect(je.createdAt).toBe('2026-07-09T00:00:00.000Z');
   });
 });
 

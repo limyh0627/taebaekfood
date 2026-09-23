@@ -53,6 +53,9 @@ export const PURCHASE = '500';    // 원료매입 — 실지재고조사법의 �
 
 const r = (n: number) => Math.round((n ?? 0) * 100) / 100;
 const sum = (xs: number[]) => r(xs.reduce((a, b) => a + b, 0));
+/** 파생 분개를 다시 계산해도 같은 시각이 나오게 원본 시각, 없으면 회계일 자정을 쓴다. */
+const sourceTimestamp = (date: string, timestamp?: string): string =>
+  timestamp || `${date}T00:00:00.000Z`;
 
 /**
  * 수금·지불 자금전표가 물릴 계정을 고른다.
@@ -159,7 +162,7 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
     memo: `${s.type} ${s.partnerName} ${s.docNo ?? ''}`.trim(),
     sourceType: s.type,
     sourceId: s.id,
-    createdAt: new Date().toISOString(),
+    createdAt: sourceTimestamp(s.tradeDate, s.issuedAt),
   };
 }
 
@@ -215,7 +218,7 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
     return {
       id: `je-cash-${e.id}`, date: e.date, lines: tl,
       memo: `상계 ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(),
-      sourceType: '자금', sourceId: e.id, createdAt: new Date().toISOString(),
+      sourceType: '자금', sourceId: e.id, createdAt: sourceTimestamp(e.date, e.createdAt),
     };
   }
   const cash = cashAccountMap[e.cashAccountId] ?? BANK;
@@ -234,7 +237,7 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
   return {
     id: `je-cash-${e.id}`, date: e.date, lines,
     memo: `${e.dir} ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(), sourceType: '자금', sourceId: e.id,
-    createdAt: new Date().toISOString(),
+    createdAt: sourceTimestamp(e.date, e.createdAt),
   };
 }
 
@@ -285,7 +288,7 @@ export function journalizeTransfer(
   return {
     id: `je-${s.id}`, date: s.tradeDate, lines,
     memo: `대체 ${s.docNo ?? ''} ${s.partnerName ?? ''}`.trim(),
-    sourceType: '대체', sourceId: s.id, createdAt: new Date().toISOString(),
+    sourceType: '대체', sourceId: s.id, createdAt: sourceTimestamp(s.tradeDate, s.issuedAt),
   };
 }
 
@@ -325,7 +328,7 @@ export function journalizeInventory(
         : [{ accountCode: PURCHASE, debit: amt, credit: 0 }, { accountCode: INVENTORY, debit: 0, credit: amt }],
       memo: `재고 조정 ${s.yearMonth} (실사 ${(s.value ?? 0).toLocaleString()}원)`,
       sourceType: '대체', sourceId: s.id ?? `inv-${s.yearMonth}`,
-      createdAt: new Date().toISOString(),
+      createdAt: sourceTimestamp(date),
     });
   }
   return out;
@@ -355,5 +358,5 @@ export function buildOpeningEntry(ob: OpeningBalance, normalOf: (code: string) =
   const cap = ob.capitalAccount ?? '331';
   if (diff > 0) lines.push({ accountCode: cap, debit: 0, credit: diff });
   else if (diff < 0) lines.push({ accountCode: cap, debit: -diff, credit: 0 });
-  return { id: 'je-opening', date: ob.date, lines, memo: '기초잔액', sourceType: '수동', sourceId: 'opening', createdAt: new Date().toISOString() };
+  return { id: 'je-opening', date: ob.date, lines, memo: '기초잔액', sourceType: '수동', sourceId: 'opening', createdAt: sourceTimestamp(ob.date) };
 }

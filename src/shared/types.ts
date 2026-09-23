@@ -298,6 +298,15 @@ export interface Order {
   shipmentConfirmedAt?: string | null; // 출고 완료 확인 시각
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
+  /**
+   * 사용자가 의도적으로 전표를 발행하지 않기로 한 주문.
+   * 전표가 없는 것과 누락된 것을 구별하지 못해 오래된 주문이 계속 미발행 경고에 남았으므로
+   * 더미 전표 대신 주문 자체에 결정과 사유를 남긴다.
+   */
+  accountingExcluded?: boolean;
+  accountingExclusionReason?: string;
+  accountingExcludedAt?: string;
+  accountingExcludedBy?: string;
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
   rawConsumedLots?: OrderRawInventoryTrace[];
   /** 생산 원료 명령의 회차. 재생산 때 이미 취소된 operationId를 다시 쓰지 않게 한다. */
@@ -1367,6 +1376,8 @@ export interface RawMaterialEntry {
   originalAmount?: number;   // 사용자가 친 원본 값 (단위 환산 전)
   originalUnit?: 'kg' | 'L'; // 사용자가 친 원본 단위
   targetKg?: number;         // 재고실사정정일 때 실사 목표 절대값(kg) — 수불부 잔량을 이 값으로 리셋(앵커)
+  /** 특정 로트를 사용하거나 실사정정할 때 사람이 고른 로트. */
+  targetLotId?: string;
 }
 
 

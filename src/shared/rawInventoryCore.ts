@@ -96,8 +96,8 @@ export interface LotChange {
 }
 
 export type RawMovementKind =
-  | 'receive' | 'consume' | 'ledger-consume'
-  | 'stocktake' | 'deplete-lot' | 'merge-lots' | 'reverse' | 'opening' | 'unpack';
+  | 'receive' | 'consume' | 'consume-lot' | 'ledger-consume'
+  | 'stocktake' | 'adjust-lot' | 'deplete-lot' | 'merge-lots' | 'reverse' | 'opening' | 'unpack';
 
 /**
  * **변경 이력이자 중복 방지 표다.** `rawMaterialLedger/{operationDocId}`.
@@ -127,6 +127,8 @@ export interface RawInventoryMovement {
   appliedDeltaKg: number;
   balanceAfterKg: number;
   targetKg?: number;
+  targetLotId?: string;
+  targetLotKg?: number;
   lotChanges: LotChange[];
   source: { type: string; id: string };
   reversalOf?: string;
@@ -210,9 +212,11 @@ export interface ReceiveLotInput {
 export type RawInventoryCommand = CommandBase & (
   | { kind: 'receive'; kg: number; lot: ReceiveLotInput }
   | { kind: 'consume'; kg: number; mix?: { topPercent?: number; ratios?: { lotId: string; percent: number }[] } }
+  | { kind: 'consume-lot'; kg: number; lotId: string }
   /** 임가공 완제품 출고처럼 실물은 완제품 로트에서 빠지고 원료수불부에만 사용량을 남기는 경우. */
   | { kind: 'ledger-consume'; kg: number }
   | { kind: 'stocktake'; targetKg: number }
+  | { kind: 'adjust-lot'; lotId: string; targetKg: number }
   | { kind: 'deplete-lot'; lotId: string }
   | { kind: 'merge-lots'; sourceLotId: string; targetLotId: string }
   | { kind: 'reverse'; originalOperationId: string }
@@ -309,10 +313,14 @@ function hashPayload(c: RawInventoryCommand): Record<string, unknown> {
       return { ...base, kg: r3(c.kg), supplierName: c.supplierName ?? '' };
     case 'consume':
       return { ...base, kg: r3(c.kg), mix: c.mix ?? null };
+    case 'consume-lot':
+      return { ...base, kg: r3(c.kg), lotId: c.lotId };
     case 'ledger-consume':
       return { ...base, kg: r3(c.kg) };
     case 'stocktake':
       return { ...base, targetKg: r3(c.targetKg) };
+    case 'adjust-lot':
+      return { ...base, lotId: c.lotId, targetKg: r3(c.targetKg) };
     case 'deplete-lot':
       return { ...base, lotId: c.lotId };
     case 'merge-lots':
@@ -573,6 +581,20 @@ export function applyRawCommand(input: {
       return commit('consume', after, changesBetween(working, after), -kg);
     }
 
+    case 'consume-lot': {
+      const kg = r3(c.kg);
+      if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '사용 수량은 0보다 커야 한다' };
+      if (backdated) return skipBackdated('consume-lot', -kg);
+      const idx = working.findIndex(lot => lot.id === c.lotId);
+      if (idx < 0) return { status: 'rejected', code: 'LOT_NOT_FOUND', message: `사용할 활성 로트가 없다: ${c.lotId}` };
+      const available = Number(working[idx].kgRemaining ?? 0);
+      if (available < kg) return { status: 'rejected', code: 'TARGET_MISMATCH', message: `선택 로트 잔량 ${available}kg보다 사용량 ${kg}kg이 크다` };
+      const after = working.map((lot, index) => index === idx
+        ? { ...lot, kgRemaining: r3(available - kg), status: r3(available - kg) === 0 ? 'depleted' as const : 'active' as const }
+        : lot);
+      return commit('consume-lot', after, changesBetween(working, after), -kg, { targetLotId: c.lotId });
+    }
+
     case 'ledger-consume': {
       const kg = r3(c.kg);
       if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '원장 사용 수량은 0보다 커야 한다' };
@@ -601,6 +623,22 @@ export function applyRawCommand(input: {
         ? { id: det.carryOverLotId, createdAt: det.now, receivedDate: c.effectiveAt.slice(0, 10) }
         : undefined);
       return commit('stocktake', after, changesBetween(working, after), delta, stocktakeExtra);
+    }
+
+    case 'adjust-lot': {
+      const target = r3(c.targetKg);
+      if (!Number.isFinite(target)) return { status: 'rejected', code: 'TARGET_MISMATCH', message: '로트 실사 목표량이 숫자가 아니다' };
+      const idx = working.findIndex(lot => lot.id === c.lotId);
+      if (idx < 0) return { status: 'rejected', code: 'LOT_NOT_FOUND', message: `정정할 활성 로트가 없다: ${c.lotId}` };
+      const before = Number(working[idx].kgRemaining ?? 0);
+      const delta = r3(target - before);
+      const after = working.map((lot, index) => index === idx
+        ? { ...lot, kgRemaining: target, status: target === 0 ? 'depleted' as const : 'active' as const }
+        : lot);
+      return commit('adjust-lot', after, changesBetween(working, after), delta, {
+        targetLotId: c.lotId,
+        targetLotKg: target,
+      });
     }
 
     case 'deplete-lot': {

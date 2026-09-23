@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { AccountCode, FixedCostTemplate } from './types';
 import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { lineAmount } from './lineAmount';
+import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
  * 일반전표 템플릿 — 자주 끊는 자금전표를 한 번에 채운다.
@@ -146,44 +147,46 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'payout',  label: '지불',     dir: '출금', mode: '일반', accountCode: AP, wantsPartner: true, hint: '미지급 상계' },
 
   // 매달 나가는 고정비
-  { id: 'elec',    label: '전기세',   dir: '출금', mode: '일반', accountCode: '520' },
-  { id: 'water',   label: '수도세',   dir: '출금', mode: '일반', accountCode: '525' },
-  { id: 'rent',    label: '임대료',   dir: '출금', mode: '일반', accountCode: '510' },
-  { id: 'ins4',    label: '4대보험',  dir: '출금', mode: '보험', accountCode: '530', hint: '회사부담 + 예수금' },
-  { id: 'ins',     label: '보험료',   dir: '출금', mode: '일반', accountCode: '590' },
-  { id: 'lease',   label: '리스료',   dir: '출금', mode: '일반', accountCode: '819' },
+  { id: 'elec',    label: '전기세',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.UTILITIES },
+  { id: 'water',   label: '수도세',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.UTILITIES },
+  { id: 'rent',    label: '임대료',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.RENT },
+  { id: 'ins4',    label: '4대보험',  dir: '출금', mode: '보험', accountCode: STANDARD_ACCOUNT.WELFARE, hint: '회사부담 + 예수금' },
+  { id: 'ins',     label: '보험료',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.INSURANCE },
+  { id: 'lease',   label: '리스료',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.RENT },
 
   // 그때그때 나가는 것
   { id: 'card',    label: '카드대금', dir: '출금', mode: '일반', accountCode: '650' },
   //  할부로 산 물건 값 — 살 때 (차)자산 /(대)253 미지급금이 서고, 매달 그 미지급금을 턴다.
   //  비용이 아니다. 비용으로 끊으면 물건값을 두 번 털게 된다(살 때 자산 + 낼 때 비용).
   { id: 'installment', label: '할부금', dir: '출금', mode: '일반', accountCode: OTHER_PAYABLE, hint: '미지급금 상환' },
-  { id: 'freight', label: '운임',     dir: '출금', mode: '일반', accountCode: '605', wantsPartner: true },
+  { id: 'freight', label: '운임',     dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.FREIGHT, wantsPartner: true },
   { id: 'outwork', label: '외주가공', dir: '출금', mode: '일반', accountCode: '540', wantsPartner: true },
   { id: 'submat',  label: '부자재',   dir: '출금', mode: '일반', accountCode: '505', wantsPartner: true },
-  { id: 'interest',label: '이자',     dir: '출금', mode: '일반', accountCode: '951' },
+  { id: 'interest',label: '이자',     dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.INTEREST },
 
   // 받아 뒀다 대신 내주는 돈 — 급여에서 뗀 원천세·4대보험이 예수금으로 잡혀 있다가 여기서 털린다
-  { id: 'withhold',label: '원천세납부', dir: '출금', mode: '일반', accountCode: '254', note: '원천공제 납부', hint: '예수금 정리' },
+  { id: 'withhold',label: '원천세납부', dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.WITHHOLDING, note: '원천공제 납부', hint: '예수금 정리' },
   { id: 'tax',     label: '세금납부',   dir: '출금', mode: '세금', accountCode: VAT_PAYABLE, hint: '부가세 + 소득세' },
   { id: 'vatPay',  label: '부가세 납부', dir: '출금', mode: '일반', accountCode: '261', note: '부가세 납부', hint: '신고로 세운 미지급세금을 턴다', group: '수시' },
 
   // 사는 것 · 사장님 돈
-  { id: 'deposit', label: '보증금',   dir: '출금', mode: '일반', accountCode: '232' },
+  { id: 'deposit', label: '보증금',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.DEPOSIT },
   //  미리 준 물건값 — **초과지급도 여기로 간다.** 갚을 게 없는데 더 보냈으면 그건 채무 상계가
   //  아니라 선급금(자산)이다. 251을 음수로 미는 건 "안 진 빚을 갚았다"가 된다.
-  { id: 'prepaid', label: '선급금',   dir: '출금', mode: '일반', accountCode: '131', wantsPartner: true, hint: '초과지급·선지급' },
-  { id: 'machine', label: '기계구입', dir: '출금', mode: '일반', accountCode: '206' },
+  { id: 'prepaid', label: '선급금',   dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.PREPAID, wantsPartner: true, hint: '초과지급·선지급' },
+  { id: 'machine', label: '기계구입', dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.MACHINERY },
+  { id: 'fixture', label: '비품', dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.FIXTURES, hint: '오래 쓰는 집기·장비' },
+  { id: 'supplies', label: '소모품', dir: '출금', mode: '일반', accountCode: STANDARD_ACCOUNT.SUPPLIES_EXPENSE, hint: '짧게 쓰고 소모되는 물품' },
   { id: 'draw',    label: '인출금',   dir: '출금', mode: '일반', accountCode: '338' },
 
   // ══ 입금 ══════════════════════════════════════════════════════════
   // 거래처 채권 상계 — 매출전표가 이미 수익을 잡았으므로 수금은 미수금이 준다
   { id: 'collect', label: '수금',     dir: '입금', mode: '일반', accountCode: AR, wantsPartner: true, hint: '미수 상계' },
-  { id: 'advance', label: '선수금',   dir: '입금', mode: '일반', accountCode: '259', wantsPartner: true },
+  { id: 'advance', label: '선수금',   dir: '입금', mode: '일반', accountCode: STANDARD_ACCOUNT.ADVANCE_RECEIVED, wantsPartner: true },
   { id: 'loanIn',  label: '차입실행', dir: '입금', mode: '일반', accountCode: '260' },
   { id: 'loanInL', label: '장기차입', dir: '입금', mode: '일반', accountCode: '293' },
   { id: 'vat',     label: '부가세환급', dir: '입금', mode: '일반', accountCode: VAT_RECEIVABLE, hint: '135에 남은 돌려받을 돈' },
-  { id: 'depBack', label: '보증금회수', dir: '입금', mode: '일반', accountCode: '232' },
+  { id: 'depBack', label: '보증금회수', dir: '입금', mode: '일반', accountCode: STANDARD_ACCOUNT.DEPOSIT },
 
   // ══ 대체 ══════════════════════════════════════════════════════════
   /*
@@ -482,14 +485,14 @@ export function templateJournalLines(
     if (sm === '급여') {
       // (차) 급여 총액 / (대) 예수금 공제 + 통장 실지급
       return [
-        { side: '차변', code: '515', label: '급여', amount: a },
-        ...(b ? [{ side: '대변' as const, code: '254', label: '예수금', amount: b }] : []),
+        { side: '차변', code: STANDARD_ACCOUNT.SALARY, label: '급여', amount: a },
+        ...(b ? [{ side: '대변' as const, code: STANDARD_ACCOUNT.WITHHOLDING, label: '예수금', amount: b }] : []),
         { side: '대변', code: bank.code, label: bank.label, amount: a - b },
       ];
     }
     // 보험·상환·세금 — 차변이 둘, 대변은 통장 하나
-    const [c1, l1, c2, l2] = sm === '보험' ? ['530', '사대보험', '254', '예수금']
-      : sm === '상환' ? [t.loanCode ?? '293', '차입금', '951', '이자비용']
+    const [c1, l1, c2, l2] = sm === '보험' ? [STANDARD_ACCOUNT.WELFARE, '사대보험', STANDARD_ACCOUNT.WITHHOLDING, '예수금']
+      : sm === '상환' ? [t.loanCode ?? '293', '차입금', STANDARD_ACCOUNT.INTEREST, '이자비용']
       : [VAT_PAYABLE, '부가세예수금', '338', '인출금'];
     return [
       ...(a ? [{ side: '차변' as const, code: c1, label: l1, amount: a }] : []),

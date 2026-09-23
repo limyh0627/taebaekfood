@@ -83,9 +83,9 @@ describe('manualLines — 손으로 적은 줄', () => {
     expect(Number.isInteger(r[0].tax)).toBe(true);
   });
 
-  it('매출은 계정 800이 기본, 매입은 비어 있다 — 골라야 한다', () => {
+  it('매출은 표준 제품매출 404가 기본, 매입은 비어 있다 — 골라야 한다', () => {
     const row = { name: 'x', spec: '', qty: '1', price: '1000', isTaxExempt: false };
-    expect(manualLines([row], '매출')[0].accountCode).toBe('800');
+    expect(manualLines([row], '매출')[0].accountCode).toBe('404');
     expect(manualLines([row], '매입')[0].accountCode).toBeUndefined();
   });
 

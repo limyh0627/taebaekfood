@@ -376,6 +376,36 @@ describe('ReversalGuard — 같은 원본을 두 번 취소 못한다 (설계 §
 });
 
 describe('실사와 소급 입력 (설계 §10)', () => {
+  it('선택한 로트만 실사정정하고 다른 로트와 전역 실사 앵커는 건드리지 않는다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in-1', kg: 60 }), { newLotId: 'L1' });
+    const second = 적용(first.state, 명령({ operationId: 'in-2', kg: 40, lot: { supplierName: '둘째' } } as never), { newLotId: 'L2' });
+    const adjusted = 적용(second.state, 명령({
+      operationId: 'adjust-L2', kind: 'adjust-lot', lotId: 'L2', targetKg: 25,
+    } as never));
+
+    expect(adjusted.state.stockKg).toBe(85);
+    expect(adjusted.state.activeLots.find(lot => lot.id === 'L1')?.kgRemaining).toBe(60);
+    expect(adjusted.state.activeLots.find(lot => lot.id === 'L2')?.kgRemaining).toBe(25);
+    expect(adjusted.state.stocktakeAnchor).toBeUndefined();
+    expect(adjusted.movement).toMatchObject({
+      kind: 'adjust-lot', targetLotId: 'L2', targetLotKg: 25, reportedDeltaKg: -15,
+    });
+  });
+
+  it('사용 로트를 고르면 FIFO 첫 로트가 아니라 선택 로트에서만 차감한다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in-1', kg: 60 }), { newLotId: 'L1' });
+    const second = 적용(first.state, 명령({ operationId: 'in-2', kg: 40, lot: { supplierName: '둘째' } } as never), { newLotId: 'L2' });
+    const used = 적용(second.state, 명령({
+      operationId: 'use-L2', kind: 'consume-lot', kg: 10, lotId: 'L2',
+    } as never));
+
+    expect(used.state.activeLots.find(lot => lot.id === 'L1')?.kgRemaining).toBe(60);
+    expect(used.state.activeLots.find(lot => lot.id === 'L2')?.kgRemaining).toBe(30);
+    expect(used.movement.lotChanges).toEqual([
+      expect.objectContaining({ lotId: 'L2', deltaKg: -10 }),
+    ]);
+  });
+
   it('실사는 목표량으로 맞추고 stocktakeAnchor 를 남긴다', () => {
     const a = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));
     const s = 적용(a.state, 명령({

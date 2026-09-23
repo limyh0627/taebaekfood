@@ -149,7 +149,7 @@ interface TradeStatementProps {
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
-  onUpdateOrder?: (id: string, data: Partial<import('../types').Order>) => void;
+  onUpdateOrder?: (id: string, data: Partial<Order>) => void | Promise<void>;
   defaultTab?: 'history' | 'taxinvoice';
   expensePresets?: ExpensePreset[];
   onAddExpensePreset?: (p: Omit<ExpensePreset, 'id' | 'createdAt'>) => Promise<string>;
@@ -2333,7 +2333,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       confirmedOrders, orderRequests, mergedStatements, allItems, partners, isVouchered }}
               on={{ setSelectedClientId, setSelectedOrderIds, setManualMode, setManualItems,
                     setDateFrom, setDateTo, setOrderDateQuick, setActiveVisible, setTradeDate,
-                    setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows }}
+                    setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows,
+                    updateOrderAccountingExclusion: onUpdateOrder ? async (order, excluded, reason) => {
+                      await onUpdateOrder(order.id, excluded ? {
+                        accountingExcluded: true,
+                        accountingExclusionReason: reason,
+                        accountingExcludedAt: new Date().toISOString(),
+                      } : {
+                        accountingExcluded: false,
+                        accountingExclusionReason: '',
+                        accountingExcludedAt: '',
+                        accountingExcludedBy: '',
+                      });
+                    } : undefined }}
             />
 
             {/* ── 빠른 품목 입력 바 ── */}

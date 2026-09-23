@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { partnerOrders, activeOrders, activePartnerIds, isActive } from './statementOrders';
+import { partnerOrders, activeOrders, activePartnerIds, isActive, isVoucherResolved } from './statementOrders';
 import { OrderStatus } from './types';
 
 const 주문 = (o: any) => ({
@@ -90,6 +90,12 @@ describe('partnerOrders — 날짜 필터는 발행완료에만 건다', () => {
 });
 
 describe('activeOrders — 거래처를 안 골랐을 때', () => {
+  it('발행 제외 주문은 미발행 누락으로 세지 않되 진행 중이면 복구할 수 있게 남긴다', () => {
+    const 진행 = 주문({ id: '제외진행', accountingExcluded: true });
+    const 완료 = 주문({ id: '제외완료', status: OrderStatus.DELIVERED, accountingExcluded: true });
+    expect(isVoucherResolved(진행, 아무것도안발행)).toBe(true);
+    expect(activeOrders([진행, 완료], 아무것도안발행).map(o => o.id)).toEqual(['제외진행']);
+  });
   it('생산기록은 주문이 아니다', () => {
     const r = activeOrders([주문({ id: 'x', partnerName: '생산기록' })], 아무것도안발행);
     expect(r).toEqual([]);

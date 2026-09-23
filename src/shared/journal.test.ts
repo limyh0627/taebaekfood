@@ -11,6 +11,8 @@ const acc: AccountCode[] = [
   { id: '251', code: '251', name: '외상매입금', type: '부채', normalBalance: 'credit' },
   { id: '255', code: '255', name: '부가세예수금', type: '부채', normalBalance: 'credit' },
   { id: '331', code: '331', name: '자본금', type: '자본', normalBalance: 'credit' },
+  { id: '338', code: '338', name: '인출금', type: '자본', normalBalance: 'debit' },
+  { id: '129', code: '129', name: '감가상각누계액(건물)', type: '자산', normalBalance: 'credit' },
   { id: '500', code: '500', name: '원료매입', type: '비용', normalBalance: 'debit' },
   { id: '800', code: '800', name: '매출', type: '수익', normalBalance: 'credit' },
 ];
@@ -106,6 +108,18 @@ describe('보고서', () => {
     const b = balancesByType([sale, purchase, capital], acc);
     expect(b.자산).toBe(11_100_000);
     expect(b.부채).toBe(1_100_000);
+  });
+  it('인출금·감가상각누계액은 자본·자산에서 뺀다', () => {
+    const contra = je('contra', '2026-07-03', '자금', [
+      { accountCode: '338', debit: 2_420_290, credit: 0 },
+      { accountCode: '103', debit: 0, credit: 2_420_290 },
+      { accountCode: '500', debit: 1_000_000, credit: 0 },
+      { accountCode: '129', debit: 0, credit: 1_000_000 },
+    ]);
+    const b = balancesByType([capital, contra], acc);
+    expect(b.자본).toBe(7_579_710);
+    expect(b.자산).toBe(6_579_710);
+    expect(balanceSheet([capital, contra], acc).balanced).toBe(true);
   });
 });
 

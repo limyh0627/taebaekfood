@@ -1,6 +1,7 @@
 
 import { stampFor } from './voucherStamp';
 import { lineAmount } from './lineAmount';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
+import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
  * 정기 전표 발행 — 템플릿 하나로 무엇을 만들지 정한다. 순수 함수, DB 안 건드림.
@@ -64,7 +65,7 @@ export function canAutoIssue(t: FixedCostTemplate, ym: string): boolean {
 
 /** 출금·입금 — 자금전표 한 건 */
 /** 이자비용 계정 — 계정표에서 못 찾을 때의 기본값. 일반전표 화면과 같은 번호다. */
-const INTEREST_CODE = '951';
+const INTEREST_CODE = STANDARD_ACCOUNT.INTEREST;
 
 export function buildCashVoucher(
   t: FixedCostTemplate,

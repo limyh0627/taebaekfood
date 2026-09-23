@@ -17,6 +17,7 @@ import {
 } from '../../src/shared/cashTemplates';
 import { buildTransfer, splitTransfer, type OverKind } from '../../src/shared/interCompany';
 import { splitCashEntry } from '../../src/shared/splitEntry';
+import { STANDARD_ACCOUNT } from '../../src/shared/accountChart';
 
 /**
  * **일반전표 발행 — 돈이 움직였거나 움직일 일을 한 장으로 적는 창.**
@@ -112,7 +113,7 @@ export default function VoucherComposer({
    * **같은 값**을 봐야 해서 여기 한 곳에서만 센다.
    */
   const heldWithholding = useMemo(() => {
-    const code = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+    const code = accountCodes.find(c => c.name === '예수금')?.code ?? STANDARD_ACCOUNT.WITHHOLDING;
     return cashEntries.reduce((a, e) => {
       const parts = (e.lines ?? []).filter(l => l.accountCode === code);
       const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === code ? e.amount : 0);
@@ -288,9 +289,9 @@ export default function VoucherComposer({
         //  할부도 상환이다 — 차를 할부로 사면 부채가 '미지급금'이지 차입금이 아니다.
         //  차입금만 걸러 두면 할부금을 상환으로 끊을 길이 없어 비용으로 새는 수밖에 없다.
         const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금|미지급금/.test(c.name));
-        const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
-        const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
-        const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+        const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? STANDARD_ACCOUNT.INTEREST;
+        const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? STANDARD_ACCOUNT.SALARY;
+        const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? STANDARD_ACCOUNT.WITHHOLDING;
         /*
          * 고를 수 있는 계정 — **다섯 갈래 전부.** 예전엔 수익을 뺐는데(비용·자산·부채·자본만),
          * 그러면 잡이익 대체나 이자수익 계상, 매출 정정을 손으로 끊을 길이 없다.
@@ -367,7 +368,7 @@ export default function VoucherComposer({
         const insCorp = Number((qpInsCorp || '').replace(/,/g, '')) || 0;
         const insEmp = Number((qpInsEmp || '').replace(/,/g, '')) || 0;
         const insTotal = insCorp + insEmp;
-        const INS_CODE = accountCodes.find(c => c.name === '사대보험')?.code ?? '530';
+        const INS_CODE = accountCodes.find(c => c.name === '복리후생비' || c.name === '사대보험')?.code ?? STANDARD_ACCOUNT.WELFARE;
 
         /**
          * 4대보험 — 통장에서 한 번 나가지만 성격은 둘이다.

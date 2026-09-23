@@ -23,6 +23,16 @@ const strip = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*/g, ' ');
 
 describe('원료 원장·상태·로트 쓰기는 공용 명령만 한다', () => {
+  it('생산관리 사용기록은 선택 로트 없이 예전 FIFO 차감으로 우회하지 않는다', () => {
+    const admin = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
+    const start = admin.indexOf('onAddRawMaterialEntry={async (entry) =>');
+    const end = admin.indexOf('rawMaterialEntry', start);
+    const wiring = admin.slice(start, end > start ? end : start + 12000);
+    expect(wiring).toContain("kind: 'consume-lot' as const");
+    expect(wiring).toContain('사용할 로트를 선택해야 한다');
+    expect(wiring).not.toContain("kind: 'consume' as const");
+  });
+
   it('rawMaterialLedger 에 새 줄을 만드는 자리는 서비스 밖에서 없다', () => {
     const 걸림: string[] = [];
     for (const f of 파일들) {

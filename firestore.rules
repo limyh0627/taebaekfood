@@ -92,7 +92,7 @@ service cloud.firestore {
         'cashEntries', 'cashAccounts', 'cashFlowManual',
         'payrolls', 'fixedCosts', 'fixedCostTemplates', 'expensePresets',
         'accountCodes', 'accountGroups',
-        'inventorySnapshots', 'productionSalesLogs',
+        'inventorySnapshots', 'openingBalances', 'productionSalesLogs',
         //  **실제 컬렉션 이름이다**(2026-09-16 코덱스 검수 3번). `fileCabinet` 하나로 적었더니
         //  아무것도 안 걸려 포괄 규칙으로 떨어졌다 — 문서함이 일반 직원에게 열려 있었다.
         'fileCabinetDocs', 'fileCabinetCategories', 'fileCabinetSubCategories',

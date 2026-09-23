@@ -8,6 +8,7 @@ import { journalizeCashEntry } from '../src/shared/autoJournal';
 import { stampFor } from '../src/shared/voucherStamp';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
+import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -451,11 +452,11 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const insCorp = Number((insCorpStr || '').replace(/,/g, '')) || 0;
   const insEmp = Number((insEmpStr || '').replace(/,/g, '')) || 0;
   const insTotal = insCorp + insEmp;
-  const INS_CODE = accountCodes.find(c => c.name === '사대보험')?.code ?? '530';
+  const INS_CODE = accountCodes.find(c => c.name === '복리후생비' || c.name === '사대보험')?.code ?? STANDARD_ACCOUNT.WELFARE;
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
-  const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
-  const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
-  const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+  const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? STANDARD_ACCOUNT.INTEREST;
+  const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? STANDARD_ACCOUNT.SALARY;
+  const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? STANDARD_ACCOUNT.WITHHOLDING;
   const VAT_CODE = accountCodes.find(c => c.name === '부가세예수금')?.code ?? '255';
   const DRAW_CODE = accountCodes.find(c => c.name === '인출금')?.code ?? '338';
   const canSave = mode === '일반' ? (amt > 0 && !!accountCode)

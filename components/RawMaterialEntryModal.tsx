@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
 import { X, Inbox, FileDown, Sparkles } from 'lucide-react';
-import { RawMaterialEntry } from '../types';
+import { RawMaterialEntry, RawMaterialLot } from '../types';
 import { unitOf, DENSITY } from '../src/constants/formula';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   materials: string[];               // 선택 가능한 원료 목록 (RM_LIST)
   defaultMaterial?: string;          // 현재 활성 원료 (있으면 기본값)
   currentUserName?: string;
+  lotsForMaterial?: (material: string) => RawMaterialLot[];
   onClose: () => void;
   onSubmit: (entry: RawMaterialEntry) => void | Promise<void>;
 }
@@ -24,13 +25,14 @@ const YIELD_HINT: Record<string, { product: string; rate: number }> = {
 
 
 const RawMaterialEntryModal: React.FC<Props> = ({
-  open, mode, materials, defaultMaterial, currentUserName, onClose, onSubmit,
+  open, mode, materials, defaultMaterial, currentUserName, lotsForMaterial, onClose, onSubmit,
 }) => {
   const [date, setDate] = useState(todayStr());
   const [material, setMaterial] = useState(defaultMaterial ?? materials[0] ?? '');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [targetLotId, setTargetLotId] = useState('');
 
   // 모달 열릴 때 폼 초기화
   useEffect(() => {
@@ -39,8 +41,12 @@ const RawMaterialEntryModal: React.FC<Props> = ({
     setMaterial(defaultMaterial ?? materials[0] ?? '');
     setAmount('');
     setNote('');
+    const initialMaterial = defaultMaterial ?? materials[0] ?? '';
+    setTargetLotId(lotsForMaterial?.(initialMaterial).find(lot => lot.status !== 'depleted')?.id ?? '');
     setSubmitting(false);
-  }, [open, defaultMaterial, materials]);
+  }, [open, defaultMaterial, materials, lotsForMaterial]);
+
+  const activeLots = useMemo(() => (lotsForMaterial?.(material) ?? []).filter(lot => lot.status !== 'depleted'), [lotsForMaterial, material]);
 
   // 선택된 원료의 운영 단위 (kg / L)
   const unit = unitOf(material);
@@ -62,6 +68,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
     const amt = parseFloat(amount);
     if (!material) { alert('원료를 선택해주세요.'); return; }
     if (!amt || amt <= 0) { alert(`양(${unit})을 0보다 큰 값으로 입력해주세요.`); return; }
+    if (mode === 'usage' && !targetLotId) { alert('사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.'); return; }
     setSubmitting(true);
     try {
       const id = mode === 'inbound' ? `rm-in-${Date.now()}` : `rm-use-${Date.now()}`;
@@ -83,6 +90,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
         unit: 'kg',          // canonical
         originalAmount: amt, // 사용자 원본 값
         originalUnit: unit,  // 'kg' or 'L'
+        ...(mode === 'usage' && targetLotId ? { targetLotId } : {}),
       });
       onClose();
     } catch (err) {
@@ -131,7 +139,11 @@ const RawMaterialEntryModal: React.FC<Props> = ({
               <label className="block text-[11px] font-black text-slate-500 mb-1.5">원료</label>
               <select
                 value={material}
-                onChange={(e) => setMaterial(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setMaterial(next);
+                  setTargetLotId(lotsForMaterial?.(next).find(lot => lot.status !== 'depleted')?.id ?? '');
+                }}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 bg-white"
               >
                 {materials.map((m) => (
@@ -140,6 +152,26 @@ const RawMaterialEntryModal: React.FC<Props> = ({
               </select>
             </div>
           </div>
+
+          {!isInbound && activeLots.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-[11px] font-black text-slate-500">사용 로트</label>
+              <select value={targetLotId} onChange={event => setTargetLotId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400">
+                {activeLots.map((lot, index) => (
+                  <option key={lot.id} value={lot.id}>
+                    {index === 0 ? '사용 중 · ' : ''}{lot.lotNo || lot.supplierName || lot.id} · {Math.round(Number(lot.kgRemaining ?? 0) * 1000) / 1000}kg
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] font-bold text-slate-400">기본은 현재 FIFO 1순위 로트입니다. 다른 로트를 선택하면 그 로트에서만 차감합니다.</p>
+            </div>
+          )}
+          {!isInbound && activeLots.length === 0 && (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] font-bold text-rose-700">
+              사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.
+            </p>
+          )}
 
           <div>
             <label className="block text-[11px] font-black text-slate-500 mb-1.5">
@@ -194,7 +226,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           </button>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (!isInbound && !targetLotId)}
             className={`px-5 py-2 rounded-xl text-xs font-black text-white ${accent.bg} ${accent.hover} transition-colors disabled:opacity-50`}
           >
             {submitting ? '저장 중...' : '저장'}

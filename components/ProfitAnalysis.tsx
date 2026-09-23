@@ -16,7 +16,7 @@ import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowDirect, add
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
-import { fetchCollection } from '../src/shared/services/firebaseService';
+import { fetchWhere } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
@@ -82,7 +82,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   //    이게 없으면 기초재고가 0이라 첫 달 재고조정이 통째로 매입에서 빠져 매출원가가 망가진다. ──
   const [openingDoc, setOpeningDoc] = useState<{ id: string; date: string; amounts: Record<string, number> } | null>(null);
   useEffect(() => {
-    fetchCollection<{ id: string; date: string; amounts: Record<string, number> }>('openingBalances')
+    fetchWhere<{ id: string; date: string; amounts: Record<string, number> }>('openingBalances', 'companyId', companyId)
       .then(rows => setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null)).catch(() => {});
   }, [companyId]);
   const opening: OpeningBalance | null = useMemo(() => {
@@ -210,6 +210,33 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const quarterAvailable = (q: 1|2|3|4) => !isCurrentYear || currentMonth >= (q - 1) * 3 + 1;
   const halfAvailable = (h: 1|2) => !isCurrentYear || currentMonth >= (h === 1 ? 1 : 7);
   const yearlyAvailable = true;
+
+  /*
+   * 손익 화면은 달력 두 개가 늘 보인다. 빠른 기간을 누른 뒤 달력이 예전 값을 보여 주면
+   * 사용자는 화면에 적힌 날짜와 실제 집계 기간 중 무엇이 맞는지 판단할 수 없다.
+   * 따라서 버튼도 결국 같은 시작일·종료일 상태를 갱신한다.
+   */
+  useEffect(() => {
+    if (period === 'custom') return;
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const monthEnd = (year: number, month: number) => new Date(year, month, 0).getDate();
+    let startMonth = 1;
+    let endMonth = 12;
+    if (period === '1M') startMonth = endMonth = isCurrentYear ? currentMonth : 12;
+    if (period === '3M') {
+      startMonth = (selectedQuarter - 1) * 3 + 1;
+      endMonth = startMonth + 2;
+    }
+    if (period === '6M') {
+      startMonth = selectedHalf === 1 ? 1 : 7;
+      endMonth = selectedHalf === 1 ? 6 : 12;
+    }
+    const rangeEnd = isCurrentYear && endMonth >= currentMonth
+      ? today()
+      : `${selectedYear}-${pad(endMonth)}-${pad(monthEnd(selectedYear, endMonth))}`;
+    setCustomStart(`${selectedYear}-${pad(startMonth)}-01`);
+    setCustomEnd(rangeEnd);
+  }, [period, selectedYear, selectedQuarter, selectedHalf, currentMonth, isCurrentYear]);
 
   // 연도를 바꿨을 때 못 고르는 기간이면 되돌린다 — 판정은 위 *Available 하나만 쓴다.
   // (전에는 여기서 규칙을 한 번 더 적어 둬서 버튼은 열려 있는데 여기서 튕기는 자리가 있었다)
@@ -475,6 +502,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           customEnd={customEnd} setCustomEnd={setCustomEnd}
           quarterAvailable={quarterAvailable} halfAvailable={halfAvailable}
           yearlyAvailable={yearlyAvailable}
+          alwaysShowDates
         />
         <div className="flex items-center gap-1.5 shrink-0">
           <button

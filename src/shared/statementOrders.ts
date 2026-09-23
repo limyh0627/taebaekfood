@@ -22,6 +22,10 @@ export const isActive = (o: Pick<Order, 'status'>) => ACTIVE_STATUSES.has(o.stat
 /** 전표가 걸렸나 — 판정은 부르는 쪽이 준다(전표 실물을 봐야 한다). */
 export type Vouchered = (o: Order) => boolean;
 
+/** 전표가 있거나 사용자가 사유를 남겨 발행 대상에서 제외했으면 미발행 누락이 아니다. */
+export const isVoucherResolved = (o: Order, isVouchered: Vouchered): boolean =>
+  isVouchered(o) || o.accountingExcluded === true;
+
 const 늦은순 = (a: Order, b: Order) =>
   new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
@@ -56,12 +60,12 @@ export function partnerOrders(input: PartnerOrdersInput): Order[] {
   if (onlyActive) {
     // 진행주문 = 미발행(배송완료·예전주문이어도 전표가 안 걸렸으면 표시) + 진행중 상태.
     // 발행완료는 발행내역에서 본다. **판정은 전표 실물** — 플래그만 남고 전표가 없는 건 여기 떠야 한다.
-    list = list.filter(o => !isVouchered(o) || isActive(o));
-    list = [...list].sort((a, b) => 미발행먼저(isVouchered)(a, b) || 늦은순(a, b));
+    list = list.filter(o => !isVoucherResolved(o, isVouchered) || isActive(o));
+    list = [...list].sort((a, b) => 미발행먼저(o => isVoucherResolved(o, isVouchered))(a, b) || 늦은순(a, b));
   }
 
-  if (dateFrom) list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) >= dateFrom);
-  if (dateTo)   list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) <= dateTo);
+  if (dateFrom) list = list.filter(o => !isVoucherResolved(o, isVouchered) || dateOfLocal(o.createdAt) >= dateFrom);
+  if (dateTo)   list = list.filter(o => !isVoucherResolved(o, isVouchered) || dateOfLocal(o.createdAt) <= dateTo);
   return list;
 }
 
@@ -78,9 +82,9 @@ export function partnerOrders(input: PartnerOrdersInput): Order[] {
 export function activeOrders(orders: readonly Order[], isVouchered: Vouchered): Order[] {
   return orders
     .filter(o => o.partnerName !== '생산기록')   // 생산기록은 주문이 아니다
-    .filter(o => isActive(o) || !isVouchered(o))
+    .filter(o => isActive(o) || !isVoucherResolved(o, isVouchered))
     .sort((a, b) =>
-      미발행먼저(isVouchered)(a, b) ||
+      미발행먼저(o => isVoucherResolved(o, isVouchered))(a, b) ||
       new Date(a.deliveryDate || a.createdAt).getTime() - new Date(b.deliveryDate || b.createdAt).getTime());
 }
 

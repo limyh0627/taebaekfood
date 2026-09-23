@@ -11,6 +11,8 @@
 //   issuedStatements      items[].accountCode
 //   cashEntries           accountCode · lines[].accountCode
 //   fixedCostTemplates    accountCode · loanCode · transferLines[].accountCode
+//   partner_item          Account_Code
+//   openingBalances       amounts의 계정번호 key
 //
 // 무엇을 안 고치나:
 //   · 500/501/503/505 매입 계정 — **갈 번호가 없어서** 그대로 둔다. 사장님이 받은 표준
@@ -24,14 +26,14 @@
 //   · 106·136·261·338 — 표준에 있는 번호인데 사장님이 받은 요약 목록이 빠뜨린 것.
 //   · 137·267 관계회사 — 성격이 대여금/차입금이지만 회사간 거래라 따로 본다.
 //   · 146 재고자산 — 150 제품 · 153 원재료로 갈라야 해서 자동으로 못 옮긴다.
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { STANDARD_ACCOUNT_ADDITIONS } from '../src/shared/accountChart';
+import { adminDb } from './_admin.mts';
 
 const APPLY = process.argv.includes('--apply');
 const UNDO = process.argv.includes('--undo');
 const BACKUP = 'scripts/fix-standard-chart-backup.json';
+const COMPANY = 'taebaek';
 
 /** 옮길 번호 — [지금, 표준, 표준이름] */
 const MOVE: [string, string, string][] = [
@@ -74,24 +76,23 @@ const RENAME: [string, string][] = [
   ['998', '법인세비용'],
 ];
 
-const app = initializeApp({ apiKey: 'AIzaSyBOppTpeiRV1lQDU9ijQGVHQRS-zQW-OOE', authDomain: 'taebaek-3abe4.firebaseapp.com', projectId: 'taebaek-3abe4' });
-const db = getFirestore(app);
-await signInAnonymously(getAuth(app));
-const load = async (c: string) => (await getDocs(collection(db, c))).docs.map(d => ({ id: d.id, ...d.data() } as any));
+const db = adminDb();
+const load = async (c: string) => (await db.collection(c).get()).docs.map(d => ({ id: d.id, ...d.data() } as any));
 
 if (UNDO) {
   if (!existsSync(BACKUP)) { console.error('백업이 없다.'); process.exit(1); }
-  const prev = JSON.parse(readFileSync(BACKUP, 'utf8')) as { col: string; doc: any }[];
-  //  만들었던 새 계정 문서를 먼저 지운다 — 백업엔 옛 문서만 들어 있다
-  const keep = new Set(prev.filter(x => x.col === 'accountCodes').map(x => x.doc.id));
-  for (const c of await load('accountCodes')) if (!keep.has(c.id)) { /* 새로 만든 것 */ }
-  for (const { col, doc: d } of prev) { const { id, ...rest } = d; await setDoc(doc(db, col, id), rest); }
-  console.log(`✅ ${prev.length}건 복원 — 새로 만든 계정은 손으로 지우세요(백업에 없음)`);
+  const saved = JSON.parse(readFileSync(BACKUP, 'utf8')) as { docs: { col: string; doc: any }[]; created: { col: string; id: string }[] };
+  for (const made of saved.created ?? []) await db.collection(made.col).doc(made.id).delete();
+  for (const { col, doc: d } of saved.docs) { const { id, ...rest } = d; await db.collection(col).doc(id).set(rest); }
+  console.log(`✅ ${saved.docs.length}건 복원 · 새 문서 ${(saved.created ?? []).length}건 삭제`);
   process.exit(0);
 }
 
-const [codes, stmts, cash, tpls] = await Promise.all(
-  ['accountCodes', 'issuedStatements', 'cashEntries', 'fixedCostTemplates'].map(load));
+const belongs = (d: any) => !d.companyId || d.companyId === COMPANY;
+const [allCodes, allStmts, allCash, allTpls, allPartnerItems, allOpening] = await Promise.all(
+  ['accountCodes', 'issuedStatements', 'cashEntries', 'fixedCostTemplates', 'partner_item', 'openingBalances'].map(load));
+const codes = allCodes.filter(belongs), stmts = allStmts.filter(belongs), cash = allCash.filter(belongs);
+const tpls = allTpls.filter(belongs), partnerItems = allPartnerItems.filter(belongs), opening = allOpening.filter(belongs);
 
 const byCode = new Map(codes.map((c: any) => [String(c.code), c]));
 const map = new Map(MOVE.map(([from, to]) => [from, to]));
@@ -115,6 +116,7 @@ const backup: { col: string; doc: any }[] = [];
 const writes: { col: string; id: string; data: any }[] = [];
 const kills: string[] = [];
 let touchedStmt = 0, touchedCash = 0, touchedTpl = 0;
+let touchedPartnerItem = 0, touchedOpening = 0;
 
 // ── 계정 문서 ──
 console.log('── 계정과목 ──');
@@ -138,6 +140,12 @@ for (const [code, nm] of RENAME) {
   backup.push({ col: 'accountCodes', doc: c });
   const { id, ...rest } = c;
   writes.push({ col: 'accountCodes', id, data: { ...rest, name: nm } });
+}
+for (const addition of STANDARD_ACCOUNT_ADDITIONS) {
+  if (byCode.has(addition.code)) continue;
+  const id = addition.id;
+  console.log(`   ${addition.code} ${addition.name} — 신규`);
+  writes.push({ col: 'accountCodes', id, data: { ...addition, companyId: COMPANY } });
 }
 
 const conv = (v: any) => (v != null && map.has(String(v)) ? map.get(String(v))! : v);
@@ -181,15 +189,46 @@ for (const t of tpls) {
   touchedTpl++;
 }
 
+// ── 거래처–품목 기본 계정 ──
+for (const p of partnerItems) {
+  if (!map.has(String(p.Account_Code ?? ''))) continue;
+  backup.push({ col: 'partner_item', doc: p });
+  const { id, ...rest } = p;
+  writes.push({ col: 'partner_item', id, data: { ...rest, Account_Code: conv(p.Account_Code) } });
+  touchedPartnerItem++;
+}
+
+// ── 기초잔액: amounts는 { '계정번호': 금액 } 모양이다 ──
+for (const o of opening) {
+  const amounts = o.amounts ?? {};
+  if (!Object.keys(amounts).some(code => map.has(String(code)))) continue;
+  const next: Record<string, number> = {};
+  for (const [code, amount] of Object.entries(amounts)) {
+    const target = conv(code);
+    next[target] = Number(next[target] ?? 0) + Number(amount ?? 0);
+  }
+  backup.push({ col: 'openingBalances', doc: o });
+  const { id, ...rest } = o;
+  writes.push({ col: 'openingBalances', id, data: { ...rest, amounts: next } });
+  touchedOpening++;
+}
+
 console.log(`\n── 따라 고칠 것 ──`);
-console.log(`   전표 ${touchedStmt}건 · 자금전표 ${touchedCash}건 · 템플릿 ${touchedTpl}건`);
+console.log(`   전표 ${touchedStmt}건 · 자금전표 ${touchedCash}건 · 템플릿 ${touchedTpl}건 · 거래처품목 ${touchedPartnerItem}건 · 기초잔액 ${touchedOpening}건`);
 console.log(`\n⚠ 코드도 같이 고쳐야 한다 — 로컬전용/docs/표준계정과목-이전계획.md 의 '코드에 박힌 번호' 참고.`);
 console.log(`   안 고치면 화면이 옛 번호를 찾다가 조용히 빈 값이 된다.`);
 
 if (!APPLY) { console.log('\n(--dry) 적용하려면 --apply'); process.exit(0); }
-writeFileSync(BACKUP, JSON.stringify(backup, null, 2), 'utf8');
-for (const w of writes) await setDoc(doc(db, w.col, w.id), w.data);
-for (const id of kills) await deleteDoc(doc(db, 'accountCodes', id));
+if (existsSync(BACKUP)) { console.error(`✖ 백업이 이미 있다: ${BACKUP} — 두 번 적용하지 않는다.`); process.exit(1); }
+const existing = new Set<string>();
+for (const c of ['accountCodes', 'issuedStatements', 'cashEntries', 'fixedCostTemplates', 'partner_item', 'openingBalances'])
+  for (const d of await load(c)) existing.add(`${c}/${d.id}`);
+const created = writes.filter(w => !existing.has(`${w.col}/${w.id}`)).map(w => ({ col: w.col, id: w.id }));
+writeFileSync(BACKUP, JSON.stringify({ companyId: COMPANY, docs: backup, created }, null, 2), 'utf8');
+// 254 예수금→257, 259 선수금→254처럼 목적지가 다른 원본 ID와 겹친다.
+// 먼저 쓰고 예전 문서를 지우면 방금 쓴 선수금까지 지워지니, 원본을 먼저 지운 뒤 전체를 쓴다.
+for (const id of kills) await db.collection('accountCodes').doc(id).delete();
+for (const w of writes) await db.collection(w.col).doc(w.id).set(w.data);
 console.log(`\n✅ ${writes.length}건 쓰고 옛 계정 ${kills.length}건 지웠다.`);
 console.log('   되돌리기: npx tsx scripts/fix-standard-chart.mts --undo');
 process.exit(0);

@@ -11,6 +11,7 @@
  */
 
 import { Post, PalletStock, Employee, Item, Partner, FileItem, AccountCode, AccountGroup } from '../../types';
+import { STANDARD_ACCOUNT, STANDARD_ACCOUNT_ADDITIONS } from '../shared/accountChart';
 
 // ── 공지사항 초기 데이터 ──────────────────────────────────────────────────────
 export const INITIAL_NOTICES: Post[] = [
@@ -141,5 +142,7 @@ export const INITIAL_ACCOUNT_GROUPS: AccountGroup[] = [
 export const INITIAL_ACCOUNT_CODES: AccountCode[] = [
   { id: '500', code: '500', name: '원료매입',   groupId: 'ag-cogs' },
   { id: '505', code: '505', name: '부자재매입', groupId: 'ag-cogs' },
-  { id: '800', code: '800', name: '일반매출',   groupId: 'ag-revenue' },
+  { id: STANDARD_ACCOUNT.SALES_PRODUCT, code: STANDARD_ACCOUNT.SALES_PRODUCT, name: '제품매출', groupId: 'ag-revenue', type: '수익', normalBalance: 'credit' },
+  { id: STANDARD_ACCOUNT.FIXTURES, code: STANDARD_ACCOUNT.FIXTURES, name: '비품', type: '자산', normalBalance: 'debit', note: '오래 사용하는 커퓨터·책상·장비' },
+  ...STANDARD_ACCOUNT_ADDITIONS,
 ];

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClipboardList, FileText, Search, Plus, ChevronRight, ChevronDown, X, Check } from 'lucide-react';
+import { ClipboardList, FileText, Search, Plus, ChevronRight, ChevronDown, X, Check, Ban, RotateCcw } from 'lucide-react';
 import type { Order, PurchaseOrder, IssuedStatement, Item, Partner } from '../src/shared/types';
 import { poLines } from '../src/shared/types';
 import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
@@ -79,14 +79,15 @@ export interface OrderPickerProps {
     goCompose: () => void;
     handleOrderClick: (o: Order) => void;
     poToManualRows: (po: PurchaseOrder) => ManualRow[];
+    updateOrderAccountingExclusion?: (order: Order, excluded: boolean, reason?: string) => void | Promise<void>;
   };
 }
 
-const VoucherStatusDot: React.FC<{ issued: boolean; className?: string }> = ({ issued, className = '' }) => (
+const VoucherStatusDot: React.FC<{ issued: boolean; excluded?: boolean; className?: string }> = ({ issued, excluded = false, className = '' }) => (
   <span className={`inline-flex items-center gap-1.5 ${className}`}>
-    <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${issued ? 'bg-emerald-500' : 'bg-pink-500'}`} />
-    <span className={`text-[10px] font-bold whitespace-nowrap ${issued ? 'text-emerald-600' : 'text-pink-500'}`}>
-      {issued ? '발행' : '미발행'}
+    <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${issued ? 'bg-emerald-500' : excluded ? 'bg-slate-400' : 'bg-pink-500'}`} />
+    <span className={`text-[10px] font-bold whitespace-nowrap ${issued ? 'text-emerald-600' : excluded ? 'text-slate-500' : 'text-pink-500'}`}>
+      {issued ? '발행' : excluded ? '제외' : '미발행'}
     </span>
   </span>
 );
@@ -100,11 +101,28 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
   const {
     setSelectedClientId, setSelectedOrderIds, setManualMode, setManualItems,
     setDateFrom, setDateTo, setOrderDateQuick, setActiveVisible, setTradeDate,
-    setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows,
+    setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows, updateOrderAccountingExclusion,
   } = on;
   const itemById = React.useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
   const [previewOrder, setPreviewOrder] = React.useState<Order | null>(null);
   const [expandedOrderIds, setExpandedOrderIds] = React.useState<Set<string>>(() => new Set());
+  const [excludeTarget, setExcludeTarget] = React.useState<Order | null>(null);
+  const [excludeReason, setExcludeReason] = React.useState('');
+  const [savingExclusion, setSavingExclusion] = React.useState(false);
+  const saveExclusion = async () => {
+    if (!excludeTarget || !excludeReason.trim() || !updateOrderAccountingExclusion || savingExclusion) return;
+    setSavingExclusion(true);
+    try {
+      await updateOrderAccountingExclusion(excludeTarget, true, excludeReason.trim());
+      setSelectedOrderIds(ids => ids.filter(id => id !== excludeTarget.id));
+      setExcludeTarget(null);
+      setExcludeReason('');
+    } finally { setSavingExclusion(false); }
+  };
+  const restoreExclusion = async (order: Order) => {
+    if (!updateOrderAccountingExclusion) return;
+    await updateOrderAccountingExclusion(order, false);
+  };
   const toggleOrderItems = (orderId: string) => {
     setExpandedOrderIds(current => {
       const next = new Set(current);
@@ -214,10 +232,11 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                           <div className="divide-y divide-slate-50">
                             {rows.map(o=>{
                               const alreadyIssued = isVouchered(o);   // 목록 필터와 같은 기준
+                              const excluded = o.accountingExcluded === true;
                               return (
                                 <div key={o.id} data-testid={`order-pick-${o.id}`}
                                   className={`relative w-full px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50':'bg-white'}`}>
-                                  <button type="button" onClick={()=>handleOrderClick(o)}
+                                  <button type="button" onClick={()=>{ if (!excluded) handleOrderClick(o); }}
                                     aria-label={`주문 선택 ${cardNoLabel(o)}`}
                                     aria-pressed={selectedOrderIds.includes(o.id)}
                                     className={`absolute inset-0 z-0 w-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400 ${alreadyIssued?'hover:bg-emerald-100':'hover:bg-pink-50'}`}/>
@@ -229,7 +248,7 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                                       : 'bg-white border-slate-300'}`}>
                                     {selectedOrderIds.includes(o.id) && <Check size={11} strokeWidth={4}/>}
                                   </span>
-                                  <VoucherStatusDot issued={alreadyIssued} className="w-16 shrink-0" />
+                                  <VoucherStatusDot issued={alreadyIssued} excluded={excluded} className="w-16 shrink-0" />
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="flex items-center gap-2">
                                       <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
@@ -256,6 +275,19 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                                     )}
                                   </div>
                                   <OrderStatusDot status={o.status} className="shrink-0" />
+                                  {!alreadyIssued && updateOrderAccountingExclusion && (
+                                    excluded ? (
+                                      <button type="button" onClick={() => void restoreExclusion(o)} title={o.accountingExclusionReason || '전표 발행 제외'}
+                                        className="pointer-events-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">
+                                        <RotateCcw size={11}/> 복구
+                                      </button>
+                                    ) : (
+                                      <button type="button" onClick={() => { setExcludeTarget(o); setExcludeReason(''); }}
+                                        className="pointer-events-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                                        <Ban size={11}/> 전표 제외
+                                      </button>
+                                    )
+                                  )}
                                   <ChevronRight size={14} className="text-slate-300 shrink-0"/>
                                   </div>
                                 </div>
@@ -428,16 +460,17 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                   <div className="min-w-[600px]">
                   {listOrders.slice(0, activeVisible).map(o => {
                     const cl = partners.find(c => c.id === o.partnerId);
+                    const excluded = o.accountingExcluded === true;
                     return (
                       <div key={o.id} data-testid={`active-order-${o.id}`}
                         className="relative w-full px-5 py-2.5 text-xs">
                         <button type="button"
                           aria-label={`미발행 주문 선택 ${cardNoLabel(o)}`}
-                          onClick={() => { setSelectedClientId(o.partnerId ?? ''); setManualMode(false); handleOrderClick(o); }}
+                          onClick={() => { if (!excluded) { setSelectedClientId(o.partnerId ?? ''); setManualMode(false); handleOrderClick(o); } }}
                           className="absolute inset-0 z-0 w-full transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"/>
                         <div className="relative z-10 pointer-events-none text-left">
                         <div className="flex items-center gap-2">
-                        <VoucherStatusDot issued={isVouchered(o)} className="w-16 shrink-0" />
+                        <VoucherStatusDot issued={isVouchered(o)} excluded={excluded} className="w-16 shrink-0" />
                         <span className="w-24 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
                         {/*  **배송지까지**(2026-09-16 사장님: "여기서도 주문카드처럼 배송지명으로 표시") */}
                         <span className="font-black text-slate-800 w-32 truncate shrink-0">{partnerLabel(cl?.name || o.partnerName, shipToOf(cl, o.shipToId)?.name) || o.partnerId}</span>
@@ -456,6 +489,19 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                           {o.items.length}품목
                           <ChevronDown size={11} className={`transition-transform ${expandedOrderIds.has(o.id) ? 'rotate-180' : ''}`}/>
                         </button>
+                        {updateOrderAccountingExclusion && (
+                          excluded ? (
+                            <button type="button" onClick={() => void restoreExclusion(o)} title={o.accountingExclusionReason || '전표 발행 제외'}
+                              className="pointer-events-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-slate-500 hover:bg-slate-100">
+                              <RotateCcw size={11}/> 복구
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => { setExcludeTarget(o); setExcludeReason(''); }}
+                              className="pointer-events-auto inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                              <Ban size={11}/> 전표 제외
+                            </button>
+                          )
+                        )}
                         </div>
                         {expandedOrderIds.has(o.id) && (
                           <OrderItemLines orderItems={o.items} itemById={itemById}
@@ -511,6 +557,32 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                       onUpdateStatus={() => {}}
                       onDeleteOrder={() => {}}
                     />
+                  </div>
+                </div>
+              </div>
+            )}
+            {excludeTarget && (
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => setExcludeTarget(null)}>
+                <div role="dialog" aria-modal="true" aria-labelledby="exclude-voucher-title"
+                  className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+                  <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                      <h3 id="exclude-voucher-title" className="font-black text-slate-900">전표 발행 제외</h3>
+                      <p className="mt-0.5 text-[11px] font-bold text-slate-400">{excludeTarget.partnerName} · {cardNoLabel(excludeTarget)}</p>
+                    </div>
+                    <button type="button" aria-label="닫기" onClick={() => setExcludeTarget(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={18}/></button>
+                  </div>
+                  <div className="space-y-3 p-5">
+                    <p className="text-xs font-bold leading-relaxed text-slate-600">주문은 그대로 두고 미발행 전표 목록에서 제외합니다. 제외 사유는 나중에 확인할 수 있고 언제든 복구할 수 있습니다.</p>
+                    <label className="block text-[11px] font-black text-slate-500">제외 사유</label>
+                    <textarea autoFocus value={excludeReason} onChange={e => setExcludeReason(e.target.value)} rows={3}
+                      placeholder="예: 샘플 제공, 무상 출고, 전표 발행하지 않기로 협의"
+                      className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"/>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-4">
+                    <button type="button" onClick={() => setExcludeTarget(null)} className="rounded-xl border border-slate-200 py-2.5 text-xs font-black text-slate-500">취소</button>
+                    <button type="button" disabled={!excludeReason.trim() || savingExclusion} onClick={() => void saveExclusion()}
+                      className="rounded-xl bg-slate-900 py-2.5 text-xs font-black text-white disabled:opacity-40">제외 저장</button>
                   </div>
                 </div>
               </div>
