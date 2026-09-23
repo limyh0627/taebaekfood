@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel } from './docOil';
 import { buildBomIndex, setBomIndex } from './bomIndex';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
@@ -34,6 +34,21 @@ describe('docPumok — 서류 집계용 품목', () => {
   });
 });
 
+describe('원료수불부 전용 원료 묶음', () => {
+  it('검정깨는 볶음검정참깨, 수입들기름은 생들기름을 같은 장에 합친다', () => {
+    expect(rawDocMaterials('들깨')).toEqual(['들깨', '볶음들깨', '들깨가루(고운)']);
+    expect(rawDocMaterials('검정깨')).toEqual(['검정깨', '볶음검정참깨']);
+    expect(rawDocMaterials('수입들기름')).toEqual(['수입들기름', '생들기름']);
+  });
+
+  it('합쳐진 원료는 별도 탭을 없애고 짧은 대표 이름만 표시한다', () => {
+    expect(rawDocTabs(['들깨', '볶음들깨', '들깨가루(고운)', '검정깨', '볶음검정참깨', '수입들기름', '생들기름']))
+      .toEqual(['들깨', '검정깨', '수입들기름']);
+    expect(rawDocTabLabel('검정깨')).toBe('검정깨');
+    expect(rawDocTabLabel('수입들기름')).toBe('수입산들기름');
+  });
+});
+
 describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
   it('단일 원료', () => {
     expect(addOilByRaw({}, '시골향참기름1', 100)).toEqual({ 통깨참기름: 100 });
@@ -44,8 +59,10 @@ describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
     expect(addOilByRaw({}, '시골향참기름2', 100)).toEqual({ 통깨참기름: 50, 깨분참기름: 50 });
     expect(addOilByRaw({}, '시골향참기름4', 100)).toEqual({ 통깨참기름: 10, 깨분참기름: 90 });
     expect(addOilByRaw({}, '시골향들기름2', 100)).toEqual({ 수입들기름: 100 });   // 수입산 100% (2026-08-12)
+    expect(addOilByRaw({}, '시골향생들기름', 100)).toEqual({ 수입들기름: 100 });
     expect(addOilByRaw({}, '하남댁들기름', 100)).toEqual({ 통들깨들기름: 25, 수입들기름: 75 });
     expect(addOilByRaw({}, '하남댁맑음들기름', 100)).toEqual({ 통들깨들기름: 50, 수입들기름: 50 });
+    expect(addOilByRaw({}, '해달들기름', 100)).toEqual({ 통들깨들기름: 10, 수입들기름: 90 });
   });
 
   it('하남댁·해달 참기름은 통깨 100%', () => {
@@ -190,9 +207,11 @@ describe('docDateOf — 네 서류의 공통 기준일 = 판매기록부에서 �
 
 describe('DOC_RECALC_RAWS — 판매에서 되계산하는 원료', () => {
   it('기름뿐 아니라 깨·가루도 포함된다(판매기록부와 같은 근거로 맞추려면)', () => {
-    for (const r of ['통깨참기름', '깨분참기름', '수입들기름', '통들깨들기름', '생들기름',
+    for (const r of ['통깨참기름', '깨분참기름', '수입들기름', '통들깨들기름',
                      '볶음참깨', '볶음들깨', '탈피들깨가루', '볶음검정참깨'])
       expect(DOC_RECALC_RAWS.has(r), r).toBe(true);
+    // 시골향생들기름도 수입들기름으로 환산하므로 생들기름은 별도 판매 되계산 대상이 아니다.
+    expect(DOC_RECALC_RAWS.has('생들기름')).toBe(false);
   });
   it('배합표에 없는 원료는 원장을 그대로 쓴다', () => {
     expect(DOC_RECALC_RAWS.has('참깨')).toBe(false);   // 참깨는 압착 투입 — 판매에서 안 나온다

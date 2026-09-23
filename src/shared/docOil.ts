@@ -46,6 +46,30 @@ import { dateOfLocal } from './day';
 export const DOC_DENSITY = 0.92;
 
 /**
+ * 원료수불부에서만 한 장으로 보는 원료 묶음.
+ * 창고 재고·로트·BOM은 원료별로 그대로 유지한다. 관청용 수불부만 실제 사용 관행에 맞춰
+ * 볶기 전후 검정깨와 수입산·생들기름을 각각 한 장에서 합산한다.
+ */
+export const RAW_DOC_MERGE: Readonly<Record<string, readonly string[]>> = {
+  '들깨': ['볶음들깨', '들깨가루(고운)'],
+  '검정깨': ['볶음검정참깨'],
+  '수입들기름': ['생들기름'],
+};
+
+export const rawDocMaterials = (material: string): string[] =>
+  [material, ...(RAW_DOC_MERGE[material] ?? [])];
+
+export const rawDocTabs = (materials: readonly string[]): string[] => {
+  const mergedChildren = new Set(Object.values(RAW_DOC_MERGE).flat());
+  return materials.filter(material => !mergedChildren.has(material));
+};
+
+export const rawDocTabLabel = (material: string): string => ({
+  '검정깨': '검정깨',
+  '수입들기름': '수입산들기름',
+}[material] ?? material);
+
+/**
  * 생산작업기록부의 시트 구성 — 브랜드로 묶는다. 화면·엑셀이 같은 목록을 쓴다.
  * (예전엔 엑셀 8종 / 화면 10종으로 갈려 가득찬순참기름 등이 엑셀에서 빠졌다)
  */

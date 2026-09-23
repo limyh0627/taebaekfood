@@ -171,7 +171,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
@@ -3971,10 +3971,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     return rows;
                   };
 
-                  // 표시용: 들깨가루(고운)은 별도 탭 없이 볶음들깨 수불부에 합산 (품목·데이터·로트는 그대로)
-                  const RM_MERGE: Record<string, string[]> = { '볶음들깨': ['들깨가루(고운)'] };
-                  const rmAlias = (m: string) => [m, ...(RM_MERGE[m] || [])];
-                  const RM_TABS = RM_LIST.filter(m => !Object.values(RM_MERGE).flat().includes(m));
+                  // 수불부에서만 합쳐 보는 원료. 실제 품목·재고·로트는 절대 합치지 않는다.
+                  const RM_TABS = rawDocTabs(RM_LIST);
                   // 수불부 행 계산 — DB 데이터만 사용 (auto/manual/correction 모두 포함)
                   // 옛 데이터(unit==='L')는 표시 시점에 ×density 환산 → 모두 kg 단위로 통일
                   // ── 원료수불부(서류) 한 장 만들기 ── ⚠ 원장(rawMaterialLedger)과 다른 것이다.
@@ -3986,7 +3984,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const buildRawDocSheet = (material: string) => {
                     const density = DENSITY[material] ?? 1.0;
                     const dbEntries: UsageRow[] = mergedRawMaterialLedger
-                      .filter(e => rmAlias(material).includes(e.material))
+                      .filter(e => rawDocMaterials(material).includes(e.material))
                       // 재고 화면 실사는 서류로 넘기지 않는다. 창고 재고를 실물에 맞춘 기록이지 수불 사실이 아니다.
                       //   특히 targetKg가 서류 잔량을 앵커해버려서, 관청에 내는 수불부가 창고 실사에 끌려다녔다.
                       //   (참깨 8월: 실사 줄이 서류 입고로 1,990kg 새어 들어와 있었다)
@@ -4155,7 +4153,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         {RM_TABS.map(m => (
                           <button key={m} onClick={() => setRmActiveMaterial(m)}
                             className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border ${rmActiveMaterial === m ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
-                            {m}
+                            {rawDocTabLabel(m)}
                           </button>
                         ))}
                       </div>
