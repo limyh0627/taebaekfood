@@ -6,7 +6,8 @@ import { matchesSearch } from '../src/shared/hangul';
 //  검색조건 칸은 주문·배송과 **같은 부품**을 쓴다 — 한쪽만 고치면 두 화면이 갈린다
 import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft, Check, Calculator, RotateCcw } from 'lucide-react';
-import { CompanyId, Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
+import { CompanyId, Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent, AccountCode, AccountGroup } from '../types';
+import { filterCodesForContext } from '../src/features/admin/financials';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
@@ -30,6 +31,8 @@ interface ItemManagerProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: PartnerItem[];
+  accountCodes?: AccountCode[];
+  accountGroups?: AccountGroup[];
   itemBoms?: ItemBom[];
   onEditProduct: (_product: Item) => void;
   onAddItem: () => void;
@@ -40,7 +43,8 @@ interface ItemManagerProps {
   onUnlinkSupplier?: (_productId: string, _supplierId: string) => void;
   onMergeItems?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
-  onUpsertPartnerItem?: (_ps: PartnerItem) => void;
+  onUpsertPartnerItem?: (_ps: PartnerItem) => void | Promise<void>;
+  onSaveServiceTerms?: (_ps: PartnerItem) => Promise<void>;
   /** 낱개 → 박스 품목 생성. 품목과 item_bom(낱개×개입수 + 겉박스·테이프)을 함께 만든다. */
   onCreateBoxItem?: (_unit: Item, _opts: { name: string; count: number; components: { id: string; qty: number }[] }) => Promise<void>;
   /**
@@ -71,6 +75,55 @@ const sortSubs = (subs: BomLine[], rankOf: (l: BomLine) => number) =>
 // ── 한글 초성 검색 ──
 //  초성·겹자음 처리는 shared/hangul 하나뿐이다 — 복사본을 두면 화면마다 다르게 찾는다.
 const matchKo = (name: string, q: string) => matchesSearch(name, q);
+
+/** 용역의 단가·세금·계정은 품목 공통값이 아니라 거래처와 매출/매입 방향별 연결값이다. */
+export const ServiceTerms: React.FC<{
+  item: Item; partnerId: string; direction: 'in' | 'out'; value?: PartnerItem;
+  accountCodes: AccountCode[]; accountGroups: AccountGroup[]; onSave: (value: PartnerItem) => void | Promise<void>;
+}> = ({ item, partnerId, direction, value, accountCodes, accountGroups, onSave }) => {
+  const [price, setPrice] = useState(String(value?.price ?? ''));
+  const [taxType, setTaxType] = useState(value?.taxType ?? '');
+  const [code, setCode] = useState(value?.Account_Code ?? '');
+  const [busy, setBusy] = useState(false);
+  const eligibleCodes = filterCodesForContext(accountCodes, accountGroups, direction === 'out' ? '매출' : '매입');
+  const save = async () => {
+    if (busy) return;
+    if (!Number.isFinite(Number(price)) || Number(price) <= 0 || !taxType || !code ||
+        !eligibleCodes.some(account => account.code === code)) {
+      window.alert('용역 단가, 과세 여부, 계정과목을 모두 선택해 주세요.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave({ ...(value ?? {}), id: value?.id ?? `${item.id}_${partnerId}_${direction}`,
+        itemId: item.id, partnerId, Direction: direction, price: Number(price),
+        taxType: taxType as '과세' | '면세', Account_Code: code } as PartnerItem);
+    } catch (error) {
+      window.alert(`용역 거래조건을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`);
+    } finally { setBusy(false); }
+  };
+  return <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-2" onClick={e => e.stopPropagation()}>
+    <label className="text-[10px] font-bold text-slate-500">단가
+      <input aria-label="용역 단가" type="number" min="0" value={price} onChange={e => setPrice(e.target.value)}
+        className="block w-28 rounded-md border border-slate-200 px-2 py-1 text-xs" />
+    </label>
+    <label className="text-[10px] font-bold text-slate-500">과세
+      <select aria-label="용역 과세 여부" value={taxType} onChange={e => setTaxType(e.target.value as '과세' | '면세' | '')}
+        className="block rounded-md border border-slate-200 px-2 py-1 text-xs">
+        <option value="">선택</option><option value="과세">과세</option><option value="면세">면세</option>
+      </select>
+    </label>
+    <label className="text-[10px] font-bold text-slate-500">계정과목
+      <select aria-label="용역 계정과목" value={code} onChange={e => setCode(e.target.value)}
+        className="block max-w-44 rounded-md border border-slate-200 px-2 py-1 text-xs">
+        <option value="">선택</option>{eligibleCodes.map(account =>
+          <option key={account.id} value={account.code}>{account.code} {account.name}</option>)}
+      </select>
+    </label>
+    <button type="button" disabled={busy} onClick={save}
+      className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">{busy ? '저장 중…' : '저장'}</button>
+  </div>;
+};
 
 /**
  * 필터 드롭다운 하나 — 라벨 + 고른 값 + 펼치면 선택지(한 줄에 하나).
@@ -117,7 +170,7 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, onCalcCost, costOf, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveServiceTerms, onCreateBoxItem, onCalcCost, costOf, isAdmin = true }) => {
   const shownCostOf = (item: Item): number | undefined => {
     const rolled = costOf?.(item);
     if (typeof rolled === 'number' && Number.isFinite(rolled) && rolled > 0) return Math.round(rolled);
@@ -889,12 +942,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                         <div className="flex items-center gap-1.5 min-w-0">
                           {/*  **셋의 글씨 크기를 맞춘다**(2026-09-09 사장님) — 서로 견주는 값이라
                                크기가 다르면 어느 게 큰 값인지 눈이 먼저 속는다. 이름표만 옅게 둔다. */}
-                          {isAdmin && (
+                          {isAdmin && item.type !== 'service' && (
                             <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
                               <span className="text-slate-300">원가</span> {shownCostOf(item)?.toLocaleString() ?? '-'}
                             </span>
                           )}
-                          {isAdmin && partnerScopeTab === 'sales' && (() => {
+                          {isAdmin && item.type !== 'service' && partnerScopeTab === 'sales' && (() => {
                             const psOut = partnerOut.find(ps => ps.itemId === item.id && ps.partnerId === selectedClientId);
                             const curPrice = psOut?.price;
                             const editKey = `${item.id}_${selectedClientId}`;
@@ -970,6 +1023,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                           >해제</button>
                         )}
                       </div>
+                      {item.type === 'service' && isAdmin && onSaveServiceTerms && (
+                        <ServiceTerms key={`${item.id}_${selectedClientId}_${partnerScopeTab}`}
+                          item={item} partnerId={selectedClientId}
+                          direction={partnerScopeTab === 'sales' ? 'out' : 'in'}
+                          value={(partnerScopeTab === 'sales' ? partnerOut : partnerIn).find(ps => ps.itemId === item.id && ps.partnerId === selectedClientId)}
+                          accountCodes={accountCodes} accountGroups={accountGroups} onSave={onSaveServiceTerms} />
+                      )}
                     </ProductCard>
                   );
                 })()}
@@ -1115,7 +1175,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     )}
                     <td className="px-2 py-3">
                       {/* 품목이 품은 것 전부 — 주문 생성 화면과 같은 부자재 색 칩 */}
-                      {bomOf(item.id).length > 0 ? (
+                      {item.type !== 'service' && bomOf(item.id).length > 0 ? (
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           {sortSubs(bomOf(item.id), subRank).map(bomChip)}
                         </span>
@@ -1125,7 +1185,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     </td>
                     {isAdmin && (
                       <td className="px-2 py-3 text-right">
-                        {shownCostOf(item) != null
+                        {item.type !== 'service' && shownCostOf(item) != null
                           ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{shownCostOf(item)!.toLocaleString()}원</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>

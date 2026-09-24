@@ -131,8 +131,10 @@ import {
   resetOrderCreationSession,
   submitOrderCreation,
 } from './orderCreation';
-import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
+import { createOemEngine } from './oemEngine';
+import { issueOemBatchJob, recoverableOemDrafts } from './oemIssueJob';
 import { applyOemReceiptInventory } from './oemReceiptInventory';
+import { applyOemFeeStatement } from './oemFeeStatement';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
@@ -175,7 +177,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
-import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver, lotMixSettingOf } from '../../shared/lotUtils';
+import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
 import { buildPaymentEntry } from '../../shared/payment';
@@ -201,7 +203,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, doc, getDoc, deleteDoc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -797,7 +799,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     await recomputeAllCosts(allItems.map(i => (i.id === itemId ? { ...i, cost } : i)));
   }, [allItems, updateItem, recomputeAllCosts]);
 
-  const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
+  const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending' && po.poType !== 'oem'), [purchaseOrders]);
+  const recoverableOemOrders = useMemo(() => recoverableOemDrafts(purchaseOrders, companyId), [purchaseOrders, companyId]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
 
   const lowStockCount = allItems.filter(p =>
@@ -1126,7 +1129,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 원료 홀더(벌크·1kg포 등) 부족 체크 — 원료식 kg 기준 (로트 합계 우선)
     const round1 = (n: number) => Math.round(n * 10) / 10;
     for (const [material, neededKg] of Object.entries(rawUsageKg)) {
-      const holder = rawHolderByName(allItems, material);
+      const holder = rawHolderByName(allItems, material, companyId);
       if (!holder) continue;
       const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
       if (neededKg <= stockKg) continue;
@@ -1151,43 +1154,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-
-  // 향미유 제품 시딩
-  useEffect(() => {
-    const seedFlavoredOil = async () => {
-      const items = [
-        { id: 'f1',   name: '참진한기름',   type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f2',   name: '참고소한기름', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f3',   name: '참향기름',     type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f4',   name: '맛기름',       type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f5',   name: '들향기름',     type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f6',   name: '들향기름골드', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 1,  price: 0, unit: '개', image: '' },
-        { id: 'f2-1', name: '참고소(연한)', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
-      ];
-      for (const item of items) {
-        const ref = doc(db, 'items', item.id);  // 향미유는 products에 저장
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          await addItem('items', item);
-        }
-      }
-    };
-    seedFlavoredOil();
-  }, []);
-
-  // s-auto 접두사 중복 문서 정리
-  useEffect(() => {
-    const cleanupDuplicates = async () => {
-      const snap = await getDocs(query(collection(db, 'items'), where('companyId', '==', companyId)));
-      for (const d of snap.docs) {
-        if (d.id.startsWith('s-auto')) {
-          await deleteDoc(doc(db, 'items', d.id));
-          console.log('삭제됨:', d.id);
-        }
-      }
-    };
-    cleanupDuplicates();
-  }, [companyId]);
 
   // --- 재고 관리 핸들러 (purchaseOrders 기반) ---
   const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
@@ -1688,12 +1654,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
-    items: allItems, adjustRawLots, updateItem, addItem, buildFormula, issuedStatements,
+    companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula, issuedStatements,
+    issueOemBatchJob: input => issueOemBatchJob(db, input),
     applyOemReceiptInventory: input => applyOemReceiptInventory(db, input),
+    applyOemFeeStatement: input => applyOemFeeStatement(db, input),
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
-    const holder = rawHolderByName(allItems, material);
+    const holder = rawHolderByName(allItems, material, companyId);
     if (!holder) return 0;
     return holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
   };
@@ -2883,32 +2851,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 </React.Suspense>
               }
               oemEnabled
+              oemIssueDrafts={recoverableOemOrders}
               rawStockKg={rawStockKg}
               onOemIssue={async (v) => {
                 try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); setLedgerReloadKey(k => k + 1); }
-                catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); }
+                catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); throw e; }
               }}
               onOemReceive={async (v) => {
                 try {
-                  const { receivedKg } = await receiveOemBatch({ ...v, addedBy: currentUser?.name });
+                  await receiveOemBatch({ ...v, addedBy: currentUser?.name });
                   setLedgerReloadKey(k => k + 1);
-                  // 가공비 전표는 여기서 안 끊고 확인사항으로 보낸다 — 거기서 발행.
-                  const perKg = v.unitPricePerKg ?? v.po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
-                  const total = Math.round(receivedKg * perKg);
-                  await addItem('adjustmentRequests', {
-                    id: `OEMFEE-${v.po.id}`,
-                    itemId: v.po.id, itemName: `외주가공비 — ${v.po.partnerName ?? ''}`,
-                    originalQuantity: receivedKg, requestedQuantity: receivedKg,
-                    type: 'oem_fee', unit: 'kg',
-                    oemPoId: v.po.id, oemFeePerKg: perKg, oemTotal: total,
-                    reason: `${v.po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
-                    status: 'pending', requestedAt: new Date().toISOString(),
-                  } as Omit<import('../../shared/types').AdjustmentRequest, ''>);
-                } catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
+                } catch (e) { alert(`가공입고가 일부 처리됐을 수 있습니다. 같은 배치에서 재시도하세요: ${(e as Error)?.message ?? String(e)}`); throw e; }
               }}
               onOemIssueFee={async (v) => {
                 try { await issueOemFeeStatement(v); }
-                catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); }
+                catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); throw e; }
               }}
             />
             </>
@@ -4993,6 +4950,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   items={companyItems}
                   partners={partners}
                   partnerItems={partnerItems}
+                  accountCodes={appData.accountCodes}
+                  accountGroups={appData.accountGroups}
                   onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
                   onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
                   onDeleteItem={requestCatalogItemDelete}
@@ -5055,6 +5014,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   itemBoms={itemBoms}
                   onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
+                  onSaveServiceTerms={(ps) => handleUpsertPartnerItem(ps, ps.Direction === 'in' ? 'in' : 'out')}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');

@@ -4,7 +4,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction } from 'firebase/firestore';
 
 /**
  * **회사별·메뉴별 권한을 규칙이 실제로 막는가.**
@@ -234,6 +234,21 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(updateDoc(ref, { companyId: null }));
       await assertSucceeds(updateDoc(ref, { amounts: { 103: 11000000 } }));
     });
+  });
+
+  it('OEM 발주 작업과 입고 확인 요청을 회사값이 있는 원자 쓰기로 허용한다', async () => {
+    const db = 관리자();
+    await assertSucceeds(runTransaction(db, async tx => {
+      const itemRef = doc(db, 'items', 'i-taebaek');
+      await tx.get(itemRef);
+      tx.set(doc(db, 'purchaseOrders', 'oem-job-1'), { companyId: 'taebaek', poType: 'oem', status: 'pending', oemIssueStatus: 'processing' });
+      tx.set(doc(db, 'rawInventoryJobs', 'oem-issue-oem-job-1'), { companyId: 'taebaek', status: 'complete' });
+      tx.set(doc(db, 'rawMaterialLedger', 'oem-ledger-1'), { companyId: 'taebaek', operationId: 'oem-issue:oem-job-1:raw-1' });
+      tx.set(doc(db, 'adjustmentRequests', 'OEMFEE-oem-job-1'), { companyId: 'taebaek', type: 'oem_fee', oemPoId: 'oem-job-1', status: 'pending' });
+      tx.update(itemRef, { companyId: 'taebaek', stock: 1 });
+    }));
+    expect((await getDoc(doc(db, 'adjustmentRequests', 'OEMFEE-oem-job-1'))).exists()).toBe(true);
+    await assertFails(setDoc(doc(풍회관리자(), 'adjustmentRequests', 'OEMFEE-oem-job-2'), { companyId: 'taebaek', type: 'oem_fee' }));
   });
 
   describe('companyId 누락 쓰기 — 컬렉션 갈래별 차단', () => {

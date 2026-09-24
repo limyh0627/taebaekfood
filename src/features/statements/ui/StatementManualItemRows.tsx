@@ -3,11 +3,10 @@ import { X } from 'lucide-react';
 import type { AccountCode, Item, PartnerItem } from '../../../../types';
 import { bomOf } from '../../../shared/bomIndex';
 import { lineAmountOf } from '../../../shared/lineAmount';
-import type { ManualRow } from '../../../shared/statementLines';
-import { STANDARD_ACCOUNT } from '../../../shared/accountChart';
+import { manualAccountCode, type ManualRow, type StatementType } from '../../../shared/statementLines';
 
 export interface StatementManualSearchResult {
-  pc: Pick<PartnerItem, 'id' | 'price' | 'taxType'>;
+  pc: Pick<PartnerItem, 'id' | 'price' | 'taxType' | 'Account_Code'>;
   product: Item;
 }
 
@@ -18,6 +17,8 @@ interface Props {
   activeSearchIndex: number | null;
   statementType: string;
   accountCodes: AccountCode[];
+  items?: readonly Pick<Item, 'id' | 'type'>[];
+  linked?: readonly { itemId: string; name: string }[];
   formatAmount: (value: number) => string;
   searchResults: (row: ManualRow) => StatementManualSearchResult[];
   onSelect: (index: number | null) => void;
@@ -83,8 +84,8 @@ export default function StatementManualItemRows(props: Props) {
             </button>}</td>
         <td className={`px-3 py-2 text-right font-black ${supply + tax < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{supply + tax !== 0 ? props.formatAmount(supply + tax) : '-'}</td>
         <td className="px-3 py-2 w-24">{props.readOnly
-          ? <span className="text-[10px] font-black text-slate-500">{row.accountCode || (props.statementType === '매출' ? STANDARD_ACCOUNT.SALES_PRODUCT : '-')}</span>
-          : <select value={row.accountCode || (props.statementType === '매출' ? STANDARD_ACCOUNT.SALES_PRODUCT : '')} onClick={e => e.stopPropagation()}
+          ? <span className="text-[10px] font-black text-slate-500">{manualAccountCode(row, props.statementType as StatementType, props.linked, props.items) || '-'}</span>
+          : <select value={manualAccountCode(row, props.statementType as StatementType, props.linked, props.items) || ''} onClick={e => e.stopPropagation()}
               onChange={e => props.onChange(index, { accountCode: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-bold outline-none focus:ring-2 focus:ring-blue-300">
               <option value="">-</option>{props.accountCodes.map(code => <option key={code.id} value={code.code}>{code.code} {code.name}</option>)}

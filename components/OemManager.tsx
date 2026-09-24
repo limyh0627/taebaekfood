@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { today } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import ModalShell from '../src/shared/components/ModalShell';
-import { Item, Partner, PurchaseOrder } from '../src/shared/types';
+import { Item, Partner, PurchaseOrder, type CompanyId } from '../src/shared/types';
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
@@ -13,24 +13,37 @@ import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine'
  * 여기서는 발주/가공입고/가공비전표 모달만 띄운다. 열림 상태는 ItemList가 제어.
  */
 interface Props {
+  companyId: CompanyId;
   items: Item[];
   partners: Partner[];
   rawStockKg: (material: string) => number;
+  issueDrafts: PurchaseOrder[];
   issueOpen: boolean;
   receiveTarget: PurchaseOrder | null;
   feeTarget: PurchaseOrder | null;
   onClose: () => void;
-  onIssue: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
+  onIssue: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
   onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
+type IssueInput = Parameters<Props['onIssue']>[0];
+
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export default function OemManager({
-  items, partners, rawStockKg, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee,
+  companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const pendingKey = `oem-issue-pending:${companyId}`;
+  const [pendingIssue, setPendingIssue] = useState<IssueInput | null>(() => {
+    try { return JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null') as IssueInput | null; } catch { return null; }
+  });
+  useEffect(() => {
+    try { setPendingIssue(JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null') as IssueInput | null); }
+    catch { setPendingIssue(null); }
+  }, [pendingKey]);
 
   const oemItems = useMemo(() => items.filter(i => !i.archived && i.procureType === '임가공'), [items]);
   const rawItems = useMemo(
@@ -38,13 +51,39 @@ export default function OemManager({
     [items],
   );
 
-  const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); onClose(); } finally { setBusy(false); } };
+  const run = async (fn: () => Promise<void>) => {
+    if (busyRef.current) return;
+    busyRef.current = true; // React 재렌더 전의 연속 클릭도 같은 작업으로 묶는다.
+    setBusy(true);
+    try { await fn(); onClose(); } catch { /* 호출부가 오류를 알려 준다. 초안은 남겨 재개한다. */ }
+    finally { busyRef.current = false; setBusy(false); }
+  };
 
   return (
     <>
       {issueOpen && (
-        <IssueModal partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} busy={busy}
-          onClose={onClose} onSubmit={(v) => run(() => onIssue(v))} />
+        <IssueModal partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} pendingIssue={pendingIssue} busy={busy}
+          onClose={() => { if (!busyRef.current) onClose(); }} onSubmit={(v) => {
+            if (busyRef.current) return;
+            setPendingIssue(v);
+            sessionStorage.setItem(pendingKey, JSON.stringify(v));
+            run(async () => {
+              try {
+                await onIssue(v);
+                setPendingIssue(null);
+                sessionStorage.removeItem(pendingKey);
+              } catch (error) {
+                // 이 오류는 발주 초안을 만들기 전의 입력 검사에서만 나온다.
+                // 네트워크/부분 출고 실패는 상태가 불확실하므로 작업번호를 그대로 보존한다.
+                const message = error instanceof Error ? error.message : String(error);
+                if (/^(내보낼 원료가 없습니다|다른 회사이거나 없는 OEM 거래처입니다|현재 회사의 원료 홀더를 찾을 수 없습니다)/.test(message)) {
+                  setPendingIssue(null);
+                  sessionStorage.removeItem(pendingKey);
+                }
+                throw error;
+              }
+            });
+          }} />
       )}
       {receiveTarget && (
         <ReceiveModal po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy}
@@ -59,11 +98,12 @@ export default function OemManager({
 }
 
 // ── 외주 발주 (원료 내보내기) ────────────────────────────────────────────────
-function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }: {
-  partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; busy: boolean;
+function IssueModal({ partners, rawItems, rawStockKg, issueDrafts, pendingIssue, busy, onClose, onSubmit }: {
+  partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; pendingIssue: IssueInput | null; busy: boolean;
   onClose: () => void;
-  onSubmit: (v: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => void;
+  onSubmit: (v: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => void;
 }) {
+  const [jobId] = useState(() => `oem-${crypto.randomUUID()}`);
   const [partnerId, setPartnerId] = useState('');
   const [date, setDate] = useState(today());
   const [rows, setRows] = useState<{ material: string; kg: string }[]>([{ material: '', kg: '' }]);
@@ -76,6 +116,27 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
 
   return (
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
+        {(issueDrafts.length > 0 || pendingIssue) && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+            <p className="text-xs font-bold text-amber-900">완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.</p>
+            {pendingIssue && !issueDrafts.some(draft => draft.id === pendingIssue.jobId) && (
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate text-slate-700">{pendingIssue.partnerName} · {pendingIssue.date} · 원료 {pendingIssue.sent.length}종</span>
+                <button type="button" disabled={busy} onClick={() => onSubmit(pendingIssue)} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
+              </div>
+            )}
+            {issueDrafts.map(draft => (
+              <div key={draft.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 truncate text-slate-700">{draft.partnerName} · {draft.oemIssueDate} · 원료 {draft.oemSent?.length ?? 0}종</span>
+                <button type="button" disabled={busy} onClick={() => onSubmit({
+                  jobId: draft.id, oemPartnerId: draft.oemPartnerId ?? draft.partnerId ?? '', partnerName: draft.partnerName ?? '',
+                  sent: (draft.oemSent ?? []).map(row => ({ material: row.material, kg: row.kg })),
+                  date: draft.oemIssueDate ?? '', note: draft.note,
+                })} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
+              </div>
+            ))}
+          </div>
+        )}
         <p className="text-[11px] text-slate-400 leading-snug">
           우리 원료를 외주공장에 보냅니다. <b>본재고에서 빠지고 외주로 나갑니다</b>(전표 없음 — 우리 것의 이동).
           발주하면 <b>입고대기</b>에 뜨고, 돌아오면 거기서 가공입고 하시면 됩니다.
@@ -133,9 +194,9 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
           className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300" />
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => onSubmit({ oemPartnerId: partnerId, partnerName: partner?.name ?? '', sent, date, note: note.trim() || undefined })}
-            disabled={!canSave}
+          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 disabled:opacity-40">취소</button>
+          <button onClick={() => onSubmit({ jobId, oemPartnerId: partnerId, partnerName: partner?.name ?? '', sent, date, note: note.trim() || undefined })}
+            disabled={!canSave || issueDrafts.length > 0 || !!pendingIssue}
             className="flex-1 py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 disabled:opacity-30">
             {busy ? '처리 중…' : '발주 (원료 내보내기)'}
           </button>

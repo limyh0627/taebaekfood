@@ -40,7 +40,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
-import { PurchaseOrder, ReturnRequest, poLines } from '../src/shared/types';
+import { PurchaseOrder, ReturnRequest, companyOf, poLines } from '../src/shared/types';
 import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
@@ -215,7 +215,7 @@ interface ItemListProps {
   onDeleteItem: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   inboundPartners: { id: string; name: string }[];
-  partners?: { id: string; name: string; partnerType?: string }[];
+  partners?: { id: string; name: string; partnerType?: string; companyId?: import('../src/shared/types').CompanyId; isOemFactory?: boolean }[];
   partnerItems?: PartnerItem[];
   rawMaterialLedger: RawMaterialEntry[];
   /** 그 주문에서 **이 원료를 쓰는 줄만** 골라 준다 — 원장 목록이 "어디 쓰였나"를 적을 때 쓴다. */
@@ -237,8 +237,9 @@ interface ItemListProps {
   returnBadge?: number;
   // 임가공(OEM) — 발주는 입고대기에, 이력은 입고이력에 함께 표시된다(별도 목록 없음)
   oemEnabled?: boolean;
+  oemIssueDrafts?: PurchaseOrder[];
   rawStockKg?: (material: string) => number;
-  onOemIssue?: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
+  onOemIssue?: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
   onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onOemIssueFee?: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
@@ -358,6 +359,7 @@ const ItemList: React.FC<ItemListProps> = ({
   returnContent,
   returnBadge = 0,
   oemEnabled = false,
+  oemIssueDrafts = [],
   rawStockKg,
   onOemIssue,
   onOemReceive,
@@ -1579,9 +1581,11 @@ const ItemList: React.FC<ItemListProps> = ({
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
       {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
         <OemManager
+          companyId={companyId}
           items={items}
-          partners={(partners ?? []) as any}
+          partners={partners.filter(partner => companyOf(partner) === companyId) as any}
           rawStockKg={rawStockKg}
+          issueDrafts={oemIssueDrafts}
           issueOpen={oemIssueOpen}
           receiveTarget={oemReceiveTarget}
           feeTarget={oemFeeTarget}

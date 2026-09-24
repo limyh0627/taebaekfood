@@ -15,7 +15,7 @@
  * 쓰기(트랜잭션)는 이 계산기를 부르는 쪽이 맡는다.
  */
 import type { CompanyId, RawMaterialLot } from './types';
-import { buildReceiveLot, deductFromLots, settleCarryOver, nextLotNo } from './lotUtils';
+import { buildReceiveLot, deductFromLots, nextLotNo } from './lotUtils';
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -566,8 +566,9 @@ export function applyRawCommand(input: {
         id: det.newLotId,
         createdAt: det.now,
       });
-      //  입고로 음수 '이월' 빚을 먼저 갚는다 — 안 갚으면 재고가 두 번 잡힌다.
-      const after = settleCarryOver([...working, { ...lot, lotNo: nextLotNo(working, lot.receivedDate) }]);
+      //  음수 이월과 새 입고는 사람이 로트 합치기로 검증하기 전까지 각각 보존한다.
+      //  둘의 합은 그대로 총재고에 반영되므로 자동 상계가 없어도 재고를 두 번 세지 않는다.
+      const after = [...working, { ...lot, lotNo: nextLotNo(working, lot.receivedDate) }];
       return commit(c.kind, after, changesBetween(working, after), kg);
     }
 
@@ -616,7 +617,8 @@ export function applyRawCommand(input: {
           material: c.materialSnapshot, supplierName: '재고실사', qtyIn: 0, kgIn: delta,
           receivedDate: c.effectiveAt.slice(0, 10), id: det.newLotId, createdAt: det.now,
         });
-        const after = settleCarryOver([...working, { ...lot, lotNo: nextLotNo(working, lot.receivedDate) }]);
+        //  실사로 생긴 양수 로트도 음수 이월과 자동 상계하면 출처 확인 전에 이력이 사라진다.
+        const after = [...working, { ...lot, lotNo: nextLotNo(working, lot.receivedDate) }];
         return commit('stocktake', after, changesBetween(working, after), delta, stocktakeExtra);
       }
       const { lots: after } = deductFromLots(working, -delta, undefined, det.carryOverLotId

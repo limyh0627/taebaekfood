@@ -3,7 +3,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement from './TradeStatement';
-import type { IssuedStatement, Item, Partner, PartnerItem } from '../src/shared/types';
+import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
 import { appConfirm } from '../src/shared/components/appDialog';
 
 // 운영 DB에 닿지 않고 저장 콜백의 완료·실패에 따른 화면 동작을 검증한다.
@@ -157,5 +157,55 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(onUpsertPartnerItem).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
+  });
+});
+
+describe('자금 전표 수정 저장 순서', () => {
+  const cash = {
+    id: 'cash-edit-test', companyId: 'taebaek', date: '2026-09-24', createdAt: '2026-09-24T09:00:00+09:00',
+    dir: '입금', amount: 5000, cashAccountId: 'bank', accountCode: '811',
+    partnerId: partner.id, partnerName: partner.name, note: '수정 시험 자금',
+  } as const;
+
+  it('DB 저장 완료 전에는 수정창을 닫지 않고, 실패해도 열린 채로 남는다', async () => {
+    const gate = deferred();
+    const save = vi.fn(async () => gate.promise);
+    setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], onUpdateCashEntry: save });
+    fireEvent.click(await screen.findByText('진단 거래처', { selector: 'td' }));
+    const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
+    await act(async () => { gate.resolve(); await gate.promise; });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '자금 전표 수정' })).not.toBeInTheDocument());
+  });
+
+  it('DB 저장이 실패하면 오류를 알리고 수정창을 유지한다', async () => {
+    const save = vi.fn(async () => { throw new Error('시험 실패'); });
+    setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], onUpdateCashEntry: save });
+    fireEvent.click(await screen.findByText('진단 거래처', { selector: 'td' }));
+    const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('시험 실패')));
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it('상계 금액을 고친 뒤 자금 저장이 실패하면 원래 상계 금액으로 되돌린다', async () => {
+    const updateCash = vi.fn(async () => { throw new Error('자금 쓰기 실패'); });
+    const updateSettlement = vi.fn(async (_id: string, _patch: Partial<Settlement>) => {});
+    const settlement = { id: 'linked', cashEntryId: cash.id, statementId: 'stmt-linked', amount: 5000, createdAt: '' };
+    const stmt = { id: 'stmt-linked', partnerId: partner.id, partnerName: partner.name,
+      docNo: '260924-01', type: '매출', tradeDate: '2026-09-24', totalAmount: 10000 } as IssuedStatement;
+    setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], settlements: [settlement],
+      issuedStatements: [stmt], onUpdateCashEntry: updateCash, onUpdateSettlement: updateSettlement });
+    fireEvent.click(await screen.findByText('수정 시험 자금', { selector: 'td' }));
+    const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
+    fireEvent.change(within(dialog).getAllByRole('textbox')[0], { target: { value: '6000' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(updateSettlement).toHaveBeenCalledTimes(2));
+    expect(updateSettlement.mock.calls[0]).toEqual(['linked', { amount: 6000 }]);
+    expect(updateSettlement.mock.calls[1]).toEqual(['linked', { amount: 5000 }]);
+    expect(updateCash).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
   });
 });

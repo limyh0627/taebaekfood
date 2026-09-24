@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CashEntryModal, { type CashModalMode } from './CashEntryModal';
-import type { IssuedStatement, CashEntry, AccountCode } from '../../src/shared/types';
+import type { IssuedStatement, CashEntry, AccountCode, Partner } from '../../src/shared/types';
 import { appConfirm } from '../../src/shared/components/appDialog';
 
 vi.mock('../../src/shared/components/appDialog', () => ({
@@ -43,6 +43,11 @@ const 계정: AccountCode[] = [
 ] as AccountCode[];
 
 const 잔액 = new Map([['p1', { receivable: 1_500_000, payable: 300_000 }]]);
+const 거래처: Partner[] = [
+  { id: 'p1', name: '청양식품', companyId: 'taebaek' },
+  { id: 'p2', name: '새 거래처', companyId: 'taebaek' },
+  { id: 'ph', name: '풍회 거래처', companyId: 'punghoe' },
+] as Partner[];
 
 function 띄우기(mode: CashModalMode, over: Partial<Parameters<typeof CashEntryModal>[0]> = {}) {
   const onSettle = vi.fn(), onSaveEdit = vi.fn(), onClose = vi.fn(), onDeleteEntry = vi.fn(), onAccountId = vi.fn();
@@ -50,6 +55,8 @@ function 띄우기(mode: CashModalMode, over: Partial<Parameters<typeof CashEntr
   const getBalance = over.getBalance ?? ((s: IssuedStatement) => s.totalAmount);
   render(<CashEntryModal
     mode={mode}
+    partners={거래처}
+    companyId="taebaek"
     accountCodes={계정}
     cashAccounts={[{ id: 'bank1', name: '농협 주계좌' }, { id: 'bank2', name: '수협' }]}
     accountId="bank1"
@@ -80,7 +87,11 @@ const 입력칸 = (label: string) => {
   throw new Error(`'${label}' 입력칸을 못 찾았다`);
 };
 
-beforeEach(() => { vi.clearAllMocks(); vi.mocked(appConfirm).mockResolvedValue(true); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(appConfirm).mockResolvedValue(true);
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 describe('수금·지불 — 전표에서 연다', () => {
   it('금액 기본값은 총액이 아니라 **남은 금액**이다', async () => {
@@ -191,8 +202,33 @@ describe('자금 전표 수정 — 이미 난 것을 고친다', () => {
 
   it('거래처와 잔액을 같이 띄운다 — 어느 거래처 돈인지 모르고 고치던 자리다', () => {
     띄우기({ kind: '수정', entry: 자금() });
-    expect(screen.getByText('청양식품').parentElement).toHaveTextContent('미수 1,500,000');
-    expect(screen.getByText('청양식품').parentElement).toHaveTextContent('미지급 300,000');
+    expect(screen.getByText('청양식품', { selector: 'p' })).toHaveTextContent('미수 1,500,000');
+    expect(screen.getByText('청양식품', { selector: 'p' })).toHaveTextContent('미지급 300,000');
+  });
+
+  it('현재 회사 거래처를 골라 저장하고 선택한 거래처 잔액을 보여준다', async () => {
+    const u = userEvent.setup();
+    const balances = new Map(잔액);
+    balances.set('p2', { receivable: 42_000, payable: 0 });
+    const { onSaveEdit } = 띄우기({ kind: '수정', entry: 자금() }, { partnerBalances: balances });
+    await u.click(screen.getByRole('button', { name: '거래처' }));
+    expect(screen.queryByRole('option', { name: '풍회 거래처' })).not.toBeInTheDocument();
+    await u.click(screen.getByRole('option', { name: '새 거래처' }));
+    expect(screen.getByText('새 거래처', { selector: 'p' })).toHaveTextContent('미수 42,000');
+    await u.click(screen.getByRole('button', { name: /저장/ }));
+    expect(onSaveEdit.mock.calls[0][1].partnerId).toBe('p2');
+  });
+
+  it('옛 목록 밖 거래처는 다른 필드만 고치면 보존하고 명시적으로만 지운다', async () => {
+    const u = userEvent.setup();
+    const { onSaveEdit } = 띄우기({ kind: '수정', entry: 자금({ partnerId: 'old', partnerName: '옛 거래처' }) });
+    expect(screen.getByRole('button', { name: '거래처' })).toHaveTextContent('기존 연결: 옛 거래처');
+    await u.click(screen.getByRole('button', { name: /저장/ }));
+    expect(onSaveEdit.mock.calls[0][1].partnerId).toBeUndefined();
+    await u.click(screen.getByRole('button', { name: '거래처' }));
+    await u.click(screen.getByRole('option', { name: '거래처 없음' }));
+    await u.click(screen.getByRole('button', { name: /저장/ }));
+    expect(onSaveEdit.mock.calls[1][1].partnerId).toBe('');
   });
 
   it('**쪼갠 줄이 그대로 실려 나간다** — 열었다 저장만 해도 사라지던 자리다', async () => {

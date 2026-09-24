@@ -434,7 +434,7 @@ export interface SubmaterialComponent {
 
 // 새 영문 체계
 export type InventoryCategory =
-  'raw' | 'wip' | 'product' | 'goods' | 'submaterial' |
+  'raw' | 'wip' | 'product' | 'goods' | 'submaterial' | 'service' |
   // @deprecated 마이그레이션 완료 전 하위 호환
   'label' | 'cap' | 'container' | 'box' | 'tape' |
   '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
@@ -1190,6 +1190,8 @@ export interface PurchaseOrderItem {
 
 export interface PurchaseOrder {
   id: string;
+  /** 회사 미기재 옛 발주카드는 태백으로 읽는다. 새 OEM 발주는 반드시 명시한다. */
+  companyId?: CompanyId;
   itemId: string;
   itemName: string;
   partnerId?: string;
@@ -1212,13 +1214,20 @@ export interface PurchaseOrder {
   receivedAt?: string;
   items?: PurchaseOrderItem[];  // 멀티품목 발주카드(거래처별 묶음) / 선입고·스캔입고
   photoUrl?: string;            // 입고 납품서 사진
+  note?: string;
   // ── OEM(임가공) 배치 ── poType='oem'이면 발주카드가 아니라 외주가공 배치다.
   //   발주(sent): 내보낸 원료를 oemSent에 기록하며 본재고→외주재고 이동(전표 없음).
   //   가공입고(received): items[]에 돌아온 완제품/벌크, 외주재고 정리, 가공비 매입전표(linkedStatementId).
   poType?: 'oem';
   oemPartnerId?: string;                          // 외주공장 (거래처)
-  oemSent?: { material: string; kg: number }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
+  oemSent?: { material: string; kg: number; rawItemId?: string }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
   oemSentAt?: string;                             // 외주 출고 시각
+  /** OEM 발주 초안은 일반 발주예정에 섞지 않고 같은 작업번호로 재개한다. */
+  oemIssueStatus?: 'processing' | 'failed' | 'complete';
+  oemIssueFingerprint?: string;
+  oemIssueDate?: string;
+  oemIssuedBy?: string;
+  oemIssueError?: string;
   oemReceivedKg?: number;                         // 받은 볶음참깨 총 kg (로스 = ΣoemSent.kg − 이 값)
   oemReceivedBulk?: { material: string; kg: number }[];
   oemFeePerKg?: number;                           // 가공단가(원/kg) — 입고 때 입력, 전표 발행에 사용
@@ -1641,6 +1650,7 @@ export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';
 
 export interface AdjustmentRequest {
   id: string;
+  companyId?: CompanyId;
   itemId: string;
   itemName: string;
   originalQuantity: number;

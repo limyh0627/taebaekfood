@@ -40,7 +40,7 @@ export interface PriceSyncInput {
   partnerId: string;
   lines: PriceSyncLine[];
   /** 품목 원장 — 전표 줄의 ID가 실제로 존재하는지 확인한다 */
-  items: Pick<Item, 'id'>[];
+  items: Pick<Item, 'id' | 'type'>[];
   /** 이미 저장돼 있는 거래처 단가 (그 방향 것만 넘겨도 되고 전부 넘겨도 된다) */
   partnerItems: PartnerItem[];
   /**
@@ -120,7 +120,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
      * (2026-09-06 에 60개를 되돌렸는데 전표를 다시 끊자 되살아난 게 이 갈림 때문이다)
      * 셈은 [lineAmount.costFromPurchaseLine](./lineAmount.ts) 한 곳이다.
      */
-    if (type === '매입') {
+    if (type === '매입' && product.type !== 'service') {
       const cost = costFromPurchaseLine(line);
       if (cost != null) out.costUpdates.push({ itemId: product.id, price: cost });
     }

@@ -79,10 +79,10 @@ describe('서브타입 · 카테고리', () => {
 });
 
 describe('defaultTaxonomyRows — 최초 시딩', () => {
-  //  선물세트·배송은 타입이 아니라 완제품의 subtype이다 — 타입은 다섯이다.
-  it('타입 5개 + 서브타입 + 카테고리', () => {
+  //  선물세트·배송은 타입이 아니라 완제품의 subtype이고, 용역은 비재고 타입이다.
+  it('타입 6개 + 서브타입 + 카테고리', () => {
     const rows = defaultTaxonomyRows();
-    expect(rows.filter(r => r.kind === 'type')).toHaveLength(5);
+    expect(rows.filter(r => r.kind === 'type')).toHaveLength(6);
     expect(rows.filter(r => r.kind === 'subtype' && r.parent === 'product')).toHaveLength(3);
     expect(rows.filter(r => r.kind === 'category' && r.parent === 'submaterial')).toHaveLength(6);
   });

@@ -10,6 +10,7 @@ import { anchorLotsByQty } from '../lotAnchor';
 import { today } from '../day';
 import { inventoryDocId, operationDocId, type LotChange, type RawInventoryMovement } from '../rawInventoryCore';
 import { normalizeRawInventoryState, toLedgerDoc } from './rawInventoryService';
+import { rawMirrorMatches } from '../rawMirror';
 
 /**
  * **캔을 까서 벌크로 되돌린다 — 실제로 쓰는 자리.**
@@ -80,7 +81,7 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
       const stateSnap = await tx.get(stateRef);
       if (!stateSnap.exists()) throw new Error(`${plan.bulkName} 원료가 아직 원자화되지 않았습니다.`);
       const state = normalizeRawInventoryState(stateSnap.data());
-      if (Math.abs(Number(bulkData.stock ?? 0) - state.stockKg) > 1) {
+      if (!rawMirrorMatches(Number(bulkData.stock ?? 0), state.stockKg)) {
         throw new Error(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
       }
 

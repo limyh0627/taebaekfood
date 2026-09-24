@@ -99,7 +99,7 @@ export function buildReceiveLot(params: {
  *   예전 topPercent 설정도 상위 2개 비율로 계속 읽는다. 부족분은 FIFO로 이어서 차감한다.
  * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 실제 공급사 로트는 0에서 정상 소진되고,
  * 초과분은 '이월(미상)' 버킷이 음수로 흡수한다 → 로트 합계가 실제 사용분을 그대로 따라가 수불부와 어긋나지 않음.
- * (음수 이월은 이후 입고 시 settleCarryOver로 상쇄됨)
+ * 음수 이월과 이후 양수 입고는 각각 남기고, 검증한 사람이 로트 합치기로만 상계한다.
  * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(이월로 넘어간 초과분)
  */
 export function deductFromLots(
@@ -164,7 +164,7 @@ export function deductFromLots(
 
   // 초과 출고: 실제 공급사 로트는 0에서 정상 소진, 남은 초과분은 '이월(미상)' 버킷이 음수로 흡수한다.
   //   → 로트 합계가 실제 사용분을 그대로 따라가 원료수불부와 어긋나지 않는다.
-  //   → 다음 입고 시 settleCarryOver로 상쇄되어 재고가 맞으면 이월은 0(소진)으로 사라진다.
+  //   → 다음 입고와 자동 상계하지 않는다. 확인 전 음수·양수 로트를 따로 보여줘야 한다.
   const overIssued = round3(Math.max(0, remaining));
   if (overIssued > 0) {
     let bIdx = next.findIndex(l => l.supplierName === '이월');
@@ -192,9 +192,9 @@ export function deductFromLots(
 }
 
 /**
- * 음수 '이월(미상)' 버킷을 양수 가용 로트로 상쇄(net)한다.
- * 초과 출고로 생긴 음수 이월을, 이후 입고된 양수 로트가 FIFO로 갚는다 → 재고가 맞으면 이월 0(소진).
- * 입고·조정 직후 호출한다. 이월이 없거나 양수면 원본을 그대로 반환.
+ * 과거 정정 스크립트 호환용 자동 상계 계산. 현행 원료 명령은 호출하지 않는다.
+ * 자동 실행하면 어느 양수 로트로 음수를 갚을지 코드가 먼저 정하므로, 운영 상계는
+ * 사람이 출처를 확인한 뒤 `merge-lots` 원자 명령으로만 한다.
  */
 export function settleCarryOver(lots: RawMaterialLot[]): RawMaterialLot[] {
   const debtIdx = (lots ?? []).findIndex(l => l.supplierName === '이월' && (l.kgRemaining ?? 0) < 0);

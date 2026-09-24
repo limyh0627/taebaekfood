@@ -1,11 +1,12 @@
 import { appConfirm } from '../../src/shared/components/appDialog';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
-import type { IssuedStatement, CashEntry, AccountCode, PaymentMethod } from '../../src/shared/types';
+import { companyOf, type IssuedStatement, type CashEntry, type AccountCode, type PaymentMethod, type Partner, type CompanyId } from '../../src/shared/types';
 import { cashEditSplit, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../../src/shared/cashEntryEdit';
 import { formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
 import ModalShell from '../../src/shared/components/ModalShell';
+import SearchableSelect from '../../src/shared/components/SearchableSelect';
 
 /**
  * **자금 전표 하나를 세우거나 고치는 창.**
@@ -40,6 +41,8 @@ export interface SettleInput {
 
 interface Props {
   mode: CashModalMode;
+  partners: Partner[];
+  companyId: CompanyId;
   accountCodes: AccountCode[];
   /** 활성 통장만 */
   cashAccounts: { id: string; name: string }[];
@@ -52,8 +55,8 @@ interface Props {
   latestStatement: (_id: string) => IssuedStatement | undefined;
   onClose: () => void;
   onSettle: (_stmt: IssuedStatement, _input: SettleInput) => void;
-  onSaveEdit: (_entry: CashEntry, _form: CashEditForm, _lines: CashEditLineDraft[]) => void;
-  onDeleteEntry?: (_id: string) => void;
+  onSaveEdit: (_entry: CashEntry, _form: CashEditForm, _lines: CashEditLineDraft[]) => void | Promise<void>;
+  onDeleteEntry?: (_id: string) => void | Promise<void>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -206,7 +209,7 @@ function SettleBody({
 
 // ── 이미 난 자금 전표 고치기 ─────────────────────────────────────────────────
 
-function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, onDeleteEntry }: Props & { entry: CashEntry }) {
+function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, onClose, onSaveEdit, onDeleteEntry }: Props & { entry: CashEntry }) {
   //  상계(대체)는 방향을 고를 수 있는 게 아니다 — 기본값만 출금으로 두고 저장 때 dir은 안 건드린다.
   const [form, setForm] = useState<CashEditForm>({
     amount: String(entry.amount), date: entry.date,
@@ -220,6 +223,20 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
    */
   const [lines, setLines] = useState<CashEditLineDraft[]>(
     (entry.lines ?? []).map(l => ({ accountCode: l.accountCode, amount: String(l.amount), note: l.note ?? '' })));
+  const [partnerId, setPartnerId] = useState(entry.partnerId ?? '');
+  const [partnerTouched, setPartnerTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const currentPartners = partners.filter(partner => companyOf(partner) === companyId);
+  const selectedPartner = currentPartners.find(partner => partner.id === partnerId);
+  const originalMissing = Boolean(entry.partnerId && !currentPartners.some(partner => partner.id === entry.partnerId));
+  const partnerOptions = [
+    { value: '', label: '거래처 없음' },
+    ...(originalMissing ? [{ value: entry.partnerId!, label: `기존 연결: ${entry.partnerName || entry.partnerId} (목록 없음)` }] : []),
+    ...currentPartners.map(partner => ({ value: partner.id, label: partner.name })),
+  ];
+  const shownPartnerName = partnerTouched ? selectedPartner?.name : (selectedPartner?.name ?? entry.partnerName);
+  const shownPartnerId = partnerTouched ? partnerId : (entry.partnerId ?? '');
 
   //  판정은 shared/cashEntryEdit이 쥔다 — 화면 조각이라 테스트가 안 닿던 자리였다.
   const isOffset = entry.dir === '대체';
@@ -233,15 +250,19 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
   ));
 
   return (
-    <ModalShell title="자금 전표 수정" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="자금 전표 수정" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="space-y-4">
           <div>
-            {/* 거래처를 안 보여줘서 어느 거래처 돈인지 모르고 고쳤다. 잔액도 같이 띄운다. */}
-            {entry.partnerName ? (() => {
-              const bal = entry.partnerId ? partnerBalances.get(entry.partnerId) : undefined;
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">거래처</label>
+            <SearchableSelect ariaLabel="거래처" value={partnerId} options={partnerOptions}
+              onChange={id => { setPartnerId(id); setPartnerTouched(true); }}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold bg-white" />
+            {/* 목록에 없는 옛 연결도 표시하되, 선택을 바꾸기 전에는 저장 패치에 넣지 않는다. */}
+            {shownPartnerName ? (() => {
+              const bal = shownPartnerId ? partnerBalances.get(shownPartnerId) : undefined;
               const ar = bal?.receivable ?? 0, ap = bal?.payable ?? 0;
               return (
                 <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                  {entry.partnerName}
+                  {shownPartnerName}
                   {ar !== 0 && <span className="ml-1.5 text-blue-600">미수 {fmt(ar)}</span>}
                   {ap !== 0 && <span className="ml-1.5 text-rose-600">미지급 {fmt(ap)}</span>}
                 </p>
@@ -329,11 +350,24 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
 
         <div className="flex gap-2 pt-1">
           {onDeleteEntry && (
-            <button onClick={async () => { if (await appConfirm('이 자금 전표를 삭제할까요?')) { onDeleteEntry(entry.id); onClose(); } }}
-              className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200"><Trash2 size={12}/>삭제</button>
+            <button disabled={saving} onClick={async () => {
+              if (savingRef.current) return;
+              savingRef.current = true;
+              setSaving(true);
+              try { if (await appConfirm('이 자금 전표를 삭제할까요?')) { await onDeleteEntry(entry.id); onClose(); } }
+              catch (error) { window.alert(`자금 전표를 삭제하지 못했습니다: ${(error as Error).message}`); }
+              finally { savingRef.current = false; setSaving(false); }
+            }}
+              className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200 disabled:opacity-40"><Trash2 size={12}/>삭제</button>
           )}
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => onSaveEdit(entry, form, lines)} disabled={amt <= 0}
+          <button onClick={onClose} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200 disabled:opacity-40">취소</button>
+          <button onClick={async () => {
+            if (savingRef.current) return;
+            savingRef.current = true;
+            setSaving(true);
+            try { await onSaveEdit(entry, { ...form, ...(partnerTouched ? { partnerId } : {}) }, lines); }
+            finally { savingRef.current = false; setSaving(false); }
+          }} disabled={amt <= 0 || saving}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
         </div>
     </ModalShell>

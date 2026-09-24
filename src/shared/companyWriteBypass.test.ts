@@ -17,6 +17,12 @@ const reviewedTransactionWriters = new Set([
   'src/shared/services/rawInventoryService.ts',
   // 캔·벌크의 companyId가 같은지 확인하고 회사가 박힌 rawInventories 열쇠만 쓴다.
   'src/shared/services/unpackService.ts',
+  // OEM 발주 초안은 회사와 fingerprint가 같은 작업번호일 때만 유지하고 새 문서에 companyId를 박는다.
+  'src/features/admin/oemIssueJob.ts',
+  // OEM 가공비 요청은 PO·입고 품목의 회사 확인 후 같은 트랜잭션에서 companyId와 함께 만든다.
+  'src/features/admin/oemReceiptInventory.ts',
+  // 가공비 전표와 OEM 카드 링크를 같은 회사 검증 후 한 트랜잭션에 넣는다.
+  'src/features/admin/oemFeeStatement.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildCashEditPatch, cashEditAmount } from './cashEntryEdit';
+import { buildCashEditPatch, cashEditAmount, cashEditPartner, cashPartnerChangeError } from './cashEntryEdit';
 import { journalizeCashEntry } from './autoJournal';
-import type { CashEntry } from './types';
+import type { CashEntry, IssuedStatement, Partner, Settlement } from './types';
 
 /**
  * 자금 전표 수정 모달 — 쪼개진 전표를 열어 저장하면 lines가 날아가던 자리.
@@ -92,5 +92,36 @@ describe('상계(대체) 전표', () => {
       { accountCode: '251', debit: 300_000, credit: 0 },
       { accountCode: '108', debit: 0, credit: 300_000 },
     ]);
+  });
+});
+
+describe('자금 전표 거래처 변경', () => {
+  const old = { ...대출상환, partnerId: 'p1', partnerName: '옛 거래처' };
+  const partners = [
+    { id: 'p1', name: '현재 이름', companyId: 'taebaek' },
+    { id: 'p2', name: '새 거래처', companyId: 'taebaek' },
+    { id: 'ph', name: '풍회 거래처', companyId: 'punghoe' },
+  ] as Partner[];
+  const linked = [{ id: 'settle-1', cashEntryId: old.id, statementId: 'stmt-1', amount: 100_000, createdAt: '' }] as Settlement[];
+  const statement = { id: 'stmt-1', partnerId: 'p2', docNo: '260801-01' } as IssuedStatement;
+
+  it('현재 회사 원본에서 ID와 이름을 함께 패치하고 거래처 없음도 명시적으로 저장한다', () => {
+    const selected = cashEditPartner('p2', partners, 'taebaek');
+    expect(buildCashEditPatch(old, form(), draftOf(old), selected)).toMatchObject({ partnerId: 'p2', partnerName: '새 거래처' });
+    expect(buildCashEditPatch(old, form(), draftOf(old), null)).toMatchObject({ partnerId: '', partnerName: '' });
+    expect(buildCashEditPatch(old, form(), draftOf(old))).not.toHaveProperty('partnerId');
+  });
+
+  it('다른 회사나 없는 거래처는 거절한다', () => {
+    expect(() => cashEditPartner('ph', partners, 'taebaek')).toThrow('현재 회사');
+    expect(() => cashEditPartner('missing', partners, 'taebaek')).toThrow('현재 회사');
+  });
+
+  it('상계 연결 전표가 모두 같은 거래처일 때만 변경한다', () => {
+    expect(cashPartnerChangeError(old, 'p2', old.amount, linked, [statement])).toBeNull();
+    expect(cashPartnerChangeError(old, '', old.amount, linked, [statement])).toContain('거래처와 달라');
+    expect(cashPartnerChangeError(old, 'p2', old.amount, linked, [])).toContain('찾지 못해');
+    expect(cashPartnerChangeError(old, 'p2', old.amount + 1, linked, [statement])).toContain('동시에');
+    expect(cashPartnerChangeError(old, 'p2', old.amount, [], [])).toBeNull();
   });
 });

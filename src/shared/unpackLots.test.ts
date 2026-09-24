@@ -85,6 +85,21 @@ describe('개봉은 로트를 물려주는 이동이다', () => {
     expect(r.bulkLots[0].kgRemaining).toBe(82.5);            // 49.5 + 33
   });
 
+  it('같은 번호의 음수 벌크 로트에는 얹지 않고 양수 로트를 따로 세운다', () => {
+    const cans = [캔로트({ id: 'c1', lotNo: '260901-01', qtyRemaining: 3 })];
+    const bulk = [벌크로트({ id: 'debt', lotNo: '260901-01', supplierName: '이월', kgIn: 0, kgRemaining: -30 })];
+    const beforeKg = cans[0].qtyRemaining! * 16.5 + bulk[0].kgRemaining;
+    const result = unpackLots({ canLots: cans, bulkLots: bulk, cans: 2, perCan: 16.5, material: '통깨참기름', det });
+
+    expect(result.bulkLots.map(l => [l.id, l.kgRemaining])).toEqual([
+      ['debt', -30], ['unpack-1-0', 33],
+    ]);
+    expect(result.moves).toEqual([expect.objectContaining({ lotNo: '260901-01', cans: 2, bulkQty: 33 })]);
+    const afterKg = result.canLots.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0) * 16.5, 0)
+      + bulkStockAfter(result.bulkLots);
+    expect(afterKg).toBe(beforeKg);
+  });
+
   it('로트번호가 다르면 따로 선다 — 다른 입고분을 한 통에 섞지 않는다', () => {
     const r = unpackLots({
       canLots: [캔로트({ id: 'c1', lotNo: '260910-01', qtyRemaining: 5 })],

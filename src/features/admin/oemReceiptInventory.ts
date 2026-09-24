@@ -1,6 +1,6 @@
-import { doc, runTransaction, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDocs, query, runTransaction, where, type Firestore } from 'firebase/firestore';
 import { pruneDepletedLots, withCarryOverProductLot } from '../../shared/lotUtils';
-import type { PurchaseOrder, RawMaterialLot } from '../../shared/types';
+import { companyOf, type AdjustmentRequest, type CompanyId, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
 
 export interface OemReceiptItemChange {
   itemId: string;
@@ -11,11 +11,13 @@ export interface OemReceiptItemChange {
 }
 
 export interface OemReceiptInventoryInput {
+  companyId: CompanyId;
   poId: string;
   operationId: string;
   date: string;
   items: OemReceiptItemChange[];
   poPatch: Partial<PurchaseOrder>;
+  feeRequest: AdjustmentRequest;
 }
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -38,8 +40,17 @@ export async function applyOemReceiptInventory(
   if (duplicateItemIds.length > 0) {
     throw new Error(`OEM 입고 품목이 중복되었습니다: ${[...new Set(duplicateItemIds)].join(', ')}`);
   }
-  return runTransaction(db, async tx => {
+  const feeId = `OEMFEE-${input.poId}`;
+  // adjustmentRequests는 없는 문서의 get을 허용하지 않는다. 회사 조건을 단 목록 조회로
+  // 기존 요청을 확인하고, 같은 배치의 동시 입고는 아래 PO 거래로 직렬화한다.
+  // 별도 작성자가 조회 후 같은 ID를 만들면 create-only가 없는 클라이언트 set은 이를 막지 못한다.
+  // ID 조건을 더하면 없는 문서에 readOk()가 평가돼 권한 거부된다(실제 규칙 시험 확인).
+  const feeQuery = query(collection(db, 'adjustmentRequests'), where('companyId', '==', input.companyId));
+  const feeRequests = await getDocs(feeQuery);
+  const feeExists = feeRequests.docs.some(snapshot => snapshot.id === feeId);
+  const result = await runTransaction(db, async tx => {
     const poRef = doc(db, 'purchaseOrders', input.poId);
+    const feeRef = doc(db, 'adjustmentRequests', feeId);
     const itemRefs = input.items.map(row => doc(db, 'items', row.itemId));
     // Firestore transaction은 첫 write 전에 모든 read가 끝나야 한다.
     const [poSnapshot, ...itemSnapshots] = await Promise.all([
@@ -48,13 +59,26 @@ export async function applyOemReceiptInventory(
     ]);
     if (!poSnapshot.exists()) throw new Error(`OEM 배치를 찾을 수 없습니다: ${input.poId}`);
     const po = poSnapshot.data() as Partial<PurchaseOrder>;
+    if (companyOf(po) !== input.companyId || (input.poPatch.companyId && input.poPatch.companyId !== input.companyId)) {
+      throw new Error('다른 회사의 OEM 배치는 처리할 수 없습니다.');
+    }
+    if (input.feeRequest.companyId !== input.companyId || input.feeRequest.oemPoId !== input.poId || input.feeRequest.id !== `OEMFEE-${input.poId}`) {
+      throw new Error('OEM 가공비 확인 요청의 회사나 배치가 다릅니다.');
+    }
     if (po.status === 'received') {
-      if (po.oemReceiptOperationId === input.operationId) return 'duplicate';
+      if (po.oemReceiptOperationId === input.operationId) {
+        // 다른 화면이 첫 목록 조회 뒤 입고를 마쳤을 수 있다. 거래가 끝난 후 다시 확인한다.
+        return feeExists || po.linkedStatementId ? 'duplicate' : 'verify-duplicate';
+      }
       throw new Error('이미 가공입고된 배치입니다.');
     }
+    if (po.status !== 'invoiced') throw new Error('입고 가능한 OEM 배치가 아닙니다.');
+    if (feeExists) throw new Error('입고 전 가공비 확인 요청이 이미 있습니다.');
 
     const missing = input.items.filter((_, index) => !itemSnapshots[index]!.exists()).map(row => row.itemId);
     if (missing.length > 0) throw new Error(`OEM 입고 품목 문서를 찾을 수 없습니다: ${missing.join(', ')}`);
+    const wrongCompany = input.items.filter((_, index) => companyOf(itemSnapshots[index]!.data() ?? {}) !== input.companyId);
+    if (wrongCompany.length > 0) throw new Error(`다른 회사의 OEM 입고 품목입니다: ${wrongCompany.map(row => row.itemId).join(', ')}`);
 
     input.items.forEach((row, index) => {
       const data = itemSnapshots[index]!.data() ?? {};
@@ -74,7 +98,12 @@ export async function applyOemReceiptInventory(
       }
       tx.update(itemRefs[index]!, patch);
     });
-    tx.update(poRef, stripUndefined({ ...input.poPatch, oemReceiptOperationId: input.operationId }));
+    tx.update(poRef, stripUndefined({ ...input.poPatch, companyId: input.companyId, oemReceiptOperationId: input.operationId }));
+    tx.set(feeRef, stripUndefined(input.feeRequest));
     return 'applied';
   });
+  if (result !== 'verify-duplicate') return result;
+  const latestFees = await getDocs(feeQuery);
+  if (latestFees.docs.some(snapshot => snapshot.id === feeId)) return 'duplicate';
+  throw new Error('가공비 확인 요청이 누락된 입고입니다. 관리자 복구가 필요합니다.');
 }

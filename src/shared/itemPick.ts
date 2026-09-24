@@ -27,6 +27,7 @@ export interface PickedLine {
   price: string;
   isTaxExempt: boolean;
   note: string;
+  accountCode?: string;
 }
 
 export interface PickResult {
@@ -71,6 +72,7 @@ export function pickLines(
       price: String(pickedPrice(row.pc, edits) ?? ''),
       qty: String(qty),
       isTaxExempt: row.pc.taxType === '면세',
+      ...(row.pc.Account_Code ? { accountCode: row.pc.Account_Code } : {}),
       note: '',
     });
     if (!linkedItemIds.has(row.product.id)) unlinked.push(row);

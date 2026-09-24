@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
+import { manualLines, manualAccountCode, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
 import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
 
 afterEach(() => resetPackIndex());
@@ -106,6 +106,15 @@ describe('orderLines — 박스를 낱개로 푼다', () => {
   it('박스 단위로 적힌 주문은 boxQuantity 를 쓴다', () => {
     const r = orderLines({ ...공통, order: 주문([{ itemId: 'box', name: '박스', quantity: 3, isBoxUnit: true, boxQuantity: 2, price: 10000 }]) });
     expect(r[0].qty).toBe(20);   // 2박스 × 10
+  });
+
+  it('용역 매출은 404를 자동으로 찍지 않고 연결 계정을 기다린다', () => {
+    const row = { itemId: 'fee', name: '기장료', spec: '', qty: '1', price: '11000', isTaxExempt: false };
+    const items = [{ id: 'fee', type: 'service' }];
+    expect(manualLines([row], '매출', [], items)[0]).toMatchObject({ itemId: 'fee', lineKind: 'item' });
+    expect(manualLines([row], '매출', [], items)[0].accountCode).toBeUndefined();
+    expect(manualAccountCode(row, '매출', [], items)).toBeUndefined();
+    expect(manualAccountCode({ ...row, accountCode: '405' }, '매출', [], items)).toBe('405');
   });
 
   it('향미유 8박스의 옛 복사 주문도 환산표를 읽어 전표에 96개로 넣는다', () => {

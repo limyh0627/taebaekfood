@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { withCarryOverLot, buildReceiveLot, deductFromLots, settleCarryOver } from './lotUtils';
+import { withCarryOverLot, buildReceiveLot, deductFromLots } from './lotUtils';
 import { lotKgRemaining } from '../constants/formula';
 import { ledgerBalanceKg, sortLedger, isBackdated } from './rawLedgerBalance';
 import type { RawMaterialEntry, RawMaterialLot } from './types';
@@ -51,7 +51,8 @@ class Warehouse {
     this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
     const lot = buildReceiveLot({ material: this.material, supplierName: supplier, qtyIn: 0, kgIn: kg, receivedDate: date });
-    this.lots = settleCarryOver([...carried, lot]);
+    //  현재 코어 계약처럼 음수 이월과 입고 로트는 합계만 반영하고 각각 남긴다.
+    this.lots = [...carried, lot];
     this.syncStock();
     this.ledger.push(this.row({ received: kg, note: `${supplier} 입고`, type: 'manual', date }));
   }
@@ -79,7 +80,7 @@ class Warehouse {
     const delta = Math.round((targetKg - lotKgRemaining(carried)) * 1000) / 1000;
     if (delta > 0.001) {
       const lot = buildReceiveLot({ material: this.material, supplierName: '실사조정', qtyIn: 0, kgIn: delta, receivedDate: date });
-      this.lots = settleCarryOver([...carried, lot]);
+      this.lots = [...carried, lot];
     } else if (delta < -0.001) {
       this.lots = deductFromLots(carried, -delta).lots;
     } else {
@@ -105,7 +106,7 @@ class Warehouse {
     if (Math.abs(back) > 0.0001) {
       const carried = withCarryOverLot(this.lots, this.stock, this.material);
       this.lots = back >= 0
-        ? settleCarryOver([...carried, buildReceiveLot({ material: this.material, supplierName: '삭제 되돌림', qtyIn: 0, kgIn: back, receivedDate: '2026-08-01' })])
+        ? [...carried, buildReceiveLot({ material: this.material, supplierName: '삭제 되돌림', qtyIn: 0, kgIn: back, receivedDate: '2026-08-01' })]
         : deductFromLots(carried, -back).lots;
       this.syncStock();
     }

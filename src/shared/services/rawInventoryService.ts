@@ -25,6 +25,7 @@ import {
 } from '../rawInventoryCore';
 import { companyOf, type RawMaterialLot } from '../types';
 import { baseRawName } from '../../constants/formula';
+import { rawMirrorMatches } from '../rawMirror';
 
 /**
  * **옛 원장 화면이 읽는 칸.**
@@ -81,13 +82,6 @@ export function toLedgerDoc(m: RawInventoryMovement, legacy: LegacyLedgerFields 
     ...legacy,
   };
 }
-
-/**
- * `items.stock` 과 상태 문서가 이만큼까지 어긋나는 건 반올림으로 본다.
- * [ledgerLotCheck.GAP_TOLERANCE_KG](../ledgerLotCheck.ts) 와 같은 한도다 —
- * 로트는 kg 소수 셋째 자리까지 반올림하며 돌아 몇 g 씩은 늘 흔들린다.
- */
-const MIRROR_TOLERANCE_KG = 1;
 
 /** Firestore 는 `undefined` 필드를 거부한다 — 로트의 미입력 옵션들이 여기 걸린다. */
 const stripUndefined = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -255,7 +249,7 @@ export async function executeRawInventoryCommand(
     if (mirror && !원장전용 && command.kind !== 'stocktake' && command.kind !== 'adjust-lot' && itemSnap?.exists()) {
       const 품목재고 = Number(itemSnap.data()?.stock ?? 0);
       const 상태재고 = state?.stockKg ?? 0;
-      if (Math.abs(품목재고 - 상태재고) > MIRROR_TOLERANCE_KG) {
+      if (!rawMirrorMatches(품목재고, 상태재고)) {
         return {
           status: 'rejected', code: 'STOCK_MISMATCH',
           message: `품목 재고와 원료 상태가 어긋나 있다: items.stock ${품목재고} ≠ ${상태재고} (${invId}). 실사로 맞춘 뒤에 다시 하라.`,

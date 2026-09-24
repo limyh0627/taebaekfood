@@ -32,8 +32,8 @@ describe('품목 타입 이름표는 taxonomy 한 곳에서 온다', () => {
       `shared/taxonomy 의 DEFAULT_CATEGORY_LABELS 를 써라.`).toEqual([]);
   });
 
-  it('다섯 타입이 다 있다', () => {
+  it('여섯 타입이 다 있다', () => {
     expect(Object.keys(DEFAULT_CATEGORY_LABELS).sort())
-      .toEqual(['goods', 'product', 'raw', 'submaterial', 'wip']);
+      .toEqual(['goods', 'product', 'raw', 'service', 'submaterial', 'wip']);
   });
 });

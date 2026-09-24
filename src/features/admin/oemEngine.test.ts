@@ -20,10 +20,22 @@ function makeDeps() {
   const updates: any[] = [];
   const adds: any[] = [];
   const deps = {
+    companyId: 'taebaek',
     items,
+    partners: [{ id: 'oem1', name: '푸미푸드', companyId: 'taebaek' }],
+    issueOemBatchJob: async (input: any) => {
+      input.sent.forEach((row: any) => rawCalls.push({ companyId: input.companyId, material: row.material, rawItemId: row.rawItemId, deltaKg: -row.kg }));
+      adds.push({ c: 'purchaseOrders', d: { id: input.jobId, poType: 'oem', status: 'invoiced', oemPartnerId: input.partnerId, oemSent: input.sent } });
+      return { poId: input.jobId };
+    },
     adjustRawLots: async (o: any) => { rawCalls.push(o); },
     updateItem: async (c: string, id: string, d: any) => { updates.push({ c, id, d }); },
     addItem: async (c: string, d: any) => { adds.push({ c, d }); return d.id; },
+    applyOemFeeStatement: async (input: any) => {
+      adds.push({ c: 'issuedStatements', d: input.statement });
+      updates.push({ c: 'purchaseOrders', id: input.poId, d: { linkedStatementId: input.statement.id, oemFeePerKg: input.perKg } });
+      return input.statement.id;
+    },
     applyOemReceiptInventory: async (input: any) => {
       for (const row of input.items) {
         const current = items.find(item => item.id === row.itemId)?.stock ?? 0;
@@ -52,6 +64,7 @@ describe('issueOemBatch (발주)', () => {
     const { deps, rawCalls, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
     const { poId } = await eng.issueOemBatch({
+      jobId: 'oem-test-1',
       oemPartnerId: 'oem1', partnerName: 'OO상회',
       sent: [{ material: '참깨', kg: 1000 }], date: '2026-07-17',
     });
@@ -62,7 +75,7 @@ describe('issueOemBatch (발주)', () => {
     // OEM 배치 카드 (열림)
     const po = adds.find(a => a.c === 'purchaseOrders')!.d;
     expect(po).toMatchObject({ poType: 'oem', status: 'invoiced', oemPartnerId: 'oem1' });
-    expect(po.oemSent).toEqual([{ material: '참깨', kg: 1000 }]);
+    expect(po.oemSent).toEqual([{ material: '참깨', rawItemId: 'raw-참깨', kg: 1000 }]);
     expect(poId).toBe(po.id);
   });
 
@@ -70,8 +83,41 @@ describe('issueOemBatch (발주)', () => {
     const { deps } = makeDeps();
     const eng = createOemEngine(deps as any);
     await expect(eng.issueOemBatch({
+      jobId: 'oem-test-2',
       oemPartnerId: 'oem1', partnerName: 'OO', sent: [{ material: '없는원료', kg: 100 }], date: '2026-07-17',
     })).rejects.toThrow('원료 홀더');
+  });
+
+  it('다른 회사 거래처나 원료를 선택하면 차감 전에 거절한다', async () => {
+    const { deps, rawCalls, adds } = makeDeps();
+    deps.partners[0].companyId = 'punghoe';
+    const eng = createOemEngine(deps as any);
+    await expect(eng.issueOemBatch({
+      jobId: 'oem-test-3',
+      oemPartnerId: 'oem1', partnerName: 'OO', sent: [{ material: '참깨', kg: 100 }], date: '2026-07-17',
+    })).rejects.toThrow('다른 회사');
+    expect(rawCalls).toHaveLength(0);
+    expect(adds).toHaveLength(0);
+
+    deps.partners[0].companyId = 'taebaek';
+    deps.items = [item({ id: 'raw-풍회참깨', name: '풍회참깨', type: 'raw', subtype: '벌크', unit: 'kg', companyId: 'punghoe' })];
+    await expect(createOemEngine(deps as any).issueOemBatch({
+      jobId: 'oem-test-4',
+      oemPartnerId: 'oem1', partnerName: 'OO', sent: [{ material: '풍회참깨', kg: 100 }], date: '2026-07-17',
+    })).rejects.toThrow('현재 회사');
+    expect(rawCalls).toHaveLength(0);
+  });
+
+  it('원료 2줄 중 두 번째 홀더가 잘못되어도 첫 번째 원료를 차감하지 않는다', async () => {
+    const { deps, rawCalls, adds } = makeDeps();
+    deps.items = [...items, item({ id: 'raw-풍회참깨', name: '풍회참깨', type: 'raw', subtype: '벌크', unit: 'kg', companyId: 'punghoe' })];
+    await expect(createOemEngine(deps as any).issueOemBatch({
+      jobId: 'oem-test-5',
+      oemPartnerId: 'oem1', partnerName: '푸미푸드',
+      sent: [{ material: '참깨', kg: 100 }, { material: '풍회참깨', kg: 50 }], date: '2026-07-17',
+    })).rejects.toThrow('현재 회사');
+    expect(rawCalls).toHaveLength(0);
+    expect(adds).toHaveLength(0);
   });
 });
 
@@ -119,6 +165,22 @@ describe('receiveOemBatch (가공입고)', () => {
       po: { ...openPo, status: 'received' }, returns: [{ itemId: 'nakgae', qty: 1 }], date: '2026-07-17',
     })).rejects.toThrow('이미 가공입고');
   });
+
+  it('다른 회사 배치 또는 돌아온 품목이면 벌크·완제품 모두 쓰지 않는다', async () => {
+    const { deps, rawCalls, updates } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await expect(eng.receiveOemBatch({
+      po: { ...openPo, companyId: 'punghoe' }, returns: [{ itemId: 'box10', qty: 1 }],
+      bulk: [{ material: '볶음참깨', kg: 10 }], date: '2026-07-17',
+    })).rejects.toThrow('다른 회사');
+    deps.items = items.map(row => row.id === 'box10' ? { ...row, companyId: 'punghoe' as const } : row);
+    await expect(createOemEngine(deps as any).receiveOemBatch({
+      po: openPo, returns: [{ itemId: 'box10', qty: 1 }],
+      bulk: [{ material: '볶음참깨', kg: 10 }], date: '2026-07-17',
+    })).rejects.toThrow('현재 회사');
+    expect(rawCalls).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
 });
 
 describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () => {
@@ -155,6 +217,32 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     expect(adds.find(a => a.c === 'issuedStatements')!.d.totalTax).toBe(0);
   });
 
+  it('완제품과 벌크를 함께 받은 가공비를 모든 전표 줄에 반영한다', async () => {
+    const { deps, adds } = makeDeps();
+    const po: PurchaseOrder = {
+      ...receivedPo, oemReceivedKg: 1400,
+      items: [{ itemId: 'nakgae', name: '볶음참깨-낱개/1kg', quantity: 100, unit: '개' }],
+      oemReceivedBulk: [{ material: '볶음참깨', kg: 1300 }],
+    };
+    const result = await createOemEngine(deps as any).issueOemFeeStatement({ po, date: '2026-07-17' });
+    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
+    expect(stmt.items).toHaveLength(2);
+    expect(stmt.items[1]).toMatchObject({ name: expect.stringContaining('벌크'), qty: 1300, accountCode: '540' });
+    expect(stmt.items.reduce((sum: number, line: { total: number }) => sum + line.total, 0)).toBe(2_800_000);
+    expect(result.total).toBe(2_800_000);
+  });
+
+  it('전표는 연결됐지만 확인요청 완료 표시가 실패한 경우 같은 전표를 재확인한다', async () => {
+    const { deps } = makeDeps();
+    let attempted = 0;
+    deps.applyOemFeeStatement = async (input: any) => { attempted++; return input.statement.id; };
+    const result = await createOemEngine(deps as any).issueOemFeeStatement({
+      po: { ...receivedPo, linkedStatementId: `OEMFEE-${receivedPo.id}` }, date: '2026-07-17',
+    });
+    expect(result.statementId).toBe(`OEMFEE-${receivedPo.id}`);
+    expect(attempted).toBe(1);
+  });
+
   it('가공입고 전이면 던진다', async () => {
     const { deps } = makeDeps();
     const eng = createOemEngine(deps as any);
@@ -167,5 +255,19 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     const eng = createOemEngine(deps as any);
     await expect(eng.issueOemFeeStatement({ po: { ...receivedPo, linkedStatementId: 'stmt-x' }, date: '2026-07-17' }))
       .rejects.toThrow('이미 가공비 전표');
+  });
+
+  it('다른 회사 배치 또는 전표 품목이면 발행 전에 거절한다', async () => {
+    const { deps, adds, updates } = makeDeps();
+    await expect(createOemEngine(deps as any).issueOemFeeStatement({
+      po: { ...receivedPo, companyId: 'punghoe' }, date: '2026-07-17',
+    })).rejects.toThrow('다른 회사');
+    deps.items = items.map(row => row.id === 'box10' ? { ...row, companyId: 'punghoe' as const } : row);
+    await expect(createOemEngine(deps as any).issueOemFeeStatement({
+      po: { ...receivedPo, items: [{ itemId: 'box10', name: '볶음참깨', quantity: 1, unit: '박스' }] },
+      date: '2026-07-17',
+    })).rejects.toThrow('현재 회사');
+    expect(adds).toHaveLength(0);
+    expect(updates).toHaveLength(0);
   });
 });

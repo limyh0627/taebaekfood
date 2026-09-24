@@ -1,6 +1,6 @@
 
 import { stampFor, claimDocNo } from '../../shared/voucherStamp';
-import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
+import { companyOf, type CompanyId, type Item, type IssuedStatement, type Partner, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { parsePackageKg, parseSpecCount } from '../../constants/formula';
 import { itemKg } from '../../shared/orderUnits';
@@ -12,6 +12,8 @@ import { batchLoss, processingFee, sentKg } from './oem';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import type { OemReceiptInventoryInput } from './oemReceiptInventory';
+import type { OemIssueInput } from './oemIssueJob';
+import type { OemFeeStatementWrite } from './oemFeeStatement';
 
 /**
  * OEM(임가공) 실행 엔진 — 재고·전표 쓰기. 의존성 주입으로 부수효과를 분리해 단위 테스트 가능.
@@ -27,16 +29,20 @@ export const OEM_PROCESSING_FEE_CODE = '540'; // 외주가공비 (제조원가) 
 export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) — 푸미푸드 볶음. 입고 시 변경 가능
 
 export interface OemEngineDeps {
+  companyId: CompanyId;
   items: Item[];
-  adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction'; operationId?: string }) => Promise<void>;
+  partners: Partner[];
+  issueOemBatchJob: (input: OemIssueInput) => Promise<{ poId: string }>;
+  adjustRawLots: (opts: { companyId: CompanyId; material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction'; operationId?: string }) => Promise<void>;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   /** 완제품 재고·로트와 OEM 배치 완료 표시를 한 transaction으로 반영한다. */
   applyOemReceiptInventory: (input: OemReceiptInventoryInput) => Promise<'applied' | 'duplicate'>;
+  applyOemFeeStatement: (input: OemFeeStatementWrite) => Promise<string>;
   /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   /** 이미 있는 전표 — 문서번호를 그날 순번으로 매기는 데 쓴다 */
-  issuedStatements?: { docNo?: string }[];
+  issuedStatements?: Partial<IssuedStatement>[];
   processingFeeCode?: string; // 기본 OEM_PROCESSING_FEE_CODE
 }
 
@@ -44,20 +50,30 @@ export interface OemEngineDeps {
  * 원료명 → 홀더. 고르는 규칙은 [rawHolder](../../shared/rawHolder.ts) 하나가 안다 —
  * 여기서 따로 `find(name===...)` 하던 걸 없앴다(이름으로 첫 항목 집기).
  */
-const findRawHolder = (items: Item[], material: string): Item | undefined =>
-  rawHolderByName(items, material);
+const findRawHolder = (items: Item[], material: string, companyId: CompanyId): Item | undefined =>
+  rawHolderByName(items, material, companyId);
 
 
 export function createOemEngine(deps: OemEngineDeps) {
-  const { items, adjustRawLots, updateItem, addItem, buildFormula, applyOemReceiptInventory } = deps;
+  const { companyId, items, partners, issueOemBatchJob, adjustRawLots, updateItem, buildFormula, applyOemReceiptInventory, applyOemFeeStatement } = deps;
   const statementsOf = () => deps.issuedStatements ?? [];
   const feeCode = deps.processingFeeCode ?? OEM_PROCESSING_FEE_CODE;
+  const oemPartner = (id: string | undefined): Partner => {
+    const partner = partners.find(candidate => candidate.id === id);
+    if (!partner || companyOf(partner) !== companyId) throw new Error('다른 회사이거나 없는 OEM 거래처입니다.');
+    return partner;
+  };
+  const assertPoCompany = (po: PurchaseOrder): void => {
+    if (companyOf(po) !== companyId) throw new Error('다른 회사의 OEM 배치는 처리할 수 없습니다.');
+    oemPartner(po.oemPartnerId ?? po.partnerId);
+  };
 
   /**
    * OEM 발주 — 우리 원료를 외주공장에 보낸다.
    * 본재고 FIFO 차감 + 열린 OEM 배치 카드 생성(전표 없음: 우리 것의 이동).
    */
   async function issueOemBatch(input: {
+    jobId: string;
     oemPartnerId: string;
     partnerName: string;
     sent: { material: string; kg: number }[];
@@ -67,33 +83,25 @@ export function createOemEngine(deps: OemEngineDeps) {
   }): Promise<{ poId: string }> {
     const clean = input.sent.filter(s => s.material && s.kg > 0);
     if (clean.length === 0) throw new Error('내보낼 원료가 없습니다.');
-
-    for (const s of clean) {
-      const holder = findRawHolder(items, s.material);
-      if (!holder) throw new Error(`원료 홀더를 찾을 수 없습니다: ${s.material}`);
-      await adjustRawLots({
-        material: s.material, rawItemId: holder.id, deltaKg: -s.kg,
-        date: input.date, note: `OEM 외주출고 → ${input.partnerName}`, addedBy: input.addedBy,
-        // 실제로 나간 원료다 — 정정으로 남기면 사용량 집계에서 빠지고 그날 묶음이 끊긴다
-        ledgerType: 'auto',
-      });
-    }
-
-    const poId = `oem-${Date.now()}`;
-    const nowIso = new Date().toISOString();
-    await addItem('purchaseOrders', {
-      id: poId,
-      poType: 'oem',
-      partnerId: input.oemPartnerId, partnerName: input.partnerName,
-      oemPartnerId: input.oemPartnerId,
-      oemSent: clean,
-      oemSentAt: nowIso,
-      status: 'invoiced',       // 열린 배치(외주 나가 있음). received 되면 닫힘.
-      itemId: '', itemName: '', quantity: 0, items: [],
-      createdAt: nowIso,
-      ...(input.note ? { note: input.note } : {}),
+    const partner = oemPartner(input.oemPartnerId);
+    // 한 원료를 먼저 차감한 뒤 다음 원료의 회사 오류를 발견하면 부분 출고가 된다.
+    const holders = clean.map(s => {
+      const holder = findRawHolder(items, s.material, companyId);
+      if (!holder) throw new Error(`현재 회사의 원료 홀더를 찾을 수 없습니다: ${s.material}`);
+      return holder;
     });
-    return { poId };
+
+    // 동일 홀더가 입력에 두 번 나오면 하나의 원료 명령으로 합쳐 작업번호 충돌을 막는다.
+    const sent = new Map<string, OemIssueInput['sent'][number]>();
+    clean.forEach((row, index) => {
+      const holder = holders[index]!;
+      const previous = sent.get(holder.id);
+      sent.set(holder.id, { material: row.material, rawItemId: holder.id, kg: (previous?.kg ?? 0) + row.kg });
+    });
+    return issueOemBatchJob({
+      jobId: input.jobId, companyId, partnerId: partner.id, partnerName: partner.name,
+      sent: [...sent.values()], date: input.date, note: input.note, addedBy: input.addedBy,
+    });
   }
 
   /**
@@ -114,6 +122,7 @@ export function createOemEngine(deps: OemEngineDeps) {
   }): Promise<{ receivedKg: number; loss: number }> {
     const { po } = input;
     if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
+    assertPoCompany(po);
     if (po.status === 'received') throw new Error('이미 가공입고된 배치입니다.');
 
     const quantityByItem = new Map<string, number>();
@@ -121,8 +130,22 @@ export function createOemEngine(deps: OemEngineDeps) {
       quantityByItem.set(row.itemId, (quantityByItem.get(row.itemId) ?? 0) + row.qty);
     }
     const lines = [...quantityByItem].map(([itemId, qty]) => ({ itemId, qty }));
-    const bulkLines = (input.bulk ?? []).filter(b => b.material && b.kg > 0);
+    const bulkByHolder = new Map<string, { material: string; kg: number }>();
+    for (const row of (input.bulk ?? []).filter(b => b.material && b.kg > 0)) {
+      const holder = findRawHolder(items, row.material, companyId);
+      if (!holder) throw new Error(`현재 회사의 벌크 원료 홀더를 찾을 수 없습니다: ${row.material}`);
+      const previous = bulkByHolder.get(holder.id);
+      bulkByHolder.set(holder.id, { material: row.material, kg: (previous?.kg ?? 0) + row.kg });
+    }
+    const bulkLines = [...bulkByHolder.values()];
     if (lines.length === 0 && bulkLines.length === 0) throw new Error('입고할 품목이 없습니다.');
+    for (const row of lines) {
+      const product = items.find(item => item.id === row.itemId);
+      if (!product || companyOf(product) !== companyId) throw new Error(`현재 회사의 OEM 입고 품목을 찾을 수 없습니다: ${row.itemId}`);
+    }
+    for (const row of bulkLines) {
+      if (!findRawHolder(items, row.material, companyId)) throw new Error(`현재 회사의 벌크 원료 홀더를 찾을 수 없습니다: ${row.material}`);
+    }
 
     let receivedKg = 0;
     const poItems: PurchaseOrder['items'] = [];
@@ -132,7 +155,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     // 실물 박스에 찍는 번호와 장부가 같아진다. 이번 입고에서 새로 만든 것도 세어야 번호가 안 겹친다.
     const issuedLotNos: RawMaterialLot[] = [];
     const lotNoFor = (material: string, date: string) => nextLotNo(
-      [...items.flatMap(i => (i.lots ?? []).filter(l => (l.material ?? '') === material)), ...issuedLotNos],
+      [...items.filter(i => companyOf(i) === companyId).flatMap(i => (i.lots ?? []).filter(l => (l.material ?? '') === material)), ...issuedLotNos],
       date,
     );
 
@@ -173,10 +196,10 @@ export function createOemEngine(deps: OemEngineDeps) {
     //   (예전엔 벌크를 받을 방법이 없어, 소분 품목이 입고 없는 빈 홀더에서 빼가 로트가 음수로 갔다)
     //   adjustRawLots가 로트 생성·음수이월 상쇄·원장 기록까지 함께 처리한다.
     for (const b of bulkLines) {
-      const holder = findRawHolder(items, b.material);
+      const holder = findRawHolder(items, b.material, companyId);
       if (!holder) throw new Error(`원료 홀더를 찾을 수 없습니다: ${b.material}`);
       await adjustRawLots({
-        material: b.material, rawItemId: holder.id, deltaKg: b.kg,
+        companyId, material: b.material, rawItemId: holder.id, deltaKg: b.kg,
         date: input.date, note: `OEM 가공입고 ← ${po.partnerName ?? ''}`, addedBy: input.addedBy,
         ledgerType: 'auto',
         // 완제품 transaction 전에 멈춰 재시도해도 벌크가 한 번만 들어가야 한다.
@@ -197,16 +220,29 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     // 전표는 끊지 않는다 — linkedStatementId 없이 두면 '가공비 전표 작성 대기'가 된다.
     const operationId = `oem-receive:${po.id}`;
+    const perKg = input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG;
+    const total = Math.round(receivedKg * perKg);
+    const feeRequest: OemReceiptInventoryInput['feeRequest'] = {
+      id: `OEMFEE-${po.id}`, companyId, itemId: po.id,
+      itemName: `외주가공비 — ${po.partnerName ?? ''}`,
+      originalQuantity: receivedKg, requestedQuantity: receivedKg,
+      type: 'oem_fee', unit: 'kg', oemPoId: po.id,
+      oemFeePerKg: perKg, oemTotal: total,
+      reason: `${po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
+      status: 'pending', requestedAt: new Date().toISOString(),
+    };
     await applyOemReceiptInventory({
+      companyId,
       poId: po.id,
       operationId,
       date: input.date,
       items: receiptItems,
+      feeRequest,
       poPatch: {
         status: 'received', receivedAt: new Date().toISOString(),
         oemReceivedKg: receivedKg, items: poItems,
         ...(bulkLines.length ? { oemReceivedBulk: bulkLines } : {}),
-        oemFeePerKg: input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG,
+        oemFeePerKg: perKg,
       },
     });
 
@@ -225,8 +261,11 @@ export function createOemEngine(deps: OemEngineDeps) {
   }): Promise<{ statementId: string; supply: number; tax: number; total: number }> {
     const { po } = input;
     if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
+    assertPoCompany(po);
     if (po.status !== 'received') throw new Error('가공입고 전에는 전표를 끊을 수 없습니다.');
-    if (po.linkedStatementId) throw new Error('이미 가공비 전표가 발행된 배치입니다.');
+    const statementId = `OEMFEE-${po.id}`;
+    // 전표 저장 뒤 확인요청 완료 표시만 실패할 수 있다. 같은 ID의 재확인은 거래에서 판정한다.
+    if (po.linkedStatementId && po.linkedStatementId !== statementId) throw new Error('이미 가공비 전표가 발행된 배치입니다.');
 
     const receivedKg = po.oemReceivedKg ?? 0;
     const perKg = input.unitPricePerKg ?? po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
@@ -235,8 +274,9 @@ export function createOemEngine(deps: OemEngineDeps) {
     const taxable = input.taxable ?? true;
     // 돌아온 완제품을 품목별 가공비 라인으로 — 수량=받은 개수, 규격=품목 spec.
     //  가공단가(perKg)는 세금포함 기준(processingFee와 동일): 1개 세포함가 = 개당kg × perKg → 공급가 = ÷1.1.
-    const feeLines = (po.items ?? []).map(pi => {
+    const productFeeLines = (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
+      if (!it || companyOf(it) !== companyId) throw new Error(`현재 회사의 OEM 전표 품목을 찾을 수 없습니다: ${pi.itemId}`);
       const unitTotal = Math.round((it ? itemKg(it) : 0) * perKg);       // 1개당 가공비(세포함)
       const q = pi.quantity ?? 0;
       //  줄의 공급가·세액은 **합계에서** 푼다 — 개당으로 풀어 곱하면 개수만큼 오차가 쌓인다
@@ -249,19 +289,39 @@ export function createOemEngine(deps: OemEngineDeps) {
         isTaxExempt: !taxable, accountCode: feeCode,
       };
     }).filter(l => l.qty > 0 && l.total > 0);
+    // 받은 총중량에는 벌크도 들어간다. 완제품 줄만 전표로 쓰면 벌크 가공비가 빠진다.
+    const bulkFeeLines = (po.oemReceivedBulk ?? []).filter(b => b.kg > 0).map(b => {
+      const { supply, tax, gross } = lineAmount(b.kg, perKg, !taxable);
+      return {
+        name: `${b.material} 벌크 가공비`, spec: 'kg', qty: b.kg,
+        price: lineAmount(1, perKg, !taxable).supply,
+        supply, tax, total: gross, isTaxExempt: !taxable, accountCode: feeCode,
+      };
+    });
+    const feeLines = [...productFeeLines, ...bulkFeeLines];
     // 품목 라인이 없으면(옛 배치 등) 종전처럼 한 줄로 폴백.
     const lines: IssuedStatement['items'] = feeLines.length > 0 ? feeLines : [{
       name: `외주가공비 (${sentKg(po.oemSent)}kg→${receivedKg}kg)`, spec: '', qty: 1,
       price: fee.supply, supply: fee.supply, tax: fee.tax, total: fee.total,
       isTaxExempt: !taxable, accountCode: feeCode,
     }];
+    // 품목별 반올림 합과 총 받은 kg 기준 합계가 다를 수 있어 마지막 줄에서 원단위를 맞춘다.
+    const grossGap = fee.total - lines.reduce((sum, line) => sum + line.total, 0);
+    if (grossGap !== 0) {
+      const last = lines[lines.length - 1]!;
+      const corrected = lineAmount(last.total + grossGap, 1, !taxable);
+      if (corrected.gross < 0) throw new Error('받은 중량과 가공비 전표 줄이 일치하지 않습니다.');
+      lines[lines.length - 1] = {
+        ...last, supply: corrected.supply, tax: corrected.tax, total: corrected.gross,
+        price: Math.round(corrected.supply / last.qty),
+      };
+    }
     const totalSupply = lines.reduce((s, l) => s + l.supply, 0);
     const totalTax = lines.reduce((s, l) => s + l.tax, 0);
 
-    const statementId = `stmt-${Date.now()}`;
-    const d = new Date(input.date + 'T00:00:00');
-    await addItem('issuedStatements', {
+    const statement: IssuedStatement = {
       id: statementId,
+      companyId,
       issuedAt: stampFor(input.date), tradeDate: input.date, type: '매입',
       partnerId: po.oemPartnerId ?? po.partnerId ?? '', partnerName: po.partnerName ?? '',
       orderId: po.id,
@@ -269,9 +329,9 @@ export function createOemEngine(deps: OemEngineDeps) {
       docNo: claimDocNo(input.date, statementsOf(), '가공'),
       totalSupply, totalTax, totalAmount: totalSupply + totalTax,
       items: lines,
-    } as Partial<IssuedStatement>);
+    };
 
-    await updateItem('purchaseOrders', po.id, { linkedStatementId: statementId, oemFeePerKg: perKg });
+    await applyOemFeeStatement({ companyId, poId: po.id, perKg, statement });
     return { statementId, supply: totalSupply, tax: totalTax, total: totalSupply + totalTax };
   }
 

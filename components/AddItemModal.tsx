@@ -10,6 +10,7 @@ import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
 import { 묶음갈래of } from '../src/shared/orderUnits';
+import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import PickRow from '../src/shared/ui/PickRow';
 import ModalShell from '../src/shared/components/ModalShell';
 
@@ -21,7 +22,7 @@ interface ProductModalProps {
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   onClose: () => void;
-  onSave: (_product: Item & { bomDraft?: BomDraftLine[] }) => void;
+  onSave: (_product: Item & { bomDraft?: BomDraftLine[] }) => void | Promise<void>;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onDeletePartnerItem?: (id: string) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
@@ -263,6 +264,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
+    if (initialData && (initialData.type === 'service') !== (formData.type === 'service')) {
+      window.alert('기존 실물 품목과 비재고/용역 품목 사이의 유형 변경은 과거 재고·전표 해석을 바꾸므로 여기서 할 수 없습니다. 별도 이관이 필요합니다.');
+      return;
+    }
     // 박스·선물세트는 서류용 품목이 없어도 저장 가능 — 든 완제품으로 풀려 서류에 올라간다
     // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
@@ -285,10 +290,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
       type: formData.type,
       ...(formData.category && { category: formData.category }),
       ...(formData.subtype && { subtype: formData.subtype }),
-      ...(formData.cost > 0 ? { cost: formData.cost } : {}),
-      stock: initialData?.stock ?? 0,
-      minStock: formData.type === 'product' ? 0 : formData.minStock,
-      unit: formData.unit,
+      ...(formData.type === 'service' ? { cost: 0 } : formData.cost > 0 ? { cost: formData.cost } : {}),
+      stock: formData.type === 'service' ? 0 : initialData?.stock ?? 0,
+      minStock: formData.type === 'service' || formData.type === 'product' ? 0 : formData.minStock,
+      unit: formData.type === 'service' ? '건' : formData.unit,
       image: initialData?.image || '',
       // 구성품(BOM)은 item_bom에만 저장한다 — 저장 직후 AdminApp이 동기화한다.
       //   items.submaterials는 로딩 때 withDerivedSubmaterials가 item_bom에서 통째로 다시 만들므로,
@@ -303,7 +308,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
       ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
       unpackable: !!formData.unpackable,
-      costSource: formData.costSource,
+      costSource: formData.type === 'service' ? 'manual' : formData.costSource,
     };
 
     /**
@@ -313,7 +318,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
      * 받는 쪽은 `p.submaterials`를 계속 읽었으니 늘 빈 배열이었고, 그쪽 로직이
      * "기존 줄 전부 삭제 → 초안대로 다시 쓰기"라서 **품목을 저장할 때마다 BOM이 통째로 지워졌다.**
      */
-    onSave({ ...finalProduct, bomDraft: formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) });
+    const saveProduct = () => onSave({ ...finalProduct, bomDraft: formData.type === 'service' ? [] : formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) });
+    if (formData.type === 'service') {
+      // 용역은 등록 직후 거래처 연결을 만든다. 품목 저장 실패 시 연결만 남지 않게 순서를 보장한다.
+      try {
+        await saveProduct();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : '비재고/용역 품목을 저장하지 못했습니다.');
+        return;
+      }
+    } else {
+      void saveProduct();
+    }
 
     // 원료 배합·수율 저장 — **반제품·원료만**. item_formula.
     //   완제품은 저장하지 않는다: parent_key가 품목이라 같은 품목을 쓰는 다른 완제품까지 덮어쓰고,
@@ -500,7 +516,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
           </div>
 
           {/* 원가 — 롤업(구성·원료식에서 계산) / 입력단가(손으로 못 박기) 중 고른다 */}
-          {(() => {
+          {formData.type !== 'service' && (() => {
             const draft = { ...(initialData ?? {}), id: initialData?.id ?? 'draft', name: formData.name, type: formData.type, category: formData.category, subtype: formData.subtype, spec: formData.spec, 품목: formData.품목, cost: formData.cost, costSource: 'rollup' } as unknown as Item;
             const bomDraft = formData.submaterials.map(sm => ({ childId: sm.id, qty: typeof sm.stock === 'number' ? sm.stock : 1 }));
             const rolled = rollupCostOf ? Math.round(rollupCostOf(draft, bomDraft) * 100) / 100 : 0;
@@ -554,7 +570,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
 
           {/* 구성품 (BOM) — 완제품·반제품: 전체 품목 검색·추가 (선물세트·배송도 완제품이다 — subtype으로 갈린다) */}
           {['product', 'wip'].includes(formData.type) && (() => {
-            const pool = [...(items ?? []), ...allSubmaterials];
+            const pool = [...(items ?? []), ...allSubmaterials].filter(isPhysicalInventoryItem);
             const addedIds = new Set(formData.submaterials.map(s => s.id));
             const q = bomSearch.trim().toLowerCase();
             /**

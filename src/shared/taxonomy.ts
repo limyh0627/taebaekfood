@@ -15,11 +15,11 @@
  * DB 필드 대응은 itemTaxonomy.ts 참고 — category=타입, subtype2=서브타입, subtype=카테고리.
  */
 
-export const CATEGORY_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial'] as const;
+export const CATEGORY_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial', 'service'] as const;
 export type CategoryKey = typeof CATEGORY_KEYS[number];
 
 export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
+  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재', service: '비재고/용역',
 };
 
 /**

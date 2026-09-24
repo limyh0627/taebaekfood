@@ -27,10 +27,22 @@ function makeDeps() {
   return {
     rawCalls, updates, adds,
     deps: {
+      companyId: 'taebaek',
       items,
+      partners: [{ id: 'oem1', name: '푸미푸드', companyId: 'taebaek' }],
+      issueOemBatchJob: async (input: any) => {
+        input.sent.forEach((row: any) => rawCalls.push({ companyId: input.companyId, material: row.material, rawItemId: row.rawItemId, deltaKg: -row.kg }));
+        adds.push({ c: 'purchaseOrders', d: { id: input.jobId, poType: 'oem', status: 'invoiced', oemSent: input.sent } });
+        return { poId: input.jobId };
+      },
       adjustRawLots: async (o: any) => { rawCalls.push(o); },
       updateItem: async (c: string, id: string, d: any) => { updates.push({ c, id, d }); },
       addItem: async (c: string, d: any) => { adds.push({ c, d }); return d.id; },
+      applyOemFeeStatement: async (input: any) => {
+        adds.push({ c: 'issuedStatements', d: input.statement });
+        updates.push({ c: 'purchaseOrders', id: input.poId, d: { linkedStatementId: input.statement.id, oemFeePerKg: input.perKg } });
+        return input.statement.id;
+      },
       applyOemReceiptInventory: async (input: any) => {
         for (const row of input.items) {
           const current = items.find(item => item.id === row.itemId)?.stock ?? 0;
@@ -49,6 +61,7 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     const { deps, rawCalls, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
     await eng.issueOemBatch({
+      jobId: 'oem-cycle-1',
       oemPartnerId: 'oem1', partnerName: '푸미푸드',
       sent: [{ material: '참깨', kg: 1500 }], date: '2026-08-06',
     });
@@ -63,7 +76,7 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     //  판매·완제품 로트를 후처리해 만든다.
     const { deps, rawCalls, updates, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
-    const po = { id: 'oem-1', poType: 'oem', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
+    const po = { id: 'oem-1', poType: 'oem', oemPartnerId: 'oem1', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
 
     const { receivedKg, loss } = await eng.receiveOemBatch({
       po, date: '2026-08-08',
@@ -89,7 +102,7 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
   it('②-b 벌크로 받은 몫은 원료 홀더 로트에 쌓인다 — 소분 품목이 여기서 빼간다', async () => {
     const { deps, rawCalls, updates, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
-    const po = { id: 'oem-2', poType: 'oem', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
+    const po = { id: 'oem-2', poType: 'oem', oemPartnerId: 'oem1', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
 
     const { receivedKg, loss } = await eng.receiveOemBatch({
       po, date: '2026-08-08',
@@ -113,7 +126,7 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
   it('②-c 벌크만 받아도 된다', async () => {
     const { deps, rawCalls } = makeDeps();
     const eng = createOemEngine(deps as any);
-    const po = { id: 'oem-3', poType: 'oem', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1000 }] } as any;
+    const po = { id: 'oem-3', poType: 'oem', oemPartnerId: 'oem1', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1000 }] } as any;
     const { receivedKg } = await eng.receiveOemBatch({
       po, date: '2026-08-08', returns: [], bulk: [{ material: '볶음참깨', kg: 950 }],
     });

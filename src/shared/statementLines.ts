@@ -55,6 +55,17 @@ export interface LineItem {
 /** 매출이면 기본 계정이 404(제품매출)이다. 매입은 줄마다 골라야 한다. */
 const 기본계정 = (t: StatementType) => (t === '매출' ? STANDARD_ACCOUNT.SALES_PRODUCT : undefined);
 
+export function manualAccountCode(
+  row: Pick<ManualRow, 'itemId' | 'name' | 'accountCode'>,
+  stmtType: StatementType,
+  linked?: readonly { itemId: string; name: string }[],
+  items?: readonly Pick<Item, 'id' | 'type'>[],
+): string | undefined {
+  if (row.accountCode) return row.accountCode;
+  const itemId = row.itemId ?? itemIdByExactName(row.name, linked);
+  return itemId && items?.find(item => item.id === itemId)?.type === 'service' ? undefined : 기본계정(stmtType);
+}
+
 /**
  * **이름이 정확히 맞으면 그 품목으로 본다** — 그 거래처에 **연결된 품목** 안에서만.
  *
@@ -87,6 +98,7 @@ export function itemIdByExactName(
 export function manualLines(
   rows: readonly ManualRow[], stmtType: StatementType,
   linked?: readonly { itemId: string; name: string }[],
+  items?: readonly Pick<Item, 'id' | 'type'>[],
 ): LineItem[] {
   return rows
     .filter(i => i.name.trim())
@@ -100,7 +112,8 @@ export function manualLines(
        * 소수점이 남아 합계가 1원씩 어긋나고, 전표에 '1,234.56원'이 찍힌다.
        */
       const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
-      const accountCode = item.accountCode || 기본계정(stmtType);
+      // 서비스는 제품매출 404가 아니라 거래처·방향별로 지정한 계정을 써야 한다.
+      const accountCode = manualAccountCode({ ...item, itemId }, stmtType, linked, items);
       /*  **품목 줄인지 계정 줄인지 여기서 적어 둔다.**
           품목을 골랐으면(또는 이름이 꼭 맞아 이어졌으면) 품목 줄이고,
           품목 없이 계정만 고른 줄은 계정 줄이다(택배비·화물비·카드대금…).

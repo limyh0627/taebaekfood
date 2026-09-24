@@ -46,7 +46,14 @@ function harness(items: Item[]) {
   const productLots: Record<string, any[]> = {};
   const pos: Record<string, any> = {};
   const engine = createOemEngine({
+    companyId: 'taebaek',
     items,
+    partners: [{ id: 'p-pumi', name: '푸미푸드', companyId: 'taebaek' } as any],
+    issueOemBatchJob: async input => {
+      input.sent.forEach(row => lots.push({ material: row.material, deltaKg: -row.kg, note: `OEM 외주출고 → ${input.partnerName}` }));
+      pos[input.jobId] = { id: input.jobId, poType: 'oem', status: 'invoiced', oemSent: input.sent };
+      return { poId: input.jobId };
+    },
     adjustRawLots: async (o) => { lots.push({ material: o.material, deltaKg: o.deltaKg, note: o.note }); },
     updateItem: async (col, id, data) => {
       if (col === 'items' && data.stock != null) stocks[id] = data.stock;
@@ -57,6 +64,10 @@ function harness(items: Item[]) {
       if (col === 'rawMaterialLedger') ledger.push(data);
       if (col === 'purchaseOrders') pos[data.id] = data;
       return data.id;
+    },
+    applyOemFeeStatement: async input => {
+      pos[input.poId] = { ...(pos[input.poId] ?? {}), linkedStatementId: input.statement.id, oemFeePerKg: input.perKg };
+      return input.statement.id;
     },
     applyOemReceiptInventory: async input => {
       for (const row of input.items) {
@@ -85,6 +96,7 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
   it('보낼 때 — 참깨가 본재고에서 빠진다', async () => {
     const h = harness(items);
     await h.engine.issueOemBatch({
+      jobId: 'oem-scenario-1',
       oemPartnerId: 'p-pumi', partnerName: '푸미푸드',
       sent: [{ material: '참깨', kg: 100 }], date: '2026-08-20',
     });
@@ -99,7 +111,7 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
     //  판매·완제품 로트를 후처리로 만든다.
     const h = harness(items);
     const po = {
-      id: 'oem-1', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드',
+      id: 'oem-1', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 100 }],
     } as unknown as PurchaseOrder;
 
@@ -121,7 +133,7 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
   it('벌크로 받으면 로트에 쌓이고, 수불부는 두 번 안 잡힌다', async () => {
     const h = harness(items);
     const po = {
-      id: 'oem-2', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드',
+      id: 'oem-2', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 100 }],
     } as unknown as PurchaseOrder;
 
@@ -139,7 +151,7 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
   it('완포장 + 벌크를 같이 받아도 각각 제자리로 간다', async () => {
     const h = harness(items);
     const po = {
-      id: 'oem-3', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드',
+      id: 'oem-3', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 100 }],
     } as unknown as PurchaseOrder;
 
@@ -160,7 +172,7 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
   it('서류용 품목이 비어 있으면 수불부에 안 잡힌다 — 이게 빠지는 원인', async () => {
     const noPumok = { ...oemProduct(), 품목: '' } as unknown as Item;
     const h = harness([raw('참깨', 500), raw('볶음참깨', 0), noPumok]);
-    const po = { id: 'oem-4', poType: 'oem', status: 'invoiced', oemSent: [{ material: '참깨', kg: 100 }] } as unknown as PurchaseOrder;
+    const po = { id: 'oem-4', poType: 'oem', status: 'invoiced', oemPartnerId: 'p-pumi', oemSent: [{ material: '참깨', kg: 100 }] } as unknown as PurchaseOrder;
     await h.engine.receiveOemBatch({ po, returns: [{ itemId: 'PLDhkjOgcPIhO1hhReHm', qty: 95 }], date: '2026-08-25' });
     expect(h.stocks['PLDhkjOgcPIhO1hhReHm']).toBe(2 + 95);   // 재고는 는다
     expect(h.ledger).toHaveLength(0);                         // 수불부엔 안 남는다
@@ -202,7 +214,7 @@ describe('박스 로트 — 어느 로트가 어디로 갔는지 남는다', () 
   it('규격이 달라도 같은 날 볶은 건 로트번호가 이어진다', async () => {
     const h = harness(items);
     const po = {
-      id: 'oem-6', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드',
+      id: 'oem-6', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 500 }],
     } as unknown as PurchaseOrder;
 
@@ -219,7 +231,7 @@ describe('박스 로트 — 어느 로트가 어디로 갔는지 남는다', () 
 
   it('벌크로 받은 몫엔 완제품 로트를 안 만든다 — 원료 로트로 이미 갔다', async () => {
     const h = harness(items);
-    const po = { id: 'oem-7', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemSent: [{ material: '참깨', kg: 100 }] } as unknown as PurchaseOrder;
+    const po = { id: 'oem-7', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi', oemSent: [{ material: '참깨', kg: 100 }] } as unknown as PurchaseOrder;
     await h.engine.receiveOemBatch({ po, returns: [], bulk: [{ material: '볶음참깨', kg: 96 }], date: '2026-08-25' });
     expect(h.productLots).toEqual({});
     expect(h.lots).toHaveLength(1);

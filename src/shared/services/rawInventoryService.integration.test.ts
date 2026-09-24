@@ -87,6 +87,24 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
     expect([...store.keys()].sort()).toEqual([...before.keys()].sort());
   });
 
+  it.each([0, 0.001, 0.002, 0.5, 1, -0.001])('품목 사본 편차 %skg — 0만 다음 입고가 가능하다', async delta => {
+    await executeRawInventoryCommand(명령({ operationId: 'initial', kg: 100 }));
+    const stateId = inventoryDocId('taebaek', 'raw-x');
+    const stateBefore = JSON.stringify(store.get(`rawInventories/${stateId}`));
+    store.set('items/raw-x', { ...store.get('items/raw-x'), stock: 100 + delta });
+
+    const result = await executeRawInventoryCommand(명령({ operationId: 'next', kg: 10 }));
+    if (delta === 0) {
+      expect(result.status).toBe('applied');
+      expect(store.get('items/raw-x')).toMatchObject({ stock: 110 });
+    } else {
+      expect(result).toMatchObject({ status: 'rejected', code: 'STOCK_MISMATCH' });
+      expect(JSON.stringify(store.get(`rawInventories/${stateId}`))).toBe(stateBefore);
+      expect(store.has(`rawMaterialLedger/${operationDocId('next')}`)).toBe(false);
+      expect(store.get('items/raw-x')).toMatchObject({ stock: 100 + delta });
+    }
+  });
+
   it('같은 명령을 두 번 보내면 두 번째는 duplicate — 수량이 두 번 안 움직인다', async () => {
     const first = await executeRawInventoryCommand(명령());
     expect(first.status).toBe('applied');

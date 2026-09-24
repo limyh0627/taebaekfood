@@ -19,6 +19,7 @@ import {
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { serviceStatementErrors } from '../src/shared/serviceStatement';
 import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { buildStatementCommand, checkStatementCommand, type StatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
@@ -76,7 +77,7 @@ import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts, buildPartnerLedger } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { templateAccrRows } from '../src/shared/cashTemplates';
-import { buildCashEditPatch, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
+import { buildCashEditPatch, cashEditAmount, cashEditPartner, cashPartnerChangeError, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
 import { PREPAID, ADVANCE_IN } from '../src/shared/interCompany';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
@@ -95,9 +96,9 @@ interface TradeStatementProps {
   cashEntries?: CashEntry[];
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
-  onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void;
-  onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
-  onUpdateSettlement?: (id: string, data: Partial<Settlement>) => void;
+  onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void | Promise<void>;
+  onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void | Promise<void>;
+  onUpdateSettlement?: (id: string, data: Partial<Settlement>) => void | Promise<void>;
   onDeleteCashEntry?: (id: string) => void;
   onDeleteSettlement?: (id: string) => void;
   onAddCashAccount?: (a: Omit<CashAccount, 'id'> & { id: string }) => void;
@@ -418,6 +419,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     // 전표에 상계된 자금이면 상계액(settlement)도 같은 폭으로 옮겨야 미수/미지급 잔액이 안 틀어진다.
     const linked = settlements.filter(s => s.cashEntryId === entry.id);
     const delta = amt - entry.amount;
+    let patch: Partial<CashEntry>;
+    try {
+      const selected = form.partnerId === undefined ? undefined : cashEditPartner(form.partnerId, partners, companyId);
+      patch = buildCashEditPatch(entry, form, lines, selected);
+    } catch (error) {
+      window.alert((error as Error).message);
+      return;
+    }
+    const partnerError = cashPartnerChangeError(entry, Object.hasOwn(patch, 'partnerId') ? patch.partnerId ?? '' : entry.partnerId ?? '', amt, linked, mergedStatements);
+    if (partnerError) { window.alert(partnerError); return; }
     if (linked.length && delta !== 0) {
       if (linked.length > 1 || !onUpdateSettlement) {
         window.alert('이 자금은 여러 전표에 나눠 상계돼 있어 금액을 여기서 못 고칩니다.\n수금/지불을 삭제한 뒤 다시 잡아주세요.');
@@ -428,12 +439,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         window.alert(`상계된 금액(${linked[0].amount.toLocaleString()}원)보다 많이 줄일 수 없습니다.\n수금/지불을 삭제한 뒤 다시 입력해 주세요.`);
         return;
       }
-      onUpdateSettlement(linked[0].id, { amount: next });
     }
-    const patch = buildCashEditPatch(entry, form, lines);
-    onUpdateCashEntry(entry.id, patch);
-    // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
-    if (!(linked.length && delta !== 0)) await autoMatchCashToStatements({ ...entry, ...patch });
+    let settlementUpdated = false;
+    try {
+      if (linked.length && delta !== 0) {
+        await onUpdateSettlement!(linked[0].id, { amount: linked[0].amount + delta });
+        settlementUpdated = true;
+      }
+      // 저장 실패인데 먼저 autoMatch/닫기를 하면 다른 거래처에 상계가 붙는다.
+      await onUpdateCashEntry(entry.id, patch);
+    } catch (error) {
+      if (settlementUpdated) {
+        try {
+          await onUpdateSettlement!(linked[0].id, { amount: linked[0].amount });
+        } catch (rollbackError) {
+          window.alert(`자금 전표 저장에 실패했고 상계 금액도 되돌리지 못했습니다. 두 기록을 확인해 주세요. 저장: ${(error as Error).message}; 되돌리기: ${(rollbackError as Error).message}`);
+          return;
+        }
+      }
+      window.alert(`자금 전표를 저장하지 못했습니다: ${(error as Error).message}`);
+      return;
+    }
+    // 저장은 끝났다. 자동매칭만 실패하면 다시 저장하도록 남겨 두지 않는다.
+    try {
+      // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
+      if (!(linked.length && delta !== 0)) await autoMatchCashToStatements({ ...entry, ...patch });
+    } catch (error) {
+      window.alert(`자금 전표는 저장됐지만 자동 매칭을 마치지 못했습니다: ${(error as Error).message}`);
+    }
     setCashModal(null);
   };
 
@@ -691,7 +724,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (left <= 0) break;
       const amount = Math.min(left, t.open);
       if (amount <= 0) continue;
-      onAddSettlement({
+      await onAddSettlement({
         id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         cashEntryId: entry.id, statementId: t.stmt.id, amount, createdAt: new Date().toISOString(),
       });
@@ -1268,16 +1301,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //  셈은 [shared/statementLines](../src/shared/statementLines.ts) 한 곳에 있다.
   //  박스↔낱개, 단가·과세·계정 우선순위, 같은 품목 합치기가 다 거기 있고 시험이 붙어 있다.
   //  여기서는 지금 화면 상태를 넘겨 받아 쓰기만 한다(2026-09-05).
+  const linkedManualItems = useMemo(() => {
+    const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
+    return allItems
+      .filter(p => !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
+      .map(p => ({ itemId: p.id, name: p.name }));
+  }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType]);
   const lineItems = useMemo((): LineItem[] => {
     if (manualMode) {
       //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
       //  안 이으면 `partnerPriceWrites` 가 그 줄을 건너뛰어 단가·과세면세가 조용히 안 저장된다.
-      const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
-      const 연결품목 = allItems
-        //  박스는 뺀다 — 낱개와 이름이 같으면 낱개 단가가 박스에 붙는다(해피유통 300ml 사고).
-        .filter(p => !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
-        .map(p => ({ itemId: p.id, name: p.name }));
-      return manualLines(manualItems, stmtType, 연결품목);
+      return manualLines(manualItems, stmtType, linkedManualItems, allItems);
     }
     if (!selectedOrder) return [];
     return orderLines({
@@ -1290,7 +1324,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       taxExemptOverrides,
       accountCodeOverrides,
     });
-  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
+  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems]);
 
   const 합계 = lineTotals(lineItems);
   const isTwoSided = 합계.isTwoSided;
@@ -1364,6 +1398,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true): Promise<IssuedStatement | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
+    const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
+    if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
     if (걸린줄들('ZERO_PRICE').length) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
@@ -1645,10 +1681,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  같이 떠서 "깨분참기름/16.5kg가 왜 두 개냐"가 됐다. 어느 쪽을 골랐는지에 따라
       //  단가도 재고도 다른 품목에 붙는다.
       .filter(p => companyOf(p) === companyId)
-      .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p))   // 박스 품목은 전표 피커에서 제외(낱개만)
+      .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p) && p.type !== 'service')   // 용역은 거래조건을 먼저 저장한 연결 품목만 고른다
       .map(p => {
         const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
-        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price, taxType: ex?.taxType }, product: p };
+        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price, taxType: ex?.taxType, Account_Code: ex?.Account_Code }, product: p };
       });
     //  **분류로 줄을 세운다.** 거래처에 등록된 품목을 앞에 두는 것은 그대로 — 자주 쓰는 게 위에 와야 한다.
     const sorted = (rows: typeof searchableRows) =>
@@ -1713,7 +1749,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  빈 행은 안 붙인다 — 누를 때마다 하나씩 딸려 나와 지우는 일이 된다. 필요하면 '행 추가'가 있다.
       return [
         ...filled,
-        { itemId: pc.product!.id, name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? 0), isTaxExempt: pc.pc.taxType === '면세' },
+        { itemId: pc.product!.id, name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? 0), isTaxExempt: pc.pc.taxType === '면세', accountCode: pc.pc.Account_Code },
       ];
     });
   }, []);
@@ -2176,6 +2212,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <CashEntryModal
           key={cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}
           mode={cashModal}
+          partners={partners.filter(partner => companyOf(partner) === companyId)}
+          companyId={companyId}
           accountCodes={accountCodes}
           cashAccounts={activeCashAccounts}
           accountId={payAccountId}
@@ -2378,18 +2416,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   return partnerMatches.map(row => ({ pc: row.pc, product: row.product! }));
                 }
                 return allItems
-                  .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
+                  .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && p.type !== 'service' && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
                   .map(p => {
                     const existingPc = (createMode === '매입' ? partnerIn : partnerOut).find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
-                      pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price, taxType: existingPc?.taxType },
+                      pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price, taxType: existingPc?.taxType, Account_Code: existingPc?.Account_Code },
                       product: p,
                     };
                   });
               })() : [];
               const addQuickItem = () => {
                 if (!quickName.trim()) return;
-                const newRow: ManualRow = {itemId:quickItemId,name:quickName,spec:quickSpec,qty:quickQty.trim()||'1',price:quickPrice,isTaxExempt:quickIsTaxExempt,note:quickNote};
+                const quickPc = (createMode === '매입' ? partnerIn : partnerOut).find(pc => pc.itemId === quickItemId && pc.partnerId === selectedClientId);
+                const newRow: ManualRow = {itemId:quickItemId,name:quickName,spec:quickSpec,qty:quickQty.trim()||'1',price:quickPrice,isTaxExempt:quickIsTaxExempt,note:quickNote,accountCode:quickPc?.Account_Code};
                 setManualMode(true);
                 setManualItems(prev=>{
                   const rows = prev.filter(r=>r.name.trim());
@@ -2424,6 +2463,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 //  고른 것을 줄로 옮기는 셈은 shared/itemPick 에 있다 — 화면은 묻고 쓰기만 한다
                 const { toAdd, unlinked } = pickLines(pickerQtys, pickerRows, linkedItemIds, pricePanelEdits);
                 if (toAdd.length === 0) { setShowItemPicker(false); return; }
+                const serviceErrors = serviceStatementErrors(toAdd.map(row => ({ ...row, price: Number(row.price) })), allItems,
+                  [...partnerOut, ...partnerIn], selectedClientId, stmtType);
+                if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return; }
                 /* **거래처에 안 붙은 품목을 골랐으면 물어본다.**
                    예 → 거래처 품목으로 붙인다(단가·과세도 같이). 다음부터 검색 없이 뜬다.
                    아니요 → 이번 전표에만 쓴다. 발행할 때 자동으로 붙는 길도 막는다. */
@@ -2521,22 +2563,22 @@ ${names}
                       const activeRows=ro?manualItems.filter(r=>r.name.trim()):manualItems;
                       return (<>
                         <StatementManualItemRows rows={activeRows} readOnly={ro} selectedIndex={selectedItemIdx}
-                          activeSearchIndex={activeSearchRow} statementType={stmtType} accountCodes={stmtCodes}
+                          activeSearchIndex={activeSearchRow} statementType={stmtType} accountCodes={stmtCodes} items={allItems} linked={linkedManualItems}
                           formatAmount={fmt} searchResults={row=>{
                             if (!row.name.trim()) return [];
                             const query = row.name.toLowerCase();
                             const linked = searchableRows.filter(result => matchesSearch(result.product!.name, query));
                             if (linked.length > 0) return linked.map(result => ({ pc: result.pc, product: result.product! }));
                             const source = createMode === '매입' ? partnerIn : partnerOut;
-                            return allItems.filter(item => !isBoxStockItem(item) && matchesSearch(item.name + ' ' + (item.품목 ?? ''), query))
+                            return allItems.filter(item => item.type !== 'service' && !isBoxStockItem(item) && matchesSearch(item.name + ' ' + (item.품목 ?? ''), query))
                               .map(item => {
                                 const existing = source.find(pc => pc.itemId === item.id && pc.partnerId === selectedClientId);
-                                return { pc: { id: existing?.id ?? item.id, price: existing?.price, taxType: existing?.taxType }, product: item } as StatementManualSearchResult;
+                                return { pc: { id: existing?.id ?? item.id, price: existing?.price, taxType: existing?.taxType, Account_Code: existing?.Account_Code }, product: item } as StatementManualSearchResult;
                               });
                           }} onSelect={setSelectedItemIdx}
                           onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch}:row))}
                           onSearchFocus={setActiveSearchRow} onSearchBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
-                          onChooseProduct={(index,result)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세'}:row));setActiveSearchRow(null);}}
+                          onChooseProduct={(index,result)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
                           onRemove={index=>setManualItems(prev=>prev.filter((_,i)=>i!==index))}/>
                         {!ro && <StatementExpensePresetRow presets={expensePresets} managing={manageExpense}
                           canAdd={!!onAddExpensePreset} canDelete={!!onDeleteExpensePreset} onAddRow={addExpenseRow}

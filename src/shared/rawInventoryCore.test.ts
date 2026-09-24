@@ -66,6 +66,54 @@ describe('원료 재고 코어 — 등식', () => {
   });
 });
 
+describe('음수 이월과 새 양수 로트는 사람이 합치기 전까지 분리한다', () => {
+  const 음수상태 = () => 상태({
+    stockKg: -30,
+    activeLots: [{
+      id: 'debt', material: '깨분', supplierName: '이월', kgIn: 0, kgRemaining: -30,
+      receivedDate: '2026-09-01', status: 'active', createdAt: NOW,
+    }],
+  });
+
+  it.each(['receive', 'opening'] as const)('%s 50kg은 이월 -30kg을 자동으로 지우지 않는다', kind => {
+    const command = kind === 'receive'
+      ? 명령({ operationId: 'receive-1', kg: 50 })
+      : 명령({ operationId: 'opening-1', kind: 'opening', kg: 50 } as never);
+    const received = 적용(음수상태(), command, { newLotId: 'positive' });
+    expect(received.state.stockKg).toBe(20);
+    expect(received.state.activeLots.map(l => [l.id, l.kgRemaining])).toEqual([
+      ['debt', -30], ['positive', 50],
+    ]);
+    expect(received.movement.lotChanges).toEqual([
+      expect.objectContaining({ lotId: 'positive', deltaKg: 50, beforeKg: 0, afterKg: 50 }),
+    ]);
+    expect(received.movement).toMatchObject({ reportedDeltaKg: 50, appliedDeltaKg: 50, balanceAfterKg: 20 });
+
+    const merged = 적용(received.state, 명령({
+      operationId: 'merge-1', kind: 'merge-lots', sourceLotId: 'debt', targetLotId: 'positive',
+    } as never));
+    expect(merged.state.stockKg).toBe(20);
+    expect(merged.state.activeLots).toEqual([expect.objectContaining({ id: 'positive', kgRemaining: 20 })]);
+    expect(merged.movement.lotChanges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ lotId: 'debt', deltaKg: 30 }),
+      expect.objectContaining({ lotId: 'positive', deltaKg: -30 }),
+    ]));
+  });
+
+  it('양수 실사도 음수 이월을 그대로 남기고 실사 로트의 출처만 기록한다', () => {
+    const result = 적용(음수상태(), 명령({
+      operationId: 'take-1', kind: 'stocktake', targetKg: 20,
+    } as never), { newLotId: 'take-positive' });
+    expect(result.state.stockKg).toBe(20);
+    expect(result.state.activeLots.map(l => [l.id, l.kgRemaining])).toEqual([
+      ['debt', -30], ['take-positive', 50],
+    ]);
+    expect(result.movement.lotChanges).toEqual([
+      expect.objectContaining({ lotId: 'take-positive', deltaKg: 50 }),
+    ]);
+  });
+});
+
 describe('원장 전용 사용 — 임가공 완제품', () => {
   it('사용 이력만 남기고 원료 재고와 로트는 그대로 둔다', () => {
     const 입고 = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));

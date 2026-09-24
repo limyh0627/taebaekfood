@@ -46,6 +46,23 @@ const order = (
 });
 
 describe('신규 주문 창의 거래처 진행 주문', () => {
+  it('매출 연결된 비재고 용역을 주문 품목에 노출하지 않는다', () => {
+    const service = { id: 'delivery-fee', name: '배송 용역', unit: '건', type: 'service', category: 'service' } as Item;
+    render(
+      <AddOrderModal
+        items={[...items, service]}
+        orders={[]}
+        partners={partners}
+        partnerItems={[...partnerItems, { id: 'service-link', itemId: service.id, partnerId: 'partner-1', Direction: 'out', price: 10000 } as PartnerItem]}
+        palletStocks={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /가을식품/ })[0]);
+    expect(screen.queryByText('배송 용역')).not.toBeInTheDocument();
+  });
+
   it('거래처 ID의 네 진행 상태만 품목 선택 위에 보여주고 N품목으로 펼친다', () => {
     render(
       <AddOrderModal

@@ -6,9 +6,9 @@ import type { PartnerItem, Item } from './types';
  * 이 셈이 세 벌로 쓰여 있어서 갈렸다. 갈린 자리를 여기 잠근다 —
  * 발행과 수정이 **같은 답**을 내는지가 이 파일의 전부다.
  */
-const 품목: Pick<Item, 'id' | 'name' | '품목'>[] = [
-  { id: 'i1', name: '참기름 500ml', 품목: '참기름' },
-  { id: 'i2', name: '들기름 500ml', 품목: '들기름' },
+const 품목: Pick<Item, 'id' | 'name' | '품목' | 'type'>[] = [
+  { id: 'i1', name: '참기름 500ml', 품목: '참기름', type: 'product' },
+  { id: 'i2', name: '들기름 500ml', 품목: '들기름', type: 'product' },
 ] as never;
 
 const 줄 = (name: string, price: number, over: Record<string, unknown> = {}) =>
@@ -19,6 +19,13 @@ const 단가 = (over: Partial<PartnerItem>): PartnerItem =>
   ({ id: 'pi1', itemId: 'i1', partnerId: 'p1', Direction: 'out', price: 5000, taxType: '면세', ...over } as PartnerItem);
 
 describe('전표 단가를 거래처 단가로 되민다', () => {
+  it('용역 매입은 거래처 단가·세금·계정만 저장하고 품목 원가는 건드리지 않는다', () => {
+    const r = partnerPriceWrites({ type: '매입', partnerId: 'p1',
+      lines: [{ itemId: 'fee', name: '임가공비', price: 11000, qty: 1, supply: 10000, accountCode: '540', isTaxExempt: false }],
+      items: [{ id: 'fee', type: 'service' }], partnerItems: [] });
+    expect(r.upserts[0]).toMatchObject({ itemId: 'fee', Direction: 'in', price: 11000, taxType: '과세', Account_Code: '540' });
+    expect(r.costUpdates).toEqual([]);
+  });
   it('매출 — 바뀐 값을 되민다', () => {
     const r = partnerPriceWrites({
       type: '매출', partnerId: 'p1', lines: [줄('참기름 500ml', 6000)],
@@ -203,7 +210,7 @@ describe('안 쓰는 자리', () => {
 
 describe('해피유통 단가 누락 회귀', () => {
   it('이름이 같은 박스 대신 선택한 낱개 ID에 단가와 과세를 쓴다', () => {
-    const items = [{ id: 'box', name: '생들기름/300ml' }, { id: 'loose', name: '생들기름/300ml' }];
+    const items = [{ id: 'box', name: '생들기름/300ml', type: 'product' }, { id: 'loose', name: '생들기름/300ml', type: 'product' }];
     const r = partnerPriceWrites({ type: '매출', partnerId: 'p1', items,
       lines: [{ itemId: 'loose', name: '생들기름/300ml', price: 6000, isTaxExempt: false, accountCode: '800' }],
       partnerItems: [{ id: 'box-p1', itemId: 'box', partnerId: 'p1', Direction: 'out', price: 6000, Account_Code: '800' }],

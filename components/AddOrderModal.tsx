@@ -233,7 +233,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     if (!selectedPartner) return [];
     return products
       .filter(p => {
-        if (p.archived) return false;
+        if (p.archived || p.type === 'service') return false;
         // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
         if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
         return true;

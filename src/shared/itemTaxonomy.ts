@@ -82,8 +82,12 @@ export const isGoodsItem = (p: { category?: string; type?: string; procureType?:
  * 같은 것이 두 자리에 존재했고, 어느 쪽으로 등록했느냐에 따라 주문 목록·손익 묶음이
  * 달라졌다. 타입에서 뺀다(그 타입으로 저장된 품목은 0건이었다).
  */
-export const TYPE_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial'] as const;
+export const TYPE_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial', 'service'] as const;
 export type TypeKey = typeof TYPE_KEYS[number];
+
+/** 전표에는 품목 줄로 남아도 실물 수량을 들지 않는 용역은 입고·재고·로트 대상이 아니다. */
+export const isPhysicalInventoryItem = (item: { type?: string } | undefined): boolean =>
+  !!item && item.type !== 'service';
 
 //  이름표는 [taxonomy](taxonomy.ts) 한 곳에서 온다 — 여기서 다시 적지 않는다
 export { DEFAULT_CATEGORY_LABELS as DEFAULT_TYPE_LABELS } from './taxonomy';

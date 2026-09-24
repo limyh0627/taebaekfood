@@ -95,7 +95,8 @@ export function unpackLots(params: {
     //  **같은 로트가 이미 벌크에 있으면 거기 얹는다.** 깔 때마다 새 로트를 세우면
     //  한 입고분이 로트 수십 개로 쪼개져 FIFO 가 무의미해진다.
     const 이미있는 = nextBulk.find(l =>
-      l.status === 'active' && !!take.lotNo && l.lotNo === take.lotNo && (l.qtyRemaining == null));
+      l.status === 'active' && Number(l.kgRemaining) > 0
+      && !!take.lotNo && l.lotNo === take.lotNo && (l.qtyRemaining == null));
     if (이미있는) {
       이미있는.kgIn = r3(이미있는.kgIn + bulkQty);
       이미있는.kgRemaining = r3(이미있는.kgRemaining + bulkQty);
