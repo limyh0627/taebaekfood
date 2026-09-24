@@ -171,6 +171,8 @@ describe('자금 전표 수정 저장 순서', () => {
     const gate = deferred();
     const save = vi.fn(async () => gate.promise);
     setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], onUpdateCashEntry: save });
+    // 기본 조회 기간은 실행 당일이라 고정된 9/24 시험 전표를 보려면 전체 기간으로 바꾼다.
+    fireEvent.click(screen.getByRole('button', { name: 'ALL' }));
     fireEvent.click(await screen.findByText('진단 거래처', { selector: 'td' }));
     const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
@@ -183,6 +185,7 @@ describe('자금 전표 수정 저장 순서', () => {
   it('DB 저장이 실패하면 오류를 알리고 수정창을 유지한다', async () => {
     const save = vi.fn(async () => { throw new Error('시험 실패'); });
     setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], onUpdateCashEntry: save });
+    fireEvent.click(screen.getByRole('button', { name: 'ALL' }));
     fireEvent.click(await screen.findByText('진단 거래처', { selector: 'td' }));
     const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
@@ -198,6 +201,7 @@ describe('자금 전표 수정 저장 순서', () => {
       docNo: '260924-01', type: '매출', tradeDate: '2026-09-24', totalAmount: 10000 } as IssuedStatement;
     setup(undefined, undefined, { pendingInvoice: null, cashEntries: [cash], settlements: [settlement],
       issuedStatements: [stmt], onUpdateCashEntry: updateCash, onUpdateSettlement: updateSettlement });
+    fireEvent.click(screen.getByRole('button', { name: 'ALL' }));
     fireEvent.click(await screen.findByText('수정 시험 자금', { selector: 'td' }));
     const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], { target: { value: '6000' } });
