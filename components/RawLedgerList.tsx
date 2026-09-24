@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { Order, RawMaterialEntry } from '../types';
 import { unitOf, kgToUnit, DENSITY } from '../src/constants/formula';
@@ -251,7 +252,7 @@ const RawLedgerList: React.FC<Props> = ({
                 {isAdmin && onDelete && (
                   <span className="w-9 shrink-0">
                     {canDelete && (
-                      <button onClick={(e) => { e.stopPropagation(); if (confirm('이 날짜 기록을 삭제할까요?')) onDelete!(g.delIds[0]); }}
+                      <button onClick={async (e) => { e.stopPropagation(); if (await appConfirm('이 날짜 기록을 삭제할까요?')) onDelete!(g.delIds[0]); }}
                         className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors">삭제</button>
                     )}
                   </span>
@@ -290,13 +291,13 @@ const RawLedgerList: React.FC<Props> = ({
                             {/* 삭제하면 로트·재고도 같이 되돌아간다 — 문구로 분명히 알린다.
                                 실사(targetKg) 줄은 잔량 앵커라 되돌릴 움직임이 없어 줄만 사라진다. */}
                             {e.type !== 'auto' && e.id && (
-                              <button onClick={(ev) => {
+                              <button onClick={async (ev) => {
                                 ev.stopPropagation();
                                 const kg = (e.received ?? 0) || (e.used ?? 0);
                                 const msg = e.targetKg != null
                                   ? `이 실사 기록을 삭제할까요?\n\n실사로 맞춘 ${kg}kg만큼 로트·재고를 되돌리고,\n잔량 기준점도 사라져 앞뒤 잔량이 다시 계산됩니다.`
                                   : `이 기록을 삭제할까요?\n\n${(e.received ?? 0) > 0 ? '입고' : '사용'} ${kg}kg — 로트와 재고도 같이 되돌립니다.`;
-                                if (confirm(msg)) onDelete(e.id!);
+                                if (await appConfirm(msg)) onDelete(e.id!);
                               }}
                                 className="px-1.5 py-0.5 rounded text-[9px] font-black text-slate-400 hover:bg-rose-100 hover:text-rose-500">삭제</button>
                             )}

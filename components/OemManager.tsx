@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { today } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Plus, X, ArrowRight } from 'lucide-react';
+import ModalShell from '../src/shared/components/ModalShell';
 import { Item, Partner, PurchaseOrder } from '../src/shared/types';
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
@@ -74,12 +75,7 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
   const canSave = !!partnerId && sent.length > 0 && !busy;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">외주 발주 <span className="text-[11px] font-bold text-slate-400">· 원료 내보내기</span></h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           우리 원료를 외주공장에 보냅니다. <b>본재고에서 빠지고 외주로 나갑니다</b>(전표 없음 — 우리 것의 이동).
           발주하면 <b>입고대기</b>에 뜨고, 돌아오면 거기서 가공입고 하시면 됩니다.
@@ -144,8 +140,7 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
             {busy ? '처리 중…' : '발주 (원료 내보내기)'}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -178,12 +173,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
   const canSave = (returns.length > 0 || bulk.length > 0) && !busy;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">가공입고</h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="가공입고" onClose={onClose} bodyClassName="space-y-4">
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-3">
           <div className="min-w-0">
@@ -279,8 +269,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
             {busy ? '처리 중…' : '가공입고'}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -296,12 +285,7 @@ function FeeModal({ po, busy, onClose, onSubmit }: {
   const money = processingFee(kg, Number(fee) || 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">가공비 전표 발행</h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="가공비 전표 발행" onClose={onClose} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           입고 내역을 확인하고 발행하세요. <b>가공비만</b> 매입전표로 끊깁니다 — 원료는 우리 것이라 금액에 없습니다.
         </p>
@@ -340,7 +324,6 @@ function FeeModal({ po, busy, onClose, onSubmit }: {
             {busy ? '발행 중…' : '전표 발행'}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

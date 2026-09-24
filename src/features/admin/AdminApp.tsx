@@ -1,3 +1,4 @@
+import { appConfirm, appNotice as awaitNotice, appPrompt } from '../../shared/components/appDialog';
 import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
@@ -87,6 +88,7 @@ import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, d
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
 import LargeModalShell from '../../shared/components/LargeModalShell';
+import ModalShell from '../../shared/components/ModalShell';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
@@ -382,7 +384,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (uc && !partnerItems.some(pi => pi.itemId === uc.itemId && pi.partnerId === partnerId && (pi.Direction ?? 'out') === dir)) {
       const looseItem = allItems.find(i => i.id === uc.itemId);
       const loosePrice = (typeof price === 'number' && price > 0) ? Math.round(price / uc.count) : undefined;
-      alert(`"${boxItem?.name}"은(는) 박스 품목입니다.\n낱개 품목 "${looseItem?.name ?? uc.itemId}"이(가) 이 거래처에 없어 함께 등록합니다.`);
+      await awaitNotice(`"${boxItem?.name}"은(는) 박스 품목입니다.\n낱개 품목 "${looseItem?.name ?? uc.itemId}"이(가) 이 거래처에 없어 함께 등록합니다.`);
       await handleUpsertPartnerItem({
         id: `${uc.itemId}_${partnerId}_${dir}`, itemId: uc.itemId, partnerId, Direction: dir,
         ...(loosePrice !== undefined ? { price: loosePrice } : {}),
@@ -1674,7 +1676,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       !!order.producedAt || !!order.shippedOut
     );
     if (order && currentInventoryOrder) {
-      const ok = window.confirm(
+      const ok = await appConfirm(
         `${order.partnerName || '이 거래처'} 주문은 이미 ${order.shippedOut || order.status === OrderStatus.SHIPPED ? '출고완료' : '작업완료'} 상태입니다.\n\n`
         + '삭제하면 사용된 BOM·원료와 할당된 완제품 재고를 원복한 뒤 주문을 삭제합니다. 계속할까요?',
       );
@@ -2020,7 +2022,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 여기서 차이를 계산해 재고를 손보지 않는다 — 되돌리기(reconcileOrderStock)와 두 벌이 되고
    * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
    */
-  const handleUpdateItems = (orderId: string, items: OrderItem[]) => {
+  const handleUpdateItems = async (orderId: string, items: OrderItem[]) => {
     const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
     /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
         "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
@@ -2037,7 +2039,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         되돌리는 게 아니라 할 일이 붙는 것이다. */
     if (판정.kind === 'added' && o?.status === OrderStatus.DISPATCHED) {
       const 되돌릴수 = o.items.filter(줄 => 줄.checked).length;
-      if (!window.confirm(
+      if (!await appConfirm(
         `작업완료된 주문에 품목을 더합니다 — ${판정.added.join(', ')}\n\n`
         + `이미 끝낸 ${되돌릴수}개 품목의 작업완료와 재고는 그대로 둡니다.\n`
         + `새로 더한 품목이 남아 있으므로 주문은 '작업중' 으로 돌아갑니다.\n\n계속할까요?`
@@ -2073,7 +2075,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   }, [companyId]);
   const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
   const renameSheet = async (cat: string) => {
-    const next = window.prompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
+    const next = await appPrompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
     if (next == null) return;
     const title = next.trim();
     await setDocument('docSheetTitles', cat, { title });
@@ -2819,7 +2821,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     //  파생이 실패해도 본 사용은 이미 들어갔다. 조용히 넘기지 않고 알린다(§14).
                     if (dr.status === 'rejected' || dr.status === 'conflict') {
                       const 이유 = dr.status === 'rejected' ? dr.message : '같은 작업 번호의 내용이 다릅니다.';
-                      alert(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${이유}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
+                      await awaitNotice(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${이유}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
                     }
                   }
                 }
@@ -3442,7 +3444,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
             const exportExcel = async () => {
               if (missingMfgDate.length > 0) {
-                const proceed = window.confirm(
+                const proceed = await appConfirm(
                   `제조일자가 입력되지 않은 품목이 있습니다:\n${[...new Set(missingMfgDate)].join(', ')}\n\n계속 저장하시겠습니까?`
                 );
                 if (!proceed) return;
@@ -4229,7 +4231,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                           onClick={async () => {
                                             //  **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9).
                                             //  같은 취소가 두 번 눌려도 `ReversalGuard` 가 막는다.
-                                            if (!confirm('이 기록을 취소할까요? (지우지 않고 뒤에 취소 줄이 쌓입니다)')) return;
+                                            if (!await appConfirm('이 기록을 취소할까요? (지우지 않고 뒤에 취소 줄이 쌓입니다)')) return;
                                             const entry = mergedRawMaterialLedger.find(e => e.id === row.delId);
                                             if (!entry) return;
                                             const original = (entry as { operationId?: string }).operationId;
@@ -4342,7 +4344,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             if (cr.status === 'rejected') { alert(`정정 실패 — ${cr.message}`); return; }
                                             if (cr.status === 'conflict') { alert('정정 실패 — 같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.'); return; }
                                             if (cr.status === 'applied' && cr.movement.backdatedBeforeStocktake) {
-                                              alert('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
+                                              await awaitNotice('마지막 실사보다 앞선 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.');
                                             }
                                             setRmCorrectionTargetId(null);
                                             setLedgerReloadKey(k => k + 1);
@@ -5164,12 +5166,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         />
       )}
       {isOrderCreateChooserOpen && (
-        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={() => setIsOrderCreateChooserOpen(false)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="order-create-method-title" className="w-full max-w-md overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl md:rounded-2xl" onClick={event => event.stopPropagation()}>
-            <OrderCreationModalHeader
-              onClose={() => setIsOrderCreateChooserOpen(false)}
-            />
-            <div className="grid gap-3 p-4 md:p-5">
+        <ModalShell title="주문 생성 방법" onClose={() => setIsOrderCreateChooserOpen(false)} className="max-w-md"
+          footer={<button type="button" onClick={() => setIsOrderCreateChooserOpen(false)} className="ml-auto block rounded-lg px-4 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>}>
+            <div className="grid gap-3">
               <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><Plus size={19} /></span>
                 <span className="min-w-0">
@@ -5185,11 +5184,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 </span>
               </button>
             </div>
-            <div className="flex justify-end border-t border-slate-200 px-5 py-3">
-              <button type="button" onClick={() => setIsOrderCreateChooserOpen(false)} className="rounded-lg px-4 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
       {isAddOrderOpen && (
         <AddOrderModal
@@ -5439,7 +5434,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             await markForCurrentUser(unread, 'readBy');
           };
           const dismissAll = async () => {
-            if (!window.confirm('종 알림을 전부 삭제할까요?')) return;
+            if (!await appConfirm('종 알림을 전부 삭제할까요?')) return;
             await markForCurrentUser(visible, 'dismissedBy');
           };
           const sorted = [...visible].sort((a, b) => b.createdAt.localeCompare(a.createdAt));

@@ -12,6 +12,7 @@ import { OrderCard } from './OrdersList';
 import OrderStatusDot from '../src/shared/components/OrderStatusDot';
 import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
+import ModalShell from '../src/shared/components/ModalShell';
 
 /**
  * 거래처를 고른 뒤, **어느 주문·발주로 전표를 끊을지 고르는 화면.**
@@ -525,25 +526,11 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
 
             {/* 주문번호는 주문을 고르는 단추와 별개다 — 번호를 눌러도 체크가 뒤집히지 않는다. */}
             {previewOrder && (
-              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-                onClick={() => setPreviewOrder(null)}>
-                <div role="dialog" aria-modal="true" aria-labelledby="statement-order-preview-title"
-                  className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-slate-50 shadow-2xl"
-                  onClick={event => event.stopPropagation()}>
-                  <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4">
-                    <div className="min-w-0">
-                      <h3 id="statement-order-preview-title" className="font-black text-slate-900">주문 카드</h3>
-                      <p className="truncate text-[11px] font-bold text-slate-400">
+              <ModalShell title="주문 카드" onClose={() => setPreviewOrder(null)} className="max-w-sm" bodyClassName="bg-slate-50 p-4"
+                subtitle={<>
                         {previewOrder.partnerName || partners.find(p => p.id === previewOrder.partnerId)?.name || '거래처 미지정'}
                         <span className="ml-1.5 tabular-nums">{cardNoLabel(previewOrder)}</span>
-                      </p>
-                    </div>
-                    <button type="button" aria-label="주문카드 닫기" onClick={() => setPreviewOrder(null)}
-                      className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-                      <X size={18}/>
-                    </button>
-                  </div>
-                  <div className="overflow-y-auto p-4">
+                </>}>
                     <OrderCard
                       readOnly
                       order={previewOrder}
@@ -557,35 +544,20 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                       onUpdateStatus={() => {}}
                       onDeleteOrder={() => {}}
                     />
-                  </div>
-                </div>
-              </div>
+              </ModalShell>
             )}
             {excludeTarget && (
-              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => setExcludeTarget(null)}>
-                <div role="dialog" aria-modal="true" aria-labelledby="exclude-voucher-title"
-                  className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
-                  <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-                    <div>
-                      <h3 id="exclude-voucher-title" className="font-black text-slate-900">전표 발행 제외</h3>
-                      <p className="mt-0.5 text-[11px] font-bold text-slate-400">{excludeTarget.partnerName} · {cardNoLabel(excludeTarget)}</p>
-                    </div>
-                    <button type="button" aria-label="닫기" onClick={() => setExcludeTarget(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={18}/></button>
-                  </div>
-                  <div className="space-y-3 p-5">
+              <ModalShell title="전표 발행 제외" subtitle={`${excludeTarget.partnerName} · ${cardNoLabel(excludeTarget)}`} onClose={() => setExcludeTarget(null)} className="max-w-sm" bodyClassName="space-y-3"
+                footer={<div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setExcludeTarget(null)} className="rounded-xl border border-slate-200 py-2.5 text-xs font-black text-slate-500">취소</button>
+                  <button type="button" disabled={!excludeReason.trim() || savingExclusion} onClick={() => void saveExclusion()} className="rounded-xl bg-slate-900 py-2.5 text-xs font-black text-white disabled:opacity-40">제외 저장</button>
+                </div>}>
                     <p className="text-xs font-bold leading-relaxed text-slate-600">주문은 그대로 두고 미발행 전표 목록에서 제외합니다. 제외 사유는 나중에 확인할 수 있고 언제든 복구할 수 있습니다.</p>
                     <label className="block text-[11px] font-black text-slate-500">제외 사유</label>
                     <textarea autoFocus value={excludeReason} onChange={e => setExcludeReason(e.target.value)} rows={3}
                       placeholder="예: 샘플 제공, 무상 출고, 전표 발행하지 않기로 협의"
                       className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"/>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-4">
-                    <button type="button" onClick={() => setExcludeTarget(null)} className="rounded-xl border border-slate-200 py-2.5 text-xs font-black text-slate-500">취소</button>
-                    <button type="button" disabled={!excludeReason.trim() || savingExclusion} onClick={() => void saveExclusion()}
-                      className="rounded-xl bg-slate-900 py-2.5 text-xs font-black text-white disabled:opacity-40">제외 저장</button>
-                  </div>
-                </div>
-              </div>
+              </ModalShell>
             )}
     </>
   );

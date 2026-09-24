@@ -14,6 +14,7 @@ import { vatOn } from '../src/shared/lineAmount';
 import { companyOf } from '../src/shared/types';
 import { 서류당사자스냅샷우선, type DocParty } from '../src/shared/docParty';
 import type { TaxIssueScope } from '../src/features/tax-documents/domain/taxIssue';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -819,15 +820,10 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
       {/* ── 조회 탭 미리보기 오버레이 ── */}
       {previewGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={() => setHistPreviewGroupKey(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
-            onClick={e => e.stopPropagation()}>
+        <LargeModalShell title={`세금계산서 미리보기${previewClient?.name ? ` — ${previewClient.name}` : ''}`} onClose={() => setHistPreviewGroupKey(null)} bodyClassName="!p-0">
             {/* 오버레이 헤더 */}
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-slate-800">세금계산서 미리보기</span>
-                <span className="text-xs text-slate-400">— {previewClient?.name}</span>
                 {previewGroup.isBundle && (
                   <span className="text-[10px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                     <Package size={8}/>묶음 {previewGroup.stmts.length}건
@@ -938,8 +934,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       </div>
               </div>
             </div>
-          </div>
-        </div>
+        </LargeModalShell>
       )}
     </div>
   );

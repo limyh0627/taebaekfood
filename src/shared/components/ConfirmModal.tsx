@@ -76,7 +76,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     >
       {/*  제목을 따로 준 창에서는 `message` 가 **설명의 첫 줄**이다 — 머리에 또 쓰지 않는다.
            제목을 안 준 옛 창은 머리에 `message` 가 섰으므로 여기서는 건너뛴다. */}
-      {title && <p className="text-sm font-bold leading-snug text-slate-800">{message}</p>}
+      {title && <p className="whitespace-pre-line text-sm font-bold leading-snug text-slate-800">{message}</p>}
       {subMessage && (
         <p className={`whitespace-pre-line text-xs font-medium leading-5 text-slate-500 ${title ? 'mt-1.5' : ''}`}>{subMessage}</p>
       )}

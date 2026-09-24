@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, QrCode, Search } from 'lucide-react';
+import { Printer, Search } from 'lucide-react';
 import QRCode from 'qrcode';
 import { Item } from '../src/shared/types';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface QrLabelPrintProps {
   submaterials: Item[];
@@ -70,19 +71,7 @@ const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose }) =>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
-        {/* 헤더 */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <QrCode size={18} className="text-teal-500" />
-            <h3 className="font-black text-slate-800">QR 라벨 인쇄</h3>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
-            <X size={18} />
-          </button>
-        </div>
-
+    <ModalShell title="QR 라벨 인쇄" onClose={onClose} bodyClassName="!p-0">
         {/* 검색 + 전체선택 */}
         <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 shrink-0">
           <div className="relative flex-1">
@@ -141,8 +130,7 @@ const QrLabelPrint: React.FC<QrLabelPrintProps> = ({ submaterials, onClose }) =>
             <Printer size={16} /> 선택 {selected.size}개 라벨 인쇄
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 

@@ -111,7 +111,7 @@ describe('미발행 주문의 품목·수량', () => {
     //  소비기한 칸 이름이 리스트 것과 같아졌다(2026-09-12) — 읽기전용이면 잠긴다는 뜻은 그대로다.
     expect(within(dialog).getByLabelText('옛 품목명 소비기한 수정용 제조일')).toBeDisabled();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '주문카드 닫기' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '주문 카드 닫기' }));
     expect(screen.queryByRole('dialog', { name: '주문 카드' })).not.toBeInTheDocument();
   });
 });

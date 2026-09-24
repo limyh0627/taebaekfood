@@ -1,6 +1,7 @@
 import React from 'react';
-import { History, X, CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
+import { CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
 import type { OrderActivityRow } from '../src/shared/orderActivityLog';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 /**
  * **이 주문에 누가 무엇을 언제 했나** — 주문 수정 창 머리의 '로그' 단추가 띄운다.
@@ -38,20 +39,7 @@ export const 로그시각 = (iso?: string) => {
 };
 
 const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, error, onClose }) => (
-  <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={onClose}>
-    <div role="dialog" aria-modal="true" aria-labelledby="order-log-title" className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl md:max-h-[80vh] md:rounded-2xl" onClick={event => event.stopPropagation()}>
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden="true"><History size={17} /></span>
-          <div className="min-w-0">
-            <h3 id="order-log-title" className="text-[17px] font-black leading-6 text-slate-900">주문 로그</h3>
-            <p className="mt-0.5 truncate text-xs font-bold text-slate-600">{partnerName}</p>
-          </div>
-        </div>
-        <button type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500" aria-label="주문 로그 닫기"><X size={18} /></button>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+  <LargeModalShell title={`주문 로그 · ${partnerName}`} onClose={onClose}>
         {error && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{error}</p>}
         <ol className="space-y-2.5">
           {rows.map((row, index) => {
@@ -79,9 +67,7 @@ const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, er
         <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] font-medium leading-4 text-slate-400">
           주문 등록 · 상태 변경 · 품목 작업완료 · 품목 수량·추가·삭제 · 라벨 · 제조일 · 비고 · 출고 확인을 남깁니다.
         </p>
-      </div>
-    </div>
-  </div>
+  </LargeModalShell>
 );
 
 export default OrderActivityLogModal;

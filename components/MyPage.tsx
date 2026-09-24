@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect } from 'react';
 import { LogOut, Bell, BellOff, Check, User, Shield, Smartphone } from 'lucide-react';
 import { Employee } from '../src/shared/types';
@@ -309,7 +310,7 @@ const MyPage: React.FC<{
 
       {/* ── 로그아웃 ── */}
       <button
-        onClick={() => { if (window.confirm(`${currentUser.name}님, 로그아웃 하시겠습니까?`)) onLogout(); }}
+        onClick={async () => { if (await appConfirm(`${currentUser.name}님, 로그아웃 하시겠습니까?`)) onLogout(); }}
         className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-white border border-rose-200 text-rose-600 text-xs font-black hover:bg-rose-50 transition-all"
       >
         <LogOut size={14} /> 로그아웃

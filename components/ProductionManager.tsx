@@ -1,3 +1,4 @@
+import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
@@ -247,7 +248,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       );
 
       if (deliveredOrders.length === 0) {
-        alert('이력에 완료된 주문이 없습니다.');
+        await appNotice('이력에 완료된 주문이 없습니다.');
         setSyncing(false);
         return;
       }
@@ -279,10 +280,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         }
       }
 
-      alert(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`);
+      await appNotice(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`, '처리 완료');
     } catch (e) {
       console.error('동기화 오류:', e);
-      alert(`동기화 중 오류가 발생했습니다: ${e}`);
+      await appNotice(`동기화 중 오류가 발생했습니다: ${e}`);
     }
     setSyncing(false);
   };
@@ -677,8 +678,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                           </button>
                         )}
                         <button
-                          onClick={() => {
-                            if (window.confirm('이 생산 실적을 삭제하시겠습니까?')) {
+                          onClick={async () => {
+                            if (await appConfirm('이 생산 실적을 삭제하시겠습니까?')) {
                               onDelete(r.id);
                             }
                           }}

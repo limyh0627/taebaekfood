@@ -18,8 +18,8 @@ import { isActive } from '../src/shared/statementOrders';
 import { cardNoLabel } from '../src/shared/cardNo';
 import OrderStatusDot from '../src/shared/components/OrderStatusDot';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
-import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -603,17 +603,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => { if (!savingRef.current) onClose(); }} />
-
-      <div className="relative bg-white w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col h-[92dvh] sm:h-[85vh] sm:max-h-[900px] animate-in slide-in-from-bottom sm:zoom-in-95 duration-300">
-        <div className="sticky top-0 z-10 rounded-t-3xl">
-          <OrderCreationModalHeader
-            currentLabel="직접 선택"
-            onBack={onBack ? () => { if (!savingRef.current) onBack(); } : undefined}
-            onClose={() => { if (!savingRef.current) onClose(); }}
-          />
-        </div>
+    <ModalShell title="주문 등록 · 직접 선택" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
+        {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-4 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
           <section className="space-y-3">
@@ -1047,8 +1038,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
             primaryDisabled={isSaving || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0}
           />
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 

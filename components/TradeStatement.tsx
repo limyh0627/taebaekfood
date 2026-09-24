@@ -1,4 +1,5 @@
 
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DateChipButton from '../src/shared/components/DateChipButton';
@@ -31,6 +32,7 @@ import OrderPicker from './OrderPicker';
 import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
 import { lineAmountOf } from '../src/shared/lineAmount';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
@@ -409,7 +411,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **고친 자금 전표를 저장한다** — 폼은 창이 쥐고, 돈이 얽힌 뒷일은 여기서 푼다.
    * 판정 자체는 shared/cashEntryEdit이 쥔다(화면 조각이라 테스트가 안 닿던 자리였다).
    */
-  const saveEditCash = (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[]) => {
+  const saveEditCash = async (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[]) => {
     if (!onUpdateCashEntry) return;
     const amt = cashEditAmount(form, lines, entry.dir === '대체');
     if (amt <= 0) return;
@@ -431,7 +433,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const patch = buildCashEditPatch(entry, form, lines);
     onUpdateCashEntry(entry.id, patch);
     // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
-    if (!(linked.length && delta !== 0)) autoMatchCashToStatements({ ...entry, ...patch });
+    if (!(linked.length && delta !== 0)) await autoMatchCashToStatements({ ...entry, ...patch });
     setCashModal(null);
   };
 
@@ -476,7 +478,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           label="전표일자"
           value={날}
           text={날}
-          onChange={다음 => {
+          onChange={async 다음 => {
             if (!다음 || 다음 === 날) return;
             /*  **언제나 묻는다**(2026-09-15 사장님: "날짜 바꾸면 알람띄워서 확정 받고 바꿔").
                 처음엔 달이 바뀔 때만 물었는데, 달력은 손이 스치기만 해도 날이 바뀐다 —
@@ -486,7 +488,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             const 물음 = `전표일자를 ${날} → ${다음} 로 바꿉니다.`
               + (달바뀜 ? '\n\n달이 바뀌어 부가세 신고 달과 월 마감이 함께 달라집니다.' : '')
               + '\n\n바꿀까요?';
-            if (!window.confirm(물음)) return;
+            if (!await appConfirm(물음)) return;
             바꾸기(다음);
           }}
         />
@@ -657,8 +659,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //
   // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
   // 예전엔 이걸 settlement id로 알고 찾아서 늘 못 찾고 아무것도 안 지웠다 — 삭제가 안 되던 원인.
-  const deletePayTimelineRow = (paymentId: string, _src: IssuedStatement) => {
-    if (!window.confirm('이 수금/지불을 삭제할까요?')) return;
+  const deletePayTimelineRow = async (paymentId: string, _src: IssuedStatement) => {
+    if (!await appConfirm('이 수금/지불을 삭제할까요?')) return;
     // 자금기록 id로 바로 찾고, 못 찾으면 settlement id로도 한 번 더 본다(옛 행 대비)
     const ceId = cashEntries.some(c => c.id === paymentId)
       ? paymentId
@@ -671,7 +673,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 외상매출금(108)·외상매입금(251)으로 잡은 자금은 전표에 붙어야 미수/미지급이 줄어든다.
    *  계정만 바꾸면 분개만 맞고 잔액은 그대로이므로, 아직 안 붙은 금액을 그 거래처의
    *  미결제 전표에 오래된 순으로 매칭한다. 붙인 금액을 돌려준다. */
-  const autoMatchCashToStatements = (entry: CashEntry): number => {
+  const autoMatchCashToStatements = async (entry: CashEntry): Promise<number> => {
     if (!onAddSettlement || !entry.partnerId) return 0;
     const type = entry.accountCode === AR ? '매출' : entry.accountCode === AP ? '매입' : null;
     if (!type) return 0;
@@ -680,7 +682,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries });
     if (!targets.length) return 0;
     const willMatch = Math.min(left, targets.reduce((a, t) => a + t.open, 0));
-    if (!window.confirm(
+    if (!await appConfirm(
       `${entry.accountCode === AR ? '외상매출금' : '외상매입금'}으로 잡힌 ${fmt(left)}원을\n` +
       `이 거래처의 미결제 전표에 오래된 순으로 ${fmt(willMatch)}원 매칭할까요?\n\n` +
       `매칭해야 미수금/미지급금이 줄어듭니다.`)) return 0;
@@ -1460,7 +1462,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )
     );
     if (dup) {
-      const ok = window.confirm(
+      const ok = await appConfirm(
         `⚠️ 이미 발행된 전표가 있습니다.\n\n· ${dup.partnerName} / ${dup.tradeDate} / ${Number(dup.totalAmount ?? 0).toLocaleString()}원\n· 문서번호 ${dup.docNo}\n\n중복 발행일 수 있습니다. 그래도 발행할까요?`
       );
       if (!ok) return;
@@ -1470,7 +1472,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const 입고확인필요 = stmtType === '매입' && (
       loadedPoIds.length > 0 || hasInboundInventoryLines(lineItems, allItems)
     );
-    const registerInbound = !입고확인필요 || window.confirm(
+    const registerInbound = !입고확인필요 || await appConfirm(
       '이 매입전표의 재고 품목을 입고대기에 등록할까요?\n\n' +
       '예: 입고대기에 등록\n아니오: 매입전표만 발행'
     );
@@ -2086,7 +2088,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               if (row.kind === 'cash') {
                 return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
                   journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
-                  onDelete={onDeleteCashEntry ? () => { if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); } : undefined}
+                  onDelete={onDeleteCashEntry ? async () => { if (await appConfirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); } : undefined}
                   journalPreview={expandedJournal.has(view.key)
                     ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalizeCashEntry(row.entry), true)}</div>
                     : undefined}/>;
@@ -2239,13 +2241,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ── 계좌 관리 모달 (장부 흡수) ── */}
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto"
-            onClick={e=>e.stopPropagation()}>
+        <LargeModalShell title={`발행 전표 상세 — ${detailStmt.partnerName}`} onClose={() => setDetailStmt(null)} bodyClassName="!p-0">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>{detailStmt.type}</span>
-                <span className="font-black text-slate-900">{detailStmt.partnerName}</span>
                 <span className="text-xs text-slate-400">{detailStmt.tradeDate}</span>
                 <span className="text-[10px] text-slate-300 font-mono">{detailStmt.docNo}</span>
               </div>
@@ -2254,7 +2253,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){deleteStatement(detailStmt.id);setDetailStmt(null);}}}
+                <button onClick={async()=>{if(await appConfirm('이 전표를 삭제하시겠습니까?')){deleteStatement(detailStmt.id);setDetailStmt(null);}}}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
                   <X size={12}/>삭제
                 </button>
@@ -2292,15 +2291,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+        </LargeModalShell>
       )}
 
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {createMode && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
-          <fieldset disabled={isSaving} aria-busy={isSaving} className="relative min-w-0 m-0 p-0 border-0 w-full h-[100dvh] sm:h-[80vh] sm:max-w-7xl flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden">
+        <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
+          className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
+          <fieldset disabled={isSaving} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
 
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
               editingDocNo={editingStmt?.docNo} editMode={isEditMode}
@@ -2431,7 +2429,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                    아니요 → 이번 전표에만 쓴다. 발행할 때 자동으로 붙는 길도 막는다. */
                 if (unlinked.length && selectedClientId) {
                   const names = unlinked.map(r => `· ${r.product!.name}${r.product!.spec ? ` (${r.product!.spec})` : ''}`).join(String.fromCharCode(10));
-                  const ok = window.confirm(
+                  const ok = await appConfirm(
                     `${selectedClient?.name ?? '이 거래처'}에 연결된 품목이 아닙니다.
 
 ${names}
@@ -2545,11 +2543,11 @@ ${names}
                           onDeletePreset={id=>onDeleteExpensePreset?.(id)} onToggleManaging={()=>setManageExpense(value=>!value)}
                           onAddBlankRow={()=>setManualItems(prev=>[...prev,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}])}
                           onCreatePreset={async()=>{
-                            const name=window.prompt('비용 항목 이름 (예: 택배비)')?.trim();
+                            const name=(await appPrompt('비용 항목 이름 (예: 택배비)'))?.trim();
                             if(!name||!onAddExpensePreset)return;
-                            const priceText=window.prompt(`'${name}' 기본 단가 (없으면 비워두기)`,'')?.replace(/[^\d.]/g,'')??'';
+                            const priceText=(await appPrompt(`'${name}' 기본 단가 (없으면 비워두기)`,''))?.replace(/[^\d.]/g,'')??'';
                             const price=priceText?Number(priceText):undefined;
-                            const exempt=window.confirm('면세 항목인가요?\n확인=면세, 취소=과세');
+                            const exempt=await appConfirm('면세 항목인가요?\n확인=면세, 취소=과세');
                             await onAddExpensePreset({name,...(price?{price}:{}),taxType:exempt?'면세':'과세'});
                           }}/>}
                       </>);
@@ -2604,12 +2602,12 @@ ${names}
               issuePayAmount={issuePayAmount} totalAmount={totalAmount}
               onIssuePayChange={checked=>{setIssuePay(checked);if(checked)setIssuePayAmount(String(Math.round(totalAmount)));}}
               onIssuePayAmountChange={setIssuePayAmount} onSaveEdit={handleSaveEdit}
-              onDelete={()=>{if(editingStmt&&window.confirm('이 전표를 삭제하시겠습니까?')){deleteStatement(editingStmt.id);closeCreate();}}}
+              onDelete={async()=>{if(editingStmt&&await appConfirm('이 전표를 삭제하시겠습니까?')){deleteStatement(editingStmt.id);closeCreate();}}}
               onEdit={()=>setIsEditMode(true)} onPrint={handlePrint} onIssue={handleIssue} onExcel={handleExcel}/>}
             <style>{`@media print{.no-print{display:none!important;}}`}</style>
 
           </fieldset>
-        </div>
+        </LargeModalShell>
       )}
 
 

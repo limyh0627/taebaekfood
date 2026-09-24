@@ -1,4 +1,5 @@
 
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
@@ -49,6 +50,7 @@ import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
@@ -873,7 +875,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
       // 로트와 원장은 한 몸 — 실사하면 둘 다 같은 목표값으로 간다.
       const targetLot = targetLotId ? (product.lots ?? []).find(lot => lot.id === targetLotId) : undefined;
-      if (!confirm(targetLot
+      if (!await appConfirm(targetLot
         ? `[${targetLot.lotNo || targetLot.supplierName}] 로트 잔량을 ${val}${unitLabel}로 맞출까요?\n선택한 로트와 타임라인에 '재고 정정'으로 반영됩니다.`
         : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
@@ -945,7 +947,7 @@ const ItemList: React.FC<ItemListProps> = ({
     if (!target) { alert('개봉 대상 낱개 품목을 찾을 수 없습니다.'); return; }
     const boxStock = product.stock ?? 0;
     if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
-    if (!confirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
+    if (!await appConfirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
     // 두 번에 나눠 쓰므로 중간에 끊기면 재고가 사라진다 → 낱개 쓰기가 실패하면 박스를 되돌린다.
     await adjustItemStock('items', product.id, -1);
     try {
@@ -1447,17 +1449,9 @@ const ItemList: React.FC<ItemListProps> = ({
 
       {/* 반품처리 오버레이 */}
       {showReturnOverlay && returnContent && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={e => { if (e.target === e.currentTarget) setShowReturnOverlay(false); }}>
-          <div className="bg-slate-50 rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 z-10 bg-slate-50 px-5 pt-5 pb-3 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-black text-slate-800 text-base">반품 처리</span>
-              <button onClick={() => setShowReturnOverlay(false)} className="p-2 rounded-xl hover:bg-slate-200 transition-colors">
-                <X size={18} className="text-slate-500" />
-              </button>
-            </div>
-            <div className="p-4">{returnContent}</div>
-          </div>
-        </div>
+        <ModalShell title="반품 처리" onClose={() => setShowReturnOverlay(false)} bodyClassName="bg-slate-50">
+          {returnContent}
+        </ModalShell>
       )}
 
       {/* 입고·반품은 주문관리처럼 한 목록에서 유형/상태로 거른다. */}
@@ -1649,7 +1643,8 @@ const ItemList: React.FC<ItemListProps> = ({
                 <LayoutGrid size={13} />보드
               </button>
             </div>
-            <button onClick={() => setLedgerModalMaterial('참깨')}
+            <button onClick={() => setLedgerModalMaterial(rawMaterialLedger.some(e => e.material === '참깨')
+              ? '참깨' : rawMaterialLedger.find(e => e.material)?.material ?? '참깨')}
               className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-500 hover:bg-slate-50">
               <History size={13} />입출고 기록
             </button>
@@ -1768,14 +1763,7 @@ const ItemList: React.FC<ItemListProps> = ({
               ? rawMaterialLedger.filter(e => (e.rawItemId === item.id || (!e.rawItemId && e.material === material))
                 && (e as any).lotChanges?.some((change: any) => change.lotId === lot.id))
               : [];
-            return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-3 sm:p-6" onMouseDown={e => { if (e.target === e.currentTarget) setSelectedLot(null); }}>
-              <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
-                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${raw ? 'bg-emerald-50 text-emerald-600' : 'bg-violet-50 text-violet-600'}`}>{raw ? <Grape size={18} /> : <Package size={18} />}</span>
-                  <div className="min-w-0 flex-1"><h3 className="truncate text-base font-black text-slate-900">{item.name}</h3><p className="mt-0.5 text-[11px] font-bold text-slate-400">{item.spec || '규격 없음'} · {lot.supplierName || '공급처 미입력'}{lot.lotNo ? ` · ${lot.lotNo}` : ''}</p></div>
-                  <button type="button" onClick={() => setSelectedLot(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><X size={16} /></button>
-                </div>
-                <div className="overflow-y-auto custom-scrollbar">
+            return <ModalShell title={item.name} subtitle={`${item.spec || '규격 없음'} · ${lot.supplierName || '공급처 미입력'}${lot.lotNo ? ` · ${lot.lotNo}` : ''}`} onClose={() => setSelectedLot(null)} bodyClassName="custom-scrollbar !p-0">
                   <div className="bg-slate-50/70 p-5">
                     {raw ? <RawMaterialLotPanel linesUsingRaw={linesUsingRaw} product={item} isAdmin={isAdmin}
                       focusLotId={lot.id} ledgerEntries={rawEntries} orders={orders}
@@ -1789,9 +1777,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                     <LotTimeline item={item} lotId={lot.id} rawEntries={rawEntries} shipmentRows={shipmentRowsByItem.get(item.id)} />
                   </div>
-                </div>
-              </div>
-            </div>;
+            </ModalShell>;
           })()}
         </div>
       )}
@@ -2237,14 +2223,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
         {/* ── 행 수정 모달 ── */}
         {rowEditProduct && (
-          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setRowEditProduct(null)} />
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-900">{productEditable ? '품목 수정' : '재고 실사'}</h3>
-                <button onClick={() => setRowEditProduct(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-              </div>
-              <div className="p-5 space-y-4">
+          <ModalShell title={productEditable ? '품목 수정' : '재고 실사'} onClose={() => setRowEditProduct(null)} className="md:max-w-sm" bodyClassName="space-y-4">
                 {/* 품목 정보 — 재고관리에선 읽기 전용(실사조정). 편집은 품목관리에서. */}
                 {productEditable ? (
                   <>
@@ -2358,7 +2337,6 @@ const ItemList: React.FC<ItemListProps> = ({
                     />
                   </div>
                 )}
-              </div>
               <div className="p-5 border-t border-slate-100 flex gap-2">
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
@@ -2386,8 +2364,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
                 >{productEditable ? '저장' : '실사 반영'}</button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         )}
 
         {/* ── 발주 내역 (카트 + 이력) ── */}
@@ -2850,17 +2827,8 @@ const ItemList: React.FC<ItemListProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center sm:p-4">
-            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-            {/* 모바일=바텀시트 전체화면, 데스크톱=가운데 카드 (목록 길이 무관 고정 높이) */}
-            <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-xl h-[92dvh] sm:h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">품목 추가하기</h3>
-                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">전체 품목에서 검색 → 수량 입력 → 확정하면 그만큼 재고가 생깁니다</p>
-                </div>
-                <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-              </div>
+          <ModalShell title="품목 추가하기" subtitle="전체 품목에서 검색 → 수량 입력 → 확정하면 그만큼 재고가 생깁니다"
+            onClose={() => setIsAddModalOpen(false)} layer={1100} className="h-[92dvh] md:h-[85vh]" bodyClassName="!p-0 !overflow-hidden flex flex-col">
 
               {/* 필터는 전부 드롭다운 한 줄로 — 탭이 늘어서면 그 줄이 화면을 먹는다 */}
               <div className="px-5 pt-3 flex items-center gap-2 flex-wrap shrink-0">
@@ -3060,8 +3028,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   {makeBusy ? '반영 중…' : '확정'}
                 </button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
 
@@ -3072,9 +3039,7 @@ const ItemList: React.FC<ItemListProps> = ({
         const r = unpackPlan(unpackModal.item, Number(unpackModal.count), unpackModal.item.stock ?? 0);
         const 있는것 = unpackModal.item.stock ?? 0;
         return (
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4" onClick={() => !unpackBusy && setUnpackModal(null)}>
-            <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-black text-slate-900">개봉</h3>
+          <ModalShell title="개봉" onClose={() => { if (!unpackBusy) setUnpackModal(null); }} className="md:max-w-sm">
               <p className="mt-1 truncate text-xs font-bold text-slate-500">{unpackModal.item.name}</p>
 
               <label className="mt-4 block text-[11px] font-black text-slate-500">몇 개를 깔까요 <span className="font-bold text-slate-400">(있는 것 {있는것}개)</span></label>
@@ -3112,8 +3077,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   {unpackBusy ? '까는 중…' : '개봉'}
                 </button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
 
@@ -3150,18 +3114,19 @@ const ItemList: React.FC<ItemListProps> = ({
           const r = await onAddRawMaterialEntry(entry);
           if (!r.ok) {
             setToast({ message: `${entry.material} 기록 실패 — ${r.reason}` });
-            return;
+            return false;
           }
           if (r.appliedKg === 0 && (entry.received > 0 || entry.used > 0)) {
             //  실사 앵커보다 앞선 날짜라 재고를 안 움직였다. 원장 줄은 남는다(서류가 본다).
             setToast({ message: `${entry.material} — 마지막 실사 이전 날짜라 기록만 남기고 재고는 그대로 둡니다` });
-            return;
+            return true;
           }
           // 저장 완료 토스트
           const amt = entry.received > 0 ? entry.received : Math.abs(entry.used);
           const action = entry.received > 0 ? '입고' : '사용';
           const u = entry.unit ?? 'kg';
           setToast({ message: `${entry.material} ${amt}${u} ${action} 기록이 저장되었습니다` });
+          return true;
         }}
       />
 
@@ -3177,19 +3142,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
       {/* ── 발주 확정 모달 ── */}
       {showCartModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={() => setShowCartModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <ShoppingCart size={16} className="text-indigo-500" />
-                <span className="font-black text-slate-800">전표 작성</span>
-                <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
-              </div>
-              <button onClick={() => setShowCartModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+        <ModalShell title="전표 작성" subtitle={`${cart.length}건`} onClose={() => setShowCartModal(false)} bodyClassName="space-y-3">
               {(() => {
                 // 거래처별 그룹화
                 const groups = new Map<string, { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; itemId: string; isBox?: boolean }> }>();
@@ -3242,32 +3195,18 @@ const ItemList: React.FC<ItemListProps> = ({
                   </div>
                 ));
               })()}
-            </div>
             <div className="px-5 py-4 border-t border-slate-100">
               <button onClick={() => setShowCartModal(false)}
                 className="w-full py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
                 닫기
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* ── 입고 대기 일괄 전표 작성 모달 ── */}
       {showConfirmedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={() => setShowConfirmedModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck size={16} className="text-indigo-500" />
-                <span className="font-black text-slate-800">전표 작성</span>
-                <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedChecked.size}건 선택</span>
-              </div>
-              <button onClick={() => setShowConfirmedModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+        <ModalShell title="전표 작성" subtitle={`${confirmedChecked.size}건 선택`} onClose={() => setShowConfirmedModal(false)} bodyClassName="space-y-3">
               {(() => {
                 // 선택된 confirmedWithoutStatement 아이템을 거래처별로 그룹화
                 const groups = new Map<string, { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; itemId: string }> }>();
@@ -3322,30 +3261,17 @@ const ItemList: React.FC<ItemListProps> = ({
                   </div>
                 ));
               })()}
-            </div>
             <div className="px-5 py-4 border-t border-slate-100">
               <button onClick={() => setShowConfirmedModal(false)}
                 className="w-full py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
                 닫기
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {adjustmentModal?.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className="p-8">
-              <div className="flex items-center space-x-4 mb-6">
-                <div className="p-3 bg-amber-50 rounded-2xl text-amber-500">
-                  <AlertCircle size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">수량 변동 및 취소 요청</h3>
-                  <p className="text-sm text-slate-500 font-medium">{adjustmentModal.itemName}</p>
-                </div>
-              </div>
+        <ModalShell title="수량 변동 및 취소 요청" subtitle={adjustmentModal.itemName} onClose={() => setAdjustmentModal(null)} className="md:max-w-md">
 
               <div className="space-y-6">
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -3433,9 +3359,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   요청 전송
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
     {/* ── 재고 마감 모달 ───────────────────────────────────────────── */}
@@ -3516,15 +3440,8 @@ const ItemList: React.FC<ItemListProps> = ({
       const pageRows = listRows.slice(page * CLOSING_PAGE_SIZE, page * CLOSING_PAGE_SIZE + CLOSING_PAGE_SIZE);
 
       return (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg h-[92dvh] sm:h-[88vh] shadow-2xl flex flex-col overflow-hidden">
-            {/* 헤더 */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
-              <span className="text-base font-black text-slate-900">재고 현황</span>
-              <button onClick={() => { setEditingClosingId(null); setShowClosingModal(false); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
+        <ModalShell title="재고 현황" onClose={() => { setEditingClosingId(null); setShowClosingModal(false); }}
+          className="h-[92dvh] md:h-[88vh] md:max-w-lg" bodyClassName="!p-0 !overflow-hidden flex flex-col">
 
             {/* ── 본문(스크롤) ── */}
             <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
@@ -3748,7 +3665,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       )}
                       </span>
                       {editable && (
-                        <button onClick={() => {
+                        <button onClick={async () => {
                             if (!product) return;
                             // 재고 뷰에서는 '재고분만' 0으로 — 작업완료분은 주문에 물려 있으니 남긴다.
                             // 전체 뷰에서는 현재고를 통째로 0으로 만들어 작업완료분까지 날아간다 → 미리 경고.
@@ -3758,7 +3675,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               : stockEdit
                                 ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
                                 : `"${product.name}" 현재고를 0으로 만들까요?\n\n⚠ 작업완료(미출고) ${disp}개도 함께 사라집니다. (현재고 ${cur} → 0)\n작업완료분을 남기려면 '재고' 뷰에서 지우세요.`;
-                            if (confirm(msg)) commitStockEdit(product, 0, stockEdit ? disp : 0);
+                            if (await appConfirm(msg)) commitStockEdit(product, 0, stockEdit ? disp : 0);
                           }}
                           title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                           <Trash2 size={13} />
@@ -3782,24 +3699,13 @@ const ItemList: React.FC<ItemListProps> = ({
               </div>
             )}
 
-          </div>
-        </div>
+        </ModalShell>
       );
     })()}
 
     {/* ── 입고대기 수정 → 매입전표 수정 요청 모달 ── */}
     {poEditModal && (
-      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPoEditModal(null)} />
-        <div className="relative bg-white rounded-3xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-          <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <div>
-              <h2 className="text-sm font-black text-slate-800">전표 수정 요청</h2>
-              <p className="text-[11px] text-slate-400 font-medium mt-0.5">연결된 매입전표 수정을 관리자에게 요청합니다</p>
-            </div>
-            <button onClick={() => setPoEditModal(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={18} /></button>
-          </div>
-          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+      <ModalShell title="전표 수정 요청" subtitle="연결된 매입전표 수정을 관리자에게 요청합니다" onClose={() => setPoEditModal(null)} className="md:max-w-md" bodyClassName="space-y-3">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">수정 수량 (0 입력 시 해당 품목 삭제)</p>
             {poEditModal.rows.map((row, i) => (
               <div key={`${row.itemId}-${i}`} className="flex items-center gap-3">
@@ -3816,7 +3722,6 @@ const ItemList: React.FC<ItemListProps> = ({
                 placeholder="수정 사유를 입력하세요 (예: 입고 수량 부족)"
                 className="w-full h-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
             </div>
-          </div>
           <div className="px-6 py-4 border-t border-slate-100 flex gap-2 shrink-0">
             <button onClick={() => setPoEditModal(null)}
               className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200 transition-all">취소</button>
@@ -3829,8 +3734,7 @@ const ItemList: React.FC<ItemListProps> = ({
               }}
               className="flex-1 py-2.5 rounded-xl bg-teal-500 text-white text-xs font-black hover:bg-teal-600 transition-all">수정 요청</button>
           </div>
-        </div>
-      </div>
+      </ModalShell>
     )}
     {/* ── 입출고 기록 모달 ── 원료 목록에 늘 펼쳐두면 화면이 길어져서, 로트 옆 버튼으로 띄운다. */}
     {ledgerModalMaterial && (() => {
@@ -3853,23 +3757,11 @@ const ItemList: React.FC<ItemListProps> = ({
       const stockNow = holder ? displayStockOf(holder) : null;
       const unitLabel = holder ? (holder.unit ?? (unitOf(mat) === 'L' ? 'L' : 'kg')) : '';
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLedgerModalMaterial(null)}>
-          {/* 높이를 고정(88vh)해 목록이 항상 같은 크기로 뜬다 — 내용이 적어도 창이 줄었다 늘었다 하지 않는다. */}
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-          {/* 헤더 — 원료명·현재고·기간 */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 gap-3 shrink-0">
-            <div className="flex items-baseline gap-2.5 min-w-0">
-              <h3 className="text-base font-black text-slate-800 truncate">{mat}</h3>
-              {/* 여기 뜨는 건 '실제 원장'(rawMaterialLedger) — 창고에서 실제로 일어난 입출고.
-                  관청에 내는 원료수불부는 '서류용 원장'(rawDocEntries)으로 따로 만든다. docOil.ts 머리말 참고. */}
-              <span className="text-[11px] font-bold text-slate-400 shrink-0">입출고 기록</span>
-              {stockNow != null && (
-                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap shrink-0">
-                  현재고 {stockNow.toLocaleString()}{unitLabel}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+        <LargeModalShell title={`${mat} 입출고 기록`}
+          subtitle={stockNow != null ? `현재고 ${stockNow.toLocaleString()}${unitLabel}` : undefined}
+          onClose={() => setLedgerModalMaterial(null)} className="h-[88dvh]" bodyClassName="!p-0 !overflow-hidden flex flex-col">
+          {/* 실제 원장(rawMaterialLedger)의 기록이다. 관청 제출용 수불부와는 별도다. */}
+          <div className="flex justify-end border-b border-slate-100 px-4 py-2">
               <select value={ledgerPeriod} onChange={e => setLedgerPeriod(e.target.value)}
                 className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
                 <option value="1m">최근 1개월</option>
@@ -3880,9 +3772,6 @@ const ItemList: React.FC<ItemListProps> = ({
                   </optgroup>
                 )}
               </select>
-              <button onClick={() => setLedgerModalMaterial(null)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
-            </div>
           </div>
           {/* 원료 탭 — 원료수불부와 같은 순서 */}
           <div className="flex gap-1 px-4 py-2 border-b border-slate-100 overflow-x-auto custom-scrollbar shrink-0">
@@ -3914,8 +3803,7 @@ const ItemList: React.FC<ItemListProps> = ({
               삭제는 관리자만 가능합니다.
             </p>
           )}
-          </div>
-        </div>
+        </LargeModalShell>
       );
     })()}
     </div>

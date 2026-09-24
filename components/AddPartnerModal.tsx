@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
+import { Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
 import { Partner, PartnerChannel, PartnerType } from '../types';
 import { channelStyle, CHANNELS } from '../src/shared/channelStyle';
+import ModalShell from '../src/shared/components/ModalShell';
 
 declare global {
   interface Window {
@@ -59,24 +60,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-
-      <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg">
-              <Users size={20} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">신규 거래처 등록</h3>
-              <p className="text-xs text-slate-500">새로운 비즈니스 파트너를 시스템에 추가합니다.</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full">
-            <X size={20} />
-          </button>
-        </div>
+    <ModalShell title="신규 거래처 등록" onClose={onClose} bodyClassName="!p-0">
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
           <div className="space-y-2">
@@ -238,8 +222,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
             <span>등록 완료</span>
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 

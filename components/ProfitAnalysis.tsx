@@ -20,6 +20,8 @@ import { fetchWhere } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
+import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -1492,9 +1494,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
             {/* 미수 ↔ 미지급 상계 모달 */}
             {offsetForm && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-                  <h3 className="text-sm font-black text-slate-800">미수 · 미지급 상계</h3>
+              <ModalShell title="미수 · 미지급 상계" onClose={() => setOffsetForm(null)} className="max-w-md" bodyClassName="space-y-4"
+                footer={<div className="flex gap-2">
+                  <button onClick={() => setOffsetForm(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+                  <button onClick={saveOffset} className="flex-[2] py-2.5 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 flex items-center justify-center gap-1.5"><Save size={12}/>상계 처리</button>
+                </div>}>
                   <div className="text-xs text-slate-400">{offsetForm.name}</div>
                   <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs space-y-1">
                     <div className="flex items-center justify-between">
@@ -1533,14 +1537,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <p className="text-[10px] font-bold text-slate-400 pt-1">통장은 움직이지 않습니다 — 받을 돈과 줄 돈만 서로 줄어듭니다.</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 pt-1">
-                    <button onClick={() => setOffsetForm(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-                    <button onClick={saveOffset} className="flex-[2] py-2.5 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 flex items-center justify-center gap-1.5">
-                      <Save size={12}/>상계 처리
-                    </button>
-                  </div>
-                </div>
-              </div>
+              </ModalShell>
             )}
 
             {/* 수금/지불 등록 모달 */}
@@ -1826,15 +1823,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 계정설정 오버레이 ── */}
       {showAccountSettings && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 overflow-hidden">
-          {/* 헤더 */}
-          <div className="bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <Wallet size={18} className="text-amber-600"/>
-              <span className="text-base font-black text-slate-800">계정 설정</span>
-              <span className="text-[11px] text-slate-400">전표 라인별 계정코드 및 고정비 관리</span>
-            </div>
-            <div className="flex items-center gap-2">
+        <LargeModalShell title="계정 설정" subtitle="전표 라인별 계정코드 및 고정비 관리"
+          onClose={() => setShowAccountSettings(false)} className="h-[88dvh]" bodyClassName="!p-0 !overflow-hidden flex flex-col bg-slate-50">
+          <div className="bg-white border-b border-slate-200 px-5 py-3 flex justify-end shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => { setShowAddGroup(false); setShowAddCode(v => !v); }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddCode ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
                 + 계정과목
@@ -1842,10 +1834,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <button onClick={() => { setShowAddCode(false); setShowAddGroup(v => !v); }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddGroup ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
                 + 계정그룹
-              </button>
-              <button onClick={() => setShowAccountSettings(false)}
-                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
-                <X size={18}/>
               </button>
             </div>
           </div>
@@ -2074,7 +2062,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 일반전표의 템플릿으로 끊는다(필요하면 자동 발행). */}
           </div>
           </div>
-        </div>
+        </LargeModalShell>
       )}
     </div>
   );

@@ -33,6 +33,7 @@ import DeliveryDayList from './DeliveryDayList';
 import { saveDeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
+import ModalShell from '../src/shared/components/ModalShell';
 import { ungroup, withGroup, type DayRow, type DeliveryGroup } from '../src/shared/deliveryPlan';
 import { clusterByGroup } from '../src/shared/rowGroup';
 import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
@@ -1461,12 +1462,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                  후보는 지금 운영 중인 배송 대상(작업중·작업완료·출고완료) 전부다.
                  누른 차례가 곧 배송 순서라 동그라미에 번호를 보여 준다. */}
             {showDeliveryPicker && (
-              <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowDeliveryPicker(false)}>
-                <div className="flex max-h-[70vh] w-full max-w-sm flex-col rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
-                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                    <h3 className="font-black text-slate-900">금일 배송순서에 담기</h3>
-                    <button type="button" onClick={() => setShowDeliveryPicker(false)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={16} /></button>
-                  </div>
+              <ModalShell title="금일 배송순서에 담기" onClose={() => setShowDeliveryPicker(false)} bodyClassName="!p-0">
                   <div className="flex-1 overflow-y-auto">
                     {visibleDeliverySequenceOrders.length === 0 ? (
                       <p className="py-10 text-center text-sm text-slate-400">담을 주문이 없습니다.</p>
@@ -1501,8 +1497,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                       className="w-full rounded-2xl bg-indigo-600 py-3 font-black text-white transition-colors hover:bg-indigo-700"
                     >고른 {pickerDeliveryOrdering.length}건으로 순서 정하기</button>
                   </div>
-                </div>
-              </div>
+              </ModalShell>
             )}
 
             {!calendarOnly && deliveryTab === '보드' && <div className="order-5 md:overflow-x-auto no-scrollbar">
@@ -1780,18 +1775,10 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           );
         };
         return (
-          <div className="fixed inset-0 z-[1200] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setDayModal(null)} />
-            <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">{제목}</h3>
-                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+          <ModalShell title={제목} onClose={() => setDayModal(null)} bodyClassName="!p-0">
+                  <p className="px-4 pt-4 text-[11px] text-slate-400 font-bold">
                     배송 {진행.length}건{완료.length > 0 && ` · 이전 ${완료.length}건`}
                   </p>
-                </div>
-                <button onClick={() => setDayModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-              </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {groupPick.date === dayModal && groupPick.ids.length > 0 && (
                   <button
@@ -1826,8 +1813,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                   </>
                 )}
               </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
 
@@ -1912,24 +1898,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
         if (!order) return null;
         const partnerName = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => setPreviewDeliveryOrderId(null)}
-          >
-            <div
-              className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
-                <div>
-                  <h3 className="font-black text-slate-900">{partnerName}</h3>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600">작업완료</span>
-                </div>
-                <button onClick={() => setPreviewDeliveryOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[70vh]">
+          <ModalShell title={partnerName} onClose={() => setPreviewDeliveryOrderId(null)}>
+              <span className="mb-3 inline-block text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600">작업완료</span>
                 <OrderCard
                       readOnly
                   order={order}
@@ -1947,9 +1917,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                   onToggleItemChecked={onToggleItemChecked}
                   onDeleteOrder={onDeleteOrder ?? (() => {})}
                 />
-              </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
     </div>

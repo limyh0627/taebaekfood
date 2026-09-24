@@ -1,4 +1,5 @@
 ﻿import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+import { appConfirm } from '../src/shared/components/appDialog';
 import { today } from '../src/shared/day';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
@@ -572,7 +573,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('이 기록을 삭제하시겠습니까?')) return;
+    if (!await appConfirm('이 기록을 삭제하시겠습니까?')) return;
     await deleteDoc(doc(db, 'haccp_temp', id));
     if (selected?.id === id) setSelected(null);
   };
@@ -2012,7 +2013,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       await updateDoc(doc(db, 'haccp_sanitation', selected.id), update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
-      if (window.confirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
+      if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
         if (printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${selected.checkDate}_${selected.checkTime.replace(':', '')}_확인완료.pdf`);
       }
     } finally {
@@ -2021,7 +2022,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('이 점검표를 삭제하시겠습니까?')) return;
+    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
     await deleteDoc(doc(db, 'haccp_sanitation', id));
     if (selected?.id === id) setSelected(null);
   };
@@ -2609,7 +2610,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('이 점검표를 삭제하시겠습니까?')) return;
+    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
     await deleteDoc(doc(db, 'haccp_personal_hygiene', id));
     if (selected?.id === id) setSelected(null);
   };
@@ -3663,14 +3664,14 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
       await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
-      if (window.confirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
+      if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
         if (printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`);
       }
     } finally { setConfirming(false); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('이 점검표를 삭제하시겠습니까?')) return;
+    if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
     await deleteDoc(doc(db, 'haccp_periodic_sanitation', id));
     if (selected?.id === id) setSelected(null);
   };
@@ -4191,14 +4192,14 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
       await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
-      if (window.confirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
+      if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
         if (printRef.current) await downloadAsPDF(printRef.current, `마감체크리스트_${selected.checkDate}.pdf`);
       }
     } finally { setConfirming(false); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('이 체크리스트를 삭제하시겠습니까?')) return;
+    if (!await appConfirm('이 체크리스트를 삭제하시겠습니까?')) return;
     await deleteDoc(doc(db, 'haccp_closing_checklist', id));
     if (selected?.id === id) setSelected(null);
   };

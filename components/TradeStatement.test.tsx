@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement from './TradeStatement';
 import type { IssuedStatement, Item, Partner, PartnerItem } from '../src/shared/types';
+import { appConfirm } from '../src/shared/components/appDialog';
 
 // 운영 DB에 닿지 않고 저장 콜백의 완료·실패에 따른 화면 동작을 검증한다.
 vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []) }));
@@ -16,6 +17,10 @@ vi.mock('../src/features/admin/useVoucherLedger', () => ({
 }));
 vi.mock('./CashLedger', () => ({ AccountModal: () => null }));
 vi.mock('./voucher/VoucherComposer', () => ({ default: () => null }));
+vi.mock('../src/shared/components/appDialog', () => ({
+  appConfirm: vi.fn(async () => true),
+  appPrompt: vi.fn(async () => null),
+}));
 
 const item = { id: 'loose', name: '같은 이름', spec: '300ml', type: 'product' } as Item;
 const partner = { id: 'partner', name: '진단 거래처', role: '매입' } as unknown as Partner;
@@ -49,8 +54,9 @@ function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.spyOn(window, 'alert').mockImplementation(() => {});
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(appConfirm).mockResolvedValue(true);
 });
 
 describe('전표 목록 화면 구성', () => {
@@ -67,14 +73,14 @@ describe('전표 목록 화면 구성', () => {
 
 describe('전표와 거래처 단가의 저장 완료', () => {
   it('매입전표 발행 때 거절하면 전표만 저장하고 입고대기는 만들지 않는다', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
+    vi.mocked(appConfirm).mockResolvedValue(false);
     const { onAddIssuedStatement, onApplyStatement } = setup();
 
     fireEvent.click(await screen.findByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(onAddIssuedStatement).toHaveBeenCalledTimes(1));
     expect(onApplyStatement).toHaveBeenCalledWith(expect.objectContaining({ poIds: [], newPoItems: [] }));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('입고대기에 등록할까요?'));
+    expect(appConfirm).toHaveBeenCalledWith(expect.stringContaining('입고대기에 등록할까요?'));
   });
 
   it('비용성 매입만 있으면 입고대기를 묻지 않는다', async () => {
@@ -84,7 +90,7 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     fireEvent.click(await screen.findByRole('button', { name: '저장' }));
 
     await waitFor(() => expect(onApplyStatement).toHaveBeenCalledTimes(1));
-    expect(window.confirm).not.toHaveBeenCalled();
+    expect(appConfirm).not.toHaveBeenCalled();
     expect(onApplyStatement).toHaveBeenCalledWith(expect.objectContaining({ poIds: [], newPoItems: [] }));
   });
 

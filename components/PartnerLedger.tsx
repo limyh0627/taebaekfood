@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Users, Wallet, X } from 'lucide-react';
+import { Search, Users, Wallet } from 'lucide-react';
 import { AccountCode, CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
 import { endOfMonth, today } from '../src/shared/day';
 import { claimDocNo } from '../src/shared/voucherStamp';
@@ -8,6 +8,8 @@ import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
+import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 interface Props {
   issuedStatements: IssuedStatement[];
@@ -339,8 +341,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
         const je = journals.find(j2 => j2.sourceId === openVoucher.sourceId) ?? null;
         const items = st?.items ?? [];
         return (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setOpenVoucher(null)}>
-            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-auto" onClick={e => e.stopPropagation()}>
+          <LargeModalShell title={`전표 ${openVoucher.docNo}`} onClose={() => setOpenVoucher(null)} bodyClassName="!p-0">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
                   st ? (st.type === '매입' ? 'bg-rose-50 text-rose-600' : st.type === '매출' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500')
@@ -350,7 +351,6 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 <span className="font-black text-slate-800">{st?.partnerName ?? ce?.partnerName ?? ''}</span>
                 <span className="text-xs text-slate-400">{st?.tradeDate ?? ce?.date ?? ''}</span>
                 <span className="text-[10px] font-mono text-slate-300">{openVoucher.docNo}</span>
-                <button onClick={() => setOpenVoucher(null)} className="ml-auto p-1 text-slate-300 hover:text-slate-600"><X size={16} /></button>
               </div>
 
               <div className="p-5 space-y-4">
@@ -421,24 +421,16 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                   </button>
                 </div>
               )}
-            </div>
-          </div>
+          </LargeModalShell>
         );
       })()}
 
       {/*  수금·지불 창 — 전표에 안 붙인다. 어느 청구서를 갚았는지는 배분이 알아서 맞춘다. */}
       {payOpen && sel && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPayOpen(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <p className="font-black text-slate-800">{sel.partnerName} {type === '매출' ? '수금' : '지불'}</p>
-                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                  지금 {type === '매출' ? '미수' : '미지급'} {fmt(sel.balance)}원
-                </p>
-              </div>
-              <button onClick={() => setPayOpen(false)} className="p-1 text-slate-300 hover:text-slate-600"><X size={16} /></button>
-            </div>
+        <ModalShell title={`${sel.partnerName} ${type === '매출' ? '수금' : '지불'}`} onClose={() => setPayOpen(false)} bodyClassName="!p-0">
+            <p className="px-5 pt-4 text-[10px] font-bold text-slate-400">
+              지금 {type === '매출' ? '미수' : '미지급'} {fmt(sel.balance)}원
+            </p>
             <div className="px-5 py-4 space-y-3">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">금액</p>
@@ -472,8 +464,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 {type === '매출' ? '수금' : '지불'} 기록
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

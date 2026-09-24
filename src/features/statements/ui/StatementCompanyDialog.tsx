@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Save, X } from 'lucide-react';
+import { Save } from 'lucide-react';
 import type { CompanyInfo } from '../../../shared/types';
 import { bankAccountOf } from '../../../shared/companyInfo';
+import ModalShell from '../../../shared/components/ModalShell';
 
 const EMPTY_COMPANY: CompanyInfo = {
   name: '', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '', fax: '', email: '', bankAccount: '',
@@ -33,14 +34,15 @@ export default function StatementCompanyDialog({ initial, onClose, onSave }: {
     return next;
   });
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-labelledby="statement-company-title"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <h2 id="statement-company-title" className="font-black text-slate-900">회사 정보 설정</h2>
-          <button type="button" aria-label="닫기" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={18}/></button>
-        </div>
-        <div className="space-y-3 px-6 py-5">
+    <ModalShell title="회사 정보 설정" onClose={onClose} bodyClassName="space-y-3" footer={
+      <div className="flex gap-2">
+        <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-200">취소</button>
+        <button type="button" onClick={() => { onSave?.(form); onClose(); }}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-black text-white hover:bg-emerald-700">
+          <Save size={13}/>저장
+        </button>
+      </div>
+    }>
           {FIELDS.map(field => (
             <div key={field.key} className="grid grid-cols-3 items-center gap-3">
               <label htmlFor={`statement-company-${field.key}`} className="text-right text-xs font-black text-slate-500">{field.label}</label>
@@ -50,15 +52,6 @@ export default function StatementCompanyDialog({ initial, onClose, onSave }: {
                 className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
             </div>
           ))}
-        </div>
-        <div className="flex gap-2 px-6 pb-5">
-          <button type="button" onClick={onClose} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-200">취소</button>
-          <button type="button" onClick={() => { onSave?.(form); onClose(); }}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-black text-white hover:bg-emerald-700">
-            <Save size={13}/>저장
-          </button>
-        </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

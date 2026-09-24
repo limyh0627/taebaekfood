@@ -1,11 +1,13 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { where } from 'firebase/firestore';
-import { X, Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw, Eye, EyeOff, Boxes } from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw, Eye, EyeOff, Boxes } from 'lucide-react';
 import { fetchCollection, addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import {
   buildTaxonomy, defaultTaxonomyRows, CATEGORY_KEYS, DEFAULT_CATEGORY_LABELS, TaxonomyRow,
 } from '../src/shared/taxonomy';
 import type { CompanyId } from '../src/shared/types';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 const COL = 'itemTaxonomy';
 
@@ -98,7 +100,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
     const r = typeRow(key);
     const next = !(r?.hidden);
     const n = usage[`type:${key}`] ?? 0;
-    if (next && n > 0 && !confirm(`"${taxo.labelOf(key)}"에 품목이 ${n}개 있습니다.\n숨기면 등록 화면·필터에서 안 보이지만 품목과 재고는 그대로입니다.\n숨길까요?`)) return;
+    if (next && n > 0 && !await appConfirm(`"${taxo.labelOf(key)}"에 품목이 ${n}개 있습니다.\n숨기면 등록 화면·필터에서 안 보이지만 품목과 재고는 그대로입니다.\n숨길까요?`)) return;
     setBusy(true);
     try {
       if (r && !r.id.startsWith('tmp-')) {
@@ -146,7 +148,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
     const msg = n > 0
       ? `"${r.label}"을(를) 쓰는 품목이 ${n}개 있습니다.\n분류만 지우고 품목은 그대로 둡니다 — 그 품목들은 이 값 없이 남습니다.\n지울까요?`
       : `"${r.label}"을(를) 지울까요?`;
-    if (!confirm(msg)) return;
+    if (!await appConfirm(msg)) return;
     setBusy(true);
     try { await deleteItem(COL, r.id); setRows(rs => rs.filter(x => x.id !== r.id)); }
     finally { setBusy(false); }
@@ -215,18 +217,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
   );
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={close} />
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl h-[88vh] md:h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="text-base font-black text-slate-900">분류 관리</h3>
-            <p className="text-[11px] text-slate-400 font-bold mt-0.5">
-              타입 › 서브타입 › 카테고리 · 이름과 목록을 원하는 대로 정합니다
-            </p>
-          </div>
-          <button onClick={close} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-        </div>
+    <LargeModalShell title="분류 관리" onClose={close} bodyClassName="!p-0" footer={<button onClick={close} className="px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-sm">닫기</button>}>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-sm font-bold text-slate-400">불러오는 중…</div>
@@ -295,11 +286,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
           </div>
         )}
 
-        <div className="p-4 border-t border-slate-100 flex items-center justify-end shrink-0">
-          <button onClick={close} className="px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-sm">닫기</button>
-        </div>
-      </div>
-    </div>
+    </LargeModalShell>
   );
 };
 

@@ -1,9 +1,11 @@
+import { appConfirm } from '../../src/shared/components/appDialog';
 import React, { useState } from 'react';
 import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, PaymentMethod } from '../../src/shared/types';
 import { cashEditSplit, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../../src/shared/cashEntryEdit';
 import { formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
+import ModalShell from '../../src/shared/components/ModalShell';
 
 /**
  * **자금 전표 하나를 세우거나 고치는 창.**
@@ -121,9 +123,7 @@ function SettleBody({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-black text-slate-800">{isBuy ? '지불 처리' : '수금 처리'}</h3>
+    <ModalShell title={isBuy ? '지불 처리' : '수금 처리'} onClose={onClose} bodyClassName="space-y-4">
         <div className="text-xs text-slate-400">{stmt.partnerName} · {stmt.tradeDate}</div>
 
         {/* 이미 낸 게 있으면 먼저 밝힌다 — 갚아 놓고 또 누르는 걸 막는 건 이 한 줄이다 */}
@@ -200,8 +200,7 @@ function SettleBody({
             <Save size={12}/>저장
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -234,11 +233,8 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
   ));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
+    <ModalShell title="자금 전표 수정" onClose={onClose} bodyClassName="space-y-4">
           <div>
-            <h3 className="text-sm font-black text-slate-800">자금 전표 수정</h3>
             {/* 거래처를 안 보여줘서 어느 거래처 돈인지 모르고 고쳤다. 잔액도 같이 띄운다. */}
             {entry.partnerName ? (() => {
               const bal = entry.partnerId ? partnerBalances.get(entry.partnerId) : undefined;
@@ -252,8 +248,6 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
               );
             })() : <p className="text-[11px] font-bold text-slate-300 mt-0.5">거래처 없음</p>}
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
-        </div>
 
         <div className="space-y-3">
           <div>
@@ -335,14 +329,13 @@ function EditBody({ entry, accountCodes, partnerBalances, onClose, onSaveEdit, o
 
         <div className="flex gap-2 pt-1">
           {onDeleteEntry && (
-            <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) { onDeleteEntry(entry.id); onClose(); } }}
+            <button onClick={async () => { if (await appConfirm('이 자금 전표를 삭제할까요?')) { onDeleteEntry(entry.id); onClose(); } }}
               className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200"><Trash2 size={12}/>삭제</button>
           )}
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
           <button onClick={() => onSaveEdit(entry, form, lines)} disabled={amt <= 0}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

@@ -6,6 +6,12 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CashEntryModal, { type CashModalMode } from './CashEntryModal';
 import type { IssuedStatement, CashEntry, AccountCode } from '../../src/shared/types';
+import { appConfirm } from '../../src/shared/components/appDialog';
+
+vi.mock('../../src/shared/components/appDialog', () => ({
+  appConfirm: vi.fn(async () => true),
+  appPrompt: vi.fn(async () => null),
+}));
 
 /**
  * **이 창은 돈이 나가는 자리다.** 그래서 눈으로 보고 넘기면 안 된다.
@@ -74,7 +80,7 @@ const 입력칸 = (label: string) => {
   throw new Error(`'${label}' 입력칸을 못 찾았다`);
 };
 
-beforeEach(() => { vi.restoreAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(appConfirm).mockResolvedValue(true); });
 
 describe('수금·지불 — 전표에서 연다', () => {
   it('금액 기본값은 총액이 아니라 **남은 금액**이다', async () => {
@@ -247,12 +253,12 @@ describe('자금 전표 수정 — 이미 난 것을 고친다', () => {
 
   it('삭제는 되묻고 나서 지운다', async () => {
     const u = userEvent.setup();
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    vi.mocked(appConfirm).mockResolvedValue(false);
     const { onDeleteEntry, onClose } = 띄우기({ kind: '수정', entry: 자금() });
     await u.click(screen.getByRole('button', { name: /삭제/ }));
     expect(onDeleteEntry).not.toHaveBeenCalled();
 
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.mocked(appConfirm).mockResolvedValue(true);
     await u.click(screen.getByRole('button', { name: /삭제/ }));
     expect(onDeleteEntry).toHaveBeenCalledWith('c1');
     expect(onClose).toHaveBeenCalled();

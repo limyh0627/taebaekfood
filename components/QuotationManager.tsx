@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, X, Trash2, Search, Printer, FileText, Copy, Pencil } from 'lucide-react';
 import { Item, Partner, PartnerItem, CompanyId, CompanyInfo, COMPANIES, companyOf } from '../src/shared/types';
@@ -15,6 +16,7 @@ import { filterItems, ALL } from '../src/shared/itemFilter';
 import { quoteRecipient } from '../src/shared/quoteRecipient';
 import { where } from 'firebase/firestore';
 import { DEFAULT_COMPANY_INFO } from '../src/config';
+import ModalShell from '../src/shared/components/ModalShell';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -356,7 +358,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                           className="p-1.5 text-slate-300 hover:text-indigo-600"><Pencil size={13} /></button>
                         <button onClick={() => openCopy(q)} title="이대로 새 견적"
                           className="p-1.5 text-slate-300 hover:text-emerald-600"><Copy size={13} /></button>
-                        <button onClick={() => { if (window.confirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
+                        <button onClick={async () => { if (await appConfirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
                           title="삭제" className="p-1.5 text-slate-300 hover:text-rose-500"><Trash2 size={13} /></button>
                       </div>
                     </td>
@@ -370,17 +372,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
 
       {/* ── 작성 ── */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <FileText size={16} className="text-indigo-600" />
-                <h3 className="font-black text-slate-900">{editingId ? '견적서 수정' : '견적서 작성'}</h3>
-              </div>
-              <button onClick={() => setOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <ModalShell title={editingId ? '견적서 수정' : '견적서 작성'} onClose={() => setOpen(false)} bodyClassName="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">일자</span>
@@ -588,8 +580,6 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   <p className="text-[11px] font-black text-rose-400">원가보다 싼 값입니다 — 팔면 손해입니다.</p>
                 )}
               </div>
-            </div>
-
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100">
               <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button onClick={save} disabled={saving}
@@ -597,8 +587,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 {saving ? '저장 중…' : editingId ? '수정 저장' : '저장'}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* ── 품목 고르기 ──────────────────────────────────────────────
@@ -606,14 +595,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           전 품목을 뒤지되, 그 거래처에 이미 붙은 건 위로 올린다.
           원가와 등록 단가를 나란히 보여줘 여기서 바로 값을 가늠할 수 있게 한다. */}
       {pickIdx !== null && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setPickIdx(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl h-[72vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-              <div>
-                <h4 className="font-black text-slate-900 text-sm">품목 고르기</h4>
+        <ModalShell title="품목 고르기" onClose={() => setPickIdx(null)} className="h-[72dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
+            <div className="px-5 py-3 border-b border-slate-100">
                 <p className="text-[10px] text-slate-400">{pickResults.length}품목 · 이 거래처에 붙은 품목이 위에 옵니다</p>
-              </div>
-              <button onClick={() => setPickIdx(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
             </div>
             <div className="px-5 py-3 border-b border-slate-100">
               <div className="relative">
@@ -699,8 +683,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               <span className="text-[11px] font-bold text-slate-400">목록에 없으면 창을 닫고 품목명·규격을 직접 입력하세요</span>
               <button onClick={() => setPickIdx(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* ── 보기 · 인쇄 ── */}

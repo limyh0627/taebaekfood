@@ -1,4 +1,5 @@
 
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
 import { today } from '../src/shared/day';
 import {
@@ -19,6 +20,8 @@ import {
 import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../types';
 import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 // 모듈 캐시 — 페이지 재진입 시 24개월 과거 거래 재조회 방지 (읽기 절약). 5분 TTL.
 let palletTxCache: { data: PalletTransaction[]; at: number } | null = null;
@@ -344,7 +347,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   // 교체완료: 헌 파레트 입고 확인 → 원 거래를 교체완료로 표시 + 회수(in) 기록
   const completeExchange = async (tx: PalletTransaction) => {
     const retQty = tx.exchangeReturnQty ?? tx.quantity;
-    if (!confirm(`헌 파레트 ${retQty}개가 입고(회수)되었나요? 교체완료로 처리합니다.`)) return;
+    if (!await appConfirm(`헌 파레트 ${retQty}개가 입고(회수)되었나요? 교체완료로 처리합니다.`)) return;
     try {
       await updateItem('palletTransactions', tx.id, { status: '교체완료' });
       const date = today();
@@ -363,7 +366,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     const tx = palletTransactions.find(t => t.id === txId);
     if (!tx) return;
     const label = tx.type === 'in' ? '입고' : '지급';
-    if (!confirm(`이 파렛트 ${label} 거래(${tx.quantity}개)를 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+    if (!await appConfirm(`이 파렛트 ${label} 거래(${tx.quantity}개)를 삭제할까요?\n되돌릴 수 없습니다.`)) return;
     try {
       await deleteItem('palletTransactions', tx.id);
       // 되돌림: 이동전표만 총 재고 복원. 일반/교체 거래의 회수 대기는 기록에서 계산되므로 삭제만으로 반영됨.
@@ -783,35 +786,11 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
       {/* Partner Detail Modal */}
       {selectedClientIdForDetail && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => {
+        <LargeModalShell title={`${partners.find(c => c.id === selectedClientIdForDetail)?.name || '거래처 정보'} · 파렛트 입출고 내역`} onClose={() => {
             setSelectedClientIdForDetail(null);
             setHistoryPage(1);
             setHistoryDateFilter('');
-          }} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
-            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center space-x-4">
-                <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg">
-                  <Users size={28} />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900">
-                    {partners.find(c => c.id === selectedClientIdForDetail)?.name || '거래처 정보'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">파렛트 입출고 내역</p>
-                </div>
-              </div>
-              <button onClick={() => {
-                setSelectedClientIdForDetail(null);
-                setHistoryPage(1);
-                setHistoryDateFilter('');
-              }} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-white rounded-full transition-all">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          }} bodyClassName="space-y-8">
               {/* Current Status Summary */}
               <div className="space-y-4">
                 <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center">
@@ -978,34 +957,14 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
+        </LargeModalShell>
       )}
 
       {/* Transaction Modal */}
       {isTransactionModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsTransactionModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className={`p-6 border-b border-slate-100 flex items-center justify-between ${transType === 'in' ? 'bg-emerald-50' : transType === 'exchange' ? 'bg-amber-50' : 'bg-rose-50'}`}>
-              <div className="flex items-center space-x-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${transType === 'in' ? 'bg-emerald-600' : transType === 'exchange' ? 'bg-amber-500' : 'bg-rose-600'}`}>
-                  <RefreshCw size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    {transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'}
-                  </h3>
-                  <p className="text-xs text-slate-500">{selectedClientForTrans ? selectedClientForTrans.name : '거래처를 선택하세요'}</p>
-                </div>
-              </div>
-              <button onClick={() => setIsTransactionModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-white/50 rounded-full transition-all">
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddTransaction} className="p-6 space-y-4">
+        <ModalShell title={transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'} onClose={() => setIsTransactionModalOpen(false)}>
+            <p className="mb-4 text-xs text-slate-500">{selectedClientForTrans ? selectedClientForTrans.name : '거래처를 선택하세요'}</p>
+            <form onSubmit={handleAddTransaction} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">거래처</label>
                 <select name="partnerId" required defaultValue={selectedClientForTrans?.id ?? ''} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
@@ -1066,8 +1025,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

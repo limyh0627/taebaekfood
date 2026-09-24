@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History, GitMerge } from 'lucide-react';
 import { Item, Order, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
@@ -133,7 +134,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   const remove = async (lot: RawMaterialLot) => {
     const remUnit = isOil ? kgToUnit(lot.kgRemaining, material) : lot.kgRemaining;
     if (busy) return;
-    if (!confirm(`[${lot.supplierName}] 로트를 소진 처리할까요?\n잔여 ${fmt(remUnit)}${unitLabel}가 재고에서 빠지고 이력에 남습니다.`)) return;
+    if (!await appConfirm(`[${lot.supplierName}] 로트를 소진 처리할까요?\n잔여 ${fmt(remUnit)}${unitLabel}가 재고에서 빠지고 이력에 남습니다.`)) return;
     setBusy(true);
     try {
       const opId = `deplete-lot:${product.id}:${lot.id}`;
@@ -176,7 +177,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
     const sourceUnit = isOil ? kgToUnit(source.kgRemaining, material) : source.kgRemaining;
     const targetUnit = isOil ? kgToUnit(target.kgRemaining, material) : target.kgRemaining;
     const mergedUnit = sourceUnit + targetUnit;
-    if (!confirm(
+    if (!await appConfirm(
       `[${source.supplierName}${source.lotNo ? ` · ${source.lotNo}` : ''}] 로트를\n`
       + `[${target.supplierName}${target.lotNo ? ` · ${target.lotNo}` : ''}] 로트에 합칠까요?\n\n`
       + `${fmt(sourceUnit)} + ${fmt(targetUnit)} = ${fmt(mergedUnit)}${unitLabel}\n`

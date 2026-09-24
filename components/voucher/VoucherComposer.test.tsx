@@ -84,7 +84,7 @@ const 채우기 = async (u: ReturnType<typeof userEvent.setup>, label: string, v
   await u.clear(el); await u.type(el, v);
 };
 const 저장 = async (u: ReturnType<typeof userEvent.setup>) =>
-  u.click(screen.getByRole('button', { name: /발행|저장/ }));
+  u.click(screen.getByRole('button', { name: '저장' }));
 
 describe('한 번 나간 돈을 성격대로 가른다', () => {
   it('대출상환 — 원금은 차입금, 이자는 이자비용. 통장은 합계만큼 나간다', async () => {
@@ -153,7 +153,7 @@ describe('돈이 안 움직이는 갈래', () => {
     const u = userEvent.setup();
     const { onAddCashEntry } = 띄우기();
     await 갈래(u, '대체');
-    expect(screen.getByRole('button', { name: /발행|저장/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
   });
 });
 

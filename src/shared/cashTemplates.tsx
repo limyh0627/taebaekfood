@@ -3,6 +3,7 @@ import type { AccountCode, FixedCostTemplate } from './types';
 import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { lineAmount } from './lineAmount';
 import { STANDARD_ACCOUNT } from './accountChart';
+import ModalShell from './components/ModalShell';
 
 /**
  * 일반전표 템플릿 — 자주 끊는 자금전표를 한 번에 채운다.
@@ -346,18 +347,14 @@ export function CashTemplateModal({
         || (t.accountCode ?? '').includes(s) || nameOfCode(t.accountCode).includes(s));
   }, [templates, q, tab, accountCodes]);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+    <ModalShell title={`템플릿 ${shown.length === templates.length ? templates.length : `${shown.length}/${templates.length}`}`} onClose={onClose}
+      className="h-[80dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
         {/* 방향(출금·입금·발생)은 고른 템플릿이 정한다 — 여기서 먼저 고르게 하면
             템플릿 화면과 목록이 달라 보이고, 방향을 잘못 잡으면 찾던 게 안 뜬다. */}
-        <div className="px-5 py-4 border-b border-slate-100 shrink-0 space-y-2.5">
+        <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2.5 md:px-5">
           <div className="flex items-center gap-3">
-            <h3 className="text-sm font-black text-slate-800 shrink-0">
-              템플릿 <span className="text-slate-300 font-bold">{shown.length === templates.length ? templates.length : `${shown.length}/${templates.length}`}</span>
-            </h3>
             <input type="text" autoFocus placeholder="이름·거래처·계정 검색" value={q} onChange={e => setQ(e.target.value)}
               className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-            <button onClick={onClose} className="shrink-0 p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">✕</button>
           </div>
           <div className="flex gap-1">
             {(['all', 'fav', ...VOUCHER_DIRS] as const).map(v => (
@@ -391,8 +388,7 @@ export function CashTemplateModal({
             <CashTemplatePicker templates={shown} accountCodes={accountCodes} activeId={activeId} onPick={onPick} />
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   Search,
   Calendar,
   FileText,
-  X,
   Check,
   ChevronRight,
   Info,
@@ -23,6 +22,7 @@ import {
   Crown
 } from 'lucide-react';
 import { Employee, LeaveRequest, LeaveType, LeaveStatus, CompanyId } from '../types';
+import ModalShell from '../src/shared/components/ModalShell';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
@@ -907,16 +907,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {/* 변경 신청 모달 */}
       {modifyTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setModifyTarget(null)} />
-          <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">변경 신청</h3>
-                <p className="text-[10px] text-slate-400 font-bold">{modifyTarget.type} · 기존: {modifyTarget.startDate} ~ {modifyTarget.endDate}</p>
-              </div>
-              <button onClick={() => setModifyTarget(null)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
-            </div>
+        <ModalShell title={`변경 신청 · ${modifyTarget.type} · 기존: ${modifyTarget.startDate} ~ ${modifyTarget.endDate}`} onClose={() => setModifyTarget(null)} bodyClassName="!p-0">
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -948,22 +939,12 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <Check size={18} />변경 신청
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Modal - Unified Application */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-xl rounded-[40px] shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><CalendarCheck size={24} /></div>
-                <div><h3 className="text-2xl font-black text-slate-900">연차 신청서</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-widest">휴가 신청</p></div>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={24} /></button>
-            </div>
+        <ModalShell title="연차 신청서" onClose={() => setIsModalOpen(false)} bodyClassName="!p-0">
             <form onSubmit={handleApply} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">본인 확인</label>
@@ -1009,8 +990,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-5 rounded-3xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all">취소</button>
               <button disabled={!selectedEmployeeId} type="submit" onClick={handleApply} className="flex-[2] py-5 rounded-3xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-50 flex items-center justify-center space-x-2"><Check size={22} /><span>신청 완료</span></button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

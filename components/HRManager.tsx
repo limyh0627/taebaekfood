@@ -1,4 +1,5 @@
 
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
 //  이 파일엔 `const today = new Date()`(Date 객체)가 이미 있어 별칭으로 받는다
 import { today as todayStr, dateOfLocal } from '../src/shared/day';
@@ -31,6 +32,8 @@ import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll
 import { payrollGross, payrollDeduct, payrollNet, payrollTotals, payrollDocId, companyOf, TAEBAEK } from '../types';
 import PageHeader from './PageHeader';
 import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
+import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
@@ -176,7 +179,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   const makePayrollEntry = async () => {
     if (!onCreatePayrollEntry || paySaving) return;
     if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
-    if (savedPayroll?.cashEntryId && !window.confirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
+    if (savedPayroll?.cashEntryId && !await appConfirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
     setPaySaving(true);
     try {
       await savePayroll();
@@ -203,7 +206,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   const makePayrollAccrual = async () => {
     if (!onCreatePayrollAccrual || paySaving) return;
     if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
-    if (savedPayroll?.cashEntryId && !window.confirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
+    if (savedPayroll?.cashEntryId && !await appConfirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
     setPaySaving(true);
     try {
       await savePayroll();
@@ -837,19 +840,10 @@ const HRManager: React.FC<HRManagerProps> = ({
 
       {/* 급여명세서 — 사원 한 명분. 근로기준법상 교부 의무 항목(지급·공제 내역)을 담는다. */}
       {paySlipEmp && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={() => setPaySlipEmp(null)}>
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">급여명세서</p>
-                <h3 className="text-lg font-black text-slate-900">{paySlipEmp.employeeName}</h3>
-                <p className="text-[11px] font-bold text-slate-400">
-                  {paySlipEmp.department} {paySlipEmp.position} · {payYm} · 지급일 {payDate}
-                </p>
-              </div>
-              <button onClick={() => setPaySlipEmp(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
-            </div>
+        <ModalShell title={`급여명세서 · ${paySlipEmp.employeeName}`} onClose={() => setPaySlipEmp(null)}>
+            <p className="mb-4 text-[11px] font-bold text-slate-400">
+              {paySlipEmp.department} {paySlipEmp.position} · {payYm} · 지급일 {payDate}
+            </p>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="rounded-2xl border border-slate-200 p-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1.5">지급</p>
@@ -879,20 +873,13 @@ const HRManager: React.FC<HRManagerProps> = ({
               className="mt-4 w-full py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 transition-all">
               인쇄
             </button>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Employee Add/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-slate-900">{editingEmployee ? '정보 수정' : '신규 직원 등록'}</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleFormSubmit} className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+        <ModalShell title={editingEmployee ? '정보 수정' : '신규 직원 등록'} onClose={() => setIsModalOpen(false)} bodyClassName="!p-0">
+            <form onSubmit={handleFormSubmit} className="p-5 space-y-5">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">이름</label>
                 <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" />
@@ -982,8 +969,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                 <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 flex items-center justify-center space-x-2"><Check size={20} /><span>저장 완료</span></button>
               </div>
             </form>
-          </div>
-        </div>
+        </ModalShell>
       )}
       {/* ── 회사 단체 휴가 일괄 등록 ── */}
       {showVacation && (() => {
@@ -1019,18 +1005,11 @@ const HRManager: React.FC<HRManagerProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowVacation(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800">회사 단체 휴가</h3>
-                  <p className="text-xs text-slate-400 font-bold">
+          <ModalShell title="회사 단체 휴가" onClose={() => setShowVacation(false)} bodyClassName="!p-0">
+                  <p className="px-5 pt-4 text-xs text-slate-400 font-bold">
                     선택된 직원에게 &apos;휴가&apos;로 기록됩니다. <b className={vacationDeducts ? 'text-rose-500' : 'text-slate-500'}>
                     {vacationDeducts ? '연차에서 차감' : '연차 차감 없음'}</b> — 직원 앱 연차 내역에도 그대로 표시됩니다.
                   </p>
-                </div>
-                <button onClick={() => setShowVacation(false)} className="text-slate-300 hover:text-slate-500 shrink-0"><X size={20} /></button>
-              </div>
 
               {/* 기간 */}
               <div className="px-5 py-4 border-b border-slate-100 flex items-end gap-3 flex-wrap">
@@ -1115,8 +1094,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   {vacationBusy ? '등록 중…' : '휴가 등록'}
                 </button>
               </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
 
@@ -1148,19 +1126,11 @@ const HRManager: React.FC<HRManagerProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLeaveDetailEmp(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              {/* 헤더 */}
-              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-black text-slate-800">{emp.name}</h3>
-                  <p className="text-xs text-slate-400 font-bold">
+          <LargeModalShell title={`${emp.name} 연차 상세`} onClose={() => setLeaveDetailEmp(null)} bodyClassName="!p-0">
+                  <p className="px-5 pt-4 text-xs text-slate-400 font-bold">
                     {emp.department} · {emp.position} · 입사 {emp.joinDate}
                     {underOneYear && <span className="ml-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">1년 미만</span>}
                   </p>
-                </div>
-                <button onClick={() => setLeaveDetailEmp(null)} className="text-slate-300 hover:text-slate-500 shrink-0"><X size={20} /></button>
-              </div>
 
               {/* 요약 */}
               <div className="px-5 py-4 grid grid-cols-3 gap-3 border-b border-slate-100">
@@ -1289,9 +1259,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                                              사장님이 남의 연차를 무를 길이 없었다(이지영 09-04 는 스크립트로 지웠다). */}
                                         {canCancel(r) && (
                                           <button
-                                            onClick={() => {
-                                              const why = window.prompt(`${r.employeeName} ${r.startDate} 연차를 취소합니다.
-사유 (선택)`, '');
+                                            onClick={async () => {
+                                              const why = await appPrompt({
+                                                title: '연차 취소',
+                                                message: `${r.employeeName} ${r.startDate} 연차를 취소합니다.\n사유를 입력해 주세요. (선택)`,
+                                                defaultValue: '',
+                                              });
                                               if (why === null) return;
                                               onUpdateLeaveStatus(r.id, 'cancelled', why);
                                             }}
@@ -1311,8 +1284,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   );
                 })()}
               </div>
-            </div>
-          </div>
+          </LargeModalShell>
         );
       })()}
 

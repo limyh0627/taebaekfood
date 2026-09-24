@@ -69,6 +69,8 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await setDoc(doc(db, 'items', 'i-taebaek'), { companyId: 'taebaek', name: '참기름' });
       await setDoc(doc(db, 'cashEntries', 'c-taebaek'), { companyId: 'taebaek', amount: 1000 });
       await setDoc(doc(db, 'issuedStatements', 's-taebaek'), { companyId: 'taebaek', totalAmount: 5000 });
+      await setDoc(doc(db, 'openingBalances', 'main'), { companyId: 'taebaek', date: '2026-07-31', amounts: { 103: 10000000 } });
+      await setDoc(doc(db, 'openingBalances', 'main-punghoe'), { companyId: 'punghoe', date: '2026-07-31', amounts: { 103: 20000000 } });
       await setDoc(doc(db, 'employees', 'e1'), { companyId: 'taebaek', name: '이지영', fcmTokens: [] });
       await setDoc(doc(db, 'employees', 'e9'), { companyId: 'punghoe', name: '우용', fcmTokens: [] });
       await setDoc(doc(db, 'leaveRequests', 'lv-e1'), { companyId: 'taebaek', employeeId: 'e1', status: 'pending' });
@@ -196,6 +198,54 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
 
     it('현장 자료(주문·품목)는 일반 직원도 쓴다', async () => {
       await assertSucceeds(setDoc(doc(태백직원(), 'items', 'i-새것'), { companyId: 'taebaek', name: '들기름' }));
+    });
+  });
+
+  describe('기초잔액 — 관리자 전용·회사 조건 질의', () => {
+    it('일반 직원은 자기 회사 기초잔액도 읽지 못한다', async () => {
+      await assertFails(getDoc(doc(태백직원(), 'openingBalances', 'main')));
+      await assertFails(getDocs(query(collection(태백직원(), 'openingBalances'), where('companyId', '==', 'taebaek'))));
+    });
+
+    it('관리자는 자기 회사 한 건을 읽지만 다른 회사 것은 못 읽는다', async () => {
+      await assertSucceeds(getDoc(doc(관리자(), 'openingBalances', 'main')));
+      await assertFails(getDoc(doc(관리자(), 'openingBalances', 'main-punghoe')));
+      await assertSucceeds(getDoc(doc(풍회관리자(), 'openingBalances', 'main-punghoe')));
+      await assertFails(getDoc(doc(풍회관리자(), 'openingBalances', 'main')));
+    });
+
+    it('관리자도 회사 조건 없는 목록 조회는 막고 자기 회사 조건만 허용한다', async () => {
+      await assertFails(getDocs(collection(관리자(), 'openingBalances')));
+      await assertSucceeds(getDocs(query(collection(관리자(), 'openingBalances'), where('companyId', '==', 'taebaek'))));
+      await assertFails(getDocs(query(collection(관리자(), 'openingBalances'), where('companyId', '==', 'punghoe'))));
+      await assertSucceeds(getDocs(query(collection(풍회관리자(), 'openingBalances'), where('companyId', '==', 'punghoe'))));
+      await assertFails(getDocs(query(collection(풍회관리자(), 'openingBalances'), where('companyId', '==', 'taebaek'))));
+    });
+
+    it('회사값 없는 기초잔액과 다른 회사 기초잔액을 만들지 못한다', async () => {
+      await assertFails(setDoc(doc(관리자(), 'openingBalances', 'missing-company'), { date: '2026-07-31', amounts: {} }));
+      await assertFails(setDoc(doc(관리자(), 'openingBalances', 'wrong-company'), { companyId: 'punghoe', date: '2026-07-31', amounts: {} }));
+      await assertSucceeds(setDoc(doc(관리자(), 'openingBalances', 'own-company'), { companyId: 'taebaek', date: '2026-07-31', amounts: {} }));
+    });
+
+    it('기존 기초잔액의 회사값을 바꾸거나 지우지 못한다', async () => {
+      const ref = doc(관리자(), 'openingBalances', 'main');
+      await assertFails(updateDoc(ref, { companyId: 'punghoe' }));
+      await assertFails(updateDoc(ref, { companyId: null }));
+      await assertSucceeds(updateDoc(ref, { amounts: { 103: 11000000 } }));
+    });
+  });
+
+  describe('companyId 누락 쓰기 — 컬렉션 갈래별 차단', () => {
+    it('현장 자료·관리자 자료·직원 전용 규칙 모두 회사값 없는 생성을 막는다', async () => {
+      await assertFails(setDoc(doc(태백직원(), 'items', 'i-회사없음'), { name: '회사없는품목' }));
+      await assertFails(setDoc(doc(관리자(), 'cashEntries', 'c-회사없음'), { amount: 1000 }));
+      await assertFails(setDoc(doc(관리자(), 'employees', 'e-회사없음'), { name: '회사없는직원' }));
+      await assertFails(setDoc(doc(태백직원(), 'leaveRequests', 'lv-회사없음'), { employeeId: 'e1', status: 'pending' }));
+      await assertFails(setDoc(doc(태백직원(), 'adjustmentRequests', 'adj-회사없음'), { itemId: 'i-taebaek', requestedBy: 'e1', status: 'pending' }));
+      await assertFails(setDoc(doc(태백직원(), 'chatRooms', 'room-회사없음'), { participantIds: ['e1'], participantCompanies: { e1: 'taebaek' } }));
+      await assertFails(setDoc(doc(태백직원(), 'chatMessages', 'msg-회사없음'), { roomId: 'room-taebaek', senderId: 'e1' }));
+      await assertFails(setDoc(doc(태백직원(), 'notifications', 'n-회사없음'), { targetId: 'e1' }));
     });
   });
 

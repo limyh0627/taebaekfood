@@ -1,4 +1,5 @@
 
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { RotateCcw } from 'lucide-react';
@@ -85,6 +86,8 @@ import CalendarView from './CalendarView';
 import Badge from '../src/shared/components/Badge';
 import CompletionStatusControl from '../src/shared/components/CompletionStatusControl';
 import OrderEditModalShell from './OrderEditModalShell';
+import ModalShell from '../src/shared/components/ModalShell';
+import LargeModalShell from '../src/shared/components/LargeModalShell';
 import DateChipButton from '../src/shared/components/DateChipButton';
 import { companySettingDocId, companySettingPatch } from '../src/shared/companySettings';
 
@@ -1774,8 +1777,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
     set새그룹이름('');
   };
 
-  const 그룹이름바꾸기 = (name: string) => {
-    const 새이름 = window.prompt('그룹 이름', name)?.trim();
+  const 그룹이름바꾸기 = async (name: string) => {
+    const 새이름 = (await appPrompt('그룹 이름', name))?.trim();
     if (!새이름 || 새이름 === name) return;
     if (pickerGroups.includes(새이름)) { alert('같은 이름의 그룹이 이미 있습니다.'); return; }
     setPickerGroups(prev => prev.map(x => x === name ? 새이름 : x));
@@ -1784,9 +1787,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
     setPickerGroup(현재 => 현재 === name ? 새이름 : 현재);
   };
 
-  const 그룹지우기 = (name: string, 담긴수: number) => {
+  const 그룹지우기 = async (name: string, 담긴수: number) => {
     if (pickerGroups.length <= 1) { alert('그룹은 하나는 남아 있어야 합니다.'); return; }
-    if (담긴수 > 0 && !window.confirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
+    if (담긴수 > 0 && !await appConfirm(`"${name}" 에 담긴 ${담긴수}건은 어디에도 안 담긴 채로 빠집니다. 지울까요?`)) return;
     const 남은 = pickerGroups.filter(x => x !== name);
     setPickerGroups(남은);
     //  지운 그룹에 담겼던 줄은 **목록에서도 뺀다** — 갈 곳 없는 줄을 남기지 않는다.
@@ -3777,12 +3780,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
             {/*  **그룹 편집 창**(2026-09-14 사장님) — 추가·이름바꾸기·지우기를 여기 모은다.
                  작업순서 설정 창 **위에** 뜬다(z-[60]). 칩에서 손대던 일이 다 여기로 왔다. */}
             {그룹편집 && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => set그룹편집(false)}>
-                <div className="flex max-h-[70vh] w-full max-w-sm flex-col rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                    <h3 className="font-black text-slate-900">그룹 편집</h3>
-                    <button onClick={() => set그룹편집(false)} aria-label="닫기" className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={16} /></button>
-                  </div>
+              <ModalShell title="그룹 편집" onClose={() => set그룹편집(false)} className="max-w-sm" bodyClassName="p-0"
+                footer={<button type="button" onClick={() => set그룹편집(false)} className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-200">닫기</button>}>
 
                   {/*  새 그룹 — 창 맨 위다. 들어오자마자 하는 일이 보통 '추가'다. */}
                   <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
@@ -3818,17 +3817,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     })}
                   </div>
 
-                  <div className="border-t border-slate-100 p-4">
-                    <button type="button" onClick={() => set그룹편집(false)}
-                      className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-black text-slate-600 transition-colors hover:bg-slate-200">닫기</button>
-                  </div>
-                </div>
-              </div>
+              </ModalShell>
             )}
 
             {/* 작업순서 설정 모달 */}
             {showWorkOrderPicker && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowWorkOrderPicker(false)}>
+              <LargeModalShell title="작업순서 설정" onClose={() => setShowWorkOrderPicker(false)} className="min-h-[70vh]" bodyClassName="p-0">
                 {/*  **창을 키워 뒀다**(2026-09-16 사장님: "모달 기본 크기 좀 키워둬라").
                        한 줄이 두 줄(거래처·품목)로 늘어난 뒤로 보이는 줄 수가 반이 됐다 —
                        담은 차례를 보려고 여는 창인데 서너 줄만 보이면 훑을 수가 없다.
@@ -3838,11 +3832,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                        쪼그라들지 않게** 한다. 줄이 몇 개냐에 따라 창 크기가 들쭉날쭉하면
                        그룹 칩·단추 자리가 매번 옮겨 다닌다.
                        폭은 `md`(448px) → `xl`(576px), 높이는 75vh → 90vh. */}
-                <div className="flex max-h-[90vh] min-h-[70vh] w-full max-w-xl flex-col rounded-3xl bg-white shadow-2xl mx-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                    <h3 className="font-black text-slate-900">작업순서 설정</h3>
-                    <button onClick={() => setShowWorkOrderPicker(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={16} /></button>
-                  </div>
+                <div className="flex min-h-[60vh] flex-col">
 
                   {/*  **그룹 줄** — 고른 그룹에 주문이 담긴다. 이름 고치기·지우기·새로 만들기가 여기 있다. */}
                   <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 px-5 py-3">
@@ -4029,7 +4019,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
+              </LargeModalShell>
             )}
           </div>
         );
@@ -4135,29 +4125,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
         if (!order) return null;
         const partnerName = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => setPreviewOrderId(null)}
-          >
-            <div
-              className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
-                <div>
-                  <h3 className="font-black text-slate-900">{partnerName}</h3>
-                  <Badge variant={order.status === OrderStatus.PROCESSING ? 'info' : 'progress'}>
-                    {order.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openOrderEditor(order.id)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-indigo-600 hover:bg-indigo-50" aria-label={`${partnerName} 주문 수정`}><Edit2 size={14} aria-hidden="true" />수정</button>
-                  <button onClick={() => setPreviewOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400" aria-label="상세 닫기">
-                    <X size={16} />
-                  </button>
-                </div>
+          <ModalShell title={partnerName} onClose={() => setPreviewOrderId(null)} className="max-w-sm" bodyClassName="bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <Badge variant={order.status === OrderStatus.PROCESSING ? 'info' : 'progress'}>
+                  {order.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
+                </Badge>
+                <button type="button" onClick={() => openOrderEditor(order.id)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-indigo-600 hover:bg-indigo-50" aria-label={`${partnerName} 주문 수정`}><Edit2 size={14} aria-hidden="true" />수정</button>
               </div>
-              <div className="p-4 overflow-y-auto max-h-[70vh]">
                 <OrderCard
                   order={order}
                   partners={partners}
@@ -4176,9 +4150,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   onDeleteOrder={onDeleteOrder}
                   readOnly
                 />
-              </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
       {listOrderEditor && (() => {
@@ -4501,18 +4473,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
           });
         };
         return (
-          <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm md:items-center md:p-4" onClick={closeMemo}>
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="memo-editor-title"
-              className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl animate-in slide-in-from-bottom duration-300 md:rounded-2xl md:zoom-in-95"
-              onClick={event => event.stopPropagation()}
-            >
-              <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-5 py-4">
-                <div className="min-w-0">
-                  <h3 id="memo-editor-title" className="font-black text-slate-900">메모 작성</h3>
-                  <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3 text-xs">
+          <ModalShell title="메모 작성" onClose={closeMemo} className="max-w-lg" bodyClassName="space-y-3"
+            footer={<div className="flex items-center justify-between gap-2">
+              <div>{memoItem.note && <button type="button" onClick={requestDeleteMemo} className="rounded-lg px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-50">메모 삭제</button>}</div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={closeMemo} className="rounded-lg px-4 py-2 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>
+                <button type="button" onClick={saveMemo} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-700">{memoItem.note ? '수정 저장' : '저장'}</button>
+              </div>
+            </div>}>
+                  <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
                     <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">거래처</span><span className="truncate font-bold text-slate-700">{memoOrder.partnerName || partners.find(partner => partner.id === memoOrder.partnerId)?.name || '이름 없음'}</span></div>
                     <div className="flex min-w-0 items-center">
                       <span className="w-16 shrink-0 font-bold text-slate-400">주문 품목</span>
@@ -4538,10 +4507,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">주문일</span><span className="font-bold tabular-nums text-slate-700">{new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(memoOrder.createdAt))}</span></div>
                     <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">작성자</span><span className="truncate font-bold text-slate-700">{memoItem.noteBy || currentUserName || '미기록'}</span></div>
                   </div>
-                </div>
-                <button type="button" onClick={closeMemo} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="메모 닫기"><X size={17} /></button>
-              </div>
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
                 <div>
                   <textarea
                     value={listMemoDraft}
@@ -4576,18 +4541,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <span className="font-bold text-slate-500">작성일시</span>
                     <span className="font-bold tabular-nums text-slate-700">{new Date(memoItem.noteAt).toLocaleString('ko-KR')}</span>
                 </div>}
-              </div>
-              <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 md:py-3">
-                <div>
-                  {memoItem.note && <button type="button" onClick={requestDeleteMemo} className="rounded-lg px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-50">메모 삭제</button>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={closeMemo} className="rounded-lg px-4 py-2 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>
-                  <button type="button" onClick={saveMemo} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-700">{memoItem.note ? '수정 저장' : '저장'}</button>
-                </div>
-              </div>
-            </div>
-          </div>
+          </ModalShell>
         );
       })()}
       {confirmModal && (

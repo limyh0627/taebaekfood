@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { today } from '../src/shared/day';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
@@ -9,6 +10,7 @@ import { stampFor } from '../src/shared/voucherStamp';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -200,7 +202,7 @@ export default function CashLedger({
                           className={`transition-all ${open > 0 ? 'text-indigo-400 hover:text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'}`}>
                           <Link2 size={13} />
                         </button>
-                        <button onClick={() => { if (confirm('이 거래를 삭제할까요?')) onDeleteCashEntry(entry.id); }}
+                        <button onClick={async () => { if (await appConfirm('이 거래를 삭제할까요?')) onDeleteCashEntry(entry.id); }}
                           className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all">
                           <Trash2 size={12} />
                         </button>
@@ -285,12 +287,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">전표 매칭</h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="전표 매칭" onClose={onClose} bodyClassName="space-y-4">
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center justify-between">
           <div className="min-w-0">
@@ -356,8 +353,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
           전표를 누르면 미매칭 금액만큼 상계됩니다. 밀린 전표 여러 건을 한 번의 이체로 끄려면 차례로 누르면 되고,
           한 전표를 나눠서 결제했다면 이체 건마다 같은 전표를 눌러 붙이면 됩니다.
         </p>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -536,11 +532,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+    <ModalShell title="일반전표 발행" onClose={onClose} bodyClassName="!p-0">
         {/* 방향은 제목 줄에 둔다 — 아래 목록이 통째로 바뀌므로 목록 위에 있어야 한다 */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 shrink-0">
-          <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
           {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="shrink-0 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
@@ -554,7 +548,6 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
               </button>
             ))}
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18} /></button>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-5">
@@ -822,8 +815,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
             onClose={() => setPickerOpen(false)}
           />
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -852,12 +844,7 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">자금 계좌 관리</h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="자금 계좌 관리" onClose={onClose} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           <b>기초 잔액</b>은 기준일 시점의 통장 잔고입니다. 그 이전 거래는 기록하지 않아도 되고, 잔액은 여기서부터 굴러갑니다.
         </p>
@@ -901,7 +888,6 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
             추가
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

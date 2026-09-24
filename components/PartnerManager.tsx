@@ -24,6 +24,7 @@ import AddPartnerModal from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import ShipToEditor from '../src/shared/components/ShipToEditor';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface PartnerManagerProps {
   partners: Partner[];
@@ -244,18 +245,9 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
 
       {/* 수정 오버레이 모달 */}
       {editForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditForm(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            {/* 헤더 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-base font-black text-slate-800">거래처 수정</h2>
-              <button onClick={() => setEditForm(null)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-
+        <ModalShell title="거래처 수정" onClose={() => setEditForm(null)} bodyClassName="!p-0">
             {/* 폼 */}
-            <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+            <div className="px-5 py-5 space-y-4">
               {/* 거래처명 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">거래처명</label>
@@ -446,8 +438,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {isAddModalOpen && (

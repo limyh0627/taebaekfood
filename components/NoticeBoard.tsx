@@ -8,11 +8,11 @@ import {
   User,
   ChevronRight,
   AlertCircle,
-  X,
   Plus
 } from 'lucide-react';
 import { Post } from '../types';
 import PageHeader from './PageHeader';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface NoticeBoardProps {
   posts: Post[];
@@ -88,13 +88,8 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
 
       {/* 공지 작성 모달 */}
       {showForm && onAddPost && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowForm(false)} />
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl p-8 space-y-5 animate-in zoom-in-95 duration-300">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black text-slate-900">공지 작성</h3>
-              <button onClick={() => setShowForm(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
-            </div>
+        <ModalShell title="공지 작성" onClose={() => setShowForm(false)}>
+          <div className="space-y-5">
             <div className="space-y-4">
               <input
                 type="text"
@@ -149,28 +144,12 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
               </button>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Notice Detail Modal */}
       {selectedPost && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setSelectedPost(null)} />
-          <div className="relative bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className={`p-8 flex items-center justify-between text-white ${selectedPost.tag === '긴급' ? 'bg-rose-600' : 'bg-indigo-600'}`}>
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center">
-                  <BellRing size={24} />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black">{selectedPost.title}</h3>
-                  <p className="text-xs opacity-80 font-bold uppercase tracking-widest">{selectedPost.tag} 공지사항</p>
-                </div>
-              </div>
-              <button onClick={() => setSelectedPost(null)} className="p-2 hover:bg-white/10 rounded-full transition-all">
-                <X size={24} />
-              </button>
-            </div>
+        <ModalShell title={`${selectedPost.title} · ${selectedPost.tag} 공지사항`} onClose={() => setSelectedPost(null)} bodyClassName="!p-0">
             <div className="p-10 space-y-8">
               <div className="flex items-center justify-between border-b border-slate-100 pb-6">
                 <div className="flex items-center space-x-6">
@@ -197,8 +176,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

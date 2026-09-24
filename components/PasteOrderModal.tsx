@@ -6,13 +6,13 @@ import { validateExtract, catalogLine, historyLines, type HistoryOrder } from '.
 import { defaultShipToId, activeShipTos, linksForShipTo } from '../src/shared/shipTo';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
-import OrderCreationModalHeader from '../src/shared/components/OrderCreationModalHeader';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
+import ModalShell from '../src/shared/components/ModalShell';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -437,16 +437,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { if (!savingRef.current) onClose(); }} />
-      <div className="relative bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col h-[85vh] max-h-[860px] animate-in zoom-in-95 duration-300">
-
-        {/* 헤더 */}
-        <OrderCreationModalHeader
-          currentLabel="주문 내역 붙여넣기"
-          onBack={onBack ? () => { if (!savingRef.current) onBack(); } : undefined}
-          onClose={() => { if (!savingRef.current) onClose(); }}
-        />
+    <ModalShell title="주문 등록 · 주문 내역 붙여넣기" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
+        {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-5 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         {/* 스텝 인디케이터 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -736,8 +728,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             />
           )}
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 

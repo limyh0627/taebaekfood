@@ -1,3 +1,4 @@
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { where } from 'firebase/firestore';
@@ -223,7 +224,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleDelete = async (d: CabinetDoc) => {
-    if (!confirm(`"${d.fileName}" 파일을 삭제할까요?`)) return;
+    if (!await appConfirm(`"${d.fileName}" 파일을 삭제할까요?`)) return;
     try {
       await deleteObject(ref(storage, d.storagePath)).catch((e) => {
         if (e?.code !== 'storage/object-not-found') throw e; // 이미 없으면 메타만 정리
@@ -236,7 +237,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleEditNote = async (d: CabinetDoc) => {
-    const next = prompt('메모', d.note ?? '');
+    const next = await appPrompt('메모', d.note ?? '');
     if (next === null) return;
     await updateItem('fileCabinetDocs', d.id, { note: next });
   };
@@ -252,7 +253,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   const handleDeleteCategory = async (cat: CabinetCategory) => {
     if ((docCountByCat.get(cat.name) ?? 0) > 0) { alert(`"${cat.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
     if (subCategories.some(s => s.category === cat.name)) { alert(`"${cat.name}"에 중분류가 있어 삭제할 수 없습니다. 먼저 중분류를 삭제하세요.`); return; }
-    if (!confirm(`대분류 "${cat.name}"을(를) 삭제할까요?`)) return;
+    if (!await appConfirm(`대분류 "${cat.name}"을(를) 삭제할까요?`)) return;
     await deleteItem('fileCabinetCategories', cat.id);
   };
 
@@ -267,7 +268,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
 
   const handleDeleteSub = async (sub: CabinetSubCategory) => {
     if ((docCountBySub.get(`${sub.category}|${sub.name}`) ?? 0) > 0) { alert(`"${sub.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
-    if (!confirm(`중분류 "${sub.name}"을(를) 삭제할까요?`)) return;
+    if (!await appConfirm(`중분류 "${sub.name}"을(를) 삭제할까요?`)) return;
     await deleteItem('fileCabinetSubCategories', sub.id);
   };
 

@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
 import { FlaskConical, Plus, Trash2, FileDown, Save, X } from 'lucide-react';
@@ -82,7 +83,7 @@ const BenzopyreneLog: React.FC<Props> = ({ currentUserName, isAdmin = false }) =
   };
 
   const removeRow = async (id: string) => {
-    if (!confirm('이 검사 기록을 삭제할까요?')) return;
+    if (!await appConfirm('이 검사 기록을 삭제할까요?')) return;
     try { await deleteDoc(doc(db, 'benzopyreneTests', id)); }
     catch (e) { console.error('[벤조피렌] 삭제 실패:', e); alert('삭제 실패: ' + ((e as Error)?.message ?? e)); }
   };

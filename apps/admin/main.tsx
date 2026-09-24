@@ -26,6 +26,7 @@ import { blockNumberWheel } from '../../src/shared/blockNumberWheel';
 import { unregisterPush } from '../../src/shared/push';
 import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
+import AppDialogHost from '../../src/shared/components/AppDialogHost';
 import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
 import { auth, authReady } from '../../src/shared/firebase';
 
@@ -171,6 +172,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AdminRoot />
     </ErrorBoundary>
     <AppAlertHost />
+    <AppDialogHost />
     <LocalTestBanner />
   </React.StrictMode>
 );

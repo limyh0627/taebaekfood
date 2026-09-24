@@ -1,3 +1,4 @@
+import { appConfirm, appPrompt } from '../../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
 import { today } from '../../src/shared/day';
 import { X, Plus, Save } from 'lucide-react';
@@ -18,6 +19,7 @@ import {
 import { buildTransfer, splitTransfer, type OverKind } from '../../src/shared/interCompany';
 import { splitCashEntry } from '../../src/shared/splitEntry';
 import { STANDARD_ACCOUNT } from '../../src/shared/accountChart';
+import ModalShell from '../../src/shared/components/ModalShell';
 
 /**
  * **일반전표 발행 — 돈이 움직였거나 움직일 일을 한 장으로 적는 창.**
@@ -240,9 +242,9 @@ export default function VoucherComposer({
    * 고른 템플릿과 다른 전표가 되는데도 머리엔 그 이름이 그대로 남으면,
    * 나중에 목록에서 "이건 무슨 전표지"가 된다. 예라고 하면 직접입력으로 푼다.
    */
-  const askTemplateBreak = (go: () => void) => {
+  const askTemplateBreak = async (go: () => void) => {
     if (!qpTemplateId) { go(); return; }
-    if (!window.confirm('정해진 템플릿과 분개가 달라집니다.\n직접작성으로 바꿀까요?')) return;
+    if (!await appConfirm('정해진 템플릿과 분개가 달라집니다.\n직접작성으로 바꿀까요?')) return;
     setQpTemplateId(null);
     go();
   };
@@ -652,12 +654,10 @@ export default function VoucherComposer({
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { onClose(); }}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <ModalShell title="일반전표 발행" onClose={onClose} bodyClassName="flex min-h-0 flex-col !p-0">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 shrink-0">
-                <h3 className="text-sm font-black text-slate-800 shrink-0">일반전표 발행</h3>
                 {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
                 <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
                   className="shrink-0 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
@@ -675,8 +675,6 @@ export default function VoucherComposer({
                     </button>
                   ))}
                 </div>
-                <button onClick={() => { onClose(); }}
-                  className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18}/></button>
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
@@ -1301,10 +1299,14 @@ export default function VoucherComposer({
                     const suggest = quickPayNote.trim()
                       || (() => { const c = qpCashRows.find(r => r.accountCode)?.accountCode; return c ? codeName.get(c) ?? '' : ''; })()
                       || (cur && !(cur.builtin ?? '').startsWith('free') ? cur.label : '');
-                    const name = window.prompt('템플릿 이름을 정하세요.\n\n다음부터 [템플릿]에서 고르면\n계정·거래처·금액이 한 번에 채워집니다.', suggest);
+                    const name = await appPrompt({
+                      title: '템플릿 이름',
+                      message: '다음부터 [템플릿]에서 고르면\n계정·거래처·금액이 한 번에 채워집니다.',
+                      defaultValue: suggest,
+                    });
                     if (name === null) return;
                     if (!name.trim()) { alert('이름을 입력하세요.'); return; }
-                    const group = window.prompt('묶음 이름(비우면 분류없음)', cur?.group || '');
+                    const group = await appPrompt({ title: '묶음 이름', message: '비워두면 분류없음으로 저장합니다.', defaultValue: cur?.group || '' });
                     if (group === null) return;
                     await onAddFixedCostTemplate({
                       name: name.trim(), amount: amt > 0 ? amt : 0, category: '기타',
@@ -1330,7 +1332,6 @@ export default function VoucherComposer({
               </div>
 
               </div>
-            </div>
 
             {qpPickerOpen && (
               <CashTemplateModal
@@ -1341,6 +1342,6 @@ export default function VoucherComposer({
                 onClose={() => setQpPickerOpen(false)}
               />
             )}
-          </div>
+          </ModalShell>
         );
 }

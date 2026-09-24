@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect } from 'react';
 import {
   RotateCcw,
@@ -157,7 +158,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
 
   const handleProcess = async (req: ReturnRequest) => {
     if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!window.confirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
+    if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);

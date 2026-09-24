@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
-import { X, Inbox, FileDown, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { RawMaterialEntry, RawMaterialLot } from '../types';
 import { unitOf, DENSITY } from '../src/constants/formula';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface Props {
   open: boolean;
@@ -12,7 +13,7 @@ interface Props {
   currentUserName?: string;
   lotsForMaterial?: (material: string) => RawMaterialLot[];
   onClose: () => void;
-  onSubmit: (entry: RawMaterialEntry) => void | Promise<void>;
+  onSubmit: (entry: RawMaterialEntry) => boolean | void | Promise<boolean | void>;
 }
 
 // 사용 시 수율 자동 입고 매핑 (AdminApp.onAddRawMaterialEntry와 동일 — 안내용)
@@ -77,7 +78,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
       const amtKg = unit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
       const inputTag = unit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
       const finalNote = (note.trim() + inputTag).trim();
-      await onSubmit({
+      const saved = await onSubmit({
         id,
         material,
         date,
@@ -92,6 +93,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
         originalUnit: unit,  // 'kg' or 'L'
         ...(mode === 'usage' && targetLotId ? { targetLotId } : {}),
       });
+      if (saved === false) return;
       onClose();
     } catch (err) {
       // 저장 실패를 조용히 묻지 않음 — 예전엔 throw 시 모달이 안 닫히고 멈춘 듯 보였다(모바일).
@@ -108,23 +110,9 @@ const RawMaterialEntryModal: React.FC<Props> = ({
     : { bg: 'bg-rose-500',    hover: 'hover:bg-rose-600',    tint: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className={`px-6 py-4 ${accent.tint} border-b ${accent.border} flex items-center justify-between`}>
-          <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-xl ${accent.bg} text-white flex items-center justify-center`}>
-              {isInbound ? <Inbox size={15} /> : <FileDown size={15} />}
-            </div>
-            <h2 className={`text-sm font-black ${accent.text}`}>
-              {isInbound ? '원료 입고 기록' : '원료 사용 기록'}
-            </h2>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
+    <ModalShell title={isInbound ? '원료 입고 기록' : '원료 사용 기록'} onClose={onClose} bodyClassName="!p-0">
+      <form onSubmit={handleSubmit}>
+        <div className="px-5 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-black text-slate-500 mb-1.5">날짜</label>
@@ -233,7 +221,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           </button>
         </div>
       </form>
-    </div>
+    </ModalShell>
   );
 };
 

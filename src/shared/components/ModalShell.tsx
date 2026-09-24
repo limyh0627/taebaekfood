@@ -4,11 +4,14 @@ import { X } from 'lucide-react';
 export interface ModalShellProps {
   /** 모달은 무엇을 하는 창인지 항상 머리에 적는다. */
   title: string;
+  subtitle?: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
   bodyClassName?: string;
+  /** 이미 열린 모달 위에 다른 모달을 띄우는 경우에만 겹침 순서를 높인다. */
+  layer?: number;
   /** LargeModalShell만 내부에서 사용한다. 일반 화면에서는 지정하지 않는다. */
   size?: 'standard' | 'large';
 }
@@ -19,27 +22,34 @@ export interface ModalShellProps {
  */
 const ModalShell: React.FC<ModalShellProps> = ({
   title,
+  subtitle,
   onClose,
   children,
   footer,
   className = '',
   bodyClassName = '',
+  layer,
   size = 'standard',
-}) => (
+}) => {
+  const titleId = React.useId();
+  return (
   <div
     className="fixed inset-0 z-[1090] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm md:items-center md:p-4"
-    style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+    style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', ...(layer ? { zIndex: layer } : {}) }}
     onClick={onClose}
   >
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="app-modal-title"
+      aria-labelledby={titleId}
       className={`flex max-h-[90dvh] w-full ${size === 'large' ? 'max-w-6xl' : 'max-w-2xl'} flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl md:max-h-[88vh] md:rounded-2xl ${className}`}
       onClick={event => event.stopPropagation()}
     >
       <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-        <h3 id="app-modal-title" className="text-[17px] font-black leading-6 text-slate-900">{title}</h3>
+        <div className="min-w-0">
+          <h3 id={titleId} className="text-[17px] font-black leading-6 text-slate-900">{title}</h3>
+          {subtitle && <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">{subtitle}</div>}
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -53,6 +63,7 @@ const ModalShell: React.FC<ModalShellProps> = ({
       {footer && <footer className="border-t border-slate-200 p-4 md:px-5">{footer}</footer>}
     </div>
   </div>
-);
+  );
+};
 
 export default ModalShell;

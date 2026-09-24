@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import AlertModalShell, { alertToneClass, type AlertTone } from './AlertModalShell';
 
@@ -19,7 +19,19 @@ const classify = (message: string): Omit<AppAlert, 'id' | 'message'> => {
 const AppAlertHost: React.FC = () => {
   const [queue, setQueue] = useState<AppAlert[]>([]);
   const sequence = useRef(0);
-  const close = useCallback(() => setQueue(current => current.slice(1)), []);
+  const dismissed = useRef(new WeakSet<AppAlert>());
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (advanceTimer.current) clearTimeout(advanceTimer.current); }, []);
+  const current = queue[0];
+  const close = () => {
+    if (!current || dismissed.current.has(current)) return;
+    dismissed.current.add(current);
+    // 다음 알림이 첫 알림의 더블클릭으로 사라지지 않도록 전환을 잠시 늦춘다.
+    advanceTimer.current = setTimeout(() => {
+      setQueue(items => items[0] === current ? items.slice(1) : items);
+      advanceTimer.current = null;
+    }, 300);
+  };
 
   useEffect(() => {
     const nativeAlert = window.alert.bind(window);
@@ -31,7 +43,6 @@ const AppAlertHost: React.FC = () => {
     return () => { window.alert = nativeAlert; };
   }, []);
 
-  const current = queue[0];
   if (!current) return null;
   const Icon = current.tone === 'rose' ? AlertCircle : current.tone === 'emerald' ? CheckCircle2 : Info;
   const toneClass = alertToneClass(current.tone);

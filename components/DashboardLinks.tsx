@@ -1,3 +1,4 @@
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useEffect, useState } from 'react';
 import { ExternalLink, Plus, X, Check, Pencil } from 'lucide-react';
 import { addItem, deleteItem, fetchCollection, updateItem } from '../src/shared/services/firebaseService';
@@ -97,14 +98,14 @@ const DashboardLinks: React.FC<{ isAdmin?: boolean }> = ({ isAdmin = true }) => 
   };
 
   const rename = async (l: DashboardLink) => {
-    const next = window.prompt('바로가기 이름', l.label)?.trim();
+    const next = (await appPrompt('바로가기 이름', l.label))?.trim();
     if (next == null || next === l.label) return;
     await updateItem(COL, l.id, { label: next || hostOf(l.url) });
     reload();
   };
 
   const remove = async (l: DashboardLink) => {
-    if (!window.confirm(`'${l.label}' 바로가기를 지울까요?`)) return;
+    if (!await appConfirm(`'${l.label}' 바로가기를 지울까요?`)) return;
     await deleteItem(COL, l.id);
     reload();
   };

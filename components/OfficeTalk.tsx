@@ -1,6 +1,8 @@
 
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import ConfirmModal from './ConfirmModal';
+import ModalShell from '../src/shared/components/ModalShell';
 import { 
   MessageSquare, 
   Plus, 
@@ -576,7 +578,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       return;
     }
     if (act === '삭제') {
-      if (!window.confirm('이 말을 지울까요?\n(줄은 남고 내용만 지워집니다)')) return;
+      if (!await appConfirm('이 말을 지울까요?\n(줄은 남고 내용만 지워집니다)')) return;
       onUpdateMessage?.(msg.id, deletePatch(currentUser.id));
       알리기('지웠습니다');
     }
@@ -1262,14 +1264,39 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
       {/* Invite Modal */}
       {showInviteModal && activeRoom && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowInviteModal(false)} />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900">멤버 초대</h3>
-              <button onClick={() => setShowInviteModal(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+        <ModalShell
+          title="멤버 초대"
+          subtitle={getRoomName(activeRoom)}
+          onClose={() => setShowInviteModal(false)}
+          bodyClassName="space-y-1"
+          footer={(
+            <div className="flex gap-2">
+              <button onClick={() => setShowInviteModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
+              <button
+                disabled={inviteSelected.length === 0}
+                onClick={async () => {
+                  const participantIds = [...new Set([...activeRoom.participantIds, ...inviteSelected])];
+                  try {
+                    await onUpdateRoom(activeRoom.id, {
+                      companyId: companyOf(currentUser),
+                      participantIds,
+                      participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
+                    });
+                    setInviteSelected([]);
+                    setShowInviteModal(false);
+                  } catch (err: any) {
+                    const message = `멤버를 초대하지 못했습니다: ${err?.message || '네트워크 오류'}`;
+                    setInviteError(message);
+                    setFirestoreError(message);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm disabled:opacity-40 hover:bg-indigo-700 transition-all"
+              >
+                초대 ({inviteSelected.length})
+              </button>
             </div>
-            <div className="p-4 max-h-72 overflow-y-auto space-y-1">
+          )}
+        >
               {inviteError && (
                 <div className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">
                   {inviteError}
@@ -1296,65 +1323,35 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               {employees.filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id && !activeRoom.participantIds.includes(e.id)).length === 0 && (
                 <p className="text-center text-slate-400 text-sm py-4">초대할 수 있는 멤버가 없습니다</p>
               )}
-            </div>
-            <div className="p-4 border-t border-slate-100 flex gap-2">
-              <button onClick={() => setShowInviteModal(false)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
-              <button
-                disabled={inviteSelected.length === 0}
-                onClick={async () => {
-                  const participantIds = [...new Set([...activeRoom.participantIds, ...inviteSelected])];
-                  try {
-                    await onUpdateRoom(activeRoom.id, {
-                      companyId: companyOf(currentUser),
-                      participantIds,
-                      participantCompanies: participantCompaniesOf(participantIds, employees, companyOf(currentUser)),
-                    });
-                    setInviteSelected([]);
-                    setShowInviteModal(false);
-                  } catch (err: any) {
-                    const message = `멤버를 초대하지 못했습니다: ${err?.message || '네트워크 오류'}`;
-                    setInviteError(message);
-                    setFirestoreError(message);
-                  }
-                }}
-                className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm disabled:opacity-40 hover:bg-indigo-700 transition-all"
-              >
-                초대 ({inviteSelected.length})
-              </button>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* New Chat Modal */}
       <AnimatePresence>
         {isNewChatModalOpen && (
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
-              onClick={() => setIsNewChatModalOpen(false)} 
-            />
-            
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
-            >
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">새 대화 시작</h3>
-                  <p className="text-xs font-bold text-slate-400">대화에 참여할 직원을 선택하세요.</p>
-                </div>
-                <button onClick={() => setIsNewChatModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full">
-                  <X size={20} />
+          <ModalShell
+            title="새 대화 시작"
+            subtitle="대화에 참여할 직원을 선택하세요."
+            onClose={() => setIsNewChatModalOpen(false)}
+            bodyClassName="space-y-2 custom-scrollbar"
+            footer={(
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setIsNewChatModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleCreateRoom}
+                  disabled={selectedParticipants.length === 0}
+                  className="flex-1 py-3 rounded-xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50 disabled:shadow-none"
+                >
+                  대화 시작하기
                 </button>
               </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-2 custom-scrollbar">
+            )}
+          >
                 {employees
                   .filter(e => companyOf(e) === companyOf(currentUser) && e.id !== currentUser.id)
                   .map(emp => (
@@ -1391,38 +1388,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     )}
                   </button>
                 ))}
-              </div>
-
-              <div className="p-6 bg-slate-50 border-t border-slate-100 flex space-x-3">
-                <button 
-                  onClick={() => setIsNewChatModalOpen(false)}
-                  className="flex-1 py-4 rounded-2xl font-black text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
-                >
-                  취소
-                </button>
-                <button 
-                  onClick={handleCreateRoom}
-                  disabled={selectedParticipants.length === 0}
-                  className="flex-1 py-4 rounded-2xl font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all disabled:opacity-50 disabled:shadow-none"
-                >
-                  대화 시작하기
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          </ModalShell>
         )}
       </AnimatePresence>
       {/*  **꾹 누르기 창**(2026-09-06 사장님, 카톡처럼). PC 는 우클릭.
            할 수 있는 일은 [shared/messageActions](../src/shared/messageActions.ts) 가 고른다. */}
       {actionMsg && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40"
-          onClick={() => setActionMsg(null)}>
-          <div className="w-full sm:w-80 bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden mb-0 sm:mb-0"
-            onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-slate-100">
-              <p className="text-[10px] font-black text-slate-400">{actionMsg.senderName}</p>
-              <p className="text-xs font-bold text-slate-600 line-clamp-2 whitespace-pre-wrap">{actionMsg.text || '(사진·파일)'}</p>
-            </div>
+        <ModalShell
+          title="메시지 작업"
+          subtitle={actionMsg.senderName}
+          onClose={() => setActionMsg(null)}
+          bodyClassName="p-0 md:p-0"
+        >
+            <p className="px-5 py-3 text-xs font-bold text-slate-600 line-clamp-2 whitespace-pre-wrap border-b border-slate-100">
+              {actionMsg.text || '(사진·파일)'}
+            </p>
             {/*  **이모티콘 줄**(2026-09-14 사장님) — 창 맨 위다. 하나 누르면 바로 닫힌다.
                  지운 말에는 안 보인다 — 아래 목록이 비는 것과 같은 까닭이다. */}
             {!isDeleted(actionMsg) && onUpdateMessage && (
@@ -1462,31 +1442,23 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 {act}
               </button>
             ))}
-            <button onClick={() => setActionMsg(null)}
-              className="w-full px-5 py-3.5 text-sm font-black text-slate-400 bg-slate-50">닫기</button>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/*  **대화방 꾹 누르기 창**(2026-09-12 사장님). 말풍선 창과 같은 모양이다. */}
       {actionRoom && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40"
-          onClick={() => setActionRoom(null)}>
-          <div className="w-full sm:w-80 bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-slate-100">
-              <p className="text-[10px] font-black text-slate-400">대화방</p>
-              <p className="text-xs font-bold text-slate-600 line-clamp-1">{getRoomName(actionRoom)}</p>
-            </div>
+        <ModalShell
+          title="대화방 작업"
+          subtitle={getRoomName(actionRoom)}
+          onClose={() => setActionRoom(null)}
+          bodyClassName="p-0 md:p-0"
+        >
             <button onClick={() => 고정토글(actionRoom)}
               className="w-full flex items-center gap-2 px-5 py-3.5 text-left text-sm font-black text-slate-700 hover:bg-slate-50 transition-colors">
               <Pin size={15} className={고정됨(actionRoom) ? 'text-slate-400' : 'text-indigo-500'} />
               {고정됨(actionRoom) ? '상단 고정 해제' : '상단 고정'}
             </button>
-            <button onClick={() => setActionRoom(null)}
-              className="w-full px-5 py-3.5 text-sm font-black text-slate-400 bg-slate-50">닫기</button>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/*  잠깐 뜨는 알림 — '복사했습니다' 같은 것 */}

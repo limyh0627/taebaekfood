@@ -1,7 +1,9 @@
+import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus, Copy } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
 import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, CashTemplate } from '../src/shared/cashTemplates';
+import ModalShell from '../src/shared/components/ModalShell';
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
 const splitValOf = (t: { mode?: string } & Record<string, any>, which: 'a' | 'b'): string => {
@@ -207,7 +209,7 @@ export default function VoucherTemplateManager({
                       {locked ? (
                         <span title="기본 템플릿 — 지울 수 없습니다. 숨기기만 됩니다." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
                       ) : (
-                        <button onClick={() => { if (window.confirm(`'${t.name}' 템플릿을 지울까요?`)) onDelete?.(t.id); }}
+                        <button onClick={async () => { if (await appConfirm(`'${t.name}' 템플릿을 지울까요?`)) onDelete?.(t.id); }}
                           className="p-1 hover:bg-rose-50 rounded-lg text-slate-200 hover:text-rose-400 shrink-0"><Trash2 size={13}/></button>
                       )}
                     </div>
@@ -221,14 +223,9 @@ export default function VoucherTemplateManager({
 
       {/* 수정 — 이름·묶음·금액·거래처·발행 방식 */}
       {editTpl && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditTpl(null)}>
+        <ModalShell title={cloning ? '새 템플릿 만들기' : '템플릿 수정'} onClose={() => setEditTpl(null)} bodyClassName="space-y-4">
           {/* 폭 — 분개 미리보기에 계정명이 통째로 들어가야 한다. max-w-sm(384px)에선
     금액칸을 빼고 나면 이름 자리가 손바닥만 해서 '255 부가세…'로 잘렸다. */}
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-800">{cloning ? '새 템플릿 만들기' : '템플릿 수정'}</h3>
-              <button onClick={() => setEditTpl(null)} className="text-slate-300 hover:text-slate-500"><X size={18}/></button>
-            </div>
             {cloning ? (
               <p className="text-[11px] font-bold text-indigo-500 bg-indigo-50 rounded-xl px-3 py-2 leading-snug">
                 <b>{editTpl.name}</b>의 갈래·계정을 물려받아 새 템플릿을 만듭니다. 원본은 그대로 남습니다.
@@ -256,8 +253,8 @@ export default function VoucherTemplateManager({
                     {form.group && !groupNames.includes(form.group) && <option value="__custom">{form.group}</option>}
                   </select>
                   <button type="button"
-                    onClick={() => {
-                      const name = window.prompt('새 묶음 이름', '');
+                    onClick={async () => {
+                      const name = await appPrompt('새 묶음 이름', '');
                       if (name === null) return;
                       setForm(f => ({ ...f, group: name.trim() }));
                     }}
@@ -540,8 +537,7 @@ export default function VoucherTemplateManager({
                 <Check size={13}/>{cloning ? '만들기' : '저장'}
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

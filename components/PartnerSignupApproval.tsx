@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, Search, UserCheck, Phone, Mail, Calendar, Building2, AlertCircle } from 'lucide-react';
 import { where } from 'firebase/firestore';
@@ -67,7 +68,7 @@ const PartnerSignupApproval: React.FC<Props> = ({ partners }) => {
   };
 
   const handleReject = async (user: PartnerSignupUser) => {
-    if (!window.confirm(`${user.name ?? user.username ?? '해당 사용자'} 님의 가입을 거절하시겠습니까?`)) return;
+    if (!await appConfirm(`${user.name ?? user.username ?? '해당 사용자'} 님의 가입을 거절하시겠습니까?`)) return;
     setBusyId(user.id);
     try {
       await setDocument('users', user.id, {

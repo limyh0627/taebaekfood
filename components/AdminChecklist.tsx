@@ -14,6 +14,7 @@ import { dateOfLocal } from '../src/shared/day';
 import { vatOn } from '../src/shared/lineAmount';
 import { adjTypeLabel, adjTypeClass } from '../src/shared/adjustmentStyle';
 import { sellsTo } from '../src/shared/partnerRole';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
@@ -655,17 +656,19 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
       {/* 반품 전표 발행 모달 */}
       {returnStmtDraft && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="font-black text-slate-800">반품 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{returnStmtDraft.returnReq.partnerName} · {dateOfLocal(returnStmtDraft.returnReq.createdAt)} 반품</p>
-              </div>
-              <button onClick={() => setReturnStmtDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            </div>
-
-            <div className="overflow-auto flex-1 px-5 py-4 space-y-4">
+        <ModalShell
+          title={`반품 전표 발행 · ${returnStmtDraft.returnReq.partnerName} · ${dateOfLocal(returnStmtDraft.returnReq.createdAt)}`}
+          onClose={() => setReturnStmtDraft(null)}
+          footer={<button
+            onClick={saveReturnStatement}
+            disabled={returnStmtSaving || !returnStmtDraft.partnerId}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
+          >
+            {returnStmtSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            {returnStmtSaving ? '발행 중...' : '반품 전표 발행'}
+          </button>}
+        >
+            <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매출처) *</label>
                 <select
@@ -757,18 +760,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               })()}
             </div>
 
-            <div className="px-5 py-4 border-t border-slate-100">
-              <button
-                onClick={saveReturnStatement}
-                disabled={returnStmtSaving || !returnStmtDraft.partnerId}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
-              >
-                {returnStmtSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                {returnStmtSaving ? '발행 중...' : '반품 전표 발행'}
-              </button>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
     </div>

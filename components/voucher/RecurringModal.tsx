@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
 import type { FixedCostTemplate, AccountCode, Partner } from '../../src/shared/types';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../../src/shared/autoVoucher';
 import VoucherTemplateManager from '../VoucherTemplateManager';
+import ModalShell from '../../src/shared/components/ModalShell';
 
 /**
  * **템플릿 창** — 매달 같은 날 같은 금액으로 서는 전표를 여기서 본다.
@@ -66,12 +66,7 @@ export default function RecurringModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-black text-slate-800">템플릿</h3>
-          <button onClick={onClose} aria-label="닫기" className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-        </div>
+    <ModalShell title="템플릿" onClose={onClose} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           일반전표 발행에서 고르는 <b>템플릿</b> 목록입니다. 스위치를 켜면 매달 정한 날에
           저절로 발행됩니다(앱을 안 켜도 됩니다). 새 템플릿은 일반전표 발행에서 <b>[템플릿으로 저장]</b>으로 만듭니다.
@@ -140,7 +135,6 @@ export default function RecurringModal({
         {/* 통째로 내는 버튼은 없앴다 — 줄마다 발행한다 */}
         <button onClick={onClose}
           className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

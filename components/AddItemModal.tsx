@@ -1,3 +1,4 @@
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { where } from 'firebase/firestore';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
@@ -10,6 +11,7 @@ import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
 import { 묶음갈래of } from '../src/shared/orderUnits';
 import PickRow from '../src/shared/ui/PickRow';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface ProductModalProps {
   companyId: CompanyId;
@@ -266,7 +268,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
     if ((formData.type === 'product' || formData.type === 'wip') && !서류에서풀림 && !formData.품목) {
       setPumokWarn(true);
-      const go = window.confirm(
+      const go = await appConfirm(
         '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
       );
       if (!go) { pumokRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
@@ -348,22 +350,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
   };
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-
-      <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
-        {/* 헤더 */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className={`w-10 h-10 ${initialData ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-600 text-white'} rounded-xl flex items-center justify-center shadow-lg`}>
-              {initialData ? <Package size={20} /> : <Plus size={20} />}
-            </div>
-            <h3 className="text-lg font-black text-slate-900">{initialData ? '품목 정보 수정' : '신규 품목 등록'}</h3>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full">
-            <X size={20} />
-          </button>
-        </div>
+    <ModalShell title={initialData ? '품목 정보 수정' : '신규 품목 등록'} onClose={onClose} bodyClassName="!p-0">
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
@@ -715,16 +702,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                 <Plus size={16} /> 구성품 추가
               </button>
 
-              {/* 구성품 선택 오버레이 */}
+              {/* 품목 등록창 위에서 구성품을 고르는 별도 업무 모달이다. */}
               {bomPickerOpen && (
-                <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={() => setBomPickerOpen(false)}>
-                  <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                  <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg h-[85vh] sm:h-[600px] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                    <div className="sticky top-0 bg-white px-5 pt-5 pb-3 border-b border-slate-100 rounded-t-3xl">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-black text-slate-800 text-base">구성품 추가</span>
-                        <button type="button" onClick={() => setBomPickerOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 transition-colors"><X size={18} className="text-slate-500" /></button>
-                      </div>
+                <ModalShell
+                  title="구성품 추가"
+                  onClose={() => setBomPickerOpen(false)}
+                  layer={1100}
+                  className="h-[85dvh] md:h-[600px] md:max-w-lg"
+                  bodyClassName="!p-0 !overflow-hidden flex flex-col"
+                  footer={<button type="button" onClick={() => setBomPickerOpen(false)} className="w-full py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all">완료 ({formData.submaterials.length})</button>}
+                >
+                    <div className="shrink-0 bg-white px-5 pt-4 pb-3 border-b border-slate-100">
                       {/* 카테고리 토글 */}
                       <div className="flex flex-wrap gap-1.5 mb-2.5">
                         <button
@@ -750,7 +738,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                         className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"
                       />
                     </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                    <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
                       {sortedGroups.length === 0 ? (
                         <p className="text-xs text-slate-400 px-1 py-2">{q ? '검색 결과 없음' : '추가할 품목 없음'}</p>
                       ) : sortedGroups.map(([k, list]) => (
@@ -781,11 +769,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                         </div>
                       ))}
                     </div>
-                    <div className="p-4 border-t border-slate-100">
-                      <button type="button" onClick={() => setBomPickerOpen(false)} className="w-full py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all">완료 ({formData.submaterials.length})</button>
-                    </div>
-                  </div>
-                </div>
+                </ModalShell>
               )}
             </div>
             );
@@ -1053,8 +1037,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
             {initialData ? '수정 완료' : '등록 완료'}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 

@@ -1,4 +1,5 @@
 
+import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useEffect } from 'react';
 import { where } from 'firebase/firestore';
 import { matchesSearch } from '../src/shared/hangul';
@@ -22,6 +23,7 @@ import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import FilterRow from '../src/shared/ui/FilterRow';
 import { partnersOfItem, isLinkedToPartner, partnerNamesByItem } from '../src/shared/partnerPrice';
+import ModalShell from '../src/shared/components/ModalShell';
 
 interface ItemManagerProps {
   companyId: CompanyId;
@@ -1447,7 +1449,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                             <button
                               disabled={merging || !canMerge}
                               onClick={async () => {
-                                if (!window.confirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
+                                if (!await appConfirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
                                 setMerging(true);
                                 try {
                                   await onMergeItems(keepId, deleteIds);
@@ -1612,18 +1614,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
 
       {/* 품목 연결 모달 */}
       {showLinkPanel && selectedClientId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowLinkPanel(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 flex flex-col h-[85vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-            {/* 헤더 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-black text-slate-900">품목 연결</h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">{selectedClient?.name}에 추가할 품목을 선택하세요</p>
-              </div>
-              <button onClick={() => setShowLinkPanel(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-all">
-                <X size={18} />
-              </button>
-            </div>
+        <ModalShell title="품목 연결" onClose={() => setShowLinkPanel(false)} bodyClassName="!p-0">
+            <p className="px-5 pt-4 text-xs text-slate-400 font-medium">{selectedClient?.name}에 추가할 품목을 선택하세요</p>
             {/* 타입 탭 — **분류 관리(itemTaxonomy)에서 가져온다.** 목록 탭과 같은 소스다.
                 예전엔 ['product','goods','wip','raw','submaterial']를 코드에 박아 둬서,
                 분류를 새로 만들면 그 타입 품목이 여기서 통째로 안 보였다(영문 키가 그대로 뜬 것도 그 탓). */}
@@ -1690,8 +1682,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
 
@@ -1703,15 +1694,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
       {/* 포장설정 모달 */}
       {/* ── 박스 품목 만들기 ── */}
       {boxModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setBoxModal(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-800">박스 품목 만들기</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">낱개 · {boxModal.name}</p>
-              </div>
-              <button onClick={() => setBoxModal(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
-            </div>
+        <ModalShell title="박스 품목 만들기" onClose={() => setBoxModal(null)} bodyClassName="space-y-4">
+            <p className="text-[11px] text-slate-400">낱개 · {boxModal.name}</p>
 
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">개입수 <span className="text-rose-400">*</span></label>
@@ -1765,31 +1749,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                 <Save size={12} />만들기
               </button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* ── 원가계산기 ──────────────────────────────────────────────
           구성품을 골라 넣으면 원가가 나오고, 팔 값을 넣으면 마진이 나온다.
           **아무것도 저장하지 않는다** — 품목을 만들기 전에 셈만 해 보는 자리다. */}
       {calcOpen && calcResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={() => { setCalcOpen(false); setCalcPickIdx(null); }}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Calculator size={16} className="text-emerald-600" />
-                  <h3 className="font-black text-slate-900">원가계산기</h3>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">구성품을 넣어 원가를 보고, 팔 값을 넣어 마진을 봅니다 — 저장은 안 됩니다.</p>
-              </div>
-              <button onClick={() => { setCalcOpen(false); setCalcPickIdx(null); }}
-                className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <ModalShell title="원가계산기" onClose={() => { setCalcOpen(false); setCalcPickIdx(null); }} bodyClassName="space-y-4">
+              <p className="text-[11px] text-slate-400">구성품을 넣어 원가를 보고, 팔 값을 넣어 마진을 봅니다 — 저장은 안 됩니다.</p>
               {/* 만들 물건이 과세냐 면세냐 — 면세 원료 할증이 여기서 갈린다 */}
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">만들 물건</span>
@@ -1909,7 +1877,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                   <p className="text-[11px] font-black text-rose-400">팔수록 손해입니다 — 판매단가가 원가보다 낮습니다.</p>
                 )}
               </div>
-            </div>
 
             <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100">
               <button onClick={() => { setCalcRows([{ itemId: '', qty: '1' }]); setCalcPrice(''); setCalcFee(''); }}
@@ -1917,8 +1884,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
               <button onClick={() => { setCalcOpen(false); setCalcPickIdx(null); }}
                 className="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800">닫기</button>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );
