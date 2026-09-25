@@ -66,6 +66,9 @@ export async function recordReceipt(opts: {
   const { allItems, product, itemName, quantity, unit, partnerId, partnerName,
           dateStr, nowIso, poId, addedBy, companyId } = opts;
 
+  // 음수는 입고가 아니라 재고 차감이다. 원료·일반 품목 어느 쪽에도 입고 사건으로 남기지 않는다.
+  if (quantity < 0) throw new Error('입고 수량은 0보다 커야 합니다.');
+
   //  원료·반제품이면 로트와 수불부가 맡는다(그쪽도 제 몫의 겹침 방지를 갖고 있다)
   if (rawLotTarget(allItems, product, product?.name ?? itemName, companyId)) {
     const r = await recordRawMaterialReceipt(opts);

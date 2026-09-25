@@ -2,6 +2,7 @@ import { appConfirm, appNotice as awaitNotice, appPrompt } from '../../shared/co
 import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
+import { mergeCompanyOrders } from './companyOrders';
 ﻿
 // ============================================================
 // [ADMIN APP 경계 — 미래 분리 안내]
@@ -24,7 +25,7 @@ import { today } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
-import { isBulkItem, holdsUnitStock } from '../../shared/itemTaxonomy';
+import { isBulkItem, holdsUnitStock, isPhysicalInventoryItem } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
@@ -113,7 +114,7 @@ import { shipQtyOfLine } from '../../shared/shipDeduction';
 import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
-import { ordersPendingDocumentClose } from './salesJournalOrders';
+import { ordersFarFromJournalDate, ordersPendingDocumentClose } from './salesJournalOrders';
 import { buildRollbackPlan, buildStatusChangeAsk, type RollbackPlan } from './rollbackSummary';
 import type { AlertTone } from '../../shared/components/AlertModalShell';
 import { statusLabel } from '../../shared/orderStatusStyle';
@@ -143,6 +144,7 @@ import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
+import { extractedOfficeTalkMessageIds } from '../../shared/officeTalkOrder';
 import { notify, loadNotifyMode } from '../../shared/notify';
 import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
 import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
@@ -171,6 +173,7 @@ const ProductionManager = React.lazy(() => import('../../../components/Productio
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 const FinancialReports = React.lazy(() => import('../../../components/FinancialReports'));
+const LoanManager = React.lazy(() => import('../../../components/LoanManager'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
@@ -319,12 +322,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    */
   const viewAllowed = (_v: ViewType) => true;
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
-  const allOrders = useMemo(() => {
-    const map = new Map<string, typeof orders[number]>();
-    for (const o of historicalOrders) map.set(o.id, o);
-    for (const o of orders) map.set(o.id, o); // 실시간이 더 최신이므로 덮어씀
-    return Array.from(map.values());
-  }, [orders, historicalOrders]);
+  const allOrders = useMemo(() => mergeCompanyOrders(orders, historicalOrders, companyId), [orders, historicalOrders, companyId]);
   const receivedOrders = purchaseOrders.filter(po => po.status === 'received');
 
 
@@ -585,7 +583,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
     const already = inventorySnapshots.some(s => s.yearMonth === prevYm);
     if (already) return;
-    const valued = allItems.filter(p => (p.stock ?? 0) > 0 || (p.cost ?? 0) > 0);
+    const valued = allItems.filter(p => isPhysicalInventoryItem(p) && ((p.stock ?? 0) > 0 || (p.cost ?? 0) > 0));
     const totalValue = valued.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
     addItem('inventorySnapshots', {
       id: `inv-snap-${prevYm}`,
@@ -890,6 +888,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
   const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
   const [pasteOrderInitialText, setPasteOrderInitialText] = useState('');
+  const [pasteOrderSourceMessageId, setPasteOrderSourceMessageId] = useState<string | null>(null);
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const directOrderCreation = useRef(newOrderCreationSession());
   const pasteOrderCreation = useRef(newOrderCreationSession());
@@ -1481,6 +1480,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             id: identity.id,
             cardNo: identity.cardNo,
             createdBy: currentUser.id,
+            ...(kind === 'paste' && pasteOrderSourceMessageId ? { sourceChatMessageId: pasteOrderSourceMessageId } : {}),
             createdAt: order.createdAt || new Date().toISOString(),
             status: OrderStatus.PENDING,
           });
@@ -1513,6 +1513,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       else {
         setIsPasteOrderOpen(false);
         setPasteOrderInitialText('');
+        setPasteOrderSourceMessageId(null);
       }
       if (result.failedFollowUps.length > 0) {
         setAppNotice({
@@ -1538,6 +1539,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     else {
       setIsPasteOrderOpen(false);
       setPasteOrderInitialText('');
+      setPasteOrderSourceMessageId(null);
     }
     if (goBack) setIsOrderCreateChooserOpen(true);
   };
@@ -2140,7 +2142,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   useEffect(() => { if (inCabinetDoc) setDocTab('생산판매기록부'); }, [inCabinetDoc]);
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'data-integrity', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'data-integrity', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports', 'loan-management'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -2313,6 +2315,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash' && ledgerTab === 'partner'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
                       <NavItem icon={Package} label="제품별원장" active={currentView === 'item-ledger'} onClick={() => handleNavClick('item-ledger')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-ledger')} />
                       <NavItem icon={Scale} label="재무제표" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
+                      <NavItem icon={Wallet} label="대출 관리" active={currentView === 'loan-management'} onClick={() => handleNavClick('loan-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('loan-management')} />
                     </nav>
                   </NavGroup>
                   <NavGroup title="경영 분석 및 통계" storageKey="biz" collapsed={isSidebarCollapsed}>
@@ -2413,7 +2416,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'orders': '주문·배송', 'shipping': '주문·배송', 'inventory': '재고 관리', 'lot-management': '생산 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
-                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)',
+                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)', 'loan-management': '대출 관리',
                 'ledger-cash': '장부',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
@@ -2544,6 +2547,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
+              onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
               onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
@@ -2576,6 +2580,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
                   onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
                   onUpdateItems={handleUpdateItems}
+                  onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
                   onUpdatePallets={(id, nextPallets) => updateItem('orders', id, { pallets: nextPallets })}
                   onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
                   onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
@@ -2604,6 +2609,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               palletStocks={pallets}
               onToggleItemChecked={handleToggleItemChecked}
               onUpdateItems={handleUpdateItems}
+              onUpdateNote={(id, note, important) => updateItem('orders', id, { note, noteImportant: !!note && important, noteBy: currentUser?.name || '미기록', noteAt: new Date().toISOString() })}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, invoicePatch(value))}
               onUpdateInvoiceType={(id, value) => updateItem('orders', id, invoiceTypePatch(value))}
@@ -3400,13 +3406,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
             );
 
             const exportExcel = async () => {
+              const docDate = bulkMfgDate || today();
+              const farOrders = ordersFarFromJournalDate(shippedOrders, docDate);
+              if (farOrders.length > 0) {
+                const examples = farOrders.slice(0, 5).map(o =>
+                  `${o.partnerName || o.cardNo} · 주문 ${o.orderDate} → 서류 ${docDate} (${o.days}일 차이)`).join('\n');
+                const proceed = await appConfirm(
+                  `선택한 서류 날짜가 주문 생성일과 7일 넘게 다른 주문이 ${farOrders.length}건 있습니다.\n\n${examples}${farOrders.length > 5 ? `\n외 ${farOrders.length - 5}건` : ''}\n\n이 날짜로 판매일지를 저장할까요?`,
+                );
+                if (!proceed) return;
+              }
               if (missingMfgDate.length > 0) {
                 const proceed = await appConfirm(
                   `제조일자가 입력되지 않은 품목이 있습니다:\n${[...new Set(missingMfgDate)].join(', ')}\n\n계속 저장하시겠습니까?`
                 );
                 if (!proceed) return;
               }
-              const docDate = bulkMfgDate || today();
               // 양식은 shared/salesJournal.ts 한 곳에만 둔다 — 이력 보기의 [엑셀로 저장]도 같은 함수를 쓴다.
               const journal = {
                 date: docDate,
@@ -3544,7 +3559,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </div>
                       );
                     })()}
-                    {docTab === '생산판매기록부' && (
+                    {docTab === '생산판매기록부' && !inCabinetDoc && (
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
                           <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">서류 날짜</span>
@@ -3568,15 +3583,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           기록이 없으면 관리자 문서함에 그날 서류가 안 쌓인다.
                           **서류관리 메뉴에서는 이름 그대로 '엑셀 저장'이다**(2026-09-03 사장님).
                         */}
-                        {!inCabinetDoc && (
-                          <button
-                            onClick={exportExcel}
-                            className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
-                          >
-                            <FileText size={16} />
-                            <span>엑셀 저장</span>
-                          </button>
-                        )}
+                        <button
+                          onClick={exportExcel}
+                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
+                        >
+                          <FileText size={16} />
+                          <span>엑셀 저장</span>
+                        </button>
                       </div>
                     )}
                     {docTab === '생산작업기록부' && (
@@ -4738,6 +4751,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     />
                   ) : (
                   <CashLedger
+                    companyId={companyId}
                     cashAccounts={companyCashAccounts}
                     cashEntries={companyCashEntries}
                     accountCodes={appData.accountCodes}
@@ -4796,6 +4810,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   cashAccounts={companyCashAccounts}
                   inventorySnapshots={companySnapshots}
                 />
+              </React.Suspense>
+            </div>
+          )}
+          {currentView === 'loan-management' && (
+            <div className="h-full overflow-y-auto">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <LoanManager companyId={companyId} cashEntries={companyCashEntries} cashAccounts={companyCashAccounts}
+                  partners={partners} currentUserName={currentUser?.name} onAddCashEntry={addCashEntry} />
               </React.Suspense>
             </div>
           )}
@@ -5062,9 +5084,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteRoom={(id) => deleteItem('chatRooms', id)}
               isAdmin={isAdmin || isAdminAuthenticated}
               onUpdateMessage={(id, data) => updateItem('chatMessages', id, data)}
-              onExtractOrder={(text) => {
+              extractedMessageIds={extractedOfficeTalkMessageIds(allOrders, companyId)}
+              onExtractOrder={(messageId, text) => {
                 resetOrderCreationSession(pasteOrderCreation.current);
                 setPasteOrderInitialText(text);
+                setPasteOrderSourceMessageId(messageId);
                 setIsOrderCreateChooserOpen(false);
                 setIsAddOrderOpen(false);
                 setIsPasteOrderOpen(true);
@@ -5136,7 +5160,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <span className="mt-1 block text-xs font-bold text-slate-500">거래처와 주문 품목을 직접 선택합니다.</span>
                 </span>
               </button>
-              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setPasteOrderInitialText(''); setIsPasteOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setPasteOrderInitialText(''); setPasteOrderSourceMessageId(null); setIsPasteOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><ClipboardPaste size={19} /></span>
                 <span className="min-w-0">
                   <strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">주문 내역 붙여넣기</strong>

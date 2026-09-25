@@ -16,6 +16,7 @@ import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { isActive } from '../src/shared/statementOrders';
 import { cardNoLabel } from '../src/shared/cardNo';
+import { clampNote, NOTE_MAX } from '../src/shared/orderNote';
 import OrderStatusDot from '../src/shared/components/OrderStatusDot';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
@@ -95,6 +96,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       기본값으로 맞춰 주고(택배·스마트스토어면 택배), 그 뒤로는 사람이 고른다. */
   const [shipMethod, setShipMethod] = useState<ShipMethod>('배송');
   const [pallets, setPallets] = useState<OrderPallet[]>([]);
+  const [showPallets, setShowPallets] = useState(false);
+  const [orderNote, setOrderNote] = useState('');
+  const [noteImportant, setNoteImportant] = useState(false);
   const [isDelivery, setIsDelivery] = useState(false);
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(() => new Set());
 
@@ -135,6 +139,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     setSelectedPartner(null);
     setSelectedItems([]);
     setPallets([]);
+    setShowPallets(false);
+    setOrderNote('');
+    setNoteImportant(false);
     setSource('일반');
     setShipMethod('배송');
     setIsDelivery(false);
@@ -588,6 +595,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
         email: selectedPartner.email || '',
         createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
         items: orderItems,
+        ...(orderNote.trim() ? { note: clampNote(orderNote.trim()), ...(noteImportant ? { noteImportant: true } : {}) } : {}),
         totalAmount,
         deliveryDate: new Date(deadline).toISOString(),
         source: (isDelivery && source === '일반') ? '택배' : source,
@@ -977,13 +985,28 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
             </section>
           )}
 
-          {selectedPartner && palletStocks.length > 0 && (
+          {selectedPartner && (
+            <section className="space-y-2">
+              <label htmlFor="new-order-note" className="text-sm font-black text-slate-700">주문 비고</label>
+              <textarea id="new-order-note" value={orderNote} onChange={event => setOrderNote(clampNote(event.target.value))}
+                maxLength={NOTE_MAX} rows={2} placeholder="주문 전체에 전달할 내용을 적어 주세요."
+                className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400" />
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                <input type="checkbox" checked={noteImportant} onChange={event => setNoteImportant(event.target.checked)} className="accent-rose-500" />
+                중요 비고
+              </label>
+            </section>
+          )}
+
+          {selectedPartner && palletStocks.some(stock => !stock.hidden) && (
             <section className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2 text-slate-700"><Layers size={16} /><h3 className="text-sm font-black">팔레트</h3></div>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">선택</span>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
+              <button type="button" aria-expanded={showPallets} onClick={() => setShowPallets(value => !value)}
+                className="flex w-full items-center gap-2 text-left text-sm font-black text-slate-700">
+                <Layers size={16} /> 팔레트
+                {pallets.length > 0 && <span className="text-xs text-slate-500">{pallets.reduce((sum, pallet) => sum + pallet.quantity, 0)}개</span>}
+                <ChevronDown size={15} className={`ml-auto transition-transform ${showPallets ? 'rotate-180' : ''}`} />
+              </button>
+              {showPallets && <div className="grid grid-cols-1 gap-2">
                 {palletStocks
                   .filter(ps => !ps.hidden)
                   .sort((a, b) => (a.name.toLowerCase().includes('kpp') ? 0 : 1) - (b.name.toLowerCase().includes('kpp') ? 0 : 1) || a.name.localeCompare(b.name, 'ko'))
@@ -1010,7 +1033,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                     </div>
                   );
                 })}
-              </div>
+              </div>}
             </section>
           )}
         </div>

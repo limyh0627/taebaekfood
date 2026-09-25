@@ -97,26 +97,34 @@ export function buildReceiveLot(params: {
  * - 기본: 선입선출(FIFO) — 앞쪽 active 로트부터.
  * - 혼합(mix) 지정 시: 지정된 여러 active 로트에 비율대로 먼저 배분한다.
  *   예전 topPercent 설정도 상위 2개 비율로 계속 읽는다. 부족분은 FIFO로 이어서 차감한다.
- * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 실제 공급사 로트는 0에서 정상 소진되고,
- * 초과분은 '이월(미상)' 버킷이 음수로 흡수한다 → 로트 합계가 실제 사용분을 그대로 따라가 수불부와 어긋나지 않음.
- * 음수 이월과 이후 양수 입고는 각각 남기고, 검증한 사람이 로트 합치기로만 상계한다.
- * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(이월로 넘어간 초과분)
+ * 한 로트가 0이 되면 status='depleted'. 잔량이 부족하면 원본 로트 배열을 그대로 돌려준다.
+ * 명령을 적용하는 쪽은 shortageKg > 0 을 반드시 거절해야 한다. 음수 이월을 새로 만들면
+ * 같은 원료의 실제 재고와 로트가 함께 음수로 내려가던 사고를 되풀이한다.
+ * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(부족량)
  */
 export function deductFromLots(
   lots: RawMaterialLot[],
   kgToUse: number,
   mix?: LotMixSetting,
-  /**
-   * 초과 출고 때 새로 세우는 '이월(미상)' 버킷의 id·시각을 밖에서 정한다.
-   * 트랜잭션 안에서는 반드시 넘긴다 — 재시도마다 버킷이 하나씩 더 생기면 안 된다(§6).
-   */
-  carryOver?: { id: string; createdAt: string; receivedDate: string },
 ): {
   lots: RawMaterialLot[];
   distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[];
   shortageKg: number;
 } {
   let remaining = round3(kgToUse);
+  // 직접 호출에서 NaN은 부족량 검사도 통과해 로트 잔량까지 NaN으로 번진다.
+  // 원자 명령의 검증과 별개로 FIFO 함수 입구에서도 유한한 양수만 받는다.
+  if (!Number.isFinite(kgToUse) || !Number.isFinite(remaining) || !(remaining > 0)) {
+    throw new RangeError('로트 사용량은 유한한 양수여야 한다');
+  }
+  const invalidLot = lots.find(lot => lot.status === 'active'
+    && !Number.isFinite(Number(lot.kgRemaining ?? 0)));
+  if (invalidLot) throw new RangeError(`활성 로트 ${invalidLot.id}의 잔량이 유한한 숫자가 아니다`);
+  const availableKg = round3(lots.reduce((sum, lot) =>
+    sum + (lot.status === 'active' ? Math.max(0, Number(lot.kgRemaining ?? 0)) : 0), 0));
+  if (!Number.isFinite(availableKg)) throw new RangeError('활성 로트의 잔량 합계가 유한한 숫자가 아니다');
+  const shortageKg = round3(Math.max(0, remaining - availableKg));
+  if (shortageKg > 0) return { lots, distribution: [], shortageKg };
   const next = lots.map(l => ({ ...l }));
   const dist: { idx: number; lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[] = [];
   const activeIdx = next
@@ -162,32 +170,10 @@ export function deductFromLots(
     take(idx, remaining);
   }
 
-  // 초과 출고: 실제 공급사 로트는 0에서 정상 소진, 남은 초과분은 '이월(미상)' 버킷이 음수로 흡수한다.
-  //   → 로트 합계가 실제 사용분을 그대로 따라가 원료수불부와 어긋나지 않는다.
-  //   → 다음 입고와 자동 상계하지 않는다. 확인 전 음수·양수 로트를 따로 보여줘야 한다.
-  const overIssued = round3(Math.max(0, remaining));
-  if (overIssued > 0) {
-    let bIdx = next.findIndex(l => l.supplierName === '이월');
-    if (bIdx < 0) {
-      next.push({
-        id: carryOver?.id ?? `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        supplierName: '이월', kgIn: 0, kgRemaining: 0,
-        receivedDate: carryOver?.receivedDate ?? todayStr(), status: 'active',
-        createdAt: carryOver?.createdAt ?? new Date().toISOString(),
-      } as RawMaterialLot);
-      bIdx = next.length - 1;
-    }
-    const bucket = next[bIdx];
-    bucket.kgRemaining = round3((bucket.kgRemaining ?? 0) - overIssued);
-    bucket.status = 'active';
-    dist.push({ idx: bIdx, lotId: bucket.id, supplierName: '이월', lotNo: bucket.lotNo, receivedDate: bucket.receivedDate, kg: overIssued });
-    remaining = 0;
-  }
-
   return {
     lots: next,
     distribution: dist.map(({ idx, ...d }) => d),
-    shortageKg: overIssued,
+    shortageKg: round3(Math.max(0, remaining)),
   };
 }
 
@@ -339,20 +325,28 @@ export interface ProductLotTake {
 /**
  * 개수 기준 FIFO 차감 — 출고 때 앞쪽 로트부터 깐다. 혼합(mix)은 없다: 박스는 섞이지 않는다.
  *
- * 재고보다 많이 나가면 '이월(미상)' 버킷이 음수로 흡수한다 — 벌크와 같은 규칙이다.
- * 로트를 안 쓰던 시절의 재고가 그대로 남아 있어서(볶음참깨 박스 15개), 로트 도입 직후에는
- * 출고가 로트를 앞지른다. 그걸 막지 않고 **보이게** 두는 쪽이 낫다: 조용히 0에서 멈추면
- * 로트 합계가 실제 출고량과 갈려서 추적 자체를 못 믿게 된다.
+ * 로트 잔량이 부족하면 원본을 유지하고 부족량을 돌려준다. 호출자는 부족량을 거절해야 한다.
+ * 수량 재고는 남아도 로트가 모자랄 수 있으므로 이 함수에서 음수 이월을 만들지 않는다.
  */
 export function deductLotsByQty(
   lots: RawMaterialLot[],
   qtyToUse: number,
-  carryOver?: { id: string; createdAt: string; receivedDate: string },
 ): { lots: RawMaterialLot[]; distribution: ProductLotTake[]; shortageQty: number } {
+  if (!Number.isFinite(qtyToUse) || qtyToUse < 0) {
+    throw new Error(`로트 차감 수량은 0 이상의 유한한 숫자여야 합니다: ${qtyToUse}`);
+  }
+  if (lots.some(lot => lot.qtyRemaining != null && !Number.isFinite(lot.qtyRemaining))) {
+    throw new Error('로트 잔량이 올바르지 않습니다.');
+  }
   let remaining = round3(qtyToUse);
-  const next = lots.map(l => ({ ...l }));
   const dist: ProductLotTake[] = [];
-  if (remaining <= 0) return { lots: next, distribution: dist, shortageQty: 0 };
+  if (remaining <= 0) return { lots: lots.map(l => ({ ...l })), distribution: dist, shortageQty: 0 };
+  const usable = round3(lots.reduce((sum, lot) =>
+    sum + (lot.status === 'active' ? Math.max(0, Number(lot.qtyRemaining ?? 0)) : 0), 0));
+  const available = Math.max(0, Math.min(usable, lotQtyRemaining(lots)));
+  const shortageQty = round3(Math.max(0, remaining - available));
+  if (shortageQty > 0) return { lots, distribution: [], shortageQty };
+  const next = lots.map(l => ({ ...l }));
 
   for (const l of next) {
     if (remaining <= 0) break;
@@ -366,26 +360,8 @@ export function deductLotsByQty(
     dist.push({ lotId: l.id, lotNo: l.lotNo, receivedDate: l.receivedDate, supplierName: l.supplierName, qty: round3(t) });
   }
 
-  const overIssued = round3(Math.max(0, remaining));
-  if (overIssued > 0) {
-    let bIdx = next.findIndex(l => l.supplierName === '이월');
-    if (bIdx < 0) {
-      next.push({
-        id: carryOver?.id ?? `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        supplierName: '이월', kgIn: 0, kgRemaining: 0, qtyIn: 0, qtyRemaining: 0,
-        receivedDate: carryOver?.receivedDate ?? todayStr(), status: 'active',
-        createdAt: carryOver?.createdAt ?? new Date().toISOString(),
-      } as RawMaterialLot);
-      bIdx = next.length - 1;
-    }
-    const b = next[bIdx];
-    b.qtyRemaining = round3((b.qtyRemaining ?? 0) - overIssued);
-    b.kgRemaining = round3((b.qtyRemaining ?? 0) * (b.unitKg ?? 0));
-    b.status = 'active';
-    dist.push({ lotId: b.id, lotNo: b.lotNo, receivedDate: b.receivedDate, supplierName: '이월', qty: overIssued });
-  }
-
-  return { lots: next, distribution: dist, shortageQty: overIssued };
+  if (remaining > 0) return { lots, distribution: [], shortageQty: remaining };
+  return { lots: next, distribution: dist, shortageQty: 0 };
 }
 
 /**

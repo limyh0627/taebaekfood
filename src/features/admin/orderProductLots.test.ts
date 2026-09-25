@@ -18,36 +18,37 @@ const lots = (): RawMaterialLot[] => [{
 }];
 
 describe('주문 완제품 로트 계획', () => {
-  it('같은 품목의 여러 줄을 합쳐 FIFO로 빼고 초과 이월 ID를 재시도에도 고정한다', () => {
+  it('같은 품목의 여러 줄을 합쳐 로트 부족이면 출고를 거절한다', () => {
     const operations = createOrderProductLotOperations({
       allItems: [product],
       shipQtyOf: row => row.quantity,
     });
     const [mutation] = operations.deductProductLotsForOrder(order);
-
-    const first = mutation!.apply(lots());
-    const retried = mutation!.apply(lots());
-
-    expect(first.lots.map(lot => [lot.id, lot.qtyRemaining])).toEqual([
-      ['lot-1', 0],
-      ['lot-carry-shipment-o1-p1', -3],
-    ]);
-    expect(retried.lots).toEqual(first.lots);
-    expect(first.consumedLots.map(trace => [trace.lotId, trace.qty])).toEqual([
-      ['lot-1', 5],
-      ['lot-carry-shipment-o1-p1', 3],
-    ]);
+    expect(() => mutation!.apply(lots())).toThrow('완제품 로트 재고가 부족합니다. 현재 5, 출고 8');
   });
 
   it('출고 취소는 FIFO를 다시 계산하지 않고 저장된 로트에 그대로 복원한다', () => {
     const operations = createOrderProductLotOperations({ allItems: [product], shipQtyOf: row => row.quantity });
-    const shipped = operations.deductProductLotsForOrder(order)[0]!.apply(lots());
+    const shipped = operations.deductProductLotsForOrder({ ...order, items: [order.items[0]!] })[0]!.apply(lots());
     const restoreOrder = { ...order, productConsumedLots: shipped.consumedLots } as Order;
     const restored = operations.restoreProductLotsForOrder(restoreOrder)[0]!.apply(shipped.lots);
 
     expect(restored.lots.map(lot => [lot.id, lot.qtyRemaining])).toEqual([
       ['lot-1', 5],
-      ['lot-carry-shipment-o1-p1', 0],
     ]);
+  });
+
+  it('남은 로트 안에서만 출고하고 기존 음수 로트는 더 줄이지 않는다', () => {
+    const operations = createOrderProductLotOperations({ allItems: [product], shipQtyOf: row => row.quantity });
+    const shipment = operations.deductProductLotsForOrder({
+      ...order, items: [{ ...order.items[0]!, quantity: 3 }],
+    })[0]!;
+    const result = shipment.apply([...lots(), { ...lots()[0]!, id: 'old-negative', qtyRemaining: -2 }]);
+
+    expect(result.lots.map(lot => [lot.id, lot.qtyRemaining])).toEqual([
+      ['lot-1', 2],
+      ['old-negative', -2],
+    ]);
+    expect(result.consumedLots.map(trace => [trace.lotId, trace.qty])).toEqual([['lot-1', 3]]);
   });
 });

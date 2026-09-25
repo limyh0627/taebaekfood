@@ -47,11 +47,6 @@ export interface UnpackLotResult {
   canLots: RawMaterialLot[];
   bulkLots: RawMaterialLot[];
   moves: UnpackLotMove[];
-  /**
-   * 로트보다 많이 깠나 — 로트를 안 쓰던 시절 재고가 남아 있으면 그렇게 된다.
-   * **막지 않고 보이게 둔다**(`deductLotsByQty` 와 같은 규칙). 조용히 0 에서 멈추면
-   * 로트 합계가 실제와 갈려서 추적 자체를 못 믿게 된다.
-   */
   shortageQty: number;
 }
 
@@ -71,12 +66,13 @@ export function unpackLots(params: {
   det: { now: string; receivedDate: string; lotIdPrefix: string };
 }): UnpackLotResult {
   const { canLots, bulkLots, cans, perCan, material, det } = params;
+  if (!Number.isFinite(cans) || cans <= 0) throw new Error(`개봉 수량은 0보다 커야 합니다: ${cans}`);
 
-  const 깐것 = deductLotsByQty(canLots, cans, {
-    id: `${det.lotIdPrefix}-carry`,
-    createdAt: det.now,
-    receivedDate: det.receivedDate,
-  });
+  const 깐것 = deductLotsByQty(canLots, cans);
+  if (깐것.shortageQty > 0 || canStockAfter(깐것.lots) < 0) {
+    const available = Math.max(0, r3(cans - 깐것.shortageQty));
+    throw new Error(`캔 로트 재고가 부족합니다. 현재 ${available}, 개봉 ${cans}`);
+  }
 
   const moves: UnpackLotMove[] = [];
   const nextBulk = bulkLots.map(l => ({ ...l }));

@@ -47,6 +47,7 @@ import StatementComposerHeader from '../src/features/statements/ui/StatementComp
 import StatementOrderDateFilter from '../src/features/statements/ui/StatementOrderDateFilter';
 import StatementHistorySearchFields from '../src/features/statements/ui/StatementHistorySearchFields';
 import { statementHistoryRowView } from '../src/features/statements/domain/statementHistoryRowView';
+import { downloadListExcel } from '../src/shared/listExcel';
 import { shipToOf, shipToSummary } from '../src/shared/shipTo';
 import { StatementPaymentMobileRow, StatementPaymentTableRow } from '../src/features/statements/ui/StatementPaymentRow';
 import { StatementCashMobileRow, StatementCashTableRow } from '../src/features/statements/ui/StatementCashRow';
@@ -55,7 +56,7 @@ import StatementPartnerBar from '../src/features/statements/ui/StatementPartnerB
 import StatementQuickItemBar, { type StatementQuickItemResult } from '../src/features/statements/ui/StatementQuickItemBar';
 import StatementItemPicker, { type StatementItemPickerRow } from '../src/features/statements/ui/StatementItemPicker';
 import StatementOrderItemRows from '../src/features/statements/ui/StatementOrderItemRows';
-import StatementManualItemRows, { type StatementManualSearchResult } from '../src/features/statements/ui/StatementManualItemRows';
+import StatementManualItemRows from '../src/features/statements/ui/StatementManualItemRows';
 import StatementActionBar from '../src/features/statements/ui/StatementActionBar';
 import StatementSettlementSummary from '../src/features/statements/ui/StatementSettlementSummary';
 import StatementExpensePresetRow from '../src/features/statements/ui/StatementExpensePresetRow';
@@ -256,6 +257,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     showItemPicker, setShowItemPicker, pickerSearch, setPickerSearch, pickerQtys, setPickerQtys,
     noLinkIds, setNoLinkIds,
   } = useStatementItemEditor();
+  // 미연결 품목의 과세 선택은 '연결할까요?' 답 전까지 전표 안에서만 보관한다.
+  const [pickerTaxEdits, setPickerTaxEdits] = useState<Record<string, '과세' | '면세' | null>>({});
+  // 연결 저장 직후 구독이 도착하기 전에도 같은 전표에서 다시 묻지 않는다.
+  const [confirmedLinkIds, setConfirmedLinkIds] = useState<Set<string>>(() => new Set());
   const {
     createMode, setCreateMode, selectedClientId, setSelectedClientId, selectedOrderIds, setSelectedOrderIds,
     partnerSearch, setPartnerSearch, onlyActive, setOnlyActive, activeVisible, setActiveVisible,
@@ -1081,7 +1086,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
+  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1304,9 +1309,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const linkedManualItems = useMemo(() => {
     const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
     return allItems
-      .filter(p => !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
+      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
       .map(p => ({ itemId: p.id, name: p.name }));
-  }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType]);
+  }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType, companyId]);
   const lineItems = useMemo((): LineItem[] => {
     if (manualMode) {
       //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
@@ -1378,7 +1383,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
-  const applyPriceSync = useCallback(async (type: string) => {
+  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds) => {
     if (!onUpsertPartnerItem) return;
     /*
      * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
@@ -1388,7 +1393,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const 이번전표 = { id: editingStmt?.id, partnerId: selectedClientId, type, tradeDate };
     const { upserts, costUpdates } = partnerPriceWrites({
       type, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
-      partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+      partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
       isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
     });
     for (const u of upserts) await onUpsertPartnerItem(u);
@@ -1396,7 +1401,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
-  const markIssued = async (registerInbound = true): Promise<IssuedStatement | null> => {
+  const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<IssuedStatement | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
@@ -1445,7 +1450,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  전표에 찍힌 단가·계정이 품목 원가로 가는 것(매입)은 명령과 같이 커밋한다.
     const { costUpdates: 계산된원가 } = partnerPriceWrites({
       type: stmtType, partnerId: selectedClientId, lines: lineItems, items: allItems,
-      partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+      partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
       isLatest: isLatestForPartner({ this: { id: editingStmt?.id, partnerId: selectedClientId, type: stmtType, tradeDate }, all: mergedStatements }),
     });
 
@@ -1460,12 +1465,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       newPoItems: registerInbound ? newPoItems : [],
     });
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
-    if (결과 === 'applied') await applyPriceSync(stmtType);
+    if (결과 === 'applied') await applyPriceSync(stmtType, skipLinkIds);
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
     //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
     return stmt;
+  };
+
+  // 과거 전표를 고쳐도 지금 거래처 단가가 옛 값으로 돌아가면 안 된다.
+  const isHistoricalEdit = !!editingStmt && !isLatestForPartner({
+    this: { id: editingStmt.id, partnerId: selectedClientId, type: editingStmt.type, tradeDate },
+    all: mergedStatements,
+  });
+  const confirmUnlinkedLines = async (): Promise<Set<string> | null> => {
+    const unlinked = lineItems.filter(line => line.itemId && !linkedItemIds.has(line.itemId) && !confirmedLinkIds.has(line.itemId) && !noLinkIds.has(line.itemId));
+    if (!unlinked.length || !selectedClientId) return noLinkIds;
+    const names = [...new Set(unlinked.map(line => line.name))].map(name => `· ${name}`).join('\n');
+    if (isHistoricalEdit) {
+      const proceed = await appConfirm(`과거 전표를 수정 중입니다.\n\n${names}\n\n지금 거래처 단가를 과거 값으로 덮지 않기 위해, 미연결 품목은 이 전표에만 사용합니다. 계속 저장할까요?`);
+      return proceed ? new Set([...noLinkIds, ...unlinked.map(line => line.itemId!)]) : null;
+    }
+    const link = await appConfirm(`${selectedClient?.name ?? '이 거래처'}에 연결되지 않은 품목입니다.\n\n${names}\n\n거래처에 연결할까요?\n\n예 = 거래처 품목으로 등록\n아니요 = 이번 전표에만 사용`);
+    if (link && !onUpsertPartnerItem) {
+      alert('거래처 품목 연결 기능이 없어 전표를 저장할 수 없습니다.');
+      return null;
+    }
+    return link ? noLinkIds : new Set([...noLinkIds, ...unlinked.map(line => line.itemId!)]);
   };
 
   const handleIssue = async () => {
@@ -1503,6 +1529,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       );
       if (!ok) return;
     }
+    // 모달 밖에서 들어온 옛 줄도 발행 직전 같은 확인을 거친다.
+    const skipLinkIds = await confirmUnlinkedLines();
+    if (!skipLinkIds) return;
     // 매입전표라고 무조건 묻지 않는다. 현재는 품목 분류를 기준으로 실물 재고 줄이 있거나,
     // 이미 발주카드에서 넘어온 전표일 때만 묻는다. 대상 선정 방식 자체는 추후 개선한다.
     const 입고확인필요 = stmtType === '매입' && (
@@ -1515,7 +1544,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     saveBusyRef.current = true;
     setIsSaving(true);
     try {
-      const stmt = await markIssued(registerInbound);
+      const stmt = await markIssued(registerInbound, skipLinkIds);
       if (!stmt) return;
       //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
       if (issuePay) {
@@ -1540,6 +1569,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleSaveEdit = async () => {
     if (saveBusyRef.current) return;
     if (!editingStmt || lineItems.length === 0) return;
+    const skipLinkIds = await confirmUnlinkedLines();
+    if (!skipLinkIds) return;
     const proposed: Partial<IssuedStatement> = {
       tradeDate,
       memo: stmtMemo.trim(),
@@ -1565,7 +1596,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     try {
       if (!onUpdateIssuedStatement) throw new Error('전표 수정 기능이 연결되지 않았습니다.');
       await onUpdateIssuedStatement(editingStmt.id, proposed);
-      await applyPriceSync(editingStmt.type);
+      await applyPriceSync(editingStmt.type, skipLinkIds);
       saveBusyRef.current = false;
       closeCreate();
       alert('전표가 수정되었습니다.');
@@ -1628,8 +1659,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const partnerItemRows = useMemo(() =>
     partnerOut.filter(pc=>pc.partnerId===selectedClientId)
       .map(pc=>({ pc, product: allItems.find(p=>p.id===pc.itemId) }))
-      .filter(r=>r.product && !isBoxStockItem(r.product)),   // 박스 품목은 전표에서 제외(낱개만)
-    [partnerOut, selectedClientId, allItems]
+      .filter(r=>r.product && companyOf(r.product) === companyId && !isBoxStockItem(r.product)),   // 박스·타 회사 품목은 전표에서 제외
+    [partnerOut, selectedClientId, allItems, companyId]
   );
 
   // 매입 전표용: supplierId로 연결된 품목 + PartnerItem 단가
@@ -1637,13 +1668,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const inboundPartnerItemRows = useMemo(() =>
     allItems
       // partnerIn 직접 조회 — 한 품목에 매입처가 여러 개여도, 대/소문자 필드 혼재여도 정상 매칭
-      .filter(p => !isBoxStockItem(p) && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))   // 박스 제외(낱개만)
+      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
       .map(p => {
         const ps = partnerIn.find(s => (s.itemId) === p.id && (s.partnerId) === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
         return { pc: ps, ps, product: p };
       }),
-    [allItems, selectedClientId, partnerIn]
+    [allItems, selectedClientId, partnerIn, companyId]
   );
 
   // 현재 모드에 따른 검색 소스
@@ -1691,9 +1722,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       [...rows].sort((x, y) => byTaxonomy(x.product as Item | undefined, y.product as Item | undefined));
     return [...sorted(searchableRows), ...sorted(extra as unknown as typeof searchableRows)] as unknown as typeof searchableRows;
   }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy, companyId]);
+  const effectivePickerRows = useMemo(() => pickerRows.map(row => {
+    const itemId = row.product!.id;
+    return Object.prototype.hasOwnProperty.call(pickerTaxEdits, itemId)
+      ? { ...row, pc: { ...row.pc, taxType: pickerTaxEdits[itemId] } }
+      : row;
+  }), [pickerRows, pickerTaxEdits]);
 
   //  거래처를 바꾸면 '이번만 쓰기'도 없던 일이 된다 — 다른 거래처 얘기다
-  useEffect(() => { setNoLinkIds(new Set()); }, [selectedClientId]);
+  useEffect(() => { setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setPickerTaxEdits({}); }, [selectedClientId]);
 
   //  거래처에 이미 붙어 있는 품목 — 피커에서 "연결할까요?"를 물을지 가르는 기준
   const linkedItemIds = useMemo(
@@ -1719,15 +1756,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
   };
 
-  // 과세/면세 토글도 같은 경로 — 실패 시 조용히 넘어가지 않는다.
-  const togglePcTax = async (pc: PartnerItem) => {
+  // 연결된 품목만 즉시 저장한다. 미연결 품목을 여기서 저장하면 연결 확인을 건너뛴다.
+  const setPcTax = async (pc: PartnerItem, taxType: '과세' | '면세' | null) => {
+    if (!pc.itemId) return;
+    if (!linkedItemIds.has(pc.itemId)) {
+      setPickerTaxEdits(prev => ({ ...prev, [pc.itemId!]: taxType }));
+      return;
+    }
     setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
     try {
-      /*  **셋으로 돈다** — 미설정(`-`) → 과세 → 면세 → 미설정(2026-09-14 사장님).
-          전에는 면세↔과세 둘뿐이라, **정한 적 없는 것을 한 번 누르면 '과세'로 굳었다.**
-          되돌릴 길이 없어서 "안 정했다"는 상태가 조용히 사라졌다. */
-      const 다음: '과세' | '면세' | null = !pc.taxType ? '과세' : pc.taxType === '과세' ? '면세' : null;
-      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType: 다음 });
+      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType });
+      setPickerTaxEdits(prev => ({ ...prev, [pc.itemId!]: taxType }));
       setPriceSaveState(s => { const n = { ...s }; delete n[pc.id]; return n; });
     } catch (e: any) {
       setPriceSaveState(s => ({ ...s, [pc.id]: 'error' }));
@@ -1819,6 +1858,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const {
     allRows: allTimelineRows,
     filteredRows: filteredHistory,
+    sortedRows: sortedHistory,
     kindCounts: historyKindCounts,
     shownPartnerNames: partnerShown,
     pageRows: pagedHistory,
@@ -1970,6 +2010,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       <StatementHistoryActions
         resultCount={filteredHistory.length}
         fetching={isFetchingHistory}
+        onExport={() => {
+          const rows = sortedHistory.map(row => {
+            const view = statementHistoryRowView(row, codeName, 줄배송지);
+            const portion = row.kind === 'pay' ? null : accountPortion(row);
+            const amount = portion ?? view.amount;
+            const docNo = row.kind === 'stmt' ? row.data.docNo : row.entry?.docNo;
+            return [view.date, view.owner ?? '', view.label, view.partner, view.shipTo ?? '',
+              docNo ?? '', view.detail, amount, view.cumulative ?? '', view.note];
+          });
+          void downloadListExcel({
+            title: '전표내역',
+            subtitle: `조회 기간 ${histFrom || '전체'} ~ ${histTo || '전체'} · 구분 ${histKind} · ${rows.length}건`,
+            fileName: `전표내역_${histFrom || '전체'}_${histTo || '전체'}`,
+            columns: [
+              { header: '일자', width: 14 }, { header: '담당자', width: 15 }, { header: '구분', width: 14 },
+              { header: '거래처', width: 24 }, { header: '배송지', width: 20 }, { header: '전표번호', width: 19 },
+              { header: '적요', width: 46 }, { header: '금액', width: 18, number: true },
+              { header: '누적잔액', width: 18, number: true }, { header: '메모', width: 36 },
+            ],
+            rows,
+          });
+        }}
         onCreateSale={() => openCreate('매출')}
         onCreatePurchase={() => openCreate('매입')}
         onCreateCash={() => openCashModal('출금')}
@@ -2412,18 +2474,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const docN = r.product!.name.toLowerCase();
                   return matchesSearch(docN, q) || matchesSearch(r.product!.name, q);
                 });
-                if (partnerMatches.length > 0) {
-                  return partnerMatches.map(row => ({ pc: row.pc, product: row.product! }));
-                }
-                return allItems
-                  .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && p.type !== 'service' && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
-                  .map(p => {
-                    const existingPc = (createMode === '매입' ? partnerIn : partnerOut).find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
-                    return {
-                      pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price, taxType: existingPc?.taxType, Account_Code: existingPc?.Account_Code },
-                      product: p,
-                    };
-                  });
+                // 빠른 검색은 이 거래처에 연결된 품목만. 새 품목 연결은 확인 절차가 있는 선택 모달에서 한다.
+                return partnerMatches.map(row => ({ pc: row.pc, product: row.product! }));
               })() : [];
               const addQuickItem = () => {
                 if (!quickName.trim()) return;
@@ -2456,12 +2508,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               // 검색어 없으면 등록 품목만(깔끔), 검색하면 전품목 대상(반제품·원료·부자재 포함)
               const q=pickerSearch.trim().toLowerCase();
               const filtered: StatementItemPickerRow[] = (!q
-                ? searchableRows
-                : pickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q)))
+                ? effectivePickerRows.filter(r => linkedItemIds.has(r.product!.id))
+                : effectivePickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q)))
                 .map(row => ({ pc: row.pc, product: row.product! }));
               const confirmPick = async () => {
                 //  고른 것을 줄로 옮기는 셈은 shared/itemPick 에 있다 — 화면은 묻고 쓰기만 한다
-                const { toAdd, unlinked } = pickLines(pickerQtys, pickerRows, linkedItemIds, pricePanelEdits);
+                const { toAdd, unlinked } = pickLines(pickerQtys, effectivePickerRows, linkedItemIds, pricePanelEdits);
                 if (toAdd.length === 0) { setShowItemPicker(false); return; }
                 const serviceErrors = serviceStatementErrors(toAdd.map(row => ({ ...row, price: Number(row.price) })), allItems,
                   [...partnerOut, ...partnerIn], selectedClientId, stmtType);
@@ -2471,8 +2523,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                    아니요 → 이번 전표에만 쓴다. 발행할 때 자동으로 붙는 길도 막는다. */
                 if (unlinked.length && selectedClientId) {
                   const names = unlinked.map(r => `· ${r.product!.name}${r.product!.spec ? ` (${r.product!.spec})` : ''}`).join(String.fromCharCode(10));
-                  const ok = await appConfirm(
-                    `${selectedClient?.name ?? '이 거래처'}에 연결된 품목이 아닙니다.
+                  const ok = await appConfirm(isHistoricalEdit
+                    ? `과거 전표를 수정 중입니다.\n\n${names}\n\n지금 거래처 단가를 과거 값으로 덮지 않기 위해, 미연결 품목은 이 전표에만 추가합니다. 계속할까요?`
+                    : `${selectedClient?.name ?? '이 거래처'}에 연결된 품목이 아닙니다.
 
 ${names}
 
@@ -2481,11 +2534,24 @@ ${names}
 예 = 거래처 품목으로 등록(다음부터 바로 뜸)
 아니요 = 이번 전표에만 추가`
                   );
-                  if (ok) {
-                    const dir = createMode === '매입' ? 'in' as const : 'out' as const;
-                    for (const w of linkWrites(unlinked, selectedClientId, dir, pricePanelEdits)) {
-                      await onUpsertPartnerItem?.(w);
+                  if (isHistoricalEdit) {
+                    if (!ok) return;
+                    setNoLinkIds(prev => new Set([...prev, ...unlinked.map(r => r.product!.id)]));
+                  } else if (ok) {
+                    if (!onUpsertPartnerItem) {
+                      alert('거래처 품목 연결 기능이 없어 품목을 추가할 수 없습니다.');
+                      return;
                     }
+                    const dir = createMode === '매입' ? 'in' as const : 'out' as const;
+                    try {
+                      for (const w of linkWrites(unlinked, selectedClientId, dir, pricePanelEdits)) {
+                        await onUpsertPartnerItem(w);
+                      }
+                    } catch (error: any) {
+                      alert(`거래처 품목 연결 실패: ${error?.message ?? String(error)}`);
+                      return;
+                    }
+                    setConfirmedLinkIds(prev => new Set([...prev, ...unlinked.map(r => r.product!.id)]));
                   } else {
                     setNoLinkIds(prev => { const n = new Set(prev); for (const r of unlinked) n.add(r.product!.id); return n; });
                   }
@@ -2498,11 +2564,11 @@ ${names}
                 setShowItemPicker(false); setPickerSearch(''); setPickerQtys({});
               };
               return <StatementItemPicker rows={filtered} search={pickerSearch} quantities={pickerQtys}
-                priceEdits={pricePanelEdits} priceSaveState={priceSaveState} onSearchChange={setPickerSearch}
+                priceEdits={pricePanelEdits} linkedItemIds={linkedItemIds} priceSaveState={priceSaveState} onSearchChange={setPickerSearch}
                 onToggleItem={itemId=>setPickerQtys(prev=>{const next={...prev};if(next[itemId])delete next[itemId];else next[itemId]='1';return next;})}
                 onQuantityChange={(itemId,value)=>setPickerQtys(prev=>({...prev,[itemId]:value}))}
                 onPriceChange={(id,value)=>{setPricePanelEdits(prev=>({...prev,[id]:value}));setPriceSaveState(state=>{const next={...state};delete next[id];return next;});}}
-                onSavePrice={savePcPrice} onToggleTax={togglePcTax} onClose={()=>setShowItemPicker(false)} onConfirm={confirmPick}/>;
+                onSavePrice={savePcPrice} onSetTax={setPcTax} onClose={()=>setShowItemPicker(false)} onConfirm={confirmPick}/>;
             })()}
 
             {/* ── 주문 연결 안내 배너 ── */}
@@ -2567,14 +2633,8 @@ ${names}
                           formatAmount={fmt} searchResults={row=>{
                             if (!row.name.trim()) return [];
                             const query = row.name.toLowerCase();
-                            const linked = searchableRows.filter(result => matchesSearch(result.product!.name, query));
-                            if (linked.length > 0) return linked.map(result => ({ pc: result.pc, product: result.product! }));
-                            const source = createMode === '매입' ? partnerIn : partnerOut;
-                            return allItems.filter(item => item.type !== 'service' && !isBoxStockItem(item) && matchesSearch(item.name + ' ' + (item.품목 ?? ''), query))
-                              .map(item => {
-                                const existing = source.find(pc => pc.itemId === item.id && pc.partnerId === selectedClientId);
-                                return { pc: { id: existing?.id ?? item.id, price: existing?.price, taxType: existing?.taxType, Account_Code: existing?.Account_Code }, product: item } as StatementManualSearchResult;
-                              });
+                            return searchableRows.filter(result => matchesSearch(result.product!.name, query))
+                              .map(result => ({ pc: result.pc, product: result.product! }));
                           }} onSelect={setSelectedItemIdx}
                           onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch}:row))}
                           onSearchFocus={setActiveSearchRow} onSearchBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}

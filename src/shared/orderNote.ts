@@ -1,5 +1,5 @@
 /**
- * **주문 품목 비고 — 길이와 보이는 모양을 여기서 정한다.**
+ * **주문 비고 — 길이와 보이는 모양을 여기서 정한다.**
  *
  * 2026-09-15 사장님: "비고에 바탕이랑 테두리 회색으로 하고 5글자 이후...으로 떠서 줄 안
  * 바뀌게 하고 비고는 50자까지만 입력하게 해 그리고 ㅁ중요 이런식으로 체크박스 만들어서
@@ -27,4 +27,15 @@ export const clampNote = (text: string): string => (text ?? '').slice(0, NOTE_MA
 export const noteChip = (note?: string): string => {
   const 글 = (note ?? '').trim();
   return 글.length > NOTE_CHIP_CHARS ? `${글.slice(0, NOTE_CHIP_CHARS)}…` : 글;
+};
+
+type NoteOrder = { note?: string; noteImportant?: boolean; items: { name: string; note?: string; noteImportant?: boolean }[] };
+
+/** 새 주문은 주문 비고 하나를 쓰고, 옛 품목 비고는 지우거나 합치지 않고 읽기만 한다. */
+export const orderNotesForDisplay = (order: NoteOrder): { text: string; important: boolean; legacyItem?: string }[] => {
+  const current = order.note?.trim();
+  const legacy = order.items.flatMap(item => item.note?.trim()
+    ? [{ text: item.note.trim(), important: !!item.noteImportant, legacyItem: item.name }]
+    : []);
+  return current ? [{ text: current, important: !!order.noteImportant }, ...legacy] : legacy;
 };

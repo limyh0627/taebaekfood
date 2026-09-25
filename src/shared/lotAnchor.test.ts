@@ -67,6 +67,32 @@ describe('실사 — 로트를 실제 수량에 맞춘다', () => {
     expect(lotQtyRemaining(r.lots)).toBe(0);
   });
 
+  it('음수 목표 재고는 기존 음수 로트가 있어도 거절한다', () => {
+    const original = [로트({ id: '이월', supplierName: '이월', qtyRemaining: -2 })];
+    expect(() => anchorLotsByQty({ lots: original, targetQty: -1, det }))
+      .toThrow('실사 목표 재고는 0 이상이어야 합니다');
+    expect(original[0].qtyRemaining).toBe(-2);
+  });
+
+  it('기록된 합계보다 실제 사용 가능한 로트가 적으면 실사 차감도 거절한다', () => {
+    const original = [
+      로트({ id: 'active', qtyRemaining: 1 }),
+      로트({ id: 'depleted', qtyRemaining: 4, status: 'depleted' }),
+    ];
+    expect(() => anchorLotsByQty({ lots: original, targetQty: 0, det }))
+      .toThrow('실사 로트 재고가 부족합니다. 부족 4');
+    expect(original.map(lot => lot.qtyRemaining)).toEqual([1, 4]);
+  });
+
+  it('기존 음수 로트는 0 이상 목표로 맞춰 회복할 수 있다', () => {
+    const r = anchorLotsByQty({
+      lots: [로트({ id: '이월', supplierName: '이월', qtyRemaining: -2 })],
+      targetQty: 0, det,
+    });
+    expect(r.lots[0].qtyRemaining).toBe(0);
+    expect(r.beforeQty).toBe(-2);
+  });
+
   it('로트가 하나도 없어도 선다 — 로트를 처음 쓰는 품목', () => {
     const r = anchorLotsByQty({ lots: [], targetQty: 68, unitKg: 16.5, det });
     expect(lotQtyRemaining(r.lots)).toBe(68);

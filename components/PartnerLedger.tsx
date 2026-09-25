@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Users, Wallet } from 'lucide-react';
+import { Download, Search, Users, Wallet } from 'lucide-react';
 import { AccountCode, CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
 import { endOfMonth, today } from '../src/shared/day';
 import { claimDocNo } from '../src/shared/voucherStamp';
@@ -8,6 +8,7 @@ import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
+import { downloadListExcel } from '../src/shared/listExcel';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -238,6 +239,29 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 <span className="text-slate-400">{periodRange ? '기말' : label} <span className={`tabular-nums ${tone}`}>{fmt(ledger.balance)}</span></span>
               </div>
             )}
+            {sel && ledger && <button type="button" onClick={() => {
+              const rows = ledger.rows.map(row => [
+                row.date, row.time?.slice(0, 5) ?? '',
+                row.opening ? '기초' : row.kind === '전표' ? '전표' : row.source === 'cash' ? '결제·자금' : '결제',
+                row.label, row.docNo ?? '', row.amount > 0 ? row.amount : '',
+                row.amount < 0 ? -row.amount : '', row.balance,
+                row.kind === '전표' && row.sourceId ? (openByStmt.get(row.sourceId) ?? 0) : '',
+              ]);
+              void downloadListExcel({
+                title: '거래처원장',
+                subtitle: `${type} · ${sel.partnerName} · ${periodRange ? `${periodRange.from} ~ ${periodRange.to}` : '전체 기간'} · 기초 ${fmt(ledger.opening)} · 발생 ${fmt(ledger.accrued)} · 결제 ${fmt(ledger.paid)} · 잔액 ${fmt(ledger.balance)}`,
+                fileName: `거래처원장_${sel.partnerName}_${periodRange ? `${periodRange.from}_${periodRange.to}` : '전체'}`,
+                columns: [
+                  { header: '일자', width: 14 }, { header: '시각', width: 9 }, { header: '구분', width: 14 },
+                  { header: '적요', width: 44 }, { header: '전표번호', width: 19 },
+                  { header: '발생', width: 18, number: true }, { header: '결제', width: 18, number: true },
+                  { header: '잔액', width: 18, number: true }, { header: '남은', width: 18, number: true },
+                ],
+                rows,
+              });
+            }} className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">
+              <Download size={13}/>엑셀 저장
+            </button>}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
                  색은 들어오면 파랑, 나가면 빨강. */}
             {sel && onAddCashEntry && (

@@ -18,6 +18,8 @@ import {
 } from '../../src/shared/cashTemplates';
 import { buildTransfer, splitTransfer, type OverKind } from '../../src/shared/interCompany';
 import { splitCashEntry } from '../../src/shared/splitEntry';
+import { lineAmount, sumLines } from '../../src/shared/lineAmount';
+import { useLoanContracts } from '../../src/shared/useLoanContracts';
 import { STANDARD_ACCOUNT } from '../../src/shared/accountChart';
 import ModalShell from '../../src/shared/components/ModalShell';
 
@@ -155,6 +157,8 @@ export default function VoucherComposer({
   //  기본은 **장기차입금**(293) — 사업자 대출은 대개 1년을 넘긴다.
   //  1년 안에 갚는 건만 단기차입금(260)이다. 템플릿에 박아 두면 그게 이긴다.
   const [qpLoanCode, setQpLoanCode] = useState('260');
+  const [qpLoanId, setQpLoanId] = useState('');
+  const loans = useLoanContracts(companyId);
   const [qpPrincipal, setQpPrincipal] = useState('');
   const [qpInterest, setQpInterest] = useState('');
   const [qpGross, setQpGross] = useState('');
@@ -167,6 +171,8 @@ export default function VoucherComposer({
    * 값은 고른 대로 들어갔지만 이름이 딴 것이라 무슨 전표를 쓰는 중인지 못 믿게 된다.
    */
   const [qpTemplateId, setQpTemplateId] = useState<string | null>(null);
+  //  템플릿 편집의 면세 선택을 발행 폼까지 옮긴다. 직접작성은 옛 동작(세액 0원)을 유지한다.
+  const [qpAccrTaxExempt, setQpAccrTaxExempt] = useState(true);
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
   // 방향으로 안 거른다 — 고른 템플릿이 방향을 정한다(템플릿 화면과 같은 목록이 보여야 한다)
   const qpTemplates = useMemo(
@@ -197,6 +203,7 @@ export default function VoucherComposer({
      * 금액과 계정을 들고 있는 템플릿을 골라도 빈 양식이 떴다.
      */
     setQpAccrRows(templateAccrRows(t));
+    setQpAccrTaxExempt(t.partnerId && !isCashDir(t.dir) ? !!t.taxExempt : true);
     setQpShowSides(false);   // 템플릿이 차·대를 안다 — 손댈 일이 없다
     // 두 줄로 갈리는 갈래(보험·상환·급여·세금)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
     // 먼저 넷을 다 비우고 고른 갈래만 채운다. 안 그러면 앞 템플릿의 원금·공제가 남는다.
@@ -355,7 +362,7 @@ export default function VoucherComposer({
             { accountCode: qpLoanCode, amount: prin, note: '원금' },
             { accountCode: INTEREST_CODE, amount: intr, note: '이자' },
           ],
-          note: quickPayNote, fallbackNote: '대출 상환', base: base(),
+          note: quickPayNote, fallbackNote: '대출 상환', base: { ...base(), ...(loans.some(loan => loan.id === qpLoanId && loan.accountCode === qpLoanCode) ? { loanId: qpLoanId } : {}) },
         });
         const doLoanSave = () => {
           const e = loanEntry();
@@ -428,21 +435,27 @@ export default function VoucherComposer({
         // 갈래가 전표 종류를 정한다 — 거래처를 고르면 매입전표(미지급금이 선다),
         // 안 고르면 순수 대체(차·대를 직접 세운다)
         const accrType: '매출' | '매입' | '비용' = quickPayClientId ? '매입' : '비용';
+        const accrExempt = accrType === '비용' || qpAccrTaxExempt;
         const accrLines = qpAccrRows
           .filter(r => r.accountCode && Number(String(r.price).replace(/,/g, '')) > 0)
           .map(r => {
             const a = Number(String(r.price).replace(/,/g, '')) || 0;
+            //  금액칸은 템플릿 미리보기와 마찬가지로 세금 포함 총액이다.
+            const { gross, supply, tax } = lineAmount(1, a, accrExempt);
             return {
               name: r.name.trim() || (codeName.get(r.accountCode!) ?? ''),
-              spec: '', qty: 1, price: a, supply: a, tax: 0, total: a,
-              isTaxExempt: true, accountCode: r.accountCode!, side: r.side,
+              spec: '', qty: 1, price: a, supply, tax, total: gross,
+              isTaxExempt: accrExempt, accountCode: r.accountCode!, side: r.side,
             };
           });
+        const accrAmounts = sumLines(accrLines.map(l => ({ gross: l.total, supply: l.supply, tax: l.tax })));
         // 차·대를 따로 센다. 대체전표는 **둘이 같아야** 끊을 수 있다.
         const accrDebit  = accrLines.filter(l => l.side === '차변').reduce((a, r) => a + r.total, 0);
         const accrCredit = accrLines.filter(l => l.side === '대변').reduce((a, r) => a + r.total, 0);
         // 매입전표(거래처 있음)는 차·대가 갈래로 정해지므로 한 변의 합이 총액이다
         const accrTotal = accrType === '비용' ? accrDebit : accrLines.reduce((a, r) => a + r.total, 0);
+        const accrSupply = accrType === '비용' ? accrTotal : accrAmounts.supply;
+        const accrTax = accrType === '비용' ? 0 : accrAmounts.tax;
         const accrBalanced = accrType !== '비용' || (accrDebit > 0 && accrDebit === accrCredit);
 
         const doAccrualSave = () => {
@@ -489,7 +502,7 @@ export default function VoucherComposer({
             partnerName: quickPayClientId ? (selectedClientObj?.name ?? '') : (accrLines[0].name || '대체'),
             orderId: '',
             docNo: accrDocNo,
-            totalSupply: accrTotal, totalTax: 0, totalAmount: accrTotal,
+            totalSupply: accrSupply, totalTax: accrTax, totalAmount: accrTotal,
             items: accrLines,
           };
           onAddIssuedStatement?.(stmt);
@@ -802,6 +815,17 @@ export default function VoucherComposer({
                       </div>
                     )}
                   </div>
+
+                  {quickPayClientId && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2.5">
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                        <input type="checkbox" checked={qpAccrTaxExempt}
+                          onChange={e => setQpAccrTaxExempt(e.target.checked)} />
+                        면세 <span className="font-normal text-slate-400">(끄면 세금 포함 금액에서 부가세를 나눕니다)</span>
+                      </label>
+                      <span className="text-xs font-semibold text-slate-500">공급가 {fmt(accrSupply)} · 세액 {fmt(accrTax)} · 합계 {fmt(accrTotal)}</span>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">계정 · 금액</label>
@@ -1140,11 +1164,19 @@ export default function VoucherComposer({
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 계정 <span className="text-rose-400">*</span></label>
-                    <select value={qpLoanCode} onChange={e => setQpLoanCode(e.target.value)}
+                    <select value={qpLoanCode} onChange={e => { setQpLoanCode(e.target.value); setQpLoanId(''); }}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
                       {(loanAccounts.length ? loanAccounts : [{ id: '293', code: '293', name: '장기차입금' }, { id: '260', code: '260', name: '단기차입금' }]).map(c => (
                         <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 건 연결</label>
+                    <select value={qpLoanId} onChange={e => { setQpLoanId(e.target.value); const loan = loans.find(row => row.id === e.target.value); if (loan?.partnerId) setQuickPayClientId(loan.partnerId); }}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold">
+                      <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
+                      {loans.filter(loan => loan.accountCode === qpLoanCode).map(loan => <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1214,7 +1246,7 @@ export default function VoucherComposer({
                   type: accrType,
                   partnerId: quickPayClientId || '', partnerName: quickPayClientId ? (selectedClientObj?.name ?? '') : (accrLines[0].name || '대체'),
                   orderId: '', docNo: '',
-                  totalSupply: accrTotal, totalTax: 0, totalAmount: accrTotal, items: accrLines,
+                  totalSupply: accrSupply, totalTax: accrTax, totalAmount: accrTotal, items: accrLines,
                 } as IssuedStatement;
                 const je = accrType === '비용' ? journalizeTransfer(preview, normalOf) : journalizeStatement(preview);
                 return (
@@ -1315,6 +1347,7 @@ export default function VoucherComposer({
                       dir: qpDir, mode: qpMode,
                       ...(() => { const c = qpCashRows.find(r => r.accountCode)?.accountCode; return c ? { accountCode: c } : {}; })(),
                       ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
+                      ...(quickPayClientId && !isCashDir(qpDir) ? { taxExempt: qpAccrTaxExempt } : {}),
                       ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}),
                     } as any);
                     alert(`'${name.trim()}' 템플릿으로 저장했습니다.\n\n정기비용 화면에서 이름·거래처·금액을 고치거나 숨길 수 있습니다.`);
@@ -1338,7 +1371,7 @@ export default function VoucherComposer({
                 templates={qpTemplates} accountCodes={accountCodes}
                 activeId={currentTemplate(qpTemplates)?.id ?? null}
                 onPick={pickTemplate}
-                onDirect={() => { setQpTemplateId(null); setQpMode('일반'); setQuickPayClientId(''); setQuickPayClientSearch(''); setQpPickerOpen(false); }}
+                onDirect={() => { setQpTemplateId(null); setQpMode('일반'); setQuickPayClientId(''); setQuickPayClientSearch(''); setQpAccrTaxExempt(true); setQpPickerOpen(false); }}
                 onClose={() => setQpPickerOpen(false)}
               />
             )}

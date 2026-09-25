@@ -42,6 +42,15 @@ class Warehouse {
     this.ledger.push(this.row({ received: this.stock, note: '기초이월 (로트 도입 전 재고)', type: 'manual' }));
   }
 
+  /** 부족하면 원장 줄도 쓰지 않도록, 로트 차감 결과를 커밋 전에 검증한다. */
+  private deduct(lots: RawMaterialLot[], kg: number) {
+    const totalShortage = Math.round(Math.max(0, kg - Math.max(0, lotKgRemaining(lots))) * 1000) / 1000;
+    if (totalShortage > 0) throw new Error(`원료 재고 부족량 ${totalShortage}kg`);
+    const result = deductFromLots(lots, kg);
+    if (result.shortageKg > 0) throw new Error(`원료 로트 부족량 ${result.shortageKg}kg`);
+    return result.lots;
+  }
+
   /** 입고 — 로트 생성 + 원장 입고 */
   receive(kg: number, supplier = '풍회유통', date = '2026-08-01') {
     if (isBackdated(this.ledger, date)) {   // 앵커 이전 날짜 → 원장만 (아래 use와 같은 규칙)
@@ -65,9 +74,10 @@ class Warehouse {
       this.ledger.push(this.row({ used: kg, note, type: 'manual', date }));
       return;
     }
-    this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
-    this.lots = deductFromLots(carried, kg).lots;
+    const nextLots = this.deduct(carried, kg);
+    this.carryOver();
+    this.lots = nextLots;
     this.syncStock();
     this.ledger.push(this.row({ used: kg, note, type: 'manual', date }));
   }
@@ -75,17 +85,19 @@ class Warehouse {
   /** 실사 — 로트를 목표값에 맞추고 원장에 targetKg 앵커를 남긴다.
    *  로트가 안 움직여도(delta 0) 앵커는 **반드시** 쓴다 — 원장만 틀어진 경우를 잡으려면 그래야 한다. */
   stocktake(targetKg: number, date = '2026-08-01') {
-    this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
     const delta = Math.round((targetKg - lotKgRemaining(carried)) * 1000) / 1000;
+    let nextLots: RawMaterialLot[];
     if (delta > 0.001) {
       const lot = buildReceiveLot({ material: this.material, supplierName: '실사조정', qtyIn: 0, kgIn: delta, receivedDate: date });
-      this.lots = [...carried, lot];
+      nextLots = [...carried, lot];
     } else if (delta < -0.001) {
-      this.lots = deductFromLots(carried, -delta).lots;
+      nextLots = this.deduct(carried, -delta);
     } else {
-      this.lots = carried;
+      nextLots = carried;
     }
+    this.carryOver();
+    this.lots = nextLots;
     this.syncStock();
     this.ledger.push(this.row({
       received: delta > 0 ? delta : 0, used: delta < 0 ? -delta : 0,
@@ -105,9 +117,11 @@ class Warehouse {
     const back = anchoredLater ? 0 : (e.used ?? 0) - (e.received ?? 0);
     if (Math.abs(back) > 0.0001) {
       const carried = withCarryOverLot(this.lots, this.stock, this.material);
-      this.lots = back >= 0
+      const nextLots = back >= 0
         ? [...carried, buildReceiveLot({ material: this.material, supplierName: '삭제 되돌림', qtyIn: 0, kgIn: back, receivedDate: '2026-08-01' })]
-        : deductFromLots(carried, -back).lots;
+        : this.deduct(carried, -back);
+      this.carryOver();
+      this.lots = nextLots;
       this.syncStock();
     }
     this.ledger = this.ledger.filter(x => x.id !== id);
@@ -132,12 +146,16 @@ describe('원장 잔량 = 로트합 = stock', () => {
     expect(w.lotSum).toBe(460);
   });
 
-  it('로트보다 많이 쓰면 음수 이월로 흡수 — 그래도 셋은 같이 간다', () => {
+  it('로트보다 많이 쓰면 원장·로트·재고 모두 그대로 두고, 입고 후에는 차감한다', () => {
     const w = new Warehouse();
     w.receive(50);
-    w.use(200);       expectAligned(w, '초과사용');
-    expect(w.lotSum).toBe(-150);
-    w.receive(300);   expectAligned(w, '입고로 상쇄');
+    const before = JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock });
+    expect(() => w.use(200)).toThrow('원료 재고 부족량 150kg');
+    expect(JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock })).toBe(before);
+    expectAligned(w, '초과사용 거절');
+    w.receive(300);
+    w.use(200);
+    expectAligned(w, '재입고 후 사용');
     expect(w.lotSum).toBe(150);
   });
 
@@ -188,11 +206,11 @@ describe('전에 틀어지던 경로 — 회귀', () => {
   it('원장 줄을 지우면 로트도 되돌아온다', () => {
     const w = new Warehouse();
     w.receive(500);
-    w.use(775, '들깨 사용');
+    w.use(475, '들깨 사용');
     expectAligned(w, '사용 직후');
-    const usedRow = w.ledger.find(e => e.used === 775)!;
+    const usedRow = w.ledger.find(e => e.used === 475)!;
 
-    // 예전엔 원장 줄만 지워서 로트가 −775인 채 남았다
+    // 원장 줄만 지우면 로트가 25kg인 채 남으므로 사용량도 함께 되돌린다.
     w.deleteEntry(usedRow.id);
     expectAligned(w, '사용 기록 삭제');
     expect(w.lotSum).toBe(500);
@@ -206,6 +224,17 @@ describe('전에 틀어지던 경로 — 회귀', () => {
     w.deleteEntry(row.id);
     expectAligned(w, '입고 기록 삭제');
     expect(w.lotSum).toBe(500);
+  });
+
+  it('이미 사용한 입고 줄은 삭제를 거절하고 원장·로트를 보존한다', () => {
+    const w = new Warehouse();
+    w.receive(100);
+    w.use(70);
+    const row = w.ledger.find(e => e.received === 100)!;
+    const before = JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock });
+    expect(() => w.deleteEntry(row.id!)).toThrow('원료 재고 부족량 70kg');
+    expect(JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock })).toBe(before);
+    expectAligned(w, '입고 삭제 거절');
   });
 
   it('실사 줄을 지우면 로트도 실사 전으로 되돌아간다', () => {
@@ -227,7 +256,11 @@ describe('길게 섞어 돌려도 안 벌어진다', () => {
   it('입고·사용·실사·삭제를 20번 섞는다', () => {
     const w = new Warehouse('참깨', 120);   // 로트 도입 전 재고부터 시작
     const ops = [
-      () => w.receive(300), () => w.use(50), () => w.use(500), () => w.receive(1000),
+      () => w.receive(300), () => w.use(50), () => {
+        const before = JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock });
+        expect(() => w.use(500)).toThrow('원료 재고 부족량 130kg');
+        expect(JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock })).toBe(before);
+      }, () => w.receive(1000),
       () => w.stocktake(700), () => w.use(120), () => w.receive(40), () => w.stocktake(700),
       () => w.use(33.5), () => w.receive(12.25),
     ];
@@ -238,7 +271,12 @@ describe('길게 섞어 돌려도 안 벌어진다', () => {
     // 손입력 줄을 뒤에서부터 지워도 계속 맞아야 한다
     const removable = w.ledger.filter(e => e.targetKg == null && !e.note?.includes('기초이월')).reverse();
     for (const e of removable) {
-      w.deleteEntry(e.id!);
+      const before = JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock });
+      try { w.deleteEntry(e.id!); }
+      catch (error) {
+        expect(String(error)).toContain('부족량');
+        expect(JSON.stringify({ lots: w.lots, ledger: w.ledger, stock: w.stock })).toBe(before);
+      }
       expectAligned(w, `삭제 ${e.id}`);
     }
   });

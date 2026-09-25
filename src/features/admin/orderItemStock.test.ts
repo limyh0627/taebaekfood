@@ -220,4 +220,62 @@ describe('주문 품목 재고 DB 경계', () => {
     expect(memory.docs.get('items/a')).toEqual({ stock: 10, lots: [{ id: 'lot-1', qtyRemaining: 10 }] });
     expect(memory.docs.has('items/b')).toBe(false);
   });
+
+  it('여러 품목 중 하나라도 부족하면 재고·로트·주문을 함께 쓰지 않는다', async () => {
+    memory.docs.set('items/a', { stock: 10, lots: [{ id: 'lot-a', qtyRemaining: 10 }] });
+    memory.docs.set('items/b', { stock: 2 });
+    memory.docs.set('orders/o1', { status: 'before' });
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [item('a'), item('b')] });
+    const lotMutation: OrderProductLotMutation = {
+      itemId: 'a',
+      apply: lots => ({ lots: lots.map(lot => ({ ...lot, qtyRemaining: 7 })), consumedLots: [] }),
+    };
+
+    await expect(stock.applyItemStockDeltas(
+      new Map([['a', -3], ['b', -3]]), [lotMutation], undefined,
+      { orderId: 'o1', patch: { status: 'after' } },
+    )).rejects.toThrow('b 재고가 부족합니다');
+    expect(memory.docs.get('items/a')).toEqual({ stock: 10, lots: [{ id: 'lot-a', qtyRemaining: 10 }] });
+    expect(memory.docs.get('items/b')).toEqual({ stock: 2 });
+    expect(memory.docs.get('orders/o1')).toEqual({ status: 'before' });
+  });
+
+  it('기존 음수 재고는 추가 차감을 막고 입고는 허용한다', async () => {
+    memory.docs.set('items/a', { stock: -2 });
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [item('a')] });
+
+    await expect(stock.applyItemStockDeltas(new Map([['a', -1]]))).rejects.toThrow('a 재고가 부족합니다');
+    expect(memory.docs.get('items/a')?.stock).toBe(-2);
+    await stock.applyItemStockDeltas(new Map([['a', 1]]));
+    expect(memory.docs.get('items/a')?.stock).toBe(-1);
+  });
+
+  it('출고 로트가 새 음수가 되거나 기존 음수가 더 내려가면 전체 거래를 거절한다', async () => {
+    memory.docs.set('items/a', { stock: 10, lots: [{ id: 'lot-a', qtyRemaining: -1 }] });
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [item('a')] });
+    const lotMutation: OrderProductLotMutation = {
+      itemId: 'a',
+      apply: lots => ({ lots: [...lots, { ...lots[0]!, id: 'new-negative', qtyRemaining: -2 }], consumedLots: [] }),
+    };
+
+    await expect(stock.applyItemStockDeltas(new Map([['a', -1]]), [lotMutation]))
+      .rejects.toThrow('a 로트 재고가 부족합니다: new-negative');
+    expect(memory.docs.get('items/a')).toEqual({ stock: 10, lots: [{ id: 'lot-a', qtyRemaining: -1 }] });
+
+    lotMutation.apply = lots => ({ lots: lots.map(lot => ({ ...lot, qtyRemaining: -2 })), consumedLots: [] });
+    await expect(stock.applyItemStockDeltas(new Map([['a', -1]]), [lotMutation]))
+      .rejects.toThrow('a 로트 재고가 부족합니다: lot-a');
+  });
+
+  it('예약에서도 다른 주문과 합쳐 부족하면 새 예약을 쓰지 않는다', async () => {
+    memory.docs.set('items/a', { stock: 5 });
+    const stock = createOrderItemStockOperations({ db: {} as never, allItems: [item('a')] });
+    await stock.reserveOrderStock(reservableOrder('o1', ['a']), 'op1', () => new Map([['a', -4]]));
+
+    await expect(stock.reserveOrderStock(reservableOrder('o2', ['a']), 'op2', () => new Map([['a', -2]])))
+      .rejects.toThrow('a 재고가 부족합니다');
+    expect(memory.docs.get('items/a')?.inventoryReservations).toEqual([
+      expect.objectContaining({ operationId: 'op1', qty: 4 }),
+    ]);
+  });
 });

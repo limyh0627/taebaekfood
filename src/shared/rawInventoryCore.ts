@@ -228,6 +228,7 @@ export type RawRejectCode =
   | 'ITEM_NOT_FOUND'
   | 'NOT_MIGRATED'
   | 'STOCK_MISMATCH'
+  | 'INSUFFICIENT_STOCK'
   | 'INVALID_QUANTITY'
   | 'MISSING_LOT_ID'
   | 'LOT_NOT_FOUND'
@@ -259,7 +260,7 @@ export interface ApplyDeterministic {
   now: string;
   /** 새 로트 id (receive·opening·양수 실사). */
   newLotId?: string;
-  /** 초과 출고 때 세울 '이월' 버킷 id. */
+  /** 옛 호출부 호환값. 새 명령은 부족분의 음수 이월 로트를 만들지 않는다. */
   carryOverLotId?: string;
 }
 
@@ -485,12 +486,39 @@ export function applyRawCommand(input: {
     ...(c.actorName ? { actorName: c.actorName } : {}),
   };
 
+  const validateBalances = (
+    activeLots: RawMaterialLot[], stockKg: number,
+  ): Extract<RawApplyResult, { status: 'rejected' }> | null => {
+    // 기존 음수는 입고·실사·상계로 회복할 수 있어야 한다. 다만 정상 잔량을 새 음수로
+    // 만들거나 기존 음수를 더 악화시키는 명령은 같은 트랜잭션 안에서 거절한다.
+    const beforeLots = new Map(state.activeLots.map(lot => [lot.id, Number(lot.kgRemaining ?? 0)]));
+    const worsenedLot = activeLots.find(lot => {
+      const before = beforeLots.get(lot.id) ?? 0;
+      return lot.kgRemaining < 0 && r3(lot.kgRemaining) < Math.min(0, r3(before));
+    });
+    if (worsenedLot) {
+      return {
+        status: 'rejected', code: 'INSUFFICIENT_STOCK',
+        message: `로트 ${worsenedLot.lotNo ?? worsenedLot.id}의 부족량 ${r3(-worsenedLot.kgRemaining)}kg: 음수 잔량을 새로 만들거나 늘릴 수 없다`,
+      };
+    }
+    if (stockKg < 0 && r3(stockKg) < Math.min(0, r3(state.stockKg))) {
+      return {
+        status: 'rejected', code: 'INSUFFICIENT_STOCK',
+        message: `원료 재고 부족량 ${r3(-stockKg)}kg: 현재 ${state.stockKg}kg에서 이 명령을 적용할 수 없다`,
+      };
+    }
+    return null;
+  };
+
   const commit = (
     kind: RawMovementKind, worked: RawMaterialLot[], lotChanges: LotChange[],
     reportedDeltaKg: number, extra: Partial<RawInventoryMovement> = {},
   ): RawApplyResult => {
     const split = partition(worked, state.recentDepletedLots);
     const stockKg = lotSum(split.activeLots);
+    const balanceError = validateBalances(split.activeLots, stockKg);
+    if (balanceError) return balanceError;
     const nextState: RawInventoryState = {
       ...state, ...split,
       materialSnapshot: c.materialSnapshot,
@@ -576,9 +604,16 @@ export function applyRawCommand(input: {
       const kg = r3(c.kg);
       if (!(kg > 0)) return { status: 'rejected', code: 'INVALID_QUANTITY', message: '사용 수량은 0보다 커야 한다' };
       if (backdated) return skipBackdated('consume', -kg);
-      const { lots: after } = deductFromLots(working, kg, c.mix, det.carryOverLotId
-        ? { id: det.carryOverLotId, createdAt: det.now, receivedDate: c.effectiveAt.slice(0, 10) }
-        : undefined);
+      const stockShortage = r3(Math.max(0, kg - Math.max(0, state.stockKg)));
+      if (stockShortage > 0) return {
+        status: 'rejected', code: 'INSUFFICIENT_STOCK',
+        message: `원료 재고 ${state.stockKg}kg, 사용량 ${kg}kg, 부족량 ${stockShortage}kg`,
+      };
+      const { lots: after, shortageKg } = deductFromLots(working, kg, c.mix);
+      if (shortageKg > 0) return {
+        status: 'rejected', code: 'INSUFFICIENT_STOCK',
+        message: `사용 가능한 로트 부족량 ${shortageKg}kg`,
+      };
       return commit('consume', after, changesBetween(working, after), -kg);
     }
 
@@ -589,7 +624,8 @@ export function applyRawCommand(input: {
       const idx = working.findIndex(lot => lot.id === c.lotId);
       if (idx < 0) return { status: 'rejected', code: 'LOT_NOT_FOUND', message: `사용할 활성 로트가 없다: ${c.lotId}` };
       const available = Number(working[idx].kgRemaining ?? 0);
-      if (available < kg) return { status: 'rejected', code: 'TARGET_MISMATCH', message: `선택 로트 잔량 ${available}kg보다 사용량 ${kg}kg이 크다` };
+      if (available < kg) return { status: 'rejected', code: 'INSUFFICIENT_STOCK', message: `선택 로트 잔량 ${available}kg, 사용량 ${kg}kg, 부족량 ${r3(kg - Math.max(0, available))}kg` };
+      if (state.stockKg < kg) return { status: 'rejected', code: 'INSUFFICIENT_STOCK', message: `원료 재고 ${state.stockKg}kg, 사용량 ${kg}kg, 부족량 ${r3(kg - Math.max(0, state.stockKg))}kg` };
       const after = working.map((lot, index) => index === idx
         ? { ...lot, kgRemaining: r3(available - kg), status: r3(available - kg) === 0 ? 'depleted' as const : 'active' as const }
         : lot);
@@ -621,9 +657,11 @@ export function applyRawCommand(input: {
         const after = [...working, { ...lot, lotNo: nextLotNo(working, lot.receivedDate) }];
         return commit('stocktake', after, changesBetween(working, after), delta, stocktakeExtra);
       }
-      const { lots: after } = deductFromLots(working, -delta, undefined, det.carryOverLotId
-        ? { id: det.carryOverLotId, createdAt: det.now, receivedDate: c.effectiveAt.slice(0, 10) }
-        : undefined);
+      const { lots: after, shortageKg } = deductFromLots(working, -delta);
+      if (shortageKg > 0) return {
+        status: 'rejected', code: 'INSUFFICIENT_STOCK',
+        message: `실사 차감에 사용할 로트 부족량 ${shortageKg}kg`,
+      };
       return commit('stocktake', after, changesBetween(working, after), delta, stocktakeExtra);
     }
 
@@ -761,6 +799,8 @@ export function applyRawCommand(input: {
       const keptDepleted = state.recentDepletedLots.filter(l => !revived.some(rv => rv.id === l.id));
       const split = partition(after, keptDepleted);
       const stockKg = lotSum(split.activeLots);
+      const balanceError = validateBalances(split.activeLots, stockKg);
+      if (balanceError) return balanceError;
       return {
         status: 'applied',
         state: {

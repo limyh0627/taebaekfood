@@ -2,7 +2,7 @@ import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus, Copy } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
-import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, CashTemplate } from '../src/shared/cashTemplates';
+import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
 import ModalShell from '../src/shared/components/ModalShell';
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
@@ -51,7 +51,7 @@ export default function VoucherTemplateManager({
    */
   const [cloning, setCloning] = useState(false);
   const [form, setForm] = useState({
-    name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', partnerId: '', partnerName: '',
+    name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', accountCode: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
@@ -112,7 +112,7 @@ export default function VoucherTemplateManager({
     setCloning(clone);
     setForm({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
-      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '',
+      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '', accountCode: t.accountCode ?? '',
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
       dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
       itemName: t.itemName ?? '',
@@ -157,12 +157,13 @@ export default function VoucherTemplateManager({
               <div className="divide-y divide-slate-50">
                 {g.items.map(t => {
                   const locked = !!t.builtin;
-                  const canAuto = t.amount > 0 && !!t.accountCode;
+                  const missingCodes = missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code)));
+                  const canAuto = t.amount > 0 && !!t.accountCode && missingCodes.length === 0;
                   return (
                     <div key={t.id} className={`px-4 py-2 flex items-center gap-2 transition ${t.hidden ? 'opacity-40' : ''}`}>
                       <button
                         onClick={() => {
-                          if (!t.autoIssue && !canAuto) { alert('자동 발행은 계정과목과 금액이 정해진 것만 켤 수 있습니다.\n\n연필 버튼으로 금액을 먼저 넣어 주세요.'); return; }
+                          if (!t.autoIssue && !canAuto) { alert(missingCodes.length ? `현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n템플릿의 계정을 확인해 주세요.` : '자동 발행은 계정과목과 금액이 정해진 것만 켤 수 있습니다.\n\n연필 버튼으로 금액을 먼저 넣어 주세요.'); return; }
                           onUpdate?.(t.id, { autoIssue: !t.autoIssue });
                         }}
                         title={t.autoIssue ? `매월 ${(t.issueDay ?? 1) === 31 ? '말일' : `${t.issueDay ?? 1}일`} 자동 발행 — 끄기` : '자동 발행 켜기'}
@@ -185,12 +186,14 @@ export default function VoucherTemplateManager({
                           <span className="text-xs font-black text-slate-800 truncate">{t.name}</span>
                           {locked && <span title="기본 템플릿 — 지울 수 없고 숨기기만 됩니다" className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">기본</span>}
                           {t.hidden && <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">숨김</span>}
+                          {!!missingCodes.length && <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">계정 없음</span>}
                         </div>
                         <div className="text-[10px] font-bold text-slate-400 truncate">
                           {t.accountCode ? `${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}` : (t.mode !== '일반' ? t.mode : '계정 직접선택')}
                           {t.partnerName && ` · ${t.partnerName}`}
                           {!isCashDir(dirOf(t)) && t.partnerId && (t.taxExempt ? ' · 면세' : ' · 과세')}
                         </div>
+                        {!!missingCodes.length && <div className="text-[10px] font-bold text-amber-700">현재 회사 계정표에 {missingCodes.join(', ')} 없음</div>}
                       </div>
                       <span className="text-xs font-black text-slate-800 tabular-nums shrink-0 w-20 text-right">
                         {t.amount > 0 ? fmt(t.amount) : <span className="text-slate-300">—</span>}
@@ -236,6 +239,12 @@ export default function VoucherTemplateManager({
                 원본을 남겨 두고 변형을 만들고 싶으면 목록의 복제 버튼을 쓰세요.
               </p>
             ) : null}
+            {!!missingTemplateAccountCodes(editTpl, new Set(accountCodes.map(c => c.code))).length &&
+              (!!editTpl.transferLines?.length || (editTpl.mode && editTpl.mode !== '일반')) && (
+              <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-3 py-2 leading-snug">
+                현재 회사 계정표에 없는 계정이 분개 양식에 들어 있습니다. 이 양식은 여기서 계정을 바꿀 수 없으니 회사 계정표와 템플릿의 분개 계정을 확인해 주세요.
+              </p>
+            )}
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">이름</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -297,11 +306,22 @@ export default function VoucherTemplateManager({
                 )}
               </div>
             </div>
+            {(!editTpl.mode || editTpl.mode === '일반') && !editTpl.transferLines?.length && !!editTpl.accountCode && (
+              <div>
+                <label htmlFor="voucher-template-account" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계정과목</label>
+                <select id="voucher-template-account" value={form.accountCode}
+                  onChange={e => setForm(f => ({ ...f, accountCode: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300">
+                  {!accountCodes.some(c => c.code === form.accountCode) && <option value={form.accountCode}>현재 회사 계정표에 없음 · {form.accountCode}</option>}
+                  {accountCodes.map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
                 품목명 <span className="normal-case text-slate-300">(비우면 계정과목 이름)</span>
               </label>
-              <input value={form.itemName} placeholder={accountCodes.find(c => c.code === editTpl.accountCode)?.name ?? '계정과목 이름'}
+              <input value={form.itemName} placeholder={accountCodes.find(c => c.code === form.accountCode)?.name ?? '계정과목 이름'}
                 onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
               <p className="text-[10px] font-bold text-slate-400 mt-1">전표 품목란에 이대로 찍힙니다.</p>
@@ -429,7 +449,7 @@ export default function VoucherTemplateManager({
                 const preview = {
                   ...editTpl,
                   label: form.name, dir: form.dir, mode: editTpl.mode,
-                  accountCode: editTpl.accountCode, itemName: form.itemName || undefined,
+                  accountCode: form.accountCode || undefined, itemName: form.itemName || undefined,
                   transferLines: editTpl.transferLines,
                   loanCode: form.loanCode,
                   //  거래처·과세를 넘겨야 미리보기가 상대변(251·108)과 부가세 줄을 그린다.
@@ -500,6 +520,8 @@ export default function VoucherTemplateManager({
                     ? { [S.a]: a, [S.b]: b, ...('pick' in S ? { loanCode: form.loanCode } : {}) }
                     : {};
                   if (form.autoIssue && amount <= 0) { alert('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
+                  const missingCodes = missingTemplateAccountCodes({ ...editTpl, accountCode: form.accountCode || undefined, loanCode: form.loanCode || undefined }, new Set(accountCodes.map(c => c.code)));
+                  if (form.autoIssue && missingCodes.length) { alert(`현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n계정을 먼저 확인해 주세요.`); return; }
                   if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
                     alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
                     return;
@@ -511,6 +533,7 @@ export default function VoucherTemplateManager({
                     partnerId: form.partnerId,
                     partnerName: form.partnerName.trim(),
                     itemName: form.itemName.trim(),
+                    ...(form.accountCode ? { accountCode: form.accountCode } : {}),
                     ...splitPatch,
                     dir: form.dir,
                     autoIssue: form.autoIssue,
@@ -522,7 +545,7 @@ export default function VoucherTemplateManager({
                     // 그래야 내 것으로서 고치고 지울 수 있다.
                     await onCreate?.({
                       ...patch,
-                      accountCode: editTpl.accountCode,
+                      ...(form.accountCode ? { accountCode: form.accountCode } : {}),
                       mode: editTpl.mode,
                       kind: editTpl.kind ?? 'voucher',
                       category: editTpl.category,

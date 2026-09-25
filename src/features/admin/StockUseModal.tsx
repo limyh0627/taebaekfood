@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Package, CornerDownRight } from 'lucide-react';
 import AlertModalShell from '../../shared/components/AlertModalShell';
+import { appNotice } from '../../shared/components/appDialog';
 import { StockUseRow, resolveStockUse, toStockUsePlan } from './stockUseRows';
 import type { StockUsePlan } from './orderStockEngine';
 
@@ -18,7 +19,7 @@ interface Props {
   partnerName: string;
   rows: StockUseRow[];
   completionLabel?: string;
-  onConfirm: (plan: StockUsePlan) => void;
+  onConfirm: (plan: StockUsePlan) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -30,6 +31,7 @@ const num = (v: string) => {
 const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '작업완료', onConfirm, onCancel }) => {
   const [ownOverride, setOwnOverride] = useState<Record<number, number>>({});
   const [looseOverride, setLooseOverride] = useState<Record<number, number>>({});
+  const [confirming, setConfirming] = useState(false);
 
   const states = useMemo(
     () => resolveStockUse(rows, ownOverride, looseOverride),
@@ -38,6 +40,20 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
 
   const totalUse = states.reduce((s, x) => s + x.own + (x.loose?.value ?? 0), 0);
   const hasUsableStock = states.some(x => x.ownMax > 0 || (x.loose?.max ?? 0) > 0);
+
+  const confirmUse = async () => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await onConfirm(toStockUsePlan(states));
+    } catch (error) {
+      // 승인창은 호출자가 먼저 닫는다. 이곳에서 공통 앱 알림을 띄워 실패 이유가 사라지지 않게 한다.
+      const reason = error instanceof Error ? error.message : String(error);
+      await appNotice(reason, reason.includes('부족') ? '재고 부족' : `${completionLabel} 실패`);
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const qtyInput = (value: number, max: number, onChange: (n: number) => void) => (
     <input
@@ -68,7 +84,8 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
             취소
           </button>
           <button
-            onClick={() => onConfirm(toStockUsePlan(states))}
+            onClick={() => { void confirmUse(); }}
+            disabled={confirming}
             className={`flex-[2] py-2.5 text-white font-black rounded-xl text-sm transition-all ${hasUsableStock ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-500 hover:bg-amber-600'}`}
           >
             {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}

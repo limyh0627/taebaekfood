@@ -41,7 +41,7 @@ const 템플릿 = (over: Record<string, unknown>) => ({
 } as never);
 
 function 띄우기(over: Partial<Parameters<typeof VoucherComposer>[0]> = {}) {
-  const onAddCashEntry = vi.fn(), onAddForCompany = vi.fn(), onClose = vi.fn(), recordPayment = vi.fn();
+  const onAddCashEntry = vi.fn(), onAddIssuedStatement = vi.fn(), onAddForCompany = vi.fn(), onClose = vi.fn(), recordPayment = vi.fn();
   render(<VoucherComposer
     companyId="taebaek"
     initialDir="출금"
@@ -59,13 +59,45 @@ function 띄우기(over: Partial<Parameters<typeof VoucherComposer>[0]> = {}) {
     onCashAccountId={vi.fn()}
     onClose={onClose}
     onAddCashEntry={onAddCashEntry}
+    onAddIssuedStatement={onAddIssuedStatement}
     onAddForCompany={onAddForCompany}
     recordPayment={recordPayment}
     renderJournal={() => null}
     {...over}
   />);
-  return { onAddCashEntry, onAddForCompany, onClose, recordPayment };
+  return { onAddCashEntry, onAddIssuedStatement, onAddForCompany, onClose, recordPayment };
 }
+
+describe('거래처 템플릿 과세·면세 발행', () => {
+  const 비용템플릿 = (exempt: boolean) => 템플릿({
+    name: exempt ? '면세 기장료' : '과세 기장료', dir: '줄돈', mode: '일반',
+    accountCode: '811', partnerId: 'p1', partnerName: '청양식품',
+    amount: 110_000, taxExempt: exempt,
+  });
+
+  it('과세면 미리보기와 저장 전표 모두 공급가 100,000원·세액 10,000원이다', async () => {
+    const u = userEvent.setup();
+    const { onAddIssuedStatement } = 띄우기({ fixedCostTemplates: [비용템플릿(false)] });
+    await 템플릿고르기(u, '과세 기장료');
+    expect(screen.getByText(/공급가 100,000 · 세액 10,000 · 합계 110,000/)).toBeTruthy();
+    await 저장(u);
+    const stmt = onAddIssuedStatement.mock.calls[0][0] as IssuedStatement;
+    expect([stmt.totalSupply, stmt.totalTax, stmt.totalAmount]).toEqual([100_000, 10_000, 110_000]);
+    expect([stmt.items[0].supply, stmt.items[0].tax, stmt.items[0].isTaxExempt]).toEqual([100_000, 10_000, false]);
+  });
+
+  it('면세 설정을 가져오고, 이번 전표에서 과세로 바꾸면 저장값도 따라 바뀐다', async () => {
+    const u = userEvent.setup();
+    const { onAddIssuedStatement } = 띄우기({ fixedCostTemplates: [비용템플릿(true)] });
+    await 템플릿고르기(u, '면세 기장료');
+    expect(screen.getByText(/공급가 110,000 · 세액 0 · 합계 110,000/)).toBeTruthy();
+    await u.click(screen.getByRole('checkbox', { name: /면세/ }));
+    expect(screen.getByText(/공급가 100,000 · 세액 10,000 · 합계 110,000/)).toBeTruthy();
+    await 저장(u);
+    const stmt = onAddIssuedStatement.mock.calls[0][0] as IssuedStatement;
+    expect([stmt.totalSupply, stmt.totalTax, stmt.totalAmount]).toEqual([100_000, 10_000, 110_000]);
+  });
+});
 
 /** 갈래 단추 — 제목 줄에 있다(출금·입금·대체·줄돈·받을돈·회사이체) */
 const 갈래 = async (u: ReturnType<typeof userEvent.setup>, name: string) =>
@@ -183,5 +215,26 @@ describe('닫기', () => {
     await 채우기(u, '이자', '1000');
     await 저장(u);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('회사 계정표에 없는 템플릿', () => {
+  it('사라지지 않고 원인을 알리며, 유효한 템플릿은 계속 고를 수 있다', async () => {
+    const u = userEvent.setup();
+    띄우기({
+      companyId: 'punghoe',
+      fixedCostTemplates: [
+        템플릿({ id: 'missing', name: '이자 (풍회)', dir: '출금', mode: '일반', accountCode: '931' }),
+        템플릿({ id: 'valid', name: '풍회 차량유지비', dir: '출금', mode: '일반', accountCode: '811' }),
+      ],
+    });
+    await u.click(screen.getByRole('button', { name: /템플릿/ }));
+    const unavailable = screen.getByRole('button', { name: /이자 \(풍회\)/ });
+    expect(unavailable).toBeDisabled();
+    expect(within(unavailable).getByText(/현재 회사 계정표에 931 없음/)).toBeInTheDocument();
+    const valid = screen.getByRole('button', { name: /풍회 차량유지비/ });
+    expect(valid).toBeEnabled();
+    await u.click(valid);
+    expect(screen.queryByText(/현재 회사 계정표에 931 없음/)).not.toBeInTheDocument();
   });
 });

@@ -57,4 +57,29 @@ describe('캔 개봉도 품목 사본과 원자 상태가 일치해야 한다', 
     expect(JSON.stringify([...store.entries()])).toBe(before);
     expect([...store.keys()].filter(key => key.startsWith('rawMaterialLedger/'))).toHaveLength(0);
   });
+
+  it('캔 현재고보다 많이 까면 캔·벌크·원자 상태·원장에 아무것도 쓰지 않는다', async () => {
+    const before = JSON.stringify([...store.entries()]);
+    const result = await unpack({ ...plan, cans: 4, bulkQty: 66 });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('깨분참기름 캔 재고가 부족합니다');
+    expect(writes).toBe(0);
+    expect(JSON.stringify([...store.entries()])).toBe(before);
+  });
+
+  it('숫자 재고는 있어도 로트가 부족하면 거래 전체를 거절한다', async () => {
+    store.set('items/can-x', {
+      id: 'can-x', companyId: 'taebaek', stock: 3,
+      lots: [{ id: 'can-lot-1', supplierName: '이월', qtyIn: 2, qtyRemaining: 2,
+        kgIn: 33, kgRemaining: 33, unitKg: 16.5, status: 'active', receivedDate: '2026-09-01' }],
+    });
+    const before = JSON.stringify([...store.entries()]);
+    const result = await unpack({ ...plan, cans: 3, bulkQty: 49.5 });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('캔 로트 재고가 부족합니다');
+    expect(writes).toBe(0);
+    expect(JSON.stringify([...store.entries()])).toBe(before);
+  });
 });

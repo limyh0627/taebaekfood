@@ -8,7 +8,7 @@ import {
   ItemFormula, ItemBom, CompanyInfo, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
-  CashAccount, CashEntry, Settlement, CompanyId,
+  CashAccount, CashEntry, Settlement, CompanyId, companyOf,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
@@ -150,8 +150,25 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
-  const [historicalOrders, setHistoricalOrders] = useState<Order[]>([]);
-  const [isLoadingHistoricalOrders, setIsLoadingHistoricalOrders] = useState(false);
+  const [historicalState, setHistoricalState] = useState<{ scope: number; orders: Order[]; loading: boolean } | null>(null);
+  // 같은 탭에서 로그아웃→다른 회사 로그인 시 이전 요청이 늦게 돌아와도 새 세션에 쓰지 못한다.
+  const historicalScopeRef = useRef({ key: `${enabled}:${companyId}`, id: 0 });
+  const scopeKey = `${enabled}:${companyId}`;
+  if (historicalScopeRef.current.key !== scopeKey) {
+    historicalScopeRef.current = { key: scopeKey, id: historicalScopeRef.current.id + 1 };
+  }
+  const historicalScope = historicalScopeRef.current.id;
+  const historicalOrders = useMemo(
+    () => enabled && historicalState?.scope === historicalScope
+      ? historicalState.orders.filter(order => companyOf(order) === companyId) : [],
+    [enabled, historicalState, historicalScope, companyId],
+  );
+  const visibleOrders = useMemo(
+    () => enabled ? orders.filter(order => companyOf(order) === companyId) : [],
+    [orders, enabled, companyId],
+  );
+  const isLoadingHistoricalOrders = enabled && historicalState?.scope === historicalScope
+    ? historicalState.loading : false;
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [ordersMonths, setOrdersMonthsState] = useState<number>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('tb_orders_months') : null;
@@ -167,12 +184,14 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [staticRefreshKey, setStaticRefreshKey] = useState(0);
   const refreshStaticData = useCallback(() => setStaticRefreshKey(k => k + 1), []);
 
-  const loadedHistoricalRangeRef = useRef<{ start: string; end: string } | null>(null);
+  const loadedHistoricalRangeRef = useRef<{ scope: number; start: string; end: string } | null>(null);
   const loadHistoricalOrders = useCallback(async (start: string, end: string) => {
+    if (!enabled || historicalScopeRef.current.key !== `${enabled}:${companyId}`) return;
+    const scope = historicalScopeRef.current.id;
     // 이미 같거나 더 넓은 범위를 로드했으면 skip
     const prev = loadedHistoricalRangeRef.current;
-    if (prev && prev.start <= start && prev.end >= end) return;
-    setIsLoadingHistoricalOrders(true);
+    if (prev?.scope === scope && prev.start <= start && prev.end >= end) return;
+    setHistoricalState(current => ({ scope, orders: current?.scope === scope ? current.orders : [], loading: true }));
     try {
       const { where } = await import('firebase/firestore');
       const range = kstDateRangeUtc(start, end);
@@ -181,12 +200,15 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         where('createdAt', '<', range.endExclusive),
         where('companyId', '==', companyId),
       ]);
-      setHistoricalOrders(data);
-      loadedHistoricalRangeRef.current = { start, end };
+      if (historicalScopeRef.current.id !== scope) return;
+      setHistoricalState({ scope, orders: data, loading: false });
+      loadedHistoricalRangeRef.current = { scope, start, end };
     } finally {
-      setIsLoadingHistoricalOrders(false);
+      if (historicalScopeRef.current.id === scope) {
+        setHistoricalState(current => current?.scope === scope ? { ...current, loading: false } : current);
+      }
     }
-  }, [companyId]);
+  }, [companyId, enabled]);
 
   const markLoaded = (key: string) => {
     loadedRef.current.add(key);
@@ -347,7 +369,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   setPackIndex(packIndex);
 
   return {
-    orders, purchaseOrders,
+    orders: visibleOrders, purchaseOrders,
     items,
     partnerItems,
     setPartnerItems,

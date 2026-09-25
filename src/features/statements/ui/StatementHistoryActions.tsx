@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Plus, RotateCw, Save } from 'lucide-react';
+import { ChevronDown, Download, Plus, RotateCw, Save } from 'lucide-react';
 
 /** 조회 결과의 발행 도구. 드롭다운의 열림/바깥 클릭 상태는 이 UI 안에서 끝낸다. */
 /*  **단추는 바탕색 없이 테두리로**(2026-09-15 사장님: "버튼 바탕색 빼") — 셋이 나란히
@@ -13,8 +13,9 @@ export default function StatementHistoryActions(props: {
   onCreateCash: () => void;
   onOpenRecurring?: () => void;
   onOpenCompany: () => void;
+  onExport?: () => void;
 }) {
-  const { resultCount, fetching, onCreateSale, onCreatePurchase, onCreateCash, onOpenRecurring, onOpenCompany } = props;
+  const { resultCount, fetching, onCreateSale, onCreatePurchase, onCreateCash, onOpenRecurring, onOpenCompany, onExport } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -34,6 +35,11 @@ export default function StatementHistoryActions(props: {
         {fetching && <span className="ml-2 animate-pulse text-[11px] text-indigo-400">불러오는 중…</span>}
       </h3>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {onExport && <button type="button" onClick={onExport} disabled={fetching || resultCount === 0}
+          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          title="현재 조회 조건의 전표내역 전체를 엑셀로 저장">
+          <Download size={13}/>엑셀 저장
+        </button>}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(open => !open)}

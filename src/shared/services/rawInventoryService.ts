@@ -322,8 +322,12 @@ export async function updateRawInventoryLotMetadata(input: {
     const 수량바뀜 = after.length !== before.length || after.some(lot => {
       const old = beforeById.get(lot.id);
       return !old
-        || Number(old.kgIn) !== Number(lot.kgIn)
-        || Number(old.kgRemaining) !== Number(lot.kgRemaining)
+        || old.kgIn !== lot.kgIn
+        || old.kgRemaining !== lot.kgRemaining
+        || old.qtyIn !== lot.qtyIn
+        || old.qtyRemaining !== lot.qtyRemaining
+        || old.packageKg !== lot.packageKg
+        || old.unitKg !== lot.unitKg
         || old.status !== lot.status;
     });
     if (수량바뀜 || new Set(after.map(lot => lot.id)).size !== after.length) {

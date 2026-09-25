@@ -32,6 +32,7 @@ import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll
 import { payrollGross, payrollDeduct, payrollNet, payrollTotals, payrollDocId, companyOf, TAEBAEK } from '../types';
 import PageHeader from './PageHeader';
 import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
+import { where } from 'firebase/firestore';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -119,7 +120,11 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [payMsg, setPayMsg] = useState('');
   const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
-  React.useEffect(() => subscribeToCollection<Payroll>('payrolls', setPayrolls), []);
+  React.useEffect(() => {
+    // 권한 규칙은 목록을 걸러 주지 않는다. 서버 질의에 회사 조건이 없으면 관리자도 구독이 거부된다.
+    setPayrolls([]);
+    return subscribeToCollection<Payroll>('payrolls', setPayrolls, [where('companyId', '==', companyId)]);
+  }, [companyId]);
   const won = (n: number) => (n || 0).toLocaleString('ko-KR');
   // 회사별로 문서가 따로다 — 남의 회사 대장을 덮어쓰면 안 된다
   const payDocId = payrollDocId(companyId, payYm);

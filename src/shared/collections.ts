@@ -37,6 +37,7 @@ export const COL = {
   issuedStatements: 'issuedStatements',
   pendingStatementEdits: 'pendingStatementEdits',
   cashEntries: 'cashEntries',
+  loanContracts: 'loanContracts',
   cashAccounts: 'cashAccounts',
   accountCodes: 'accountCodes',
   accountGroups: 'accountGroups',

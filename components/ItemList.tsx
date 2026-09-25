@@ -3,7 +3,7 @@ import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
-import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
@@ -365,6 +365,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onOemReceive,
   onOemIssueFee,
 }) => {
+  const inventoryItems = useMemo(() => items.filter(isPhysicalInventoryItem), [items]);
   const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material)?.lots ?? [], [items]);
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const scheduledOutboundQty = useMemo(() => {
@@ -680,10 +681,10 @@ const ItemList: React.FC<ItemListProps> = ({
   }, [activeTab]); // 상단의 기존 로트/로트 이력 탭을 직접 눌러도 상태 탭이 엇갈리지 않게 한다.
 
   /** 로트의 소유자는 물질명이 아니라 품목 ID다. 같은 깨라도 벌크·낱개·박스를 합치면 실제 재고처럼 오해한다. */
-  const lotItems = useMemo(() => items
+  const lotItems = useMemo(() => inventoryItems
     .filter(p => isRawHolder(p) || (p.lots ?? []).some(l => l.qtyRemaining != null))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
-  [items]);
+  [inventoryItems]);
   const visibleLotItems = useMemo(() => lotItems.filter(item => {
     const raw = isRawHolder(item);
     if (lotKind === 'raw' && !raw) return false;
@@ -1076,7 +1077,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
   const specOptions = useMemo(() => {
     const inTab = (p: Item) => p.type === tabTypeKey;
-    const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => baseSpec(p.spec)).filter(Boolean));
+    const specs = new Set(inventoryItems.filter(p => !p.archived && inTab(p)).map(p => baseSpec(p.spec)).filter(Boolean));
     const rank = (s: string): [number, number] => {
       const m = s.match(/([\d.]+)\s*(ml|l|리터|g|kg)/i);
       if (!m) return [2, 0];
@@ -1090,16 +1091,16 @@ const ItemList: React.FC<ItemListProps> = ({
       const [ka, va] = rank(a); const [kb, vb] = rank(b);
       return ka !== kb ? ka - kb : va !== vb ? va - vb : a.localeCompare(b);
     });
-  }, [items, tabTypeKey]);
+  }, [inventoryItems, tabTypeKey]);
 
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
     if (activeTab === 'requests') {
-      result = items.filter(p => !p.archived && orderRequests.some(r => (r.itemId ?? r.id) === p.id));
+      result = inventoryItems.filter(p => !p.archived && orderRequests.some(r => (r.itemId ?? r.id) === p.id));
     } else if (activeTab === 'history') {
-      result = items.filter(p => !p.archived && confirmedOrders.some(c => (c.itemId ?? c.id) === p.id));
+      result = inventoryItems.filter(p => !p.archived && confirmedOrders.some(c => (c.itemId ?? c.id) === p.id));
     } else {
-      result = items.filter(p => !p.archived);
+      result = inventoryItems.filter(p => !p.archived);
     }
     // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
     if (!zeroStockOnly) {
@@ -1159,7 +1160,7 @@ const ItemList: React.FC<ItemListProps> = ({
         || splitNameVolume(a).base.localeCompare(splitNameVolume(b).base, 'ko')
         || (a.spec ?? '').localeCompare(b.spec ?? '', 'ko', { numeric: true });
     });
-  }, [items, activeTab, catSel, supSel, specSel, gradeSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
+  }, [inventoryItems, activeTab, catSel, supSel, specSel, gradeSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
   // 완제품 탭: 박스 품목을 그 낱개 밑으로 묶는다 (unpackComponent 기준). row = { p, isChild, parentId?, boxCount }
   type GroupRow = { p: Item; isChild: boolean; parentId?: string; boxCount: number };
@@ -1272,7 +1273,7 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {/* 탭 = 분류 관리의 타입 그대로 — 이름·순서·숨김이 다 따라온다.
                   아이콘·색만 코드가 쥔다(분류표에 담을 값이 아니다). 새 타입은 기본 모양으로 뜬다. */}
-              {taxo.types.map(t => ({
+              {taxo.types.filter(t => isPhysicalInventoryItem({ type: t.key })).map(t => ({
                 id: t.key, label: t.label,
                 color: TYPE_STYLE[t.key]?.color ?? 'text-slate-600',
                 icon: TYPE_STYLE[t.key]?.icon ?? <Package size={13}/>,
@@ -2297,6 +2298,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div className="relative">
                       <input
                         type="number"
+                        min="0"
                         step="any"
                         value={rowEditForm.stock ?? ''}
                         onChange={e => setRowEditForm(f => ({ ...f, stock: parseFloat(e.target.value) || 0 }))}
@@ -2349,6 +2351,10 @@ const ItemList: React.FC<ItemListProps> = ({
                     // 직원은 실사조정만 — 카테고리·품목명·단위는 UI뿐 아니라 저장에서도 막는다
                     const form = productEditable ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
                     const { stock: newStock, ...meta } = form;
+                    if (newStock !== undefined && (!Number.isFinite(newStock) || newStock < 0)) {
+                      alert('재고는 0 이상이어야 합니다.');
+                      return;
+                    }
                     if (!productEditable && newStock !== undefined) {
                       // 재고실사 모달과 목록 인라인 실사는 반드시 같은 명령을 쓴다.
                       await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined);
@@ -2361,6 +2367,10 @@ const ItemList: React.FC<ItemListProps> = ({
                     } else {
                       // 인라인 수정과 같은 변환을 쓴다 — 두 저장문이 갈리면 박스·밀도 품목이 다시 어긋난다.
                       const storedStock = newStock === undefined ? undefined : stocktakeStoredQuantity(p, newStock);
+                      if (storedStock !== undefined && (!Number.isFinite(storedStock) || storedStock < 0)) {
+                        alert('재고는 0 이상이어야 합니다.');
+                        return;
+                      }
                       await onUpdateItem({ ...p, ...form, ...(storedStock !== undefined ? { stock: storedStock } : {}) } as Item);
                     }
                     setRowEditProduct(null);

@@ -12,13 +12,14 @@ interface Props {
   search: string;
   quantities: Record<string, string>;
   priceEdits: Record<string, string>;
+  linkedItemIds: ReadonlySet<string>;
   priceSaveState: Record<string, 'saving' | 'done' | 'error'>;
   onSearchChange: (value: string) => void;
   onToggleItem: (itemId: string) => void;
   onQuantityChange: (itemId: string, value: string) => void;
   onPriceChange: (partnerItemId: string, value: string) => void;
   onSavePrice: (partnerItem: PartnerItem) => void;
-  onToggleTax: (partnerItem: PartnerItem) => void;
+  onSetTax: (partnerItem: PartnerItem, taxType: '과세' | '면세' | null) => void;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }
@@ -71,27 +72,33 @@ export default function StatementItemPicker(props: Props) {
                 return (
                   <tr key={itemId} onClick={() => props.onToggleItem(itemId)}
                     className={`cursor-pointer transition-colors ${selected ? 'bg-blue-50' : index % 2 === 0 ? 'hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'}`}>
-                    <td className="px-4 py-2.5"><span className="text-xs font-black text-slate-800">{row.product.name}</span></td>
+                    <td className="px-4 py-2.5"><span className="text-xs font-black text-slate-800">{row.product.name}</span>
+                      {!props.linkedItemIds.has(itemId) && <span className="ml-1 text-[10px] font-bold text-slate-400">미연결</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-[11px] font-bold text-slate-700">{row.product.spec || ''}</td>
                     <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1 justify-end">
                         <input type="text" inputMode="decimal" placeholder="미설정"
                           value={props.priceEdits[row.pc.id] ?? (row.pc.price !== undefined ? String(row.pc.price) : '')}
                           onChange={e => props.onPriceChange(row.pc.id, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); props.onSavePrice(row.pc); } }}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (props.linkedItemIds.has(itemId)) props.onSavePrice(row.pc); } }}
                           className="w-20 text-right bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
-                        <button type="button" onClick={() => props.onSavePrice(row.pc)} disabled={saveState === 'saving'} title="단가 저장"
+                        {props.linkedItemIds.has(itemId) && <button type="button" onClick={() => props.onSavePrice(row.pc)} disabled={saveState === 'saving'} title="단가 저장"
                           className={`px-1.5 py-1 rounded-lg text-[10px] font-black text-white transition-all disabled:opacity-60 ${saveState === 'done' ? 'bg-emerald-500' : saveState === 'error' ? 'bg-rose-500' : 'bg-violet-600 hover:bg-violet-700'}`}>
                           {saveState === 'saving' ? '…' : saveState === 'done' ? '✓' : '저장'}
-                        </button>
+                        </button>}
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-center" onClick={e => e.stopPropagation()}>
-                      <button type="button" onClick={() => props.onToggleTax(row.pc)} disabled={saveState === 'saving'}
-                        title="눌러서 - → 과세 → 면세"
-                        className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all disabled:opacity-50 ${row.pc.taxType === '면세' ? 'bg-indigo-500 text-white border-indigo-500' : row.pc.taxType === '과세' ? 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100' : 'bg-white text-slate-300 border-dashed border-slate-200 hover:bg-slate-50'}`}>
-                        {row.pc.taxType === '면세' ? '면세' : row.pc.taxType === '과세' ? '과세' : '-'}
-                      </button>
+                      <select aria-label={`${row.product.name} 과세유형`} value={row.pc.taxType ?? ''}
+                        onChange={e => props.onSetTax(row.pc, (e.target.value || null) as '과세' | '면세' | null)}
+                        onKeyDown={e => e.stopPropagation()}
+                        disabled={saveState === 'saving'}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50">
+                        <option value="">미설정</option>
+                        <option value="과세">과세</option>
+                        <option value="면세">면세</option>
+                      </select>
                     </td>
                     <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
                       <input type="text" inputMode="decimal" value={quantity}

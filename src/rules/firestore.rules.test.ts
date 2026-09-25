@@ -4,7 +4,7 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction, writeBatch } from 'firebase/firestore';
 
 /**
  * **회사별·메뉴별 권한을 규칙이 실제로 막는가.**
@@ -188,6 +188,16 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertSucceeds(setDoc(doc(관리자(), 'issuedStatements', 's-새것'), { companyId: 'taebaek', totalAmount: 1 }));
     });
 
+    it('대출 계약은 자기 회사 관리자만 읽고 쓴다', async () => {
+      const id = 'loan-rule-test';
+      await assertFails(setDoc(doc(태백직원(), 'loanContracts', id), { companyId: 'taebaek', name: '운전자금' }));
+      await assertFails(setDoc(doc(관리자(), 'loanContracts', id), { companyId: 'punghoe', name: '운전자금' }));
+      await assertSucceeds(setDoc(doc(관리자(), 'loanContracts', id), { companyId: 'taebaek', name: '운전자금' }));
+      await assertFails(getDoc(doc(태백직원(), 'loanContracts', id)));
+      await assertSucceeds(getDoc(doc(관리자(), 'loanContracts', id)));
+      await assertFails(getDoc(doc(풍회관리자(), 'loanContracts', id)));
+    });
+
     it('**태백 관리자는 풍회 전표를 못 만든다**', async () => {
       await assertFails(setDoc(doc(관리자(), 'issuedStatements', 's-풍회'), { companyId: 'punghoe', totalAmount: 1 }));
     });
@@ -233,6 +243,53 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(updateDoc(ref, { companyId: 'punghoe' }));
       await assertFails(updateDoc(ref, { companyId: null }));
       await assertSucceeds(updateDoc(ref, { amounts: { 103: 11000000 } }));
+    });
+  });
+
+  describe('재고 수량 음수 방지', () => {
+    it('품목과 원료 상태를 음수로 만들거나 음수로 바꾸는 쓰기를 거절한다', async () => {
+      const db = 태백직원();
+      const item = doc(db, 'items', 'i-수량');
+      const raw = doc(db, 'rawInventories', 'taebaek__i-수량');
+      await assertFails(setDoc(item, { companyId: 'taebaek', stock: -1 }));
+      await assertFails(setDoc(raw, { companyId: 'taebaek', stockKg: -1 }));
+      await assertSucceeds(setDoc(item, { companyId: 'taebaek', stock: 2 }));
+      await assertSucceeds(setDoc(raw, { companyId: 'taebaek', stockKg: 2 }));
+      await assertFails(updateDoc(item, { stock: -0.001 }));
+      await assertFails(updateDoc(raw, { stockKg: -0.001 }));
+      await assertFails(updateDoc(item, { stock: '음수 아님' }));
+      await assertSucceeds(updateDoc(item, { stock: 0 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: 0 }));
+    });
+
+    it('기존 음수 재고는 0 쪽 회복과 다른 필드 수정을 허용하고 악화는 거절한다', async () => {
+      await env.withSecurityRulesDisabled(async ctx => {
+        const db = ctx.firestore();
+        await setDoc(doc(db, 'items', 'i-옛음수'), { companyId: 'taebaek', stock: -5, name: '옛 품목' });
+        await setDoc(doc(db, 'rawInventories', 'taebaek__i-옛음수'), { companyId: 'taebaek', stockKg: -5, materialSnapshot: '옛 원료' });
+      });
+      const db = 태백직원();
+      const item = doc(db, 'items', 'i-옛음수');
+      const raw = doc(db, 'rawInventories', 'taebaek__i-옛음수');
+      await assertSucceeds(updateDoc(item, { name: '이름 수정' }));
+      await assertSucceeds(updateDoc(raw, { materialSnapshot: '표시 수정' }));
+      await assertSucceeds(updateDoc(item, { stock: -4 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: -4 }));
+      await assertSucceeds(updateDoc(item, { stock: -4 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: -4 }));
+      await assertFails(updateDoc(item, { stock: -4.001 }));
+      await assertFails(updateDoc(raw, { stockKg: -4.001 }));
+      await assertSucceeds(updateDoc(item, { stock: 0 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: 0 }));
+    });
+
+    it('배치의 한 수량이 음수면 다른 쓰기도 함께 반영되지 않는다', async () => {
+      const db = 태백직원();
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'items', 'i-taebaek'), { stock: -1 });
+      batch.set(doc(db, 'orders', 'o-배치'), { companyId: 'taebaek', partnerName: '시험' });
+      await assertFails(batch.commit());
+      expect((await getDoc(doc(db, 'orders', 'o-배치'))).exists()).toBe(false);
     });
   });
 

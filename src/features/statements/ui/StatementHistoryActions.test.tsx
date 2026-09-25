@@ -11,9 +11,10 @@ describe('전표 조회 결과 작업', () => {
     const onCreateCash = vi.fn();
     const onOpenRecurring = vi.fn();
     const onOpenCompany = vi.fn();
+    const onExport = vi.fn();
     render(<StatementHistoryActions resultCount={7} fetching={false}
       onCreateSale={onCreateSale} onCreatePurchase={onCreatePurchase} onCreateCash={onCreateCash}
-      onOpenRecurring={onOpenRecurring} onOpenCompany={onOpenCompany}/>);
+      onOpenRecurring={onOpenRecurring} onOpenCompany={onOpenCompany} onExport={onExport}/>);
 
     expect(screen.getByText('7건')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /거래명세서/ }));
@@ -21,12 +22,14 @@ describe('전표 조회 결과 작업', () => {
     fireEvent.click(screen.getByRole('button', { name: '일반전표' }));
     fireEvent.click(screen.getByRole('button', { name: '템플릿' }));
     fireEvent.click(screen.getByRole('button', { name: '회사정보' }));
+    fireEvent.click(screen.getByRole('button', { name: '엑셀 저장' }));
 
     expect(onCreateSale).toHaveBeenCalledTimes(1);
     expect(onCreatePurchase).not.toHaveBeenCalled();
     expect(onCreateCash).toHaveBeenCalledTimes(1);
     expect(onOpenRecurring).toHaveBeenCalledTimes(1);
     expect(onOpenCompany).toHaveBeenCalledTimes(1);
+    expect(onExport).toHaveBeenCalledTimes(1);
   });
 
   it('바깥을 누르면 열린 발행 메뉴를 닫는다', () => {

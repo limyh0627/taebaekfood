@@ -260,9 +260,16 @@ export interface Order {
    * 거래처 포털에서 들어온 주문은 비어 있다 — 그때는 아무도 안 뺀다.
    */
   createdBy?: string;
+  /** 오피스톡에서 주문 추출 후 저장한 경우에만 원본 메시지 ID를 남긴다. */
+  sourceChatMessageId?: string;
   partnerId?: string;
   partnerName: string;
   items: OrderItem[];
+  /** 주문 전체에 적용되는 비고. 옛 주문의 품목별 note는 읽기 호환용으로 남긴다. */
+  note?: string;
+  noteImportant?: boolean;
+  noteBy?: string;
+  noteAt?: string;
   totalAmount: number;
   status: OrderStatus;
   createdAt: string;
@@ -928,7 +935,7 @@ export interface RoomNotice {
 }
 
 
-export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'lot-management' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'quotation' | 'mypage';
+export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'lot-management' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'loan-management' | 'quotation' | 'mypage';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -1536,6 +1543,8 @@ export interface CashAccount {
 
 export interface CashEntry {
   id: string;
+  /** 대출별 보조원장 연결. 기존 자금전표에는 없고 회계 분개에는 영향을 주지 않는다. */
+  loanId?: string;
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
   companyId?: CompanyId;
   /**

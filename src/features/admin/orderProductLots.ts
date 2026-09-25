@@ -1,6 +1,5 @@
 import type { Item, Order, OrderItem, RawMaterialLot } from '../../shared/types';
 import { deductLotsByQty, restoreLotsByQty, type ProductLotTake } from '../../shared/lotUtils';
-import { today } from '../../shared/day';
 
 export interface OrderProductLotMutationResult {
   lots: RawMaterialLot[];
@@ -35,19 +34,18 @@ export function createOrderProductLotOperations(deps: OrderProductLotDeps) {
       if (qty > 0) quantityByItem.set(product.id, (quantityByItem.get(product.id) ?? 0) + qty);
     }
 
-    const createdAt = new Date().toISOString();
     return [...quantityByItem].map(([itemId, qty]) => ({
       itemId,
       apply: (lots: RawMaterialLot[]) => {
         // 로트를 쓰기 시작한 품목만 추적한다. 로트가 전혀 없는 옛 품목에 출고만으로
         // 음수 이월 로트를 새로 만들면 기존 숫자 재고와 기준점이 맞지 않는다.
         if (!lots.some(lot => lot.qtyRemaining != null)) return { lots, consumedLots: [] };
-        const result = deductLotsByQty(lots, qty, {
-          // transaction 재시도마다 다른 이월 로트가 생기지 않도록 주문·품목으로 고정한다.
-          id: `lot-carry-shipment-${order.id}-${itemId}`,
-          createdAt,
-          receivedDate: today(),
-        });
+        const result = deductLotsByQty(lots, qty);
+        if (result.shortageQty > 0) {
+          const product = allItems.find(item => item.id === itemId);
+          const available = Math.round((qty - result.shortageQty) * 1000) / 1000;
+          throw new Error(`${product?.name ?? itemId} 로트 재고가 부족합니다. 현재 ${available}, 출고 ${qty}`);
+        }
         const consumedLots = result.distribution.map(trace => ({
           itemId,
           material: result.lots.find(lot => lot.id === trace.lotId)?.material,

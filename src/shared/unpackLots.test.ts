@@ -120,14 +120,37 @@ describe('개봉은 로트를 물려주는 이동이다', () => {
     expect(r.bulkLots[1].kgRemaining).toBe(16.5);
   });
 
-  it('로트보다 많이 까면 **막지 않고 보이게 둔다** — 이월이 음수로 받는다', () => {
-    //  조용히 0 에서 멈추면 로트 합계가 실제와 갈려 추적 자체를 못 믿게 된다.
-    const r = unpackLots({
-      canLots: [캔로트({ id: 'c1', lotNo: '260901-01', qtyRemaining: 2 })],
+  it('로트보다 많이 까면 음수 이월 로트를 만들지 않고 거절한다', () => {
+    const cans = [캔로트({ id: 'c1', lotNo: '260901-01', qtyRemaining: 2 })];
+    expect(() => unpackLots({
+      canLots: cans,
       bulkLots: [], cans: 5, perCan: 16.5, material: '통깨참기름', det,
+    })).toThrow('캔 로트 재고가 부족합니다. 현재 2, 개봉 5');
+    expect(cans[0].qtyRemaining).toBe(2);
+  });
+
+  it('기존 음수 캔 로트를 더 악화시키지 않고 순가용량을 넘는 개봉을 거절한다', () => {
+    expect(() => unpackLots({
+      canLots: [
+        캔로트({ id: 'c1', qtyRemaining: 5 }),
+        캔로트({ id: 'old-negative', qtyRemaining: -2 }),
+      ],
+      bulkLots: [], cans: 4, perCan: 16.5, material: '통깨참기름', det,
+    })).toThrow('캔 로트 재고가 부족합니다. 현재 3, 개봉 4');
+  });
+
+  it('로트 순가용량만 쓰면 기존 음수 로트는 그대로 둔다', () => {
+    const r = unpackLots({
+      canLots: [
+        캔로트({ id: 'c1', qtyRemaining: 5 }),
+        캔로트({ id: 'old-negative', qtyRemaining: -2 }),
+      ],
+      bulkLots: [], cans: 3, perCan: 16.5, material: '통깨참기름', det,
     });
-    expect(r.shortageQty).toBe(3);
-    expect(r.canLots.find(l => l.supplierName === '이월')!.qtyRemaining).toBe(-3);
+    expect(r.canLots.map(lot => [lot.id, lot.qtyRemaining])).toEqual([
+      ['c1', 2], ['old-negative', -2],
+    ]);
+    expect(canStockAfter(r.canLots)).toBe(0);
   });
 
   it('트랜잭션이 여러 번 돌아도 같은 로트가 선다 — id 를 밖에서 정해 넣는다', () => {

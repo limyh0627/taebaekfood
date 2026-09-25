@@ -72,6 +72,30 @@ describe('전표 목록 화면 구성', () => {
 });
 
 describe('전표와 거래처 단가의 저장 완료', () => {
+  it('과거 전표의 미연결 품목은 현재 단가를 덮지 않고 이번 전표에만 저장한다', async () => {
+    const old = { id: 'historical', docNo: '260908-98', partnerId: partner.id, partnerName: partner.name,
+      tradeDate: '2026-09-08', issuedAt: '2026-09-08T00:00:00Z', type: '매입', orderId: '',
+      totalSupply: 5455, totalTax: 545, totalAmount: 6000,
+      items: [{ itemId: item.id, name: item.name, spec: item.spec, qty: 1, price: 6000,
+        supply: 5455, tax: 545, total: 6000, isTaxExempt: false, accountCode: '500' }],
+    } as IssuedStatement;
+    const newer = { ...old, id: 'newer', docNo: '260924-01', tradeDate: '2026-09-24' };
+    const update = vi.fn(async (_id: string, _data: Partial<IssuedStatement>) => {});
+    const { onUpsertPartnerItem } = setup(undefined, undefined, {
+      pendingInvoice: null, partnerItems: [], issuedStatements: [old, newer], focusDocNo: old.docNo,
+      onUpdateIssuedStatement: update,
+    });
+    fireEvent.click((await screen.findAllByText(old.partnerName)).find(el => el.closest('tr'))!);
+    await waitFor(() => expect(document.querySelector('fieldset')).not.toBeNull());
+    const modal = within(document.querySelector('fieldset')!);
+    fireEvent.click(modal.getByRole('button', { name: '수정' }));
+    fireEvent.click(modal.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(appConfirm).toHaveBeenCalledWith(expect.stringContaining('과거 전표를 수정 중입니다'));
+    expect(onUpsertPartnerItem).not.toHaveBeenCalled();
+    expect(update.mock.calls[0][1].items?.[0]).toMatchObject({ itemId: item.id, price: 6000 });
+  });
+
   it('매입전표 발행 때 거절하면 전표만 저장하고 입고대기는 만들지 않는다', async () => {
     vi.mocked(appConfirm).mockResolvedValue(false);
     const { onAddIssuedStatement, onApplyStatement } = setup();

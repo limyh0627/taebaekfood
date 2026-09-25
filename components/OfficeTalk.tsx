@@ -43,6 +43,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import { companyOf } from '../src/shared/types';
 import { participantCompaniesOf } from '../src/shared/chatParticipants';
 import { isTouchLikeDevice, shouldSendChatOnEnter } from '../src/shared/chatComposer';
+import { officeTalkSortTime, officeTalkStamp } from '../src/shared/officeTalkTime';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -60,7 +61,9 @@ interface OfficeTalkProps {
   /** 관리자면 남의 말도 지울 수 있다 */
   isAdmin?: boolean;
   /** 메시지 본문을 복사주문 창으로 바로 넘긴다. */
-  onExtractOrder?: (_text: string) => void;
+  onExtractOrder?: (_messageId: string, _text: string) => void;
+  /** 저장된 주문이 원본으로 가리키는 메시지만 완료 표시한다. */
+  extractedMessageIds?: string[];
 }
 
 
@@ -77,6 +80,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   onUpdateMessage,
   isAdmin,
   onExtractOrder,
+  extractedMessageIds = [],
 }) => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
@@ -189,13 +193,13 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     unsubscribeRef.current = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage))
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        .sort((a, b) => (officeTalkSortTime(a.createdAt) ?? 0) - (officeTalkSortTime(b.createdAt) ?? 0));
       const confirmed = new Set(msgs.map(message => message.id));
       for (const id of confirmed) pendingMessages.current.delete(id);
       setLocalMessages(previous => {
         const pending = [...pendingMessages.current.values()]
           .filter(message => message.roomId === activeRoomId && !confirmed.has(message.id));
-        return [...msgs, ...pending].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return [...msgs, ...pending].sort((a, b) => (officeTalkSortTime(a.createdAt) ?? 0) - (officeTalkSortTime(b.createdAt) ?? 0));
       });
       setIsLoadingMore(false);
       setFirestoreError(null);
@@ -953,14 +957,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               ) : (
                 보는말.map((msg, idx) => {
                   const isMine = msg.senderId === currentUser.id;
-                  const showSender = idx === 0 || 보는말[idx - 1].senderId !== msg.senderId;
-                  //  시간은 이어 말한 덩어리의 마지막에만 — 줄마다 찍으면 지저분하다(카톡과 같다)
-                  const nx = 보는말[idx + 1];
-                  const showTime = !nx || nx.senderId !== msg.senderId
-                    || msg.createdAt.slice(0, 16) !== nx.createdAt.slice(0, 16);
+                  const stamp = officeTalkStamp(msg.createdAt);
+                  const previousDay = idx > 0 ? officeTalkStamp(보는말[idx - 1].createdAt).day : null;
+                  const newDay = idx === 0 || previousDay !== stamp.day;
+                  // 날짜가 바뀌면 같은 사람이 계속 썼어도 새 묶음으로 보여야 한다.
+                  const showSender = newDay || 보는말[idx - 1].senderId !== msg.senderId;
                   
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${showSender ? 'mt-3 first:mt-0' : ''}`}>
+                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${showSender && !newDay ? 'mt-3' : ''}`}>
+                      {newDay && (
+                        <div role="separator" aria-label={stamp.day || '날짜 미상'} className="my-4 flex w-full items-center gap-3 text-[11px] font-bold text-slate-400">
+                          <span className="h-px flex-1 bg-slate-200" />
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1">{stamp.day ? stamp.day.replace(/-/g, '.') : '날짜 미상'}</span>
+                          <span className="h-px flex-1 bg-slate-200" />
+                        </div>
+                      )}
                       {!isMine && showSender && (
                         <p className="text-[10px] font-black text-slate-400 mb-1 ml-1 uppercase tracking-tighter">
                           {msg.senderName}
@@ -1085,12 +1096,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                           ))}
                         </div>
                       )}
-                      {/*  시간은 늘 보인다 — hover 로만 뜨게 해놨더니 폰에선 아예 못 봤다(2026-09-03 사장님) */}
-                      {showTime && (
-                        <span className={`text-[9px] font-bold text-slate-400 whitespace-nowrap mt-0.5 ${isMine ? 'mr-1' : 'ml-1'}`}>
-                          {new Date(msg.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
+                      {/* 날짜와 시각을 모든 말에 남긴다 — 옛 묶음의 중간 말도 언제 왔는지 읽을 수 있어야 한다. */}
+                      <div className={`mt-0.5 flex items-center gap-1.5 ${isMine ? 'mr-1' : 'ml-1'}`}>
+                        <time className="whitespace-nowrap text-[9px] font-bold text-slate-400">{stamp.label}</time>
+                        {extractedMessageIds.includes(msg.id) && (
+                          <span aria-label="주문 생성 완료" className="inline-flex items-center gap-0.5 text-[9px] font-black text-emerald-600">
+                            <Check size={11} aria-hidden="true" /> 주문 생성
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -1428,7 +1442,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 onClick={() => {
                   const text = actionMsg.text.trim();
                   setActionMsg(null);
-                  onExtractOrder(text);
+                  onExtractOrder(actionMsg.id, text);
                 }}
                 className="w-full px-5 py-3.5 text-left text-sm font-black text-indigo-700 border-b border-slate-50 hover:bg-indigo-50 transition-colors"
               >

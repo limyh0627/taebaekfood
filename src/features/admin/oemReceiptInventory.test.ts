@@ -67,6 +67,19 @@ beforeEach(() => {
 });
 
 describe('OEM 가공입고 DB 경계', () => {
+  it.each([-1, 0, Number.NaN, Number.POSITIVE_INFINITY])('잘못된 입고 수량 %s은 재고가 충분해도 쓰기 전에 거절한다', async qty => {
+    memory.docs.set('purchaseOrders/oem-1', { status: 'invoiced', companyId: 'taebaek' });
+    memory.docs.set('items/box20', { stock: 15, lots: [], companyId: 'taebaek' });
+    const bad = { ...input(), items: [{ itemId: 'box20', qty }] };
+
+    await expect(applyOemReceiptInventory({} as never, bad)).rejects.toThrow('입고 수량');
+
+    expect(memory.transactionCount).toBe(0);
+    expect(memory.docs.get('items/box20')?.stock).toBe(15);
+    expect(memory.docs.get('purchaseOrders/oem-1')?.status).toBe('invoiced');
+    expect(memory.docs.has('adjustmentRequests/OEMFEE-oem-1')).toBe(false);
+  });
+
   it('완제품 stock·lots와 배치 완료를 한 transaction에서 함께 저장한다', async () => {
     memory.docs.set('purchaseOrders/oem-1', { status: 'invoiced' });
     memory.docs.set('items/box20', { stock: 15, lots: [] });

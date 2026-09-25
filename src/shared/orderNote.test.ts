@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampNote, noteChip, NOTE_MAX, NOTE_CHIP_CHARS } from './orderNote';
+import { clampNote, noteChip, orderNotesForDisplay, NOTE_MAX, NOTE_CHIP_CHARS } from './orderNote';
 
 /** 카드·리스트·메모창이 같은 수를 봐야 한다(2026-09-15 사장님). */
 describe('비고 길이', () => {
@@ -12,6 +12,18 @@ describe('비고 길이', () => {
   it('빈 값·없는 값도 받는다 — 붙여넣기로 들어오는 길이 여럿이다', () => {
     expect(clampNote('')).toBe('');
     expect(clampNote(undefined as unknown as string)).toBe('');
+  });
+});
+
+describe('주문 비고 읽기', () => {
+  it('주문 비고를 먼저 보여 주고 옛 품목 비고를 보존한다', () => {
+    expect(orderNotesForDisplay({
+      note: '공통 전달', noteImportant: true,
+      items: [{ name: '참기름', note: '옛 메모' }, { name: '들기름' }],
+    })).toEqual([
+      { text: '공통 전달', important: true },
+      { text: '옛 메모', important: false, legacyItem: '참기름' },
+    ]);
   });
 });
 

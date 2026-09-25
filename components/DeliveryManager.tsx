@@ -33,6 +33,7 @@ import DeliveryDayList from './DeliveryDayList';
 import { saveDeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { boxCountOf } from '../src/shared/orderUnits';
+import { orderNotesForDisplay } from '../src/shared/orderNote';
 import ModalShell from '../src/shared/components/ModalShell';
 import { ungroup, withGroup, type DayRow, type DeliveryGroup } from '../src/shared/deliveryPlan';
 import { clusterByGroup } from '../src/shared/rowGroup';
@@ -61,6 +62,7 @@ interface DeliveryManagerProps {
   onUpdateDeliveryDate?: (_id: string, _date: string) => void | Promise<void>;
   onUpdateStatus?: (_id: string, _status: OrderStatus) => void;
   onUpdateItems?: (_id: string, _items: OrderItem[]) => void;
+  onUpdateNote?: (_id: string, _note: string, _important: boolean) => void;
   onUpdatePallets?: (_id: string, _pallets: OrderPallet[]) => void;
   //  송장은 세 단계다 — 뜻은 OrdersList 의 같은 props 주석 참고.
   onToggleInvoicePrinted?: (_id: string, _value: boolean | 'printed' | 'attached' | undefined) => void;
@@ -87,7 +89,7 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -193,7 +195,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       case 'pallet': return (order.pallets ?? []).map(pallet => `${palletStocks.find(stock => stock.id === pallet.type)?.name || pallet.type} ${pallet.quantity}개`);
       case 'shipment': return [order.status === OrderStatus.SHIPPED ? '완료' : '미완료'];
       case 'invoice': return [(order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '완료' : '미완료') : '-'];
-      case 'note': return order.items.map(item => item.note || '');
+      case 'note': return orderNotesForDisplay(order).map(entry => entry.text);
       case 'orderDate': return [queryDateKey(order.createdAt)];
       case 'deliveryDate': return [queryDateKey(order.deliveryDate)];
       default: return [];
@@ -226,7 +228,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       const partner = partners.find(candidate => candidate.id === order.partnerId);
       return [
         order.id, order.partnerName, partner?.name, partner?.address, partner?.addressDetail,
-        order.source, order.deliveryDate, ...order.items.flatMap(item => [item.name, item.note]),
+        order.source, order.deliveryDate, order.note, ...order.items.flatMap(item => [item.name, item.note]),
       ].filter(Boolean).some(value => String(value).toLocaleLowerCase('ko-KR').includes(normalized));
     });
   }, [sourceOrders, partners, queryDateFrom, queryDateTo, queryText]);
@@ -1096,6 +1098,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
           onUpdateDeliveryDate={(id, date) => onUpdateDeliveryDate?.(id, date)}
           onUpdatePallets={(id, nextPallets) => onUpdatePallets?.(id, nextPallets)}
           onUpdateItems={(id, nextItems) => onUpdateItems?.(id, nextItems)}
+          onUpdateNote={onUpdateNote}
           onToggleInvoicePrinted={(id, value) => onToggleInvoicePrinted?.(id, value)}
           onUpdateInvoiceType={(id, value) => onUpdateInvoiceType?.(id, value)}
           onToggleShipmentComplete={(id, value) => onToggleShipmentComplete?.(id, value)}

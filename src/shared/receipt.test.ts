@@ -78,10 +78,12 @@ describe('갈림은 문 안에 있다', () => {
     expect(기록.입고).toHaveLength(0);
   });
 
-  it('반품 재입고처럼 음수도 지나간다 — 되돌리는 것도 입고 사건이다', async () => {
-    await 들어옴(병(), { quantity: -20 });
-    expect(기록.재고).toEqual([{ id: 'GLA-S-300', d: -20 }]);
-    expect(기록.입고[0].quantity).toBe(-20);
+  it.each([병, 참깨])('음수 입고는 재고·로트·원장에 아무것도 남기지 않는다', async makeItem => {
+    await expect(들어옴(makeItem(), { quantity: -20 })).rejects.toThrow('입고 수량은 0보다 커야 합니다');
+    expect(기록.재고).toHaveLength(0);
+    expect(기록.입고).toHaveLength(0);
+    expect(기록.로트).toHaveLength(0);
+    expect(기록.원장).toHaveLength(0);
   });
 });
 

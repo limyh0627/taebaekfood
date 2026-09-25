@@ -65,4 +65,17 @@ describe('adjustItemStock — 화면값이 낡아도 안 덮어쓴다', () => {
     for (let i = 0; i < 3; i++) await adjustItemStock('items', 'oil', 0.1);
     expect(dbx.stock.get('oil')).toBe(0.3);
   });
+
+  it('부족한 재고 차감은 거절하고 현재값을 보존한다', async () => {
+    dbx.stock.set('bottle', 2);
+    await expect(adjustItemStock('items', 'bottle', -3)).rejects.toThrow('bottle 재고가 부족합니다');
+    expect(dbx.stock.get('bottle')).toBe(2);
+  });
+
+  it('기존 음수는 더 차감하지 않고 입고로 회복할 수 있다', async () => {
+    dbx.stock.set('bottle', -2);
+    await expect(adjustItemStock('items', 'bottle', -1)).rejects.toThrow('bottle 재고가 부족합니다');
+    expect(dbx.stock.get('bottle')).toBe(-2);
+    expect(await adjustItemStock('items', 'bottle', 1)).toBe(-1);
+  });
 });

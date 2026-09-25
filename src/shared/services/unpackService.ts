@@ -84,6 +84,10 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
       if (!rawMirrorMatches(Number(bulkData.stock ?? 0), state.stockKg)) {
         throw new Error(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
       }
+      const canStock = Number(canData.stock ?? 0);
+      if (!Number.isFinite(plan.cans) || plan.cans <= 0 || canStock < plan.cans) {
+        throw new Error(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
+      }
 
       /**
        * **로트를 안 쓰던 재고를 먼저 이월 로트로 세운다.**
@@ -108,6 +112,9 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
         material: plan.bulkName,
         det: { now, receivedDate: 오늘, lotIdPrefix },
       });
+      if (canStockAfter(r.canLots) < 0) {
+        throw new Error(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
+      }
 
       const activeLots = r.bulkLots.filter(l => l.status !== 'depleted');
       const addedIds = new Set(r.moves.map((_, i) => `${lotIdPrefix}-${i}`));

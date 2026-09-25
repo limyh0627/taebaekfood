@@ -55,14 +55,18 @@ export function anchorLotsByQty(params: {
   det?: { id: string; createdAt: string; receivedDate: string };
 }): AnchorResult {
   const { lots, targetQty, unitKg = 0, det } = params;
+  if (!Number.isFinite(targetQty) || targetQty < 0) {
+    throw new Error(`실사 목표 재고는 0 이상이어야 합니다: ${targetQty}`);
+  }
   const before = lotQtyRemaining(lots);
   const delta = r3(targetQty - before);
 
   if (Math.abs(delta) < 0.0001) return { lots: lots.map(l => ({ ...l })), deltaQty: 0, beforeQty: before };
 
   if (delta < 0) {
-    //  **줄인다** — 선입선출로 깐다. 실제 로트가 모자라면 이월이 음수로 받는다(막지 않는다).
-    const r = deductLotsByQty(lots, -delta, det);
+    // 실사 목표가 양수여도 실제로 깔 수 있는 로트가 모자라면 음수 이월 대신 거절한다.
+    const r = deductLotsByQty(lots, -delta);
+    if (r.shortageQty > 0) throw new Error(`실사 로트 재고가 부족합니다. 부족 ${r.shortageQty}`);
     return { lots: r.lots, deltaQty: delta, beforeQty: before };
   }
 

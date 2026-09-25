@@ -251,4 +251,27 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
       transform: cur => cur.map(x => x.id === 'L1' ? { ...x, kgRemaining: 999 } : x),
     })).rejects.toThrow('수량·상태·추가삭제');
   });
+
+  it.each(['kgIn', 'kgRemaining', 'qtyIn', 'qtyRemaining', 'packageKg', 'unitKg'] as const)(
+    '%s 변경은 메타정보 수정으로 우회할 수 없다', async field => {
+      const stateId = inventoryDocId('taebaek', 'raw-x');
+      const lots = [{
+        id: 'L1', supplierName: 'A', receivedDate: '2026-09-01',
+        qtyIn: 3, qtyRemaining: 2, packageKg: 10, unitKg: 10,
+        kgIn: 30, kgRemaining: 20, status: 'active', createdAt: '',
+      }];
+      store.set('items/raw-x', 품목('raw-x', { stock: 20, lots }));
+      store.set(`rawInventories/${stateId}`, {
+        id: stateId, companyId: 'taebaek', rawItemId: 'raw-x', materialSnapshot: 'x',
+        stockKg: 20, activeLots: lots, recentDepletedLots: [], revision: 3, lastProcessedAt: 'old',
+      });
+
+      await expect(updateRawInventoryLotMetadata({
+        companyId: 'taebaek', rawItemId: 'raw-x',
+        transform: cur => cur.map(lot => ({ ...lot, [field]: 999 })),
+      })).rejects.toThrow('수량·상태·추가삭제');
+      expect((store.get(`rawInventories/${stateId}`)?.activeLots as typeof lots)[0][field]).toBe(lots[0][field]);
+      expect((store.get('items/raw-x')?.lots as typeof lots)[0][field]).toBe(lots[0][field]);
+    },
+  );
 });

@@ -50,7 +50,7 @@ const 사람 = (name?: string | null, nameOf?: (key: string) => string | undefin
 const 줄이름 = (line: OrderItem) => line.name || line.itemId;
 
 export function buildOrderActivityLog(
-  order: Pick<Order, 'items' | 'createdAt' | 'createdBy' | 'shipmentConfirmedBy' | 'shipmentConfirmedAt'>,
+  order: Pick<Order, 'items' | 'createdAt' | 'createdBy' | 'shipmentConfirmedBy' | 'shipmentConfirmedAt' | 'note' | 'noteBy' | 'noteAt'>,
   audits: OrderStatusAudit[] = [],
   /** 사번 → 이름. 없으면 적힌 글자를 그대로 쓴다. */
   nameOf?: (key: string) => string | undefined,
@@ -100,6 +100,10 @@ export function buildOrderActivityLog(
       detail: 적힌것.length > 1 ? 적힌것.slice(1).join('\n') : undefined,
       kind: 'edit',
     });
+  }
+
+  if (order.note && (order.noteAt || order.noteBy)) {
+    rows.push({ at: order.noteAt, who: 사람(order.noteBy, nameOf), what: '주문 비고', detail: order.note, kind: 'note' });
   }
 
   for (const line of order.items ?? []) {

@@ -94,6 +94,8 @@ export interface CashTemplate {
    *   감가상각  (차) 818 감가상각비 / (대) 203 감가상각누계액
    */
   transferLines?: { accountCode: string; side: '차변' | '대변'; name?: string }[];
+  /** 회사 계정표에 없는 참조 — 목록에는 사유를 보이되 발행 선택은 막는다. */
+  unavailableCodes?: string[];
   /** 두 줄로 갈리는 갈래의 미리 정해둔 값 — SPLIT_MODES 참고 */
   insCorp?: number;   insEmp?: number;
   principal?: number; interest?: number;
@@ -225,8 +227,13 @@ export const CASH_TEMPLATES: CashTemplate[] = [
  *
  * 계정과목 번호 순으로 세운다 — 계정과목 드롭다운도 같은 순서라 두 곳을 오갈 때 눈이 안 헤맨다.
  * 계정이 안 붙은 것(직접입력·대출상환·급여)은 번호가 없으니 위에 그대로 둔다.
- * 계정이 사라진 템플릿은 안 띄운다 — 죽은 버튼을 남기면 어디에도 안 잡히는 전표가 생긴다.
+ * 계정이 사라진 템플릿도 사유를 보여 준다. 조용히 지우면 저장 실패로 오해한다.
  */
+export function missingTemplateAccountCodes(t: Pick<FixedCostTemplate, 'accountCode' | 'loanCode' | 'transferLines'>, have: Set<string>): string[] {
+  return [...new Set([t.accountCode, t.loanCode, ...(t.transferLines ?? []).map(line => line.accountCode)]
+    .filter((code): code is string => !!code && !have.has(code)))];
+}
+
 export function filterTemplates(
   accountCodes: AccountCode[],
   saved: FixedCostTemplate[] = [],
@@ -246,6 +253,7 @@ export function filterTemplates(
       amount: t.amount || undefined,
       partnerId: t.partnerId,
       partnerName: t.partnerName,
+      taxExempt: t.taxExempt,
       builtin: t.builtin,
       group: t.group,
       favorite: t.favorite,
@@ -255,12 +263,14 @@ export function filterTemplates(
       gross: t.gross,         deduction: t.deduction,
       loanCode: t.loanCode,
       transferLines: t.transferLines,
+      unavailableCodes: missingTemplateAccountCodes(t, have),
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
       ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
       ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),
     }));
-  const mine = (fromDb.length ? fromDb : CASH_TEMPLATES)
-    .filter(t => !t.accountCode || have.has(t.accountCode));
+  const mine = fromDb.length ? fromDb : CASH_TEMPLATES.map(t => ({
+    ...t, unavailableCodes: missingTemplateAccountCodes(t, have),
+  }));
   const noCode = mine.filter(t => !t.accountCode);
   const coded = mine.filter(t => t.accountCode)
     .sort((a, b) => String(a.accountCode).localeCompare(String(b.accountCode), undefined, { numeric: true }));
@@ -414,11 +424,12 @@ export function CashTemplatePicker({
   }
   const card = (t: CashTemplate) => {
     const on = activeId === t.id;
+    const unavailable = !!t.unavailableCodes?.length;
     return (
-      <button key={t.id} type="button" onClick={() => onPick(t)}
-        title={t.accountCode ? `${t.dir} · ${t.accountCode} ${nameOf(t.accountCode)}` : t.hint}
+      <button key={t.id} type="button" disabled={unavailable} onClick={() => onPick(t)}
+        title={unavailable ? `현재 회사 계정표에 없는 계정: ${t.unavailableCodes!.join(', ')}` : t.accountCode ? `${t.dir} · ${t.accountCode} ${nameOf(t.accountCode)}` : t.hint}
         className={`w-full px-3 py-2.5 rounded-xl border text-left transition-all flex items-center justify-between gap-2 ${
-          on ? 'bg-white border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-400'
+          unavailable ? 'bg-amber-50 border-amber-200 cursor-not-allowed' : on ? 'bg-white border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-400'
         }`}>
         <span className="flex items-center gap-2 min-w-0">
           <span title={DIR_HINT[t.dir]} className={`shrink-0 w-11 text-center text-[10px] font-black px-1 py-1 rounded-md ${DIR_CHIP[t.dir] ?? 'bg-slate-100 text-slate-500'}`}>
@@ -435,6 +446,7 @@ export function CashTemplatePicker({
                 {t.partnerName && ` · ${t.partnerName}`}
               </span>
             )}
+            {unavailable && <span className="block text-[10px] font-bold text-amber-700 leading-tight">현재 회사 계정표에 {t.unavailableCodes!.join(', ')} 없음 · 템플릿에서 계정 확인</span>}
           </span>
         </span>
         {t.amount ? (

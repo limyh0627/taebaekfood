@@ -23,16 +23,33 @@ describe('deductFromLots — 선입선출(FIFO)', () => {
     ]);
   });
 
-  it('잔량보다 많이 쓰면 실제 로트는 0 소진, 초과분은 이월(미상) 버킷이 음수로 흡수', () => {
-    const r = deductFromLots([lot('a', 100)], 150);
+  it('잔량보다 많이 쓰면 부족량을 돌려주고 로트를 전혀 움직이지 않는다', () => {
+    const before = [lot('a', 100)];
+    const r = deductFromLots(before, 150);
     expect(r.shortageKg).toBe(50);
-    expect(r.lots[0].kgRemaining).toBe(0);
-    expect(r.lots[0].status).toBe('depleted');
-    const carry = r.lots.find(l => l.supplierName === '이월');
-    expect(carry?.kgRemaining).toBe(-50);
-    expect(carry?.status).toBe('active');
-    // 분배(distribution)에도 이월 흡수분 포함 → 스냅샷/복원 가능
-    expect(r.distribution).toContainEqual(expect.objectContaining({ supplierName: '이월', kg: 50 }));
+    expect(r.lots).toBe(before);
+    expect(r.distribution).toEqual([]);
+    expect(before[0].kgRemaining).toBe(100);
+  });
+
+  it.each([NaN, Infinity, -Infinity, -1, 0, 0.0001, 1e308])('잘못된 사용량 %s를 거절하고 로트를 보존한다', kg => {
+    const before = [lot('a', 100)];
+    expect(() => deductFromLots(before, kg)).toThrow('로트 사용량은 유한한 양수여야 한다');
+    expect(before[0].kgRemaining).toBe(100);
+    expect(Number.isNaN(before[0].kgRemaining)).toBe(false);
+  });
+
+  it.each([NaN, Infinity, -Infinity])('활성 로트 잔량 %s를 거절하고 다른 로트도 보존한다', kg => {
+    const before = [lot('bad', kg), lot('good', 20)];
+    expect(() => deductFromLots(before, 5)).toThrow('활성 로트 bad의 잔량이 유한한 숫자가 아니다');
+    expect(before[0].kgRemaining).toBe(kg);
+    expect(before[1].kgRemaining).toBe(20);
+  });
+
+  it('기존 음수 로트는 보존하면서 양수 로트만 차감한다', () => {
+    const result = deductFromLots([lot('debt', -10), lot('positive', 20)], 5);
+    expect(result.lots.map(row => row.kgRemaining)).toEqual([-10, 15]);
+    expect(result.shortageKg).toBe(0);
   });
 
   it('혼합(mix): 상위 2개 로트에 비율 배분', () => {
@@ -62,7 +79,7 @@ describe('deductFromLots — 선입선출(FIFO)', () => {
 
 describe('settleCarryOver — 음수 이월을 입고로 상쇄', () => {
   it('입고가 음수 이월보다 크면 이월 0(소진), 남은 만큼 가용', () => {
-    const drained = deductFromLots([lot('a', 100)], 150).lots; // a:0(depleted), 이월:-50
+    const drained = [{ ...lot('이월', -50), supplierName: '이월' }];
     const settled = settleCarryOver([...drained, lot('b', 80, '2026-02-01')]);
     const carry = settled.find(l => l.supplierName === '이월');
     const b = settled.find(l => l.id === 'b');
@@ -71,7 +88,7 @@ describe('settleCarryOver — 음수 이월을 입고로 상쇄', () => {
     expect(b?.kgRemaining).toBe(30); // 80 - 50
   });
   it('입고가 음수 이월보다 작으면 이월에 부족분 남음', () => {
-    const drained = deductFromLots([lot('a', 100)], 150).lots; // 이월 -50
+    const drained = [{ ...lot('이월', -50), supplierName: '이월' }];
     const settled = settleCarryOver([...drained, lot('c', 20, '2026-02-01')]);
     const carry = settled.find(l => l.supplierName === '이월');
     const c = settled.find(l => l.id === 'c');

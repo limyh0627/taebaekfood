@@ -114,6 +114,94 @@ describe('음수 이월과 새 양수 로트는 사람이 합치기 전까지 �
   });
 });
 
+describe('원료와 로트의 새 음수 잔량 방지', () => {
+  const 거절 = (state: RawInventoryState, command: RawInventoryCommand, original?: RawInventoryMovement) => {
+    const result = applyRawCommand({
+      state, command, original,
+      det: { now: NOW, newLotId: 'new-lot', carryOverLotId: 'unused-carry' },
+    });
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') throw new Error('거절되어야 한다');
+    expect(result.code).toBe('INSUFFICIENT_STOCK');
+    expect(result.message).toContain('부족량');
+    return result;
+  };
+
+  it('FIFO 사용이 현재고를 넘으면 로트·원장·순번을 기록하지 않는다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in', kg: 100 }));
+    const before = JSON.stringify(first.state);
+    const result = 거절(first.state, 명령({ operationId: 'over', kind: 'consume', kg: 100.001 } as never));
+    expect(result.message).toContain('0.001kg');
+    expect(JSON.stringify(first.state)).toBe(before);
+    expect(first.state.revision).toBe(1);
+  });
+
+  it('동시 주문의 두 번째 트랜잭션은 갱신된 잔량을 다시 읽으면 거절한다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in', kg: 100 }));
+    const orderA = 적용(first.state, 명령({ operationId: 'order-a', kind: 'consume', kg: 80 } as never));
+    const orderB = 명령({ operationId: 'order-b', kind: 'consume', kg: 30 } as never);
+    const rejected = 거절(orderA.state, orderB);
+    expect(rejected.message).toContain('10kg');
+    expect(orderA.state.stockKg).toBe(20);
+    expect(orderA.state.revision).toBe(2);
+  });
+
+  it('선택 로트가 충분해도 음수 이월 때문에 전체 재고가 부족하면 거절한다', () => {
+    const current = 상태({
+      stockKg: 20,
+      activeLots: [
+        { id: 'debt', supplierName: '이월', kgIn: 0, kgRemaining: -30, receivedDate: '2026-09-01', status: 'active', createdAt: NOW },
+        { id: 'positive', supplierName: '입고', kgIn: 50, kgRemaining: 50, receivedDate: '2026-09-02', status: 'active', createdAt: NOW },
+      ],
+    });
+    const selected = 거절(current, 명령({ operationId: 'selected', kind: 'consume-lot', lotId: 'positive', kg: 30 } as never));
+    expect(selected.message).toContain('10kg');
+    const fifo = 거절(current, 명령({ operationId: 'fifo', kind: 'consume', kg: 30 } as never));
+    expect(fifo.message).toContain('10kg');
+  });
+
+  it('음수 실사·로트 정정과 부족한 양수 로트로의 음수 상계를 거절한다', () => {
+    const first = 적용(상태(), 명령({ operationId: 'in', kg: 10 }));
+    거절(first.state, 명령({ operationId: 'take', kind: 'stocktake', targetKg: -1 } as never));
+    거절(first.state, 명령({ operationId: 'adjust', kind: 'adjust-lot', lotId: 'L1', targetKg: -1 } as never));
+    const debt = 상태({
+      stockKg: -10,
+      activeLots: [
+        { id: 'debt', supplierName: '이월', kgIn: 0, kgRemaining: -20, receivedDate: '2026-09-01', status: 'active', createdAt: NOW },
+        { id: 'positive', supplierName: '입고', kgIn: 10, kgRemaining: 10, receivedDate: '2026-09-02', status: 'active', createdAt: NOW },
+      ],
+    });
+    거절(debt, 명령({ operationId: 'merge', kind: 'merge-lots', sourceLotId: 'debt', targetLotId: 'positive' } as never));
+  });
+
+  it('기존 음수는 입고 후 사람이 양수 로트와 상계해 회복할 수 있다', () => {
+    const debt = 상태({
+      stockKg: -20,
+      activeLots: [{ id: 'debt', supplierName: '이월', kgIn: 0, kgRemaining: -20, receivedDate: '2026-09-01', status: 'active', createdAt: NOW }],
+    });
+    const received = 적용(debt, 명령({ operationId: 'receive', kg: 25 }), { newLotId: 'positive' });
+    expect(received.state.activeLots.map(lot => lot.kgRemaining)).toEqual([-20, 25]);
+    const merged = 적용(received.state, 명령({ operationId: 'merge', kind: 'merge-lots', sourceLotId: 'debt', targetLotId: 'positive' } as never));
+    expect(merged.state.stockKg).toBe(5);
+    expect(merged.state.activeLots.map(lot => lot.kgRemaining)).toEqual([5]);
+  });
+
+  it('양수 로트 소진 처리와 입고 취소도 기존 음수 재고를 다시 악화시키면 거절한다', () => {
+    const debt = 상태({
+      stockKg: -30,
+      activeLots: [{ id: 'debt', supplierName: '이월', kgIn: 0, kgRemaining: -30, receivedDate: '2026-09-01', status: 'active', createdAt: NOW }],
+    });
+    const received = 적용(debt, 명령({ operationId: 'receive', kg: 50 }), { newLotId: 'positive' });
+    const depleted = 거절(received.state, 명령({ operationId: 'deplete', kind: 'deplete-lot', lotId: 'positive' } as never));
+    expect(depleted.message).toContain('30kg');
+    const reversed = 거절(received.state, 명령({
+      operationId: 'reverse-receive', kind: 'reverse', originalOperationId: 'receive',
+    } as never), received.movement);
+    expect(reversed.message).toContain('30kg');
+    expect(received.state.stockKg).toBe(20);
+  });
+});
+
 describe('원장 전용 사용 — 임가공 완제품', () => {
   it('사용 이력만 남기고 원료 재고와 로트는 그대로 둔다', () => {
     const 입고 = 적용(상태(), 명령({ operationId: 'in-1', kg: 100 }));

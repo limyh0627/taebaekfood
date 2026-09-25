@@ -45,13 +45,26 @@ describe('박스 로트 — 출고 차감', () => {
     expect(r.distribution.map(d => [d.lotNo, d.qty])).toEqual([['260820-01', 10], ['260825-01', 2]]);
   });
 
-  it('재고보다 많이 나가면 이월(미상)이 음수로 받는다 — 조용히 0에서 멈추지 않는다', () => {
-    const r = deductLotsByQty([box(5, '260825-01')], 8);
+  it('재고보다 많이 나가면 원본 로트 그대로 부족량만 알려준다', () => {
+    const original = [box(5, '260825-01')];
+    const r = deductLotsByQty(original, 8);
     expect(r.shortageQty).toBe(3);
-    const carry = r.lots.find(l => l.supplierName === '이월')!;
-    expect(carry.qtyRemaining).toBe(-3);
-    // 합계가 실제 출고량을 그대로 따라간다 — 로트 합 5 − 8 = −3
-    expect(lotQtyRemaining(r.lots)).toBe(-3);
+    expect(r.lots).toBe(original);
+    expect(r.distribution).toEqual([]);
+    expect(lotQtyRemaining(r.lots)).toBe(5);
+  });
+
+  it('기존 음수 로트가 있으면 순잔량까지만 차감하고 복원은 허용한다', () => {
+    const debt = { ...box(0, 'carry-old'), id: 'debt', supplierName: '이월', qtyRemaining: -2, kgRemaining: -40 };
+    const original = [box(5, '260825-01'), debt];
+    const denied = deductLotsByQty(original, 4);
+    expect(denied.shortageQty).toBe(1);
+    expect(denied.lots).toBe(original);
+    const shipped = deductLotsByQty(original, 3);
+    expect(shipped.shortageQty).toBe(0);
+    expect(shipped.lots.map(lot => lot.qtyRemaining)).toEqual([2, -2]);
+    const recovered = restoreLotsByQty(shipped.lots, [{ lotId: 'debt', supplierName: '이월', qty: 2 }]);
+    expect(recovered.find(lot => lot.id === 'debt')?.qtyRemaining).toBe(0);
   });
 
   it('0개 출고는 아무것도 안 건드린다', () => {
@@ -59,6 +72,18 @@ describe('박스 로트 — 출고 차감', () => {
     const r = deductLotsByQty(lots, 0);
     expect(r.distribution).toHaveLength(0);
     expect(lotQtyRemaining(r.lots)).toBe(5);
+  });
+
+  it.each([NaN, Infinity, -Infinity, -1])('잘못된 차감 수량 %s은 로트를 바꾸지 않고 거절한다', quantity => {
+    const original = [box(5, '260825-01')];
+    expect(() => deductLotsByQty(original, quantity)).toThrow('로트 차감 수량은 0 이상의 유한한 숫자여야 합니다');
+    expect(original[0].qtyRemaining).toBe(5);
+  });
+
+  it('저장된 로트 잔량이 숫자가 아니면 차감하지 않는다', () => {
+    const original = [{ ...box(5, '260825-01'), qtyRemaining: NaN }];
+    expect(() => deductLotsByQty(original, 1)).toThrow('로트 잔량이 올바르지 않습니다');
+    expect(Number.isNaN(original[0].qtyRemaining)).toBe(true);
   });
 });
 

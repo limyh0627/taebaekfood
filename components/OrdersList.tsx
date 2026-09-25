@@ -1,5 +1,5 @@
 
-import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
+import { appConfirm, appNotice, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { RotateCcw } from 'lucide-react';
@@ -251,6 +251,7 @@ interface OrdersListProps {
   onUpdateReceivedDate?: (id: string, date: string) => void;
   onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
+  onUpdateNote?: (id: string, note: string, important: boolean) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
   /**
    * 송장 칸을 바꾼다. `boolean` 은 옛 뜻(출력 했나/안 했나)이고,
@@ -937,6 +938,13 @@ export const OrderCard = memo<OrderCardProps>(({
                 </div>
               );
             })}
+            {(order.note ?? '').trim() && (
+              <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold text-slate-600" title={order.note}>
+                {order.noteImportant && <AlertCircle size={12} className="shrink-0 text-rose-500" aria-hidden="true" />}
+                <NotepadText size={12} className="shrink-0" aria-hidden="true" />
+                <span className="truncate">{order.note}</span>
+              </div>
+            )}
             {/* 향미유·고춧가루: 카테고리별 구분 표시 */}
             {(() => {
               const abbrev = (name: string) => name
@@ -1583,7 +1591,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   companyId,
   title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
-  onUpdateItems, onUpdateDeliveryBoxes,
+  onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted,
   onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
@@ -1642,7 +1650,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listMemoDraft, setListMemoDraft] = useState('');
   //  메모창의 '중요' 체크 — 창을 열 때 그 줄의 값으로 채우고, 닫을 때 끈다.
   const [listMemoImportant, setListMemoImportant] = useState(false);
-  const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[] } | null>(null);
+  const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[]; note: string; noteImportant: boolean } | null>(null);
   /*  **주문 로그**(2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서 주문 넣은 사람 일시
       라벨이나 작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게 해봐").
       상태 변경 기록(`orderStatusAudits`)은 주문 문서 밖에 있어 **누를 때 읽어 온다** —
@@ -1806,6 +1814,18 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const followItemToggle = (orderId: string, itemIndex: number, actor?: string) =>
     onToggleItemChecked?.(orderId, itemIndex, actor);
 
+  const updateStatusWithNotice = async (id: string, status: OrderStatus): Promise<boolean> => {
+    try {
+      await onUpdateStatus(id, status);
+      return true;
+    } catch (error) {
+      // 확인창을 닫은 뒤 DB 재조회에서 부족이 밝혀져도 작업자가 실패 원인을 바로 알아야 한다.
+      const reason = error instanceof Error ? error.message : String(error);
+      await appNotice(reason, reason.includes('부족') ? '재고 부족' : '주문 상태 변경 실패');
+      return false;
+    }
+  };
+
   const openOrderEditor = (orderId: string) => {
     const order = orders.find(candidate => candidate.id === orderId);
     if (!order || embeddedListOnly) return;
@@ -1817,6 +1837,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
       orderId: order.id,
       deliveryDate: order.deliveryDate.split('T')[0],
       items: order.items.map(item => ({ ...item })),
+      note: order.note || '',
+      noteImportant: !!order.noteImportant,
     });
   };
 
@@ -2219,7 +2241,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         </p>
       ) : undefined,
       confirmText: '출고완료',
-      onConfirm: () => { setConfirmModal(null); onUpdateStatus(orderId, OrderStatus.SHIPPED); },
+      onConfirm: () => { setConfirmModal(null); void updateStatusWithNotice(orderId, OrderStatus.SHIPPED); },
     });
   };
 
@@ -2229,7 +2251,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate,
-    onUpdateStatus,
+    onUpdateStatus: updateStatusWithNotice,
     onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType,
     onToggleItemChecked: followItemToggle, onDeleteOrder, currentUserName,
     highlightOrderId,
@@ -2420,7 +2442,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     title: '출고완료', tone: 'sky', icon: Truck,
                     message: `체크된 ${checked.length}건을 출고 처리하시겠습니까?`,
                     confirmText: '출고 처리',
-                    onConfirm: () => { checked.forEach(o => onUpdateStatus(o.id, OrderStatus.SHIPPED)); setConfirmModal(null); },
+                    onConfirm: () => {
+                      setConfirmModal(null);
+                      void (async () => {
+                        for (const order of checked) {
+                          if (!await updateStatusWithNotice(order.id, OrderStatus.SHIPPED)) break;
+                        }
+                      })();
+                    },
                   } as any);
                 }}
                 className="flex items-center space-x-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow"
@@ -2982,7 +3011,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             return [
               order.id, partnerName, partnerAddress, STATUS_LABEL[order.status], order.status, order.source,
               (order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '송장 출력 완료' : '송장 미출력') : '',
-              order.createdAt, order.deliveryDate,
+              order.createdAt, order.deliveryDate, order.note,
               fmtYYMMDD(new Date(order.createdAt)), fmtYYMMDD(new Date(order.deliveryDate)),
               ...getPalletSummary(order),
             ].filter(Boolean).some(value => String(value).toLocaleLowerCase('ko-KR').includes(normalizedListSearch));
@@ -3555,12 +3584,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               <button
                                 key={originalIndex}
                                 type="button"
-                                onClick={() => { setListMemoEditor({ orderId: order.id, itemIndex: originalIndex }); setListMemoDraft(item.note || ''); setListMemoImportant(!!item.noteImportant); }}
+                                onClick={() => {
+                                  if (originalIndex === visibleItemEntries[0]?.originalIndex) openOrderEditor(order.id);
+                                  else if (item.note) openMemoEditor(order.id, originalIndex);
+                                  else openOrderEditor(order.id);
+                                }}
                                 className={`flex h-10 w-full min-w-0 items-center px-2 text-left text-[10px] font-bold transition-colors hover:bg-slate-100 ${item.checked ? 'bg-slate-50/70 text-slate-400' : 'text-slate-600'}`}
                               >
-                                {/*  중요로 적은 비고는 **빨간 느낌표**를 앞에 세운다(2026-09-15 사장님). */}
-                                {item.note && item.noteImportant && <AlertCircle size={11} className="mr-1 shrink-0 text-rose-500" aria-hidden="true" />}
-                                <span className={item.note ? 'block min-w-0 truncate' : 'inline-flex rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-slate-500'} title={item.note || '메모 추가'}>{item.note || '메모 추가'}</span>
+                                {(originalIndex === visibleItemEntries[0]?.originalIndex && order.noteImportant && order.note || item.noteImportant && item.note)
+                                  && <AlertCircle size={11} className="mr-1 shrink-0 text-rose-500" aria-hidden="true" />}
+                                <span className={order.note || item.note ? 'block min-w-0 truncate' : 'inline-flex rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-slate-500'}
+                                  title={originalIndex === visibleItemEntries[0]?.originalIndex ? order.note || item.note || '주문 비고 추가' : item.note || '주문 비고 추가'}>
+                                  {originalIndex === visibleItemEntries[0]?.originalIndex ? order.note || item.note || '비고 추가' : item.note || ''}
+                                </span>
                               </button>
                             ))}
                           </div>
@@ -4143,7 +4179,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   setShowAddProductSelect={setShowAddProductSelect}
                   onUpdateItems={onUpdateItems}
                   onUpdateDeliveryDate={onUpdateDeliveryDate}
-                  onUpdateStatus={onUpdateStatus}
+                  onUpdateStatus={updateStatusWithNotice}
                   onToggleInvoicePrinted={onToggleInvoicePrinted}
                   onUpdateInvoiceType={onUpdateInvoiceType}
                   onToggleItemChecked={followItemToggle}
@@ -4182,6 +4218,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
             onUpdateDeliveryDate(editorOrder.id, new Date(listOrderEditor.deliveryDate).toISOString());
           }
           onUpdateItems?.(editorOrder.id, listOrderEditor.items);
+          if (listOrderEditor.note !== (editorOrder.note || '') || listOrderEditor.noteImportant !== !!editorOrder.noteImportant) {
+            onUpdateNote?.(editorOrder.id, clampNote(listOrderEditor.note.trim()), listOrderEditor.noteImportant);
+          }
           closeEditor();
         };
         const addDraftItem = () => setListOrderEditor(current => current && current.orderId === editorOrder.id
@@ -4350,6 +4389,21 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </div>
                 <button type="button" onClick={addDraftItem} className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-4 text-xs font-black text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Plus size={15} aria-hidden="true" /> 신규 품목 추가</button>
                 <p className="mt-2 text-[10px] font-bold text-slate-500">품목 변경·삭제·추가는 ‘변경 저장’을 눌러야 반영됩니다.</p>
+              </section>
+
+              <section className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <label htmlFor="order-editor-note" className="text-xs font-black text-slate-700">주문 비고</label>
+                <textarea id="order-editor-note" value={listOrderEditor.note} maxLength={NOTE_MAX} rows={2}
+                  onChange={event => setListOrderEditor(current => current ? { ...current, note: clampNote(event.target.value) } : current)}
+                  placeholder="주문 전체에 전달할 내용" className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700" />
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <input type="checkbox" checked={listOrderEditor.noteImportant}
+                    onChange={event => setListOrderEditor(current => current ? { ...current, noteImportant: event.target.checked } : current)}
+                    className="accent-rose-500" /> 중요 비고
+                </label>
+                {editorOrder.items.some(item => item.note?.trim()) && (
+                  <div className="text-xs text-slate-500">옛 품목 비고: {editorOrder.items.filter(item => item.note?.trim()).map(item => `${item.name} — ${item.note}`).join(' · ')}</div>
+                )}
               </section>
 
               {/*  **팔레트**(2026-09-12 사장님: "주문 전체삭제 위에 팔레트 설정 하는거 두고").

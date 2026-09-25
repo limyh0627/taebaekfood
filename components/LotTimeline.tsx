@@ -1,16 +1,36 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ClipboardCheck, PackageOpen, Truck } from 'lucide-react';
 import type { Item, RawMaterialEntry } from '../src/shared/types';
+import { isRawHolder } from '../src/shared/rawHolder';
 import type { LotShipment } from './ProductLotPanel';
 
 type TimelineRow = {
   id: string; date: string; title: string; note: string;
+  businessDate?: string; sequence?: number;
   delta?: number; balance?: number;
   details?: { id: string; partnerName: string; qty: number }[];
   kind: 'in' | 'out' | 'stocktake' | 'correction' | 'lot' | 'unpack';
 };
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
+
+const recordedTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || value.length <= 10) return value.slice(0, 16).replace('T', ' ');
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+};
+
+const newestFirst = (a: TimelineRow, b: TimelineRow) => {
+  const aTime = Date.parse(a.date);
+  const bTime = Date.parse(b.date);
+  return (Number.isFinite(aTime) && Number.isFinite(bTime) ? bTime - aTime : b.date.localeCompare(a.date))
+    || Number(b.sequence ?? 0) - Number(a.sequence ?? 0)
+    || b.id.localeCompare(a.id, undefined, { numeric: true });
+};
 
 /** 로트 상세는 원장 표를 복제하지 않고, 해당 품목에서 실제로 일어난 사건만 시간순으로 보여준다. */
 const LotTimeline: React.FC<{
@@ -32,23 +52,29 @@ const LotTimeline: React.FC<{
           || (entry as any).kind === 'merge-lots' || (entry as any).kind === 'deplete-lot';
         const unpack = (entry as any).kind === 'unpack' || (entry as any).source?.type === 'unpack';
         const timestamp = entry.recordedAt || entry.createdAt || entry.effectiveAt || entry.date;
+        const afterKg = Number(change.afterKg ?? change.kgAfter);
         return {
           id: entry.id || `${entry.date}-${entry.createdAt}`,
           date: timestamp,
+          businessDate: entry.date || entry.effectiveAt?.slice(0, 10), sequence: entry.sequence,
           title: unpack ? '캔 개봉' : correction ? '재고 정정' : stocktake ? '재고 실사' : delta >= 0 ? '입고' : '사용',
-          note: entry.note || entry.addedBy || '', delta, balance: Number(change.afterKg ?? 0),
+          note: entry.note || entry.addedBy || '', delta,
+          balance: Number.isFinite(afterKg) ? afterKg : undefined,
           kind: unpack ? 'unpack' : correction ? 'correction' : stocktake ? 'stocktake' : delta >= 0 ? 'in' : 'out',
         };
-      }).sort((a, b) => b.date.localeCompare(a.date));
+      }).sort(newestFirst);
     }
     const packed: TimelineRow[] = [];
+    const raw = isRawHolder(item);
     for (const lot of (item.lots ?? []).filter(row => row.id === lotId)) {
       if (lot.id.startsWith('anchor-') || lot.id.startsWith('adjust-')) continue;
+      // 원료의 qtyIn은 포·캔 개수다. kgIn과 섞으면 2.5포 입고가 2.5kg으로 보인다.
+      const receiptQty = raw ? Number(lot.kgIn) : Number(lot.qtyIn);
       packed.push({
         id: `lot-${lot.id}`, date: lot.createdAt || lot.receivedDate || '',
         title: lot.supplierName === '실사조정' ? '재고 실사' : '로트 입고',
         note: [lot.supplierName, lot.lotNo].filter(Boolean).join(' · '),
-        delta: lot.qtyIn ?? undefined,
+        delta: Number.isFinite(receiptQty) ? receiptQty : undefined,
         kind: lot.supplierName === '실사조정' ? 'stocktake' : 'lot',
       });
     }
@@ -93,10 +119,14 @@ const LotTimeline: React.FC<{
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-black text-slate-700">{row.title}</span>
-              {row.delta != null && <span className={`text-[11px] font-black tabular-nums ${row.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{row.delta > 0 ? '+' : ''}{fmt(row.delta)}{rawEntries.length ? ' kg' : ` ${item.unit || '개'}`}</span>}
+              {row.delta != null && <span className={`text-[11px] font-black tabular-nums ${row.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{row.delta > 0 ? '+' : ''}{fmt(row.delta)}{isRawHolder(item) ? ' kg' : ` ${item.unit || '개'}`}</span>}
             </div>
-            <p className="mt-0.5 text-[10px] font-bold text-slate-400">{row.date ? row.date.slice(0, 16).replace('T', ' ') : '-'}{row.note ? ` · ${row.note}` : ''}</p>
-            {row.balance != null && <p className="mt-1 text-[10px] font-black text-slate-500">처리 후 {fmt(row.balance)} kg</p>}
+            <p className="mt-0.5 text-[10px] font-bold text-slate-400">
+              {row.date ? `${row.businessDate ? '기록 ' : ''}${recordedTime(row.date)}` : '-'}
+              {row.businessDate ? ` · 업무일 ${row.businessDate}` : ''}
+              {row.note ? ` · ${row.note}` : ''}
+            </p>
+            {row.balance != null && <p className="mt-1 text-[10px] font-black text-slate-500">기록 직후 로트 잔량 {fmt(row.balance)} kg</p>}
             {row.details && row.details.length > 0 && <>
               <button type="button" onClick={() => setExpandedRows(current => {
                 const next = new Set(current);

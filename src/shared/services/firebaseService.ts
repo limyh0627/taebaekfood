@@ -230,6 +230,9 @@ export const adjustItemStock = async (
     const snap = await tx.get(ref);
     if (!snap.exists()) return null;
     const next = Math.round((Number(snap.data().stock ?? 0) + delta) * 1000) / 1000;
+    if (delta < 0 && next < 0) {
+      throw new Error(`${itemId} 재고가 부족합니다. 현재 ${Number(snap.data().stock ?? 0)}, 차감 ${Math.round(-delta * 1000) / 1000}`);
+    }
     tx.update(ref, { stock: next });
     return next;
   });

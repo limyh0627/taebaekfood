@@ -141,13 +141,19 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         throw new Error(`주문 재고 예약 범위에 없는 품목이 계산되었습니다: ${outside.join(', ')}`);
       }
       const quantities = new Map<string, number>();
-      ids.forEach(itemId => {
+      ids.forEach((itemId, index) => {
         const previousQty = options.preserveOwnAllocation
           ? (previousReservations.get(itemId) ?? [])
               .filter(row => row.state === 'allocated')
               .reduce((sum, row) => sum + Number(row.qty), 0)
           : 0;
         const qty = stock3(previousQty + Math.max(0, -(planned.get(itemId) ?? 0)));
+        const currentStock = Number(snapshots[index]!.data()?.stock ?? 0);
+        const otherQty = (activeByItem.get(itemId) ?? []).reduce((sum, row) => sum + Number(row.qty), 0);
+        if (qty > 0 && stock3(currentStock - otherQty - qty) < 0) {
+          const item = allItems.find(candidate => candidate.id === itemId);
+          throw new Error(`${item?.name ?? itemId} 재고가 부족합니다. 현재 ${currentStock}, 다른 주문 예약 ${stock3(otherQty)}, 이번 주문 ${qty}`);
+        }
         if (qty > 0) quantities.set(itemId, qty);
       });
 
@@ -256,7 +262,22 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         const before = Number(data.stock ?? 0);
         const lotResult = row.lotMutation?.apply(Array.isArray(data.lots) ? data.lots : []);
         const patch: { stock?: number; lots?: unknown[]; inventoryReservations?: ItemInventoryReservation[] } = {};
-        if (row.delta !== 0) patch.stock = stock3(before + row.delta);
+        if (row.delta !== 0) {
+          patch.stock = stock3(before + row.delta);
+          if (row.delta < 0 && patch.stock < 0) {
+            throw new Error(`${row.item!.name} 재고가 부족합니다. 현재 ${before}, 차감 ${stock3(-row.delta)}`);
+          }
+        }
+        if (lotResult) {
+          const beforeLots = new Map((Array.isArray(data.lots) ? data.lots : [])
+            .map((lot: { id: string; qtyRemaining?: number }) => [lot.id, Number(lot.qtyRemaining ?? 0)]));
+          const worsened = lotResult.lots.find(lot =>
+            Number(lot.qtyRemaining ?? 0) < 0 &&
+            Number(lot.qtyRemaining ?? 0) < (beforeLots.get(lot.id) ?? 0));
+          if (worsened) {
+            throw new Error(`${row.item!.name} 로트 재고가 부족합니다: ${worsened.lotNo ?? worsened.id}`);
+          }
+        }
         if (lotResult) patch.lots = stripUndefined(pruneDepletedLots(lotResult.lots));
         if (reservation) {
           const next = liveItemInventoryReservations(data.inventoryReservations, Date.now())
@@ -293,12 +314,6 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       return updates.map(({ itemId, delta, before, after, consumedLots }) => ({ itemId, delta, before, after, consumedLots }));
     });
 
-    // 음수 재고는 이 사업장의 정상 흐름일 수 있어 종 알림을 만들지 않는다. 재고 화면과 로그에서 본다.
-    for (const row of changed) {
-      if (row.delta === 0 || row.after >= 0) continue;
-      const item = allItems.find(candidate => candidate.id === row.itemId);
-      console.warn(`[재고 부족] ${item?.name ?? row.itemId}: ${row.before} → ${row.after}`);
-    }
     return changed.flatMap(row => row.consumedLots);
   };
 

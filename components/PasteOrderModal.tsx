@@ -13,6 +13,7 @@ import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import ModalShell from '../src/shared/components/ModalShell';
+import { clampNote, NOTE_MAX } from '../src/shared/orderNote';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -156,6 +157,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     return d.toISOString().split('T')[0];
   });
   const [pallets, setPallets] = useState<OrderPallet[]>([]);
+  const [showPallets, setShowPallets] = useState(false);
+  const [orderNote, setOrderNote] = useState('');
+  const [noteImportant, setNoteImportant] = useState(false);
 
   const selectClient = (client: Partner) => {
     setSelectedClient(client);
@@ -268,6 +272,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         selectedProductId: 줄.itemId,
       })));
       if (읽은것.deliveryDate) setDeadline(읽은것.deliveryDate);
+      if (읽은것.note) setOrderNote(clampNote(읽은것.note));
 
       const 못읽은수 = 읽은것.rejected.length;
       setAiNote({
@@ -343,6 +348,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         email: selectedClient.email || '',
         createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
         items: orderItems,
+        ...(orderNote.trim() ? { note: clampNote(orderNote.trim()), ...(noteImportant ? { noteImportant: true } : {}) } : {}),
         totalAmount,
         deliveryDate: new Date(deadline).toISOString(),
         source: (isDelivery ? '택배' : '일반') as OrderSource,
@@ -658,13 +664,26 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                 </div>
               )}
 
-              {palletStocks.length > 0 && (
+              <section className="space-y-2 border-t border-slate-200 pt-5">
+                <label htmlFor="pasted-order-note" className="text-sm font-black text-slate-700">주문 비고</label>
+                <textarea id="pasted-order-note" value={orderNote} onChange={event => setOrderNote(clampNote(event.target.value))}
+                  maxLength={NOTE_MAX} rows={2} placeholder="주문 전체에 전달할 내용을 적어 주세요."
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400" />
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <input type="checkbox" checked={noteImportant} onChange={event => setNoteImportant(event.target.checked)} className="accent-rose-500" />
+                  중요 비고
+                </label>
+              </section>
+
+              {palletStocks.some(stock => !stock.hidden) && (
                 <section className="space-y-3 border-t border-slate-200 pt-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2 text-slate-700"><Layers size={16} /><h3 className="text-sm font-black">팔레트</h3></div>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">선택</span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2">
+                  <button type="button" aria-expanded={showPallets} onClick={() => setShowPallets(value => !value)}
+                    className="flex w-full items-center gap-2 text-left text-sm font-black text-slate-700">
+                    <Layers size={16} /> 팔레트
+                    {pallets.length > 0 && <span className="text-xs text-slate-500">{pallets.reduce((sum, pallet) => sum + pallet.quantity, 0)}개</span>}
+                    <ChevronDown size={15} className={`ml-auto transition-transform ${showPallets ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showPallets && <div className="grid grid-cols-1 gap-2">
                     {palletStocks
                       .filter(stock => !stock.hidden)
                       .sort((a, b) => (a.name.toLowerCase().includes('kpp') ? 0 : 1) - (b.name.toLowerCase().includes('kpp') ? 0 : 1) || a.name.localeCompare(b.name, 'ko'))
@@ -691,7 +710,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                           </div>
                         );
                       })}
-                  </div>
+                  </div>}
                 </section>
               )}
             </div>

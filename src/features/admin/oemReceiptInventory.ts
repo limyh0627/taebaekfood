@@ -40,6 +40,11 @@ export async function applyOemReceiptInventory(
   if (duplicateItemIds.length > 0) {
     throw new Error(`OEM 입고 품목이 중복되었습니다: ${[...new Set(duplicateItemIds)].join(', ')}`);
   }
+  const invalidQuantity = input.items.find(row => !Number.isFinite(row.qty) || row.qty <= 0);
+  if (invalidQuantity) {
+    // 호출 화면이 양수만 보내도 저장 경계에서 다시 막아야 입고가 차감 명령으로 바뀌지 않는다.
+    throw new Error(`OEM 입고 수량은 0보다 큰 숫자여야 합니다: ${invalidQuantity.itemId}`);
+  }
   const feeId = `OEMFEE-${input.poId}`;
   // adjustmentRequests는 없는 문서의 get을 허용하지 않는다. 회사 조건을 단 목록 조회로
   // 기존 요청을 확인하고, 같은 배치의 동시 입고는 아래 PO 거래로 직렬화한다.

@@ -2,7 +2,8 @@ import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { today } from '../src/shared/day';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
-import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate } from '../src/shared/types';
+import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate, CompanyId } from '../src/shared/types';
+import { useLoanContracts } from '../src/shared/useLoanContracts';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
@@ -13,6 +14,7 @@ import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import ModalShell from '../src/shared/components/ModalShell';
 
 interface Props {
+  companyId: CompanyId;
   cashAccounts: CashAccount[];
   cashEntries: CashEntry[];
   accountCodes: AccountCode[];
@@ -35,7 +37,7 @@ const monthStart = () => today().slice(0, 7) + '-01';
 const ACCOUNT_ICON = { 통장: Landmark, 카드: CreditCard, 현금: Coins } as const;
 
 export default function CashLedger({
-  cashAccounts, cashEntries, accountCodes, fixedCostTemplates = [], partners, issuedStatements, settlements, currentUser,
+  companyId, cashAccounts, cashEntries, accountCodes, fixedCostTemplates = [], partners, issuedStatements, settlements, currentUser,
   onAddCashAccount, onUpdateCashAccount, onAddCashEntry, onDeleteCashEntry,
   onAddSettlement, onDeleteSettlement,
 }: Props) {
@@ -230,7 +232,7 @@ export default function CashLedger({
       </div>
 
       {showEntry && active && (
-        <EntryModal account={active} accounts={cashAccounts} accountCodes={accountCodes} fixedCostTemplates={fixedCostTemplates} partners={partners}
+        <EntryModal companyId={companyId} account={active} accounts={cashAccounts} accountCodes={accountCodes} fixedCostTemplates={fixedCostTemplates} partners={partners}
           currentUser={currentUser} onClose={() => setShowEntry(false)} onAdd={onAddCashEntry} />
       )}
       {showAccounts && (
@@ -358,7 +360,8 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
 }
 
 // ── 입출금 기록 모달 ──────────────────────────────────────────────────────────
-function EntryModal({ account, accounts, accountCodes, partners, currentUser, fixedCostTemplates = [], onClose, onAdd }: {
+function EntryModal({ companyId, account, accounts, accountCodes, partners, currentUser, fixedCostTemplates = [], onClose, onAdd }: {
+  companyId: CompanyId;
   account: CashAccount;
   accounts: CashAccount[];
   accountCodes: AccountCode[];
@@ -378,6 +381,8 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const [note, setNote] = useState('');
   // 대출 상환 전용
   const [loanCode, setLoanCode] = useState('260');   // 260 단기 / 293 장기
+  const [loanId, setLoanId] = useState('');
+  const loans = useLoanContracts(companyId);
   const [principal, setPrincipal] = useState('');
   const [interest, setInterest] = useState('');
   // 급여 지급 전용
@@ -485,7 +490,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
           { accountCode: loanCode, amount: prin, note: '원금' },
           { accountCode: INTEREST_CODE, amount: intr, note: '이자' },
         ],
-        note, fallbackNote: '대출 상환', base: base(),
+        note, fallbackNote: '대출 상환', base: { ...base(), ...(loans.some(loan => loan.id === loanId && loan.accountCode === loanCode) ? { loanId } : {}) },
       });
       return e ? [e] : [];
     }
@@ -722,11 +727,18 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
           <>
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대출 계정 <span className="text-rose-400">*</span></label>
-              <select value={loanCode} onChange={e => setLoanCode(e.target.value)}
+              <select value={loanCode} onChange={e => { setLoanCode(e.target.value); setLoanId(''); }}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
                 {(loanAccounts.length ? loanAccounts : [{ id: '260', code: '260', name: '단기차입금' }, { id: '293', code: '293', name: '장기차입금' }]).map(c => (
                   <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대출 건 연결</label>
+              <select value={loanId} onChange={e => { setLoanId(e.target.value); const loan = loans.find(row => row.id === e.target.value); if (loan?.partnerId) setPartnerId(loan.partnerId); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold">
+                <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
+                {loans.filter(loan => loan.accountCode === loanCode).map(loan => <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">

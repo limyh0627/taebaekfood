@@ -20,6 +20,7 @@ import { fetchWhere } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
+import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -1562,7 +1563,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          */
         const keepZero = (p: Item) => p.type === 'raw' || p.type === 'wip';
         const rows = products
-          .filter(p => companyOf(p) === companyId)
+          .filter(p => companyOf(p) === companyId && isPhysicalInventoryItem(p))
           .map(p => { const c = unitCost(p); return { ...p, stock: getStock(p), unitCost: c, value: Math.round(getStock(p) * c) }; })
           .filter(p => p.stock !== 0 || keepZero(p))
           .sort((a, b) => b.value - a.value);

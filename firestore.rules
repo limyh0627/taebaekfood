@@ -77,6 +77,22 @@ service cloud.firestore {
              && canSee(request.resource.data.companyId)
              && (resource == null || canSee(resource.data.companyId));
     }
+    // 과거 음수 재고는 입고·실사로 0에 가까워져야 한다. 새 음수와 부족량 악화만 막는다.
+    function nonnegativeWhenWritten(field) {
+      return (resource == null
+                ? !(field in request.resource.data)
+                : !request.resource.data.diff(resource.data).affectedKeys().hasAny([field]))
+             || (request.resource.data[field] is number
+                 && (request.resource.data[field] >= 0
+                     || (resource != null
+                         && resource.data[field] is number
+                         && resource.data[field] < 0
+                         && request.resource.data[field] >= resource.data[field])));
+    }
+    function inventoryQuantityOk(collection) {
+      return (collection != 'items' || nonnegativeWhenWritten('stock'))
+             && (collection != 'rawInventories' || nonnegativeWhenWritten('stockKg'));
+    }
     //  **지우기에는 들어오는 값이 없다**(`request.resource` 가 null) — 저장된 값만 본다.
     //  `createUpdateOk` 를 그대로 쓰면 지우기가 통째로 막힌다(시험이 잡았다).
     function deleteOk() {
@@ -89,7 +105,7 @@ service cloud.firestore {
     function adminOnlyCollection(c) {
       return c in [
         'issuedStatements', 'pendingStatementEdits', 'settlements', 'quotations',
-        'cashEntries', 'cashAccounts', 'cashFlowManual',
+        'cashEntries', 'cashAccounts', 'cashFlowManual', 'loanContracts',
         'payrolls', 'fixedCosts', 'fixedCostTemplates', 'expensePresets',
         'accountCodes', 'accountGroups',
         'inventorySnapshots', 'openingBalances', 'productionSalesLogs',
@@ -259,7 +275,8 @@ service cloud.firestore {
                   && readOk();
       allow create, update: if !hasOwnRule(collection)
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
-                            && createUpdateOk();
+                            && createUpdateOk()
+                            && inventoryQuantityOk(collection);
       allow delete: if !hasOwnRule(collection)
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk();
