@@ -1,8 +1,11 @@
-import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
-import React, { useMemo, useState } from 'react';
-import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus, Copy } from 'lucide-react';
+import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
+import React, { useMemo, useState, useRef } from 'react';
+import { X, Check, BarChart2, FolderPlus, Pencil, Copy, Eye, EyeOff, Star } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
 import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
+import { useLoanContracts } from '../src/shared/useLoanContracts';
+import { matchingLoan, LINKED_LOAN_AUTO_NOTICE } from '../src/shared/loanLedger';
+import type { CompanyId } from '../src/shared/types';
 import ModalShell from '../src/shared/components/ModalShell';
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
@@ -27,8 +30,9 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 export const NO_GROUP = '분류없음';
 
 export default function VoucherTemplateManager({
-  templates, accountCodes, partners = [], onUpdate, onDelete, onCreate, compact = false,
+  templates, accountCodes, partners = [], onUpdate, onDelete, onCreate, compact = false, onFilterChange, onGroupChange, onSearchChange, companyId = 'taebaek',
 }: {
+  companyId?: CompanyId;
   templates: FixedCostTemplate[];
   accountCodes: AccountCode[];
   partners?: Partner[];
@@ -38,10 +42,26 @@ export default function VoucherTemplateManager({
   onCreate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void> | void;
   /** 모달 안이면 높이를 제한한다 */
   compact?: boolean;
+  onFilterChange?: (filter: 'all' | 'auto' | 'hidden') => void;
+  onGroupChange?: (group: string) => void;
+  onSearchChange?: (search: string) => void;
 }) {
+  const loans = useLoanContracts(companyId);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
+  const [selectedGroup, setSelectedGroup] = useState('');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
+  const [selectedId, setSelectedId] = useState('');
+  const detailTpl = templates.find(t => t.id === selectedId);
+  const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
+  const runAction = async (action: () => Promise<void>) => {
+    if (actionLock.current) return;
+    actionLock.current = true; setBusy(true);
+    try { await action(); }
+    catch (error) { await appNotice('처리하지 못했습니다. 화면과 입력을 유지합니다. 다시 시도해 주세요. ' + String(error), '저장 실패'); }
+    finally { actionLock.current = false; setBusy(false); }
+  };
   // 분개 미리보기 — 평소엔 접어 둔다. 차·대는 사용자가 고르는 게 아니라 확인하는 것이다.
   const [showJournal, setShowJournal] = useState(false);
   /**
@@ -51,7 +71,7 @@ export default function VoucherTemplateManager({
    */
   const [cloning, setCloning] = useState(false);
   const [form, setForm] = useState({
-    name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', accountCode: '', partnerId: '', partnerName: '',
+    name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', loanId: '', accountCode: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
@@ -68,9 +88,10 @@ export default function VoucherTemplateManager({
     const q = search.trim();
     return [...templates]
       .filter(t => filter === 'auto' ? t.autoIssue : filter === 'hidden' ? t.hidden : true)
+      .filter(t => !selectedGroup || (t.group?.trim() || NO_GROUP) === selectedGroup)
       .filter(t => !q || t.name.includes(q) || (t.partnerName ?? '').includes(q) || (t.accountCode ?? '').includes(q))
       .sort((a, b) => (a.group ?? '기타').localeCompare(b.group ?? '기타') || a.name.localeCompare(b.name));
-  }, [templates, search, filter]);
+  }, [templates, search, filter, selectedGroup]);
 
   /**
    * 묶음별로 갈라 그린다. 즐겨찾기는 묶음과 상관없이 **맨 위로** 따로 모은다 —
@@ -108,11 +129,12 @@ export default function VoucherTemplateManager({
   };
 
   const openEdit = (t: FixedCostTemplate, clone = false) => {
+    setShowJournal(false);
     setEditTpl(t);
     setCloning(clone);
     setForm({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
-      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '', accountCode: t.accountCode ?? '',
+      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '', loanId: t.loanId ?? '', accountCode: t.accountCode ?? '',
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
       dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
       itemName: t.itemName ?? '',
@@ -126,12 +148,19 @@ export default function VoucherTemplateManager({
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">
           템플릿 <span className="text-slate-300">{templates.length}</span>
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <input type="text" placeholder="이름·거래처 검색" value={search} onChange={e => setSearch(e.target.value)}
+        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
+          <select aria-label="템플릿 그룹" value={selectedGroup}
+            onChange={event => { setSelectedGroup(event.target.value); onGroupChange?.(event.target.value); }}
+            className="max-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-600">
+            <option value="">전체 그룹</option>
+            {groupNames.map(group => <option key={group} value={group}>{group}</option>)}
+            <option value={NO_GROUP}>{NO_GROUP}</option>
+          </select>
+          <input type="text" placeholder="이름·거래처 검색" value={search} onChange={e => { setSearch(e.target.value); onSearchChange?.(e.target.value); }}
             className="w-32 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           <div className="flex bg-slate-200/70 rounded-lg p-0.5 gap-0.5">
             {([['all', '전체'], ['auto', '자동'], ['hidden', '숨김']] as const).map(([v, lbl]) => (
-              <button key={v} onClick={() => setFilter(v)}
+              <button key={v} onClick={() => { setFilter(v); onFilterChange?.(v); }}
                 className={`px-2 py-0.5 rounded-md text-[11px] font-black transition-all ${filter === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
                 {lbl}
               </button>
@@ -155,78 +184,83 @@ export default function VoucherTemplateManager({
                 <span className="text-[10px] font-bold text-slate-300">{g.items.length}</span>
               </div>
               <div className="divide-y divide-slate-50">
-                {g.items.map(t => {
-                  const locked = !!t.builtin;
-                  const missingCodes = missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code)));
-                  const canAuto = t.amount > 0 && !!t.accountCode && missingCodes.length === 0;
-                  return (
-                    <div key={t.id} className={`px-4 py-2 flex items-center gap-2 transition ${t.hidden ? 'opacity-40' : ''}`}>
-                      <button
-                        onClick={() => {
-                          if (!t.autoIssue && !canAuto) { alert(missingCodes.length ? `현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n템플릿의 계정을 확인해 주세요.` : '자동 발행은 계정과목과 금액이 정해진 것만 켤 수 있습니다.\n\n연필 버튼으로 금액을 먼저 넣어 주세요.'); return; }
-                          onUpdate?.(t.id, { autoIssue: !t.autoIssue });
-                        }}
-                        title={t.autoIssue ? `매월 ${(t.issueDay ?? 1) === 31 ? '말일' : `${t.issueDay ?? 1}일`} 자동 발행 — 끄기` : '자동 발행 켜기'}
-                        className="shrink-0 text-slate-300 hover:text-indigo-500 transition">
-                        {t.autoIssue ? <ToggleRight size={20} className="text-indigo-500"/> : <ToggleLeft size={20}/>}
-                      </button>
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg shrink-0 w-10 text-center ${t.autoIssue ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300'}`}>
-                        {t.autoIssue ? ((t.issueDay ?? 1) === 31 ? '말일' : `${t.issueDay ?? 1}일`) : '수동'}
+                {g.items.map(t => (
+                  <button key={t.id} type="button" aria-label={t.name + ' 상세보기'}
+                    onClick={() => setSelectedId(t.id)}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-slate-800 truncate">{t.name}</span>
+                      <span className="block mt-1 text-xs text-slate-400 truncate">
+                        {t.accountCode ? t.accountCode + ' ' + (accountCodes.find(c => c.code === t.accountCode)?.name ?? '') : '계정 직접선택'}
+                        {t.partnerName && ' · ' + t.partnerName}
                       </span>
-                      <span title={DIR_HINT[dirOf(t)]} className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg shrink-0 w-11 text-center ${DIR_CHIP[dirOf(t)]}`}>
-                        {dirOf(t)}
+                      {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).length > 0 && <span className="block mt-1 text-xs text-rose-600"><b>계정 없음</b> · <span>현재 회사 계정표에 {missingTemplateAccountCodes(t, new Set(accountCodes.map(c => c.code))).join(', ')} 없음</span></span>}
+                      <span className="block mt-1 text-[11px] text-slate-500">
+                        {dirOf(t)} · {t.autoIssue ? '매월 ' + ((t.issueDay ?? 1) === 31 ? '말일' : (t.issueDay ?? 1) + '일') + ' 자동' : '수동'}
+                        {t.hidden && ' · 숨김'}{t.builtin && ' · 기본'}{t.favorite && ' · 즐겨찾기'}
                       </span>
-                      <button onClick={() => onUpdate?.(t.id, { favorite: !t.favorite })}
-                        title={t.favorite ? '즐겨찾기 빼기' : '즐겨찾기 — 목록 맨 위로'}
-                        className="shrink-0 transition">
-                        <Star size={14} className={t.favorite ? 'text-amber-400 fill-amber-400' : 'text-slate-200 hover:text-amber-300'}/>
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs font-black text-slate-800 truncate">{t.name}</span>
-                          {locked && <span title="기본 템플릿 — 지울 수 없고 숨기기만 됩니다" className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">기본</span>}
-                          {t.hidden && <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">숨김</span>}
-                          {!!missingCodes.length && <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">계정 없음</span>}
-                        </div>
-                        <div className="text-[10px] font-bold text-slate-400 truncate">
-                          {t.accountCode ? `${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}` : (t.mode !== '일반' ? t.mode : '계정 직접선택')}
-                          {t.partnerName && ` · ${t.partnerName}`}
-                          {!isCashDir(dirOf(t)) && t.partnerId && (t.taxExempt ? ' · 면세' : ' · 과세')}
-                        </div>
-                        {!!missingCodes.length && <div className="text-[10px] font-bold text-amber-700">현재 회사 계정표에 {missingCodes.join(', ')} 없음</div>}
-                      </div>
-                      <span className="text-xs font-black text-slate-800 tabular-nums shrink-0 w-20 text-right">
-                        {t.amount > 0 ? fmt(t.amount) : <span className="text-slate-300">—</span>}
-                      </span>
-                      <button onClick={() => onUpdate?.(t.id, { hidden: !t.hidden })}
-                        title={t.hidden ? '숨김 해제 — 일반전표 목록에 다시 뜬다' : '숨기기 — 일반전표 목록에서 뺀다'}
-                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0">
-                        {t.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}
-                      </button>
-                      {/* 복제는 **어느 템플릿이든** 된다. 기본만 되게 해 뒀는데, 손으로 만든 것도
-                          금액·날짜만 다른 변형을 자주 쓴다(리스료 차량이 둘, 보험료가 여럿). */}
-                      <button onClick={() => openClone(t)} title="이 템플릿을 본떠 새로 만들기 — 원본은 그대로 둡니다"
-                        className="p-1 hover:bg-indigo-50 rounded-lg text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={13}/></button>
-                      <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
-                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
-                      {locked ? (
-                        <span title="기본 템플릿 — 지울 수 없습니다. 숨기기만 됩니다." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
-                      ) : (
-                        <button onClick={async () => { if (await appConfirm(`'${t.name}' 템플릿을 지울까요?`)) onDelete?.(t.id); }}
-                          className="p-1 hover:bg-rose-50 rounded-lg text-slate-200 hover:text-rose-400 shrink-0"><Trash2 size={13}/></button>
-                      )}
-                    </div>
-                  );
-                })}
+                    </span>
+                    <span className="shrink-0 text-sm font-bold text-slate-800 tabular-nums">{fmt(t.amount)}원</span>
+                  </button>
+                ))}
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {detailTpl && !editTpl && (
+        <ModalShell title="템플릿 상세보기" subtitle={detailTpl.name} layer={1100}
+          onClose={() => { if (!actionLock.current) setSelectedId(''); }} bodyClassName="space-y-5">
+          <div aria-busy={busy}>
+            {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).length > 0 && <p className="mb-3 text-sm text-rose-600">현재 회사 계정표에 {missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code))).join(', ')} 없음 — 계정을 수정해 주세요.</p>}
+            <h4 className="text-lg font-bold text-slate-900">{detailTpl.name}</h4>
+            <p className="mt-1 text-xl font-bold text-slate-800">{fmt(detailTpl.amount)}원</p>
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+              <div><dt className="text-xs text-slate-400">묶음</dt><dd className="mt-1">{detailTpl.group?.trim() || NO_GROUP}</dd></div>
+              <div><dt className="text-xs text-slate-400">발행 갈래</dt><dd className="mt-1">{dirOf(detailTpl)} · {detailTpl.mode || '일반'}</dd></div>
+              <div><dt className="text-xs text-slate-400">계정과목</dt><dd className="mt-1">{detailTpl.accountCode} {accountCodes.find(c => c.code === detailTpl.accountCode)?.name || '계정 미지정'}</dd></div>
+              <div><dt className="text-xs text-slate-400">거래처</dt><dd className="mt-1">{detailTpl.partnerName || '선택 안 함'}</dd></div>
+              <div><dt className="text-xs text-slate-400">자동 발행</dt><dd className="mt-1">{detailTpl.autoIssue ? '매월 ' + ((detailTpl.issueDay ?? 1) === 31 ? '말일' : (detailTpl.issueDay ?? 1) + '일') : '사용 안 함'}</dd></div>
+              <div><dt className="text-xs text-slate-400">목록 표시</dt><dd className="mt-1">{detailTpl.hidden ? '숨김' : '표시'}{detailTpl.favorite && ' · 즐겨찾기'}{detailTpl.builtin && ' · 기본 템플릿'}</dd></div>
+              {detailTpl.mode === '상환' && <div className="col-span-2"><dt className="text-xs text-slate-400">상환 구성</dt><dd className="mt-1">원금 {fmt(detailTpl.principal ?? 0)}원 · 이자 {fmt(detailTpl.interest ?? 0)}원</dd>
+                <p className="mt-1 text-xs text-slate-500">{detailTpl.loanId ? loans.find(l => l.id === detailTpl.loanId && l.companyId === companyId)?.name || '연결 계약 확인 필요' : '대출 계약 연결 안 함'}</p>
+                {detailTpl.loanId && <p className="mt-1 text-xs text-slate-500">계약 연결 템플릿은 수동 발행만 가능합니다.</p>}
+              </div>}
+            </dl>
+          </div>
+          {busy && <p role="status" className="text-sm text-slate-500">처리 중…</p>}
+          <div className="space-y-3">
+            <p className="text-xs font-bold text-slate-500">자동 발행 설정</p>
+            <button disabled={busy || !onUpdate} title={detailTpl.autoIssue ? '자동 발행 끄기' : '자동 발행 켜기'}
+              className="min-h-11 min-w-11 flex items-center justify-center rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"
+              onClick={() => runAction(async () => {
+                if (!detailTpl.autoIssue && detailTpl.mode === '상환' && detailTpl.loanId) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; }
+                const missing = missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code)));
+                if (!detailTpl.autoIssue && (!(detailTpl.amount > 0) || !detailTpl.accountCode || missing.length || (!isCashDir(dirOf(detailTpl)) && !detailTpl.partnerId))) {
+                  await appNotice('계정·금액·거래처를 확인한 뒤 자동 발행을 켜 주세요.'); return;
+                }
+                await onUpdate?.(detailTpl.id, { autoIssue: !detailTpl.autoIssue });
+              })}>{detailTpl.autoIssue ? '자동 발행 끄기' : '자동 발행 켜기'}</button>
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+            <button aria-label="수정" disabled={busy || !onUpdate} title="이름·묶음·금액·발행 방식 수정" onClick={() => openEdit(detailTpl)} className="min-h-11 min-w-11 flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-40"><Pencil size={18}/></button>
+            <button aria-label="복제" title="복제" disabled={busy || !onCreate} onClick={() => openClone(detailTpl)} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"><Copy size={18}/></button>
+            <button aria-label={detailTpl.hidden ? '숨김 해제' : '숨기기'} title={detailTpl.hidden ? '숨김 해제' : '숨기기'} disabled={busy || !onUpdate} onClick={() => runAction(async () => { await onUpdate?.(detailTpl.id, { hidden: !detailTpl.hidden }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40">{detailTpl.hidden ? <Eye size={18}/> : <EyeOff size={18}/>}</button>
+            <button aria-label={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} title={detailTpl.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가'} disabled={busy || !onUpdate} onClick={() => runAction(async () => { await onUpdate?.(detailTpl.id, { favorite: !detailTpl.favorite }); })} className="rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"><Star size={18} fill={detailTpl.favorite ? 'currentColor' : 'none'}/></button>
+            <button disabled={busy || !!detailTpl.builtin || !onDelete} onClick={() => runAction(async () => {
+              if (detailTpl.builtin) return;
+              if (!await appConfirm({ title: '템플릿 삭제', message: detailTpl.name + ' 템플릿을 삭제할까요?', confirmText: '삭제', tone: 'rose' })) return;
+              await onDelete?.(detailTpl.id); setSelectedId('');
+            })} className="rounded-xl border border-rose-200 px-3 py-3 text-sm font-bold text-rose-600 disabled:opacity-40">삭제</button>
+          </div>
+          </div>
+          {detailTpl.builtin && <p className="text-xs text-slate-500">기본 템플릿은 삭제할 수 없습니다. 숨겼다가 다시 표시할 수 있습니다.</p>}
+        </ModalShell>
+      )}
+
       {/* 수정 — 이름·묶음·금액·거래처·발행 방식 */}
       {editTpl && (
-        <ModalShell title={cloning ? '새 템플릿 만들기' : '템플릿 수정'} onClose={() => setEditTpl(null)} bodyClassName="space-y-4">
+        <ModalShell title={cloning ? '새 템플릿 만들기' : '템플릿 수정'} onClose={() => { if (!actionLock.current) setEditTpl(null); }} layer={1100} bodyClassName="space-y-4">
           {/* 폭 — 분개 미리보기에 계정명이 통째로 들어가야 한다. max-w-sm(384px)에선
     금액칸을 빼고 나면 이름 자리가 손바닥만 해서 '255 부가세…'로 잘렸다. */}
             {cloning ? (
@@ -360,7 +394,7 @@ export default function VoucherTemplateManager({
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{P.label}</label>
                         <select value={form.loanCode}
-                          onChange={e => setForm(f => ({ ...f, loanCode: e.target.value }))}
+                          onChange={e => setForm(f => ({ ...f, loanCode: e.target.value, loanId: '' }))}
                           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300">
                           <option value="">전표에서 고르기</option>
                           {opts.map(c => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
@@ -401,10 +435,25 @@ export default function VoucherTemplateManager({
               )}
             </div>
 
+            {editTpl.mode === '상환' && <div>
+              <label className="block text-xs font-bold text-slate-500">대출 건 연결</label>
+              <select aria-label="대출 건 연결" value={form.loanId}
+                onChange={e => setForm(f => ({ ...f, loanId: e.target.value }))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
+                <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
+                {form.loanId && !matchingLoan(loans, companyId, form.loanId, form.loanCode) && (
+                  <option value={form.loanId}>기존 연결 확인 필요 · 다시 선택</option>
+                )}
+                {loans.filter(loan => loan.companyId === companyId && loan.accountCode === form.loanCode).map(loan => (
+                  <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">계약이 없으면 대출 관리에서 계약을 먼저 등록하세요. 계약 연결 템플릿은 수동으로 발행합니다.</p>
+            </div>}
             <div className="rounded-xl border border-slate-200 p-3 space-y-2">
               <label className="flex items-start gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={form.autoIssue}
-                  onChange={e => setForm(f => ({ ...f, autoIssue: e.target.checked }))}
+                  onChange={async e => { if (e.target.checked && editTpl.mode === '상환' && form.loanId) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; } setForm(f => ({ ...f, autoIssue: e.target.checked })); }}
                   className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0"/>
                 <span className="text-xs font-black text-slate-700 leading-snug">
                   자동 발행
@@ -507,23 +556,26 @@ export default function VoucherTemplateManager({
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setEditTpl(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button disabled={busy} onClick={() => setEditTpl(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button
-                onClick={async () => {
-                  if (!form.name.trim()) { alert('이름을 입력하세요.'); return; }
+                disabled={busy || (cloning ? !onCreate : !onUpdate)}
+                onClick={() => runAction(async () => {
+                  if (!form.name.trim()) { await appNotice('이름을 입력하세요.'); return; }
                   // 두 줄 갈래는 두 칸이 곧 값이고, amount는 통장에서 움직이는 돈이다.
                   const sm = splitModeOf(editTpl.mode);
                   const a = Number(form.splitA || 0), b = Number(form.splitB || 0);
                   const S = sm ? SPLIT_MODES[sm] : null;
                   const amount = S ? S.total(a, b) : Number(form.amount || 0);
                   const splitPatch = S
-                    ? { [S.a]: a, [S.b]: b, ...('pick' in S ? { loanCode: form.loanCode } : {}) }
+                    ? { [S.a]: a, [S.b]: b, ...('pick' in S ? { loanCode: form.loanCode, loanId: form.loanId } : {}) }
                     : {};
-                  if (form.autoIssue && amount <= 0) { alert('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
+                  if (sm === '상환' && form.loanId && !matchingLoan(loans, companyId, form.loanId, form.loanCode)) { await appNotice('연결할 대출 계약의 회사와 원금 계정을 확인하고 다시 선택해 주세요.'); return; }
+                  if (sm === '상환' && form.loanId && form.autoIssue) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; }
+                  if (form.autoIssue && amount <= 0) { await appNotice('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
                   const missingCodes = missingTemplateAccountCodes({ ...editTpl, accountCode: form.accountCode || undefined, loanCode: form.loanCode || undefined }, new Set(accountCodes.map(c => c.code)));
-                  if (form.autoIssue && missingCodes.length) { alert(`현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n계정을 먼저 확인해 주세요.`); return; }
+                  if (form.autoIssue && missingCodes.length) { await appNotice(`현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n계정을 먼저 확인해 주세요.`); return; }
                   if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
-                    alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
+                    await appNotice('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
                     return;
                   }
                   const patch = {
@@ -555,9 +607,10 @@ export default function VoucherTemplateManager({
                     await onUpdate?.(editTpl.id, patch);
                   }
                   setEditTpl(null);
-                }}
+                  if (cloning) setSelectedId('');
+                })}
                 className="flex-[2] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 flex items-center justify-center gap-1.5">
-                <Check size={13}/>{cloning ? '만들기' : '저장'}
+                <Check size={13}/>{busy ? '저장 중…' : cloning ? '만들기' : '저장'}
               </button>
             </div>
         </ModalShell>

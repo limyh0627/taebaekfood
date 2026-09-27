@@ -174,6 +174,17 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
+  // 포장·세트는 이미 만든 완제품을 조립할 수 있다. 원료 검사는 실제 새로 만드는
+  // 낱개 완제품마다 한다 — 주문 전체 합계로 보면 다른 품목의 원료가 누락을 가린다.
+  const rawUsageKg = (usage: Record<string, number>) =>
+    Math.round(Object.values(usage).reduce((sum, kg) => sum + kg, 0) * 1000) / 1000;
+  const requireRawForProduction = (product: Item, beforeKg: number, usage: Record<string, number>) => {
+    if (product.type === 'product' && !hasProductComponent(product)
+        && rawUsageKg(usage) <= beforeKg) {
+      throw new Error(`원료 BOM·원료식에서 사용량이 0kg인 완제품은 생산 완료할 수 없습니다: ${product.name}`);
+    }
+  };
+
   /**
    * BOM 차감/복원 — **구성품 × 수량**만큼 그 품목 재고에서 뺀다. 부자재·완제품 구분 없다.
    *
@@ -216,8 +227,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         if (short > 0) {
           addDelta(deltas, comp.id, short);
           autoBuilt.push({ itemId: comp.id, qty: short });
+          const beforeRawKg = rawUsageKg(rawUsage);
           accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1, undefined, stockOf);
           accrueRaw(comp, short, rawUsage);
+          requireRawForProduction(comp, beforeRawKg, rawUsage);
         }
       }
       addDelta(deltas, comp.id, sign * need);
@@ -306,9 +319,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const stockCap = looseId && choice?.loose !== undefined
         ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
 
+      const beforeRawKg = rawUsageKg(rawUsage);
       accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf);
       // 구성품에 완제품이 있으면 accrueBom이 그 완제품을 따라 내려가며 원료를 뺀다.
       if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage);
+      requireRawForProduction(product, beforeRawKg, rawUsage);
       addDelta(deltas, product.id, toProduce);
       producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
     }

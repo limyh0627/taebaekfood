@@ -47,11 +47,6 @@ export const canEditItems = (o: Pick<Order, 'producedAt' | 'shippedOut'> | undef
  * 따로 있고, 그 길은 재고 확인창·생산처리를 지난다. 여기로 우회시키면 안 된다.
  */
 const 재고와무관한칸 = new Set([
-  'note', 'noteBy', 'noteAt',
-  //  비고의 **중요 표시** — 빨간 느낌표를 붙일지 말지다. 재고와 아무 상관이 없다.
-  //  2026-09-15: 이 칸을 만들면서 여기 적는 걸 빠뜨려, 생산된 줄에 중요만 체크해도
-  //  "이미 생산처리돼서 수량·구성을 고칠 수 없습니다" 가 떴다. 위 설계대로 막힌 것이다.
-  'noteImportant',
   'labelType', 'mfgDate', 'displaySize', 'boxType',
   //  라벨·제조일을 **누가 언제** 바꿨나(`stampOrderItemEdits` 가 찍는다). 기록일 뿐이다.
   'labelBy', 'labelAt', 'mfgBy', 'mfgAt',

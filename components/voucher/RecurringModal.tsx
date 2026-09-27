@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { FixedCostTemplate, AccountCode, Partner } from '../../src/shared/types';
+import type { FixedCostTemplate, AccountCode, Partner, CompanyId } from '../../src/shared/types';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../../src/shared/autoVoucher';
-import VoucherTemplateManager from '../VoucherTemplateManager';
+import VoucherTemplateManager, { NO_GROUP } from '../VoucherTemplateManager';
 import ModalShell from '../../src/shared/components/ModalShell';
 
 /**
@@ -18,6 +18,7 @@ import ModalShell from '../../src/shared/components/ModalShell';
  * 쓰는 것과 **같은 판정**이라야 앱에서 낸 것과 저절로 난 것이 겹치지 않는다.
  */
 interface Props {
+  companyId?: CompanyId;
   templates: FixedCostTemplate[];
   accountCodes: AccountCode[];
   partners: Partner[];
@@ -38,15 +39,18 @@ const thisMonth = () => {
 };
 
 export default function RecurringModal({
-  templates, accountCodes, partners, isIssued, onClose,
+  templates, accountCodes, partners, isIssued, onClose, companyId = 'taebaek',
   onGenerate, onCreateTemplate, onUpdateTemplate, onDeleteTemplate,
 }: Props) {
   const [ym, setYm] = useState(thisMonth());
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showAutomatic, setShowAutomatic] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState('');
+  const [search, setSearch] = useState('');
 
   //  자동 발행 대상 — AdminApp·스케줄러와 같은 판정(shared/autoVoucher)
-  const due = templates.filter(t => canAutoIssue(t, ym));
+  const due = templates.filter(t => canAutoIssue(t, ym) && (!search.trim() || t.name.includes(search.trim()) || (t.partnerName ?? '').includes(search.trim()) || (t.accountCode ?? '').includes(search.trim())) && (!selectedGroup || (t.group?.trim() || NO_GROUP) === selectedGroup));
   const done = (t: FixedCostTemplate) => isIssued(autoVoucherId(t, ym));
   const pending = due.filter(t => !done(t));
   const total = pending.reduce((a, t) => a + t.amount, 0);
@@ -66,7 +70,7 @@ export default function RecurringModal({
   };
 
   return (
-    <ModalShell title="템플릿" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="템플릿" onClose={onClose} className="h-[88dvh]" bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
           일반전표 발행에서 고르는 <b>템플릿</b> 목록입니다. 스위치를 켜면 매달 정한 날에
           저절로 발행됩니다(앱을 안 켜도 됩니다). 새 템플릿은 일반전표 발행에서 <b>[템플릿으로 저장]</b>으로 만듭니다.
@@ -74,6 +78,7 @@ export default function RecurringModal({
 
         {/* 목록·수정은 한 곳에서만 — 여러 화면에 두면 어느 게 진짜인지 흐려진다 */}
         <VoucherTemplateManager
+          companyId={companyId}
           templates={templates}
           accountCodes={accountCodes}
           partners={partners}
@@ -81,8 +86,12 @@ export default function RecurringModal({
           onDelete={onDeleteTemplate}
           onCreate={onCreateTemplate}
           compact
+          onFilterChange={filter => setShowAutomatic(filter === 'auto')}
+          onGroupChange={setSelectedGroup}
+          onSearchChange={setSearch}
         />
 
+        {showAutomatic && <>
         <div>
           <label htmlFor="recurring-ym" className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대상 월</label>
           <input id="recurring-ym" type="month" value={ym} onChange={e => { setYm(e.target.value); setMsg(''); }}
@@ -131,6 +140,7 @@ export default function RecurringModal({
         )}
 
         {msg && <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">{msg}</p>}
+        </>}
 
         {/* 통째로 내는 버튼은 없앴다 — 줄마다 발행한다 */}
         <button onClick={onClose}

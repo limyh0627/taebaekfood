@@ -125,6 +125,8 @@ describe('한 번 나간 돈을 성격대로 가른다', () => {
     await 템플릿고르기(u, '차 할부금');
     await 채우기(u, '원금', '440000');
     await 채우기(u, '이자', '30280');
+    expect(screen.getByLabelText(/^원금/)).toHaveValue('440,000');
+    expect(screen.getByLabelText(/^이자/)).toHaveValue('30,280');
     await 저장(u);
     const e = onAddCashEntry.mock.calls[0][0];
     expect(e.dir).toBe('출금');

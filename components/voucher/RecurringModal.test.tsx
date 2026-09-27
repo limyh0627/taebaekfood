@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import RecurringModal from './RecurringModal';
 import type { FixedCostTemplate, AccountCode, Partner } from '../../src/shared/types';
@@ -26,7 +26,7 @@ const 계정: AccountCode[] = [
 ] as AccountCode[];
 const 거래처: Partner[] = [{ id: 'p1', name: '수협은행' }] as Partner[];
 
-function 띄우기(over: Partial<Parameters<typeof RecurringModal>[0]> = {}) {
+function 띄우기(over: Partial<Parameters<typeof RecurringModal>[0]> = {}, automatic = true) {
   const onGenerate = vi.fn().mockResolvedValue(1);
   const onClose = vi.fn();
   render(<RecurringModal
@@ -38,6 +38,7 @@ function 띄우기(over: Partial<Parameters<typeof RecurringModal>[0]> = {}) {
     onGenerate={onGenerate}
     {...over}
   />);
+  if (automatic) fireEvent.click(screen.getByRole('button', { name: '자동' }));
   return { onGenerate, onClose };
 }
 
@@ -49,6 +50,42 @@ const 줄 = (name: string) => within(목록().getByRole('listitem', { name }));
 const 대상월 = () => screen.getByLabelText('대상 월') as HTMLInputElement;
 
 describe('템플릿 창 — 자동 발행 대상', () => {
+  it('검색이 자동 발행 목록과 합계에도 같은 계정 판정으로 적용된다', () => {
+    띄우기({ templates: [템플릿(), 템플릿({ id: 'insurance', name: '보험료', amount: 100, accountCode: '821' })] });
+    fireEvent.change(screen.getByPlaceholderText('이름·거래처 검색'), { target: { value: '821' } });
+    expect(목록().queryByRole('listitem', { name: '차량 할부금' })).toBeNull();
+    expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
+  });
+  it('그룹 선택이 템플릿과 자동 발행 목록을 함께 거르고 창 높이는 고정한다', async () => {
+    const user = userEvent.setup();
+    띄우기({ templates: [템플릿({ group: '차량' }), 템플릿({ id: 't2', name: '보험료', group: '보험', accountCode: '821' }), 템플릿({ id: 't3', name: '수동 차량', group: '차량', autoIssue: false })] }, false);
+    const dialog = screen.getByRole('dialog', { name: '템플릿' });
+    expect(dialog).toHaveClass('h-[88dvh]');
+    await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '차량');
+    expect(screen.getByText('수동 차량')).toBeVisible();
+    expect(screen.queryByText('보험료')).toBeNull();
+    await user.click(screen.getByRole('button', { name: '자동' }));
+    expect(목록().getByRole('listitem', { name: '차량 할부금' })).toBeVisible();
+    expect(screen.queryByText('수동 차량')).toBeNull();
+    expect(목록().queryByRole('listitem', { name: '보험료' })).toBeNull();
+    await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '보험');
+    expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
+    expect(목록().queryByRole('listitem', { name: '차량 할부금' })).toBeNull();
+    expect(dialog).toHaveClass('h-[88dvh]');
+  });
+  it('전체 템플릿에서는 월·발행목록을 숨기고 자동 탭에서만 보여 준다', () => {
+    띄우기({}, false);
+    expect(screen.getByText('차량 할부금')).toBeVisible();
+    expect(screen.queryByLabelText('대상 월')).toBeNull();
+    expect(screen.queryByRole('list', { name: '자동 발행 대상' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '자동' }));
+    expect(screen.getByLabelText('대상 월')).toBeVisible();
+    expect(screen.getByRole('list', { name: '자동 발행 대상' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    expect(screen.queryByLabelText('대상 월')).toBeNull();
+    expect(screen.queryByRole('list', { name: '자동 발행 대상' })).toBeNull();
+    expect(screen.getByText('차량 할부금')).toBeVisible();
+  });
   it('스위치가 켜진 것만 목록에 올린다', () => {
     띄우기({ templates: [템플릿(), 템플릿({ id: 't2', name: '안 켠 것', autoIssue: false })] });
     expect(목록().getByRole('listitem', { name: '차량 할부금' })).toBeVisible();

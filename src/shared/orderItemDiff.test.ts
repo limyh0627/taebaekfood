@@ -61,8 +61,8 @@ describe('주문 품목 수정 차이', () => {
     expect(diffOrderItems([줄()], [줄(), { itemId: '', name: '', quantity: 1, price: 0 } as OrderItem])).toEqual([]);
   });
 
-  it('라벨·제조일·비고는 안 센다 — 줄 자체에 사람이 찍힌다', () => {
-    expect(diffOrderItems([줄()], [줄({ labelType: '부착', mfgDate: '2026-09-11', note: '급함' })])).toEqual([]);
+  it('라벨·제조일은 안 센다 — 줄 자체에 사람이 찍힌다', () => {
+    expect(diffOrderItems([줄()], [줄({ labelType: '부착', mfgDate: '2026-09-11' })])).toEqual([]);
   });
 
   it('한 번에 여럿 바뀌면 여럿 낸다', () => {

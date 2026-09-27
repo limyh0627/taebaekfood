@@ -41,6 +41,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 const { createOrderStockEngine } = await import('./orderStockEngine');
+const { buildBomIndex, setBomIndex } = await import('../../shared/bomIndex');
 
 const 상품 = (): Item =>
   ({ id: 'p1', name: '참기름/180ml', type: 'product', unit: '개', spec: '180ml', stock: 100, submaterials: [] } as unknown as Item);
@@ -53,17 +54,19 @@ const 주문 = (over: Partial<Order> = {}): Order =>
   } as unknown as Order);
 
 /** 엔진 한 벌 — 재고 조정은 부르는지만 세고, 실제 셈은 다른 테스트가 본다 */
-function harness(items: Item[], order: Order) {
+function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => []) {
+  setBomIndex(buildBomIndex(items, []));
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, { ...order });
   const 알림: any[] = [];
   const 상태이력: any[] = [];
   const 주문쓰기: any[] = [];
+  let 생산기록 = 0;
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
-    buildFormula: () => [],
-    createProductionRecordsForOrder: async () => {},
+    buildFormula: formula,
+    createProductionRecordsForOrder: async () => { 생산기록++; },
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') {
         주문쓰기.push(data);
@@ -80,7 +83,7 @@ function harness(items: Item[], order: Order) {
   });
   //  문을 지난 횟수 = 상태를 쓴 횟수. 막힌 호출은 아무것도 안 쓰고 돌아간다.
   const 상태쓴수 = (st: OrderStatus) => 주문쓰기.filter(w => w.status === st).length;
-  return { engine, 알림, 상태이력, 주문쓰기, 조정: () => dbx.조정, 상태쓴수 };
+  return { engine, 알림, 상태이력, 주문쓰기, 조정: () => dbx.조정, 생산기록: () => 생산기록, 상태쓴수 };
 }
 
 beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.조정 = 0; dbx.느린읽기 = false; });
@@ -258,5 +261,50 @@ describe('상태 변경 감사 이력', () => {
     expect(dbx.stock.get('p1')).toBe(110);
     expect(주문쓰기.at(-1)).toMatchObject({ status: OrderStatus.DISPATCHED, shippedOut: false });
     expect(order.producedAt).toBe('2026-09-16T01:00:00.000Z');
+  });
+});
+
+describe('자체 생산 완제품의 원료 근거', () => {
+  it('주문 전체 완료에서 새 생산분의 원료 사용량이 0kg이면 완료하지 않는다', async () => {
+    const product = { ...상품(), stock: 0 };
+    const order = 주문();
+    const { engine, 생산기록 } = harness([product], order);
+
+    await expect(engine.changeOrderStatus('o1', OrderStatus.DISPATCHED)).rejects.toThrow('사용량이 0kg');
+    expect(order.producedAt).toBeUndefined();
+    expect(order.rawConsumedLots).toBeUndefined();
+    expect(생산기록()).toBe(0);
+    expect(dbx.stock.get('p1')).toBe(0);
+  });
+
+  it('품목별 완료에서도 같은 원료 근거가 없으면 완료하지 않는다', async () => {
+    const product = { ...상품(), stock: 0 };
+    const order = 주문({ items: [{ itemId: 'p1', name: product.name, quantity: 10, checked: false } as any] });
+    const { engine, 생산기록 } = harness([product], order);
+    const completed = order.items.map(item => ({ ...item, checked: true }));
+
+    await expect(engine.changeOrderItemCompletion('o1', 0, completed, OrderStatus.DISPATCHED))
+      .rejects.toThrow('사용량이 0kg');
+    expect(order.itemInventory).toBeUndefined();
+    expect(order.rawConsumedLots).toBeUndefined();
+    expect(생산기록()).toBe(0);
+    expect(dbx.stock.get('p1')).toBe(0);
+  });
+
+  it('기존 완제품 재고를 전량 쓰면 원료식이 없어도 완료한다', async () => {
+    const order = 주문();
+    const { engine } = harness([상품()], order);
+
+    await engine.changeOrderStatus('o1', OrderStatus.DISPATCHED);
+    expect(order.producedUnits).toEqual([]);
+  });
+
+  it.each(['완사입', '임가공'])('%s 제품은 원료 사용량이 0kg이어도 생산하지 않고 완료한다', async procureType => {
+    const product = { ...상품(), stock: 10, procureType } as Item;
+    const order = 주문();
+    const { engine } = harness([product], order);
+
+    await engine.changeOrderStatus('o1', OrderStatus.DISPATCHED);
+    expect(order.producedUnits).toEqual([]);
   });
 });

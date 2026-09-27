@@ -22,6 +22,7 @@ describe('풍회 전표 템플릿의 계정 복구', () => {
 
     expect(screen.getByText('계정 없음')).toBeInTheDocument();
     expect(screen.getByText('현재 회사 계정표에 931 없음')).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: '이자 (풍회) 상세보기' }));
     await u.click(screen.getByTitle('이름·묶음·금액·발행 방식 수정'));
     await u.selectOptions(screen.getByLabelText('계정과목'), '951');
     await u.click(screen.getByRole('button', { name: '저장' }));

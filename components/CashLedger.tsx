@@ -12,6 +12,7 @@ import VoucherSlip from '../src/shared/VoucherSlip';
 import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import ModalShell from '../src/shared/components/ModalShell';
+import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 
 interface Props {
   companyId: CompanyId;
@@ -392,15 +393,15 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   const [vat, setVat] = useState('');
   const [incomeTax, setIncomeTax] = useState('');
 
-  const amt = Number(amount.replace(/,/g, '')) || 0;
+  const amt = parseMoneyInput(amount);
   const partner = partners.find(p => p.id === partnerId);
-  const prin = Number(principal.replace(/,/g, '')) || 0;
-  const intr = Number(interest.replace(/,/g, '')) || 0;
-  const grs = Number(gross.replace(/,/g, '')) || 0;
-  const ded = Number(deduction.replace(/,/g, '')) || 0;
+  const prin = parseMoneyInput(principal);
+  const intr = parseMoneyInput(interest);
+  const grs = parseMoneyInput(gross);
+  const ded = parseMoneyInput(deduction);
   const net = grs - ded;
-  const vatAmt = Number(vat.replace(/,/g, '')) || 0;
-  const taxAmt = Number(incomeTax.replace(/,/g, '')) || 0;
+  const vatAmt = parseMoneyInput(vat);
+  const taxAmt = parseMoneyInput(incomeTax);
   const taxTotal = vatAmt + taxAmt;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
@@ -450,8 +451,8 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   // 4대보험 — 회사부담(비용) + 근로자부담(맡아둔 예수금)
   const [insCorpStr, setInsCorpStr] = useState('');
   const [insEmpStr, setInsEmpStr] = useState('');
-  const insCorp = Number((insCorpStr || '').replace(/,/g, '')) || 0;
-  const insEmp = Number((insEmpStr || '').replace(/,/g, '')) || 0;
+  const insCorp = parseMoneyInput(insCorpStr);
+  const insEmp = parseMoneyInput(insEmpStr);
   const insTotal = insCorp + insEmp;
   const INS_CODE = accountCodes.find(c => c.name === '복리후생비' || c.name === '사대보험')?.code ?? STANDARD_ACCOUNT.WELFARE;
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
@@ -606,14 +607,14 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">총급여</label>
-                <input inputMode="numeric" value={gross} placeholder="0"
-                  onChange={e => setGross(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(gross)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setGross)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">공제 <span className="text-slate-300">(원천세·4대보험 근로자분)</span></label>
-                <input inputMode="numeric" value={deduction} placeholder="0"
-                  onChange={e => setDeduction(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(deduction)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setDeduction)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
             </div>
@@ -636,14 +637,14 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">회사부담 <span className="text-slate-300">(비용)</span></label>
-                <input inputMode="numeric" value={insCorpStr} placeholder="0"
-                  onChange={e => setInsCorpStr(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(insCorpStr)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setInsCorpStr)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">근로자부담 <span className="text-slate-300">(예수금)</span></label>
-                <input inputMode="numeric" value={insEmpStr} placeholder="0"
-                  onChange={e => setInsEmpStr(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(insEmpStr)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setInsEmpStr)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
             </div>
@@ -662,14 +663,14 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">부가세 <span className="text-slate-300">(예수금)</span></label>
-                <input inputMode="numeric" value={vat} placeholder="0"
-                  onChange={e => setVat(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(vat)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setVat)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">소득세 <span className="text-slate-300">(인출금)</span></label>
-                <input inputMode="numeric" value={incomeTax} placeholder="0"
-                  onChange={e => setIncomeTax(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(incomeTax)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setIncomeTax)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
             </div>
@@ -695,8 +696,8 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
               <div className="relative">
-                <input inputMode="numeric" value={amount} placeholder="0"
-                  onChange={e => setAmount(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(amount)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setAmount)}
                   className="w-full border border-slate-200 rounded-xl pl-3 pr-9 py-3 text-right text-2xl font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-300 pointer-events-none">원</span>
               </div>
@@ -744,14 +745,14 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">원금</label>
-                <input inputMode="numeric" value={principal} placeholder="0"
-                  onChange={e => setPrincipal(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(principal)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setPrincipal)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">이자</label>
-                <input inputMode="numeric" value={interest} placeholder="0"
-                  onChange={e => setInterest(e.target.value.replace(/[^\d,]/g, ''))}
+                <input inputMode="numeric" value={formatMoneyInput(interest)} placeholder="0"
+                  onChange={e => changeMoneyInput(e.currentTarget, setInterest)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
             </div>
@@ -848,7 +849,7 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
     onAdd({
       id: `cashacct-${Date.now()}`,
       name: name.trim(), type,
-      openingBalance: Number(openingBalance.replace(/,/g, '')) || 0,
+      openingBalance: parseMoneyInput(openingBalance),
       openingDate, active: true,
       createdAt: new Date().toISOString(),
     });
@@ -889,8 +890,8 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
               {(['통장', '카드', '현금'] as const).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-            <input inputMode="numeric" value={openingBalance} placeholder="기초 잔액"
-              onChange={e => setOpeningBalance(e.target.value.replace(/[^\d,]/g, ''))}
+            <input inputMode="numeric" value={formatMoneyInput(openingBalance)} placeholder="기초 잔액"
+              onChange={e => changeMoneyInput(e.currentTarget, setOpeningBalance)}
               className="border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
             <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)}
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />

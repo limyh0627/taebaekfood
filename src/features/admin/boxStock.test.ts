@@ -271,8 +271,9 @@ describe('되돌리기는 실제 생산분만 되돌린다', () => {
 describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
   it('첫 줄만 완료하면 그 줄 구성품만 빠지고, 체크를 풀면 그 줄 스냅샷만 원복한다', async () => {
     const bottle = mk({ id: 'bottle', name: '180ml 병', type: 'submaterial', stock: 100 });
+    const ready = mk({ id: 'ready', name: '이미 생산된 참기름', type: 'product', stock: 30 });
     const product = mk({ id: 'oil', name: '참기름 180ml', type: 'product', stock: 0 });
-    const items = [bottle, product];
+    const items = [bottle, ready, product];
     const order = {
       id: 'line-order', partnerName: '품목별 거래처', status: OrderStatus.PENDING,
       items: [
@@ -281,12 +282,13 @@ describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
       ],
     } as unknown as Order;
     const { engine, stockOf, savedOrder } = harness(items, order);
-    setBomIndex(buildBomIndex(items, [bom('oil', 'bottle', 1)]));
+    setBomIndex(buildBomIndex(items, [bom('oil', 'bottle', 1), bom('oil', 'ready', 1)]));
 
     const firstDone = order.items.map((item, index) => index === 0 ? { ...item, checked: true } : item);
     await engine.changeOrderItemCompletion(order.id, 0, firstDone, OrderStatus.PROCESSING);
 
     expect(stockOf('bottle')).toBe(90);
+    expect(stockOf('ready')).toBe(20);
     expect(stockOf('oil')).toBe(10);
     expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: true, itemId: 'oil' });
     expect(savedOrder().itemInventory?.['line-b']).toBeUndefined();
@@ -296,6 +298,7 @@ describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
     await engine.changeOrderItemCompletion(order.id, 0, firstUndone, OrderStatus.PENDING);
 
     expect(stockOf('bottle')).toBe(100);
+    expect(stockOf('ready')).toBe(30);
     expect(stockOf('oil')).toBe(0);
     expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: false, attempt: 1 });
     expect(savedOrder().producedAt).toBe('');

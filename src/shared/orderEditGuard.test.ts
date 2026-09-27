@@ -69,9 +69,9 @@ describe('blockedEditLine — 어느 줄이 걸리나', () => {
     expect(blockedEditLine(o as never, 새것)).toBe('참기름/골드');
   });
 
-  it('**비고는 생산된 줄이라도 달 수 있다** — 재고와 아무 상관이 없다', () => {
+  it('생산된 줄의 표시 규격은 고칠 수 있다', () => {
     const o = 그주문();
-    const 새것 = [줄({ note: '급한 건', noteBy: '남명숙' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
+    const 새것 = [줄({ displaySize: '1kg' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
     expect(blockedEditLine(o as never, 새것)).toBeNull();
   });
 
@@ -81,12 +81,9 @@ describe('blockedEditLine — 어느 줄이 걸리나', () => {
     expect(blockedEditLine(o as never, 새것)).toBeNull();
   });
 
-  /*  2026-09-15: 비고에 '중요' 표시를 만들면서 이 칸을 `재고와무관한칸` 에 안 적었더니,
-      생산된 줄에 중요만 체크해도 "이미 생산처리돼서 수량·구성을 고칠 수 없습니다" 가 떴다.
-      가드는 설계대로(모르는 칸은 막는 쪽) 동작한 것이라, 새 칸은 반드시 여기서 잠가 둔다. */
-  it('비고의 **중요 표시**도 생산된 줄에서 켤 수 있다', () => {
+  it('포장 표시도 생산된 줄에서 바꿀 수 있다', () => {
     const o = 그주문();
-    const 새것 = [줄({ note: '급한 건', noteImportant: true }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
+    const 새것 = [줄({ boxType: '2번박스' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })];
     expect(blockedEditLine(o as never, 새것)).toBeNull();
   });
 
@@ -188,7 +185,7 @@ describe('손질 갈래 가리기', () => {
     const o = 그주문();
     expect(classifyOrderEdit(o as never, [줄({ quantity: 99 }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]))
       .toEqual({ kind: 'blocked', line: '참기름/골드' });
-    expect(classifyOrderEdit(o as never, [줄({ note: '급함' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]))
+    expect(classifyOrderEdit(o as never, [줄({ labelType: '부착' }), 줄({ lineId: 'L2', itemId: 'p-2', name: '들기름' })]))
       .toEqual({ kind: 'ok' });
   });
 

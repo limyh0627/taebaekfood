@@ -228,7 +228,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       const partner = partners.find(candidate => candidate.id === order.partnerId);
       return [
         order.id, order.partnerName, partner?.name, partner?.address, partner?.addressDetail,
-        order.source, order.deliveryDate, order.note, ...order.items.flatMap(item => [item.name, item.note]),
+        order.source, order.deliveryDate, order.note, ...order.items.map(item => item.name),
       ].filter(Boolean).some(value => String(value).toLocaleLowerCase('ko-KR').includes(normalized));
     });
   }, [sourceOrders, partners, queryDateFrom, queryDateTo, queryText]);

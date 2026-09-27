@@ -82,6 +82,7 @@ export interface CashTemplate {
   itemName?: string;
   /** 상환 — 원금을 깎을 차입금 계정 */
   loanCode?: string;
+  loanId?: string;
   /** 세금 — 부가세 / 소득세 */
   vat?: number;       incomeTax?: number;
   /**
@@ -262,6 +263,7 @@ export function filterTemplates(
       principal: t.principal, interest: t.interest,
       gross: t.gross,         deduction: t.deduction,
       loanCode: t.loanCode,
+      loanId: t.loanId,
       transferLines: t.transferLines,
       unavailableCodes: missingTemplateAccountCodes(t, have),
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
@@ -347,26 +349,32 @@ export function CashTemplateModal({
   onClose: () => void;
 }) {
   const [q, setQ] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('');
+  const groupNames = [...new Set(templates.map(t => t.group?.trim() || '분류없음'))].sort();
   const [tab, setTab] = useState<'all' | 'fav' | VoucherDir>('all');
   const nameOfCode = (code?: string) => accountCodes.find(c => c.code === code)?.name ?? '';
   const shown = useMemo(() => {
     const s = q.trim();
     return templates
+      .filter(t => !selectedGroup || (t.group?.trim() || '분류없음') === selectedGroup)
       .filter(t => tab === 'all' ? true : tab === 'fav' ? t.favorite : t.dir === tab)
       .filter(t => !s || t.label.includes(s) || (t.partnerName ?? '').includes(s)
         || (t.accountCode ?? '').includes(s) || nameOfCode(t.accountCode).includes(s));
-  }, [templates, q, tab, accountCodes]);
+  }, [templates, q, tab, accountCodes, selectedGroup]);
   return (
     <ModalShell title={`템플릿 ${shown.length === templates.length ? templates.length : `${shown.length}/${templates.length}`}`} onClose={onClose}
       className="h-[80dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
         {/* 방향(출금·입금·발생)은 고른 템플릿이 정한다 — 여기서 먼저 고르게 하면
             템플릿 화면과 목록이 달라 보이고, 방향을 잘못 잡으면 찾던 게 안 뜬다. */}
         <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2.5 md:px-5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <select aria-label="템플릿 그룹" value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)} className="max-w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs">
+              <option value="">전체 그룹</option>{groupNames.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
             <input type="text" autoFocus placeholder="이름·거래처·계정 검색" value={q} onChange={e => setQ(e.target.value)}
               className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             {(['all', 'fav', ...VOUCHER_DIRS] as const).map(v => (
               <button key={v} type="button" onClick={() => setTab(v)}
                 title={v === 'all' || v === 'fav' ? undefined : DIR_HINT[v]}

@@ -49,6 +49,8 @@ export const isCashDir = (d: string) => d === '입금' || d === '출금';
  */
 export function canAutoIssue(t: FixedCostTemplate, ym: string): boolean {
   if (!t.autoIssue || !t.accountCode) return false;
+  // 서버 예약 발행이 계약 연결을 보존하지 못하므로 수동 발행만 허용한다.
+  if (t.mode === '상환' && t.loanId) return false;
   // 회사 간 이체는 두 장부에 동시에 서야 해서 자동 발행 대상이 아니다(손으로 끊는다)
   if (dirOf(t) === '회사이체') return false;
   if (!(t.amount > 0)) return false;
@@ -75,7 +77,7 @@ export function buildCashVoucher(
   /*
    * **상환은 한 번 나가지만 두 줄이다.** 원금은 부채가 주는 것(재무상태표),
    * 이자는 비용(손익). 한 계정으로 뭉치면 원금까지 비용으로 잡혀 이익이 깎인다.
-   *   차할부금 470,280 = 원금 440,000(253 미지급금) + 이자 30,280(951)
+   *   상환 470,280 = 원금 440,000(계약의 원금 계정) + 이자 30,280(951)
    * 일반전표 화면의 상환 입력(loanEntry)과 같은 모양으로 낸다.
    *
    * 급여·보험도 줄이 갈리지만 예수금 쪽 부호가 달라 여기서 안 만든다 —

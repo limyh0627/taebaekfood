@@ -40,3 +40,9 @@ export function loanMovements(loan: LoanContract, entries: CashEntry[]): LoanMov
 export function loanBalance(loan: LoanContract, entries: CashEntry[]): number {
   return loanMovements(loan, entries).reduce((sum, row) => sum + row.principalDelta, loan.openingPrincipal);
 }
+
+/** 거래처 이름만으로 계약을 추정하지 않고 회사·원금 계정을 함께 확인한다. */
+export function matchingLoan(loans: LoanContract[], companyId: CompanyId, loanId: string, accountCode: string): LoanContract | undefined {
+  return loans.find(loan => loan.id === loanId && loan.companyId === companyId && loan.accountCode === accountCode);
+}
+export const LINKED_LOAN_AUTO_NOTICE = '대출 계약에 연결된 상환 템플릿은 수동 발행만 가능합니다. 자동 발행을 꺼 주세요.';

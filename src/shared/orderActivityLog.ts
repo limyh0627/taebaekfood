@@ -16,7 +16,7 @@ import type { Order, OrderItem, OrderItemEdit, OrderStatusAudit } from './types'
  * | 품목별 작업완료 체크 | `items[].checkedBy` · `checkedAt` |
  * | 라벨 · 제조일 | `items[].labelBy/labelAt` · `mfgBy/mfgAt` |
  * | 품목 수량·추가·삭제·단가 | `orderItemEdits` 한 번 저장에 한 줄 |
- * | 비고 | `items[].noteBy` · `noteAt` |
+ * | 주문 비고 | `order.noteBy` · `noteAt` |
  * | 출고 확인 | `shipmentConfirmedBy` · `shipmentConfirmedAt` |
  *
  * 순수 함수다 — 읽어 오는 일은 부르는 쪽이 한다.
@@ -115,9 +115,6 @@ export function buildOrderActivityLog(
     }
     if (line.mfgAt || line.mfgBy) {
       rows.push({ at: line.mfgAt, who: 사람(line.mfgBy, nameOf), what: `제조일 ${line.mfgDate ?? '지움'} — ${줄이름(line)}`, kind: 'label' });
-    }
-    if (line.noteAt || line.noteBy) {
-      rows.push({ at: line.noteAt, who: 사람(line.noteBy, nameOf), what: `비고 — ${줄이름(line)}`, detail: line.note, kind: 'note' });
     }
   }
 

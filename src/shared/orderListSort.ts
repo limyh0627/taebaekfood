@@ -43,7 +43,7 @@ export const 작업도 = (order: Pick<Order, 'items'>) => order.items.length ===
 
 /** 비고를 하나라도 단 주문인가. */
 const 비고있나 = (order: Pick<Order, 'items' | 'note'>) =>
-  !!order.note?.trim() || order.items.some(item => (item.note ?? '').trim().length > 0);
+  !!order.note?.trim();
 
 const 때 = (value?: string) => {
   const t = new Date(value ?? '').getTime();

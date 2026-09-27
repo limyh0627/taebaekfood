@@ -11,6 +11,7 @@ import { loanBalance, loanMovements, type LoanContract } from '../src/shared/loa
 import { addItem, fetchWhere } from '../src/shared/services/firebaseService';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import ModalShell from '../src/shared/components/ModalShell';
+import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 
 interface Props {
   companyId: CompanyId;
@@ -44,6 +45,18 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   const [principal, setPrincipal] = useState('');
   const [interest, setInterest] = useState('0');
   const [note, setNote] = useState('');
+  const [amountErrors, setAmountErrors] = useState<Record<string, string>>({});
+  useEffect(() => { setAmountErrors({}); }, [showNew, action]);
+  const changeLoanAmount = (input: HTMLInputElement, key: string, previous: string, setValue: (value: string) => void) => {
+    // 부호·소수점을 지워 다른 금액으로 만들지 않고 입력 전체를 거절한다.
+    if (!/^[0-9,]*$/.test(input.value)) {
+      input.value = formatMoneyInput(previous);
+      setAmountErrors(current => ({ ...current, [key]: '금액은 0원 이상의 정수만 입력하세요. 소수와 음수는 사용할 수 없습니다.' }));
+      return;
+    }
+    setAmountErrors(current => ({ ...current, [key]: '' }));
+    changeMoneyInput(input, setValue);
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -61,7 +74,8 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
 
   const createLoan = async (event: React.FormEvent) => {
     event.preventDefault();
-    const amount = Number(openingPrincipal);
+    if (amountErrors.opening) return;
+    const amount = parseMoneyInput(openingPrincipal);
     if (!name.trim() || !lenderName.trim() || !openingDate || !Number.isFinite(amount) || amount < 0) {
       await appNotice('대출명·금융기관·시작일·0원 이상의 시작 원금을 입력하세요.'); return;
     }
@@ -82,7 +96,8 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   const saveMovement = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selected || !action) return;
-    const p = Number(principal), i = action === '상환' ? Number(interest) : 0;
+    if (amountErrors.principal || (action === '상환' && amountErrors.interest)) return;
+    const p = parseMoneyInput(principal), i = action === '상환' ? parseMoneyInput(interest) : 0;
     if (!date || date < selected.openingDate || !cashAccountId || !Number.isFinite(p) || p < 0 || !Number.isFinite(i) || i < 0 || p + i <= 0) {
       await appNotice('시작일 이후 날짜·통장·0원 이상의 원금을 확인하세요.'); return;
     }
@@ -135,7 +150,7 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
         <div><label className={label}>금융기관</label><input className={field} value={lenderName} onChange={e => { setLenderName(e.target.value); setPartnerId(''); }} placeholder="은행명" required/></div>
         <div><label className={label}>등록된 금융기관 연결 (선택)</label><select className={field} value={partnerId} onChange={e => { setPartnerId(e.target.value); const p = partners.find(row => row.id === e.target.value); if (p) setLenderName(p.name); }}><option value="">선택 안 함</option>{partners.filter(p => companyOf(p) === companyId && isFinancial(p)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
         <div className="grid gap-3 sm:grid-cols-2"><div><label className={label}>계정</label><select className={field} value={accountCode} onChange={e => setAccountCode(e.target.value as '260' | '293')}><option value="260">260 단기차입금</option><option value="293">293 장기차입금</option></select></div><div><label className={label}>만기일 (선택)</label><input type="date" className={field} value={maturityDate} onChange={e => setMaturityDate(e.target.value)}/></div></div>
-        <div className="grid gap-3 sm:grid-cols-2"><div><label className={label}>잔액 기준일</label><input type="date" className={field} value={openingDate} onChange={e => setOpeningDate(e.target.value)} required/></div><div><label className={label}>그날 시작 원금</label><input type="number" min="0" step="1" className={field} value={openingPrincipal} onChange={e => setOpeningPrincipal(e.target.value)} required/></div></div>
+        <div className="grid gap-3 sm:grid-cols-2"><div><label className={label}>잔액 기준일</label><input type="date" className={field} value={openingDate} onChange={e => setOpeningDate(e.target.value)} required/></div><div><label className={label}>그날 시작 원금</label><input type="text" inputMode="numeric" className={field} value={formatMoneyInput(openingPrincipal)} onChange={e => changeLoanAmount(e.currentTarget, 'opening', openingPrincipal, setOpeningPrincipal)} aria-invalid={!!amountErrors.opening} required/>{amountErrors.opening && <p role="alert" className="mt-1 text-xs text-rose-600">{amountErrors.opening}</p>}</div></div>
         <button disabled={busy} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-50">등록</button>
       </form>
     </ModalShell>}
@@ -148,8 +163,8 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
     {selected && action && <ModalShell title={`${selected.name} ${action}`} subtitle="이 화면에서 발행한 전표는 해당 대출에 자동 연결됩니다" onClose={() => setAction(null)} layer={1100}>
       <form onSubmit={e => void saveMovement(e)} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2"><div><label className={label}>거래일</label><input type="date" className={field} value={date} onChange={e => setDate(e.target.value)} required/></div><div><label className={label}>통장</label><select className={field} value={cashAccountId} onChange={e => setCashAccountId(e.target.value)} required><option value="">선택</option>{availableAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div></div>
-        <div><label className={label}>원금 {action === '상환' ? '상환액' : '차입액'}</label><input type="number" min="0" step="1" className={field} value={principal} onChange={e => setPrincipal(e.target.value)} required/></div>
-        {action === '상환' && <div><label className={label}>이자 비용</label><input type="number" min="0" step="1" className={field} value={interest} onChange={e => setInterest(e.target.value)}/></div>}
+        <div><label className={label}>원금 {action === '상환' ? '상환액' : '차입액'}</label><input type="text" inputMode="numeric" className={field} value={formatMoneyInput(principal)} onChange={e => changeLoanAmount(e.currentTarget, 'principal', principal, setPrincipal)} aria-invalid={!!amountErrors.principal} required/>{amountErrors.principal && <p role="alert" className="mt-1 text-xs text-rose-600">{amountErrors.principal}</p>}</div>
+        {action === '상환' && <div><label className={label}>이자 비용</label><input type="text" inputMode="numeric" className={field} value={formatMoneyInput(interest)} onChange={e => changeLoanAmount(e.currentTarget, 'interest', interest, setInterest)} aria-invalid={!!amountErrors.interest}/>{amountErrors.interest && <p role="alert" className="mt-1 text-xs text-rose-600">{amountErrors.interest}</p>}</div>}
         <div><label className={label}>적요</label><input className={field} value={note} onChange={e => setNote(e.target.value)} placeholder="선택 입력"/></div>
         <button disabled={busy} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-50">{action} 전표 발행</button>
       </form>

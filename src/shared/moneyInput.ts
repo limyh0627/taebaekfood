@@ -14,3 +14,22 @@ export function parseMoneyInput(value: string | number | null | undefined): numb
   const digits = String(value ?? '').replace(/[^0-9]/g, '');
   return digits ? Number(digits) : 0;
 }
+
+/** 쉼표를 다시 그려도 중간 자리에서 숫자를 고치는 커서가 끝으로 튀지 않게 한다. */
+export function changeMoneyInput(input: HTMLInputElement, setValue: (digits: string) => void): void {
+  const value = input.value;
+  const before = value.slice(0, input.selectionStart ?? value.length).replace(/\D/g, '').length;
+  const digits = value.replace(/\D/g, '');
+  setValue(digits);
+  queueMicrotask(() => {
+    if (document.activeElement !== input) return;
+    const formatted = formatMoneyInput(digits);
+    let position = 0;
+    let seen = 0;
+    while (position < formatted.length && seen < before) {
+      if (/\d/.test(formatted[position])) seen++;
+      position++;
+    }
+    input.setSelectionRange(position, position);
+  });
+}

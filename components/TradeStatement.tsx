@@ -2295,6 +2295,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ── 정기 고정비 생성 모달 ── */}
       {showRecurring && (
         <RecurringModal
+          companyId={companyId}
           templates={fixedCostTemplates}
           accountCodes={accountCodes}
           partners={partners}

@@ -39,23 +39,13 @@ export interface OrderItem {
   checked?: boolean;
   checkedBy?: string;    // 체크한 사람 이름
   checkedAt?: string;    // 작업 완료 확인 시각
-  note?: string;         // 품목별 작업 메모 — 50자까지(`shared/orderNote`)
-  noteBy?: string;       // 메모 작성자
-  noteAt?: string;       // 메모 작성 시각
-  /**
-   * **중요 표시된 비고** — 카드·리스트에 빨간 느낌표가 붙는다
-   * (2026-09-15 사장님: "ㅁ중요 이런식으로 체크박스 만들어서 중요하다고 체크된 비고는
-   * 빨간 느낌표 달아"). 비고는 다섯 글자만 보이고 잘리므로, 급한 것과 그냥 적어 둔 것을
-   * **글을 읽지 않고도** 가를 수 있어야 한다.
-   */
-  noteImportant?: boolean;
   mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
   mfgBy?: string;        // 제조일을 바꾼 사람
   mfgAt?: string;        // 바꾼 시각
   labelType?: '대기' | '날인' | '부착';
   /**
    * 라벨 상태를 **누가 언제** 바꿨나(2026-09-14 사장님: "라벨이나 작업완료 등의 상태변경
-   * 누가하고 언제 했는지 볼 수 있게"). 체크(`checkedBy`)·비고(`noteBy`)에는 이미 있었는데
+   * 누가하고 언제 했는지 볼 수 있게"). 체크(`checkedBy`)에는 이미 있었는데
    * 라벨·제조일에만 없어서, 바뀐 것은 보이는데 누가 바꿨는지는 볼 길이 없었다.
    * 찍는 곳은 **한 군데** — 주문 품목 저장 문(`AdminApp.handleUpdateItems`)이 이전 값과 비교해 찍는다.
    */
@@ -1027,6 +1017,8 @@ export interface FixedCostTemplate {
   gross?: number;     deduction?: number;
   /** 상환 — 원금을 깎을 차입금 계정. 대출이 여러 건이면 매번 고르다 틀린다. */
   loanCode?: string;
+  /** 수동 상환 전표에 귀속할 동일 회사·원금 계정 계약. */
+  loanId?: string;
   /** 세금 — 부가세 / 소득세. 한 번에 내도 성격이 달라 갈라 적는다. */
   vat?: number;       incomeTax?: number;
   /** 기본 템플릿 표식(cashTemplates의 id). 있으면 삭제 못 하고 숨기기만 된다. */

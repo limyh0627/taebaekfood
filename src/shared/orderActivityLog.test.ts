@@ -56,18 +56,18 @@ describe('주문 로그', () => {
     expect(실패.detail).toBe('실패 — 재고 부족');
   });
 
-  it('품목 작업완료·라벨·제조일·비고가 각각 한 줄씩 선다', () => {
+  it('품목 작업완료·라벨·제조일과 주문 비고가 각각 한 줄씩 선다', () => {
     const rows = buildOrderActivityLog(주문({
       items: [{
         lineId: 'L1', itemId: 'p1', name: '볶음참깨/1kg', quantity: 5, price: 0,
         checked: true, checkedBy: '박주임', checkedAt: '2026-09-12T01:00:00.000Z',
         labelType: '부착', labelBy: '이실장', labelAt: '2026-09-12T02:00:00.000Z',
         mfgDate: '2026-09-11', mfgBy: '이실장', mfgAt: '2026-09-12T02:30:00.000Z',
-        note: '급함', noteBy: '사장', noteAt: '2026-09-12T03:00:00.000Z',
       } as OrderItem],
+      note: '급함', noteBy: '사장', noteAt: '2026-09-12T03:00:00.000Z',
     }), []);
     expect(rows.map(r => r.what)).toEqual([
-      '비고 — 볶음참깨/1kg',
+      '주문 비고',
       '제조일 2026-09-11 — 볶음참깨/1kg',
       '라벨 부착 — 볶음참깨/1kg',
       '작업완료 — 볶음참깨/1kg',

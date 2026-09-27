@@ -65,7 +65,7 @@ import SearchableSelect from '../src/shared/components/SearchableSelect';
 import { subscribeDeliveryOrdering, saveDeliveryTimeSlot, DeliveryTimeSlot } from '../src/shared/deliveryTimeSlot';
 import { subscribeToDocument, setDocument, fetchWhere } from '../src/shared/services/firebaseService';
 import { buildOrderActivityLog } from '../src/shared/orderActivityLog';
-import { clampNote, noteChip, NOTE_MAX } from '../src/shared/orderNote';
+import { clampNote, orderNotesForDisplay, noteEditLimit } from '../src/shared/orderNote';
 import { shipDeductions } from '../src/shared/shipDeduction';
 import { sortOrdersByHead, nextHeadSort, headSortTitle, type OrderListHeadSort, type OrderListSortKey } from '../src/shared/orderListSort';
 import { listFilterChips } from '../src/shared/orderListFilterChips';
@@ -329,7 +329,6 @@ interface OrderCardProps {
   /** 주문관리의 모든 보기에서 동일한 거래처 주문 수정 모달을 연다. */
   onEditOrder?: (orderId: string) => void;
   /** 보드 카드 헤더에서 품목 메모를 바로 연다. */
-  onOpenMemo?: (orderId: string, itemIndex: number) => void;
   /** 작업완료 카드에서 출고를 요청한다 — 확인창은 받는 쪽이 띄운다. */
   onRequestShip?: (orderId: string) => void;
 }
@@ -364,7 +363,6 @@ interface OrderSourceGroupProps {
   highlightOrderId?: string | null;
   onCardClick?: (orderId: string) => void;
   onEditOrder?: (orderId: string) => void;
-  onOpenMemo?: (orderId: string, itemIndex: number) => void;
   tintedHeader?: boolean;
 }
 
@@ -401,7 +399,7 @@ const byDeliveryThenId = (a: Order, b: Order) =>
  *
  * `OrderCardProps` 는 **새것을 그대로 둔다** — 호출부가 넘기는 `tintedHeader` 같은 새 props 를
  * 이 본문은 안 쓰고 흘려보낸다. 인터페이스까지 되돌리면 그걸 넘기는 자리가 전부 타입 오류가 난다.
- * (`onEditOrder`·`onOpenMemo` 는 그 뒤에 실제로 쓰기 시작했다.)
+ * (`onEditOrder` 는 그 뒤에 실제로 쓰기 시작했다.)
  */
 export const OrderCard = memo<OrderCardProps>(({
   order, partners, items, partnerItems,
@@ -412,8 +410,6 @@ export const OrderCard = memo<OrderCardProps>(({
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [], readOnly = false,
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
-  //  비고가 달린 줄의 단추를 누르면 이걸 부른다(2026-09-14).
-  onOpenMemo,
   //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
   onRequestShip,
 }) => {
@@ -903,33 +899,6 @@ export const OrderCard = memo<OrderCardProps>(({
                         <span className="min-w-0 truncate tabular-nums">{item.mfgDate ? fmtYYMMDD(expiryFromMfgDate(item.mfgDate)) : '-'}</span>
                       </span>
                     </div>
-                    {/*  **비고는 달린 줄에만 뜬다**(2026-09-14 사장님: "주문카드에 비고 있는 경우에만
-                         비고 버튼 생기게 해놔 소비기한 우측으로"). 카드에는 비고가 아예 안 보이고
-                         있었다 — 리스트에서만 보여서, 카드로 일하는 사람은 적어 둔 말을 못 봤다.
-                         빈 줄에까지 '메모 추가' 를 달면 줄마다 단추가 하나씩 더 붙어 카드가 길어진다.
-                         새로 다는 것은 리스트의 '메모 추가' 자리에서 한다. */}
-                    {(item.note ?? '').trim() && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onOpenMemo?.(order.id, idx); }}
-                        onPointerDown={누르는동안끌기끄기}
-                        disabled={readOnly || !onOpenMemo}
-                        title={item.note}
-                        aria-label={`${item.name} 비고`}
-                        /*  **바탕과 테두리는 회색**(2026-09-15 사장님) — 노란 딱지는 라벨·소비기한
-                            옆에서 저 혼자 튀어, 급한 비고와 그냥 적어 둔 비고가 구별되지 않았다.
-                            급한 것은 **빨간 느낌표**가 알린다. */
-                        className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-black text-slate-600 transition-colors enabled:hover:bg-slate-100 disabled:cursor-default"
-                      >
-                        {item.noteImportant
-                          ? <AlertCircle size={11} className="shrink-0 text-rose-500" aria-hidden="true" />
-                          : <NotepadText size={11} className="shrink-0" aria-hidden="true" />}
-                        {/*  **다섯 글자만 보이고 뒤는 `…`**(사장님: "5글자 이후...으로 떠서 줄 안
-                             바뀌게"). 라벨·소비기한과 한 줄에 서는 자리라, 긴 비고가 그대로 들어오면
-                             줄이 접히면서 카드가 통째로 길어졌다. 전문은 마우스를 올리면 나온다. */}
-                        <span>{noteChip(item.note)}</span>
-                      </button>
-                    )}
                     {item.checked && item.checkedBy && (
                       <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
                     )}
@@ -938,11 +907,15 @@ export const OrderCard = memo<OrderCardProps>(({
                 </div>
               );
             })}
-            {(order.note ?? '').trim() && (
-              <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold text-slate-600" title={order.note}>
-                {order.noteImportant && <AlertCircle size={12} className="shrink-0 text-rose-500" aria-hidden="true" />}
-                <NotepadText size={12} className="shrink-0" aria-hidden="true" />
-                <span className="truncate">{order.note}</span>
+            {orderNotesForDisplay(order).length > 0 && (
+              <div className="space-y-0.5 px-2 py-1 text-[11px] font-bold text-slate-600">
+                {orderNotesForDisplay(order).map((note, index) => (
+                  <div key={index} className="flex items-center gap-1.5" title={note.text}>
+                    {note.important && <AlertCircle size={12} className="shrink-0 text-rose-500" aria-hidden="true" />}
+                    {index === 0 && <NotepadText size={12} className="shrink-0" aria-hidden="true" />}
+                    <span className="truncate">{note.text}</span>
+                  </div>
+                ))}
               </div>
             )}
             {/* 향미유·고춧가루: 카테고리별 구분 표시 */}
@@ -1642,14 +1615,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [listSort, setListSort] = useState<'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh'>('delivery');
   const [listStatusTab, setListStatusTab] = useState<'all' | OrderStatus>('all');
   const [listPage, setListPage] = useState(1);
+  const [mobileFullTable, setMobileFullTable] = useState(false);
   //  거래처 거르개 — 검색필드와 따로 논다(2026-09-11 사장님).
   const [listPartnerFilter, setListPartnerFilter] = useState('');
   const [listFilterField, setListFilterField] = useState<'source' | 'shipMethod' | 'invoicePrinted' | 'partner' | 'completion' | 'item' | 'quantity' | 'manufacturing' | 'label' | 'packaging' | 'pallet' | 'orderDate' | 'deliveryDate' | ''>('');
   const [listFilterValue, setListFilterValue] = useState('');
-  const [listMemoEditor, setListMemoEditor] = useState<{ orderId: string; itemIndex: number } | null>(null);
-  const [listMemoDraft, setListMemoDraft] = useState('');
-  //  메모창의 '중요' 체크 — 창을 열 때 그 줄의 값으로 채우고, 닫을 때 끈다.
-  const [listMemoImportant, setListMemoImportant] = useState(false);
   const [listOrderEditor, setListOrderEditor] = useState<{ orderId: string; deliveryDate: string; items: OrderItem[]; note: string; noteImportant: boolean } | null>(null);
   /*  **주문 로그**(2026-09-14 사장님: "상단 헤더에 로그보기 버튼을 넣어서 주문 넣은 사람 일시
       라벨이나 작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게 해봐").
@@ -1840,15 +1810,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
       note: order.note || '',
       noteImportant: !!order.noteImportant,
     });
-  };
-
-  const openMemoEditor = (orderId: string, itemIndex: number) => {
-    const order = orders.find(candidate => candidate.id === orderId);
-    const item = order?.items[itemIndex];
-    if (!order || !item || embeddedListOnly) return;
-    setListMemoEditor({ orderId, itemIndex });
-    setListMemoDraft(item.note || '');
-    setListMemoImportant(!!item.noteImportant);
   };
 
   useEffect(() => {
@@ -2256,7 +2217,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
     onToggleItemChecked: followItemToggle, onDeleteOrder, currentUserName,
     highlightOrderId,
     onEditOrder: embeddedListOnly ? undefined : openOrderEditor,
-    onOpenMemo: embeddedListOnly ? undefined : openMemoEditor,
     onRequestShip: embeddedListOnly ? undefined : requestShip,
     isListView: activeView === 'list',
     tintedHeader: activeView === 'kanban' && !embeddedListOnly,
@@ -3022,7 +2982,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             const quantity = item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${product?.unit || '개'}`;
             return [
               item.name, quantity, item.checked ? '완료' : '미완료', item.checkedBy, item.checkedAt,
-              item.labelType && item.labelType !== '대기' ? item.labelType : '-', item.mfgDate, item.note, item.noteBy, item.noteAt,
+              item.labelType && item.labelType !== '대기' ? item.labelType : '-', item.mfgDate,
               ...detail.manufacturing, ...detail.labels, ...detail.packaging,
             ].filter(Boolean).some(value => String(value).toLocaleLowerCase('ko-KR').includes(normalizedListSearch));
           };
@@ -3235,7 +3195,43 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     </button>
                   )}
                 </div>
-              <div className="order-list-responsive w-full max-w-full rounded-lg border border-slate-200 bg-white shadow-sm">
+              <div className="space-y-2 md:hidden" aria-label="모바일 주문 리스트">
+                <button type="button" onClick={() => setMobileFullTable(value => !value)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600"
+                  aria-expanded={mobileFullTable}>
+                  {mobileFullTable ? '간단 목록 보기' : '전체 표·작업 보기'}
+                </button>
+                {!mobileFullTable && paginatedListOrders.map(order => {
+                  const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '이름 없음';
+                  const visibleItems = order.items.filter(item => !normalizedListSearch || matchesOrderHeaderSearch(order) || matchesItemSearch(order, item));
+                  return <article key={order.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-black text-slate-800">{cardNoLabel(order) || order.id}</span>
+                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
+                        </div>
+                        <div className="mt-1 text-sm font-black text-slate-800">{partnerName}</div>
+                      </div>
+                      {!embeddedListOnly && <button type="button" onClick={() => openOrderEditor(order.id)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" aria-label={`${partnerName} 주문 수정`}>수정</button>}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                      <span>주문 {fmtYYMMDD(new Date(order.createdAt))}</span>
+                      <span>출고예정 {fmtYYMMDD(new Date(order.deliveryDate))}</span>
+                    </div>
+                    <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                      {visibleItems.map((item, index) => <div key={`${item.itemId}-${index}`} className="flex justify-between gap-2 text-xs"><span className="min-w-0 font-bold text-slate-700">{item.name}</span><span className="shrink-0 font-black text-indigo-600">{item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`}</span></div>)}
+                    </div>
+                    <div className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-600">
+                      <span className="font-black text-slate-500">주문 비고 </span>
+                      <span className="whitespace-pre-line break-words">{order.note?.trim() || '없음'}</span>
+                      {order.noteImportant && order.note && <AlertCircle size={12} className="ml-1 inline text-rose-500" aria-label="중요" />}
+                    </div>
+                  </article>;
+                })}
+                {!mobileFullTable && listOrders.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">주문이 없습니다</p>}
+              </div>
+              <div className={`order-list-responsive w-full max-w-full rounded-lg border border-slate-200 bg-white shadow-sm ${mobileFullTable ? '' : 'hidden md:block'}`}>
                 <div
                   ref={listTopScrollRef}
                   onScroll={event => { if (listBodyScrollRef.current && listBodyScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) listBodyScrollRef.current.scrollLeft = event.currentTarget.scrollLeft; }}
@@ -3578,28 +3574,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           </>
                           )}
                         </div>
-                        <div role="cell" className="border-r border-slate-300">
-                          <div className="divide-y divide-slate-300" style={줄자리}>
-                            {visibleItemEntries.map(({ item, originalIndex }) => (
-                              <button
-                                key={originalIndex}
-                                type="button"
-                                onClick={() => {
-                                  if (originalIndex === visibleItemEntries[0]?.originalIndex) openOrderEditor(order.id);
-                                  else if (item.note) openMemoEditor(order.id, originalIndex);
-                                  else openOrderEditor(order.id);
-                                }}
-                                className={`flex h-10 w-full min-w-0 items-center px-2 text-left text-[10px] font-bold transition-colors hover:bg-slate-100 ${item.checked ? 'bg-slate-50/70 text-slate-400' : 'text-slate-600'}`}
-                              >
-                                {(originalIndex === visibleItemEntries[0]?.originalIndex && order.noteImportant && order.note || item.noteImportant && item.note)
-                                  && <AlertCircle size={11} className="mr-1 shrink-0 text-rose-500" aria-hidden="true" />}
-                                <span className={order.note || item.note ? 'block min-w-0 truncate' : 'inline-flex rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-slate-500'}
-                                  title={originalIndex === visibleItemEntries[0]?.originalIndex ? order.note || item.note || '주문 비고 추가' : item.note || '주문 비고 추가'}>
-                                  {originalIndex === visibleItemEntries[0]?.originalIndex ? order.note || item.note || '비고 추가' : item.note || ''}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
+                        <div role="cell" className="flex min-w-0 flex-col justify-center border-r border-slate-300 px-2 py-1 text-[10px]">
+                          <button type="button" onClick={() => openOrderEditor(order.id)} disabled={embeddedListOnly}
+                            className="flex min-w-0 items-center gap-1 text-left font-bold text-slate-600 enabled:hover:text-indigo-600 disabled:cursor-default"
+                            aria-label={`${partnerName} 주문 비고 수정`}>
+                            {order.noteImportant && order.note && <AlertCircle size={11} className="shrink-0 text-rose-500" aria-hidden="true" />}
+                            <span className="min-w-0 whitespace-pre-line break-words" title={order.note || '주문 비고 추가'}>{order.note || '비고 추가'}</span>
+                          </button>
                         </div>
                       </div>
                   );
@@ -4219,7 +4200,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           }
           onUpdateItems?.(editorOrder.id, listOrderEditor.items);
           if (listOrderEditor.note !== (editorOrder.note || '') || listOrderEditor.noteImportant !== !!editorOrder.noteImportant) {
-            onUpdateNote?.(editorOrder.id, clampNote(listOrderEditor.note.trim()), listOrderEditor.noteImportant);
+            onUpdateNote?.(editorOrder.id, clampNote(listOrderEditor.note.trim(), editorOrder.note), listOrderEditor.noteImportant);
           }
           closeEditor();
         };
@@ -4393,17 +4374,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
               <section className="space-y-2 rounded-xl border border-slate-200 p-3">
                 <label htmlFor="order-editor-note" className="text-xs font-black text-slate-700">주문 비고</label>
-                <textarea id="order-editor-note" value={listOrderEditor.note} maxLength={NOTE_MAX} rows={2}
-                  onChange={event => setListOrderEditor(current => current ? { ...current, note: clampNote(event.target.value) } : current)}
+                <textarea id="order-editor-note" value={listOrderEditor.note} maxLength={noteEditLimit(editorOrder.note)} rows={2}
+                  onChange={event => setListOrderEditor(current => current ? { ...current, note: clampNote(event.target.value, editorOrder.note) } : current)}
                   placeholder="주문 전체에 전달할 내용" className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700" />
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
                   <input type="checkbox" checked={listOrderEditor.noteImportant}
                     onChange={event => setListOrderEditor(current => current ? { ...current, noteImportant: event.target.checked } : current)}
                     className="accent-rose-500" /> 중요 비고
                 </label>
-                {editorOrder.items.some(item => item.note?.trim()) && (
-                  <div className="text-xs text-slate-500">옛 품목 비고: {editorOrder.items.filter(item => item.note?.trim()).map(item => `${item.name} — ${item.note}`).join(' · ')}</div>
-                )}
               </section>
 
               {/*  **팔레트**(2026-09-12 사장님: "주문 전체삭제 위에 팔레트 설정 하는거 두고").
@@ -4488,114 +4466,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
             error={logError}
             onClose={() => setLogOrderId(null)}
           />
-        );
-      })()}
-      {listMemoEditor && (() => {
-        const memoOrder = orders.find(order => order.id === listMemoEditor.orderId);
-        const memoItem = memoOrder?.items[listMemoEditor.itemIndex];
-        if (!memoOrder || !memoItem) return null;
-        const closeMemo = () => { setListMemoEditor(null); setListMemoDraft(''); setListMemoImportant(false); };
-        const saveMemo = () => {
-          const nextItems = [...memoOrder.items];
-          //  중요 표시도 같이 걷어낸다 — 비고를 지웠는데 느낌표만 남으면 무엇이 급한지 알 수 없다.
-          const { note: _oldNote, noteBy: _oldNoteBy, noteAt: _oldNoteAt, noteImportant: _oldImportant, ...baseItem } = nextItems[listMemoEditor.itemIndex];
-          const trimmed = clampNote(listMemoDraft.trim());
-          nextItems[listMemoEditor.itemIndex] = trimmed
-            ? {
-                ...baseItem, note: trimmed, noteBy: currentUserName || '미기록', noteAt: new Date().toISOString(),
-                //  거짓은 아예 안 적는다 — 칸이 없으면 없는 것이다.
-                ...(listMemoImportant ? { noteImportant: true } : {}),
-              }
-            : baseItem;
-          onUpdateItems?.(memoOrder.id, nextItems);
-          closeMemo();
-        };
-        const requestDeleteMemo = () => {
-          closeMemo();
-          setConfirmModal({
-            title: '비고 삭제', tone: 'rose', icon: Trash2,
-            message: '이 메모를 삭제할까요?',
-            subMessage: '메모 내용과 작성자, 작성일시가 함께 삭제됩니다.',
-            confirmText: '메모 삭제',
-            onConfirm: () => {
-              const nextItems = [...memoOrder.items];
-              const { note: _oldNote, noteBy: _oldNoteBy, noteAt: _oldNoteAt, ...baseItem } = nextItems[listMemoEditor.itemIndex];
-              nextItems[listMemoEditor.itemIndex] = baseItem;
-              onUpdateItems?.(memoOrder.id, nextItems);
-              setConfirmModal(null);
-            },
-          });
-        };
-        return (
-          <ModalShell title="메모 작성" onClose={closeMemo} className="max-w-lg" bodyClassName="space-y-3"
-            footer={<div className="flex items-center justify-between gap-2">
-              <div>{memoItem.note && <button type="button" onClick={requestDeleteMemo} className="rounded-lg px-3 py-2 text-xs font-black text-rose-600 hover:bg-rose-50">메모 삭제</button>}</div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={closeMemo} className="rounded-lg px-4 py-2 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>
-                <button type="button" onClick={saveMemo} className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-indigo-700">{memoItem.note ? '수정 저장' : '저장'}</button>
-              </div>
-            </div>}>
-                  <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs">
-                    <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">거래처</span><span className="truncate font-bold text-slate-700">{memoOrder.partnerName || partners.find(partner => partner.id === memoOrder.partnerId)?.name || '이름 없음'}</span></div>
-                    <div className="flex min-w-0 items-center">
-                      <span className="w-16 shrink-0 font-bold text-slate-400">주문 품목</span>
-                      {memoOrder.items.length > 1 ? (
-                        <select
-                          value={listMemoEditor.itemIndex}
-                          onChange={event => {
-                            const itemIndex = Number(event.target.value);
-                            const nextItem = memoOrder.items[itemIndex];
-                            setListMemoEditor({ orderId: memoOrder.id, itemIndex });
-                            setListMemoDraft(nextItem?.note || '');
-                            setListMemoImportant(!!nextItem?.noteImportant);
-                          }}
-                          className="h-8 min-w-0 flex-1 truncate rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                          aria-label="메모를 작성할 주문 품목"
-                        >
-                          {memoOrder.items.map((item, itemIndex) => <option key={`${item.itemId}-${itemIndex}`} value={itemIndex}>{item.name}</option>)}
-                        </select>
-                      ) : (
-                        <span className="truncate font-bold text-slate-700" title={memoItem.name}>{memoItem.name}</span>
-                      )}
-                    </div>
-                    <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">주문일</span><span className="font-bold tabular-nums text-slate-700">{new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(memoOrder.createdAt))}</span></div>
-                    <div className="flex min-w-0"><span className="w-16 shrink-0 font-bold text-slate-400">작성자</span><span className="truncate font-bold text-slate-700">{memoItem.noteBy || currentUserName || '미기록'}</span></div>
-                  </div>
-                <div>
-                  <textarea
-                    value={listMemoDraft}
-                    onChange={event => setListMemoDraft(clampNote(event.target.value))}
-                    placeholder="작업 시 확인할 내용을 입력하세요."
-                    maxLength={NOTE_MAX}
-                    rows={4}
-                    aria-describedby="memo-character-count"
-                    className="h-28 w-full resize-none rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium leading-5 text-slate-800 outline-none placeholder:text-xs placeholder:font-medium placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 md:h-32 md:resize-y"
-                  />
-                  <p id="memo-character-count" className="mt-1 text-right text-[10px] font-medium tabular-nums text-slate-400">
-                    {listMemoDraft.length}/{NOTE_MAX}자
-                  </p>
-                </div>
-                {/*  **중요 표시**(2026-09-15 사장님: "ㅁ중요 이런식으로 체크박스 만들어서
-                     중요하다고 체크된 비고는 빨간 느낌표 달아"). 카드에는 비고가 다섯 글자만
-                     보이고 잘리므로, 급한 것과 그냥 적어 둔 것을 **글을 읽지 않고도** 갈라야 한다. */}
-                <label className="flex w-fit cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    checked={listMemoImportant}
-                    onChange={event => setListMemoImportant(event.target.checked)}
-                    className="h-4 w-4 cursor-pointer accent-rose-500"
-                  />
-                  <span className="inline-flex items-center gap-1">
-                    중요
-                    <AlertCircle size={13} className={listMemoImportant ? 'text-rose-500' : 'text-slate-300'} aria-hidden="true" />
-                  </span>
-                  <span className="font-medium text-slate-400">— 카드와 리스트에 빨간 느낌표가 붙습니다</span>
-                </label>
-                {memoItem.noteAt && <div className="grid grid-cols-[72px_1fr] gap-x-3 gap-y-1.5 rounded-xl bg-slate-50 px-3 py-2.5 text-xs">
-                    <span className="font-bold text-slate-500">작성일시</span>
-                    <span className="font-bold tabular-nums text-slate-700">{new Date(memoItem.noteAt).toLocaleString('ko-KR')}</span>
-                </div>}
-          </ModalShell>
         );
       })()}
       {confirmModal && (
