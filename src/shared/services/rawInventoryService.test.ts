@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toLedgerDoc } from './rawInventoryService';
+import { toLedgerDoc, prepareRawCommand } from './rawInventoryService';
 import type { RawInventoryMovement } from '../rawInventoryCore';
 
 /**
@@ -100,5 +100,37 @@ describe('옛 원장 화면이 읽는 칸을 같이 채운다', () => {
       expect(d.rawItemId, kind).toBe('raw-참깨');
       expect(d.companyId, kind).toBe('taebaek');
     }
+  });
+});
+
+
+describe('외부 트랜잭션에서도 같은 원료 검사·계산을 재사용한다', () => {
+  const snap = (data: any = null) => ({ exists: () => data !== null, data: () => data });
+  const read = (itemData: any = { companyId: 'taebaek', name: '참깨', stock: 0 }) => ({
+    movementSnap: snap(), oldMovementSnap: null, stateSnap: snap(), itemSnap: snap(itemData),
+    originalSnap: null, oldOriginalSnap: null, guardSnap: null,
+  } as any);
+  const command = (id: string) => ({ operationId: id, companyId: 'taebaek' as const, rawItemId: 'raw',
+    materialSnapshot: '참깨', effectiveAt: '2026-09-29T09:00:00Z', source: { type: 'purchase' as const, id: 'po' },
+    kind: 'receive' as const, kg: 10, lot: { supplierName: '공급자' } });
+  it('같은 원료의 다음 계산은 virtual state와 mirror를 함께 이어간다', () => {
+    const first = prepareRawCommand(command('a'), read());
+    expect(first.status).toBe('applied');
+    if (first.status !== 'applied') throw new Error('첫 계산 실패');
+    const second = prepareRawCommand(command('b'), read(), {}, {
+      state: first.state, itemData: { companyId: 'taebaek', name: '참깨', stock: first.state.stockKg, lots: first.state.activeLots },
+    });
+    expect(second.status).toBe('applied');
+    if (second.status === 'applied') expect(second.state).toMatchObject({ stockKg: 20, revision: 2 });
+  });
+  it('외부 호출도 회사가 다른 원료를 거절한다', () => {
+    expect(prepareRawCommand(command('a'), read({ companyId: 'punghoe' }))).toMatchObject({ status: 'rejected', code: 'COMPANY_MISMATCH' });
+  });
+  it('virtual mirror가 state와 다르면 복원 계산도 조용히 덮어쓰지 않는다', () => {
+    const first = prepareRawCommand(command('a'), read());
+    if (first.status !== 'applied') throw new Error('첫 계산 실패');
+    expect(prepareRawCommand(command('b'), read(), {}, {
+      state: first.state, itemData: { companyId: 'taebaek', name: '참깨', stock: 11 },
+    })).toMatchObject({ status: 'rejected', code: 'STOCK_MISMATCH' });
   });
 });

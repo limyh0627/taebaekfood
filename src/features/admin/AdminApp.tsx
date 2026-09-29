@@ -115,7 +115,8 @@ import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan, isGoodsItem } from './orderStockEngine';
 import { ordersFarFromJournalDate, ordersPendingDocumentClose } from './salesJournalOrders';
-import { buildRollbackPlan, buildStatusChangeAsk, type RollbackPlan } from './rollbackSummary';
+import { buildRollbackPlan, buildStatusChangeAsk, buildOrderDeletePlan, type RollbackPlan } from './rollbackSummary';
+import type { CancellationTicket } from './orderInventoryCancellation';
 import type { AlertTone } from '../../shared/components/AlertModalShell';
 import { statusLabel } from '../../shared/orderStatusStyle';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
@@ -177,7 +178,7 @@ const LoanManager = React.lazy(() => import('../../../components/LoanManager'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
-import { db } from '../../shared/firebase';
+import { db, auth } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
@@ -1334,7 +1335,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
-  const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange } = createOrderStockEngine({
+  const { changeOrderStatus, changeOrderItemCompletion, prepareOrderStatusChange,
+    prepareOrderCancellation, executeOrderCancellation, readOrderCancellation } = createOrderStockEngine({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, updateItem, addItem,
@@ -1630,28 +1632,102 @@ const AdminApp: React.FC<AdminAppProps> = ({
     setStockUseAsk({ mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
-  /** 작업완료·출고 주문은 경고 뒤 재고를 원복하고, 예전 주문은 기록만 지운다. */
-  const handleDeleteOrder = async (id: string) => {
+  const deletingOrders = useRef(new Set<string>());
+  const [processingCancellationIds, setProcessingCancellationIds] = useState<string[]>([]);
+  const cancellationScope = useRef('');
+  cancellationScope.current = `${companyId}:${currentUser.id}`;
+  const [cancellationRevision, setCancellationRevision] = useState(0);
+  const [pendingCancellations, setPendingCancellations] = useState<string[]>([]);
+  useEffect(() => {
+    // 삭제 응답을 잃으면 주문 자체가 목록에서 사라질 수 있어 별도 재조회 진입점을 남긴다.
+    const refresh = () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) { setPendingCancellations([]); return; }
+      const prefix = `order-cancellation:${uid}:${companyId}:`;
+      try {
+        setPendingCancellations(Object.keys(localStorage).filter(key => key.startsWith(prefix))
+          .map(key => key.slice(prefix.length)));
+      } catch { setPendingCancellations([]); }
+    };
+    refresh();
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, [companyId, currentUser.id, cancellationRevision]);
+  /** 확인과 삭제를 한 곳에서 맡아 목록의 이중 확인·실패 직후 닫기를 막는다. */
+  const handleDeleteOrder = async (id: string): Promise<boolean> => {
+    if (deletingOrders.current.has(id)) return false;
+    deletingOrders.current.add(id);
+    setProcessingCancellationIds([...deletingOrders.current]);
+    try {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('로그인을 확인한 뒤 다시 처리하세요.');
+    const initialScope = cancellationScope.current;
+    const scope = `${uid}:${companyId}:${id}`;
+    const key = `order-cancellation:${scope}`;
+    const stillSameUser = () => auth.currentUser?.uid === uid && cancellationScope.current === initialScope;
+    const saved = localStorage.getItem(key);
+    let ticket: CancellationTicket | undefined;
+    if (saved) {
+      const value = JSON.parse(saved) as Partial<CancellationTicket> & { retryable?: boolean; code?: string };
+      if (value.orderId !== id || value.companyId !== companyId
+        || !['cancel-shipment', 'delete'].includes(value.action ?? '')
+        || typeof value.evidence !== 'string' || typeof value.operationId !== 'string') {
+        throw new Error('저장된 처리 정보가 일치하지 않습니다. 임의 재실행 없이 관리자에게 확인하세요.');
+      }
+      ticket = value as CancellationTicket;
+      const receipt = await readOrderCancellation(ticket);
+      if (!stillSameUser()) return false;
+      if (receipt?.status === 'completed') {
+        localStorage.removeItem(key);
+        await awaitNotice(ticket.action === 'delete' ? '이미 주문 삭제가 완료되었습니다.'
+          : '이미 출고 취소가 완료되었습니다. 주문은 유지되며 삭제는 별도로 승인해야 합니다.');
+        return receipt.deleted;
+      }
+      if (value.retryable === false) {
+        await awaitNotice(`완료 기록이 아직 없습니다. 재실행이 허용되지 않은 작업입니다.\n사유: ${value.code ?? '기록 확인 필요'}\n저장된 처리번호를 보존했습니다. 담당자에게 확인하세요.`, '처리 차단');
+        return false;
+      }
+      // 완료표 부재만으로 미반영을 단정하지 않는다. 같은 작업번호만 사용자 확인 후 재시도한다.
+      if (!await appConfirm({ title: '처리 결과 확인', message: '이전에 승인한 작업의 완료를 아직 확인하지 못했습니다.\n재고 반영 여부는 미확인입니다. 같은 작업번호로 완료 확인·재시도를 할까요?', confirmText: '같은 작업 확인', tone: 'amber' })) return false;
+    }
     const order = allOrders.find(candidate => candidate.id === id) ?? orders.find(candidate => candidate.id === id);
-    if (order?.status === OrderStatus.DELIVERED) {
-      // 예전 주문은 당시 스냅샷이 없는 것이 많다. 현재 BOM으로 추정 복원하면 오히려 오늘 재고를 망친다.
-      // 목록의 삭제 확인창은 이미 거쳤으므로 문서만 지운다.
-      await deleteItem('orders', id);
-      return;
+    if (!ticket) {
+      if (!order) throw new Error('주문을 찾지 못했습니다. 목록을 새로 조회하세요.');
+      const prepared = await prepareOrderCancellation(id, companyId,
+        order.status === OrderStatus.SHIPPED ? 'cancel-shipment' : 'delete');
+      // 캐시의 예전주문 상태가 아닌 서비스의 최신 판정으로만 기록전용 삭제를 승인한다.
+      const plan = prepared.recordOnly
+        ? { allowed: true, action: 'delete', message: '예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다. 계속할까요?', subMessage: '삭제 직전 회사·상태·진행 중인 재고 작업을 다시 확인합니다.', confirmText: '기록 삭제', blockedReasons: [] }
+        : buildOrderDeletePlan(prepared.order, allItems);
+      if (!plan.allowed) throw new Error(plan.blockedReasons.join('\n'));
+      if (!await appConfirm({ title: plan.action === 'cancel-shipment' ? '출고 취소' : '주문 삭제',
+        message: `${plan.message}\n\n${plan.subMessage}`, confirmText: plan.confirmText, tone: 'rose' })) return false;
+      if (!stillSameUser()) return false;
+      ticket = prepared.ticket;
+      // 브라우저 저장 실패 시 쓰기를 시작하지 않아 새로고침 후 근거 유실을 막는다.
+      localStorage.setItem(key, JSON.stringify(ticket));
     }
-    const currentInventoryOrder = order && (
-      order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED ||
-      !!order.producedAt || !!order.shippedOut
-    );
-    if (order && currentInventoryOrder) {
-      const ok = await appConfirm(
-        `${order.partnerName || '이 거래처'} 주문은 이미 ${order.shippedOut || order.status === OrderStatus.SHIPPED ? '출고완료' : '작업완료'} 상태입니다.\n\n`
-        + '삭제하면 사용된 BOM·원료와 할당된 완제품 재고를 원복한 뒤 주문을 삭제합니다. 계속할까요?',
-      );
-      if (!ok) return;
-      await changeOrderStatus(id, OrderStatus.PENDING, undefined, { approvedBy: currentUser?.name });
+    if (!stillSameUser()) return false;
+    const result = await executeOrderCancellation(ticket);
+    if (!stillSameUser()) return false;
+    if (result.status === 'completed') {
+      localStorage.removeItem(key);
+      await awaitNotice(result.deleted ? '승인한 방식으로 주문 삭제가 완료되었습니다.'
+        : '출고 취소가 완료되어 작업완료로 돌아갔습니다. 생산·원료 사용과 주문은 유지됩니다.');
+      return result.deleted;
     }
-    await deleteItem('orders', id);
+    // 재고가 안 바뀌었어도 서버 작업 잠금이 남을 수 있어 실패 ticket을 임의 폐기하지 않는다.
+    localStorage.setItem(key, JSON.stringify({ ...ticket, retryable: result.retryable, code: result.code }));
+    await awaitNotice(`처리를 완료하지 못했습니다.\n${result.inventoryApplied === 'none' ? '재고 반영 없음' : '재고 반영 여부 미확인'}\n사유: ${result.code ?? '확인 필요'}\n${result.affectedItemIds.join(', ')}\n주문을 임의 삭제하지 않았습니다. ${result.retryable ? '다시 누르면 같은 작업의 결과부터 확인합니다.' : '원인을 확인한 뒤 다시 요청하세요.'}`, '처리 중단');
+    return false;
+    } catch (error) {
+      await awaitNotice(`처리를 완료하지 못했습니다. 주문을 임의 삭제하지 않았습니다.\n${error instanceof Error ? error.message : '처리 결과를 다시 확인하세요.'}`, '확인 필요');
+      return false;
+    } finally {
+      deletingOrders.current.delete(id);
+      setProcessingCancellationIds([...deletingOrders.current]);
+      setCancellationRevision(value => value + 1);
+    }
   };
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
@@ -2166,6 +2242,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
+      {(pendingCancellations.length > 0 || processingCancellationIds.length > 0) && (
+        <section aria-label="미확인 주문 처리" className="fixed bottom-4 right-4 z-[90] max-h-48 max-w-sm overflow-auto rounded-xl border border-amber-300 bg-amber-50 p-3 shadow-lg">
+          <p className="text-sm font-bold" role="status">{processingCancellationIds.length ? '주문 처리 확인 중' : '주문 처리 결과 확인 필요'}</p>
+          <p className="text-xs">자동 재실행하지 않습니다. 완료 기록부터 확인합니다.</p>
+          {[...new Set([...pendingCancellations, ...processingCancellationIds])].map(id => <button key={id} type="button"
+            disabled={processingCancellationIds.includes(id)}
+            className="mt-2 block text-sm font-bold text-indigo-700 underline"
+            onClick={() => { void handleDeleteOrder(id); }}>{processingCancellationIds.includes(id) ? '확인·처리 중' : '처리 결과 확인'} · {id}</button>)}
+        </section>
+      )}
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
         className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 xl:hidden ${

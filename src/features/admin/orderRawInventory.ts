@@ -261,3 +261,16 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
 
   return { applyOrderRawUsage, reverseOrderRawUsage };
 }
+
+
+/** 원본 명령 ID만 사용한다. 현재 BOM·배합비로 취소량을 재산출하지 않는다. */
+export function cancellationRawCommands(
+  order: Order, originals: ReadonlyMap<string, string>, effectiveAt: string, actorName?: string,
+): import('../../shared/rawInventoryCore').RawInventoryCommand[] {
+  return [...originals].map(([originalOperationId, rawItemId]) => ({
+    operationId: `reverse:${originalOperationId}`, companyId: companyOf(order), rawItemId,
+    materialSnapshot: '', effectiveAt,
+    ...(actorName ? { actorName } : {}),
+    source: { type: 'reversal', id: order.id }, kind: 'reverse', originalOperationId,
+  }));
+}

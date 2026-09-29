@@ -1,3 +1,4 @@
+import { prepareOrderInventoryCancellation, executeOrderInventoryCancellation, readOrderCancellationReceipt, type CancellationTicket, type CancellationAction } from './orderInventoryCancellation';
 import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem, isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { goodsShipQty, shipQtyOfLine } from '../../shared/shipDeduction';
@@ -913,5 +914,16 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  return { changeOrderStatus, changeOrderItemCompletion, reconcileOrderStock, prepareOrderStatusChange };
+  const prepareOrderCancellation = (id: string, companyId: ReturnType<typeof import('../../shared/types').companyOf>, action: CancellationAction) =>
+    prepareOrderInventoryCancellation(db, id, companyId, action);
+  const executeOrderCancellation = async (ticket: CancellationTicket) => {
+    if (inFlightOrders.has(ticket.orderId)) return { status: 'blocked' as const, operationId: ticket.operationId,
+      code: 'OTHER_INVENTORY_OPERATION', affectedItemIds: [], inventoryApplied: 'none' as const, retryable: true, deleted: false };
+    inFlightOrders.add(ticket.orderId);
+    try { return await executeOrderInventoryCancellation(db, ticket, actorName); }
+    finally { inFlightOrders.delete(ticket.orderId); }
+  };
+  const readOrderCancellation = (ticket: CancellationTicket) => readOrderCancellationReceipt(db, ticket);
+  return { changeOrderStatus, changeOrderItemCompletion, reconcileOrderStock, prepareOrderStatusChange,
+    prepareOrderCancellation, executeOrderCancellation, readOrderCancellation };
 }

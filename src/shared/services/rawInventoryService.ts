@@ -16,7 +16,7 @@
  *   ② 이력 문서 id 가 곧 작업 id 라, 같은 작업은 **두 번 먹지 않는다.**
  *   ③ 로트 id·시각을 트랜잭션 **밖에서** 정한다 — 콜백은 경합하면 여러 번 돈다.
  */
-import { doc, getDoc, runTransaction, type Firestore } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, type Firestore, type Transaction } from 'firebase/firestore';
 import { COL } from '../collections';
 import {
   applyRawCommand, operationDocId, legacyOperationDocId, inventoryDocId, emptyRawInventory,
@@ -160,27 +160,10 @@ export interface RawCommandOptions {
   legacy?: LegacyLedgerFields;
 }
 
-/**
- * 명령 하나를 실행한다.
- *
- * 결과는 넷으로 갈린다(§14) — 성공·이미먹음·충돌·거절을 부르는 쪽이 **구분해서** 다뤄야 한다.
- * 예전에는 불일치 경고를 띄운 직후 성공 토스트가 덮어써서 아무도 못 봤다.
- */
-export async function executeRawInventoryCommand(
-  command: RawInventoryCommand,
-  options: RawCommandOptions = {},
-): Promise<RawApplyResult> {
-  const database = options.db ?? (await import('../firebase')).db;
-  //  ★ 트랜잭션 밖에서 딱 한 번 정한다.
-  const now = options.now ?? new Date().toISOString();
+export async function readRawCommandInTransaction(tx: Transaction, database: Firestore, command: RawInventoryCommand) {
   const opId = operationDocId(command.operationId);
   const oldOpId = legacyOperationDocId(command.operationId);
-  const newLotId = options.newLotId ?? `lot-${opId}`;
-  const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
   const invId = inventoryDocId(command.companyId, command.rawItemId);
-  const mirror = options.mirrorToItem !== false;
-
-  return runTransaction(database, async tx => {
     const movementRef = doc(database, COL.rawMaterialLedger, opId);
     const oldMovementRef = doc(database, COL.rawMaterialLedger, oldOpId);
     const stateRef = doc(database, COL.rawInventories, invId);
@@ -202,10 +185,27 @@ export async function executeRawInventoryCommand(
         ? tx.get(oldOriginalRef) : Promise.resolve(null),
       command.kind === 'reverse' ? tx.get(guardRef) : Promise.resolve(null),
     ]);
+    return { movementRef, stateRef, itemRef, guardRef, movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap };
+}
+
+/** 주문 취소도 같은 검사를 쓰도록 읽기·계산을 저장 경계에서 분리한다. */
+export function prepareRawCommand(
+  command: RawInventoryCommand,
+  read: Awaited<ReturnType<typeof readRawCommandInTransaction>>,
+  options: RawCommandOptions = {},
+  virtual?: { state: RawInventoryState; itemData: Record<string, any> },
+): RawApplyResult {
+  const { movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap } = read;
+  const opId = operationDocId(command.operationId);
+  const invId = inventoryDocId(command.companyId, command.rawItemId);
+  const now = options.now ?? command.effectiveAt;
+  const newLotId = options.newLotId ?? `lot-${opId}`;
+  const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
+  const mirror = options.mirrorToItem !== false;
     const 기존스냅 = movementSnap.exists() ? movementSnap : oldMovementSnap?.exists() ? oldMovementSnap : null;
     const existing = 기존스냅 ? normalizeRawMovement(기존스냅.data()) : null;
-    const state = stateSnap.exists() ? normalizeRawInventoryState(stateSnap.data()) : null;
-    const itemData = itemSnap.exists() ? itemSnap.data() : null;
+    const state = virtual?.state ?? (stateSnap.exists() ? normalizeRawInventoryState(stateSnap.data()) : null);
+    const itemData = virtual?.itemData ?? (itemSnap.exists() ? itemSnap.data() : null);
 
     if (!itemData) {
       return { status: 'rejected', code: 'ITEM_NOT_FOUND', message: `원료 품목을 찾을 수 없다: ${command.rawItemId}` };
@@ -232,7 +232,7 @@ export async function executeRawInventoryCommand(
      * 빈 상태로 계산하면 그 로트를 없는 셈 치고 덮어써서 **재고가 통째로 날아간다.**
      * 이관(설계 §15 4단계)을 안 돌린 원료다 — `scripts/migrate-raw-inventories.mts` 를 먼저.
      */
-    const 품목로트 = (itemSnap?.data()?.lots ?? []) as unknown[];
+    const 품목로트 = (itemData?.lots ?? []) as unknown[];
     if (!state && (품목로트.length > 0 || 원장전용)) {
       return { status: 'rejected', code: 'NOT_MIGRATED', message: `이관 안 된 원료다(rawInventories 문서 없음): ${invId}` };
     }
@@ -247,7 +247,7 @@ export async function executeRawInventoryCommand(
      * 어느 쪽이 맞는지는 코드가 못 정한다. 사람이 실사로 정하고 나서 다시 부른다.
      */
     if (mirror && !원장전용 && command.kind !== 'stocktake' && command.kind !== 'adjust-lot' && itemSnap?.exists()) {
-      const 품목재고 = Number(itemSnap.data()?.stock ?? 0);
+      const 품목재고 = Number(itemData?.stock ?? 0);
       const 상태재고 = state?.stockKg ?? 0;
       if (!rawMirrorMatches(품목재고, 상태재고)) {
         return {
@@ -262,21 +262,52 @@ export async function executeRawInventoryCommand(
       det: { now, newLotId, carryOverLotId },
     });
 
-    //  ② 이미 먹었거나 거절이면 **아무것도 안 쓴다.**
-    if (result.status !== 'applied') return result;
+    return result;
+}
 
+export function writePreparedRawCommand(
+  tx: Transaction, command: RawInventoryCommand,
+  read: Awaited<ReturnType<typeof readRawCommandInTransaction>>,
+  result: Extract<RawApplyResult, { status: 'applied' }>, options: RawCommandOptions = {},
+) {
+  const originalSnap = read.originalSnap?.exists() ? read.originalSnap : read.oldOriginalSnap;
+  const original = originalSnap?.exists() ? normalizeRawMovement(originalSnap.data()) : null;
+  const 원장전용 = command.kind === 'ledger-consume' || (command.kind === 'reverse' && original?.kind === 'ledger-consume');
     //  ③ 상태·이력·품목을 **같은 트랜잭션**에 쓴다. 한쪽만 남을 수 없다.
-    tx.set(stateRef, stripUndefined(result.state));
-    tx.set(movementRef, stripUndefined(toLedgerDoc(result.movement, options.legacy)));
-    if (result.guard) tx.set(guardRef, stripUndefined(result.guard));
-    if (mirror && !원장전용 && itemSnap?.exists()) {
+    tx.set(read.stateRef, stripUndefined(result.state));
+    tx.set(read.movementRef, stripUndefined(toLedgerDoc(result.movement, options.legacy)));
+    if (result.guard) tx.set(read.guardRef, stripUndefined(result.guard));
+    if (options.mirrorToItem !== false && !원장전용 && read.itemSnap.exists()) {
       //  화면이 보는 `lots` 는 활성·소진이 한 배열이다. 활성을 앞에 둬야 FIFO 순서가 산다.
       const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
       const patch: Record<string, unknown> = { lots: stripUndefined(lots) };
       //  **재고 = 로트 합계.** 예외는 없다(2026-09-16 `lotsAreTotal` 을 걷어냈다).
       patch.stock = result.state.stockKg;
-      tx.update(itemRef, patch);
+      tx.update(read.itemRef, patch);
     }
+}
+
+/**
+ * 명령 하나를 실행한다.
+ *
+ * 결과는 넷으로 갈린다(§14) — 성공·이미먹음·충돌·거절을 부르는 쪽이 **구분해서** 다뤄야 한다.
+ * 예전에는 불일치 경고를 띄운 직후 성공 토스트가 덮어써서 아무도 못 봤다.
+ */
+export async function executeRawInventoryCommand(
+  command: RawInventoryCommand,
+  options: RawCommandOptions = {},
+): Promise<RawApplyResult> {
+  const database = options.db ?? (await import('../firebase')).db;
+  //  ★ 트랜잭션 밖에서 딱 한 번 정한다.
+  const now = options.now ?? new Date().toISOString();
+  const opId = operationDocId(command.operationId);
+  const newLotId = options.newLotId ?? `lot-${opId}`;
+  const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
+
+  return runTransaction(database, async tx => {
+    const read = await readRawCommandInTransaction(tx, database, command);
+    const result = prepareRawCommand(command, read, { ...options, now, newLotId, carryOverLotId });
+    if (result.status === 'applied') writePreparedRawCommand(tx, command, read, result, options);
     return result;
   });
 }

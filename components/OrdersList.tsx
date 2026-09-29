@@ -263,7 +263,7 @@ interface OrdersListProps {
   onUpdateInvoiceType?: (id: string, value: InvoiceType | undefined) => void;
   onToggleShipmentComplete?: (id: string, value: boolean) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
-  onDeleteOrder: (id: string) => void;
+  onDeleteOrder: (id: string) => Promise<boolean> | void;
   onAddClick: () => void;
   onPasteClick?: () => void;
   currentUserName?: string;
@@ -317,7 +317,7 @@ interface OrderCardProps {
   /** 송장 양식(A~E)을 고른다. 안 고름은 `undefined`. */
   onUpdateInvoiceType?: (id: string, value: InvoiceType | undefined) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
-  onDeleteOrder: (id: string) => void;
+  onDeleteOrder: (id: string) => Promise<boolean> | void;
   currentUserName?: string;
   gridCols?: number;
   isListView?: boolean;
@@ -357,7 +357,7 @@ interface OrderSourceGroupProps {
    */
   onToggleInvoicePrinted?: (id: string, value: boolean | 'printed' | 'attached' | undefined) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
-  onDeleteOrder: (id: string) => void;
+  onDeleteOrder: (id: string) => Promise<boolean> | void;
   currentUserName?: string;
   isListView?: boolean;
   highlightOrderId?: string | null;
@@ -1260,14 +1260,7 @@ export const OrderCard = memo<OrderCardProps>(({
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
-          <button onClick={() => setConfirmModal({
-              title: '주문 삭제', tone: 'rose', icon: Trash2,
-              message: '주문을 삭제하시겠습니까?',
-              subMessage: order.status === OrderStatus.DELIVERED
-                ? `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
-                : `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
-              onConfirm: () => { onDeleteOrder(order.id); setConfirmModal(null); },
-            })}
+          <button onClick={() => { void onDeleteOrder(order.id); }}
             className="p-1.5 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
           >
             <Trash2 size={14} />
@@ -4438,16 +4431,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
               )}
 
               <section aria-label="주문 전체 삭제">
-                <button type="button" onClick={() => setConfirmModal({
-                  title: '주문 삭제', tone: 'rose', icon: Trash2,
-                  message: '이 거래처 주문을 삭제하시겠습니까?',
-                  subMessage: editorOrder.status === OrderStatus.DELIVERED
-                    ? `${partnerName} · 예전 주문 기록만 삭제하며 재고·BOM은 원복하지 않습니다.`
-                    : `${partnerName} · 전체 주문과 품목이 삭제되며 복구할 수 없습니다.`,
-                  confirmText: '주문 삭제',
-                  onConfirm: () => { onDeleteOrder(editorOrder.id); setConfirmModal(null); closeEditor(); },
-                })} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-4 text-xs font-black text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><Trash2 size={15} aria-hidden="true" /> 주문 전체 삭제</button>
-                <p className="mt-2 text-[10px] font-bold text-slate-500">거래처 주문과 모든 하위 품목이 함께 삭제되며 복구할 수 없습니다.</p>
+                <button type="button" onClick={async () => {
+                  // 취소·출고 취소·실패에는 편집창을 유지하고 실제 삭제 성공만 닫는다.
+                  if (await onDeleteOrder(editorOrder.id)) closeEditor();
+                }} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-4 text-xs font-black text-rose-600 transition-colors hover:border-rose-300 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"><Trash2 size={15} aria-hidden="true" /> 주문 전체 삭제</button>
+                <p className="mt-2 text-[10px] font-bold text-slate-500">출고완료 주문은 먼저 출고 취소만 합니다. 삭제 전 실제 재고 영향을 확인합니다.</p>
               </section>
             </div>
           </OrderEditModalShell>

@@ -7,6 +7,8 @@ const allowed = new Set([
   'src/shared/services/firebaseService.ts',
 ]);
 const reviewedTransactionWriters = new Set([
+  // 주문·품목·원료 원본의 회사 일치를 확인하고 완료표에도 companyId를 남긴다.
+  'src/features/admin/orderInventoryCancellation.ts',
   // appMeta 전 기기 잠금(회사 메타 예외)만 쓴다.
   'src/features/admin/AdminApp.tsx',
   // 쓰기 전 companyScopedWriteData를 통과한 배열만 트랜잭션에 넣는다.

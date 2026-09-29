@@ -230,3 +230,129 @@ export function buildStatusChangeAsk(args: {
     confirmText: '원복 승인',
   };
 }
+
+export type OrderDeleteAction = 'cancel-shipment' | 'delete';
+export type OrderDeleteStage = 'shipment' | 'production' | 'raw' | 'order-delete';
+
+/** 엔진이 재조회한 처리 근거의 화면용 투영이다. 저장 구조나 재개 명령이 아니다. */
+export interface OrderDeleteProgress {
+  action: OrderDeleteAction;
+  state: 'processing' | 'partial' | 'failed' | 'completed';
+  completedStages: OrderDeleteStage[];
+  inventoryApplied: 'none' | 'partial' | 'complete' | 'unknown';
+  error?: string;
+  retryable: boolean;
+}
+
+export interface OrderDeletePlan {
+  action: OrderDeleteAction | 'blocked';
+  allowed: boolean;
+  nextStatus?: 'DISPATCHED';
+  state: 'ready' | OrderDeleteProgress['state'];
+  message: string;
+  subMessage: string;
+  confirmText: string;
+  blockedReasons: string[];
+  adjustments: RollbackPlan['adjustments'];
+  completedStages: OrderDeleteStage[];
+  inventoryApplied: OrderDeleteProgress['inventoryApplied'];
+  retryable: boolean;
+}
+
+/** 삭제 전 경고만 만든다. 현재 BOM·포장 수량으로 과거 재고를 추정하지 않는다. */
+export function buildOrderDeletePlan(order: Order, allItems: Item[], progress?: OrderDeleteProgress): OrderDeletePlan {
+  const action: OrderDeleteAction = order.status === 'SHIPPED' ? 'cancel-shipment' : 'delete';
+  const reasons: string[] = [];
+  const lines: string[] = [];
+  const adjustments: RollbackPlan['adjustments'] = [];
+  let hasRawEffect = false;
+  const completedStages = [...(progress?.completedStages ?? [])];
+  const done = (stage: OrderDeleteStage) => progress?.state === 'completed' || completedStages.includes(stage);
+  const addSnapshot = (snapshot: NonNullable<Order['inventorySnapshots']>['production'], stage: OrderDeleteStage) => {
+    if (done(stage)) return;
+    if (!snapshot || !snapshot.capturedAt || !Array.isArray(snapshot.stockDeltas)
+      || snapshot.stockDeltas.some(row => !row.itemId || !Number.isFinite(row.delta))) {
+      reasons.push('당시 재고 증감 기록이 없거나 불완전합니다. 기록 확인 후 처리하세요.');
+      return;
+    }
+    for (const row of snapshot.stockDeltas) {
+      const item = allItems.find(candidate => candidate.id === row.itemId);
+      adjustments.push({ itemId: row.itemId, name: item?.name ?? row.itemId, unit: item?.unit ?? '개',
+        delta: -row.delta, reason: stage === 'shipment' ? '출고 취소' : '생산 취소' });
+    }
+  };
+  const addRaw = (traces: Order['rawConsumedLots']) => {
+    if (done('raw')) return;
+    for (const trace of traces ?? []) {
+      if (!trace.operationId || !trace.rawItemId || !Number.isFinite(trace.kg) || trace.kg < 0) {
+        reasons.push('원료 사용 기록의 명령 번호·품목·수량을 확인해야 합니다.');
+        continue;
+      }
+      hasRawEffect = true;
+      lines.push(trace.ledgerOnly
+        ? `임가공 사용 기록만 취소: ${trace.material} ${fmt(trace.kg)}kg (실물 재고 복원 없음).`
+        : `원료 로트 복원: ${trace.material} ${fmt(trace.kg)}kg. 사용 취소 이력이 기록됩니다.`);
+    }
+  };
+  if (order.status === 'DELIVERED') reasons.push('배송완료 주문 삭제는 별도 정책 확인이 필요합니다.');
+  if (order.inventoryOperation && !progress) reasons.push('기존 재고 처리 기록을 재조회해 처리 상태를 먼저 확인하세요.');
+  if (action === 'cancel-shipment') {
+    if (!order.shippedOut && !done('shipment')) reasons.push('출고 처리 근거를 확인해야 합니다.');
+    addSnapshot(order.inventorySnapshots?.shipment, 'shipment');
+    lines.push('출고 재고와 당시 제품 로트만 복원하고 작업완료로 돌아갑니다. 주문과 생산·원료 사용 기록은 유지됩니다.',
+      '주문 삭제는 작업완료 상태에서 다시 눌러 별도로 승인해야 합니다.');
+  } else {
+    if (order.shippedOut && !done('shipment')) reasons.push('출고 취소를 먼저 완료해야 합니다.');
+    const states = order.itemInventory;
+    if (states !== undefined) {
+      for (const state of Object.values(states).filter(row => row.applied)) {
+        addSnapshot(state.production, 'production');
+        addRaw(state.rawConsumedLots);
+      }
+    } else if (order.producedAt || order.status === 'DISPATCHED'
+      || order.producedUnits?.length || order.autoBuilt?.length || order.rawConsumedLots?.length) {
+      addSnapshot(order.inventorySnapshots?.production, 'production');
+      addRaw(order.inventorySnapshots?.production?.rawConsumedLots ?? order.rawConsumedLots);
+    }
+    lines.push('당시 생산분과 원료·부자재 원복을 확인한 뒤 주문을 삭제합니다. 실패하면 주문을 보존합니다.');
+  }
+  const normalized = [...adjustments.reduce((map, row) => {
+    const key = `${row.reason}:${row.itemId}`;
+    map.set(key, { ...row, delta: fmt((map.get(key)?.delta ?? 0) + row.delta) });
+    return map;
+  }, new Map<string, RollbackPlan['adjustments'][number]>()).values()].filter(row => row.delta !== 0);
+  lines.unshift(...normalized.map(row => `${row.reason}: ${row.name} ${row.delta > 0 ? '+' : '−'}${fmt(Math.abs(row.delta))}${row.unit}.`));
+  let message = action === 'cancel-shipment' ? '출고를 취소하고 작업완료로 돌릴까요?' : '재고 원복을 확인하고 주문을 삭제할까요?';
+  let confirmText = action === 'cancel-shipment' ? '출고 취소' : '원복 후 삭제';
+  if (action === 'delete' && normalized.length === 0 && !hasRawEffect && reasons.length === 0 && progress?.state !== 'completed') {
+    message = '주문을 삭제할까요?';
+    confirmText = '주문 삭제';
+    lines.splice(0, lines.length, '되돌릴 생산·원료·부자재 기록이 없어 재고는 변경하지 않고 주문만 삭제합니다. 실패하면 주문을 보존합니다.');
+  }
+  let retryable = false;
+  if (progress) {
+    const stock = { none: '재고 반영 없음', partial: '재고 일부 반영', complete: '재고 반영 완료', unknown: '재고 반영 여부 미확인' }[progress.inventoryApplied];
+    lines.unshift(`${progress.action === 'cancel-shipment' ? '출고 취소' : '생산 원복·삭제'}: ${stock}.`,
+      `완료 단계: ${completedStages.map(stage => ({ shipment: '출고 취소', production: '생산 취소', raw: '원료 복원', 'order-delete': '주문 삭제' })[stage]).join(', ') || '없음'}. 완료 단계는 다시 복원하지 않습니다.`);
+    if (progress.error) lines.push(`중단 사유: ${progress.error}`);
+    if (progress.state === 'processing') {
+      message = '재고 처리 중입니다.';
+      reasons.push('다른 상태 변경을 막고 저장된 처리 결과를 재조회하세요.');
+    } else if (progress.state === 'completed') {
+      message = progress.action === 'cancel-shipment' ? '출고 취소가 완료되었습니다.' : '주문 삭제가 완료되었습니다.';
+      reasons.push(progress.action === 'cancel-shipment' ? '주문을 재조회하세요. 삭제는 별도의 사용자 승인으로 진행합니다.' : '완료 기록을 재조회하세요. 같은 작업을 다시 실행하지 않습니다.');
+    } else {
+      message = '재고 처리가 중단되었습니다. 주문을 보존합니다.';
+      retryable = progress.state === 'failed' && progress.inventoryApplied === 'none'
+        && completedStages.length === 0 && progress.retryable && progress.action === action && reasons.length === 0;
+      if (retryable) { confirmText = '같은 작업 재시도'; lines.push('엔진이 허용한 동일 작업만 재시도하세요.'); }
+      else reasons.push('부분완료 또는 미확인 상태는 처리 근거를 재조회하고 원인을 확인하세요. 자동 재개는 보장되지 않습니다.');
+    }
+  }
+  const blockedReasons = [...new Set(reasons)];
+  return { action: blockedReasons.length ? 'blocked' : action, allowed: blockedReasons.length === 0,
+    ...(action === 'cancel-shipment' ? { nextStatus: 'DISPATCHED' as const } : {}),
+    state: progress?.state ?? 'ready', message, subMessage: [...lines, ...blockedReasons].join('\n'),
+    confirmText: blockedReasons.length ? '처리 상태 확인' : confirmText, blockedReasons,
+    adjustments: normalized, completedStages, inventoryApplied: progress?.inventoryApplied ?? 'none', retryable };
+}

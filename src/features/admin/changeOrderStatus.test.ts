@@ -308,3 +308,15 @@ describe('자체 생산 완제품의 원료 근거', () => {
     expect(order.producedUnits).toEqual([]);
   });
 });
+
+
+describe('삭제 서비스 진입은 void 성공으로 처리하지 않는다', () => {
+  it('다른 상태 작업이 진행 중이면 삭제 가능 결과 대신 명시 blocked를 반환한다', async () => {
+    const o = 주문(); const { engine } = harness([상품()], o); dbx.느린읽기 = true;
+    const changing = engine.changeOrderStatus(o.id, OrderStatus.PROCESSING);
+    const result = await engine.executeOrderCancellation({ orderId: o.id, companyId: 'taebaek', action: 'delete',
+      evidence: '0'.repeat(64), operationId: 'cancellation-busy' });
+    expect(result).toMatchObject({ status: 'blocked', deleted: false, inventoryApplied: 'none' });
+    await changing;
+  });
+});
