@@ -46,6 +46,23 @@ beforeEach(() => {
 });
 
 describe('캔 개봉도 품목 사본과 원자 상태가 일치해야 한다', () => {
+  it('기존 이동 기록에 캔 로트 ID도 같은 거래로 저장하고 캔·벌크 수량은 그대로 한 번 움직인다', async () => {
+    store.set('items/can-x', { id: 'can-x', companyId: 'taebaek', stock: 3, lots: [
+      { id: 'can-source', supplierName: '공급처', qtyIn: 3, qtyRemaining: 3, kgIn: 49.5, kgRemaining: 49.5,
+        unitKg: 16.5, status: 'active', receivedDate: '2026-09-01' },
+    ] });
+    const result = await unpack(plan);
+    expect(result.ok).toBe(true);
+    expect(writes).toBe(4);
+    expect(store.get('items/can-x')?.stock).toBe(2);
+    expect(store.get('items/raw-x')?.stock).toBe(116.5);
+    const movements = [...store.entries()].filter(([key]) => key.startsWith('rawMaterialLedger/'));
+    expect(movements).toHaveLength(1);
+    expect(movements[0][1]).toMatchObject({
+      source: { type: 'unpack', id: 'can-x' }, received: 0, used: 0,
+      unpackMoves: [{ canLotId: 'can-source', cans: 1, bulkQty: 16.5 }],
+    });
+  });
   it.each([0.001, 0.5])('차이 %skg이면 캔·벌크·원장 어느 문서도 쓰지 않는다', async delta => {
     store.set('items/raw-x', { ...store.get('items/raw-x'), stock: 100 + delta });
     const before = JSON.stringify([...store.entries()]);

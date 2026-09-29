@@ -25,7 +25,11 @@ import {
 import { auth, authReady, db } from "../firebase";
 import { today } from '../day';
 import type { Order, OrderStatus, RawMaterialLot } from "../types";
-import { pruneDepletedLots } from "../lotUtils";
+import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
+import { companyOf, type Item } from '../types';
+import { holdsUnitStock } from '../itemTaxonomy';
+import { itemKg } from '../orderUnits';
+import type { ItemReceipt } from '../receipt';
 import { statementBlockReason } from "../statementGuard";
 import { canResumeFailedInventoryOperation } from '../orderCompletion';
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
@@ -493,6 +497,37 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
     await batch.commit();
   }
 };
+
+/** 캔 입고31개가 stock에만 남았던 사고: 품목·로트·입고근거를 같이 확정한다. */
+export async function receiveUnitStock(receipt: ItemReceipt): Promise<boolean> {
+  if (!Number.isFinite(receipt.quantity) || receipt.quantity <= 0) throw new Error('입고 수량은 0보다 커야 합니다.');
+  const data = await companyScopedWriteData('itemReceipts', stripUndefined(receipt));
+  return runTransaction(db, async tx => {
+    const itemRef = doc(db, 'items', receipt.itemId);
+    const receiptRef = doc(db, 'itemReceipts', receipt.id);
+    const [itemSnap, receiptSnap] = await Promise.all([tx.get(itemRef), tx.get(receiptRef)]);
+    if (!itemSnap.exists()) throw new Error('입고 품목이 없습니다.');
+    const item = { ...itemSnap.data(), id: receipt.itemId } as Item;
+    if (companyOf(item) !== data.companyId || !holdsUnitStock(item)) throw new Error('입고 회사 또는 품목 분류가 변경되었습니다.');
+    if (receiptSnap.exists()) {
+      const saved = receiptSnap.data();
+      if (['itemId', 'companyId', 'quantity', 'date', 'poId'].some(k => saved[k] !== data[k])) throw new Error('같은 입고번호의 내용이 다릅니다.');
+      return false;
+    }
+    const stock = Number(item.stock ?? 0);
+    if (!Number.isFinite(stock) || stock < 0) throw new Error('현재 재고를 먼저 확인해 주세요.');
+    const unitKg = itemKg(item) || 0;
+    const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
+      { id: `carry:${receipt.id}`, receivedDate: receipt.date, createdAt: receipt.createdAt });
+    if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error('품목 재고와 로트 잔량이 다릅니다. 기존 누락을 확인한 뒤 입고해 주세요.');
+    const lot = { ...buildProductLot({ material: item.rawMaterialName || item.name, itemId: item.id,
+      supplierName: receipt.partnerName, supplierId: receipt.partnerId, qtyIn: receipt.quantity, unitKg,
+      receivedDate: receipt.date, poId: receipt.poId }), id: `receipt:${receipt.id}`, createdAt: receipt.createdAt };
+    tx.update(itemRef, { stock: Math.round((stock + receipt.quantity) * 1000) / 1000, lots: stripUndefined([...lots, lot]) });
+    tx.set(receiptRef, data);
+    return true;
+  });
+}
 
 export const writeMany = async (
   ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }[],

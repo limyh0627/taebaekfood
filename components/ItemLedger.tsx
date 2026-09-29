@@ -8,6 +8,7 @@ import { filterItems, ALL } from '../src/shared/itemFilter';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import RawLedgerList from './RawLedgerList';
 import { isRawHolder } from '../src/shared/rawHolder';
+import { baseRawName, kgToUnit, unitOf } from '../src/constants/formula';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
@@ -25,6 +26,7 @@ const KIND_CLS: Record<ItemLedgerKind, string> = {
   '자재사용': 'bg-amber-100 text-amber-700',
   '입고': 'bg-sky-100 text-sky-700',
   '실사': 'bg-violet-100 text-violet-700',
+  '캔 개봉': 'bg-blue-100 text-blue-700',
 };
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
@@ -60,12 +62,12 @@ const ItemLedger: React.FC<{
   const companyOrders = useMemo(() => orders.filter(order => companyOf(order) === companyId), [orders, companyId]);
   const companyReceipts = useMemo(() => receipts.filter(receipt => companyOf(receipt) === companyId), [receipts, companyId]);
   const ledger = useMemo(
-    () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts) : null),
-    [pickedId, companyOrders, items, companyReceipts]);
+    () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts, rawEntries) : null),
+    [pickedId, companyOrders, items, companyReceipts, rawEntries]);
 
   //  좁은 화면에서는 위아래로 — 가로로 두면 오른쪽 표가 찌그러진다(shared/ui/table)
   return (
-    <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-full min-h-0">
+    <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-auto lg:h-full min-h-0">
       {/* 품목 고르기 — 크기 고정. 검색으로 줄 수가 줄어도 창이 안 흔들린다. */}
       <div className="w-full lg:w-[280px] shrink-0 flex flex-col max-h-[38vh] lg:max-h-none bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="p-2 border-b border-slate-100 space-y-2">
@@ -99,7 +101,7 @@ const ItemLedger: React.FC<{
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="flex-none lg:flex-1 min-h-0 min-w-0 flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {!picked || !ledger ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-300 gap-2">
             <Package size={36} className="opacity-40"/>
@@ -109,10 +111,10 @@ const ItemLedger: React.FC<{
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
             <span className="text-sm font-black text-slate-800">{picked.name}</span>
             <span className="text-[11px] font-bold text-slate-400">{picked.spec || '원료'}</span>
-            <span className="ml-auto text-xs font-black text-slate-700 tabular-nums">현재 {fmt(Number(picked.stock ?? 0))}kg</span>
+            <span className="ml-auto text-xs font-black text-slate-700 tabular-nums">현재 {fmt(kgToUnit(Number(picked.stock ?? 0), baseRawName(picked.name)))}{unitOf(baseRawName(picked.name))}</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
-            <RawLedgerList entries={pickedRawEntries} allEntries={pickedRawEntries} orders={companyOrders} pageSize={20} emptyText="이 원료의 입출고 기록이 없습니다" />
+          <div className="flex-none lg:flex-1 min-h-0 lg:overflow-y-auto p-4 bg-slate-50/50">
+            <RawLedgerList stockMovements entries={pickedRawEntries} allEntries={pickedRawEntries} orders={companyOrders} pageSize={20} emptyText="이 원료의 입출고 기록이 없습니다" />
           </div>
         </>) : (<>
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
@@ -151,7 +153,7 @@ const ItemLedger: React.FC<{
               마지막 기록과 지금 재고가 <b>{fmt(ledger.gap)}{picked.unit}</b> 다릅니다 — 기록 없이 바뀐 재고가 남아 있습니다.
             </div>
           )}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-none lg:flex-1 min-h-0 overflow-x-auto lg:overflow-y-auto">
             {ledger.rows.length === 0 ? (
               <p className="px-3 py-12 text-center text-[11px] font-bold text-slate-300">주문으로 오간 기록이 없습니다</p>
             ) : (

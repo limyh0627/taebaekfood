@@ -29,6 +29,7 @@ describe('개봉은 로트를 물려주는 이동이다', () => {
     expect(r.bulkLots).toHaveLength(1);
     expect(r.bulkLots[0].lotNo).toBe('260901-01');
     expect(r.bulkLots[0].kgRemaining).toBe(49.5);
+    expect(r.moves[0]).toMatchObject({ canLotId: 'c1', cans: 3, bulkQty: 49.5 });
   });
 
   it('거래처를 물려받는다 — 산 것이 아니라 그 로트가 형태만 바뀐 것이다', () => {

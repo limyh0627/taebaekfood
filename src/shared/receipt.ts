@@ -1,5 +1,6 @@
 import type { CompanyId, Item } from './types';
-import { addItem, adjustItemStock } from './services/firebaseService';
+import { addItem, adjustItemStock, receiveUnitStock } from './services/firebaseService';
+import { holdsUnitStock } from './itemTaxonomy';
 import { rawLotTarget, recordRawMaterialReceipt } from './rawReceipt';
 
 /**
@@ -70,7 +71,7 @@ export async function recordReceipt(opts: {
   if (quantity < 0) throw new Error('입고 수량은 0보다 커야 합니다.');
 
   //  원료·반제품이면 로트와 수불부가 맡는다(그쪽도 제 몫의 겹침 방지를 갖고 있다)
-  if (rawLotTarget(allItems, product, product?.name ?? itemName, companyId)) {
+  if (!holdsUnitStock(product) && rawLotTarget(allItems, product, product?.name ?? itemName, companyId)) {
     const r = await recordRawMaterialReceipt(opts);
     return r.recorded ? { kind: 'raw', baseName: r.baseName, kgIn: r.kgIn } : { kind: 'skipped' };
   }
@@ -82,6 +83,13 @@ export async function recordReceipt(opts: {
   if (처리중.has(표)) return { kind: 'skipped' };
   처리중.add(표);
   try {
+    if (holdsUnitStock(product)) {
+      // 발주 재시도는 같은 문서로, 발주 없는 독립 입고는 별도 사건으로 남긴다.
+      const id = `rcv-unit-${encodeURIComponent(poId ? `${companyId ?? ''}|${poId}|${product.id}|${dateStr}|${quantity}` : `${product.id}|${nowIso}`)}`;
+      const applied = await receiveUnitStock({ id, itemId: product.id, itemName: product.name, quantity,
+        unit: unit ?? product.unit, partnerId, partnerName, date: dateStr, poId, companyId, addedBy, createdAt: nowIso });
+      return { kind: applied ? 'stock' : 'skipped' };
+    }
     //  재고는 DB에서 읽어 더한다 — 화면값에 더해 덮어쓰면 그 사이 들어온 쓰기가 날아간다
     await adjustItemStock('items', product.id, quantity);
     await addItem('itemReceipts', {

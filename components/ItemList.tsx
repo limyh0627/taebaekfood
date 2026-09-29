@@ -1221,7 +1221,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col relative">
+    <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
       <PageHeader
         title={mode === 'lots' ? '생산 관리' : '재고 관리'}
         subtitle={mode === 'lots' ? '원료 사용과 활성·완료 로트를 한곳에서 관리하세요.' : '실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.'}
@@ -1613,7 +1613,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
-        <div className="flex flex-col gap-3 flex-1 min-h-0">
+        <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
           <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
             <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
@@ -1655,7 +1655,7 @@ const ItemList: React.FC<ItemListProps> = ({
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+          <div className="flex-none lg:flex-1 min-h-0 lg:overflow-y-auto custom-scrollbar">
             <div className="min-w-0">
             {lotView === 'list' ? (
               <section>
@@ -1765,9 +1765,10 @@ const ItemList: React.FC<ItemListProps> = ({
             const raw = isRawHolder(item);
             const material = baseRawName(item.name);
             const rawEntries = raw
-              ? rawMaterialLedger.filter(e => (e.rawItemId === item.id || (!e.rawItemId && e.material === material))
+              ? rawMaterialLedger.filter(e => companyOf(e) === companyOf(item) && (e.rawItemId === item.id || (!e.rawItemId && e.material === material))
                 && (e as any).lotChanges?.some((change: any) => change.lotId === lot.id))
-              : [];
+              : rawMaterialLedger.filter(e => companyOf(e) === companyOf(item)
+                && (e as any).source?.type === 'unpack' && (e as any).source?.id === item.id);
             return <ModalShell title={item.name} subtitle={`${item.spec || '규격 없음'} · ${lot.supplierName || '공급처 미입력'}${lot.lotNo ? ` · ${lot.lotNo}` : ''}`} onClose={() => setSelectedLot(null)} bodyClassName="custom-scrollbar !p-0">
                   <div className="bg-slate-50/70 p-5">
                     {raw ? <RawMaterialLotPanel linesUsingRaw={linesUsingRaw} product={item} isAdmin={isAdmin}
@@ -3800,6 +3801,7 @@ const ItemList: React.FC<ItemListProps> = ({
               (없으면 부모 overflow-hidden에 잘려 목록 몇 줄과 페이지네이션이 안 보인다) */}
           <div className="p-4 flex-1 min-h-0 overflow-y-auto">
             <RawLedgerList
+              stockMovements
               linesUsingRaw={linesUsingRaw}
               entries={entries}
               allEntries={rawMaterialLedger}

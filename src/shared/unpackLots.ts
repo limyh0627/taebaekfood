@@ -34,6 +34,8 @@ import { deductLotsByQty, buildReceiveLot, lotQtyRemaining } from './lotUtils';
 
 /** 어느 로트에서 몇 개를 까서 벌크로 얼마가 넘어갔나 — 사람이 대조할 수 있게 남긴다. */
 export interface UnpackLotMove {
+  /** 같은 번호의 캔 로트가 여럿이면 이름·날짜만으로 개봉 이력을 연결할 수 없다. */
+  canLotId?: string;
   lotNo?: string;
   supplierName: string;
   receivedDate?: string;
@@ -81,6 +83,7 @@ export function unpackLots(params: {
     const bulkQty = r3(take.qty * perCan);
     if (bulkQty === 0) return;
     moves.push({
+      canLotId: take.lotId,
       lotNo: take.lotNo,
       supplierName: take.supplierName,
       receivedDate: take.receivedDate,

@@ -26,7 +26,7 @@ describe('캔 개봉 원자화 연결', () => {
   });
 
   it('벌크 로트 상세 타임라인에서 개봉 이력을 캔 개봉으로 표시한다', () => {
-    expect(timeline).toContain("title: unpack ? '캔 개봉'");
+    expect(timeline).toContain("unpack ? '캔 개봉'");
     expect(timeline).toContain("source?.type === 'unpack'");
   });
 

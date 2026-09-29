@@ -9,6 +9,7 @@ describe('제품별 원장의 원료 이력 조회 배선', () => {
     const skips = new Function('docTab', 'currentView', `return ${guard}`);
     expect(skips('전체', 'item-ledger')).toBe(false);
     expect(skips('전체', 'inventory')).toBe(false);
+    expect(skips('전체', 'lot-management')).toBe(false);
     expect(skips('전체', 'dashboard')).toBe(true);
   });
   it('회사별 전체 이력을 화면에 전달한다', () => {

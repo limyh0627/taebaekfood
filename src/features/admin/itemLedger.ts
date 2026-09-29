@@ -1,4 +1,6 @@
-import type { Item, Order } from '../../shared/types';
+import { companyOf, type Item, type Order, type RawMaterialEntry } from '../../shared/types';
+import type { RawInventoryMovement } from '../../shared/rawInventoryCore';
+import type { UnpackLotMove } from '../../shared/unpackLots';
 import { bomOf } from '../../shared/bomIndex';
 import { stockUnits } from '../../shared/orderUnits';
 import { dateOfLocal } from '../../shared/day';
@@ -24,7 +26,28 @@ import type { ItemReceipt } from '../../shared/receipt';
  * 재고조정·실사처럼 주문 밖에서 움직인 것은 여기 안 잡힌다. 그래서 **맞춘 잔량이 아니라
  * 흐름**을 보여주고, 지금 재고와의 차이를 따로 밝힌다 — 억지로 맞추면 어디가 틀렸는지 가려진다.
  */
-export type ItemLedgerKind = '기초' | '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사';
+export type ItemLedgerKind = '기초' | '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사' | '캔 개봉';
+
+/** 저장 형식을 늘리지 않고, 기존 원자화 원장의 추가 칸을 읽는다. */
+export type ItemInventoryEntry = RawMaterialEntry & Partial<Pick<RawInventoryMovement,
+  'kind' | 'source' | 'lotChanges' | 'appliedDeltaKg'>> & { unpackMoves?: UnpackLotMove[] };
+
+/** 서류에서는 개봉이 0이지만, 벌크 품목 원장에서는 실제 늘어난 kg를 보여야 한다. */
+export function rawEntriesForItemLedger(entries: ItemInventoryEntry[]): RawMaterialEntry[] {
+  return entries.map(entry => {
+    if (entry.kind === 'merge-lots') return {
+      ...entry, received: 0, used: 0,
+      note: ['로트 합치기 · 재고 증감 0kg', entry.note].filter(Boolean).join(' · '),
+    };
+    if (entry.kind !== 'unpack' && entry.source?.type !== 'unpack') return entry;
+    const kg = entry.appliedDeltaKg ?? entry.unpackMoves?.reduce((sum, move) => sum + move.bulkQty, 0);
+    const cans = entry.canCount ?? entry.unpackMoves?.reduce((sum, move) => sum + move.cans, 0);
+    return {
+      ...entry, received: Number.isFinite(kg) ? Number(kg) : entry.received, used: 0, unit: 'kg',
+      note: [`캔 개봉${Number.isFinite(cans) ? ` · 캔 -${cans}개` : ''}${Number.isFinite(kg) ? ` → 벌크 +${kg}kg` : ''}`, entry.note].filter(Boolean).join(' · '),
+    };
+  });
+}
 
 export interface ItemLedgerRow {
   date: string;
@@ -64,8 +87,10 @@ export function buildItemLedger(
   allItems: Item[],
   /** 사 온 기록. 안 넘기면 예전처럼 주문만 본다(옛 호출부 호환). */
   receipts: ItemReceipt[] = [],
+  inventoryEntries: ItemInventoryEntry[] = [],
 ): ItemLedger {
   const rows: ItemLedgerRow[] = [];
+  const item = allItems.find(i => i.id === itemId);
   const nameOf = (id: string) => allItems.find(i => i.id === id)?.name ?? id;
 
   for (const o of orders) {
@@ -110,7 +135,17 @@ export function buildItemLedger(
     });
   }
 
-  const item = allItems.find(i => i.id === itemId);
+  // 개봉 원장은 벌크 품목에 저장돼 있다. 캔 차감은 source.id로 연결하고 kg를 개수로 읽지 않는다.
+  for (const entry of inventoryEntries) {
+    if (!item || companyOf(entry) !== companyOf(item) || entry.source?.type !== 'unpack' || entry.source.id !== itemId) continue;
+    const cans = entry.canCount ?? entry.unpackMoves?.reduce((sum, move) => sum + move.cans, 0);
+    if (!Number.isFinite(cans) || Number(cans) <= 0) continue;
+    rows.push({
+      date: dateOfLocal(entry.effectiveAt || entry.date), kind: '캔 개봉', qty: -r3(Number(cans)),
+      partnerName: '', orderId: entry.id, balance: 0,
+      note: entry.note || `벌크 ${entry.material}로 이동`, occurredAt: entry.recordedAt || entry.createdAt || entry.effectiveAt,
+    });
+  }
   for (const anchor of item?.stocktakeAnchors ?? []) {
     rows.push({
       date: dateOfLocal(anchor.createdAt || anchor.date), kind: '실사', qty: 0,

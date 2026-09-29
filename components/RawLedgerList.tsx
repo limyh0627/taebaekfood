@@ -5,11 +5,14 @@ import { unitOf, kgToUnit, DENSITY } from '../src/constants/formula';
 import { applyLedgerRowByBusinessDate, sortLedger } from '../src/shared/rawLedgerBalance';
 import { ledgerTrace, orderIndex } from '../src/shared/ledgerTrace';
 import { ChevronRight } from 'lucide-react';
+import { rawEntriesForItemLedger } from '../src/features/admin/itemLedger';
 
 type FilterType = '전체' | '입고' | '사용' | '정정';
 const FILTERS: FilterType[] = ['전체', '입고', '사용', '정정'];
 
 interface Props {
+  /** 창고 내부 개봉은 서류상 0이지만, 실제 벌크 재고 보기에는 증가 kg가 필요하다. */
+  stockMovements?: boolean;
   entries: RawMaterialEntry[];
   isAdmin?: boolean;
   currentUserName?: string;
@@ -28,13 +31,18 @@ interface Props {
 
 /** 원료 입출고(수불) 기록 목록 — 유형 필터 + 페이지네이션. 원료별 패널·전체 목록에서 공용. */
 const RawLedgerList: React.FC<Props> = ({
-  entries, isAdmin = false, currentUserName, onDelete, showMaterial = false, pageSize = 8, emptyText = '기록 없음',
-  allEntries, orders, linesUsingRaw,
+  entries: sourceEntries, isAdmin = false, currentUserName, onDelete, showMaterial = false, pageSize = 8, emptyText = '기록 없음',
+  allEntries: sourceAllEntries, orders, linesUsingRaw, stockMovements = false,
 }) => {
+  const entries = useMemo(() => stockMovements ? rawEntriesForItemLedger(sourceEntries) : sourceEntries, [sourceEntries, stockMovements]);
+  const allEntries = useMemo(() => sourceAllEntries && (stockMovements ? rawEntriesForItemLedger(sourceAllEntries) : sourceAllEntries), [sourceAllEntries, stockMovements]);
   const [filter, setFilter] = useState<FilterType>('전체');
   const [page, setPage] = useState(1);
   // 펼친 날짜(원료|날짜) — 그날 합계가 어떤 건들로 이뤄졌는지 보여준다
   const [openDay, setOpenDay] = useState<string | null>(null);
+  // 저장은 kg지만 기름 화면의 머리줄은 L이다. 실제 기록도 같은 환산을 쓰되 소수를 숨기지 않는다.
+  const displayQty = (kg: number, material: string) => stockMovements
+    ? Math.round(kgToUnit(kg, material) * 1000) / 1000 : Math.round(kgToUnit(kg, material));
 
   // ── 묶음 만들기 + 잔량 누적 ────────────────────────────────────────────────
   // 원료·날짜로 묶되, **같은 날이라도 정정을 만나면 줄을 끊는다**(원료수불부와 같은 규칙).
@@ -176,13 +184,13 @@ const RawLedgerList: React.FC<Props> = ({
         </div>
         <ul className="divide-y divide-slate-100">
           {paged.map(g => {
-            const u = unitOf(g.material);                    // 표시 단위 (기름=L, 그 외=kg)
-            const recv = Math.round(kgToUnit(g.received, g.material));  // 저장 kg → 표시단위
-            const use  = Math.round(kgToUnit(g.used, g.material));
-            const adj  = Math.round(kgToUnit(g.adj, g.material));
+            const u = unitOf(g.material);
+            const recv = displayQty(g.received, g.material);
+            const use  = displayQty(g.used, g.material);
+            const adj  = displayQty(g.adj, g.material);
             // 전재고 ± 그 묶음 입출고 = 잔량 (기록 처음부터 누적한 값)
-            const prevBal = Math.round(kgToUnit(g.prev, g.material));
-            const curBal  = Math.round(kgToUnit(g.cur, g.material));
+            const prevBal = displayQty(g.prev, g.material);
+            const curBal  = displayQty(g.cur, g.material);
             const badge = g.types.has('correction')
               ? { label: '정정', cls: 'bg-amber-50 text-amber-700' }
               : (g.types.size === 1 && g.types.has('auto'))
@@ -217,7 +225,7 @@ const RawLedgerList: React.FC<Props> = ({
                     {/* 실사한 날은 잔량이 계산값이 아니라 실제로 센 값으로 바뀐다 — 숫자가 튀는 이유를 줄에 표시 */}
                     {g.anchor != null && (
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                        실사 {Math.round(kgToUnit(g.anchor, g.material)).toLocaleString()}{u}
+                        실사 {displayQty(g.anchor, g.material).toLocaleString()}{u}
                       </span>
                     )}
                   </div>
@@ -263,7 +271,9 @@ const RawLedgerList: React.FC<Props> = ({
                 <div className="bg-slate-50/70 border-t border-slate-100 px-3 py-2 space-y-1">
                   {g.rows.slice().sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))).map((e, i) => {
                     const d = DENSITY[e.material ?? ''] ?? 1;
-                    const toU = (v: number) => Math.round(kgToUnit(e.unit === 'L' && d !== 1 ? v * d : v, e.material) * 10) / 10;
+                    const toU = (v: number) => stockMovements
+                      ? displayQty(e.unit === 'L' && d !== 1 ? v * d : v, e.material)
+                      : Math.round(kgToUnit(e.unit === 'L' && d !== 1 ? v * d : v, e.material) * 10) / 10;
                     const r = toU(e.received ?? 0), s = toU(e.used ?? 0);
                     const t = e.createdAt ? new Date(e.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
                     const kind = e.type === 'auto' ? { t: '자동', c: 'bg-blue-50 text-blue-600' }
@@ -280,7 +290,7 @@ const RawLedgerList: React.FC<Props> = ({
                           {tr.where && <span className="ml-1.5 font-bold text-slate-500">· {tr.where}</span>}
                           {tr.cardNo && <span className="ml-1.5 text-slate-300 font-bold">{tr.cardNo}</span>}
                           {tr.note && <span className="ml-1.5 text-slate-400">· {tr.note}</span>}
-                          {e.targetKg != null && <span className="ml-1.5 font-black text-teal-700">실사 {Math.round(kgToUnit(Number(e.targetKg), e.material))}{u}</span>}
+                          {e.targetKg != null && <span className="ml-1.5 font-black text-teal-700">실사 {displayQty(Number(e.targetKg), e.material)}{u}</span>}
                         </span>
                         <span className="shrink-0 w-16 text-right font-black text-emerald-600">{r > 0 ? `+${r.toLocaleString()}` : ''}</span>
                         <span className={`shrink-0 w-16 text-right font-black ${s > 0 ? 'text-rose-500' : 'text-violet-600'}`}>

@@ -16,6 +16,7 @@ vi.mock('./services/firebaseService', () => ({
     if (col === 'rawMaterialLedger') 기록.원장.push(data);
   },
   adjustItemStock: async (_c: string, id: string, d: number) => { 기록.재고.push({ id, d }); },
+  receiveUnitStock: async (data: any) => { 기록.입고.push(data); 기록.로트.push(data.itemId); return true; },
   mutateRawMaterialLots: async (id: string) => { 기록.로트.push(id); return []; },
 }));
 //  원료 입고는 이제 **한 명령**으로 나간다 — 로트와 원장이 한 트랜잭션에 같이 들어간다.
@@ -42,6 +43,14 @@ const 들어옴 = (product: Item, over: Record<string, unknown> = {}) => recordR
 beforeEach(() => { 기록.재고 = []; 기록.입고 = []; 기록.원장 = []; 기록.로트 = []; });
 
 describe('갈림은 문 안에 있다', () => {
+  it('캔 이름이 벌크와 같아도 자기 개수 로트로 입고한다', async () => {
+    const can = { id: 'can', name: '참깨', type: 'wip', subtype: '캔', unit: '개', companyId: 'taebaek' } as Item;
+    await 들어옴(can, { quantity: 31, poId: 'po-can', companyId: 'taebaek' });
+    expect(기록.로트).toEqual(['can']);
+    expect(기록.원장).toHaveLength(0);
+    expect(기록.재고).toHaveLength(0);
+    expect(기록.입고[0]).toMatchObject({ itemId: 'can', quantity: 31 });
+  });
   it('**원료는 로트와 원료수불부로** — 재고 숫자를 직접 안 만진다', async () => {
     const r = await 들어옴(참깨());
     expect(r.kind).toBe('raw');

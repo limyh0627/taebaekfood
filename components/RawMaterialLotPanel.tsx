@@ -432,6 +432,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
             <span className="text-[11px] font-black text-slate-600 uppercase tracking-wide">입출고 기록</span>
           </div>
           <RawLedgerList
+            stockMovements
             linesUsingRaw={linesUsingRaw}
             entries={ledgerEntries}
             orders={orders}
