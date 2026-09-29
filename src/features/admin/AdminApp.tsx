@@ -517,7 +517,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   전역 7일 구독을 제거했으므로, 이 화면 진입 시 재조회가 유일한 최신화 경로 —
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
-    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory') return;
+    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory' && currentView !== 'item-ledger') return;
     const to = today();
     // 전체 이력이 필요한 화면이라 회사 범위만 서버에서 제한하고 날짜는 클라이언트에서 거른다.
     // companyId+date 복합 인덱스 배포 여부 때문에 원장이 통째로 비는 일을 피한다.
@@ -4722,7 +4722,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <PageHeader title="제품별원장" subtitle="품목별 기초·입고·생산·사용·출고·실사 기록" />
               <div className="flex-1 min-h-0 p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={rawMaterialLedger} />
+              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={mergedRawMaterialLedger} />
                 </React.Suspense>
               </div>
             </div>
