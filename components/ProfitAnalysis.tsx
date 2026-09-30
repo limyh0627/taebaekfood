@@ -14,6 +14,8 @@ import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/u
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
+import { partnerMonthlySettlement } from '../src/features/admin/partnerMonthlySettlement';
+import { savePartnerMonthlyPdf } from '../src/features/admin/partnerMonthlyPdf';
 import { buildJournals } from '../src/shared/buildJournals';
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchWhere } from '../src/shared/services/firebaseService';
@@ -71,11 +73,12 @@ const fmtM = (n: number) => {
 };
 
 const MONTHS = 12;
+const EMPTY_CASH_FLOW_MANUAL: CashFlowManual[] = [];
 /** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
 const INVENTORY_EXPENSE_CODE = '500';
 // (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -166,6 +169,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // 거래처 상세를 연 단위로 볼지 월 단위로 볼지. 월이면 '전월이월'이 앞에 붙는다.
   const [statsScope, setStatsScope] = useState<'year' | 'month'>('year');
   const [statsMonth, setStatsMonth] = useState(() => new Date().getMonth() + 1);
+  const [pdfMonth, setPdfMonth] = useState(() => today().slice(0, 7));
   // 미수 ↔ 미지급 상계 (같은 거래처에 받을 돈과 줄 돈이 같이 있을 때)
   const [offsetForm, setOffsetForm] = useState<{ id: string; name: string; max: number; amount: string; date: string } | null>(null);
 
@@ -1181,56 +1185,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         //   거래처 잔액은 '전표 합계 − 자금원장 108/251'로 나오므로 여기 한 줄이면 충분하다.
 
         const generateMonthlySummaryPdf = async () => {
-          const month = new Date().toISOString().slice(0, 7);
-          const [y, m] = month.split('-');
-          const monthStmts = issuedStatements.filter(s => s.tradeDate.startsWith(month));
-          const salesTotal = monthStmts.filter(s => s.type === '매출').reduce((a, s) => a + s.totalAmount, 0);
-          const purchaseTotal = monthStmts.filter(s => s.type === '매입').reduce((a, s) => a + s.totalAmount, 0);
-          const allReceivable = allClientList.filter(c => c.receivable > 0);
-          const totalReceivableAll = allReceivable.reduce((a, c) => a + c.receivable, 0);
-          // settlement엔 날짜가 없으므로 연결된 cashEntry의 날짜로 이번 달인지 판정한다.
-          const entryById = new Map(cashEntries.map(e => [e.id, e]));
-          const settledThisMonth = new Set<string>();
-          for (const st of settlements) {
-            const e = entryById.get(st.cashEntryId);
-            if (e && (e.date ?? '').startsWith(month)) settledThisMonth.add(st.statementId);
-          }
-          const paidThisMonth = allClientList.filter(c => {
-            const stmts = issuedStatements.filter(s => s.partnerId === c.id && s.type === '매출');
-            return stmts.some(s => settledThisMonth.has(s.id));
-          });
-          const jsPDF = (await import('jspdf')).default;
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-          const fmtNum = (n: number) => n.toLocaleString('ko-KR');
-          let y2 = 20;
-          const line = (text: string, x = 15, size = 10, bold = false) => {
-            pdf.setFontSize(size); pdf.setFont('helvetica', bold ? 'bold' : 'normal');
-            pdf.text(text, x, y2); y2 += size * 0.5 + 2;
-          };
-          const rule = () => { pdf.setDrawColor(200); pdf.line(15, y2, 195, y2); y2 += 4; };
-          line(`${y}년 ${m}월 정산 요약`, 15, 18, true);
-          line(`발행일: ${new Date().toLocaleDateString('ko-KR')}`, 15, 9);
-          y2 += 4; rule();
-          line('▶ 이번 달 거래 현황', 15, 12, true); y2 += 2;
-          line(`  매출 합계:  ${fmtNum(salesTotal)}원`, 15, 10);
-          line(`  매입 합계:  ${fmtNum(purchaseTotal)}원`, 15, 10);
-          line(`  거래 건수:  ${monthStmts.length}건`, 15, 10);
-          y2 += 4; rule();
-          line('▶ 미수금 현황 (전체)', 15, 12, true); y2 += 2;
-          line(`  총 미수금:  ${fmtNum(totalReceivableAll)}원  (${allReceivable.length}개 거래처)`, 15, 10);
-          y2 += 2;
-          allReceivable.slice(0, 20).forEach(c => {
-            line(`  • ${c.name}:  ${fmtNum(c.receivable)}원`, 18, 9);
-          });
-          if (allReceivable.length > 20) line(`  ... 외 ${allReceivable.length - 20}개 거래처`, 18, 9);
-          y2 += 4; rule();
-          line('▶ 이번 달 수금 처리 거래처', 15, 12, true); y2 += 2;
-          if (paidThisMonth.length === 0) {
-            line('  이번 달 수금 기록 없음', 18, 9);
-          } else {
-            paidThisMonth.forEach(c => line(`  • ${c.name}`, 18, 9));
-          }
-          pdf.save(`정산요약_${y}년${m}월.pdf`);
+          const rows = partnerMonthlySettlement(pdfMonth, issuedStatements, cashEntries, journalEntries)
+            .map(row => ({ ...row, name: resolveName(row.partnerId) }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+          await savePartnerMonthlyPdf(pdfMonth, rows);
         };
 
         return (
@@ -1240,11 +1198,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <div className="flex flex-col lg:flex-row gap-4 lg:min-h-[600px]">
               {/* 좌측: 거래처 목록 — 좁은 화면에선 위쪽 */}
               <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
+                <input type="month" value={pdfMonth} max={today().slice(0, 7)}
+                  onChange={e => setPdfMonth(e.target.value)}
+                  aria-label="거래처별 정산 PDF 월 선택"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold" />
                 <button
                   onClick={generateMonthlySummaryPdf}
+                  disabled={!/^\d{4}-(0[1-9]|1[0-2])$/.test(pdfMonth) || pdfMonth > today().slice(0, 7)}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl transition-colors"
                 >
-                  <Download size={13} /> 이번 달 정산 요약 PDF
+                  <Download size={13} /> 거래처별 월간 정산 PDF
                 </button>
                 <div className="relative">
                   <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>

@@ -26,6 +26,8 @@ const KIND_CLS: Record<ItemLedgerKind, string> = {
   '자재사용': 'bg-amber-100 text-amber-700',
   '입고': 'bg-sky-100 text-sky-700',
   '실사': 'bg-violet-100 text-violet-700',
+  '조정': 'bg-amber-100 text-amber-700',
+  '기준불명': 'bg-slate-100 text-slate-600',
   '캔 개봉': 'bg-blue-100 text-blue-700',
 };
 

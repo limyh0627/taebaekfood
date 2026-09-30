@@ -26,7 +26,7 @@ import type { ItemReceipt } from '../../shared/receipt';
  * 재고조정·실사처럼 주문 밖에서 움직인 것은 여기 안 잡힌다. 그래서 **맞춘 잔량이 아니라
  * 흐름**을 보여주고, 지금 재고와의 차이를 따로 밝힌다 — 억지로 맞추면 어디가 틀렸는지 가려진다.
  */
-export type ItemLedgerKind = '기초' | '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사' | '캔 개봉';
+export type ItemLedgerKind = '기초' | '생산' | '먼저생산' | '출고' | '자재사용' | '입고' | '실사' | '조정' | '기준불명' | '캔 개봉';
 
 /** 저장 형식을 늘리지 않고, 기존 원자화 원장의 추가 칸을 읽는다. */
 export type ItemInventoryEntry = RawMaterialEntry & Partial<Pick<RawInventoryMovement,
@@ -147,9 +147,11 @@ export function buildItemLedger(
     });
   }
   for (const anchor of item?.stocktakeAnchors ?? []) {
+    const kind: ItemLedgerKind = anchor.id.startsWith('stocktake-') ? '실사'
+      : anchor.id.startsWith('adjust-') ? '조정' : '기준불명';
     rows.push({
-      date: dateOfLocal(anchor.createdAt || anchor.date), kind: '실사', qty: 0,
-      partnerName: '', orderId: anchor.id, note: '재고 실사', balance: 0,
+      date: dateOfLocal(anchor.createdAt || anchor.date), kind, qty: 0,
+      partnerName: '', orderId: anchor.id, note: anchor.note || (kind === '실사' ? '재고 실사' : '재고 기준 변경'), balance: 0,
       occurredAt: anchor.createdAt || anchor.date,
       targetBalance: r3(Number(anchor.targetQty ?? 0)),
     });
@@ -188,7 +190,7 @@ export function buildItemLedger(
   const inSum = r3(rows.filter(r => r.kind !== '기초' && r.kind !== '실사' && r.qty > 0).reduce((a, r) => a + r.qty, 0));
   const outSum = r3(rows.filter(r => r.kind !== '기초' && r.kind !== '실사' && r.qty < 0).reduce((a, r) => a + r.qty, 0));
   const anchors = rows.filter(row => row.targetBalance != null);
-  const latestAnchor = anchors.at(-1);
+  const latestAnchor = anchors.filter(row => row.kind === '실사').at(-1);
   return {
     rows, inSum, outSum, net: r3(bal), gap: r3(stock - bal), opening,
     independentlyVerified: Boolean(latestAnchor),

@@ -27,6 +27,37 @@ beforeEach(() => {
 });
 
 describe('제품 재고 실사 앵커', () => {
+  it('수동 조정만으로는 독립 실사로 인정하지 않는다', () => {
+    const item = { id: 'stocktake-item', name: '품목', type: 'product', unit: '개', stock: 10,
+      stocktakeAnchors: [{ id: 'adjust-1', date: '2026-09-17', createdAt: '2026-09-17T09:00:00.000Z', targetQty: 10, beforeQty: 8, deltaQty: 2, note: '수동 정정' }] } as unknown as Item;
+    const ledger = buildItemLedger(item.id, [], [item]);
+    expect(ledger.rows.at(-1)).toMatchObject({ kind: '조정', targetBalance: 10, balance: 10, note: '수동 정정' });
+    expect(ledger.independentlyVerified).toBe(false);
+    expect(ledger.verifiedFrom).toBeUndefined();
+  });
+
+  it('출처가 불명확한 옛 앵커도 실사로 추정하지 않는다', () => {
+    const item = { id: 'stocktake-item', name: '품목', type: 'product', unit: '개', stock: 10,
+      stocktakeAnchors: [{ id: 'legacy-1', date: '2026-09-17', createdAt: '2026-09-17T09:00:00.000Z', targetQty: 10, beforeQty: 8, deltaQty: 2 }] } as unknown as Item;
+    const ledger = buildItemLedger(item.id, [], [item]);
+    expect(ledger.rows.at(-1)?.kind).toBe('기준불명');
+    expect(ledger.independentlyVerified).toBe(false);
+  });
+
+  it('실사 뒤의 수동 조정은 잔량에 반영하고 실사 기준일은 보존한다', () => {
+    const item = { id: 'stocktake-item', name: '품목', type: 'product', unit: '개', stock: 12,
+      stocktakeAnchors: [
+        { id: 'stocktake-1', date: '2026-09-17', createdAt: '2026-09-17T09:00:00.000Z', targetQty: 10, beforeQty: 8, deltaQty: 2 },
+        { id: 'adjust-1', date: '2026-09-18', createdAt: '2026-09-18T09:00:00.000Z', targetQty: 12, beforeQty: 10, deltaQty: 2 },
+      ] } as unknown as Item;
+    const ledger = buildItemLedger(item.id, [], [item]);
+    expect(ledger.rows.slice(-2).map(row => row.kind)).toEqual(['실사', '조정']);
+    expect(ledger.net).toBe(12);
+    expect(ledger.gap).toBe(0);
+    expect(ledger.independentlyVerified).toBe(true);
+    expect(ledger.verifiedFrom).toBe('2026-09-17');
+  });
+
   it('실사 시점의 원장 잔량을 목표 수량으로 다시 세운다', () => {
     const item = {
       id: 'stocktake-item',

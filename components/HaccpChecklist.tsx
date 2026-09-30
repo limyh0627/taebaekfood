@@ -4,7 +4,7 @@ import { today } from '../src/shared/day';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
-import { addItem, setDocument } from '../src/shared/services/firebaseService';
+import { addItem, setDocument, updateItem } from '../src/shared/services/firebaseService';
 import { haccpTemplateDocId } from '../src/shared/haccpTemplateId';
 import type { CompanyId } from '../src/shared/types';
 const HaccpCompanyContext = createContext<CompanyId>('taebaek');
@@ -1093,7 +1093,7 @@ const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
       if (!currentRecord?.id) {
         await addItem('haccp_incoming', { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
       } else {
-        await updateDoc(doc(db, 'haccp_incoming', currentRecord.id), { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+        await updateItem('haccp_incoming', currentRecord.id, { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
       }
     } finally { setSaving(false); }
   };
@@ -1102,7 +1102,7 @@ const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
     if (!canConfirm || !currentRecord?.id) return;
     setConfirming(true);
     try {
-      await updateDoc(doc(db, 'haccp_incoming', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+      await updateItem('haccp_incoming', currentRecord.id, { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
     } finally { setConfirming(false); }
   };
 

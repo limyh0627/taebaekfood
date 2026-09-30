@@ -3,7 +3,7 @@ import { buildItemLedger, rawEntriesForItemLedger, type ItemInventoryEntry } fro
 import type { Item } from '../../shared/types';
 
 const can = { id: 'can', name: '깨분참기름-캔', companyId: 'taebaek', type: 'semi', subtype: '캔', unit: '개', stock: 12,
-  stocktakeAnchors: [{ id: 'anchor', date: '2026-09-01', createdAt: '2026-09-01T00:00:00Z', beforeQty: 20, targetQty: 20 }] } as Item;
+  stocktakeAnchors: [{ id: 'stocktake-anchor', date: '2026-09-01', createdAt: '2026-09-01T00:00:00Z', beforeQty: 20, targetQty: 20 }] } as Item;
 const unpack = { id: 'unpack', companyId: 'taebaek', rawItemId: 'bulk', material: '깨분참기름',
   kind: 'unpack', source: { type: 'unpack', id: 'can' }, date: '2026-09-02', createdAt: '2026-09-02T02:00:00Z',
   recordedAt: '2026-09-02T02:00:00Z', received: 0, used: 0, appliedDeltaKg: 132,
