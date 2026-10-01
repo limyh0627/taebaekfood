@@ -15,7 +15,7 @@
 // ============================================================
 
 import React from 'react';
-import AdminApp from '../admin/AdminApp';
+const AdminApp = React.lazy(() => import('../admin/AdminApp'));
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
 import type { CompanyId, Employee, ViewType } from '../../shared/types';
@@ -34,10 +34,9 @@ interface StaffAppProps {
 }
 
 const StaffApp: React.FC<StaffAppProps> = (props) => (
-  <AdminApp
-    {...props}
-    isAdmin={false}
-  />
+  <React.Suspense fallback={<div className="h-full" aria-label="직원 화면 로딩중" />}>
+    <AdminApp {...props} isAdmin={false} />
+  </React.Suspense>
 );
 
 export default StaffApp;

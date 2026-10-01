@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeStatements, voucheredOrderIds, canSettleStatement, settleStatus } from './voucherMerge';
+import { mergeStatements, voucheredOrderIds, canSettleStatement, settleStatus, settlementTypeOf, settlementDirectionOf } from './voucherMerge';
 import type { IssuedStatement } from '../../shared/types';
 
 /**
@@ -110,6 +110,15 @@ describe('수금·지불 버튼을 달 전표인가', () => {
     const 기초 = 전표({ id: 'open', type: '비용', docNo: '기초260731-01', partnerId: 'p1',
       items: [{ name: '기초 미지급', spec: '', qty: 1, price: 500, supply: 500, tax: 0, total: 500, isTaxExempt: true, accountCode: '251', side: '대변' }] } as never);
     expect(canSettleStatement(기초, 500)).toBe(true);
+    expect(settlementTypeOf(기초)).toBe('매입');
+    expect(settlementDirectionOf(기초)).toBe('출금');
+    expect(settleStatus(기초, 500).label).toBe('부분지급');
+  });
+
+  it('일반전표의 채권 차변은 수금 방향으로 판정한다', () => {
+    const 기초미수 = 전표({ type: '비용', items: [{ accountCode: '108', side: '차변' }] } as never);
+    expect(settlementTypeOf(기초미수)).toBe('매출');
+    expect(settlementDirectionOf(기초미수)).toBe('입금');
   });
 
   it('기초 전표라도 채권·채무 계정이 아니면 안 단다 — 이름이 아니라 계정이 근거다', () => {

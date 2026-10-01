@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../types';
+import { today } from '../src/shared/day';
 
 const notice = vi.hoisted(() => vi.fn(async (_message: string, _title?: string) => {}));
 vi.mock('../src/shared/components/appDialog', () => ({
@@ -15,7 +16,7 @@ import OrdersList from './OrdersList';
 const product = { id: 'p1', name: '참기름 박스', type: 'product', unit: '박스', stock: 2 } as Item;
 const order = {
   id: 'o1', partnerId: 'partner-1', partnerName: '거래처', status: OrderStatus.DISPATCHED, source: '일반',
-  createdAt: '2026-09-25T00:00:00+09:00', orderDate: '2026-09-25', deliveryDate: '2026-09-25',
+  createdAt: `${today()}T12:00:00+09:00`, orderDate: today(), deliveryDate: today(),
   totalAmount: 0, email: '',
   items: [{ itemId: 'p1', name: '참기름 박스', quantity: 1, price: 0 }],
 } as Order;

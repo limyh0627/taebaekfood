@@ -45,6 +45,7 @@ import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
+import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
 import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
@@ -209,6 +210,7 @@ interface ItemListProps {
   onFinishConfirmedOrders: (ids: string[]) => void;
   onFinishAllConfirmedOrders: () => void;
   onUpdateConfirmedQty: (id: string, qty: number) => void;
+  onUpdatePendingFlowQty?: (type: '입고' | '반품', id: string, lines: { itemId: string; previousQuantity: number; quantity: number }[]) => Promise<void>;
   onRemoveConfirmedOrder: (id: string) => void;
   onClearAllConfirmedOrders: () => void;
   onEditProduct: (product: Item) => void;
@@ -336,6 +338,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onConfirmAllRequests,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
+  onUpdatePendingFlowQty,
   onRemoveConfirmedOrder,
   onClearAllConfirmedOrders,
   onEditProduct,
@@ -657,6 +660,9 @@ const ItemList: React.FC<ItemListProps> = ({
   const [editingReqVal, setEditingReqVal] = useState<string>('');
   // 입고대기 수정(전표수정 요청) 모달
   const [poEditModal, setPoEditModal] = useState<{ po: PurchaseOrder; rows: { itemId: string; name: string; qty: string }[]; reason: string } | null>(null);
+  const [flowDetail, setFlowDetail] = useState<{ type: '입고' | '반품'; id: string; lines: { itemId: string; quantity: number }[] } | null>(null);
+  const [flowQuantities, setFlowQuantities] = useState<string[]>([]);
+  const [flowSaving, setFlowSaving] = useState(false);
   const [reqNote, setReqNote] = useState<string>('');
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
@@ -1555,28 +1561,61 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="overflow-x-auto border-y-2 border-slate-400 bg-white">
               <table className="w-full min-w-[760px] table-fixed text-left">
                 <thead className="border-b-2 border-slate-400 bg-slate-50 text-[11px] font-black text-slate-500">
-                  <tr><th className="w-20 px-4 py-3">유형</th><th className="w-24 px-3 py-3">상태</th><th className="w-28 px-3 py-3">일자</th><th className="w-40 px-3 py-3">거래처</th><th className="px-3 py-3">품목</th><th className="w-28 px-3 py-3 text-right">수량</th></tr>
+                  <tr><th className="w-20 px-4 py-3">유형</th><th className="w-24 px-3 py-3">상태</th><th className="w-28 px-3 py-3">일자</th><th className="w-40 px-3 py-3">거래처</th><th className="px-3 py-3">품목</th><th className="w-28 px-3 py-3 text-right">수량</th><th className="w-20 px-3 py-3 text-center">상세</th></tr>
                 </thead>
                 <tbody>
                   {visible.map(row => (
                     <tr key={row.key} className="border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70">
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
                       <td className="px-3 py-3">
-                        <button type="button" disabled={row.status === '완료'} onClick={() => requestTransition(row)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
+                        <button type="button" disabled={row.status === '완료'} onClick={event => { event.stopPropagation(); requestTransition(row); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
                       </td>
                       <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
                       <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
+                      <td className="px-3 py-3 text-center"><button type="button" onClick={event => { event.stopPropagation(); const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">보기</button></td>
                     </tr>
                   ))}
-                  {visible.length === 0 && <tr><td colSpan={6} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
+                  {visible.length === 0 && <tr><td colSpan={7} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
                 </tbody>
               </table>
             </div>
             {pageCount > 1 && <div className="flex justify-center gap-1">{Array.from({ length: pageCount }, (_, index) => index + 1).map(value => <button key={value} type="button" onClick={() => setFlowPage(value)} className={`h-8 w-8 rounded-lg text-xs font-black ${currentPage === value ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>)}</div>}
           </div>
         );
+      })()}
+
+      {flowDetail && (() => {
+        const record = flowDetail.type === '입고'
+          ? [...orderRequests, ...confirmedOrders, ...receivedOrders].find(row => row.id === flowDetail.id)
+          : returnRequests.find(row => row.id === flowDetail.id);
+        if (!record) return null;
+        const lines = flowDetail.type === '입고' ? poLines(record as PurchaseOrder) : (record as ReturnRequest).items;
+        const sourceChanged = flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
+        const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending';
+        const issued = !!record.linkedStatementId;
+        return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} className="md:max-w-lg" bodyClassName="space-y-4">
+          <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
+          {issued && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
+          {sourceChanged && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">품목이나 수량이 다른 곳에서 변경됐습니다. 상세창을 닫고 다시 열어주세요.</p>}
+          <div className="space-y-2">{lines.map((line, index) => <div key={`${line.itemId}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700">{line.name || productMap.get(line.itemId)?.name || '품목 미지정'}</span>
+            {pending && !sourceChanged ? <input type="number" min="0.001" step="0.001" value={flowQuantities[index] ?? String(line.quantity)} onChange={event => setFlowQuantities(values => values.map((value, i) => i === index ? event.target.value : value))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold" aria-label={`${line.name || '품목'} 수량`} />
+              : <span className="text-sm font-black tabular-nums">{line.quantity.toLocaleString()}</span>}
+          </div>)}</div>
+          {pending && <button type="button" disabled={flowSaving || sourceChanged || !onUpdatePendingFlowQty} onClick={async () => {
+            const quantities = flowQuantities.map(Number);
+            if (quantities.length !== lines.length || quantities.some(qty => !Number.isFinite(qty) || qty <= 0 || Math.abs(Math.round(qty * 1000) - qty * 1000) > 1e-6)) { alert('수량은 0보다 큰 숫자로 소수 셋째 자리까지 입력해주세요.'); return; }
+            if (issued) alert('이미 전표가 발행됐습니다. 이 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.');
+            setFlowSaving(true);
+            try {
+              await onUpdatePendingFlowQty?.(flowDetail.type, flowDetail.id, flowDetail.lines.map((line, index) => ({ itemId: line.itemId, previousQuantity: line.quantity, quantity: quantities[index] })));
+              setFlowDetail(null);
+            } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
+            finally { setFlowSaving(false); }
+          }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
+        </ModalShell>;
       })()}
 
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}

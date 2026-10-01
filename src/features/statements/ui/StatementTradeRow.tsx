@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { IssuedStatement } from '../../../shared/types';
 import type { SettleStatus } from '../../admin/voucherMerge';
 import type { StatementHistoryRowView } from '../domain/statementHistoryRowView';
+import { settlementTypeOf } from '../../admin/voucherMerge';
 
 const fmt = (amount: number) => amount.toLocaleString('ko-KR');
 const overLabel = (type: string) => type === '매출' ? '선수금' : '선급금';
@@ -49,7 +50,7 @@ export function StatementTradeTableRow(props: {
       <td className="max-w-[240px] truncate px-3 py-2 text-[10px] text-slate-500" title={view.detail}>{view.detail || '—'}</td>
       <td className={`px-4 py-2 text-right font-black ${view.isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(props.shownAmount)}{props.partial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(view.amount)}</span>}</td>
       <td className="px-4 py-2 text-right"><Balance view={view} type={statement.type}/></td>
-      <td className="whitespace-nowrap px-3 py-2"><span className="flex items-center gap-1.5"><span className={`font-black ${settleColor}`}>{props.settle.label}</span>{props.canSettle && <button onClick={event => { event.stopPropagation(); props.onSettle(); }} className={`shrink-0 whitespace-nowrap text-[11px] font-black underline decoration-dotted underline-offset-2 ${statement.type === '매입' ? 'text-rose-600 hover:text-rose-700' : 'text-blue-600 hover:text-blue-700'}`}>{statement.type === '매입' ? '지불처리' : '수금처리'}</button>}</span></td>
+      <td className="whitespace-nowrap px-3 py-2"><span className="flex items-center gap-1.5"><span className={`font-black ${settleColor}`}>{props.settle.label}</span>{props.canSettle && <button onClick={event => { event.stopPropagation(); props.onSettle(); }} className={`shrink-0 whitespace-nowrap text-[11px] font-black underline decoration-dotted underline-offset-2 ${settlementTypeOf(statement) === '매입' ? 'text-rose-600 hover:text-rose-700' : 'text-blue-600 hover:text-blue-700'}`}>{settlementTypeOf(statement) === '매입' ? '지불처리' : '수금처리'}</button>}</span></td>
       {!props.evidenceChoices.length ? <td className="whitespace-nowrap px-3 py-2 text-slate-300">—</td> : <td className="whitespace-nowrap px-3 py-2" onClick={event => event.stopPropagation()}><select value={props.evidence} disabled={!props.onEvidence} onChange={event => props.onEvidence?.(event.target.value)} aria-label={`${view.partner} 증빙`} className="h-6 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[11px] font-black text-slate-700 outline-none focus:ring-1 focus:ring-indigo-400 disabled:cursor-default disabled:opacity-60">{props.evidenceChoices.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select></td>}
       <td className="px-3 py-2 text-slate-300">—</td>
     </tr>
@@ -72,7 +73,7 @@ export function StatementTradeMobileRow(props: {
     <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-1">{props.journalToggle}<span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statement.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{view.label}</span>{view.isReturn && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">반품</span>}</div><span className="font-mono text-[10px] text-slate-400">{props.dateLabel}</span></div>
     <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-bold text-slate-800">{view.partner}</span><span className={`shrink-0 text-sm font-black ${view.isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(view.amount)}</span></div>
     <div className="flex items-center justify-between gap-2"><span className="min-w-0 flex-1 truncate text-[11px] text-slate-400">{view.detail}</span><Balance view={view} type={statement.type} mobile/></div>
-    {props.canSettle && <button onClick={event => { event.stopPropagation(); props.onSettle(); }} className={`mt-0.5 self-start rounded-lg px-2.5 py-1 text-[10px] font-black ${statement.type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>{statement.type === '매입' ? '지불처리' : '수금처리'}</button>}
+    {props.canSettle && <button onClick={event => { event.stopPropagation(); props.onSettle(); }} className={`mt-0.5 self-start rounded-lg px-2.5 py-1 text-[10px] font-black ${settlementTypeOf(statement) === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>{settlementTypeOf(statement) === '매입' ? '지불처리' : '수금처리'}</button>}
     {props.journalPreview}
   </div>;
 }

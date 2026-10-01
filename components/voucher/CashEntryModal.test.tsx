@@ -94,6 +94,15 @@ beforeEach(() => {
 });
 
 describe('수금·지불 — 전표에서 연다', () => {
+  it('일반전표의 미지급금은 지불·출금 계좌로 열고 채무 잔액을 검사한다', async () => {
+    const stmt = 매출전표({ type: '비용', items: [{ accountCode: '251', side: '대변' }] } as never);
+    const { onSettle } = 띄우기({ kind: '수금지불', stmt });
+    expect(screen.getByText('지불 처리')).toBeInTheDocument();
+    expect(screen.getByText('출금 계좌')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(onSettle).not.toHaveBeenCalled();
+    expect(screen.getByText(/초과분은 선급금/)).toBeInTheDocument();
+  });
   it('금액 기본값은 총액이 아니라 **남은 금액**이다', async () => {
     //  100만원 전표에 60만원을 이미 받았다 → 40만원이 떠야 한다.
     //  총액이 뜨면 이미 받은 60만원이 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이었다).

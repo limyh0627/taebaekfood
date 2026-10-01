@@ -65,6 +65,17 @@ export function canSettleStatement(s: IssuedStatement, balance: number): boolean
   return (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && balance > 0;
 }
 
+/** 일반전표는 type이 '비용'이어도 채권·채무 계정의 차·대 방향으로 결제한다. */
+export function settlementTypeOf(s: IssuedStatement): '매출' | '매입' {
+  const payable = isReceivableStmt(s, '매입');
+  const receivable = isReceivableStmt(s, '매출');
+  if (payable !== receivable) return payable ? '매입' : '매출';
+  return s.type === '매입' ? '매입' : '매출';
+}
+
+export const settlementDirectionOf = (s: IssuedStatement): '입금' | '출금' =>
+  settlementTypeOf(s) === '매입' ? '출금' : '입금';
+
 /**
  * **수금·지불이 어디까지 됐나** — 전표 목록에 글자로 세운다.
  *
@@ -86,7 +97,7 @@ export interface SettleStatus {
 export function settleStatus(s: IssuedStatement, balance: number): SettleStatus {
   //  채권·채무를 안 세우는 전표는 받을 것도 줄 것도 없다 — 빈칸이 아니라 '해당없음'이다.
   if (!isReceivableStmt(s, '매출') && !isReceivableStmt(s, '매입')) return { state: 'none', label: '—' };
-  const 매입 = s.type === '매입';
+  const 매입 = settlementTypeOf(s) === '매입';
   const 총액 = Number(s.totalAmount ?? 0);
   const 남은 = Number(balance ?? 0);
   if (남은 <= 0) return { state: 'done', label: '완료' };

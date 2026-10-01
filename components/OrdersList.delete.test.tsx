@@ -5,11 +5,12 @@ import { OrderStatus, type Item, type Order } from '../types';
 import OrdersList from './OrdersList';
 import fs from 'node:fs';
 import ts from 'typescript';
+import { today } from '../src/shared/day';
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 const order = {
   id: 'delete-ui-order', partnerId: 'partner', partnerName: '삭제검수', status: OrderStatus.PENDING,
-  source: '일반', createdAt: '2026-09-29T00:00:00+09:00', deliveryDate: '2026-09-29',
+  source: '일반', createdAt: `${today()}T12:00:00+09:00`, deliveryDate: today(),
   totalAmount: 0, email: '', items: [{ itemId: 'p1', name: '검수품목', quantity: 1, price: 0 }],
 } as Order;
 function openEditor(onDeleteOrder: (id: string) => Promise<boolean>) {

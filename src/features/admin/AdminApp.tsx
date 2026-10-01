@@ -84,7 +84,8 @@ import {
   CheckCircle2,
   type LucideIcon,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PurchaseOrder, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
+import { pendingFlowQuantityPatch } from './pendingFlowQuantity';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
@@ -760,15 +761,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
       throw new Error(`다른 회사 품목은 BOM에 넣을 수 없습니다: ${wrongCompany.map(item => item.name).join(', ')}`);
     }
     const boxId = `box-${unit.id}-${opts.count}`;
+    const { price: _legacyPrice, ...unitWithoutPrice } = unit as Item & { price?: number };
     const box: Item = {
-      ...unit,
+      ...unitWithoutPrice,
       id: boxId,
       companyId,
       name: opts.name,
       unit: '박스',
       stock: 0,
       cost: 0,
-      price: 0,
       minStock: 0,
       lots: [],
     } as Item;
@@ -2772,6 +2773,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
               onFinishAllConfirmedOrders={() => invoicedPurchaseOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
               onUpdateConfirmedQty={(id: string, qty: number) => updateItem('purchaseOrders', id, { quantity: qty })}
+              onUpdatePendingFlowQty={async (type, id, updates) => {
+                const ref = doc(db, type === '입고' ? 'purchaseOrders' : 'returnRequests', id);
+                await runTransaction(db, async tx => {
+                  const snap = await tx.get(ref);
+                  if (!snap.exists()) throw new Error('대상 기록을 찾을 수 없습니다.');
+                  tx.update(ref, pendingFlowQuantityPatch(type, snap.data() as PurchaseOrder | ReturnRequest, updates, companyId));
+                });
+              }}
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
@@ -5317,7 +5326,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
-            const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '', companyId });
+            const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, image: '', companyId });
             return id as string;
           }}
           onSave={async (p) => {

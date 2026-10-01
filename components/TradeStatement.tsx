@@ -3,7 +3,7 @@ import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DateChipButton from '../src/shared/components/DateChipButton';
-import { settleStatus } from '../src/features/admin/voucherMerge';
+import { settleStatus, settlementTypeOf, settlementDirectionOf } from '../src/features/admin/voucherMerge';
 import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
 import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
 import { today, dateOfLocal, weekMonday, weekSunday } from '../src/shared/day';
@@ -601,7 +601,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
     const itemCodes = allocations.flatMap(({ stmt }) =>
       (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
-    const payCode = settlementAccountCode(first.type, itemCodes, groupTypeOf);
+    const settlementType = settlementTypeOf(first);
+    const payCode = settlementAccountCode(settlementType, itemCodes, groupTypeOf);
 
     /*
      * **갚을 것보다 많이 받았으면 그 초과분은 채권 상계가 아니다.**
@@ -613,7 +614,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
      *
      * 초과 판정은 **거래처 잔액**으로 한다 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
      */
-    const isSale = first.type !== '매입';
+    const isSale = settlementType === '매출';
     const pb0 = partnerBalances.get(first.partnerId);
     /**
      * **방금 끊은 전표는 아직 거래처 잔액에 안 잡혔다.**
@@ -644,10 +645,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         : payCode ? { accountCode: payCode } : {}),
       date: opts.date,
       cashAccountId: acctId,
-      dir: first.type === '매입' ? '출금' : '입금',
+      dir: settlementDirectionOf(first),
       amount: total,
       ...(first.partnerId ? { partnerId: first.partnerId, partnerName: first.partnerName ?? '' } : {}),
-      note: opts.note || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
+      note: opts.note || `${first.partnerName ?? ''} ${isSale ? '수금' : '지불'}`.trim(),
       createdAt: stampFor(opts.date),
     });
     /**
@@ -2695,8 +2696,8 @@ ${names}
             {/* ── 이 전표의 수금/지불 ── */}
             {editingStmt && !isEditMode && (() => {
               const balance = getBalance(editingStmt);
-              return <StatementSettlementSummary type={editingStmt.type as '매출'|'매입'} totalAmount={editingStmt.totalAmount}
-                balance={balance} formatAmount={fmt} overLabel={overLabelOf(editingStmt.type)}
+              return <StatementSettlementSummary type={settlementTypeOf(editingStmt)} totalAmount={editingStmt.totalAmount}
+                balance={balance} formatAmount={fmt} overLabel={overLabelOf(settlementTypeOf(editingStmt))}
                 onSettle={()=>{setCreateMode(null);openPayModal(editingStmt);}}/>;
             })()}
             {/* ── 하단 액션 바 ── */}

@@ -10,6 +10,7 @@ import { COMPANIES, companyOf } from '../../src/shared/types';
 import { filterCodesForContext, isCashAccountCode } from '../../src/features/admin/financials';
 import { stampFor, nextDocNo, claimDocNo } from '../../src/shared/voucherStamp';
 import { isReceivableStmt } from '../../src/features/admin/cashLedger';
+import { settlementTypeOf, settlementDirectionOf } from '../../src/features/admin/voucherMerge';
 import { journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../../src/shared/autoJournal';
 import {
   CashTemplateModal, filterTemplates, isCashDir, templateAccrRows,
@@ -616,13 +617,14 @@ export default function VoucherComposer({
             const groupTypeOf = (code: string) =>
               accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
             const itemCodes = allocations.flatMap(({ stmt }) => (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
-            const payCode = settlementAccountCode(first.type, itemCodes, groupTypeOf);
+            const settlementType = settlementTypeOf(first);
+            const payCode = settlementAccountCode(settlementType, itemCodes, groupTypeOf);
             out.push({
               id: 'preview-offset', ...(payCode ? { accountCode: payCode } : {}),
               date: quickPayDate, cashAccountId: quickPayAccountId,
-              dir: first.type === '매입' ? '출금' : '입금',
+              dir: settlementDirectionOf(first),
               amount: allocations.reduce((a, x) => a + x.amount, 0),
-              note: quickPayNote.trim() || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
+              note: quickPayNote.trim() || `${first.partnerName ?? ''} ${settlementType === '매입' ? '지불' : '수금'}`.trim(),
               createdAt: '',
             } as CashEntry);
           }

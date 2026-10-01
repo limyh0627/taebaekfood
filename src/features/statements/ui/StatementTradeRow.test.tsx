@@ -33,4 +33,12 @@ describe('매출·매입 전표 행', () => {
     expect(screen.getByText('잔액 60,000')).toBeInTheDocument();
     expect(screen.getByText('2026-09-15 10:30')).toBeInTheDocument();
   });
+
+  it('일반전표의 채무 대변은 지불처리로 표시한다', () => {
+    const payable = { ...statement, type: '비용', items: [{ accountCode: '251', side: '대변' }] } as IssuedStatement;
+    render(<table><tbody><StatementTradeTableRow statement={payable} view={view} shownAmount={110_000} partial={false}
+      settle={{ state: 'open', label: '미지급' }} canSettle evidenceChoices={[]} evidence="미발행"
+      dateCell={<span>날짜</span>} journalToggle={<span>분개</span>} onOpen={vi.fn()} onSettle={vi.fn()}/></tbody></table>);
+    expect(screen.getByRole('button', { name: '지불처리' })).toBeInTheDocument();
+  });
 });

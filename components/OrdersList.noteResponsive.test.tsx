@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../types';
 import OrdersList from './OrdersList';
 import { migrateOrderItemNotes } from '../src/shared/orderNote';
+import { today } from '../src/shared/day';
 
 const products = [
   { id: 'p1', name: '참기름', type: 'product', unit: '병', stock: 10 },
@@ -11,7 +12,7 @@ const products = [
 ] as Item[];
 const order = migrateOrderItemNotes({
   id: 'order-note-test', partnerId: 'partner-1', partnerName: '가상거래처', status: OrderStatus.PENDING,
-  source: '일반', createdAt: '2026-09-25T00:00:00+09:00', deliveryDate: '2026-09-26', totalAmount: 0, email: '',
+  source: '일반', createdAt: `${today()}T12:00:00+09:00`, deliveryDate: today(), totalAmount: 0, email: '',
   note: '주문 전체 전달사항', noteImportant: true,
   items: [
     { itemId: 'p1', name: '참기름', quantity: 2, price: 0, note: '옛 참기름 메모'.repeat(8) },
