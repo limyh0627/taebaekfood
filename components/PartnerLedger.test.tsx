@@ -29,6 +29,7 @@ describe('거래처 원장 수금 입력', () => {
       onAddCashEntry={onAddCashEntry}
     />);
 
+    fireEvent.click(screen.getByRole('button', { name: '전체' }));
     fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
     fireEvent.click(screen.getByRole('button', { name: '살림터' }));
     fireEvent.click(screen.getByRole('button', { name: '1,428,000 수금' }));

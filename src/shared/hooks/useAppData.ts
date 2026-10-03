@@ -8,14 +8,14 @@ import {
   ItemFormula, ItemBom, CompanyInfo, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
-  CashAccount, CashEntry, Settlement, CompanyId, companyOf,
+  CashAccount, CashEntry, Settlement, CompanyId, OrderStatus, companyOf,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
 import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
-import { kstDateRangeUtc } from '../day';
+import { dateOfLocal, kstDateRangeUtc } from '../day';
 import { companySettingDocId } from '../companySettings';
 
 export interface WorkOrderItem {
@@ -294,11 +294,13 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     let cancelled = false;
     authReady.then(() => {
       if (cancelled) return;
-      const cutoff = new Date(Date.now() - ordersMonths * 30 * 86400000).toISOString();
+      const cutoff = dateOfLocal(new Date(Date.now() - ordersMonths * 30 * 86400000).toISOString());
       unsub = subscribeToCollection<Order>(
         'orders',
         (data) => {
-          setOrders(data.filter(order => String(order.createdAt ?? '') >= cutoff));
+          // 진행 중 주문은 오래됐어도 업무 대상이다. 구독 기간은 완료 이력에만 적용한다.
+          setOrders(data.filter(order => order.status !== OrderStatus.DELIVERED
+            || dateOfLocal(order.deliveredAt || order.deliveryDate || order.createdAt) >= cutoff));
           markLoaded('orders');
         },
         [where('companyId', '==', companyId)],

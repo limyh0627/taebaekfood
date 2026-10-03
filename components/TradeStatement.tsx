@@ -6,7 +6,7 @@ import DateChipButton from '../src/shared/components/DateChipButton';
 import { settleStatus, settlementTypeOf, settlementDirectionOf } from '../src/features/admin/voucherMerge';
 import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
 import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
-import { today, dateOfLocal, weekMonday, weekSunday } from '../src/shared/day';
+import { today, dateOfLocal, monthStart } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy } from '../src/shared/taxonomy';
 import { hasInboundInventoryLines, isInboundInventoryItem } from '../src/shared/inboundInventory';
@@ -294,7 +294,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const selectedOrderId = selectedOrderIds[0] ?? '';
 
-  // ── 기간 필터 (주문 선택) ── 금주(월~일) 디폴트
+  // ── 기간 필터 (주문 선택) ── 이번 달 1일~오늘
 
   // ── 거래 일자 ──
 
@@ -1076,9 +1076,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setTaxExemptOverrides({});
     setTradeDate(today());
     setPartnerSearch('');
-    setDateFrom('');
-    setDateTo('');
-    setOrderDateQuick(type === '매출' ? '전체' : '');
+    setDateFrom(monthStart());
+    setDateTo(today());
+    setOrderDateQuick('당월');
     setSelectedConfirmedIds([]);
     setPurchaseSearch('');
     setShowPurchasePicker(false);
@@ -1120,10 +1120,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInvoice]);
 
-  // 매출: 거래처 선택 여부와 무관하게 금주(월~일) 디폴트
+  // 매출: 거래처를 바꿔도 이번 달 조회 범위로 돌아간다.
   useEffect(() => {
     if (createMode !== '매출' || editingStmt) return;
-    setDateFrom(weekMonday()); setDateTo(weekSunday()); setOrderDateQuick('금주');
+    setDateFrom(monthStart()); setDateTo(today()); setOrderDateQuick('당월');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId, createMode]);
 

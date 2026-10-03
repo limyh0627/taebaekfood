@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
 import { AccountCode, CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
-import { endOfMonth, today } from '../src/shared/day';
+import { endOfMonth, monthStart, today } from '../src/shared/day';
 import { claimDocNo } from '../src/shared/voucherStamp';
 import { buildPaymentEntry } from '../src/shared/payment';
 import VoucherSlip from '../src/shared/VoucherSlip';
@@ -66,14 +66,14 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
-  const [periodMode, setPeriodMode] = useState<'all' | 'month' | 'custom'>('all');
+  const [periodMode, setPeriodMode] = useState<'all' | 'month' | 'custom'>('custom');
   const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
-  const [customFrom, setCustomFrom] = useState(() => `${today().slice(0, 7)}-01`);
+  const [customFrom, setCustomFrom] = useState(monthStart);
   const [customTo, setCustomTo] = useState(today);
   const periodRange = useMemo(() => {
     if (periodMode === 'all') return null;
     if (periodMode === 'month') return selectedMonth
-      ? { from: `${selectedMonth}-01`, to: endOfMonth(selectedMonth) }
+      ? { from: `${selectedMonth}-01`, to: selectedMonth === today().slice(0, 7) ? today() : endOfMonth(selectedMonth) }
       : null;
     if (!customFrom || !customTo || customFrom > customTo) return null;
     return { from: customFrom, to: customTo };

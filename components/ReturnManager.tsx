@@ -19,7 +19,8 @@ import {
 } from '../src/shared/types';
 import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
-import { dateOfLocal } from '../src/shared/day';
+import { dateOfLocal, monthStart, today } from '../src/shared/day';
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 
 interface ReturnManagerProps {
   items: Item[];
@@ -55,7 +56,9 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   const [saving, setSaving] = useState(false);
 
   // 이력 필터
-  const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [filterFrom, setFilterFrom] = useState(monthStart);
+  const [filterTo, setFilterTo] = useState(today);
+  const [filterQuick, setFilterQuick] = useState<DateRangeQuick>('당월');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -168,7 +171,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   };
 
   const filteredHistory = returnRequests
-    .filter(r => r.createdAt.slice(0, 7) === filterMonth)
+    .filter(r => (!filterFrom || dateOfLocal(r.createdAt) >= filterFrom) && (!filterTo || dateOfLocal(r.createdAt) <= filterTo))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
@@ -385,19 +388,15 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">기간</label>
-            <input
-              type="month"
-              value={filterMonth}
-              onChange={e => setFilterMonth(e.target.value)}
-              className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <DateRangeFilter from={filterFrom} to={filterTo} quick={filterQuick} label="반품 조회"
+              onChange={(from, to, quick) => { setFilterFrom(from); setFilterTo(to); setFilterQuick(quick); }} />
             <span className="text-xs text-slate-400">{filteredHistory.length}건</span>
           </div>
 
           {filteredHistory.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">
               <RotateCcw size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">해당 월의 반품 이력이 없습니다</p>
+              <p className="text-sm">해당 기간의 반품 이력이 없습니다</p>
             </div>
           ) : (
             <div className="space-y-3">

@@ -4,7 +4,8 @@ import { RotateCcw, History, Truck, X, ChevronDown, Loader2 } from 'lucide-react
 import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import { Item, Order, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
 import PageHeader from './PageHeader';
-import { dateOfLocal } from '../src/shared/day';
+import { dateOfLocal, monthStart, today } from '../src/shared/day';
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 
@@ -49,7 +50,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [returnItemSearch, setReturnItemSearch] = useState('');
   const [returnNote, setReturnNote] = useState('');
   const [returnSaving, setReturnSaving] = useState(false);
-  const [returnFilterMonth, setReturnFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [returnFrom, setReturnFrom] = useState(monthStart);
+  const [returnTo, setReturnTo] = useState(today);
+  const [returnQuick, setReturnQuick] = useState<DateRangeQuick>('당월');
 
   // ── 매입 반품 (보내기) state ──
   const [prSupplierId, setPrSupplierId] = useState('');
@@ -223,7 +226,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ── Derived ──
   const pendingReturnCount = returnRequests.filter(r => r.status === 'pending' && r.returnType !== '매입').length;
   const filteredReturnHistory = returnRequests
-    .filter(r => r.createdAt.slice(0, 7) === returnFilterMonth)
+    .filter(r => (!returnFrom || dateOfLocal(r.createdAt) >= returnFrom) && (!returnTo || dateOfLocal(r.createdAt) <= returnTo))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // ══════════════════════════════════════════
@@ -527,19 +530,15 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider">기간</label>
-                <input
-                  type="month"
-                  value={returnFilterMonth}
-                  onChange={e => setReturnFilterMonth(e.target.value)}
-                  className="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <DateRangeFilter from={returnFrom} to={returnTo} quick={returnQuick} label="반품 조회"
+                  onChange={(from, to, quick) => { setReturnFrom(from); setReturnTo(to); setReturnQuick(quick); }} />
                 <span className="text-xs text-slate-400">{filteredReturnHistory.length}건</span>
               </div>
 
               {filteredReturnHistory.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">
                   <RotateCcw size={32} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">해당 월의 반품 이력이 없습니다</p>
+                  <p className="text-sm">해당 기간의 반품 이력이 없습니다</p>
                 </div>
               ) : (
                 <div className="space-y-3">

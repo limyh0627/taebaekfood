@@ -2002,11 +2002,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
   }, [orders, searchTerm]);
 
   const activePeriodOrders = useMemo(() => embeddedListOnly ? orders : orders.filter(order => {
-    const orderDate = seoulDateInput(new Date(order.createdAt));
-    if (activeDateFrom && orderDate < activeDateFrom) return false;
-    if (activeDateTo && orderDate > activeDateTo) return false;
-    return visibleActiveConfigs.some(config => config.statusFilter.includes(order.status))
-      || (legacyHistoryEnabled && order.status === OrderStatus.DELIVERED);
+    if (visibleActiveConfigs.some(config => config.statusFilter.includes(order.status))) return true;
+    if (!legacyHistoryEnabled || order.status !== OrderStatus.DELIVERED) return false;
+    const completedDate = dateOfLocal(order.deliveredAt || order.deliveryDate || order.createdAt);
+    return (!activeDateFrom || completedDate >= activeDateFrom)
+      && (!activeDateTo || completedDate <= activeDateTo);
   }), [orders, activeDateFrom, activeDateTo, embeddedListOnly, visibleActiveConfigs, legacyHistoryEnabled]);
 
   const activeOperationOrders = useMemo(
@@ -2237,14 +2237,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <button type="button" onClick={() => { const today = seoulDateInput(); setActiveDateFrom(`${today.slice(0, 7)}-01`); setActiveDateTo(today); setListFilterField(''); setListFilterValue(''); setListPartnerFilter(''); setSearchTerm(''); setListSort('delivery'); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
             </div>
             <div className="flex flex-wrap items-end gap-2 p-3 md:p-4">
-              <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
-                주문일
+              {activeView === 'history' ? <label className="order-1 flex w-full flex-col gap-1 text-[10px] font-bold text-slate-500 sm:w-auto">
+                완료일
                 {/*  **폰에서도 한 행에 들어간다**(2026-09-11 사장님). 줄바꿈을 막고(`flex-nowrap`)
                      날짜칸·단추의 여백과 글씨를 좁은 화면에서만 줄인다 — 넓은 화면은 그대로다. */}
                 <span className="flex flex-nowrap items-center gap-1 sm:gap-2">
-                  <input aria-label="주문일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <input aria-label="완료일 시작" type="date" value={activeDateFrom} max={activeDateTo || undefined} onChange={event => setActiveDateFrom(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
                   <span className="shrink-0 text-xs text-slate-400">~</span>
-                  <input aria-label="주문일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
+                  <input aria-label="완료일 종료" type="date" value={activeDateTo} min={activeDateFrom || undefined} onChange={event => setActiveDateTo(event.target.value)} className="date-narrow h-9 rounded-md border border-slate-200 bg-slate-50 px-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300 sm:px-2 sm:text-xs" />
                   <span className="flex h-9 shrink-0 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
                     {/*  **폰에서도 '오늘·이번 주·이번 달'** (2026-09-12 사장님: "오른쪽 공간 좀 더
                          써서 오늘 이번주 이번달 안되나"). 전에는 '주·달' 한 글자로 줄여 놨는데,
@@ -2254,7 +2254,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달">이번 달</button>
                   </span>
                 </span>
-              </label>
+              </label> : <span className="order-1 w-full text-xs font-bold text-slate-500">진행 중 주문 전체 · 날짜 제한 없음</span>}
               {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
                    섞어 보여 주던 길을 두면 같은 것을 두 군데서 보게 되고, 어느 쪽이 맞는지 헷갈린다. */}
               <span className="order-2 h-0 basis-full" aria-hidden="true" />
@@ -2354,8 +2354,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0 md:ml-auto">
           {activeView === 'history' && onChangeOrdersMonths && (
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
-              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="완료 주문 이력 표시 범위 · 진행 중 주문은 모두 표시">
+              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">이력 표시</span>
               <select
                 value={ordersMonths ?? 12}
                 onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}

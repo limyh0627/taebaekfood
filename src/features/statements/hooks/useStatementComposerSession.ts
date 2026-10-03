@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { today, weekMonday, weekSunday } from '../../../shared/day';
+import { monthStart, today } from '../../../shared/day';
 import type { StatementType } from '../../../shared/statementLines';
 
 /** 전표 작성 창 한 번을 열어 거래처·주문·일자와 발행 옵션을 고르는 상태. */
@@ -10,9 +10,9 @@ export function useStatementComposerSession() {
   const [partnerSearch, setPartnerSearch] = useState('');
   const [onlyActive, setOnlyActive] = useState(true);
   const [activeVisible, setActiveVisible] = useState(30);
-  const [dateFrom, setDateFrom] = useState(weekMonday);
-  const [dateTo, setDateTo] = useState(weekSunday);
-  const [orderDateQuick, setOrderDateQuick] = useState<'당일'|'금주'|'당월'|'전체'|''>('금주');
+  const [dateFrom, setDateFrom] = useState(monthStart);
+  const [dateTo, setDateTo] = useState(today);
+  const [orderDateQuick, setOrderDateQuick] = useState<'당일'|'금주'|'당월'|'전체'|''>('당월');
   const [tradeDate, setTradeDate] = useState(today);
   const [showPreview, setShowPreview] = useState(false);
   const [stmtMemo, setStmtMemo] = useState('');

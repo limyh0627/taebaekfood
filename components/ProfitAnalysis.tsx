@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { today } from '../src/shared/day';
+import { monthStart, today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -111,18 +111,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     return avail ?? 1;
   });
   const [selectedHalf, setSelectedHalf] = useState<1|2>(1);
-  /*
-   * 기본 기간 — **장부가 시작한 달부터 이번 달까지.**
-   *
-   * 전에는 1월 ~ `new Date().getMonth()`였다. getMonth()는 0부터라 8월에 7이 나와
-   * **이번 달이 빠졌고**, 앞은 기초일(7/31) 이전이라 통째로 잘려서 화면이 전부 0이었다.
-   * 유일하게 데이터가 있는 달이 8월인데 그 8월만 안 보였다.
-   */
   /**
    * 기간은 **날짜로 고른다** — 전표 화면과 같은 모양. 셈은 달 단위라 고른 날짜가 걸친 달을 쓴다.
    * 월 드롭다운이던 시절엔 같은 해 안에서만 고를 수 있어 12월~1월처럼 해를 넘기지 못했다.
    */
-  const [customStart, setCustomStart] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [customStart, setCustomStart] = useState(monthStart);
   const [customEnd, setCustomEnd] = useState(() => today());
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
@@ -131,11 +124,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // ── 현금흐름표(직접법): 월별 / 기간 모드 ──
   //  손익의 closedPlLines 와 같은 결 — 접은 것만 담는다(기본은 펼침).
   const [closedCfSections, setClosedCfSections] = useState<Set<string>>(new Set());
-  const [cfMode, setCfMode] = useState<'month' | 'period'>('month');
-  const [cfMonth, setCfMonth] = useState<string>(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 1); // 기본: 전월
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [cfMode, setCfMode] = useState<'month' | 'period'>('period');
+  const [cfMonth, setCfMonth] = useState<string>(() => today().slice(0, 7));
   const [cfEdit, setCfEdit] = useState<Partial<CashFlowManual>>({});
   useEffect(() => {
     const doc = cashFlowManual.find(m => m.month === cfMonth);

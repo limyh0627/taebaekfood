@@ -4,7 +4,8 @@ import type { Order, PurchaseOrder, IssuedStatement, Item, Partner } from '../sr
 import { poLines } from '../src/shared/types';
 import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import { itemSummary } from '../src/shared/itemSummary';
-import { weekMonday, weekSunday, monthStart, monthEnd, today, dateOfLocal } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { matchesSearch } from '../src/shared/hangul';
 import type { ManualRow } from '../src/shared/statementLines';
@@ -43,7 +44,7 @@ export interface OrderPickerProps {
     onlyActive: boolean;
     dateFrom: string;
     dateTo: string;
-    orderDateQuick: string;
+    orderDateQuick: DateRangeQuick;
     /** 진행 주문을 몇 개까지 펼쳤나 ('더 보기'로 는다) */
     activeVisible: number;
     partnerSearch: string;
@@ -155,25 +156,9 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
               <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0 flex-wrap">
                   {createMode==='매출' && (
-                    <div aria-label="주문 날짜 필터" className="basis-full flex items-center gap-1.5 flex-wrap">
-                      {(['당일','금주','당월'] as const).map(p=>(
-                        <button key={p} onClick={()=>{
-                          if(p==='금주'){setDateFrom(weekMonday());setDateTo(weekSunday());setOrderDateQuick('금주');return;} // 월~일 고정
-                          if(p==='당월'){setDateFrom(monthStart());setDateTo(monthEnd());setOrderDateQuick('당월');return;} // 1일~말일 고정
-                          const t=today();
-                          setDateFrom(t);setDateTo(t);setOrderDateQuick(p); // 당일
-                        }}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${orderDateQuick===p?'bg-slate-700 text-white border-slate-700':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{p}</button>
-                      ))}
-                      <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setOrderDateQuick('');}}
-                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-                      <span className="text-slate-300 text-xs">~</span>
-                      <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setOrderDateQuick('');}}
-                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-                      {(dateFrom||dateTo)&&!orderDateQuick&&(
-                        <button onClick={()=>{setDateFrom('');setDateTo('');setOrderDateQuick('');}}
-                          className="text-xs text-slate-400 hover:text-slate-700 font-black">전체</button>
-                      )}
+                    <div aria-label="주문 날짜 필터" className="basis-full">
+                      <DateRangeFilter from={dateFrom} to={dateTo} quick={orderDateQuick} label="주문 조회"
+                        onChange={(from, to, quick) => { setDateFrom(from); setDateTo(to); setOrderDateQuick(quick); }} />
                     </div>
                   )}
                   {createMode==='매출' && (

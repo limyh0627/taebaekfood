@@ -1,6 +1,7 @@
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
-import { today } from '../src/shared/day';
+import { monthStart, today } from '../src/shared/day';
+import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate, CompanyId } from '../src/shared/types';
 import { useLoanContracts } from '../src/shared/useLoanContracts';
@@ -33,8 +34,6 @@ interface Props {
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
-const monthStart = () => today().slice(0, 7) + '-01';
-
 const ACCOUNT_ICON = { 통장: Landmark, 카드: CreditCard, 현금: Coins } as const;
 
 export default function CashLedger({
@@ -43,13 +42,9 @@ export default function CashLedger({
   onAddSettlement, onDeleteSettlement,
 }: Props) {
   const [activeId, setActiveId] = useState<string>('');
-  // 기본 기간 — 최근 자금기록이 이번달보다 과거면 그 달부터 (수금/지불이 이번달 밖이라 안 보이던 문제 방지)
-  const [from, setFrom] = useState(() => {
-    const latest = cashEntries.reduce((m, e) => (e.date && e.date > m ? e.date : m), '');
-    const lm = latest ? latest.slice(0, 7) + '-01' : monthStart();
-    return lm && lm < monthStart() ? lm : monthStart();
-  });
-  const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(monthStart);
+  const [to, setTo] = useState(today);
+  const [rangeQuick, setRangeQuick] = useState<DateRangeQuick>('당월');
   const [showEntry, setShowEntry] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
   const [matchTarget, setMatchTarget] = useState<CashEntry | null>(null);
@@ -133,11 +128,8 @@ export default function CashLedger({
             <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{active?.type}</span>
           </div>
           <div className="flex items-center gap-2">
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-              className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
-            <span className="text-slate-300 text-xs">~</span>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)}
-              className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
+            <DateRangeFilter from={from} to={to} quick={rangeQuick} label="자금 조회"
+              onChange={(nextFrom, nextTo, quick) => { setFrom(nextFrom); setTo(nextTo); setRangeQuick(quick); }} />
             <button onClick={() => setShowEntry(true)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 text-white text-[11px] font-black hover:bg-slate-900">
               <Plus size={12} strokeWidth={3} />일반전표

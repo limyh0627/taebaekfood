@@ -1,18 +1,23 @@
 /** @vitest-environment jsdom */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Order } from '../types';
+import { OrderStatus, type Order } from '../types';
+import { today } from '../day';
 import { useAppData } from './useAppData';
 
 const mock = vi.hoisted(() => ({
   requests: [] as Array<{ company: string; resolve: (orders: Order[]) => void }>,
   fetchCollection: vi.fn(),
+  onOrders: null as null | ((orders: Order[]) => void),
 }));
 
 vi.mock('../firebase', () => ({ authReady: Promise.resolve() }));
 vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }) }));
 vi.mock('../services/firebaseService', () => ({
-  subscribeToCollection: () => () => {},
+  subscribeToCollection: (collection: string, callback: (orders: Order[]) => void) => {
+    if (collection === 'orders') mock.onOrders = callback;
+    return () => {};
+  },
   subscribeToRecentCollection: () => () => {},
   subscribeToDocument: () => () => {},
   fetchDateRange: async () => [],
@@ -24,6 +29,7 @@ const order = (id: string, companyId: 'taebaek' | 'punghoe') => ({ id, companyId
 describe('과거 주문 회사 전환', () => {
   beforeEach(() => {
     mock.requests.length = 0;
+    mock.onOrders = null;
     mock.fetchCollection.mockImplementation((collection: string, clauses: Array<{ field: string; value: unknown }>) => {
       if (collection !== 'orders') return Promise.resolve([]);
       return new Promise<Order[]>(resolve => {
@@ -67,4 +73,17 @@ describe('과거 주문 회사 전환', () => {
     rerender({ enabled: true });
     expect(result.current.historicalOrders).toEqual([]);
   });
+});
+
+it('구독 월을 줄여도 오래된 진행 주문은 남기고 완료 주문만 완료일로 제한한다', async () => {
+  const { result } = renderHook(() => useAppData(true, 'taebaek', true));
+  await waitFor(() => expect(mock.onOrders).not.toBeNull());
+  act(() => result.current.setOrdersMonths(1));
+  await waitFor(() => expect(mock.onOrders).not.toBeNull());
+  const active = [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DISPATCHED, OrderStatus.ON_HOLD]
+    .map(status => ({ ...order(status, 'taebaek'), status, createdAt: '2020-01-01T00:00:00Z' }));
+  const recentDone = { ...order('recent-done', 'taebaek'), status: OrderStatus.DELIVERED, createdAt: '2020-01-01T00:00:00Z', deliveredAt: today() };
+  const oldDone = { ...order('old-done', 'taebaek'), status: OrderStatus.DELIVERED, createdAt: '2020-01-01T00:00:00Z', deliveredAt: '2020-01-02' };
+  act(() => mock.onOrders!([...active, recentDone, oldDone]));
+  expect(result.current.orders.map(value => value.id)).toEqual([...active.map(value => value.id), 'recent-done']);
 });
