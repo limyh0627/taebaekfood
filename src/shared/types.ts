@@ -570,6 +570,8 @@ export interface Item {
   minStock: number;
   unit: string;
   image: string;
+  /** Storage object path for a photo uploaded through item editor (legacy image URLs may have no path). */
+  imagePath?: string;
   oil?: string;
   partnerId?: string;   // @deprecated — partnerIds 사용
   partnerIds?: string[];

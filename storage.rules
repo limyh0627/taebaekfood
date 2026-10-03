@@ -26,6 +26,16 @@ service firebase.storage {
       allow read, write: if isOwnCompany(companyId);
     }
 
+    match /companies/{companyId}/items/{itemId}/{fileName} {
+      allow read: if isOwnCompany(companyId);
+      allow create, update: if isOwnCompany(companyId)
+        && request.auth.token.isAdmin == true
+        && fileName.matches('photo-[A-Za-z0-9-]+\\.(jpg|jpeg|png|webp)')
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
+    }
+
     // 새 파일은 반드시 회사 경로를 지난다. 옛 경로는 이관 검증이 끝날 때까지만 파일이 남고,
     // 앱에서는 더 이상 읽거나 쓰지 않는다. Admin SDK 이관 스크립트만 규칙을 우회해 복사한다.
     match /{allPaths=**} {

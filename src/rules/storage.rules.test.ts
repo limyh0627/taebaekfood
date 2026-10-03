@@ -50,4 +50,14 @@ describe.skipIf(!준비됨)('회사별 권한 (Storage 규칙)', () => {
     await assertFails(uploadBytes(ref(관리자('taebaek'), 'file-cabinet/업무/일반/old.pdf'), bytes));
     await assertFails(uploadBytes(ref(직원('taebaek'), 'officetalk/ROOM-1/old.jpg'), bytes));
   });
+
+  it('품목 사진은 자기 회사 관리자만 JPEG/PNG/WebP 5MB 이하로 올린다', async () => {
+    const path = 'companies/taebaek/items/item-1/photo-abc.jpg';
+    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/jpeg' }));
+    await assertFails(uploadBytes(ref(직원('taebaek'), 'companies/taebaek/items/item-1/photo-staff.jpg'), bytes, { contentType: 'image/jpeg' }));
+    await assertFails(uploadBytes(ref(관리자('punghoe'), 'companies/taebaek/items/item-1/photo-other.jpg'), bytes, { contentType: 'image/jpeg' }));
+    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-bad.svg'), bytes, { contentType: 'image/svg+xml' }));
+    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-fake.jpg'), bytes, { contentType: 'image/svg+xml' }));
+    await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-large.webp'), new Uint8Array(5 * 1024 * 1024 + 1), { contentType: 'image/webp' }));
+  });
 });

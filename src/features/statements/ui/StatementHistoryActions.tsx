@@ -34,7 +34,7 @@ export default function StatementHistoryActions(props: {
         조회 결과 <span className="text-indigo-600">{resultCount}건</span>
         {fetching && <span className="ml-2 animate-pulse text-[11px] text-indigo-400">불러오는 중…</span>}
       </h3>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
         {onExport && <button type="button" onClick={onExport} disabled={fetching || resultCount === 0}
           className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           title="현재 조회 조건의 전표내역 전체를 엑셀로 저장">

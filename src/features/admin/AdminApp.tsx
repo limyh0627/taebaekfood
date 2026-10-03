@@ -5341,7 +5341,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const crossed = crossCompanyBoms(draftBoms, draftItems);
               if (crossed.length > 0) {
                 const names = crossed.map(row => allItems.find(item => item.id === row.childId)?.name ?? row.childId);
-                alert(`다른 회사 품목은 BOM에 넣을 수 없습니다: ${names.join(', ')}`);
+                const message = `다른 회사 품목은 BOM에 넣을 수 없습니다: ${names.join(', ')}`;
+                if (p.photoChanged) throw new Error(message); // 선행 업로드한 사진을 모달이 회수한다.
+                alert(message);
                 return;
               }
             }
@@ -5355,13 +5357,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
             // 품목 저장(순수 쓰기)을 최우선으로 — 거래처 매핑(setProductClients)은 getDocs(읽기)가
             // 필요해 읽기 한도(429) 시 throw 되는데, 예전엔 그게 품목 저장 자체를 막아 "저장이 안 됨"
             // 으로 보였다. 품목부터 저장하고 매핑은 부수효과로 분리한다(Blaze 후에도 유지할 순서).
-            const { partnerIds: _cids, bomDraft, ...productData } = p;
+            const { partnerIds: _cids, bomDraft, photoChanged, ...productData } = p;
             if (editingProduct) {
               // 기존 품목은 필드 병합(updateDoc)으로만 수정 — addItem(setDoc 전체교체)을 쓰면
               // 폼이 모르는 필드(원료 lots·mixEnabled 등)가 통째로 지워진다(6/29 원료 로트 소실 사고 원인).
               // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
               const { stock: _staleStock, ...safeData } = productData;
-              await updateItem(collectionName, p.id, { ...safeData, companyId });
+              const { image: _oldImage, imagePath: _oldImagePath, ...metadata } = safeData;
+              await updateItem(collectionName, p.id, { ...(photoChanged ? safeData : metadata), companyId });
               /**
                * **낱개 규격을 고쳤으면 그 낱개를 문 박스도 따라간다.**
                *
