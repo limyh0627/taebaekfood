@@ -302,6 +302,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
+  const [linkSubtype, setLinkSubtype] = useState('');
+  const [linkItemCategory, setLinkItemCategory] = useState('');
+  const [linkSpec, setLinkSpec] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkCategory, setLinkCategory] = useState('product');
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false); // 분류 관리(품목관리로 이동)
@@ -676,9 +679,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
   );
 
   // 연결 가능한 품목 (모달 카테고리 기준, 이미 연결된 것 제외)
-  const linkableProduts = useMemo(() => {
+  const linkCandidates = useMemo(() => {
     if (!selectedClientId) return [];
-    const term = linkSearch.toLowerCase().trim();
     const alreadyLinked = partnerScopeTab === 'purchase'
       ? new Set(partnerIn.filter(ps => (ps.partnerId) === selectedClientId).map(ps => ps.itemId))
       : null;
@@ -686,9 +688,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
     return items
       .filter(p => !p.archived)
       .filter(p => p.type === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !isLinkedToPartner(partnerItems, selectedClientId, p.id)))
-      .filter(p => !term || matchKo(p.name, term))   // 다른 검색과 같게 초성으로도 찾는다
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [items, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
+  }, [items, selectedClientId, linkCategory, partnerScopeTab, partnerIn, partnerItems]);
+  const linkValue = (value?: string) => value?.trim() ?? '';
+  const linkOptions = (values: (string | undefined)[]) => [...new Set(values.map(linkValue).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const linkSubtypeOptions = linkOptions(linkCandidates.map(p => p.subtype));
+  const linkCategoryOptions = linkOptions(linkCandidates.filter(p => !linkSubtype || linkValue(p.subtype) === linkSubtype).map(p => p.category));
+  const linkSpecOptions = linkOptions(linkCandidates.filter(p => (!linkSubtype || linkValue(p.subtype) === linkSubtype) && (!linkItemCategory || linkValue(p.category) === linkItemCategory)).map(p => p.spec));
+  const linkableProduts = linkCandidates.filter(p =>
+    (!linkSubtype || linkValue(p.subtype) === linkSubtype)
+    && (!linkItemCategory || linkValue(p.category) === linkItemCategory)
+    && (!linkSpec || linkValue(p.spec) === linkSpec)
+    && (!linkSearch.trim() || matchKo(`${p.name} ${p.spec ?? ''}`, linkSearch.trim()))
+  );
+  const clearLinkFilters = () => { setLinkSubtype(''); setLinkItemCategory(''); setLinkSpec(''); setLinkSearch(''); };
+  const openLinkPanel = () => { setLinkCategory('product'); clearLinkFilters(); setShowLinkPanel(true); };
 
   // 품목 테이블 패널 (공통)
   // 거래처별 뷰는 위에 헤더(메인탭+거래처명+매출/매입토글)가 더 쌓이므로 데스크톱 고정높이 오프셋을 키운다.
@@ -703,7 +717,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
       {isAdmin && mainView === 'by-partner' && selectedClientId && (
         <div className="flex items-center justify-end lg:hidden">
           <button
-            onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
+            onClick={openLinkPanel}
             className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md active:scale-95 transition-all"
           >
             <Link size={14} />
@@ -1657,7 +1671,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     </div>
                     {isAdmin && (
                       <button
-                        onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
+                        onClick={openLinkPanel}
                         className="hidden lg:flex items-center gap-1.5 shrink-0 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-sm hover:bg-emerald-700 transition-all active:scale-95"
                       >
                         <Link size={13} /> 품목 연결
@@ -1683,7 +1697,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
               {taxo.types.map(t => (
                 <button
                   key={t.key}
-                  onClick={() => { setLinkCategory(t.key); setLinkSearch(''); }}
+                  onClick={() => { setLinkCategory(t.key); clearLinkFilters(); }}
                   className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
                     linkCategory === t.key
                       ? 'bg-emerald-600 border-emerald-600 text-white shadow'
@@ -1694,24 +1708,44 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                 </button>
               ))}
             </div>
-            {/* 검색 */}
+            <div className="px-6 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="text-xs font-bold text-slate-600">서브타입
+                <select aria-label="서브타입" value={linkSubtype} onChange={e => { setLinkSubtype(e.target.value); setLinkItemCategory(''); setLinkSpec(''); }} className="mt-1 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700">
+                  <option value="">전체</option>{linkSubtypeOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold text-slate-600">카테고리
+                <select aria-label="카테고리" value={linkItemCategory} onChange={e => { setLinkItemCategory(e.target.value); setLinkSpec(''); }} className="mt-1 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700">
+                  <option value="">전체</option>{linkCategoryOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold text-slate-600">규격
+                <select aria-label="규격" value={linkSpec} onChange={e => setLinkSpec(e.target.value)} className="mt-1 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700">
+                  <option value="">전체</option>{linkSpecOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="px-6 py-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
                 <input
                   type="text"
-                  placeholder="품목명 검색..."
+                  placeholder="품목명·규격 검색..."
                   value={linkSearch}
                   onChange={e => setLinkSearch(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400"
                   autoFocus
                 />
               </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span role="status">검색 결과 {linkableProduts.length}개</span>
+                <button type="button" onClick={clearLinkFilters} className="font-bold text-emerald-700 hover:underline">조건 초기화</button>
+              </div>
             </div>
             {/* 목록 */}
             <div className="flex-1 overflow-y-auto px-6 pb-6">
               {linkableProduts.length === 0 ? (
-                <p className="text-center text-sm text-slate-400 py-12">연결 가능한 품목이 없습니다.</p>
+                <p className="text-center text-sm text-slate-400 py-12">현재 조건에 맞는 연결 가능 품목이 없습니다. 조건 초기화를 눌러 다시 찾아보세요.</p>
               ) : (
                 <div className="flex flex-col divide-y divide-slate-50">
                   {linkableProduts.map(p => (
