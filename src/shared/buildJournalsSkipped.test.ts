@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildJournals } from './buildJournals';
-import type { AccountCode, CashEntry, IssuedStatement } from './types';
+import type { AccountCode, CashEntry, IssuedStatement, Item } from './types';
+import { inventoryOpeningStatement } from './inventoryOpening';
 
 /**
  * **분개가 안 된 원본은 반드시 `skipped` 에 적혀야 한다.**
@@ -238,6 +239,14 @@ describe('월말 재고 조정 분개', () => {
   it('실사가 없으면 조정도 없다', () => {
     const r = build({ statements: [], opening: 기초, inventorySnapshots: [] });
     expect(r.entries.some(e => String(e.id).startsWith('je-inv'))).toBe(false);
+  });
+
+  it('품목별 기초 재고 전표를 첫 월말 실사액의 기준으로 삼아 이중계상하지 않는다', () => {
+    const item = { id: 'can1', name: '참기름 캔', type: 'wip', unit: '캔' } as Item;
+    const voucher = inventoryOpeningStatement('punghoe', '2026-07-31', item, 5, 75_000);
+    const r = build({ statements: [voucher], opening: { date: '2026-07-31', lines: [] },
+      inventorySnapshots: [{ yearMonth: '2026-08', value: 90_000 }] });
+    expect(r.entries.find(e => e.id === 'je-inv-2026-08')?.lines.find(l => l.accountCode === '146')?.debit).toBe(15_000);
   });
 
   it('재고 조정도 차·대가 맞는다', () => {

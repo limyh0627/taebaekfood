@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X, ChevronDown } from 'lucide-react';
-import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId, Partner } from '../src/shared/types';
-import { openingDocId } from '../src/shared/types';
+import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId, Partner, Item } from '../src/shared/types';
+import { companyOf, openingDocId } from '../src/shared/types';
 import { buildJournals } from '../src/shared/buildJournals';
 import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
-import { AR, AP, BANK } from '../src/shared/autoJournal';
+import { AR, AP, BANK, INVENTORY } from '../src/shared/autoJournal';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
-import { createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
+import { createOpeningInventory, createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
+import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { appNotice } from '../src/shared/components/appDialog';
 import type { OpeningPartnerCode } from '../src/shared/openingPartnerBalance';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
-interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; hasLoanOpening?: boolean; hasCashOpening?: boolean; }
+interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; hasLoanOpening?: boolean; hasCashOpening?: boolean; hasInventoryOpening?: boolean; }
 
 interface Props {
   /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
@@ -22,6 +23,7 @@ interface Props {
   accounts: AccountCode[];
   cashAccounts: CashAccount[];
   partners?: Partner[];
+  items?: Item[];
   /** 월말 재고 실사액 — 재고자산을 실사값으로 맞추는 조정분개를 만든다(실지재고조사법). */
   inventorySnapshots?: { id?: string; yearMonth: string; value: number }[];
 }
@@ -32,7 +34,7 @@ const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
  * 재무제표 (복식부기 · 병행/대조용). 기존 전표·수금·자금에서 분개를 계산으로 뽑아
  * 시산표·손익계산서·재무상태표를 그린다. 저장 안 함, 읽기 전용. 기존 손익표와 대조하는 화면.
  */
-const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, partners = [], inventorySnapshots = [], companyId = 'taebaek' }) => {
+const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, partners = [], items = [], inventorySnapshots = [], companyId = 'taebaek' }) => {
   const months = useMemo(() => {
     const s = new Set<string>();
     for (const st of statements) if (st.tradeDate) s.add(st.tradeDate.slice(0, 7));
@@ -53,6 +55,10 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const [partnerCode, setPartnerCode] = useState<OpeningPartnerCode>(AR);
   const [partnerAmount, setPartnerAmount] = useState('');
   const [partnerSaving, setPartnerSaving] = useState(false);
+  const [inventoryItemId, setInventoryItemId] = useState('');
+  const [inventoryQuantity, setInventoryQuantity] = useState('');
+  const [inventoryValue, setInventoryValue] = useState('');
+  const [inventorySaving, setInventorySaving] = useState(false);
   const [openingLoadError, setOpeningLoadError] = useState(false);
   const [openingLoading, setOpeningLoading] = useState(true);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
@@ -64,6 +70,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     setDraft(null);
     setEditing(false);
     setPartnerId('');
+    setInventoryItemId('');
+    setInventoryQuantity('');
+    setInventoryValue('');
     setOpeningLoadError(false);
     setOpeningLoading(true);
     fetchWhere<OpeningDoc>('openingBalances', 'companyId', companyId)
@@ -97,6 +106,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     () => accounts.filter(a => (a.type === '자산' || a.type === '부채') || (a.type === '자본' && String(a.code) !== CAPITAL))
       .sort((a, b) => String(a.code).localeCompare(String(b.code))),
     [accounts]);
+  const inventoryItems = useMemo(() => items.filter(item => companyOf(item) === companyId &&
+    isPhysicalInventoryItem(item) && !item.archived && !item.phantom && Number(item.stock ?? 0) === 0 &&
+    !(item.stocktakeAnchors?.length)), [items, companyId]);
 
   const startEdit = () => {
     const base: OpeningDoc = openingDoc ?? { id: 'main', date: defaultDate, amounts: cashOpeningAmounts };
@@ -128,6 +140,18 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
       if (result === 'created') setPartnerAmount('');
     } catch (error) { await appNotice(String(error), '저장 실패'); }
     finally { setPartnerSaving(false); }
+  };
+  const saveInventoryOpening = async () => {
+    if (!openingDoc || !inventoryItemId || inventorySaving) return;
+    setInventorySaving(true);
+    try {
+      const result = await createOpeningInventory(companyId, openingDoc.date, inventoryItemId,
+        Number(inventoryQuantity.replaceAll(',', '')), Number(inventoryValue.replaceAll(',', '')));
+      setOpeningDoc(doc => doc ? { ...doc, hasInventoryOpening: true } : doc);
+      await appNotice(result === 'unchanged' ? '같은 기초 재고가 이미 저장돼 있습니다.' : '재고 수량·로트·원장과 기초 전표를 함께 저장했습니다.');
+      if (result === 'created') { setInventoryItemId(''); setInventoryQuantity(''); setInventoryValue(''); }
+    } catch (error) { await appNotice(String(error), '기초 재고 저장 실패'); }
+    finally { setInventorySaving(false); }
   };
   // 자본금 plug 미리보기
   const capitalPreview = useMemo(() => {
@@ -303,7 +327,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
               {openableAccounts.map(a => (
                 <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">
                   <span className="text-[11px] font-bold text-slate-500 flex-1 truncate"><span className="text-slate-300 mr-1">{a.code}</span>{a.name}</span>
-                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293')) || (!!openingDoc?.hasCashOpening && (a.code === BANK || a.code === STANDARD_ACCOUNT.CASH))}
+                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293')) || (!!openingDoc?.hasCashOpening && (a.code === BANK || a.code === STANDARD_ACCOUNT.CASH)) || (!!openingDoc?.hasInventoryOpening && a.code === INVENTORY)}
                     onChange={e => setDraft({ ...draft, amounts: { ...draft.amounts, [String(a.code)]: Number(e.target.value.replace(/[^\d]/g, '')) || 0 } })}
                     className="w-28 text-right text-xs font-black tabular-nums border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-300 disabled:bg-slate-100 disabled:text-slate-400" />
                 </label>
@@ -329,6 +353,21 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
           <select aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => setPartnerCode(e.target.value as OpeningPartnerCode)}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
           <input aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => setPartnerAmount(e.target.value.replace(/[^\d,]/g, ''))} placeholder="금액" />
           <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
+        </div>
+        {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
+        <div className="text-xs font-black text-slate-700">품목별 기초 재고</div>
+        <p className="text-[11px] text-slate-500">처음 등록하는 재고만 입력하세요. 수량은 품목 재고 단위, 평가금액은 해당 수량의 총 원가(원)입니다. 146 계정에 같은 금액을 직접 넣지 마세요.</p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+          <select aria-label="기초 재고 품목" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={inventoryItemId} onChange={e => setInventoryItemId(e.target.value)}>
+            <option value="">품목 선택</option>
+            {inventoryItems.map(item => <option key={item.id} value={item.id}>{item.name} {item.spec || ''} ({item.unit || '개'})</option>)}
+          </select>
+          <input aria-label="기초 재고 수량" inputMode="decimal" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryQuantity} onChange={e => setInventoryQuantity(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="수량" />
+          <input aria-label="기초 재고 평가금액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={inventoryValue} onChange={e => setInventoryValue(e.target.value.replace(/[^\d,]/g, ''))} placeholder="평가금액 (원)" />
+          <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !inventoryItemId || !inventoryQuantity || !inventoryValue || inventorySaving} onClick={() => void saveInventoryOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
       </div>

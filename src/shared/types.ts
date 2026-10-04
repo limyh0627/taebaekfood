@@ -1116,6 +1116,9 @@ export interface StatementPartySnapshot {
 
 export interface IssuedStatement {
   id: string;
+  /** 품목별 기초 재고 대체전표의 출처. 재시도 시 수량·평가액 일치 검사에 사용한다. */
+  openingItemId?: string;
+  openingQuantity?: number;
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
   companyId?: CompanyId;
   issuedAt: string;       // ISO timestamp (전표일자)

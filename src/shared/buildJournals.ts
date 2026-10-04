@@ -99,7 +99,12 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
 
   // 월말 재고 조정 — 매입을 비용으로 턴 것 중 안 팔리고 남은 만큼을 재고자산으로 되돌린다.
   if (inventorySnapshots.length) {
-    const baseline = opening?.lines.find(l => l.accountCode === INVENTORY)?.amount ?? 0;
+    // 품목별 기초 재고는 openingBalances 합계가 아니라 별도 대체전표다.
+    // 이를 빼면 첫 월말 스냅샷 전체를 재고 증가로 다시 잡아 자산·이익이 중복된다.
+    const voucherOpening = entries.filter(e => e.sourceType === '대체' && e.sourceId?.startsWith('opening-inventory-'))
+      .flatMap(e => e.lines.filter(l => l.accountCode === INVENTORY))
+      .reduce((sum, line) => sum + line.debit - line.credit, 0);
+    const baseline = (opening?.lines.find(l => l.accountCode === INVENTORY)?.amount ?? 0) + voucherOpening;
     entries.push(...journalizeInventory(inventorySnapshots, baseline, opening?.date?.slice(0, 7)));
   }
 

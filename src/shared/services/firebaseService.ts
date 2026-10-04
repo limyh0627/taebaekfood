@@ -29,8 +29,9 @@ import { today } from '../day';
 import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder } from "../types";
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
-import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock } from '../itemTaxonomy';
+import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock, isPhysicalInventoryItem } from '../itemTaxonomy';
 import { itemKg } from '../orderUnits';
+import { anchorLotsByQty } from '../lotAnchor';
 import { DENSITY, baseRawName, parsePackageKg } from '../../constants/formula';
 import { receiptToKg } from '../lotUtils';
 import { isRawHolder } from '../rawHolder';
@@ -42,15 +43,17 @@ import { statementBlockReason } from "../statementGuard";
 import { canResumeFailedInventoryOperation } from '../orderCompletion';
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
 import type { CollectionName } from '../collections';
+import { COL } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { openingDocId, type Partner } from '../types';
 import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
-import { AR, AP, BANK } from '../autoJournal';
+import { AR, AP, BANK, INVENTORY } from '../autoJournal';
 import { STANDARD_ACCOUNT } from '../accountChart';
 import type { LoanContract } from '../loanLedger';
 import { loanOpeningStatement } from '../loanOpening';
 import type { CashAccount } from '../types';
 import { cashOpeningStatement, openingCashAccountCode } from '../cashOpening';
+import { inventoryOpeningStatement } from '../inventoryOpening';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -90,7 +93,7 @@ export async function saveOpeningBalancesWithDb(
   await runTransaction(store, async tx => {
     const snap = await tx.get(ref);
     if (snap.exists() && snap.data().companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
-    if ((snap.data()?.hasPartnerOpening || snap.data()?.hasLoanOpening || snap.data()?.hasCashOpening) && snap.data()?.date !== date) {
+    if ((snap.data()?.hasPartnerOpening || snap.data()?.hasLoanOpening || snap.data()?.hasCashOpening || snap.data()?.hasInventoryOpening) && snap.data()?.date !== date) {
       throw new Error('연결된 기초 전표가 있어 기준일을 변경할 수 없습니다.');
     }
     for (const code of [AR, AP]) {
@@ -108,6 +111,9 @@ export async function saveOpeningBalancesWithDb(
         throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 계좌 기초 전표를 확인하세요.`);
       }
     }
+    if (snap.data()?.hasInventoryOpening && Number(snap.data()?.amounts?.[INVENTORY] ?? 0) !== Number(amounts[INVENTORY] ?? 0)) {
+      throw new Error('146 재고자산 기초 합계는 직접 변경할 수 없습니다. 품목별 기초 전표를 확인하세요.');
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
       throw new Error('기초일과 계정별 금액을 확인하세요.');
     }
@@ -115,7 +121,8 @@ export async function saveOpeningBalancesWithDb(
     tx.set(ref, { id: openingDocId(companyId), companyId, date, amounts,
       ...(snap.data()?.hasPartnerOpening ? { hasPartnerOpening: true } : {}),
       ...(snap.data()?.hasLoanOpening ? { hasLoanOpening: true } : {}),
-      ...(snap.data()?.hasCashOpening ? { hasCashOpening: true } : {}) });
+      ...(snap.data()?.hasCashOpening ? { hasCashOpening: true } : {}),
+      ...(snap.data()?.hasInventoryOpening ? { hasInventoryOpening: true } : {}) });
   });
 }
 
@@ -263,6 +270,80 @@ export async function createCashAccountWithOpening(companyId: CompanyId, account
   const token = await auth.currentUser?.getIdTokenResult();
   if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
   return createCashAccountWithOpeningWithDb(db, companyId, account);
+}
+
+/** 최초 품목 재고와 146 재고자산 기초 전표를 하나의 작업으로 등록한다. */
+export async function createOpeningInventoryWithDb(
+  store: Firestore, companyId: CompanyId, date: string, itemId: string, quantity: number, value: number,
+): Promise<'created' | 'unchanged'> {
+  if (!itemId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(quantity) || quantity <= 0 ||
+      !Number.isInteger(value) || value <= 0) throw new Error('기초 재고 날짜·수량·평가금액을 확인하세요.');
+  const itemRef = doc(store, COL.items, itemId);
+  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
+  const voucherRef = doc(store, 'issuedStatements', `opening-inventory-${companyId}-${itemId}`);
+  const operationId = `opening-inventory:${companyId}:${itemId}`;
+  const effectiveAt = `${date}T00:00:00+09:00`;
+  const recordedAt = new Date().toISOString();
+  const rawCommand: RawInventoryCommand = {
+    kind: 'opening', operationId, companyId, rawItemId: itemId,
+    materialSnapshot: '', effectiveAt, source: { type: 'opening', id: itemId }, kg: quantity,
+  };
+  return runTransaction(store, async tx => {
+    const [itemSnap, openingSnap, voucherSnap] = await Promise.all([
+      tx.get(itemRef), tx.get(openingRef), tx.get(voucherRef),
+    ]);
+    if (!itemSnap.exists()) throw new Error('기초 재고 품목이 없습니다.');
+    const item = { id: itemSnap.id, ...itemSnap.data() } as Item;
+    if (companyOf(item) !== companyId || !isPhysicalInventoryItem(item) || item.archived || item.phantom) {
+      throw new Error('현재 회사의 실물 품목만 기초 재고로 등록할 수 있습니다.');
+    }
+    if (Math.abs(quantity - Math.round(quantity * 1000) / 1000) > 1e-9 || (!isRawHolder(item) && !Number.isInteger(quantity))) {
+      throw new Error('기초 재고 수량은 개수 품목은 정수, 벌크 원료는 소수 셋째 자리까지 입력하세요.');
+    }
+    const voucher = inventoryOpeningStatement(companyId, date, item, quantity, value);
+    if (voucherSnap.exists()) {
+      const saved = voucherSnap.data();
+      if (saved.companyId === companyId && saved.tradeDate === date && saved.totalAmount === value &&
+          saved.openingQuantity === quantity && saved.openingItemId === itemId) return 'unchanged';
+      throw new Error('같은 품목의 기초 재고가 다른 내용으로 이미 등록됐습니다.');
+    }
+    const opening = openingSnap.data();
+    if (!opening || opening.companyId !== companyId || opening.date !== date) {
+      throw new Error('먼저 해당 날짜의 회계 기초잔액을 저장하세요.');
+    }
+    if (Number(opening.amounts?.[INVENTORY] ?? 0) !== 0) {
+      throw new Error('146 재고자산 계정에 수기 기초 합계가 있어 이중계상됩니다. 기존 금액을 확인하세요.');
+    }
+    if (Number(item.stock ?? 0) !== 0 || (item.lots ?? []).some(lot => Number(lot.qtyRemaining ?? 0) !== 0 || Number(lot.kgRemaining ?? 0) !== 0) ||
+        (item.stocktakeAnchors ?? []).length > 0) {
+      throw new Error('이미 재고나 실사 이력이 있는 품목은 기초 재고로 등록할 수 없습니다.');
+    }
+    if (isRawHolder(item)) {
+      const rawRead = await readRawCommandInTransaction(tx, store, rawCommand);
+      if (rawRead.stateSnap.exists() && (Number(rawRead.stateSnap.data().stockKg ?? 0) !== 0 || Number(rawRead.stateSnap.data().revision ?? 0) !== 0)) {
+        throw new Error('원료 상태에 기존 재고 이력이 있어 기초 재고로 등록할 수 없습니다.');
+      }
+      const result = prepareRawCommand(rawCommand, rawRead, { now: recordedAt, legacy: { note: '기초 재고', type: 'manual' } });
+      if (result.status !== 'applied') throw new Error(result.status === 'rejected' ? result.message : '기초 원료 명령이 이미 처리됐습니다.');
+      writePreparedRawCommand(tx, rawCommand, rawRead, result, { legacy: { note: '기초 재고', type: 'manual' } });
+    } else {
+      const anchored = anchorLotsByQty({ lots: [], targetQty: quantity, unitKg: itemKg(item),
+        det: { id: `lot-${operationId}`, createdAt: recordedAt, receivedDate: date } });
+      tx.update(itemRef, { stock: quantity, lots: stripUndefined(anchored.lots), stocktakeAnchors: [{
+        id: operationId, date, createdAt: recordedAt, targetQty: quantity, beforeQty: 0, deltaQty: quantity, note: '기초 재고',
+      }] });
+    }
+    tx.update(openingRef, { hasInventoryOpening: true });
+    tx.set(voucherRef, voucher);
+    return 'created';
+  });
+}
+
+export async function createOpeningInventory(companyId: CompanyId, date: string, itemId: string, quantity: number, value: number) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return createOpeningInventoryWithDb(db, companyId, date, itemId, quantity, value);
 }
 
 export const subscribeToCollection = <T extends { id: string }>(
