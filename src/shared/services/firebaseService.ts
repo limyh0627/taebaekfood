@@ -45,9 +45,12 @@ import type { CollectionName } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { openingDocId, type Partner } from '../types';
 import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
-import { AR, AP } from '../autoJournal';
+import { AR, AP, BANK } from '../autoJournal';
+import { STANDARD_ACCOUNT } from '../accountChart';
 import type { LoanContract } from '../loanLedger';
 import { loanOpeningStatement } from '../loanOpening';
+import type { CashAccount } from '../types';
+import { cashOpeningStatement, openingCashAccountCode } from '../cashOpening';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -87,7 +90,7 @@ export async function saveOpeningBalancesWithDb(
   await runTransaction(store, async tx => {
     const snap = await tx.get(ref);
     if (snap.exists() && snap.data().companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
-    if ((snap.data()?.hasPartnerOpening || snap.data()?.hasLoanOpening) && snap.data()?.date !== date) {
+    if ((snap.data()?.hasPartnerOpening || snap.data()?.hasLoanOpening || snap.data()?.hasCashOpening) && snap.data()?.date !== date) {
       throw new Error('연결된 기초 전표가 있어 기준일을 변경할 수 없습니다.');
     }
     for (const code of [AR, AP]) {
@@ -100,13 +103,19 @@ export async function saveOpeningBalancesWithDb(
         throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 대출 기초 전표를 확인하세요.`);
       }
     }
+    if (snap.data()?.hasCashOpening) for (const code of [BANK, STANDARD_ACCOUNT.CASH]) {
+      if (Number(snap.data()?.amounts?.[code] ?? 0) !== Number(amounts[code] ?? 0)) {
+        throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 계좌 기초 전표를 확인하세요.`);
+      }
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
       throw new Error('기초일과 계정별 금액을 확인하세요.');
     }
     // Replace the amounts map: merge would silently retain an account the user cleared.
     tx.set(ref, { id: openingDocId(companyId), companyId, date, amounts,
       ...(snap.data()?.hasPartnerOpening ? { hasPartnerOpening: true } : {}),
-      ...(snap.data()?.hasLoanOpening ? { hasLoanOpening: true } : {}) });
+      ...(snap.data()?.hasLoanOpening ? { hasLoanOpening: true } : {}),
+      ...(snap.data()?.hasCashOpening ? { hasCashOpening: true } : {}) });
   });
 }
 
@@ -200,6 +209,60 @@ export async function createLoanWithOpening(companyId: CompanyId, loan: LoanCont
   const token = await auth.currentUser?.getIdTokenResult();
   if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
   return createLoanWithOpeningWithDb(db, companyId, loan);
+}
+
+/** The account ledger and the accounting opening voucher are one operation. */
+export async function createCashAccountWithOpeningWithDb(store: Firestore, companyId: CompanyId, account: CashAccount): Promise<'created' | 'unchanged'> {
+  if (account.companyId !== companyId || !account.id || !account.name?.trim() ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(account.openingDate) || !Number.isInteger(account.openingBalance) || account.openingBalance < 0 ||
+      !['통장', '현금', '카드'].includes(account.type)) throw new Error('계좌 회사·이름·기초일·잔액을 확인하세요.');
+  if (account.type === '카드' && account.openingBalance > 0) throw new Error('카드 기초잔액은 계좌 자산과 다릅니다. 카드 계좌는 0원으로 등록하세요.');
+  const existing = await getDocs(query(collection(store, 'cashAccounts'), where('companyId', '==', companyId)));
+  const prior = existing.docs.map(row => ({ id: row.id, ...row.data() } as CashAccount));
+  const accountRef = doc(store, 'cashAccounts', account.id);
+  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
+  const voucherRef = doc(store, 'issuedStatements', `opening-cash-${companyId}-${account.id}`);
+  return runTransaction(store, async tx => {
+    const [accountSnap, openingSnap, voucherSnap] = await Promise.all([
+      tx.get(accountRef), tx.get(openingRef), tx.get(voucherRef),
+    ]);
+    const hasOpening = account.openingBalance > 0;
+    const sameAccount = accountSnap.exists() && ['companyId', 'name', 'type', 'openingDate', 'openingBalance']
+      .every(key => (accountSnap.data()[key] ?? '') === ((account as unknown as Record<string, unknown>)[key] ?? ''));
+    if (accountSnap.exists() || voucherSnap.exists()) {
+      if (sameAccount && (hasOpening ? voucherSnap.exists() && voucherSnap.data().companyId === companyId && voucherSnap.data().totalAmount === account.openingBalance : !voucherSnap.exists())) return 'unchanged';
+      throw new Error('같은 계좌 요청에 다른 내용이 저장되어 있습니다. 새로 열어 다시 등록하세요.');
+    }
+    const openingData = openingSnap.data();
+    if (openingData && openingData.companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
+    if (hasOpening && openingData?.date && openingData.date !== account.openingDate) {
+      throw new Error('계좌 기초일은 회계 기초잔액 기준일과 같아야 합니다.');
+    }
+    if (hasOpening && !openingData && prior.some(row => row.openingBalance > 0)) {
+      throw new Error('기존 계좌 기초잔액이 있어 먼저 회계 기초잔액을 저장·대조해야 합니다.');
+    }
+    if (hasOpening && openingData && !openingData.hasCashOpening) {
+      const code = openingCashAccountCode(account);
+      const priorTotal = prior.filter(row => row.type === account.type).reduce((sum, row) => sum + (row.openingBalance || 0), 0);
+      if (Number(openingData.amounts?.[code] ?? 0) !== priorTotal) {
+        throw new Error('기존 계좌 잔액과 회계 기초 합계가 다릅니다. 먼저 기초잔액을 대조하세요.');
+      }
+    }
+    tx.set(accountRef, account);
+    if (hasOpening) {
+      if (openingData) tx.update(openingRef, { hasCashOpening: true });
+      else tx.set(openingRef, { id: openingDocId(companyId), companyId, date: account.openingDate, amounts: {}, hasCashOpening: true });
+      tx.set(voucherRef, cashOpeningStatement(account));
+    }
+    return 'created';
+  });
+}
+
+export async function createCashAccountWithOpening(companyId: CompanyId, account: CashAccount) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return createCashAccountWithOpeningWithDb(db, companyId, account);
 }
 
 export const subscribeToCollection = <T extends { id: string }>(

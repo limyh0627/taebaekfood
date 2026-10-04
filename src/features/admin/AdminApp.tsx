@@ -207,6 +207,7 @@ import {
   writeMany,
   confirmUnitPurchaseOrderReceipt,
   deletePendingPurchaseOrder,
+  createCashAccountWithOpening,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -4562,7 +4563,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateCashEntry={updateCash}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
               onDeleteCashEntry={deleteCashEntry}
-              onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
+              onAddCashAccount={(a) => createCashAccountWithOpening(companyId, { ...a, companyId })}
               onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
               fixedCostTemplates={companyTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
@@ -4793,7 +4794,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     issuedStatements={issuedStatements}
                     settlements={appData.settlements}
                     currentUser={currentUser}
-                    onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
+                    onAddCashAccount={(a) => createCashAccountWithOpening(companyId, { ...a, companyId })}
                     onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
                     onAddCashEntry={(e) => addCashEntry(e)}
                     onDeleteCashEntry={deleteCashEntry}

@@ -6,12 +6,13 @@ import { buildJournals } from '../src/shared/buildJournals';
 import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { AR, AP, BANK } from '../src/shared/autoJournal';
+import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import { createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
 import { appNotice } from '../src/shared/components/appDialog';
 import type { OpeningPartnerCode } from '../src/shared/openingPartnerBalance';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
-interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; hasLoanOpening?: boolean; }
+interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; hasLoanOpening?: boolean; hasCashOpening?: boolean; }
 
 interface Props {
   /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
@@ -72,6 +73,13 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   }, [companyId]);
 
   const cashDefault = useMemo(() => cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0), [cashAccounts]);
+  const cashOpeningAmounts = useMemo(() => cashAccounts.reduce<Record<string, number>>((amounts, account) => {
+    if (account.type === '카드') return amounts;
+    const code = account.type === '현금' ? STANDARD_ACCOUNT.CASH : BANK;
+    amounts[code] = (amounts[code] ?? 0) + (account.openingBalance ?? 0);
+    return amounts;
+  }, {}), [cashAccounts]);
+  const cashAccountMap = useMemo(() => Object.fromEntries(cashAccounts.filter(a => a.type === '현금').map(a => [a.id, STANDARD_ACCOUNT.CASH])), [cashAccounts]);
   const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01', [cashAccounts]);
 
   // 실제 적용할 기초잔액 — 저장문서 있으면 그것, 없으면 통장만 자동
@@ -80,8 +88,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
       return { date: openingDoc.date, capitalAccount: CAPITAL,
         lines: Object.entries(openingDoc.amounts).filter(([, v]) => v).map(([accountCode, amount]) => ({ accountCode, amount })) };
     }
-    return { date: defaultDate, capitalAccount: CAPITAL, lines: cashDefault ? [{ accountCode: BANK, amount: cashDefault }] : [] };
-  }, [openingDoc, defaultDate, cashDefault]);
+    return { date: defaultDate, capitalAccount: CAPITAL,
+      lines: Object.entries(cashOpeningAmounts).filter(([, amount]) => amount).map(([accountCode, amount]) => ({ accountCode, amount })) };
+  }, [openingDoc, defaultDate, cashOpeningAmounts]);
 
   // 편집 대상 계정 — 자산·부채·자본 (자본금 제외, 그건 plug)
   const openableAccounts = useMemo(
@@ -90,7 +99,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     [accounts]);
 
   const startEdit = () => {
-    const base: OpeningDoc = openingDoc ?? { id: 'main', date: defaultDate, amounts: cashDefault ? { [BANK]: cashDefault } : {} };
+    const base: OpeningDoc = openingDoc ?? { id: 'main', date: defaultDate, amounts: cashOpeningAmounts };
     setDraft(JSON.parse(JSON.stringify(base))); setEditing(true);
   };
   const saveOpening = async () => {
@@ -133,8 +142,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     return Math.round(d - c);   // 차변이 크면 자본금(대변)으로
   }, [draft, openableAccounts]);
 
-  const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening, inventorySnapshots }),
-    [statements, cashEntries, accounts, opening, inventorySnapshots]);
+  const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening, cashAccountMap, inventorySnapshots }),
+    [statements, cashEntries, accounts, opening, cashAccountMap, inventorySnapshots]);
 
   // 실패 건을 숫자만 보여주면 어떤 전표를 고쳐야 하는지 알 수 없다. 원본에서 날짜·문서번호를
   // 붙여 사람이 바로 찾게 한다. 선택 월과 무관한 실패 건까지 경고하지 않도록 월 필터도 맞춘다.
@@ -294,7 +303,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
               {openableAccounts.map(a => (
                 <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">
                   <span className="text-[11px] font-bold text-slate-500 flex-1 truncate"><span className="text-slate-300 mr-1">{a.code}</span>{a.name}</span>
-                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293'))}
+                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293')) || (!!openingDoc?.hasCashOpening && (a.code === BANK || a.code === STANDARD_ACCOUNT.CASH))}
                     onChange={e => setDraft({ ...draft, amounts: { ...draft.amounts, [String(a.code)]: Number(e.target.value.replace(/[^\d]/g, '')) || 0 } })}
                     className="w-28 text-right text-xs font-black tabular-nums border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-300 disabled:bg-slate-100 disabled:text-slate-400" />
                 </label>
@@ -305,7 +314,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
               <span className="text-sm font-black text-violet-700 tabular-nums">{won(capitalPreview)}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-400 leading-relaxed">
-              통장 실잔액은 보통예금(103)에, 미수·미지급은 아래 거래처별 기초 전표로 등록하세요. 그 밖의 미지급금(253)과
+              현금·통장 기초잔액은 계좌 관리에서 등록하세요(현금 102, 보통예금 103). 미수·미지급은 아래 거래처별 기초 전표로 등록하세요. 그 밖의 미지급금(253)과
               대출은 단기·장기차입금에 넣으세요. 재고자산 계정이 없으면 나중에 추가합니다. 언제든 다시 편집 가능합니다.
             </p>
           </div>

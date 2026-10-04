@@ -857,7 +857,7 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
   return (
     <ModalShell title="자금 계좌 관리" onClose={onClose} bodyClassName="space-y-4">
         <p className="text-[11px] text-slate-400 leading-snug">
-          <b>기초 잔액</b>은 기준일 시점의 통장 잔고입니다. 그 이전 거래는 기록하지 않아도 되고, 잔액은 여기서부터 굴러갑니다.
+          <b>기초 잔액</b>은 기준일 시점의 현금·통장 잔고입니다. 회계 기초일과 같은 날짜로 등록하면 계좌원장과 회계 기초 전표에 함께 반영됩니다. 카드는 0원으로 등록하세요.
         </p>
 
         <div className="space-y-2">
