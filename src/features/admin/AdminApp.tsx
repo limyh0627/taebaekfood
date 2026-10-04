@@ -4841,6 +4841,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   cashEntries={companyCashEntries}
                   accounts={appData.accountCodes}
                   cashAccounts={companyCashAccounts}
+                  partners={companyPartners}
                   inventorySnapshots={companySnapshots}
                 />
               </React.Suspense>

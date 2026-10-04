@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X, ChevronDown } from 'lucide-react';
-import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId } from '../src/shared/types';
+import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId, Partner } from '../src/shared/types';
 import { openingDocId } from '../src/shared/types';
 import { buildJournals } from '../src/shared/buildJournals';
 import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { BANK } from '../src/shared/autoJournal';
-import { fetchWhere, setDocument } from '../src/shared/services/firebaseService';
+import { createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
+import { appNotice } from '../src/shared/components/appDialog';
+import type { OpeningPartnerCode } from '../src/shared/openingPartnerBalance';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
 interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; }
@@ -18,6 +20,7 @@ interface Props {
   cashEntries: CashEntry[];
   accounts: AccountCode[];
   cashAccounts: CashAccount[];
+  partners?: Partner[];
   /** 월말 재고 실사액 — 재고자산을 실사값으로 맞추는 조정분개를 만든다(실지재고조사법). */
   inventorySnapshots?: { id?: string; yearMonth: string; value: number }[];
 }
@@ -28,7 +31,7 @@ const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
  * 재무제표 (복식부기 · 병행/대조용). 기존 전표·수금·자금에서 분개를 계산으로 뽑아
  * 시산표·손익계산서·재무상태표를 그린다. 저장 안 함, 읽기 전용. 기존 손익표와 대조하는 화면.
  */
-const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, inventorySnapshots = [], companyId = 'taebaek' }) => {
+const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, partners = [], inventorySnapshots = [], companyId = 'taebaek' }) => {
   const months = useMemo(() => {
     const s = new Set<string>();
     for (const st of statements) if (st.tradeDate) s.add(st.tradeDate.slice(0, 7));
@@ -45,6 +48,10 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<OpeningDoc | null>(null);
   const [saving, setSaving] = useState(false);
+  const [partnerId, setPartnerId] = useState('');
+  const [partnerCode, setPartnerCode] = useState<OpeningPartnerCode>('108');
+  const [partnerAmount, setPartnerAmount] = useState('');
+  const [partnerSaving, setPartnerSaving] = useState(false);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
   useEffect(() => {
     // 회사 규칙은 list 질의에도 companyId 조건이 있어야 허용한다. 전체 컬렉션을 읽으면
@@ -78,12 +85,28 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   };
   const saveOpening = async () => {
     if (!draft || saving) return;
+    if (['108', '251'].some(code => Number(draft.amounts[code] ?? 0) !== 0 &&
+      statements.some(s => s.id.startsWith(`opening-partner-${companyId}-`) && s.items.some(i => i.accountCode === code)))) {
+      await appNotice('거래처별 기초 전표가 있어 108·251 계정 합계를 함께 저장하면 이중계상됩니다.');
+      return;
+    }
     setSaving(true);
     try {
       const clean = { ...draft, id: 'main', amounts: Object.fromEntries(Object.entries(draft.amounts).filter(([, v]) => v)) };
-      await setDocument('openingBalances', openingDocId(companyId), clean);
+      await saveOpeningBalances(companyId, clean.date, clean.amounts);
       setOpeningDoc(clean); setEditing(false);
     } finally { setSaving(false); }
+  };
+  const savePartnerOpening = async () => {
+    if (!openingDoc || !partnerId || partnerSaving) return;
+    const amount = Number(partnerAmount.replaceAll(',', ''));
+    setPartnerSaving(true);
+    try {
+      const result = await createOpeningPartnerBalance(companyId, openingDoc.date, partnerId, partnerCode, amount);
+      await appNotice(result === 'unchanged' ? '같은 기초 전표가 이미 저장되어 있습니다.' : '거래처별 기초 전표를 저장했습니다.');
+      if (result === 'created') setPartnerAmount('');
+    } catch (error) { await appNotice(String(error), '저장 실패'); }
+    finally { setPartnerSaving(false); }
   };
   // 자본금 plug 미리보기
   const capitalPreview = useMemo(() => {
@@ -274,6 +297,18 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
             </p>
           </div>
         )}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
+        <div className="text-xs font-black text-slate-700">거래처별 기초 미수·미지급</div>
+        <p className="text-[11px] text-slate-500">회계 기초일의 거래처 잔액을 전표로 등록합니다. 108·251 계정 합계에는 같은 금액을 넣지 마세요.</p>
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_100px_130px_80px]">
+          <select aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerId} onChange={e => setPartnerId(e.target.value)}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <select aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => setPartnerCode(e.target.value as OpeningPartnerCode)}><option value="108">미수</option><option value="251">미지급</option></select>
+          <input aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => setPartnerAmount(e.target.value.replace(/[^\d,]/g, ''))} placeholder="금액" />
+          <button type="button" disabled={!openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
+        </div>
+        {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

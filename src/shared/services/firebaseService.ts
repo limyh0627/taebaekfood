@@ -43,6 +43,8 @@ import { canResumeFailedInventoryOperation } from '../orderCompletion';
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
 import type { CollectionName } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
+import { openingDocId, type Partner } from '../types';
+import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -73,6 +75,79 @@ export const setDocument = async (collectionName: CollectionName, docId: string,
   const scoped = await companyScopedWriteData(collectionName, stripUndefined(data));
   await setDoc(doc(db, collectionName, docId), scoped, { merge: true });
 };
+
+/** Existing 108/251 aggregates are frozen; new partner balances live in vouchers. */
+export async function saveOpeningBalancesWithDb(
+  store: Firestore, companyId: CompanyId, date: string, amounts: Record<string, number>,
+) {
+  const ref = doc(store, 'openingBalances', openingDocId(companyId));
+  await runTransaction(store, async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists() && snap.data().companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
+    if (snap.data()?.hasPartnerOpening && snap.data()?.date !== date) {
+      throw new Error('거래처별 기초 전표가 있어 기준일을 변경할 수 없습니다.');
+    }
+    for (const code of ['108', '251']) {
+      const before = Number(snap.data()?.amounts?.[code] ?? 0);
+      const after = Number(amounts[code] ?? 0);
+      if (before !== after) throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 거래처별 기초 전표를 등록하세요.`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
+      throw new Error('기초일과 계정별 금액을 확인하세요.');
+    }
+    // Replace the amounts map: merge would silently retain an account the user cleared.
+    tx.set(ref, { id: openingDocId(companyId), companyId, date, amounts,
+      ...(snap.data()?.hasPartnerOpening ? { hasPartnerOpening: true } : {}) });
+  });
+}
+
+export async function saveOpeningBalances(companyId: CompanyId, date: string, amounts: Record<string, number>) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return saveOpeningBalancesWithDb(db, companyId, date, amounts);
+}
+
+/** Save one opening partner balance without overwriting an existing voucher on retry. */
+export async function createOpeningPartnerBalanceWithDb(
+  store: Firestore, companyId: CompanyId, date: string, partnerId: string, code: OpeningPartnerCode, amount: number,
+): Promise<'created' | 'unchanged'> {
+  const partnerRef = doc(store, 'partners', partnerId);
+  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
+  const id = `opening-partner-${companyId}-${date}-${partnerId}-${code}`;
+  const voucherRef = doc(store, 'issuedStatements', id);
+  return runTransaction(store, async tx => {
+    const [partnerSnap, openingSnap, voucherSnap] = await Promise.all([
+      tx.get(partnerRef), tx.get(openingRef), tx.get(voucherRef),
+    ]);
+    if (!partnerSnap.exists()) throw new Error('거래처가 없습니다.');
+    const partner = { id: partnerSnap.id, ...partnerSnap.data() } as Partner;
+    if (companyOf(partner) !== companyId) throw new Error('다른 회사 거래처입니다.');
+    if (!openingSnap.exists() || openingSnap.data().companyId !== companyId || openingSnap.data().date !== date) {
+      throw new Error('먼저 해당 날짜의 회계 기초잔액을 저장하세요.');
+    }
+    if (Number(openingSnap.data().amounts?.[code] ?? 0) !== 0) {
+      throw new Error(`${code} 계정에 합계 기초잔액이 있어 이중계상됩니다. 기존 금액을 확인하세요.`);
+    }
+    const voucher = openingPartnerStatement(companyId, date, partner, code, amount);
+    if (voucherSnap.exists()) {
+      const saved = voucherSnap.data();
+      if (saved.companyId === companyId && saved.partnerId === partnerId && saved.tradeDate === date &&
+          saved.items?.find((i: { accountCode: string }) => i.accountCode === code)?.total === amount) return 'unchanged';
+      throw new Error('같은 기초 전표번호에 다른 내용이 저장되어 있습니다.');
+    }
+    tx.update(openingRef, { hasPartnerOpening: true });
+    tx.set(voucherRef, voucher);
+    return 'created';
+  });
+}
+
+export async function createOpeningPartnerBalance(companyId: CompanyId, date: string, partnerId: string, code: OpeningPartnerCode, amount: number) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return createOpeningPartnerBalanceWithDb(db, companyId, date, partnerId, code, amount);
+}
 
 export const subscribeToCollection = <T extends { id: string }>(
   collectionName: CollectionName,
