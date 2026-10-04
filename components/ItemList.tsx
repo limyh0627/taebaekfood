@@ -67,7 +67,8 @@ import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVol
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
-import { addItem, subscribeToCollection, fetchCollection, adjustItemStock } from '../src/shared/services/firebaseService';
+import { addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
+import { unpackBoxStock } from '../src/shared/services/boxUnpackService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { lotQtyRemaining } from '../src/shared/lotUtils';
@@ -962,16 +963,9 @@ const ItemList: React.FC<ItemListProps> = ({
     const boxStock = product.stock ?? 0;
     if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
     if (!await appConfirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
-    // 두 번에 나눠 쓰므로 중간에 끊기면 재고가 사라진다 → 낱개 쓰기가 실패하면 박스를 되돌린다.
-    await adjustItemStock('items', product.id, -1);
-    try {
-      await adjustItemStock('items', target.id, uc.count);
-    } catch (err) {
-      console.error('[개봉] 낱개 재고 반영 실패 — 박스 재고 되돌림:', err);
-      await adjustItemStock('items', product.id, +1);
-      alert('개봉에 실패했습니다. 재고는 원래대로 되돌렸습니다.');
-      return;
-    }
+    const result = await unpackBoxStock({ boxItemId: product.id, unitItemId: target.id,
+      count: uc.count, operationId: `box-unpack-${product.id}-${crypto.randomUUID()}` });
+    if (!result.ok) { alert(result.message); return; }
     setToast({ message: `${product.name} −1박스 → ${target.name} +${uc.count}개` });
   };
 
