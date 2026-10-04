@@ -128,6 +128,46 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     expect((await getDoc(doc(userDb(), 'itemReceipts', `rcv-po-${bad}-sub-mixed`))).exists()).toBe(false);
   }, 30_000);
 
+  it('10kg 두 개와 20kg 세 개를 같은 홀더의 로트 두 건으로 입고하고 재시도는 중복하지 않는다', async () => {
+    const id = 'po-raw-two-packages';
+    await seed(id, [{ itemId: 'pack-10', quantity: 2 }, { itemId: 'pack-20', quantity: 3 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'items', 'pack-10'), { type: 'raw', subtype: '포장', name: '참깨/10kg', spec: '10kg', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'pack-20'), { type: 'raw', subtype: '포장', name: '참깨/20kg', spec: '20kg', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'holder-two-packages'), { companyId: company, type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 0, lots: [] });
+    });
+    const holder = { id: 'holder-two-packages', companyId: company, type: 'raw', subtype: '벌크', name: '참깨' } as any;
+    expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자', [holder])).toBe(true);
+    const item = (await getDoc(doc(userDb(), 'items', holder.id))).data();
+    const inventory = (await getDoc(doc(userDb(), 'rawInventories', `taebaek__${holder.id}`))).data();
+    const ledger = await getDocs(query(collection(userDb(), 'rawMaterialLedger'), where('companyId', '==', company), where('source.id', '==', id)));
+    expect(item?.stock).toBe(80);
+    expect(inventory?.stockKg).toBe(80);
+    expect((item?.lots ?? []).map((lot: { kgRemaining: number }) => lot.kgRemaining).sort((a: number, b: number) => a - b)).toEqual([20, 60]);
+    expect((inventory?.activeLots ?? []).length).toBe(2);
+    expect(ledger.size).toBe(2);
+    expect(ledger.docs.map(row => row.data().appliedDeltaKg).sort((a, b) => a - b)).toEqual([20, 60]);
+    expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자', [holder])).toBe(false);
+    expect((await getDoc(doc(userDb(), 'items', holder.id))).data()?.stock).toBe(80);
+  }, 30_000);
+
+  it('두 번째 포장 줄이 잘못되면 첫 번째 로트·원장·발주도 저장하지 않는다', async () => {
+    const id = 'po-raw-two-packages-fail';
+    await seed(id, [{ itemId: 'pack-good', quantity: 2 }, { itemId: 'pack-bad', quantity: 3 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'items', 'pack-good'), { type: 'raw', subtype: '포장', name: '참깨/10kg', spec: '10kg', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'pack-bad'), { type: 'raw', subtype: '포장', name: '참깨', spec: '', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'holder-package-fail'), { companyId: company, type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 0, lots: [] });
+    });
+    const holder = { id: 'holder-package-fail', companyId: company, type: 'raw', subtype: '벌크', name: '참깨' } as any;
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자', [holder])).rejects.toThrow('kg 환산값');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', id))).data()?.status).toBe('invoiced');
+    expect((await getDoc(doc(userDb(), 'items', holder.id))).data()?.stock).toBe(0);
+    expect((await getDocs(query(collection(userDb(), 'rawMaterialLedger'), where('companyId', '==', company), where('source.id', '==', id)))).size).toBe(0);
+  }, 30_000);
+
   it('이전 원료 입고 원장이나 변경된 홀더 연결은 재입고·삭제를 막는다', async () => {
     const old = 'po-raw-previous';
     await seed(old, [{ itemId: 'raw-previous', quantity: 2 }]);
@@ -159,6 +199,15 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, noSize, undefined,
       [{ id: 'holder-sesame', companyId: company, type: 'raw', subtype: '벌크', name: '참깨' } as any])).rejects.toThrow('kg 환산값');
     expect((await getDoc(doc(userDb(), 'purchaseOrders', noSize))).data()?.status).toBe('invoiced');
+
+    const foreignHolder = 'po-raw-foreign-holder';
+    await seed(foreignHolder, [{ itemId: 'pack-foreign-holder', quantity: 2 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'items', 'pack-foreign-holder'), { type: 'raw', subtype: '포장', name: '참깨/10kg', spec: '10kg', unit: '개', stock: 0 }, { merge: true });
+    });
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, foreignHolder, undefined,
+      [{ id: 'foreign-holder', companyId: 'punghoe', type: 'raw', subtype: '벌크', name: '참깨' } as any])).rejects.toThrow('원료 로트 홀더');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', foreignHolder))).data()?.status).toBe('invoiced');
   }, 30_000);
 
   it('회사 혼합 또는 원료 홀더가 없는 품목은 안전하게 거절한다', async () => {

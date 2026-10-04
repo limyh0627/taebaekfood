@@ -618,17 +618,24 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
         receivedDate: date, poId }), id: `receipt:${refs[i].receipt.id}`, createdAt: now };
       return { item, stock, lots: [...lots, lot], line };
     });
-    if (new Set(rawCommands.map(row => row.command.rawItemId)).size !== rawCommands.length)
-      throw new Error('한 발주에 같은 원료 홀더를 가리키는 줄이 여러 개 있습니다. 로트 수량을 확인한 뒤 처리해 주세요.');
     const rawReads = await Promise.all(rawCommands.map(row => readRawCommandInTransaction(tx, store, row.command)));
     rawCommands.forEach((row, i) => {
       const holder = rawReads[i].itemSnap.exists() ? { id: row.command.rawItemId, ...rawReads[i].itemSnap.data() } as Item : undefined;
       if (!holder || !isRawHolder(holder) || companyOf(holder) !== claim || baseRawName(holder.name) !== baseRawName(row.command.materialSnapshot))
         throw new Error(`원료 로트 홀더 연결이 변경됐습니다: ${row.command.materialSnapshot}`);
     });
-    const rawResults = rawCommands.map((row, i) => prepareRawCommand(row.command, rawReads[i], { now }));
-    rawResults.forEach(result => {
+    // 같은 홀더의 포장 SKU 여러 줄은 앞줄의 로트·재고를 다음 줄의 가상 입력으로 쓴다.
+    // Firestore 읽기는 모두 끝낸 상태이며 쓰기는 각 원장 줄과 최종 홀더 상태를 한 거래로 묶는다.
+    const virtualByHolder = new Map<string, { state: Extract<ReturnType<typeof prepareRawCommand>, { status: 'applied' }>['state']; itemData: Record<string, any> }>();
+    const rawResults = rawCommands.map((row, i) => {
+      const result = prepareRawCommand(row.command, rawReads[i], { now }, virtualByHolder.get(row.command.rawItemId));
       if (result.status !== 'applied') throw new Error(result.status === 'rejected' ? result.message : '기존 원료 입고 이력과 충돌합니다. 로트·수불부를 확인해 주세요.');
+      virtualByHolder.set(row.command.rawItemId, {
+        state: result.state,
+        itemData: { ...rawReads[i].itemSnap.data(), stock: result.state.stockKg,
+          lots: [...result.state.activeLots, ...result.state.recentDepletedLots] },
+      });
+      return result;
     });
     const receipts = writes.map((write, i) => write && stripUndefined({
       itemId: write.item.id, itemName: write.item.name, quantity: write.line.quantity,
@@ -643,7 +650,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
         : { stock: Math.round((write.stock + write.line.quantity) * 1000) / 1000 });
       tx.set(refs[i].receipt, receipts[i]);
     });
-    rawCommands.forEach((row, i) => writePreparedRawCommand(tx, row.command, rawReads[i], rawResults[i] as Extract<typeof rawResults[number], { status: 'applied' }>, { now, legacy: row.legacy }));
+    rawCommands.forEach((row, i) => writePreparedRawCommand(tx, row.command, rawReads[i], rawResults[i], { now, legacy: row.legacy }));
     tx.update(poRef, { status: 'received', receivedAt: now });
     return true;
   });
