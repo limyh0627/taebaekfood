@@ -53,14 +53,22 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const [partnerAmount, setPartnerAmount] = useState('');
   const [partnerSaving, setPartnerSaving] = useState(false);
   const [openingLoadError, setOpeningLoadError] = useState(false);
+  const [openingLoading, setOpeningLoading] = useState(true);
   // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
   useEffect(() => {
+    let cancelled = false;
     // 회사 규칙은 list 질의에도 companyId 조건이 있어야 허용한다. 전체 컬렉션을 읽으면
     // permission-denied가 나는데 예전 코드는 오류를 삼켜 실제 기초잔액을 '미입력'으로 보였다.
+    setOpeningDoc(null);
+    setDraft(null);
+    setEditing(false);
+    setPartnerId('');
     setOpeningLoadError(false);
+    setOpeningLoading(true);
     fetchWhere<OpeningDoc>('openingBalances', 'companyId', companyId)
-      .then(rows => setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null))
-      .catch(() => setOpeningLoadError(true));
+      .then(rows => { if (!cancelled) { setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null); setOpeningLoading(false); } })
+      .catch(() => { if (!cancelled) { setOpeningLoadError(true); setOpeningLoading(false); } });
+    return () => { cancelled = true; };
   }, [companyId]);
 
   const cashDefault = useMemo(() => cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0), [cashAccounts]);
@@ -265,7 +273,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
             </span>
           </div>
           {!editing ? (
-            <button onClick={startEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-black"><Pencil size={12} /> 편집</button>
+            <button onClick={startEdit} disabled={openingLoading || openingLoadError} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-black disabled:opacity-40"><Pencil size={12} /> 편집</button>
           ) : (
             <div className="flex gap-1.5">
               <button onClick={() => setEditing(false)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[11px] font-black"><X size={12} /> 취소</button>
@@ -311,7 +319,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
           <select aria-label="기초 거래처" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerId} onChange={e => setPartnerId(e.target.value)}><option value="">거래처 선택</option>{partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           <select aria-label="기초 잔액 종류" className="rounded-lg border border-slate-200 px-2 py-2 text-xs" value={partnerCode} onChange={e => setPartnerCode(e.target.value as OpeningPartnerCode)}><option value={AR}>미수</option><option value={AP}>미지급</option></select>
           <input aria-label="기초 거래처 잔액" inputMode="numeric" className="rounded-lg border border-slate-200 px-2 py-2 text-right text-xs" value={partnerAmount} onChange={e => setPartnerAmount(e.target.value.replace(/[^\d,]/g, ''))} placeholder="금액" />
-          <button type="button" disabled={!openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
+          <button type="button" disabled={openingLoading || openingLoadError || !openingDoc || !partnerId || !partnerAmount || partnerSaving} onClick={() => void savePartnerOpening()} className="rounded-lg bg-indigo-600 px-2 py-2 text-xs font-bold text-white disabled:opacity-40">등록</button>
         </div>
         {!openingDoc && <p className="text-[11px] text-amber-600">먼저 회계 기초잔액과 기준일을 저장하세요.</p>}
       </div>
