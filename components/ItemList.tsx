@@ -5,6 +5,7 @@ import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
 import { canConfirmPurchaseOrderReceiptItem, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
+import { rawLotTarget } from '../src/shared/rawReceipt';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
   Package,
@@ -43,7 +44,7 @@ import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterial
 import { PurchaseOrder, ReturnRequest, companyOf, poLines } from '../src/shared/types';
 import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
-import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
+import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, itemKg, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
@@ -1594,13 +1595,15 @@ const ItemList: React.FC<ItemListProps> = ({
         const canConfirmReceipt = flowDetail.type === '입고' && pending && lines.length > 0 &&
           lines.every(line => {
             const item = productMap.get(line.itemId);
-            return canConfirmPurchaseOrderReceiptItem(item) && Number.isFinite(line.quantity) && line.quantity > 0;
+            return !!item && (canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
+              (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item) > 0 || !!parsePackageKg(item.name))))
+              && Number.isFinite(line.quantity) && line.quantity > 0;
           });
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
         const deleteReason = !po ? '' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
           : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'
           : po.poType === 'oem' ? '외주 발주는 이 화면에서 삭제할 수 없습니다.'
-          : lines.some(line => !canConfirmPurchaseOrderReceiptItem(productMap.get(line.itemId))) ? '원료·벌크 또는 품목이 없는 발주는 입고·로트 기록을 먼저 확인해 주세요.'
+          : lines.some(line => !productMap.get(line.itemId)) ? '품목이 없는 발주는 상세 내역을 먼저 확인해 주세요.'
           : sourceChanged ? '내용이 변경됐습니다. 상세창을 다시 열어주세요.' : '';
         return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} mobilePosition={flowDetail.type === '입고' ? 'center' : 'bottom'} className="md:max-w-lg" bodyClassName="space-y-4" footer={
           <div className="space-y-2">
@@ -1641,7 +1644,7 @@ const ItemList: React.FC<ItemListProps> = ({
             } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
             finally { setFlowSaving(false); }
           }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
-          {flowDetail.type === '입고' && pending && !canConfirmReceipt && <p className="text-xs font-bold text-amber-700">원료·벌크 또는 품목이 없는 발주는 안전한 로트 입고 경로가 준비될 때까지 확정할 수 없습니다.</p>}
+          {flowDetail.type === '입고' && pending && !canConfirmReceipt && <p className="text-xs font-bold text-amber-700">품목이나 원료 로트 연결을 확인한 뒤 입고확정해 주세요.</p>}
         </ModalShell>;
       })()}
 

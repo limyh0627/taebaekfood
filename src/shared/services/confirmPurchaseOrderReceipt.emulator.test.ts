@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where, type Firestore } from 'firebase/firestore';
 vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
 const { confirmUnitPurchaseOrderReceiptWithDb, deletePendingPurchaseOrderWithDb } = await import('./firebaseService');
 
@@ -85,7 +85,83 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     expect((await getDoc(doc(userDb(), 'itemReceipts', `rcv-po-${id}-goods-oil`))).data()?.quantity).toBe(5);
   }, 20_000);
 
-  it('회사 혼합 또는 원료 로트 품목을 안전하게 거절한다', async () => {
+  it('벌크 원료 kg와 반제품 L를 로트·원장·발주 상태까지 원자적으로 확정한다', async () => {
+    for (const [id, type, unit, quantity, expectedKg] of [
+      ['po-raw-kg', 'raw', 'kg', 1500, 1500],
+      ['po-wip-l', 'wip', 'L', 743, 680.588],
+    ] as const) {
+      await seed(id, [{ itemId: id, quantity }]);
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'items', id), { type, subtype: '벌크', name: type === 'raw' ? '참깨' : '통깨참기름', unit, stock: 0, lots: [] }, { merge: true });
+      });
+      expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자')).toBe(true);
+      expect((await getDoc(doc(userDb(), 'purchaseOrders', id))).data()?.status).toBe('received');
+      expect((await getDoc(doc(userDb(), 'items', id))).data()?.stock).toBe(expectedKg);
+      const ledger = await getDocs(query(collection(userDb(), 'rawMaterialLedger'), where('companyId', '==', company), where('source.id', '==', id)));
+      expect(ledger.size).toBe(1);
+      expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자')).toBe(false);
+      expect((await getDoc(doc(userDb(), 'items', id))).data()?.stock).toBe(expectedKg);
+    }
+  }, 30_000);
+
+  it('포장 SKU는 같은 회사 벌크 홀더로 환산하고, 혼합 발주 실패 시 일반 재고도 보존한다', async () => {
+    const id = 'po-raw-packaged';
+    await seed(id, [{ itemId: 'pack-sesame', quantity: 3 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'items', 'pack-sesame'), { type: 'raw', subtype: '포장', name: '참깨/20kg', spec: '20kg', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'holder-sesame'), { companyId: company, type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 0, lots: [] });
+    });
+    const holder = { id: 'holder-sesame', companyId: company, type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 0 } as any;
+    expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, id, '검수자', [holder])).toBe(true);
+    expect((await getDoc(doc(userDb(), 'items', 'holder-sesame'))).data()?.stock).toBe(60);
+    expect((await getDoc(doc(userDb(), 'items', 'pack-sesame'))).data()?.stock).toBe(0);
+
+    const bad = 'po-raw-mixed-failure';
+    await seed(bad, [{ itemId: 'sub-mixed', quantity: 2 }, { itemId: 'raw-mixed', quantity: 5 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'items', 'raw-mixed'), { type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 10, lots: [] }, { merge: true });
+      await setDoc(doc(ctx.firestore(), 'rawInventories', 'taebaek__raw-mixed'), { companyId: company, rawItemId: 'raw-mixed', stockKg: 0, activeLots: [], recentDepletedLots: [], revision: 0 });
+    });
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, bad)).rejects.toThrow();
+    expect(await state(bad, ['sub-mixed', 'raw-mixed'])).toEqual({ status: 'invoiced', stocks: [10, 10] });
+    expect((await getDoc(doc(userDb(), 'itemReceipts', `rcv-po-${bad}-sub-mixed`))).exists()).toBe(false);
+  }, 30_000);
+
+  it('이전 원료 입고 원장이나 변경된 홀더 연결은 재입고·삭제를 막는다', async () => {
+    const old = 'po-raw-previous';
+    await seed(old, [{ itemId: 'raw-previous', quantity: 2 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'items', 'raw-previous'), { type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'rawMaterialLedger', 'old-raw-receipt'), { companyId: company, source: { type: 'purchase', id: old }, kind: 'receive', kg: 2 });
+    });
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, old)).rejects.toThrow('이미 원료 입고');
+    await expect(deletePendingPurchaseOrderWithDb(userDb(), company, old)).rejects.toThrow('이미 원료 입고');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', old))).exists()).toBe(true);
+
+    const stale = 'po-raw-stale-holder';
+    await seed(stale, [{ itemId: 'pack-stale', quantity: 2 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'items', 'pack-stale'), { type: 'raw', subtype: '포장', name: '참깨/20kg', spec: '20kg', unit: '개', stock: 0 }, { merge: true });
+      await setDoc(doc(db, 'items', 'holder-stale'), { companyId: company, type: 'raw', subtype: '벌크', name: '들깨', unit: 'kg', stock: 0 });
+    });
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, stale, undefined,
+      [{ id: 'holder-stale', companyId: company, type: 'raw', subtype: '벌크', name: '참깨' } as any])).rejects.toThrow('홀더 연결이 변경');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', stale))).data()?.status).toBe('invoiced');
+
+    const noSize = 'po-raw-no-package-size';
+    await seed(noSize, [{ itemId: 'pack-no-size', quantity: 2 }]);
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'items', 'pack-no-size'), { type: 'raw', subtype: '포장', name: '참깨', spec: '', unit: '개', stock: 0 }, { merge: true });
+    });
+    await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, noSize, undefined,
+      [{ id: 'holder-sesame', companyId: company, type: 'raw', subtype: '벌크', name: '참깨' } as any])).rejects.toThrow('kg 환산값');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', noSize))).data()?.status).toBe('invoiced');
+  }, 30_000);
+
+  it('회사 혼합 또는 원료 홀더가 없는 품목은 안전하게 거절한다', async () => {
     const foreign = 'po-atomic-foreign';
     await seed(foreign, [{ itemId: 'sub-d', quantity: 2 }, { itemId: 'foreign', quantity: 2 }], { foreign: 'foreign' });
     await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, foreign)).rejects.toThrow();
@@ -119,8 +195,8 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     }
     const rawId = 'po-delete-raw';
     await seed(rawId, [{ itemId: 'raw-delete', quantity: 2 }], { raw: 'raw-delete' });
-    await expect(deletePendingPurchaseOrderWithDb(userDb(), company, rawId)).rejects.toThrow('원료');
-    expect((await getDoc(doc(userDb(), 'purchaseOrders', rawId))).exists()).toBe(true);
+    await deletePendingPurchaseOrderWithDb(userDb(), company, rawId);
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', rawId))).exists()).toBe(false);
     const receiptId = 'po-delete-receipt';
     await seed(receiptId, [{ itemId: 'sub-delete-receipt', quantity: 2 }]);
     await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'itemReceipts', 'older-receipt'), {

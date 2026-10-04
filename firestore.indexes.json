@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "rawMaterialLedger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "companyId", "order": "ASCENDING" },
+        { "fieldPath": "source.id", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "itemReceipts",
       "queryScope": "COLLECTION",
       "fields": [

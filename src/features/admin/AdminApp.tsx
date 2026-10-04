@@ -1753,7 +1753,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const handleFinishConfirmedOrder = async (id: string) => {
     try {
-      await confirmUnitPurchaseOrderReceipt(id, currentUser?.name);
+      await confirmUnitPurchaseOrderReceipt(id, currentUser?.name, allItems);
       setLedgerReloadKey(k => k + 1);
       return true;
     } catch (err) {
