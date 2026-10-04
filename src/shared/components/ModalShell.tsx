@@ -14,8 +14,6 @@ export interface ModalShellProps {
   layer?: number;
   /** LargeModalShell만 내부에서 사용한다. 일반 화면에서는 지정하지 않는다. */
   size?: 'standard' | 'large';
-  /** 이 창만 모바일에서도 가운데에 둘 때 사용한다. */
-  mobilePosition?: 'bottom' | 'center';
 }
 
 /**
@@ -32,23 +30,22 @@ const ModalShell: React.FC<ModalShellProps> = ({
   bodyClassName = '',
   layer,
   size = 'standard',
-  mobilePosition = 'bottom',
 }) => {
   const titleId = React.useId();
   return (
   <div
-    className={`fixed inset-0 z-[1090] flex justify-center bg-slate-950/45 backdrop-blur-sm md:items-center md:p-4 ${mobilePosition === 'center' ? 'items-center p-3' : 'items-end p-0'}`}
-    style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', ...(mobilePosition === 'center' ? { paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' } : {}), ...(layer ? { zIndex: layer } : {}) }}
+    className="fixed inset-0 z-[1090] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm md:p-4"
+    style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))', ...(layer ? { zIndex: layer } : {}) }}
     onClick={onClose}
   >
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className={`flex max-h-[90dvh] w-full ${size === 'large' ? 'max-w-6xl' : 'max-w-2xl'} flex-col overflow-hidden ${mobilePosition === 'center' ? 'rounded-2xl' : 'rounded-t-2xl'} border border-slate-200 bg-white shadow-2xl md:max-h-[88vh] md:rounded-2xl ${className}`}
+      className={`flex max-h-full w-full ${size === 'large' ? 'max-w-6xl' : 'max-w-2xl'} flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:max-h-[88vh] ${className}`}
       onClick={event => event.stopPropagation()}
     >
-      <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
         <div className="min-w-0">
           <h3 id={titleId} className="text-[17px] font-black leading-6 text-slate-900">{title}</h3>
           {subtitle && <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">{subtitle}</div>}
@@ -63,7 +60,7 @@ const ModalShell: React.FC<ModalShellProps> = ({
         </button>
       </header>
       <div className={`min-h-0 flex-1 overflow-y-auto p-4 md:p-5 ${bodyClassName}`}>{children}</div>
-      {footer && <footer className="border-t border-slate-200 p-4 md:px-5">{footer}</footer>}
+      {footer && <footer className="shrink-0 border-t border-slate-200 p-4 md:px-5">{footer}</footer>}
     </div>
   </div>
   );

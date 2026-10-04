@@ -1605,7 +1605,7 @@ const ItemList: React.FC<ItemListProps> = ({
           : po.poType === 'oem' ? '외주 발주는 이 화면에서 삭제할 수 없습니다.'
           : lines.some(line => !productMap.get(line.itemId)) ? '품목이 없는 발주는 상세 내역을 먼저 확인해 주세요.'
           : sourceChanged ? '내용이 변경됐습니다. 상세창을 다시 열어주세요.' : '';
-        return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} mobilePosition={flowDetail.type === '입고' ? 'center' : 'bottom'} className="md:max-w-lg" bodyClassName="space-y-4" footer={
+        return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} className="md:max-w-lg" bodyClassName="space-y-4" footer={
           <div className="space-y-2">
             {po && deleteReason && <p className="text-xs font-bold text-slate-500">{deleteReason}</p>}
             <div className="flex flex-wrap gap-2">
