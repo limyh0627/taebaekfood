@@ -24,7 +24,7 @@ vi.mock('firebase/firestore', () => ({
   },
 }));
 
-const { unpack } = await import('./unpackService');
+const { unpack, stocktakeByQty } = await import('./unpackService');
 const plan: UnpackPlan = {
   canItemId: 'can-x', canName: '깨분참기름 캔', cans: 1,
   bulkItemId: 'raw-x', bulkName: '깨분참기름', bulkUnit: 'kg',
@@ -98,5 +98,31 @@ describe('캔 개봉도 품목 사본과 원자 상태가 일치해야 한다', 
     expect(result.message).toContain('캔 로트 재고가 부족합니다');
     expect(writes).toBe(0);
     expect(JSON.stringify([...store.entries()])).toBe(before);
+  });
+});
+
+describe('품목 실사와 최소 수량은 함께 저장한다', () => {
+  it('같은 요청의 재시도는 중복 기록하지 않고 새 요청은 같은 수량이어도 새 실사로 남긴다', async () => {
+    const first = { itemId: 'can-x', itemName: '캔', targetQty: 5, minStock: 2, operationId: 'stocktake-can-x-1' };
+    expect((await stocktakeByQty(first)).ok).toBe(true);
+    expect(store.get('items/can-x')).toMatchObject({ stock: 5, minStock: 2 });
+    expect((store.get('items/can-x')?.stocktakeAnchors as unknown[])).toHaveLength(1);
+    const afterFirst = writes;
+    expect((await stocktakeByQty(first)).ok).toBe(true);
+    expect(writes).toBe(afterFirst);
+    expect((store.get('items/can-x')?.stocktakeAnchors as unknown[])).toHaveLength(1);
+    expect((await stocktakeByQty({ ...first, operationId: 'stocktake-can-x-2' })).ok).toBe(true);
+    expect((store.get('items/can-x')?.stocktakeAnchors as unknown[])).toHaveLength(2);
+  });
+
+  it('잘못된 최소 수량과 같은 ID로 바꾼 요청은 둘 다 아무것도 저장하지 않는다', async () => {
+    expect((await stocktakeByQty({ itemId: 'can-x', itemName: '캔', targetQty: 5, minStock: -1 })).ok).toBe(false);
+    expect(writes).toBe(0);
+    const first = { itemId: 'can-x', itemName: '캔', targetQty: 5, minStock: 2, operationId: 'stocktake-can-x-1' };
+    expect((await stocktakeByQty(first)).ok).toBe(true);
+    const afterFirst = writes;
+    expect((await stocktakeByQty({ ...first, targetQty: 6 })).ok).toBe(false);
+    expect(writes).toBe(afterFirst);
+    expect(store.get('items/can-x')).toMatchObject({ stock: 5, minStock: 2 });
   });
 });

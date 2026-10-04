@@ -638,6 +638,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [editingClosingVal, setEditingClosingVal] = useState<string>('');
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
   const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
+  const stocktakeOperationId = useRef('');
+  const [stocktakeSaving, setStocktakeSaving] = useState(false);
   const [stocktakeLotId, setStocktakeLotId] = useState('');
   const [detailProduct, setDetailProduct] = useState<Item | null>(null);
   const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
@@ -857,6 +859,7 @@ const ItemList: React.FC<ItemListProps> = ({
    * 이제 숫자를 누르면 창이 뜬다.
    */
   const openStocktake = (product: Item) => {
+    stocktakeOperationId.current = `stocktake-${product.id}-${crypto.randomUUID()}`;
     const activeLot = isRawHolder(product)
       ? (product.lots ?? []).find(lot => lot.status !== 'depleted')
       : undefined;
@@ -874,8 +877,8 @@ const ItemList: React.FC<ItemListProps> = ({
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
-  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string) => {
-    if (isNaN(val) || val < 0) return;
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string }): Promise<boolean> => {
+    if (isNaN(val) || val < 0) return false;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
@@ -883,7 +886,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const targetLot = targetLotId ? (product.lots ?? []).find(lot => lot.id === targetLotId) : undefined;
       if (!await appConfirm(targetLot
         ? `[${targetLot.lotNo || targetLot.supplierName}] 로트 잔량을 ${val}${unitLabel}로 맞출까요?\n선택한 로트와 타임라인에 '재고 정정'으로 반영됩니다.`
-        : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
+        : `${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return false;
       // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
       const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
       /**
@@ -909,13 +912,14 @@ const ItemList: React.FC<ItemListProps> = ({
         unit: 'kg',
         addedBy: currentUser?.name,
       } as RawMaterialEntry);
-      if (!r.ok) { setToast({ message: `${product.name} 실사 실패 — ${r.reason}` }); return; }
+      if (!r.ok) { setToast({ message: `${product.name} 실사 실패 — ${r.reason}` }); return false; }
       const adjustKg = Math.round((r.appliedKg ?? 0) * 1000) / 1000;
       setToast({
         message: Math.abs(adjustKg) > 0.001
           ? `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영`
           : `${product.name} 실사 — 로트는 그대로, 원장 잔량을 ${val}${unitLabel}로 맞췄습니다`,
       });
+      return true;
     } else {
       // 입력은 화면에 보인 재고 단위 그대로다. 개입수를 또 곱하면 1박스가 10박스로 저장된다.
       const 목표 = stocktakeStoredQuantity(product, val, addStockUnits);
@@ -934,9 +938,12 @@ const ItemList: React.FC<ItemListProps> = ({
         itemId: product.id,
         itemName: product.name,
         targetQty: 목표,
+        ...(options?.minStock !== undefined ? { minStock: options.minStock } : {}),
+        ...(options?.operationId ? { operationId: options.operationId } : {}),
         unitKg: stockKg(1, product, id => items.find(x => x.id === id)) ?? 0,
       });
       setToast({ message: r.message });
+      return r.ok;
     }
   };
 
@@ -2359,7 +2366,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   </div>
                 )}
                 {/* 현재 재고 + 최소 수량 */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${isRawHolder(rowEditProduct) ? '' : 'grid-cols-2'}`}>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
                       {isRawHolder(rowEditProduct) ? '선택 로트 실사 잔량' : '현재 재고'} <span className="text-indigo-400">({rowEditProduct.unit || '개'})</span>
@@ -2391,7 +2398,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       </p>
                     )}
                   </div>
-                  <div>
+                  {!isRawHolder(rowEditProduct) && <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">최소 수량</label>
                     <input
                       type="number"
@@ -2399,7 +2406,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       onChange={e => setRowEditForm(f => ({ ...f, minStock: parseInt(e.target.value) || 0 }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                     />
-                  </div>
+                  </div>}
                 </div>
                 {/* 단위 — 품목관리에서만 */}
                 {productEditable && (
@@ -2416,34 +2423,30 @@ const ItemList: React.FC<ItemListProps> = ({
               <div className="p-5 border-t border-slate-100 flex gap-2">
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
+                  disabled={stocktakeSaving}
                   onClick={async () => {
                     const p = rowEditProduct!;
-                    // 직원은 실사조정만 — 카테고리·품목명·단위는 UI뿐 아니라 저장에서도 막는다
-                    const form = productEditable ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
-                    const { stock: newStock, ...meta } = form;
-                    if (newStock !== undefined && (!Number.isFinite(newStock) || newStock < 0)) {
+                    const newStock = rowEditForm.stock;
+                    const minStock = rowEditForm.minStock;
+                    if (newStock === undefined || !Number.isFinite(newStock) || newStock < 0) {
                       alert('재고는 0 이상이어야 합니다.');
                       return;
                     }
-                    if (!productEditable && newStock !== undefined) {
-                      // 재고실사 모달과 목록 인라인 실사는 반드시 같은 명령을 쓴다.
-                      await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined);
-                    } else if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
-                      // 원료: 재고(stock)·로트(lots)는 commitStockEdit(트랜잭션)이 관리한다.
-                      // 메타 저장이 옛 stock/lots로 덮어써 로트가 사라지는 경합을 막으려 둘을 제외하고 먼저 반영.
-                      const { stock: _s, lots: _l, ...metaOnly } = { ...p, ...meta } as any;
-                      await onUpdateItem(metaOnly as Item);
-                      await commitStockEdit(p, newStock, 0, stocktakeLotId);
-                    } else {
-                      // 인라인 수정과 같은 변환을 쓴다 — 두 저장문이 갈리면 박스·밀도 품목이 다시 어긋난다.
-                      const storedStock = newStock === undefined ? undefined : stocktakeStoredQuantity(p, newStock);
-                      if (storedStock !== undefined && (!Number.isFinite(storedStock) || storedStock < 0)) {
-                        alert('재고는 0 이상이어야 합니다.');
-                        return;
-                      }
-                      await onUpdateItem({ ...p, ...form, ...(storedStock !== undefined ? { stock: storedStock } : {}) } as Item);
+                    if (!isRawHolder(p) && (minStock === undefined || !Number.isFinite(minStock) || minStock < 0)) {
+                      alert('최소 수량은 0 이상이어야 합니다.');
+                      return;
                     }
-                    setRowEditProduct(null);
+                    setStocktakeSaving(true);
+                    try {
+                      // 재고·로트·실사 기록·최소 수량을 한 거래로 저장한다.
+                      const ok = await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined,
+                        isRawHolder(p) ? undefined : { minStock, operationId: stocktakeOperationId.current });
+                      if (ok) setRowEditProduct(null);
+                    } catch (error) {
+                      setToast({ message: `실사 실패 — ${error instanceof Error ? error.message : String(error)}` });
+                    } finally {
+                      setStocktakeSaving(false);
+                    }
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
                 >{productEditable ? '저장' : '실사 반영'}</button>

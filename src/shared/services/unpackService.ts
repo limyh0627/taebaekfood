@@ -207,11 +207,14 @@ export async function stocktakeByQty(params: {
   itemName: string;
   /** 실제로 세어 본 수량(그 품목의 재고 단위) */
   targetQty: number;
+  minStock?: number;
+  operationId?: string;
   /** 로트가 아직 없을 때 새 실사 로트에 기록할 1재고단위의 kg. */
   unitKg?: number;
 }): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
-  const { itemId, itemName, targetQty, unitKg = 0 } = params;
+  const { itemId, itemName, targetQty, minStock, operationId, unitKg = 0 } = params;
   if (!Number.isFinite(targetQty) || targetQty < 0) return { ok: false, message: '실사 수량은 0 이상의 숫자여야 합니다.' };
+  if (minStock !== undefined && (!Number.isFinite(minStock) || minStock < 0)) return { ok: false, message: '최소 수량은 0 이상의 숫자여야 합니다.' };
   const now = new Date().toISOString();
   const 오늘 = today();
 
@@ -223,6 +226,15 @@ export async function stocktakeByQty(params: {
       const data = snap.data();
       const lots = (data.lots ?? []) as RawMaterialLot[];
       const stocktakeAnchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
+      const anchorId = operationId ?? `stocktake-${itemId}-${Date.parse(now)}`;
+      const previous = stocktakeAnchors.find((anchor: { id?: string }) => anchor.id === anchorId);
+      // 수량이 같은 새 실사는 마지막 실사일을 갱신한다. 같은 요청의 재시도만 ID로 거른다.
+      if (previous) {
+        if (Number(previous.targetQty) !== targetQty || (minStock !== undefined && Number(data.minStock ?? 0) !== minStock)) {
+          throw new Error('이미 처리된 실사 요청의 내용을 바꿀 수 없습니다. 다시 열어 새 실사를 등록하세요.');
+        }
+        return { deltaQty: 0, beforeQty: targetQty };
+      }
 
       const a = anchorLotsByQty({
         lots,
@@ -230,12 +242,12 @@ export async function stocktakeByQty(params: {
         //  1개당 kg — 로트가 들고 있던 값을 그대로 쓴다. 여기서 새로 짐작하면
         //  로트마다 다른 환산이 섞인다.
         unitKg: lots.find(l => l.unitKg)?.unitKg ?? unitKg,
-        det: { id: `anchor-${itemId}-${Date.parse(now)}`, createdAt: now, receivedDate: 오늘 },
+        det: { id: `anchor-${anchorId}`, createdAt: now, receivedDate: 오늘 },
       });
       //  **재고는 로트 합계로 다시 센다** — 목표값을 그대로 쓰지 않는다.
       //  둘이 갈리지 않는 유일한 길이다.
       const anchor = {
-        id: `stocktake-${itemId}-${Date.parse(now)}`,
+        id: anchorId,
         date: 오늘,
         createdAt: now,
         targetQty,
@@ -245,6 +257,7 @@ export async function stocktakeByQty(params: {
       tx.update(ref, {
         lots: strip(pruneDepletedLots(a.lots)),
         stock: canStockAfter(a.lots),
+        ...(minStock !== undefined ? { minStock } : {}),
         stocktakeAnchors: strip([...stocktakeAnchors, anchor].slice(-100)),
       });
       return { deltaQty: a.deltaQty, beforeQty: a.beforeQty };
