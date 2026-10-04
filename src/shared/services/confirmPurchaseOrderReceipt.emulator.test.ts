@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
 vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-const { confirmUnitPurchaseOrderReceiptWithDb } = await import('./firebaseService');
+const { confirmUnitPurchaseOrderReceiptWithDb, deletePendingPurchaseOrderWithDb } = await import('./firebaseService');
 
 const ready = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(r => r.status < 500).catch(() => false);
 let env: RulesTestEnvironment;
@@ -94,5 +94,39 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     await seed(raw, [{ itemId: 'sub-e', quantity: 2 }, { itemId: 'raw', quantity: 2 }], { raw: 'raw' });
     await expect(confirmUnitPurchaseOrderReceiptWithDb(userDb(), company, raw)).rejects.toThrow('로트');
     expect(await state(raw, ['sub-e', 'raw'])).toEqual({ status: 'invoiced', stocks: [10, 10] });
+  }, 20_000);
+
+  it('미입고·미연결 일반 발주만 삭제하고 재고·전표에는 손대지 않는다', async () => {
+    const id = 'po-delete-pending';
+    await seed(id, [{ itemId: 'sub-delete', quantity: 2 }]);
+    await deletePendingPurchaseOrderWithDb(userDb(), company, id);
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', id))).exists()).toBe(false);
+    expect((await getDoc(doc(userDb(), 'items', 'sub-delete'))).data()?.stock).toBe(10);
+    expect((await getDoc(doc(userDb(), 'itemReceipts', `rcv-po-${id}-sub-delete`))).exists()).toBe(false);
+  }, 20_000);
+
+  it('전표 연결·입고 완료·원료·기존 입고 근거는 삭제를 막는다', async () => {
+    const cases = [
+      { id: 'po-delete-linked', patch: { linkedStatementId: 'voucher-1' } },
+      { id: 'po-delete-received', patch: { status: 'received' } },
+      { id: 'po-delete-oem', patch: { poType: 'oem' } },
+    ];
+    for (const { id, patch } of cases) {
+      await seed(id, [{ itemId: `${id}-item`, quantity: 2 }]);
+      await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'purchaseOrders', id), patch, { merge: true }); });
+      await expect(deletePendingPurchaseOrderWithDb(userDb(), company, id)).rejects.toThrow();
+      expect((await getDoc(doc(userDb(), 'purchaseOrders', id))).exists()).toBe(true);
+    }
+    const rawId = 'po-delete-raw';
+    await seed(rawId, [{ itemId: 'raw-delete', quantity: 2 }], { raw: 'raw-delete' });
+    await expect(deletePendingPurchaseOrderWithDb(userDb(), company, rawId)).rejects.toThrow('원료');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', rawId))).exists()).toBe(true);
+    const receiptId = 'po-delete-receipt';
+    await seed(receiptId, [{ itemId: 'sub-delete-receipt', quantity: 2 }]);
+    await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'itemReceipts', 'older-receipt'), {
+      companyId: company, poId: receiptId, itemId: 'sub-delete-receipt', quantity: 2, date: '2026-10-04', createdAt: '2026-10-04', partnerName: '검수 거래처',
+    }); });
+    await expect(deletePendingPurchaseOrderWithDb(userDb(), company, receiptId)).rejects.toThrow('이미 입고');
+    expect((await getDoc(doc(userDb(), 'purchaseOrders', receiptId))).exists()).toBe(true);
   }, 20_000);
 });

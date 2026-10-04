@@ -206,6 +206,7 @@ import {
   commitCompanyWrites,
   writeMany,
   confirmUnitPurchaseOrderReceipt,
+  deletePendingPurchaseOrder,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -1747,14 +1748,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleRemoveConfirmedOrder = async (id: string) => {
-    await deleteItem('purchaseOrders', id);
-  };
-
-  const handleClearAllConfirmedOrders = async () => {
-    // OEM 배치는 제외 — 외주에 나가 있는 원료 기록이라 지우면 참깨가 장부에서 증발한다
-    for (const po of invoicedPurchaseOrders.filter(p => p.poType !== 'oem')) {
-      await deleteItem('purchaseOrders', po.id);
-    }
+    await deletePendingPurchaseOrder(id);
   };
 
   const handleFinishConfirmedOrder = async (id: string) => {
@@ -2727,7 +2721,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 });
               }}
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
-              onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteItem={requestCatalogItemDelete}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
@@ -4681,7 +4674,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   });
                 }
               }}
-              onRemoveConfirmedOrder={(id) => deleteItem('purchaseOrders', id)}
+              onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
               onSaveCompanyInfo={info => setDocument(

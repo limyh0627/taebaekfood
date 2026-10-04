@@ -601,6 +601,36 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
   });
 }
 
+/** 아직 입고되지 않은 일반 발주만 지운다. 전표와 재고 근거는 절대 함께 삭제하지 않는다. */
+export async function deletePendingPurchaseOrder(poId: string): Promise<void> {
+  await authReady;
+  if (!auth.currentUser) throw new Error('로그인이 만료되었습니다.');
+  const claim = (await auth.currentUser.getIdTokenResult()).claims.companyId as CompanyId;
+  if (!claim) throw new Error('회사 권한이 없습니다.');
+  await deletePendingPurchaseOrderWithDb(db, claim, poId);
+}
+
+export async function deletePendingPurchaseOrderWithDb(store: Firestore, claim: CompanyId, poId: string): Promise<void> {
+  const receiptSnap = await getDocs(query(collection(store, 'itemReceipts'), where('companyId', '==', claim), where('poId', '==', poId)));
+  if (!receiptSnap.empty) throw new Error('이미 입고 기록이 있어 발주를 삭제할 수 없습니다.');
+  await runTransaction(store, async tx => {
+    const poRef = doc(store, 'purchaseOrders', poId);
+    const poSnap = await tx.get(poRef);
+    if (!poSnap.exists()) throw new Error('발주가 없거나 이미 삭제됐습니다.');
+    const po = { id: poId, ...poSnap.data() } as PurchaseOrder;
+    if (companyOf(po) !== claim) throw new Error('다른 회사 발주는 삭제할 수 없습니다.');
+    if (po.status !== 'pending' && po.status !== 'invoiced') throw new Error('입고 완료된 발주는 삭제할 수 없습니다.');
+    if (po.linkedStatementId) throw new Error('연결 전표가 있는 발주는 전표를 먼저 확인해 주세요.');
+    if (po.poType === 'oem') throw new Error('외주 발주는 이 화면에서 삭제할 수 없습니다.');
+    const lines = poLines(po);
+    if (!lines.length) throw new Error('품목이 없는 발주는 내용을 먼저 확인해 주세요.');
+    const items = await Promise.all(lines.map(line => tx.get(doc(store, 'items', line.itemId))));
+    if (items.some(snap => !snap.exists() || companyOf(snap.data() as Item) !== claim || !canConfirmPurchaseOrderReceiptItem(snap.data() as Item)))
+      throw new Error('원료·벌크 또는 품목이 없는 발주는 이 화면에서 삭제할 수 없습니다. 입고·로트 기록을 확인해 주세요.');
+    tx.delete(poRef);
+  });
+}
+
 export const writeMany = async (
   ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }[],
 ): Promise<void> => commitCompanyWrites(ops.map(op => ({ kind: 'set' as const, ...op })));

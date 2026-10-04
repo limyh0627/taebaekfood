@@ -209,8 +209,7 @@ interface ItemListProps {
   onFinishConfirmedOrder: (id: string) => Promise<boolean | void> | void;
   onUpdateConfirmedQty: (id: string, qty: number) => void;
   onUpdatePendingFlowQty?: (type: '입고' | '반품', id: string, lines: { itemId: string; previousQuantity: number; quantity: number }[]) => Promise<void>;
-  onRemoveConfirmedOrder: (id: string) => void;
-  onClearAllConfirmedOrders: () => void;
+  onRemoveConfirmedOrder: (id: string) => Promise<void> | void;
   onEditProduct: (product: Item) => void;
   onDeleteItem: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
@@ -338,7 +337,6 @@ const ItemList: React.FC<ItemListProps> = ({
   onUpdateConfirmedQty,
   onUpdatePendingFlowQty,
   onRemoveConfirmedOrder,
-  onClearAllConfirmedOrders,
   onEditProduct,
   onDeleteItem,
   onAddAdjustmentRequest,
@@ -1598,7 +1596,32 @@ const ItemList: React.FC<ItemListProps> = ({
             const item = productMap.get(line.itemId);
             return canConfirmPurchaseOrderReceiptItem(item) && Number.isFinite(line.quantity) && line.quantity > 0;
           });
-        return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} className="md:max-w-lg" bodyClassName="space-y-4">
+        const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
+        const deleteReason = !po ? '' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
+          : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'
+          : po.poType === 'oem' ? '외주 발주는 이 화면에서 삭제할 수 없습니다.'
+          : lines.some(line => !canConfirmPurchaseOrderReceiptItem(productMap.get(line.itemId))) ? '원료·벌크 또는 품목이 없는 발주는 입고·로트 기록을 먼저 확인해 주세요.'
+          : sourceChanged ? '내용이 변경됐습니다. 상세창을 다시 열어주세요.' : '';
+        return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} mobilePosition={flowDetail.type === '입고' ? 'center' : 'bottom'} className="md:max-w-lg" bodyClassName="space-y-4" footer={
+          <div className="space-y-2">
+            {po && deleteReason && <p className="text-xs font-bold text-slate-500">{deleteReason}</p>}
+            <div className="flex flex-wrap gap-2">
+              {po && <button type="button" disabled={flowSaving || !!deleteReason} onClick={async () => {
+                if (!await appConfirm('이 발주 기록을 삭제할까요? 입고 기록이나 연결 전표가 있으면 삭제되지 않습니다.')) return;
+                setFlowSaving(true);
+                try { await onRemoveConfirmedOrder(po.id); setFlowDetail(null); }
+                catch (error) { alert(`발주를 삭제하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
+                finally { setFlowSaving(false); }
+              }} className="min-w-20 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">삭제</button>}
+              <button type="button" disabled={flowSaving} onClick={() => setFlowDetail(null)} className="min-w-20 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-600 disabled:opacity-40">닫기</button>
+              {po && pending && <button type="button" disabled={flowSaving || sourceChanged || !canConfirmReceipt} onClick={async () => {
+                setFlowSaving(true);
+                try { if (await onFinishConfirmedOrder(po.id) !== false) setFlowDetail(null); }
+                finally { setFlowSaving(false); }
+              }} className="min-w-24 flex-1 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">입고확정</button>}
+            </div>
+          </div>}
+        >
           <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
           {issued && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
           {sourceChanged && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">품목이나 수량이 다른 곳에서 변경됐습니다. 상세창을 닫고 다시 열어주세요.</p>}
@@ -1618,14 +1641,7 @@ const ItemList: React.FC<ItemListProps> = ({
             } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
             finally { setFlowSaving(false); }
           }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
-          {flowDetail.type === '입고' && pending && <>
-            {!canConfirmReceipt && <p className="text-xs font-bold text-amber-700">원료·벌크 또는 품목이 없는 발주는 안전한 로트 입고 경로가 준비될 때까지 확정할 수 없습니다.</p>}
-            <button type="button" disabled={flowSaving || sourceChanged || !canConfirmReceipt} onClick={async () => {
-              setFlowSaving(true);
-              try { if (await onFinishConfirmedOrder(flowDetail.id) !== false) setFlowDetail(null); }
-              finally { setFlowSaving(false); }
-            }} className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-black text-white disabled:opacity-40">입고확정</button>
-          </>}
+          {flowDetail.type === '입고' && pending && !canConfirmReceipt && <p className="text-xs font-bold text-amber-700">원료·벌크 또는 품목이 없는 발주는 안전한 로트 입고 경로가 준비될 때까지 확정할 수 없습니다.</p>}
         </ModalShell>;
       })()}
 
@@ -2542,9 +2558,6 @@ const ItemList: React.FC<ItemListProps> = ({
                         >
                           전표 작성 ({confirmedChecked.size})
                         </button>
-                      )}
-                      {confirmedOrders.length > 0 && (
-                        <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                       )}
                     </div>
                   </div>
