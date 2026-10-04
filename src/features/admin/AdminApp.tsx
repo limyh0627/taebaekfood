@@ -205,6 +205,7 @@ import {
   claimOrderInventoryOperation,
   commitCompanyWrites,
   writeMany,
+  confirmUnitPurchaseOrderReceipt,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -1757,45 +1758,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleFinishConfirmedOrder = async (id: string) => {
-    const po = purchaseOrders.find(po => po.id === id);
-    if (!po) return;
-    const nowIso = new Date().toISOString();
-    const dateStr = nowIso.slice(0, 10);
-    // 묶음/단일 품목 모두 처리: 원료(raw)에 귀속되면 로트+수불부, 아니면 SKU 재고 가산
-    for (const line of poLines(po)) {
-      const product = allItems.find(p => p.id === line.itemId);
-      /*
-       * **품목이 없으면 조용히 넘기지 않는다.** 지운 품목을 가리키는 발주 줄이 남으면
-       * 입고가 소리 없이 사라진다 — 푸미푸드 볶음참깨 10kg박스 95 + 20kg박스 23,
-       * 1,410kg이 로트에도 재고에도 안 잡혔다. 없어진 걸 알아야 고칠 수 있다.
-       */
-      if (!product) {
-        console.error('[입고확인] 발주 줄이 없는 품목을 가리킵니다:', line.itemId, line);
-        alert(`⚠️ "${(line as { name?: string }).name ?? line.itemId}" 품목이 없어 입고를 못 잡았습니다.
-
-지워진 품목을 가리키는 발주 줄입니다. 품목을 다시 만들거나 발주를 고친 뒤 입고하세요.`);
-        continue;
-      }
-      //  **입고는 문 하나로** — 원료면 로트+수불부, 아니면 재고+입고기록.
-      //  그 갈림은 shared/receipt 안에 있다(겹쳐 눌러도 거기서 막는다).
-      try {
-        await recordReceipt({
-          companyId, allItems, product, itemName: product.name,
-          //  **수량은 이미 재고 단위다** — 담을 때 풀어서 저장한다(orderUnits.unpackQty).
-          //  예전엔 발주에 박스 수를 넣어 두고 여기서 곱했는데, 그러면 읽는 자리마다
-          //  곱하는 코드가 필요하고 한 곳만 빠뜨려도 재고가 어긋났다.
-          quantity: line.quantity, unit: product.unit,
-          partnerId: po.partnerId, partnerName: po.partnerName || '거래처',
-          dateStr, nowIso, poId: id, addedBy: currentUser?.name,
-        });
-      } catch (err) {
-        console.error('[입고확인] 입고 기록 실패:', product.name, err);
-        alert(`⚠️ "${product.name}" 입고 기록 실패
-사유: ${(err as Error)?.message ?? String(err)}`);
-      }
+    try {
+      await confirmUnitPurchaseOrderReceipt(id, currentUser?.name);
+      setLedgerReloadKey(k => k + 1);
+      return true;
+    } catch (err) {
+      await awaitNotice(err instanceof Error ? err.message : String(err), '입고확정 중단');
+      return false;
     }
-    await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
-    setLedgerReloadKey(k => k + 1);   // 입고로 쓴 원료수불부 반영 (재고관리 화면 안에서 처리됨)
   };
 
   // 입고대기 발주카드 수정: 새 수량으로 즉시 입고확정(received+재고 반영) + 연결된 매입전표 수정 요청 생성
@@ -1842,31 +1812,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     }
 
-    // 즉시 입고확정: 새 수량으로 원료 로트/수불부 또는 SKU 재고 반영 + received 전환
-    const newPoItems = poLines(po)
-      .map(l => ({ ...l, quantity: qtyByItemId.get(l.itemId) ?? l.quantity }))
-      .filter(l => l.quantity > 0);
-    const nowIso2 = new Date().toISOString();
-    const dateStr2 = nowIso2.slice(0, 10);
-    for (const line of newPoItems) {
-      const product = allItems.find(p => p.id === line.itemId);
-      if (!product) continue;
-      //  입고는 문 하나로(shared/receipt) — 위 확정 경로와 같은 셈이라야 한다
-      try {
-        await recordReceipt({
-          companyId, allItems, product, itemName: product.name,
-          quantity: line.quantity, unit: product.unit,
-          partnerId: po.partnerId, partnerName: po.partnerName || '거래처',
-          dateStr: dateStr2, nowIso: nowIso2, poId, addedBy: currentUser?.name,
-        });
-      } catch (err) {
-        console.error('[입고확정-수정] 입고 기록 실패:', product.name, err);
-        alert(`⚠️ "${product.name}" 입고 기록 실패
-사유: ${(err as Error)?.message ?? String(err)}`);
-      }
-    }
-    await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
-    setLedgerReloadKey(k => k + 1);   // 입고확정으로 쓴 원료수불부 반영
+    // 수정 요청은 전표 검토만 등록한다. 승인 전에 재고·발주 상태를 바꾸지 않는다.
+    await awaitNotice('전표 수정 요청을 등록했습니다. 입고확정은 별도 버튼에서 처리해 주세요.');
   };
 
   const completionSaving = React.useRef(new Set<string>());
@@ -2770,8 +2717,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
               onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({ id: r.id, quantity: r.quantity }))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
-              onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
-              onFinishAllConfirmedOrders={() => invoicedPurchaseOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
               onUpdateConfirmedQty={(id: string, qty: number) => updateItem('purchaseOrders', id, { quantity: qty })}
               onUpdatePendingFlowQty={async (type, id, updates) => {
                 const ref = doc(db, type === '입고' ? 'purchaseOrders' : 'returnRequests', id);

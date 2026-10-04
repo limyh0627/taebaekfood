@@ -3,7 +3,7 @@ import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal } from '../src/shared/day';
-import { isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
+import { canConfirmPurchaseOrderReceiptItem, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
@@ -206,9 +206,7 @@ interface ItemListProps {
   //  수량은 **언제나 재고 단위**다. boxQuantity 는 '몇 박스라고 말했는지'(표시용).
   onBulkAddConfirmedOrders: (items: { id: string, quantity: number, boxQuantity?: number }[]) => void;
   onConfirmAllRequests: () => Promise<void>;
-  onFinishConfirmedOrder: (id: string) => void;
-  onFinishConfirmedOrders: (ids: string[]) => void;
-  onFinishAllConfirmedOrders: () => void;
+  onFinishConfirmedOrder: (id: string) => Promise<boolean | void> | void;
   onUpdateConfirmedQty: (id: string, qty: number) => void;
   onUpdatePendingFlowQty?: (type: '입고' | '반품', id: string, lines: { itemId: string; previousQuantity: number; quantity: number }[]) => Promise<void>;
   onRemoveConfirmedOrder: (id: string) => void;
@@ -1533,7 +1531,7 @@ const ItemList: React.FC<ItemListProps> = ({
               message: `${row.partnerName} 품목을 입고 완료 처리할까요?`,
               subMessage: '확인하면 재고와 입고 이력에 반영됩니다.',
               confirmText: '입고확정',
-              onConfirm: () => { setConfirmModal(null); onFinishConfirmedOrder(row.id); },
+              onConfirm: async () => { setConfirmModal(null); setFlowSaving(true); try { await onFinishConfirmedOrder(row.id); } finally { setFlowSaving(false); } },
             });
             return;
           }
@@ -1568,7 +1566,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <tr key={row.key} className="border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70">
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
                       <td className="px-3 py-3">
-                        <button type="button" disabled={row.status === '완료'} onClick={event => { event.stopPropagation(); requestTransition(row); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
+                        <button type="button" disabled={row.status === '완료' || (row.type === '입고' && row.status === '대기')} onClick={event => { event.stopPropagation(); requestTransition(row); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
                       </td>
                       <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
@@ -1595,6 +1593,11 @@ const ItemList: React.FC<ItemListProps> = ({
         const sourceChanged = flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
         const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending';
         const issued = !!record.linkedStatementId;
+        const canConfirmReceipt = flowDetail.type === '입고' && pending && lines.length > 0 &&
+          lines.every(line => {
+            const item = productMap.get(line.itemId);
+            return canConfirmPurchaseOrderReceiptItem(item) && Number.isFinite(line.quantity) && line.quantity > 0;
+          });
         return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} className="md:max-w-lg" bodyClassName="space-y-4">
           <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
           {issued && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
@@ -1615,6 +1618,14 @@ const ItemList: React.FC<ItemListProps> = ({
             } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
             finally { setFlowSaving(false); }
           }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
+          {flowDetail.type === '입고' && pending && <>
+            {!canConfirmReceipt && <p className="text-xs font-bold text-amber-700">원료·벌크 또는 품목이 없는 발주는 안전한 로트 입고 경로가 준비될 때까지 확정할 수 없습니다.</p>}
+            <button type="button" disabled={flowSaving || sourceChanged || !canConfirmReceipt} onClick={async () => {
+              setFlowSaving(true);
+              try { if (await onFinishConfirmedOrder(flowDetail.id) !== false) setFlowDetail(null); }
+              finally { setFlowSaving(false); }
+            }} className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-black text-white disabled:opacity-40">입고확정</button>
+          </>}
         </ModalShell>;
       })()}
 
@@ -2591,10 +2602,6 @@ const ItemList: React.FC<ItemListProps> = ({
                                 }}
                                 className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border ${isExpanded ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
                               >{isExpanded ? '닫기' : '수정'}</button>
-                              <button
-                                onClick={() => onFinishConfirmedOrder(product.id)}
-                                className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
-                              >입고확인</button>
                             </div>
                             {isExpanded && (
                               <div className="px-5 py-4 bg-slate-50/60 space-y-3 animate-in slide-in-from-top-1 duration-150">
@@ -2634,10 +2641,6 @@ const ItemList: React.FC<ItemListProps> = ({
                                     }}
                                     className="flex-1 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-50 transition-all"
                                   >수량 저장</button>
-                                  <button
-                                    onClick={() => { onFinishConfirmedOrder(conf.id); setExpandedReqId(null); }}
-                                    className="flex-1 py-2 bg-slate-800 text-white rounded-xl text-xs font-black hover:bg-slate-900 transition-all"
-                                  >입고 확인</button>
                                 </div>
                               </div>
                             )}

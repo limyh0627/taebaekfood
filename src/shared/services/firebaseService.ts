@@ -14,9 +14,11 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   writeBatch,
   runTransaction,
   DocumentData,
+  type Firestore,
   QuerySnapshot,
   QueryConstraint,
   documentId,
@@ -24,10 +26,10 @@ import {
 } from "firebase/firestore";
 import { auth, authReady, db } from "../firebase";
 import { today } from '../day';
-import type { Order, OrderStatus, RawMaterialLot } from "../types";
+import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder } from "../types";
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
-import { companyOf, type Item } from '../types';
-import { holdsUnitStock } from '../itemTaxonomy';
+import { companyOf, poLines, type Item, type CompanyId } from '../types';
+import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock } from '../itemTaxonomy';
 import { itemKg } from '../orderUnits';
 import type { ItemReceipt } from '../receipt';
 import { statementBlockReason } from "../statementGuard";
@@ -525,6 +527,76 @@ export async function receiveUnitStock(receipt: ItemReceipt): Promise<boolean> {
       receivedDate: receipt.date, poId: receipt.poId }), id: `receipt:${receipt.id}`, createdAt: receipt.createdAt };
     tx.update(itemRef, { stock: Math.round((stock + receipt.quantity) * 1000) / 1000, lots: stripUndefined([...lots, lot]) });
     tx.set(receiptRef, data);
+    return true;
+  });
+}
+
+/** 일반 품목의 발주 입고를 한 번에 확정한다. 로트 원료는 별도 원자 경로 전까지 막는다. */
+export async function confirmUnitPurchaseOrderReceipt(poId: string, addedBy?: string): Promise<boolean> {
+  await authReady;
+  if (!auth.currentUser) throw new Error('로그인이 만료되었습니다.');
+  const claim = (await auth.currentUser.getIdTokenResult()).claims.companyId as CompanyId;
+  if (!claim) throw new Error('회사 권한이 없습니다.');
+  return confirmUnitPurchaseOrderReceiptWithDb(db, claim, poId, addedBy);
+}
+
+/** 에뮬레이터에서 같은 트랜잭션을 실제 보안 규칙으로 검증한다. */
+export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, claim: CompanyId, poId: string, addedBy?: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const date = today();
+  const poRef = doc(store, 'purchaseOrders', poId);
+  if ((await getDoc(poRef)).data()?.status === 'received') return false;
+  // 옛 입고 방식으로 일부만 반영된 발주는 자동 재시도하면 중복 재고가 된다.
+  const oldReceipts = await getDocs(query(collection(store, 'itemReceipts'), where('companyId', '==', claim), where('poId', '==', poId)));
+  if (!oldReceipts.empty) throw new Error('이 발주에 이미 입고 기록이 있습니다. 기존 반영 내역을 먼저 확인해 주세요.');
+  return runTransaction(store, async tx => {
+    const poSnap = await tx.get(poRef);
+    if (!poSnap.exists()) throw new Error('발주가 없습니다.');
+    const po = { id: poId, ...poSnap.data() } as PurchaseOrder;
+    if (companyOf(po) !== claim) throw new Error('발주 회사가 로그인 회사와 다릅니다.');
+    if (po.poType === 'oem') throw new Error('외주 발주는 이 버튼으로 입고할 수 없습니다.');
+    if (po.status === 'received') return false;
+    if (po.status !== 'invoiced') throw new Error('입고대기 발주만 확정할 수 있습니다.');
+    const lines = poLines(po);
+    if (!lines.length || lines.length > 100 || new Set(lines.map(line => line.itemId)).size !== lines.length)
+      throw new Error('발주 품목 구성을 먼저 확인해 주세요.');
+    const refs = lines.map(line => ({ item: doc(store, 'items', line.itemId), receipt: doc(store, 'itemReceipts', `rcv-po-${encodeURIComponent(poId)}-${encodeURIComponent(line.itemId)}`) }));
+    const itemSnaps = await Promise.all(refs.map(ref => tx.get(ref.item)));
+    const receiptSnaps = await Promise.all(refs.map(ref => tx.get(ref.receipt)));
+    const writes = lines.map((line, i) => {
+      if (!Number.isFinite(line.quantity) || line.quantity <= 0 || Math.abs(Math.round(line.quantity * 1000) - line.quantity * 1000) > 1e-6)
+        throw new Error('발주 수량을 먼저 확인해 주세요.');
+      if (!itemSnaps[i].exists()) throw new Error(`입고 품목이 없습니다: ${line.itemId}`);
+      if (receiptSnaps[i].exists()) throw new Error('기존 입고 기록이 있어 중복 입고를 막았습니다.');
+      const item = { id: line.itemId, ...itemSnaps[i].data() } as Item;
+      if (companyOf(item) !== claim) throw new Error(`품목 회사가 다릅니다: ${item.name}`);
+      const unitStock = holdsUnitStock(item);
+      if (!canConfirmPurchaseOrderReceiptItem(item))
+        throw new Error(`로트·원료 품목은 별도 입고확정이 필요합니다: ${item.name}`);
+      const stock = Number(item.stock ?? 0);
+      if (!Number.isFinite(stock) || stock < 0) throw new Error(`현재 재고를 확인해 주세요: ${item.name}`);
+      if (!unitStock) return { item, stock, lots: item.lots ?? [], line };
+      const unitKg = itemKg(item) || 0;
+      const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
+        { id: `carry:${refs[i].receipt.id}`, receivedDate: date, createdAt: now });
+      if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error(`재고와 로트 잔량이 다릅니다: ${item.name}`);
+      const lot = { ...buildProductLot({ material: item.rawMaterialName || item.name, itemId: item.id,
+        supplierName: po.partnerName || '거래처', supplierId: po.partnerId, qtyIn: line.quantity, unitKg,
+        receivedDate: date, poId }), id: `receipt:${refs[i].receipt.id}`, createdAt: now };
+      return { item, stock, lots: [...lots, lot], line };
+    });
+    const receipts = writes.map(({ item, line }, i) => stripUndefined({
+      id: refs[i].receipt.id, itemId: item.id, itemName: item.name, quantity: line.quantity,
+      unit: item.unit, partnerId: po.partnerId, partnerName: po.partnerName || '거래처',
+      date, poId, addedBy, createdAt: now, companyId: claim,
+    }));
+    writes.forEach(({ stock, lots, line }, i) => {
+      tx.update(refs[i].item, holdsUnitStock(writes[i].item)
+        ? { stock: Math.round((stock + line.quantity) * 1000) / 1000, lots: stripUndefined(lots) }
+        : { stock: Math.round((stock + line.quantity) * 1000) / 1000 });
+      tx.set(refs[i].receipt, receipts[i]);
+    });
+    tx.update(poRef, { status: 'received', receivedAt: now });
     return true;
   });
 }

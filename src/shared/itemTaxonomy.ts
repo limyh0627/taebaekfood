@@ -1,3 +1,5 @@
+import { RM_LIST, baseRawName } from '../constants/formula';
+
 /**
  * 품목 분류 3단 — 타입 > 서브타입 > 카테고리
  *
@@ -88,6 +90,12 @@ export type TypeKey = typeof TYPE_KEYS[number];
 /** 전표에는 품목 줄로 남아도 실물 수량을 들지 않는 용역은 입고·재고·로트 대상이 아니다. */
 export const isPhysicalInventoryItem = (item: { type?: string } | undefined): boolean =>
   !!item && item.type !== 'service';
+
+/** 발주 전체를 한 거래로 입고할 수 있는 분류. 원료·벌크는 로트 원자 경로 전까지 제외한다. */
+export const canConfirmPurchaseOrderReceiptItem = (item: { type?: string; subtype?: string; unit?: string; name?: string; rawMaterialName?: string } | undefined): boolean =>
+  holdsUnitStock(item) || !!item && (item.type === 'submaterial' || item.type === 'goods')
+    && !isBulkItem(item) && !벌크단위.has(item.unit ?? '')
+    && !RM_LIST.includes(item.rawMaterialName || baseRawName(item.name ?? ''));
 
 //  이름표는 [taxonomy](taxonomy.ts) 한 곳에서 온다 — 여기서 다시 적지 않는다
 export { DEFAULT_CATEGORY_LABELS as DEFAULT_TYPE_LABELS } from './taxonomy';
