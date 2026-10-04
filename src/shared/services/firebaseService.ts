@@ -46,6 +46,8 @@ import { withClaimCompany } from '../companyWriteBoundary';
 import { openingDocId, type Partner } from '../types';
 import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
 import { AR, AP } from '../autoJournal';
+import type { LoanContract } from '../loanLedger';
+import { loanOpeningStatement } from '../loanOpening';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -85,20 +87,26 @@ export async function saveOpeningBalancesWithDb(
   await runTransaction(store, async tx => {
     const snap = await tx.get(ref);
     if (snap.exists() && snap.data().companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
-    if (snap.data()?.hasPartnerOpening && snap.data()?.date !== date) {
-      throw new Error('거래처별 기초 전표가 있어 기준일을 변경할 수 없습니다.');
+    if ((snap.data()?.hasPartnerOpening || snap.data()?.hasLoanOpening) && snap.data()?.date !== date) {
+      throw new Error('연결된 기초 전표가 있어 기준일을 변경할 수 없습니다.');
     }
     for (const code of [AR, AP]) {
       const before = Number(snap.data()?.amounts?.[code] ?? 0);
       const after = Number(amounts[code] ?? 0);
       if (before !== after) throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 거래처별 기초 전표를 등록하세요.`);
     }
+    if (snap.data()?.hasLoanOpening) for (const code of ['260', '293']) {
+      if (Number(snap.data()?.amounts?.[code] ?? 0) !== Number(amounts[code] ?? 0)) {
+        throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 대출 기초 전표를 확인하세요.`);
+      }
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
       throw new Error('기초일과 계정별 금액을 확인하세요.');
     }
     // Replace the amounts map: merge would silently retain an account the user cleared.
     tx.set(ref, { id: openingDocId(companyId), companyId, date, amounts,
-      ...(snap.data()?.hasPartnerOpening ? { hasPartnerOpening: true } : {}) });
+      ...(snap.data()?.hasPartnerOpening ? { hasPartnerOpening: true } : {}),
+      ...(snap.data()?.hasLoanOpening ? { hasLoanOpening: true } : {}) });
   });
 }
 
@@ -148,6 +156,50 @@ export async function createOpeningPartnerBalance(companyId: CompanyId, date: st
   const token = await auth.currentUser?.getIdTokenResult();
   if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
   return createOpeningPartnerBalanceWithDb(db, companyId, date, partnerId, code, amount);
+}
+
+/** Register the loan and its opening liability together; ordinary borrowing uses a zero opening principal. */
+export async function createLoanWithOpeningWithDb(store: Firestore, companyId: CompanyId, loan: LoanContract): Promise<'created' | 'unchanged'> {
+  if (loan.companyId !== companyId || !loan.id || !loan.name?.trim() || !loan.lenderName?.trim() ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(loan.openingDate) || !Number.isInteger(loan.openingPrincipal) || loan.openingPrincipal < 0 ||
+      (loan.accountCode !== '260' && loan.accountCode !== '293')) throw new Error('대출 회사·계정·기초일·원금을 확인하세요.');
+  const loanRef = doc(store, 'loanContracts', loan.id);
+  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
+  const voucherRef = doc(store, 'issuedStatements', `opening-loan-${companyId}-${loan.id}`);
+  const partnerRef = loan.partnerId ? doc(store, 'partners', loan.partnerId) : null;
+  return runTransaction(store, async tx => {
+    const [loanSnap, openingSnap, voucherSnap, partnerSnap] = await Promise.all([
+      tx.get(loanRef), tx.get(openingRef), tx.get(voucherRef), partnerRef ? tx.get(partnerRef) : Promise.resolve(null),
+    ]);
+    if (partnerRef && (!partnerSnap?.exists() || companyOf(partnerSnap.data()) !== companyId)) throw new Error('다른 회사 금융기관이거나 없는 거래처입니다.');
+    const hasOpening = loan.openingPrincipal > 0;
+    const openingData = openingSnap.data();
+    if (hasOpening && (!openingData || openingData.companyId !== companyId || openingData.date !== loan.openingDate)) {
+      throw new Error('시작 원금은 회계 기초잔액 기준일과 같을 때만 등록할 수 있습니다. 기초잔액을 먼저 저장하거나 시작 원금 0원으로 등록 후 차입 전표를 발행하세요.');
+    }
+    if (hasOpening && Number(openingData?.amounts?.[loan.accountCode] ?? 0) !== 0) {
+      throw new Error('대출 계정에 합계 기초잔액이 있어 이중계상됩니다. 기존 금액을 확인하세요.');
+    }
+    const sameLoan = loanSnap.exists() && ['companyId', 'name', 'lenderName', 'partnerId', 'accountCode', 'openingDate', 'openingPrincipal', 'maturityDate']
+      .every(key => (loanSnap.data()[key] ?? '') === ((loan as unknown as Record<string, unknown>)[key] ?? ''));
+    if (loanSnap.exists() || voucherSnap.exists()) {
+      if (sameLoan && (hasOpening ? voucherSnap.exists() && voucherSnap.data().companyId === companyId && voucherSnap.data().totalAmount === loan.openingPrincipal : !voucherSnap.exists())) return 'unchanged';
+      throw new Error('같은 대출 요청에 다른 내용이 저장되어 있습니다. 새로 열어 다시 등록하세요.');
+    }
+    tx.set(loanRef, loan);
+    if (hasOpening) {
+      tx.update(openingRef, { hasLoanOpening: true });
+      tx.set(voucherRef, loanOpeningStatement(loan));
+    }
+    return 'created';
+  });
+}
+
+export async function createLoanWithOpening(companyId: CompanyId, loan: LoanContract) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return createLoanWithOpeningWithDb(db, companyId, loan);
 }
 
 export const subscribeToCollection = <T extends { id: string }>(

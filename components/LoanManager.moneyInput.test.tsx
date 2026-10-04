@@ -7,11 +7,11 @@ import type { CashAccount } from '../src/shared/types';
 
 const mocks = vi.hoisted(() => ({
   loans: [] as Record<string, unknown>[],
-  addItem: vi.fn(),
+  createLoanWithOpening: vi.fn(),
 }));
 vi.mock('../src/shared/services/firebaseService', () => ({
   fetchWhere: async () => mocks.loans,
-  addItem: mocks.addItem,
+  createLoanWithOpening: mocks.createLoanWithOpening,
 }));
 vi.mock('../src/shared/components/appDialog', () => ({
   appConfirm: async () => true,
@@ -22,7 +22,7 @@ const account = { id: 'bank', name: '농협', type: '통장', active: true } as 
 const view = (onAddCashEntry = vi.fn()) => render(<LoanManager companyId="taebaek"
   cashEntries={[]} cashAccounts={[account]} partners={[]} onAddCashEntry={onAddCashEntry} />);
 
-beforeEach(() => { mocks.loans = []; mocks.addItem.mockReset(); });
+beforeEach(() => { mocks.loans = []; mocks.createLoanWithOpening.mockReset(); });
 
 describe('대출 금액 입력', () => {
   it.each(['1000.5', '-1000'])('시작 원금의 잘못된 붙여넣기 %s를 거절하고 저장을 막는다', async value => {
@@ -37,11 +37,11 @@ describe('대출 금액 입력', () => {
     expect(input).toHaveValue('1,000');
     expect(screen.getByRole('alert')).toHaveTextContent('소수와 음수');
     await user.click(screen.getByRole('button', { name: '등록' }));
-    expect(mocks.addItem).not.toHaveBeenCalled();
+    expect(mocks.createLoanWithOpening).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: '2000' } });
     expect(screen.queryByRole('alert')).toBeNull();
     await user.click(screen.getByRole('button', { name: '등록' }));
-    await waitFor(() => expect(mocks.addItem).toHaveBeenCalledWith('loanContracts', expect.objectContaining({ openingPrincipal: 2000 })));
+    await waitFor(() => expect(mocks.createLoanWithOpening).toHaveBeenCalledWith('taebaek', expect.objectContaining({ openingPrincipal: 2000 })));
   });
 
   it.each([['원금 상환액', '1000.5'], ['원금 상환액', '-1000'], ['이자 비용', '1000.5'], ['이자 비용', '-1000']])('%s의 잘못된 붙여넣기 %s는 상환 저장을 막는다', async (label, value) => {
@@ -72,7 +72,7 @@ describe('대출 금액 입력', () => {
     await user.type(amount, '1428000');
     expect(amount).toHaveValue('1,428,000');
     await user.click(screen.getByRole('button', { name: '등록' }));
-    await waitFor(() => expect(mocks.addItem).toHaveBeenCalledWith('loanContracts',
+    await waitFor(() => expect(mocks.createLoanWithOpening).toHaveBeenCalledWith('taebaek',
       expect.objectContaining({ openingPrincipal: 1_428_000 })));
   });
 

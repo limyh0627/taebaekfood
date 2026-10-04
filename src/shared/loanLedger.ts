@@ -2,7 +2,7 @@ import type { CashEntry, CompanyId } from './types';
 import { companyOf } from './types';
 import { journalizeCashEntry } from './autoJournal';
 
-/** 대출 계약별 보조원장. 시작 잔액은 회계 분개가 아니라 조회 기준점이다. */
+/** 대출 계약별 보조원장. 새 기초원금 등록은 별도 기초 대체전표와 원자적으로 저장한다. */
 export interface LoanContract {
   id: string;
   companyId: CompanyId;

@@ -1,4 +1,4 @@
-import { appConfirm } from '../src/shared/components/appDialog';
+import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import React, { useMemo, useState } from 'react';
 import { monthStart, today } from '../src/shared/day';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
@@ -25,7 +25,7 @@ interface Props {
   issuedStatements: IssuedStatement[];
   settlements: Settlement[];
   currentUser?: { id: string; name: string } | null;
-  onAddCashAccount: (a: Omit<CashAccount, 'id'> & { id: string }) => void;
+  onAddCashAccount: (a: Omit<CashAccount, 'id'> & { id: string }) => void | Promise<unknown>;
   onUpdateCashAccount: (id: string, data: Partial<CashAccount>) => void;
   onAddCashEntry: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
   onDeleteCashEntry: (id: string) => void;
@@ -835,17 +835,23 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
   const [type, setType] = useState<'통장' | '카드' | '현금'>('통장');
   const [openingBalance, setOpeningBalance] = useState('');
   const [openingDate, setOpeningDate] = useState(monthStart());
+  const [draftId, setDraftId] = useState(() => `cashacct-${crypto.randomUUID()}`);
+  const [saving, setSaving] = useState(false);
 
-  const add = () => {
-    if (!name.trim()) return;
-    onAdd({
-      id: `cashacct-${Date.now()}`,
-      name: name.trim(), type,
-      openingBalance: parseMoneyInput(openingBalance),
-      openingDate, active: true,
-      createdAt: new Date().toISOString(),
-    });
-    setName(''); setOpeningBalance('');
+  const add = async () => {
+    if (!name.trim() || saving) return;
+    const amount = parseMoneyInput(openingBalance);
+    if (!openingDate || !Number.isInteger(amount) || amount < 0) {
+      await appNotice('기초일과 0원 이상의 정수 잔액을 확인하세요.'); return;
+    }
+    setSaving(true);
+    try {
+      await onAdd({ id: draftId, name: name.trim(), type, openingBalance: amount,
+        openingDate, active: true, createdAt: new Date().toISOString() });
+      setName(''); setOpeningBalance(''); setDraftId(`cashacct-${crypto.randomUUID()}`);
+    } catch (error) {
+      await appNotice(`계좌를 저장하지 못했습니다. ${String(error)}`, '저장 실패');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -888,7 +894,7 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
             <input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)}
               className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
           </div>
-          <button onClick={add} disabled={!name.trim()}
+          <button onClick={() => void add()} disabled={!name.trim() || saving}
             className="w-full py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 disabled:opacity-30">
             추가
           </button>

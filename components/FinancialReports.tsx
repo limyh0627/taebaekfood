@@ -11,7 +11,7 @@ import { appNotice } from '../src/shared/components/appDialog';
 import type { OpeningPartnerCode } from '../src/shared/openingPartnerBalance';
 
 const CAPITAL = '331';   // 자본금 (기초 차액 plug)
-interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; }
+interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; hasLoanOpening?: boolean; }
 
 interface Props {
   /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
@@ -294,7 +294,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
               {openableAccounts.map(a => (
                 <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">
                   <span className="text-[11px] font-bold text-slate-500 flex-1 truncate"><span className="text-slate-300 mr-1">{a.code}</span>{a.name}</span>
-                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP}
+                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0" disabled={a.code === AR || a.code === AP || (!!openingDoc?.hasLoanOpening && (a.code === '260' || a.code === '293'))}
                     onChange={e => setDraft({ ...draft, amounts: { ...draft.amounts, [String(a.code)]: Number(e.target.value.replace(/[^\d]/g, '')) || 0 } })}
                     className="w-28 text-right text-xs font-black tabular-nums border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-300 disabled:bg-slate-100 disabled:text-slate-400" />
                 </label>

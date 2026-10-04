@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 import type { CashAccount, CashEntry, CompanyId, Partner } from '../src/shared/types';
 import { companyOf } from '../src/shared/types';
@@ -8,7 +8,7 @@ import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import { splitCashEntry } from '../src/shared/splitEntry';
 import { isFinancial } from '../src/shared/partnerRole';
 import { loanBalance, loanMovements, type LoanContract } from '../src/shared/loanLedger';
-import { addItem, fetchWhere } from '../src/shared/services/firebaseService';
+import { createLoanWithOpening, fetchWhere } from '../src/shared/services/firebaseService';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import ModalShell from '../src/shared/components/ModalShell';
 import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
@@ -28,8 +28,10 @@ const label = 'mb-1 block text-xs font-bold text-slate-500';
 
 export default function LoanManager({ companyId, cashEntries, cashAccounts, partners, currentUserName, onAddCashEntry }: Props) {
   const [loans, setLoans] = useState<LoanContract[]>([]);
+  const refreshSeq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+  const [newLoanId, setNewLoanId] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [action, setAction] = useState<'차입' | '상환' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -59,16 +61,19 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   };
 
   const refresh = async () => {
+    const seq = ++refreshSeq.current;
     setLoading(true);
     try {
-      setLoans(await fetchWhere<LoanContract>('loanContracts', 'companyId', companyId));
+      const rows = await fetchWhere<LoanContract>('loanContracts', 'companyId', companyId);
+      if (seq === refreshSeq.current) setLoans(rows);
     } catch (error) {
-      await appNotice(`대출 목록을 불러오지 못했습니다. ${String(error)}`, '조회 실패');
-    } finally { setLoading(false); }
+      if (seq === refreshSeq.current) await appNotice(`대출 목록을 불러오지 못했습니다. ${String(error)}`, '조회 실패');
+    } finally { if (seq === refreshSeq.current) setLoading(false); }
   };
-  useEffect(() => { void refresh(); }, [companyId]);
+  useEffect(() => { setLoans([]); setSelectedId(''); void refresh(); return () => { refreshSeq.current++; }; }, [companyId]);
 
-  const selected = loans.find(loan => loan.id === selectedId);
+  const companyLoans = loans.filter(loan => loan.companyId === companyId);
+  const selected = companyLoans.find(loan => loan.id === selectedId);
   const rows = useMemo(() => selected ? loanMovements(selected, cashEntries) : [], [selected, cashEntries]);
   const availableAccounts = cashAccounts.filter(a => a.active && a.type === '통장');
 
@@ -79,11 +84,11 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
     if (!name.trim() || !lenderName.trim() || !openingDate || !Number.isFinite(amount) || amount < 0) {
       await appNotice('대출명·금융기관·시작일·0원 이상의 시작 원금을 입력하세요.'); return;
     }
-    if (!await appConfirm({ title: '대출 등록', message: `${name.trim()}의 ${openingDate} 시작 원금 ${won(amount)}을 등록할까요? 회계 기초잔액이나 기존 전표는 바뀌지 않습니다.`, confirmText: '등록' })) return;
+    if (!await appConfirm({ title: '대출 등록', message: `${name.trim()}의 ${openingDate} 시작 원금 ${won(amount)}을 등록할까요?${amount ? ' 회계 기초일과 같으면 대출부채 기초 전표도 함께 발행합니다.' : ' 실제 차입액은 등록 후 차입 전표로 기록하세요.'}`, confirmText: '등록' })) return;
     setBusy(true);
     try {
-      const id = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      await addItem('loanContracts', {
+      const id = newLoanId;
+      await createLoanWithOpening(companyId, {
         id, companyId, name: name.trim(), lenderName: lenderName.trim(),
         ...(partnerId ? { partnerId } : {}), accountCode, openingDate, openingPrincipal: amount,
         ...(maturityDate ? { maturityDate } : {}), createdAt: new Date().toISOString(),
@@ -133,10 +138,10 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-xl font-black text-slate-900">대출 관리</h1><p className="mt-1 text-sm text-slate-500">대출별 원금 잔액 · 차입/상환 내역</p></div>
       <div className="flex gap-2"><button type="button" onClick={() => void refresh()} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600"><RefreshCw size={16}/></button>
-        <button type="button" onClick={() => setShowNew(true)} className="flex items-center gap-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white"><Plus size={16}/> 대출 등록</button></div>
+        <button type="button" onClick={() => { setNewLoanId(`loan-${crypto.randomUUID()}`); setShowNew(true); }} className="flex items-center gap-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white"><Plus size={16}/> 대출 등록</button></div>
     </div>
-    <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">기존 전표는 자동으로 대출에 배정하지 않습니다. 시작 원금은 대출별 조회 기준이며 회계 기초잔액을 변경하지 않습니다.</p>
-    {loading ? <p className="p-8 text-center text-slate-400">불러오는 중…</p> : loans.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">등록된 대출이 없습니다.</p> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{loans.map(loan => {
+    <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">회계 기초일과 같은 시작 원금은 대출 계약과 기초 전표에 함께 반영됩니다. 이후 새로 차입한 돈은 시작 원금 0원으로 등록하고 차입 전표를 발행하세요. 기존 전표는 자동 배정하지 않습니다.</p>
+    {loading ? <p className="p-8 text-center text-slate-400">불러오는 중…</p> : companyLoans.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">등록된 대출이 없습니다.</p> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{companyLoans.map(loan => {
       const balance = loanBalance(loan, cashEntries);
       return <button key={loan.id} type="button" onClick={() => setSelectedId(loan.id)} className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-indigo-300">
         <div className="flex justify-between gap-2"><strong className="text-sm text-slate-900">{loan.name}</strong><span className="text-xs text-slate-500">{loan.accountCode === '260' ? '단기' : '장기'}</span></div>
@@ -144,7 +149,7 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
         <p className="mt-2 text-xs text-slate-400">{loan.openingDate} 시작 · 거래 {loanMovements(loan, cashEntries).length}건</p>
       </button>;
     })}</div>}
-    {showNew && <ModalShell title="대출 등록" subtitle="대출별 시작 원금은 회계 분개와 별도로 관리합니다" onClose={() => setShowNew(false)}>
+    {showNew && <ModalShell title="대출 등록" subtitle="기초 원금은 회계 기초일의 대출부채와 함께 저장됩니다" onClose={() => setShowNew(false)}>
       <form onSubmit={e => void createLoan(e)} className="space-y-4">
         <div><label className={label}>대출명</label><input className={field} value={name} onChange={e => setName(e.target.value)} placeholder="예: 운전자금 대출 1호" required/></div>
         <div><label className={label}>금융기관</label><input className={field} value={lenderName} onChange={e => { setLenderName(e.target.value); setPartnerId(''); }} placeholder="은행명" required/></div>
