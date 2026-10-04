@@ -82,7 +82,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const cashAccountMap = useMemo(() => Object.fromEntries(cashAccounts.filter(a => a.type === '현금').map(a => [a.id, STANDARD_ACCOUNT.CASH])), [cashAccounts]);
   const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01', [cashAccounts]);
 
-  // 실제 적용할 기초잔액 — 저장문서 있으면 그것, 없으면 통장만 자동
+  // 실제 적용할 기초잔액 — 저장문서 있으면 그것, 없으면 현금·통장 합계를 임시로 표시
   const opening: OpeningBalance = useMemo(() => {
     if (openingDoc) {
       return { date: openingDoc.date, capitalAccount: CAPITAL,
@@ -278,7 +278,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
           <div>
             <span className="text-xs font-black text-slate-500 uppercase tracking-widest">기초잔액</span>
             <span className="text-[11px] font-bold text-slate-400 ml-2">
-              {openingDoc ? `${openingDoc.date} 기준` : `미입력 — 통장 ${won(cashDefault)}만 반영 중`}
+              {openingDoc ? `${openingDoc.date} 기준` : `미입력 — 현금·통장 ${won(cashDefault)} 임시 반영 중`}
             </span>
           </div>
           {!editing ? (
@@ -315,7 +315,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
             </div>
             <p className="text-[10px] font-bold text-slate-400 leading-relaxed">
               현금·통장 기초잔액은 계좌 관리에서 등록하세요(현금 102, 보통예금 103). 미수·미지급은 아래 거래처별 기초 전표로 등록하세요. 그 밖의 미지급금(253)과
-              대출은 단기·장기차입금에 넣으세요. 재고자산 계정이 없으면 나중에 추가합니다. 언제든 다시 편집 가능합니다.
+              대출은 단기·장기차입금에 넣으세요. 재고자산 기초 등록은 재고 수량·평가금액 연동이 준비되면 사용하세요. 언제든 다시 편집 가능합니다.
             </p>
           </div>
         )}
@@ -365,8 +365,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
           <Row label="대변 총계" v={tb.totalCredit} color="text-slate-700" />
           <div className="h-px bg-slate-100 my-2" />
           <p className="text-[11px] font-bold text-slate-400 leading-relaxed">
-            분개 {entries.length}건에서 계산. 통장 기초 {won(opening.lines.reduce((s, l) => s + l.amount, 0))}원만 반영됨 —
-            미수·미지급·재고 기초는 아직 미입력이라 재무상태표가 안 맞을 수 있습니다.
+            분개 {entries.length}건에서 계산. 기초잔액 {won(opening.lines.reduce((s, l) => s + l.amount, 0))}원 반영됨 —
+            재고 수량·평가금액 등 기초자료가 빠졌다면 재무상태표를 확인하세요.
           </p>
         </div>
       </div>

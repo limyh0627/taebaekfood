@@ -71,6 +71,7 @@ import { addItem, subscribeToCollection, fetchCollection, adjustItemStock } from
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { lotQtyRemaining } from '../src/shared/lotUtils';
+import { lastStocktakeDate } from '../src/shared/lastStocktake';
 import FilterRow from '../src/shared/ui/FilterRow';
 import { partnersOfItem } from '../src/shared/partnerPrice';
 
@@ -2278,7 +2279,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   <div className="rounded-2xl border border-slate-200 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-700">재고 실사</p>
+                        <p className="text-xs font-black text-slate-700">재고 실사 <span className="ml-1 text-[10px] font-bold text-slate-400">마지막 실사 {lastStocktakeDate(product, rawMaterialLedger) ?? '없음'}</span></p>
                         <p className="mt-1 text-[10px] font-bold text-slate-400">별도의 입출고, 생산과정 없이 재고수량이 변경됩니다.</p>
                       </div>
                       <button onClick={() => { setDetailProduct(null); openStocktake(product); }} className="w-full rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-600 hover:bg-indigo-50 sm:w-auto sm:shrink-0">실사 반영</button>
