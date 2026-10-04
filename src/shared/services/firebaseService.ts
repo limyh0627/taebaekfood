@@ -45,6 +45,7 @@ import type { CollectionName } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { openingDocId, type Partner } from '../types';
 import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
+import { AR, AP } from '../autoJournal';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -87,7 +88,7 @@ export async function saveOpeningBalancesWithDb(
     if (snap.data()?.hasPartnerOpening && snap.data()?.date !== date) {
       throw new Error('거래처별 기초 전표가 있어 기준일을 변경할 수 없습니다.');
     }
-    for (const code of ['108', '251']) {
+    for (const code of [AR, AP]) {
       const before = Number(snap.data()?.amounts?.[code] ?? 0);
       const after = Number(amounts[code] ?? 0);
       if (before !== after) throw new Error(`${code} 기초 합계는 직접 변경할 수 없습니다. 거래처별 기초 전표를 등록하세요.`);
