@@ -15,6 +15,7 @@ const makeOrder = (id: string, status: OrderStatus, deliveredAt?: string): Order
 
 it('오래된 진행 주문은 보드·리스트에 남고 완료 이력만 완료일로 거른다', () => {
   const active = statuses.map(status => makeOrder(`active-${status}`, status));
+  active[0].cardNo = 'ORD-260922-004';
   render(<OrdersList companyId="taebaek" title="주문" subtitle="" groupBy="status"
     allowedStatuses={statuses} orders={[...active, makeOrder('recent-done', OrderStatus.DELIVERED, today()), makeOrder('old-done', OrderStatus.DELIVERED, '2020-01-02')]}
     partners={[]} items={[item]} onUpdateStatus={vi.fn()} onUpdateDeliveryDate={vi.fn()}
@@ -27,6 +28,11 @@ it('오래된 진행 주문은 보드·리스트에 남고 완료 이력만 완�
   fireEvent.click(screen.getByRole('button', { name: '리스트' }));
   const list = screen.getByRole('table', { name: '주문 리스트' });
   for (const order of active) expect(list.textContent).toContain(order.partnerName);
+
+  fireEvent.change(screen.getByRole('searchbox', { name: '전체 검색' }), { target: { value: 'ORD-260922-004' } });
+  expect(list.textContent).toContain('260922-004');
+  expect(list.textContent).not.toContain(active[1].partnerName);
+  fireEvent.change(screen.getByRole('searchbox', { name: '전체 검색' }), { target: { value: '' } });
 
   fireEvent.click(screen.getAllByRole('button', { name: '이력' }).find(button => button.hasAttribute('aria-pressed'))!);
   expect(screen.getByLabelText('완료일 시작')).toBeTruthy();

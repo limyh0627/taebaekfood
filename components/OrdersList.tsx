@@ -1997,7 +1997,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
     const q = searchTerm.toLowerCase();
     return orders.filter(o =>
       (o.partnerName || '').toLowerCase().includes(q) ||
-      (o.id || '').toLowerCase().includes(q)
+      (o.id || '').toLowerCase().includes(q) ||
+      cardNoLabel(o).toLowerCase().includes(q)
     );
   }, [orders, searchTerm]);
 
@@ -2079,6 +2080,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     return activePeriodOrders.filter(order =>
       (order.partnerName || '').toLocaleLowerCase('ko-KR').includes(query)
       || (order.id || '').toLocaleLowerCase('ko-KR').includes(query)
+      || cardNoLabel(order).toLocaleLowerCase('ko-KR').includes(query)
       || order.items.some(item => item.name.toLocaleLowerCase('ko-KR').includes(query))
     );
   }, [activePeriodOrders, searchTerm]);
@@ -2962,7 +2964,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             const partnerName = order.partnerName || partner?.name || '';
             const partnerAddress = [partner?.address, partner?.addressDetail].filter(Boolean).join(' ');
             return [
-              order.id, partnerName, partnerAddress, STATUS_LABEL[order.status], order.status, order.source,
+              order.id, cardNoLabel(order), partnerName, partnerAddress, STATUS_LABEL[order.status], order.status, order.source,
               (order.source === '택배' || order.source === '스마트스토어' || order.deliveryBoxes !== undefined) ? (order.invoicePrinted ? '송장 출력 완료' : '송장 미출력') : '',
               order.createdAt, order.deliveryDate, order.note,
               fmtYYMMDD(new Date(order.createdAt)), fmtYYMMDD(new Date(order.deliveryDate)),
