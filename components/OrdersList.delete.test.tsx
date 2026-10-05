@@ -7,6 +7,12 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import { today } from '../src/shared/day';
 
+// 이 시험은 삭제 화면만 본다. settings 실시간 구독은 Firestore Emulator에 붙지 않는다.
+vi.mock('../src/shared/services/firebaseService', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/shared/services/firebaseService')>(),
+  subscribeToDocument: vi.fn(() => () => {}),
+}));
+
 afterEach(() => { cleanup(); localStorage.clear(); });
 const order = {
   id: 'delete-ui-order', partnerId: 'partner', partnerName: '삭제검수', status: OrderStatus.PENDING,
