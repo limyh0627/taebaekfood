@@ -308,6 +308,22 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     await assertFails(setDoc(doc(풍회관리자(), 'adjustmentRequests', 'OEMFEE-oem-job-2'), { companyId: 'taebaek', type: 'oem_fee' }));
   });
 
+  it('관리자 전표 발행과 연관 기록을 한 트랜잭션으로 저장한다', async () => {
+    const db = env.authenticatedContext('u-eunkyung', {
+      employeeId: 'admin-taebaek-eunkyung', companyId: 'taebaek', isAdmin: true,
+    }).firestore();
+    const statementRef = doc(db, 'issuedStatements', 's-transaction');
+    await assertSucceeds(runTransaction(db, async tx => {
+      expect((await tx.get(statementRef)).exists()).toBe(false);
+      tx.set(statementRef, { companyId: 'taebaek', operationId: 'issue-s-transaction', totalAmount: 5000 });
+      tx.set(doc(db, 'orders', 'o-taebaek'), { companyId: 'taebaek', invoicePrinted: true }, { merge: true });
+      tx.set(doc(db, 'items', 'i-taebaek'), { companyId: 'taebaek', cost: 100 }, { merge: true });
+      tx.set(doc(db, 'itemCostHistory', 's-transaction_i-taebaek_0'), { companyId: 'taebaek', itemId: 'i-taebaek', beforeCost: 0, afterCost: 100 });
+      tx.set(doc(db, 'purchaseOrders', 'po-transaction'), { companyId: 'taebaek', linkedStatementId: 's-transaction', status: 'invoiced' });
+    }));
+    expect((await getDoc(statementRef)).exists()).toBe(true);
+  });
+
   describe('companyId 누락 쓰기 — 컬렉션 갈래별 차단', () => {
     it('현장 자료·관리자 자료·직원 전용 규칙 모두 회사값 없는 생성을 막는다', async () => {
       await assertFails(setDoc(doc(태백직원(), 'items', 'i-회사없음'), { name: '회사없는품목' }));
