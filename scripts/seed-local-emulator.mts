@@ -49,8 +49,16 @@ const docs: Array<[string, string, Record<string, unknown>]> = [
   ['accountCodes', '404', { code:'404', name:'제품매출', type:'수익', normalBalance:'credit' }],
   ['accountCodes', '122', { code:'122', name:'비품', type:'자산', normalBalance:'debit', note:'오래 사용하는 컴퓨터·책상·장비' }],
   ['accountCodes', '830', { code:'830', name:'소모품비', type:'비용', normalBalance:'debit', note:'짧게 쓰고 소모되는 문구·청소용품·소형도구' }],
-  ['accountCodes', '108', { code:'108', name:'외상매출금', type:'asset', normalBalance:'debit' }],
-  ['accountCodes', '251', { code:'251', name:'외상매입금', type:'liability', normalBalance:'credit' }],
+  ['accountCodes', '102', { code:'102', name:'현금', type:'자산', normalBalance:'debit' }],
+  ['accountCodes', '103', { code:'103', name:'보통예금', type:'자산', normalBalance:'debit' }],
+  ['accountCodes', '108', { code:'108', name:'외상매출금', type:'자산', normalBalance:'debit' }],
+  ['accountCodes', '146', { code:'146', name:'재고자산', type:'자산', normalBalance:'debit' }],
+  ['accountCodes', '251', { code:'251', name:'외상매입금', type:'부채', normalBalance:'credit' }],
+  ['accountCodes', '253', { code:'253', name:'미지급금', type:'부채', normalBalance:'credit' }],
+  ['accountCodes', '260', { code:'260', name:'단기차입금', type:'부채', normalBalance:'credit' }],
+  ['accountCodes', '293', { code:'293', name:'장기차입금', type:'부채', normalBalance:'credit' }],
+  ['accountCodes', '331', { code:'331', name:'자본금', type:'자본', normalBalance:'credit' }],
+  ['accountCodes', '375', { code:'375', name:'이월이익잉여금', type:'자본', normalBalance:'credit' }],
   // 혼합 사용·FIFO 순서·대기/사용중 상태를 화면에서 직접 검수할 수 있도록 한 품목에 활성 로트 3개를 둔다.
   ['items', 'raw-sesame', { name:'가상 참깨 원료', type:'raw', category:'참깨', subtype:'벌크', stock:100, minStock:10, unit:'kg', image:'', lots:[
     {id:'local-lot-1',lotNo:'LOCAL-001',supplierName:'가상원료상사',receivedDate:day(-10),createdAt:atDay(-10),kgIn:50,qtyIn:2.5,packageKg:20,packageType:'포',kgRemaining:30,status:'active'},
