@@ -361,6 +361,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   // 박스 설정 — 품목이 들고 있는 것만 본다(거래처별 포장설정은 폐기).
   const getPartnerBoxConfigs = (itemId: string, _partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     const p = items.find(pr => pr.id === itemId);
+    const currentUnits = unitsPerBoxOf(p);
+    if (currentUnits > 1) return [{ unitsPerBox: currentUnits, boxType: p?.defaultBoxConfig?.boxType ?? '' }];
     if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
     return [];
   };

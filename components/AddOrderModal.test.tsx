@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AddOrderModal from './AddOrderModal';
 import { OrderStatus, type Item, type Order, type Partner, type PartnerItem } from '../src/shared/types';
+import { buildPackIndex, resetPackIndex, setPackIndex } from '../src/shared/packIndex';
 
 const items = [
   { id: 'oil', name: '생들기름 300ml', unit: '병', type: 'product', category: '들기름' },
@@ -43,6 +44,24 @@ const order = (
   deliveryDate,
   email: '',
   source: '일반',
+});
+
+describe('옛 박스 설정과 포장 환산표 충돌', () => {
+  it('주문 입력에는 포장 환산표의 개입수를 표시한다', () => {
+    setPackIndex(buildPackIndex([{ item_id: 'f6', units_per_box: 12 }]));
+    try {
+      const item = { id: 'f6', name: '포장 설정 충돌 품목', unit: '개', type: 'goods',
+        defaultBoxConfig: { unitsPerBox: 10, boxType: '' } } as Item;
+      render(<AddOrderModal items={[item]} orders={[]} partners={partners}
+        partnerItems={[{ id: 'f6-link', itemId: item.id, partnerId: 'partner-1', Direction: 'out', price: 0 } as PartnerItem]}
+        palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
+      fireEvent.click(screen.getAllByRole('button', { name: /가을식품/ })[0]);
+      fireEvent.click(screen.getByText('포장 설정 충돌 품목'));
+      expect(screen.getByText('× 12개 = 12개')).toBeInTheDocument();
+    } finally {
+      resetPackIndex();
+    }
+  });
 });
 
 describe('신규 주문 창의 거래처 진행 주문', () => {
