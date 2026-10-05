@@ -78,6 +78,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     const body = scrollBodyRef.current?.getBoundingClientRect();
     if (input && body) setSearchAbove(body.bottom - input.bottom < 208 && input.top - body.top > body.bottom - input.bottom);
   };
+  useEffect(() => {
+    if (!searchTerm.trim()) return;
+    const frame = requestAnimationFrame(placeSearchResults);
+    return () => cancelAnimationFrame(frame);
+  }, [searchTerm]);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   /**
    * **어디로 보내나**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고 토글로 세 개 중에
