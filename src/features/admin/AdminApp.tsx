@@ -218,7 +218,7 @@ import { dateOfLocal } from '../../shared/day';
 import { buysFrom } from '../../shared/partnerRole';
 import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
-import { issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
+import { issueNumberedCashEntry, issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
 import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
@@ -4559,6 +4559,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               cashEntries={companyCashEntries}
               settlements={appData.settlements}
               onAddCashEntry={(e) => addCashEntry(e)}
+              onIssueCashEntry={(entry) => issueNumberedCashEntry({ ...entry, companyId, createdBy: entry.createdBy ?? currentUser?.name })}
               onUpdateCashEntry={updateCash}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
               onDeleteCashEntry={deleteCashEntry}

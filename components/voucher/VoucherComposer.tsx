@@ -70,6 +70,7 @@ interface Props {
 
   onClose: () => void;
   onAddCashEntry?: (_e: CashEntry) => void | Promise<unknown>;
+  onIssueCashEntry?: (_e: CashEntry) => Promise<unknown>;
   onAddIssuedStatement?: (_s: IssuedStatement) => void | Promise<unknown>;
   onAddFixedCostTemplate?: (_t: Omit<FixedCostTemplate, 'id'>) => void | Promise<void>;
   /** 회사이체 — 받는 회사 장부에도 한 건 세운다 */
@@ -89,7 +90,7 @@ export default function VoucherComposer({
   companyId, initialDir, initialDate, partners, accountCodes, accountGroups, cashAccounts,
   fixedCostTemplates, cashEntries, statements: mergedStatements, partnerBalances, getBalance,
   cashAccountId: quickPayAccountId, onCashAccountId: setQuickPayAccountId,
-  onClose, onAddCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, onAddForCompany,
+  onClose, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, onAddForCompany,
   recordPayment, renderJournal,
 }: Props) {
   const activeCashAccounts = cashAccounts;
@@ -164,8 +165,26 @@ export default function VoucherComposer({
   const [loanSaving, setLoanSaving] = useState(false);
   const loanSaveLock = useRef(false);
   const loanSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
+  const cashSaveLock = useRef(false);
+  const cashSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
   const accrualSaveLock = useRef(false);
   const accrualSaveAttempt = useRef<{ key: string; statement: IssuedStatement } | null>(null);
+  const saveCashEntry = async (entry: CashEntry) => {
+    const save = onIssueCashEntry ?? onAddCashEntry;
+    if (!save || cashSaveLock.current) return;
+    const key = JSON.stringify({ ...entry, id: '', docNo: '', createdAt: '' });
+    if (cashSaveAttempt.current?.key !== key) cashSaveAttempt.current = { key, entry };
+    cashSaveLock.current = true;
+    try {
+      await save(cashSaveAttempt.current.entry);
+      cashSaveAttempt.current = null;
+      onClose();
+    } catch (error) {
+      alert(`자금전표를 저장하지 못했습니다. 입력은 유지됩니다. ${String(error instanceof Error ? error.message : error)}`);
+    } finally {
+      cashSaveLock.current = false;
+    }
+  };
   const loans = useLoanContracts(companyId);
   const [qpPrincipal, setQpPrincipal] = useState('');
   const [qpInterest, setQpInterest] = useState('');
@@ -344,20 +363,25 @@ export default function VoucherComposer({
         };
 
         // 일반 저장 — 거래처 미수/미지급 상계 우선, 남는 금액은 계정과목 자금전표로.
-        const doGeneralSave = () => {
+        const doGeneralSave = async () => {
           if (amt <= 0) return;
           const allocations = offsetAllocations();
+          if (allocations.length && plainAmt > 0) {
+            alert('상계와 일반 입출금은 각각 나누어 발행해 주세요.');
+            return;
+          }
           if (allocations.length) recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
           if (plainAmt > 0) {
             // 쪼갠 줄이 있으면 lines로 끊는다 — amount는 줄 합이고 accountCode는 안 쓴다(types.ts CashEntry 주석).
-            onAddCashEntry?.({
+            await saveCashEntry({
               id: `cash-${Date.now()}`, dir: qpDir, amount: plainAmt,
               //  줄이 하나면 lines 대신 accountCode 로 낸다 — 예전 전표와 같은 모양이 되어
               //  목록·분개·수정 어디서도 갈리지 않는다(CashEntry 주석 참고).
               ...(cashSplitLines.length > 1 ? { lines: cashSplitLines }
                 : cashSplitLines.length === 1 ? { accountCode: cashSplitLines[0].accountCode } : {}),
               ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}), ...base(),
-            } as any);
+            } as CashEntry);
+            return;
           }
           onClose();
         };
@@ -437,17 +461,15 @@ export default function VoucherComposer({
           ],
           note: quickPayNote, fallbackNote: '세금 납부', base: base(),
         });
-        const doTaxSave = () => {
+        const doTaxSave = async () => {
           const e = taxEntry();
           if (!e) return;
-          onAddCashEntry?.(e as any);
-          onClose();
+          await saveCashEntry(e);
         };
-        const doInsuranceSave = () => {
+        const doInsuranceSave = async () => {
           const e = insuranceEntry();
           if (!e) return;
-          onAddCashEntry?.(e as any);
-          onClose();
+          await saveCashEntry(e);
         };
 
         /**
@@ -501,7 +523,7 @@ export default function VoucherComposer({
             const cashLine = cashLines[0];
             const others = accrLines.filter(l => l !== cashLine);
             const dir = cashLine.side === '대변' ? '출금' : '입금';
-            onAddCashEntry({
+            await saveCashEntry({
               id: `cash-${Date.now()}`, dir, amount: cashLine.total,
               cashAccountId: quickPayAccountId,
               //  차·대는 side 가 말한다 — 금액은 언제나 양수다(부호로 뜻을 싣지 않는다)
@@ -514,8 +536,7 @@ export default function VoucherComposer({
               ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : { note: others[0]?.name ?? '' }),
               date: quickPayDate, createdAt: stampFor(quickPayDate),
               ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
-            } as never);
-            onClose();
+            } as CashEntry);
             return;
           }
           // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
@@ -594,9 +615,8 @@ export default function VoucherComposer({
             note: memo, ...base(),
           } as CashEntry;
         };
-        const doSalarySave = () => {
-          onAddCashEntry?.(salaryEntry() as any);
-          onClose();
+        const doSalarySave = async () => {
+          await saveCashEntry(salaryEntry());
         };
 
         /**

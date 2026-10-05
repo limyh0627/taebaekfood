@@ -2,7 +2,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { authReady, db, functions } from '../../../shared/firebase';
 import { companyScopedWriteData } from '../../../shared/services/firebaseService';
-import type { IssuedStatement } from '../../../shared/types';
+import type { CashEntry, IssuedStatement } from '../../../shared/types';
 
 export type TradeStatementIssueInput = {
   operationId: string;
@@ -40,6 +40,22 @@ export async function issueNumberedStatement(statement: IssuedStatement): Promis
   const result = await call({
     kind: 'issuedStatements', operationId: statement.id, tradeDate: statement.tradeDate,
     prefix: statement.type === '비용' ? '대체' : '',
+    document: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId,
+  });
+  return result.data;
+}
+
+/** 일반 입출금 전표도 운영의 서버 소유 번호·장부 경계를 통과한다. */
+export async function issueNumberedCashEntry(entry: CashEntry): Promise<{ id: string; docNo: string }> {
+  await authReady;
+  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
+  if (gate?.status !== 'active' || typeof gate.releaseId !== 'string') {
+    throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
+  }
+  const scoped = await companyScopedWriteData('cashEntries', entry as unknown as Record<string, unknown>);
+  const call = httpsCallable<unknown, { id: string; docNo: string }>(functions, 'issueNumberedVoucher');
+  const result = await call({
+    kind: 'cashEntries', operationId: entry.id, tradeDate: entry.date, prefix: '',
     document: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId,
   });
   return result.data;

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import type { AccountCode, AccountGroup, CashAccount, Partner, IssuedStatement } from '../../src/shared/types';
@@ -119,6 +119,28 @@ const 저장 = async (u: ReturnType<typeof userEvent.setup>) =>
   u.click(screen.getByRole('button', { name: '저장' }));
 
 describe('한 번 나간 돈을 성격대로 가른다', () => {
+  it('일반 자금전표는 서버 발행이 실패하면 입력을 유지하고 같은 ID로 재시도한다', async () => {
+    const u = userEvent.setup();
+    const onIssueCashEntry = vi.fn().mockRejectedValueOnce(new Error('서버 오류')).mockResolvedValueOnce({ id: 'saved' });
+    const onClose = vi.fn();
+    const onAddCashEntry = vi.fn();
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    try {
+      띄우기({ fixedCostTemplates: [템플릿({ name: '차량비', mode: '일반', dir: '출금', accountCode: '811', amount: 10000 })],
+        onIssueCashEntry, onAddCashEntry, onClose });
+      await 템플릿고르기(u, '차량비');
+      await 저장(u);
+      await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onAddCashEntry).not.toHaveBeenCalled();
+      await 저장(u);
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onIssueCashEntry.mock.calls[0][0].id).toBe(onIssueCashEntry.mock.calls[1][0].id);
+    } finally {
+      alertSpy.mockRestore();
+    }
+  });
+
   it('대출상환 — 원금은 차입금, 이자는 이자비용. 통장은 합계만큼 나간다', async () => {
     const u = userEvent.setup();
     const { onAddCashEntry } = 띄우기({ fixedCostTemplates: [템플릿({ name: '차 할부금', mode: '상환', dir: '출금', accountCode: '260' })] });

@@ -97,6 +97,7 @@ interface TradeStatementProps {
   cashEntries?: CashEntry[];
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
+  onIssueCashEntry?: (entry: CashEntry) => Promise<unknown>;
   onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void | Promise<void>;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void | Promise<void>;
   onUpdateSettlement?: (id: string, data: Partial<Settlement>) => void | Promise<void>;
@@ -207,6 +208,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   cashEntries = [],
   settlements = [],
   onAddCashEntry,
+  onIssueCashEntry,
   onUpdateCashEntry,
   onAddSettlement,
   onUpdateSettlement,
@@ -2337,6 +2339,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           onCashAccountId={setQuickPayAccountId}
           onClose={() => setShowQuickPay(false)}
           onAddCashEntry={onAddCashEntry}
+          onIssueCashEntry={onIssueCashEntry}
           onAddIssuedStatement={onAddIssuedStatement}
           onAddFixedCostTemplate={onAddFixedCostTemplate}
           onAddForCompany={onAddForCompany}
