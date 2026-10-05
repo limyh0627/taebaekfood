@@ -2,11 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+const projectDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  root: resolve(__dirname, 'apps/admin'),
-  publicDir: resolve(__dirname, 'public'),
-  envDir: resolve(__dirname, '.'),
+  root: resolve(projectDir, 'apps/admin'),
+  publicDir: resolve(projectDir, 'public'),
+  envDir: process.env.TAEBAEK_BUILD_ENV_DIR || projectDir,
   base: '/',
   plugins: [
     react(),
@@ -20,7 +23,7 @@ export default defineConfig({
       workbox: {
         //  알림 누름 처리를 얹는다 — 안드로이드는 알림을 서비스워커가 띄우므로
         //  누른 뒤 앱을 여는 것도 서비스워커 몫이다(public/notif-sw.js).
-        importScripts: ['notif-sw.js'],
+        importScripts: ['notif-sw.js', 'share-target-sw.js'],
         maximumFileSizeToCacheInBytes: 5000000,
         clientsClaim: true,
         //  기다리지 않고 바로 새 일꾼으로 넘어간다 — autoUpdate 와 짝이다
@@ -29,7 +32,7 @@ export default defineConfig({
     }),
   ],
   build: {
-    outDir: resolve(__dirname, 'dist/admin'),
+    outDir: resolve(projectDir, 'dist/admin'),
     emptyOutDir: true,
     rollupOptions: {
       output: {

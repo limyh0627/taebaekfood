@@ -28,6 +28,7 @@ import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTIO
 import { uploadChatFile, filesFromPaste, messageImages, imagePatch, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
 import { canPin, pinPatch, unpinPatch, noticeOf, noticeLine, isPinned } from '../src/shared/roomNotice';
 import { consumeSharedText } from '../src/shared/shareTarget';
+import { readSharedFile, discardSharedFile, shareIdFromUrl, type SharedFileDraft } from '../src/shared/shareInbox';
 import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
 import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
 import {
@@ -126,6 +127,19 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   //  **카톡·문자에서 공유해 들어온 글**(2026-09-03 사장님).
   //  들어올 땐 대화방이 안 정해져 있다. 방을 고를 때까지 들고 있다가 입력칸에 넣는다.
   const [pendingShare, setPendingShare] = useState<string>(() => consumeSharedText());
+  const [sharedFile, setSharedFile] = useState<SharedFileDraft | null>(null);
+  const [shareError, setShareError] = useState(() => new URLSearchParams(window.location.search).has('shareRejected')
+    ? '이전 공유 파일이 남아 있어 새 공유를 받지 않았습니다. 먼저 전송하거나 폐기한 뒤 다시 공유해 주세요.' : '');
+  const [shareSending, setShareSending] = useState(false);
+  const shareSendLock = useRef(false);
+  const shareAttempt = useRef<{ id: string; roomId: string; attachment?: ChatAttachment; message?: ChatMessage; sent?: boolean } | null>(null);
+  useEffect(() => {
+    const id = shareIdFromUrl();
+    if (!id) return;
+    let live = true;
+    readSharedFile(id).then(draft => { if (live) setSharedFile(draft); }, error => { if (live) setShareError(error?.message || '공유 파일을 읽지 못했습니다.'); });
+    return () => { live = false; };
+  }, []);
   //  사진을 눌렀을 때 — 전에는 새 탭으로 보내서 앱 밖으로 나가 버렸다(2026-09-03 사장님).
   //  여러 장을 묶어 보낼 수 있게 되면서(2026-09-09) **그 말의 사진 전부**를 들고 다닌다 —
   //  크게 띄운 채로 옆으로 넘길 수 있어야 한 장씩 닫았다 열 일이 없다.
@@ -310,6 +324,61 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
    * @param attach 사진 아닌 첨부(문서·엑셀) 하나
    * @param photos 사진 여럿을 묶어 보낼 때 — 어느 칸에 실을지는 [imagePatch](../src/shared/chatUpload.ts) 가 정한다
    */
+  const discardShare = async () => {
+    const id = sharedFile?.id || shareIdFromUrl();
+    if (!id || shareSendLock.current) return;
+    try {
+      await discardSharedFile(id);
+      setSharedFile(null);
+      setShareError('');
+      shareAttempt.current = null;
+    } catch (error: any) { setShareError(error?.message || '공유 파일을 폐기하지 못했습니다.'); }
+  };
+
+  const sendSharedFile = async () => {
+    const draft = sharedFile;
+    if (!draft || shareSendLock.current) return;
+    const room = myRooms.find(r => r.id === activeRoomId && companyOf(r) === currentCompanyId);
+    if (!room) { setShareError('본인 회사의 참여 중인 대화방을 선택해 주세요.'); return; }
+    if (shareAttempt.current && shareAttempt.current.roomId !== room.id) {
+      setShareError('이미 업로드한 대화방에서 다시 시도하거나 공유 파일을 폐기해 주세요.');
+      return;
+    }
+    shareSendLock.current = true;
+    setShareSending(true);
+    setShareError('');
+    try {
+      const attempt = shareAttempt.current ?? { id: draft.id, roomId: room.id };
+      shareAttempt.current = attempt;
+      if (!attempt.attachment) attempt.attachment = await uploadChatFile(currentCompanyId, room.id, draft.file);
+      if (!attempt.message) {
+        const attachment = attempt.attachment;
+        attempt.message = {
+          id: `MSG-share-${draft.id}`,
+          companyId: currentCompanyId,
+          roomId: room.id,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          text: draft.text,
+          createdAt: new Date().toISOString(),
+          ...(attachment.isImage ? { imageUrl: attachment.url } : { fileUrl: attachment.url, fileName: attachment.name, fileSize: attachment.size }),
+        };
+      }
+      if (!attempt.sent) {
+        await onSendMessage(attempt.message);
+        attempt.sent = true;
+      }
+      await discardSharedFile(draft.id);
+      setSharedFile(null);
+      shareAttempt.current = null;
+    } catch (error: any) {
+      setShareError(error?.message || '전송하지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      shareSendLock.current = false;
+      setShareSending(false);
+    }
+  };
+
   const handleSendMessage = async (
     e?: React.FormEvent,
     attach?: ChatAttachment,
@@ -683,6 +752,19 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         </div>
 
+        {(sharedFile || shareError) && (
+          <div className="mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl" data-testid="shared-file-draft">
+            <p className="text-xs font-bold text-indigo-700">공유 파일 미리보기</p>
+            {sharedFile && <>
+              <p className="text-xs break-all">{sharedFile.file.name} · {fileSizeLabel(sharedFile.file.size)} · {sharedFile.file.type}</p>
+              {sharedFile.text && <p className="text-xs whitespace-pre-wrap">{sharedFile.text}</p>}
+              <p className="text-xs">보낼 대화방을 직접 선택한 뒤 전송하세요.</p>
+              <button type="button" onClick={sendSharedFile} disabled={shareSending || !activeRoomId} className="mr-2 text-xs font-bold text-indigo-700">{shareSending ? '전송 중…' : '선택한 대화방에 전송'}</button>
+            </>}
+            {shareError && <p role="alert" className="text-xs text-red-600">{shareError}</p>}
+            <button type="button" onClick={discardShare} disabled={shareSending} className="text-xs font-bold text-slate-600">공유 파일 폐기</button>
+          </div>
+        )}
         {pendingShare && (
           <div className="mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
             <p className="text-[10px] font-black text-indigo-700 mb-0.5">공유된 내용 — 보낼 대화방을 고르세요</p>
