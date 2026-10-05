@@ -9,29 +9,12 @@
   "background_color": "#ffffff",
   "theme_color": "#0891B2",
   "share_target": {
-    "action": "/share-target",
-    "method": "POST",
-    "enctype": "multipart/form-data",
+    "action": "/",
+    "method": "GET",
     "params": {
       "title": "title",
       "text": "text",
-      "url": "url",
-      "files": [
-        {
-          "name": "files",
-          "accept": [
-            "image/png",
-            ".png",
-            "image/jpeg",
-            ".jpg",
-            ".jpeg",
-            "image/webp",
-            ".webp",
-            "application/pdf",
-            ".pdf"
-          ]
-        }
-      ]
+      "url": "url"
     }
   },
   "icons": [

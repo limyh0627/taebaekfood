@@ -20,7 +20,7 @@ export default defineConfig({
       workbox: {
         //  알림 누름 처리를 얹는다 — 안드로이드는 알림을 서비스워커가 띄우므로
         //  누른 뒤 앱을 여는 것도 서비스워커 몫이다(public/notif-sw.js).
-        importScripts: ['notif-sw.js', 'share-target-sw.js'],
+        importScripts: ['notif-sw.js'],
         maximumFileSizeToCacheInBytes: 5000000,
         clientsClaim: true,
         //  기다리지 않고 바로 새 일꾼으로 넘어간다 — autoUpdate 와 짝이다
@@ -38,6 +38,7 @@ export default defineConfig({
           'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
           'vendor-pdf': ['jspdf', 'html2canvas'],
           'vendor-excel': ['exceljs'],
+          'vendor-ai': ['@google/generative-ai'],
           'vendor-qr': ['jsqr', 'qrcode'],
         },
       },
