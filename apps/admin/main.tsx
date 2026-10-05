@@ -76,7 +76,6 @@ const AdminRoot: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>(() => {
     //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
     //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
-    if (new URLSearchParams(window.location.search).has('share')) return 'officetalk';
     if (takeShareFromUrl()) return 'officetalk';
     return loadStartView<ViewType>('tb_admin_view', 'dashboard');
   });
