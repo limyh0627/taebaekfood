@@ -7,6 +7,7 @@ import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journ
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { AR, AP, BANK, INVENTORY } from '../src/shared/autoJournal';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
+import { today } from '../src/shared/day';
 import { createOpeningInventory, createOpeningPartnerBalance, fetchWhere, saveOpeningBalances } from '../src/shared/services/firebaseService';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { appNotice } from '../src/shared/components/appDialog';
@@ -89,7 +90,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     return amounts;
   }, {}), [cashAccounts]);
   const cashAccountMap = useMemo(() => Object.fromEntries(cashAccounts.filter(a => a.type === '현금').map(a => [a.id, STANDARD_ACCOUNT.CASH])), [cashAccounts]);
-  const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01', [cashAccounts]);
+  const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? today(), [cashAccounts]);
 
   // 실제 적용할 기초잔액 — 저장문서 있으면 그것, 없으면 현금·통장 합계를 임시로 표시
   const opening: OpeningBalance = useMemo(() => {
@@ -338,8 +339,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
               <span className="text-sm font-black text-violet-700 tabular-nums">{won(capitalPreview)}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-400 leading-relaxed">
-              현금·통장 기초잔액은 계좌 관리에서 등록하세요(현금 102, 보통예금 103). 미수·미지급은 아래 거래처별 기초 전표로 등록하세요. 그 밖의 미지급금(253)과
-              대출은 단기·장기차입금에 넣으세요. 재고자산 기초 등록은 재고 수량·평가금액 연동이 준비되면 사용하세요. 언제든 다시 편집 가능합니다.
+              현금·통장 기초잔액은 계좌 관리에서 등록하세요(현금 102, 보통예금 103). 거래처별 미수·미지급은 아래에서 등록하고, 대출은 대출 관리에서 등록하세요.
+              품목별 재고는 아래에서 수량과 평가금액을 함께 등록하세요. 각 금액을 이 기초잔액에 중복 입력하지 마세요. 언제든 다시 편집할 수 있습니다.
             </p>
           </div>
         )}
