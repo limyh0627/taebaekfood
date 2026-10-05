@@ -10,12 +10,12 @@ describe('재고 목록 표시 규칙', () => {
     expect(src).toContain('boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product))');
   });
 
-  it('카테고리와 서브타입은 목록과 필터에서 숨긴다', () => {
+  it('카테고리와 서브타입은 열 대신 상단 필터에서 고른다', () => {
     const inventoryFilters = src.slice(src.indexOf('/* ── 서브타입'), src.indexOf('/* 입고처리 오버레이 */'));
     expect(src).not.toContain('>카테고리</th>');
     expect(src).not.toContain('>서브타입</th>');
-    expect(inventoryFilters).not.toContain('<FilterDrop label="서브타입"');
-    expect(inventoryFilters).not.toContain('<FilterDrop label="분류"');
+    expect(inventoryFilters).toContain('<FilterDrop label="서브타입"');
+    expect(inventoryFilters).toContain('<FilterDrop label="카테고리"');
   });
 
   it('입고와 반품은 한 목록에서 유형·상태로 걸러 보고 상태 버튼은 확인창을 거친다', () => {

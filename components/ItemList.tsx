@@ -805,9 +805,8 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
-  // 켜진 필터 개수 — 버튼 배지. 서브타입은 항상 보이는 단계라 여기 안 센다.
-  const activeFilterCount = catSel.size + supSel.size + specSel.size + (gradeSel ? 1 : 0) + (stockOnly || zeroStockOnly ? 1 : 0);
-  const clearFilters = () => { setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
+  const activeFilterCount = (activeSubtype === '전체' ? 0 : 1) + catSel.size + supSel.size + specSel.size + (gradeSel ? 1 : 0) + (stockOnly || zeroStockOnly ? 1 : 0);
+  const clearFilters = () => { setActiveSubtype('전체'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
   const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
@@ -1338,6 +1337,28 @@ const ItemList: React.FC<ItemListProps> = ({
         {mode === 'inventory' && activeTab !== 'inbound' && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
+            {subtypeTabs.length > 0 && (
+              <FilterDrop label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype} width="w-[180px]">
+                {close => <div className="max-h-[280px] overflow-y-auto py-1">
+                  {['전체', ...subtypeTabs].map(subtype => (
+                    <FilterRow key={subtype} on={activeSubtype === subtype}
+                      onClick={() => { setActiveSubtype(subtype); close(); }}>{subtype}</FilterRow>
+                  ))}
+                </div>}
+              </FilterDrop>
+            )}
+            {subCategories.length > 0 && (
+              <FilterDrop label="카테고리" active={catSel.size > 0}
+                summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${catSel.size}개`} width="w-[200px]">
+                {close => <div className="max-h-[280px] overflow-y-auto py-1">
+                  <FilterRow on={catSel.size === 0} onClick={() => { setCatSel(new Set()); close(); }}>전체</FilterRow>
+                  {subCategories.map(category => (
+                    <FilterRow key={category.id} on={catSel.has(category.id)}
+                      onClick={() => { toggleIn(setCatSel, category.id); close(); }}>{category.label}</FilterRow>
+                  ))}
+                </div>}
+              </FilterDrop>
+            )}
             {specOptions.length > 0 && (
               <FilterDrop label="용량" active={specSel.size > 0}
                 summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
