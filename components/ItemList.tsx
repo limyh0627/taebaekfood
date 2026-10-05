@@ -2090,7 +2090,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           })()}
                           </div>
                         {derivedCans != null ? (
-                          <span className={`text-right text-[13px] font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                          <span className={`inline-block w-16 text-right text-[13px] font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); }}
                             title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
                             {Math.floor(derivedCans)}
@@ -2098,28 +2098,28 @@ const ItemList: React.FC<ItemListProps> = ({
                         ) : (
                           <button
                             onClick={() => { setDetailProduct(product); setDetailOrderQty(product.minStock * 2 || 20); setDetailOrderIsBox(false); }}
-                            className={`min-w-[52px] text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            className={`w-16 text-right text-[13px] font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title={`눌러서 실사 (지금 ${displayStock}${product.unit ?? ''})`}
                           >
                             {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
                             {Math.round(displayStock)}
                           </button>
                         )}
-                        <span className="text-left text-[11px] text-slate-400">
+                        <span className="inline-block w-8 text-left text-[11px] text-slate-400">
                           {derivedCans != null ? (product.unit || '개') : (product.type !== '향미유' && product.unit)}
                         </span>
                         </div>
                       </td>
                       <td className="border-r border-slate-300 px-3 py-3 text-right">
                         <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-                          <div><span className="mr-1 text-[9px] font-bold text-slate-400">출고예정</span><span className="font-black tabular-nums text-slate-600">{scheduledOutboundQty.get(product.id) ?? 0}</span><span className="ml-1 text-slate-400">{product.unit || '개'}</span></div>
+                          <div className="flex items-center"><span className="mr-1 text-[9px] font-bold text-slate-400">출고예정</span><span className="inline-block w-16 text-right font-black tabular-nums text-slate-600">{scheduledOutboundQty.get(product.id) ?? 0}</span><span className="ml-1 inline-block w-8 text-left text-slate-400">{product.unit || '개'}</span></div>
                           <span className="text-slate-200">|</span>
-                          <div><span className="mr-1 text-[9px] font-bold text-slate-400">가용재고</span><span className="font-black tabular-nums text-slate-800">{Math.round((effStock - (scheduledOutboundQty.get(product.id) ?? 0)) * 100) / 100}</span><span className="ml-1 text-slate-400">{product.unit || '개'}</span></div>
+                          <div className="flex items-center"><span className="mr-1 text-[9px] font-bold text-slate-400">가용재고</span><span className="inline-block w-16 text-right font-black tabular-nums text-slate-800">{Math.round((effStock - (scheduledOutboundQty.get(product.id) ?? 0)) * 100) / 100}</span><span className="ml-1 inline-block w-8 text-left text-slate-400">{product.unit || '개'}</span></div>
                         </div>
                       </td>
                       <td className="hidden border-r border-slate-300 px-3 py-3 text-right sm:table-cell">
                         {product.type !== '완제품'
-                          ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
+                          ? <span className="inline-flex items-center justify-end text-xs font-bold text-slate-400"><span className="inline-block w-16 text-right tabular-nums">{product.minStock}</span><span className="ml-1 inline-block w-8 text-left">{product.unit}</span></span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                       <td className="hidden">

@@ -78,6 +78,12 @@ input[type="date"], input[type="month"], input[type="datetime-local"] {
 }
 input[type="month"] { min-width: 7rem; }
 
+/* 로컬 에뮬레이터 안내 띠만큼 관리자 화면을 내려 겹침을 막는다. */
+.local-test-admin { padding-top: 1.75rem; }
+.local-test-admin > div,
+.local-test-admin > div > main { height: calc(100dvh - 1.75rem) !important; }
+.local-test-admin > div > aside { top: 1.75rem; }
+
 /*  **오피스톡 말풍선 — 마우스로는 긁을 수 있어야 한다**(2026-09-07 사장님).
     "채팅 좌클릭하는데 수정 삭제 그거 뜨면 긁어서 복사하거나 이런걸 못하잖아"
 

@@ -28,7 +28,7 @@ import LocalTestBanner from '../../src/shared/components/LocalTestBanner';
 import AppAlertHost from '../../src/shared/components/AppAlertHost';
 import AppDialogHost from '../../src/shared/components/AppDialogHost';
 import { employeeRuntime, employeeSession, readEmployeeSession } from '../../src/shared/employeeSession';
-import { auth, authReady } from '../../src/shared/firebase';
+import { auth, authReady, usingFirebaseEmulators } from '../../src/shared/firebase';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -149,7 +149,8 @@ const AdminRoot: React.FC = () => {
   }
 
   return (
-    <AdminApp
+    <div className={usingFirebaseEmulators ? 'local-test-admin' : undefined}>
+      <AdminApp
       currentUser={runtimeUser}
       companyId={companyId}
       isAdmin={!previewAsStaff}
@@ -162,7 +163,8 @@ const AdminRoot: React.FC = () => {
       adminData={adminData}
       onPreviewStaff={!previewAsStaff ? () => setPreviewAsStaff(true) : undefined}
       onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined}
-    />
+      />
+    </div>
   );
 };
 
