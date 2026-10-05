@@ -70,6 +70,14 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   }, [isSaving, onClose]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const scrollBodyRef = useRef<HTMLDivElement>(null);
+  const [searchAbove, setSearchAbove] = useState(false);
+  const placeSearchResults = () => {
+    const input = searchInputRef.current?.getBoundingClientRect();
+    const body = scrollBodyRef.current?.getBoundingClientRect();
+    if (input && body) setSearchAbove(body.bottom - input.bottom < 208 && input.top - body.top > body.bottom - input.bottom);
+  };
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   /**
    * **어디로 보내나**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고 토글로 세 개 중에
@@ -614,7 +622,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     <ModalShell title="주문 등록 · 직접 선택" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
         {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-4 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
+        <div ref={scrollBodyRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
           <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 text-slate-700"><CalendarDays size={16} /><h3 className="text-sm font-black">주문 일정</h3></div>
@@ -642,10 +650,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
               <div className="space-y-3">
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input type="text" placeholder="거래처명 또는 초성 검색 (예: ㅌㅂ)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                  <input ref={searchInputRef} type="text" placeholder="거래처명 또는 초성 검색 (예: ㅌㅂ)..." value={searchTerm} onFocus={placeSearchResults} onChange={(e) => { setSearchTerm(e.target.value); placeSearchResults(); }} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
 
                   {filteredPartners.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 overflow-hidden max-h-80 overflow-y-auto custom-scrollbar">
+                    <div className={`absolute left-0 right-0 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar ${searchAbove ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
                       {filteredPartners.map(partner => (
                         <button key={partner.id} onClick={() => selectPartner(partner)} className="w-full px-5 py-3 text-left hover:bg-indigo-50 flex items-center justify-between group">
                           <div>

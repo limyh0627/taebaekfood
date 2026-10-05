@@ -46,6 +46,17 @@ const order = (
 });
 
 describe('신규 주문 창의 거래처 진행 주문', () => {
+  it('검색칸 아래 공간이 부족하면 거래처 결과를 위쪽에 보여준다', () => {
+    render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
+    const input = screen.getByPlaceholderText(/거래처명 또는 초성 검색/);
+    const body = input.closest('.overflow-y-auto') as HTMLElement;
+    vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({ top: 315, bottom: 365 } as DOMRect);
+    vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 84, bottom: 389 } as DOMRect);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '가을' } });
+    expect(screen.getAllByRole('button', { name: /가을식품/ })[0].parentElement).toHaveClass('bottom-full');
+  });
+
   it('매출 연결된 비재고 용역을 주문 품목에 노출하지 않는다', () => {
     const service = { id: 'delivery-fee', name: '배송 용역', unit: '건', type: 'service', category: 'service' } as Item;
     render(
