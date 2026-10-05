@@ -131,7 +131,7 @@ interface TradeStatementProps {
     costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];
     poIds: string[];
     newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];
-  }) => Promise<'applied' | 'duplicate'>;
+  }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
   /** 회사를 지정해서 저장(대납 전용) — 지금 회사가 아닌 장부에 쓴다 */
@@ -1459,19 +1459,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       newPoItems: registerInbound ? newPoItems : [],
     });
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
-    if (결과 === 'applied') {
+    if (결과 === 'applied' || (typeof 결과 !== 'string' && 결과.status === 'applied')) {
       try {
         await applyPriceSync(stmtType, skipLinkIds);
       } catch (error) {
         console.error('전표 발행 후 거래처 단가 동기화 실패', error);
-        alert(`전표 ${stmt.docNo} 발행은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 발행하지 말고 단가를 확인해 주세요.`);
+        alert(`전표 ${typeof 결과 === 'string' ? stmt.docNo : 결과.docNo} 발행은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 발행하지 말고 단가를 확인해 주세요.`);
       }
     }
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
     //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
-    return stmt;
+    return typeof 결과 === 'string' ? stmt : { ...stmt, docNo: 결과.docNo };
   };
 
   // 과거 전표를 고쳐도 지금 거래처 단가가 옛 값으로 돌아가면 안 된다.

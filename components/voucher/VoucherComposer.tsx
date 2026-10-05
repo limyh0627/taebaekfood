@@ -70,7 +70,7 @@ interface Props {
 
   onClose: () => void;
   onAddCashEntry?: (_e: CashEntry) => void | Promise<unknown>;
-  onAddIssuedStatement?: (_s: IssuedStatement) => void;
+  onAddIssuedStatement?: (_s: IssuedStatement) => void | Promise<unknown>;
   onAddFixedCostTemplate?: (_t: Omit<FixedCostTemplate, 'id'>) => void | Promise<void>;
   /** 회사이체 — 받는 회사 장부에도 한 건 세운다 */
   onAddForCompany?: (_co: CompanyId, _payload: { cashEntry?: CashEntry; statement?: IssuedStatement }) => void;
@@ -164,6 +164,8 @@ export default function VoucherComposer({
   const [loanSaving, setLoanSaving] = useState(false);
   const loanSaveLock = useRef(false);
   const loanSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
+  const accrualSaveLock = useRef(false);
+  const accrualSaveAttempt = useRef<{ key: string; statement: IssuedStatement } | null>(null);
   const loans = useLoanContracts(companyId);
   const [qpPrincipal, setQpPrincipal] = useState('');
   const [qpInterest, setQpInterest] = useState('');
@@ -483,7 +485,7 @@ export default function VoucherComposer({
         const accrTax = accrType === '비용' ? 0 : accrAmounts.tax;
         const accrBalanced = accrType !== '비용' || (accrDebit > 0 && accrDebit === accrCredit);
 
-        const doAccrualSave = () => {
+        const doAccrualSave = async () => {
           if (!accrLines.length || !accrBalanced) return;   // 차·대가 안 맞으면 안 끊는다
           /*
            * **통장 줄이 끼어 있으면 자금전표다.**
@@ -530,8 +532,19 @@ export default function VoucherComposer({
             totalSupply: accrSupply, totalTax: accrTax, totalAmount: accrTotal,
             items: accrLines,
           };
-          onAddIssuedStatement?.(stmt);
-          onClose();
+          if (!onAddIssuedStatement || accrualSaveLock.current) return;
+          const key = JSON.stringify({ ...stmt, id: '', docNo: '', issuedAt: '' });
+          if (accrualSaveAttempt.current?.key !== key) accrualSaveAttempt.current = { key, statement: stmt };
+          accrualSaveLock.current = true;
+          try {
+            await onAddIssuedStatement(accrualSaveAttempt.current.statement);
+            accrualSaveAttempt.current = null;
+            onClose();
+          } catch (error) {
+            alert(`전표를 저장하지 못했습니다. 입력은 유지됩니다. ${String(error instanceof Error ? error.message : error)}`);
+          } finally {
+            accrualSaveLock.current = false;
+          }
         };
 
         /**

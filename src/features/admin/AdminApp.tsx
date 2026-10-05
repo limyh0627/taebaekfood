@@ -218,8 +218,7 @@ import { dateOfLocal } from '../../shared/day';
 import { buysFrom } from '../../shared/partnerRole';
 import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
-import { planStatementWrites } from '../statements/domain/statementWrites';
-import { applyStatementWrites } from '../statements/infrastructure/applyStatementWrites';
+import { issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
 import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
@@ -4583,7 +4582,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (payload.cashEntry) addCashEntry(payload.cashEntry, target);
                 if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
               }}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId, createdBy: (stmt as { createdBy?: string }).createdBy ?? currentUser?.name })}
+              onAddIssuedStatement={(stmt) => issueNumberedStatement({ ...stmt, companyId, createdBy: stmt.createdBy ?? currentUser?.name })}
               /*  **전표 한 장을 한 덩이로 저장한다**(설계 §2, 3단계).
                   전에는 화면이 넷을 차례로 저장했다 — 전표 본문 → 거래처 단가·품목 원가 →
                   주문 발행표시 → 발주카드. 앞이 되고 뒤가 엎어지면 **주문에 발행표시가 안 찍혀
@@ -4593,41 +4592,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   발주카드 번호·id 는 여기서만 지을 수 있어(회사·기존 카드 목록이 필요하다)
                   계획을 세우는 것도 여기서 한다. 화면은 무엇을 팔았는지만 넘긴다. */
               onApplyStatement={async ({ command, statement, costUpdates, poIds, newPoItems }) => {
-                const 지금 = new Date().toISOString();
-                const poLinks = poIds.map(poId => {
-                  //  선입고(received)는 이미 입고완료 → 상태는 두고 전표만 잇는다.
-                  //  발주예정 등은 입고대기(invoiced)로 옮긴다.
-                  const po = purchaseOrders.find(p => p.id === poId);
-                  return {
-                    poId,
-                    data: po?.status === 'received'
-                      ? { linkedStatementId: command.statementId, linkedStatementAt: 지금 }
-                      : { linkedStatementId: command.statementId, status: 'invoiced', invoicedAt: 지금 },
-                  };
-                });
                 const newPo = newPoItems.length ? {
-                  id: `po-${Date.now()}`,
-                  data: {
-                    cardNo: nextPoNo(today(), purchaseOrders), itemId: '', itemName: '', quantity: 0,
-                    partnerId: command.partnerId, partnerName: command.partnerName,
-                    items: newPoItems, status: 'invoiced',
-                    invoicedAt: 지금, createdAt: 지금,
-                    linkedStatementId: command.statementId, companyId,
-                  },
+                  id: `po-${command.statementId}`,
+                  cardNo: nextPoNo(today(), purchaseOrders),
+                  items: newPoItems,
                 } : undefined;
-
-                const plan = planStatementWrites({
-                  //  **누가 끊었나**(2026-09-15 사장님) — 전표 목록의 '담당자' 칸이 이걸 읽는다.
-                  command, statement: { ...statement, companyId, createdBy: statement.createdBy ?? currentUser?.name }, costUpdates, poLinks, newPo,
-                  recordedAt: 지금, actorId: currentUser.id,
-                });
-                const 결과 = await applyStatementWrites(plan.writes, {
-                  statementId: command.statementId, operationId: command.operationId,
+                const 결과 = await issueTradeStatementCommand({
+                  operationId: command.operationId,
+                  statement: { ...statement, companyId, createdBy: statement.createdBy ?? currentUser?.name },
+                  orderIds: command.orderIds, poIds, newPo,
+                  costUpdates: costUpdates.map(c => ({
+                    ...c, beforeCost: c.beforeCost ?? 0, sourceLineIndex: c.sourceLineIndex ?? -1,
+                  })),
                 });
 
                 /*  **커밋 뒤** — 장부가 아니라 장부에서 다시 셀 수 있는 것만 한다.
                     원가 되말기는 언제 다시 돌려도 같은 답이라, 여기서 엎어져도 전표·주문은 짝이 맞다. */
-                if (결과 === 'applied' && plan.afterCommit.length) {
+                if (결과.status === 'applied' && costUpdates.length) {
                   const 바뀐원가 = new Map(costUpdates.map(c => [c.itemId, c.price]));
                   try {
                     await recomputeAllCosts(allItems.map(i => (바뀐원가.has(i.id) ? { ...i, cost: 바뀐원가.get(i.id)! } : i)));
