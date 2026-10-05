@@ -54,6 +54,8 @@ describe.skipIf(!준비됨)('회사별 권한 (Storage 규칙)', () => {
   it('품목 사진은 자기 회사 관리자만 JPEG/PNG/WebP 5MB 이하로 올린다', async () => {
     const path = 'companies/taebaek/items/item-1/photo-abc.jpg';
     await assertSucceeds(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/jpeg' }));
+    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-ok.png'), bytes, { contentType: 'image/png' }));
+    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-ok.webp'), bytes, { contentType: 'image/webp' }));
     await assertFails(uploadBytes(ref(직원('taebaek'), 'companies/taebaek/items/item-1/photo-staff.jpg'), bytes, { contentType: 'image/jpeg' }));
     await assertFails(uploadBytes(ref(관리자('punghoe'), 'companies/taebaek/items/item-1/photo-other.jpg'), bytes, { contentType: 'image/jpeg' }));
     await assertFails(uploadBytes(ref(관리자('taebaek'), 'companies/taebaek/items/item-1/photo-bad.svg'), bytes, { contentType: 'image/svg+xml' }));
