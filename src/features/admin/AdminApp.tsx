@@ -4629,7 +4629,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     원가 되말기는 언제 다시 돌려도 같은 답이라, 여기서 엎어져도 전표·주문은 짝이 맞다. */
                 if (결과 === 'applied' && plan.afterCommit.length) {
                   const 바뀐원가 = new Map(costUpdates.map(c => [c.itemId, c.price]));
-                  await recomputeAllCosts(allItems.map(i => (바뀐원가.has(i.id) ? { ...i, cost: 바뀐원가.get(i.id)! } : i)));
+                  try {
+                    await recomputeAllCosts(allItems.map(i => (바뀐원가.has(i.id) ? { ...i, cost: 바뀐원가.get(i.id)! } : i)));
+                  } catch (error) {
+                    console.error('전표 발행 후 품목 원가 재계산 실패', error);
+                    alert(`전표 ${statement.docNo} 발행은 완료됐지만 품목 원가 재계산에 실패했습니다. 전표를 다시 발행하지 말고 원가를 확인해 주세요.`);
+                  }
                 }
                 return 결과;
               }}

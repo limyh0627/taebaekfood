@@ -159,19 +159,25 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: '새 전표' })).not.toBeInTheDocument());
   });
 
-  it('단가 저장 실패 후 다시 저장해도 같은 전표 ID와 번호를 쓴다', async () => {
+  it('전표 발행 뒤 단가 저장이 실패하면 발행 완료를 알리고 재발행을 유도하지 않는다', async () => {
     const upsert = vi.fn(async (_p: PartnerItem) => {});
     upsert.mockRejectedValueOnce(new Error('단가 저장 실패'));
     const { onAddIssuedStatement } = setup(undefined, upsert);
     fireEvent.click(await screen.findByRole('button', { name: '저장' }));
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('입력 내용은 유지됩니다')));
-    expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(onAddIssuedStatement).toHaveBeenCalledTimes(2));
-    const [first, second] = onAddIssuedStatement.mock.calls.map(c => c[0]);
-    expect(second.id).toBe(first.id);
-    expect(second.docNo).toBe(first.docNo);
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('발행은 완료됐지만 거래처 단가 동기화에 실패했습니다')));
+    expect(onAddIssuedStatement).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.queryByRole('button', { name: '새 전표' })).not.toBeInTheDocument());
+  });
+
+  it('권한 거부를 로그인 만료로 오진하거나 새로고침을 안내하지 않는다', async () => {
+    const save = vi.fn(async (_s: IssuedStatement) => {
+      throw { code: 'permission-denied', message: 'Missing or insufficient permissions.' };
+    });
+    setup(save);
+    fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+    await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('전표 저장 권한이 거부됐습니다')));
+    expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('로그인이 풀려서'));
+    expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
   });
 
   it('전표 저장이 실패하면 단가를 쓰지 않고 입력창을 유지한다', async () => {

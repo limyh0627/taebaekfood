@@ -345,24 +345,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       };
     });
   // ── 품목명 드롭다운 검색 ──
-  /**
-   * **저장이 안 됐을 때 뜻이 통하는 말로 바꾼다.**
-   *
-   * 2026-09-11 사장님이 받은 창에는 `Missing or insufficient permissions.` 만 적혀 있었다.
-   * 그건 **로그인이 풀렸다**는 뜻인데(규칙은 인증만 되면 다 열려 있다) 글만 봐서는 알 수 없어
-   * "왜 실패하는거야" 가 된다. 무엇을 하면 되는지까지 적어 준다.
-   */
+  /** 전표 본문 저장 실패와 권한 거부를 구분한다. 새로고침은 작성 중인 내용을 지울 수 있다. */
   const 저장실패문구 = (error: any): string => {
     const 원문 = String(error?.message ?? error ?? '');
-    const 로그인풀림 = /permission|insufficient|unauthenticated/i.test(원문);
-    return 로그인풀림
-      ? [
-          '로그인이 풀려서 저장하지 못했습니다.',
-          '',
-          '입력 내용은 그대로 있습니다. 화면을 새로고침(F5)한 뒤 다시 저장해 주세요.',
-          '계속 이러면 인터넷 연결을 확인해 주세요.',
-        ].join('\n')
-      : ['전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.', 원문].join('\n');
+    const 코드 = String(error?.code ?? '');
+    if (/unauthenticated|auth\/user-token-expired|로그인이 만료/i.test(`${코드} ${원문}`)) {
+      return '로그인이 만료되어 전표를 저장하지 못했습니다. 작성 내용은 현재 화면에 남아 있습니다. 새로고침하면 사라질 수 있으니 내용을 복사한 뒤 다시 로그인해 주세요.';
+    }
+    if (/permission-denied|Missing or insufficient permissions/i.test(`${코드} ${원문}`)) {
+      return '전표 저장 권한이 거부됐습니다. 로그인 만료로 단정할 수 없습니다. 작성 내용은 현재 화면에 남아 있습니다. 새로고침하지 말고 관리자 계정과 회사를 확인해 주세요. 계속되면 이 화면과 거래처·전표 종류를 알려주세요.';
+    }
+    return ['전표 저장에 실패했습니다. 작성 내용은 현재 화면에 남아 있습니다. 다시 저장해 주세요.', 원문].join('\n');
   };
 
   // ── 주문 불러오기 모드 계정코드 오버라이드 (key → code) ──
@@ -1466,7 +1459,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       newPoItems: registerInbound ? newPoItems : [],
     });
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
-    if (결과 === 'applied') await applyPriceSync(stmtType, skipLinkIds);
+    if (결과 === 'applied') {
+      try {
+        await applyPriceSync(stmtType, skipLinkIds);
+      } catch (error) {
+        console.error('전표 발행 후 거래처 단가 동기화 실패', error);
+        alert(`전표 ${stmt.docNo} 발행은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 발행하지 말고 단가를 확인해 주세요.`);
+      }
+    }
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
@@ -1597,7 +1597,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     try {
       if (!onUpdateIssuedStatement) throw new Error('전표 수정 기능이 연결되지 않았습니다.');
       await onUpdateIssuedStatement(editingStmt.id, proposed);
-      await applyPriceSync(editingStmt.type, skipLinkIds);
+      try {
+        await applyPriceSync(editingStmt.type, skipLinkIds);
+      } catch (error) {
+        console.error('전표 수정 후 거래처 단가 동기화 실패', error);
+        alert(`전표 ${editingStmt.docNo} 수정은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 수정하지 말고 단가를 확인해 주세요.`);
+      }
       saveBusyRef.current = false;
       closeCreate();
       alert('전표가 수정되었습니다.');
