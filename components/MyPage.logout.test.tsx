@@ -19,7 +19,9 @@ it('StrictMode에서 연속 클릭을 한 번만 확인하고 취소 후 재시�
   let resolve!: (result: boolean) => void;
   confirm.mockImplementation(() => new Promise<boolean>(done => { resolve = done; }));
   const logout = vi.fn();
-  render(<React.StrictMode><MyPage currentUser={{ id: 'e', name: '직원', role: 'staff' } as Employee}
+  const employee: Employee = { id: 'e', name: '직원', position: '직원', department: '생산',
+    joinDate: '2026-01-01', status: 'working', phone: '' };
+  render(<React.StrictMode><MyPage currentUser={employee}
     onLogout={logout} /></React.StrictMode>);
   const button = screen.getByRole('button', { name: '로그아웃' });
   fireEvent.click(button);
