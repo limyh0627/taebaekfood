@@ -1,3 +1,4 @@
+import { COL } from '../collections';
 import type { ItemReceipt } from '../receipt';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
@@ -217,24 +218,20 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
     }
   };
 
-  // ── 실시간 구독 (자주 바뀌는 데이터) ──
+  // 재무 구독은 업무 구독과 수명을 분리한다. 직원에게는 생성하지 않는다.
   useEffect(() => {
-    if (!enabled) return;
-    let unsubscribes: (() => void)[] = [];
+    if (!enabled || !isAdmin) return;
     let cancelled = false;
-
-    //  모든 업무 컬렉션은 로그인 회사에 잠근다. `companyId`가 안 붙은 옛 문서는
-    //  이관 스크립트를 돌리기 전까지 목록에서 빠진다 — 이 훅이 아니라 데이터 이관으로 푼다.
+    let unsubscribes: (() => void)[] = [];
     const co = [where('companyId', '==', companyId)];
+    const guarded = <T,>(callback: (data: T[]) => void) => (data: T[]) => { if (!cancelled) callback(data); };
+    const listen: typeof subscribeToCollection = (name, callback, constraints) => subscribeToCollection(name, guarded(callback), constraints);
+    const listenRecent: typeof subscribeToRecentCollection = (name, field, days, callback, constraints) => subscribeToRecentCollection(name, field, days, guarded(callback), constraints);
     authReady.then(() => {
       if (cancelled) return;
-      /**
-       * **관리자만 거는 구독** — 전표·자금·재무·문서함. 직원 로그인이면 빈 배열로 둔다.
-       * 규칙(`adminOnlyCollection`)과 짝이 맞아야 한다.
-       */
-      const 관리자구독 = !isAdmin ? [] : [
+      unsubscribes = [
         // 전표는 재무 원장(손익·현금흐름·미수금 원천) → 최근 며칠이 아니라 전체 로딩해야 월별/기간 집계가 맞음
-        subscribeToCollection<IssuedStatement>('issuedStatements', (data) => {
+        listen<IssuedStatement>(COL.issuedStatements, (data) => {
           setIssuedStatements(data.map(s => {
             if (!s.items || !s.tradeDate) {
               console.warn('[useAppData] issuedStatement 필드 누락:', { id: s.id, hasItems: !!s.items, hasTradeDate: !!s.tradeDate });
@@ -248,36 +245,57 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
           }));
         }, co),
         // 자금 원장 — 전표와 같은 이유로 전체 로딩. 잔액은 첫 거래부터 누적해야 맞다.
-        subscribeToCollection<CashAccount>('cashAccounts', setCashAccounts, co),
-        subscribeToCollection<CashEntry>('cashEntries', setCashEntries, co),
-        subscribeToCollection<Settlement>('settlements', setSettlements, co),
-        subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots, co),
-        subscribeToRecentCollection<ProductionSalesLog>('productionSalesLogs', 'date', 7, setProductionSalesLogs, co),
-        subscribeToRecentCollection<PendingStatementEdit>('pendingStatementEdits', 'createdAt', 7, setPendingStatementEdits, co),
+        listen<CashAccount>(COL.cashAccounts, setCashAccounts, co),
+        listen<CashEntry>(COL.cashEntries, setCashEntries, co),
+        listen<Settlement>(COL.settlements, setSettlements, co),
+        listen<InventorySnapshot>(COL.inventorySnapshots, setInventorySnapshots, co),
+        listenRecent<ProductionSalesLog>(COL.productionSalesLogs, 'date', 7, setProductionSalesLogs, co),
+        listenRecent<PendingStatementEdit>(COL.pendingStatementEdits, 'createdAt', 7, setPendingStatementEdits, co),
       ];
 
+    });
+    return () => { cancelled = true; unsubscribes.forEach(stop => stop()); };
+  }, [enabled, companyId, isAdmin]);
+
+  // ── 실시간 구독 (자주 바뀌는 데이터) ──
+  useEffect(() => {
+    if (!enabled) return;
+    let unsubscribes: (() => void)[] = [];
+    let cancelled = false;
+
+    //  모든 업무 컬렉션은 로그인 회사에 잠근다. `companyId`가 안 붙은 옛 문서는
+    //  이관 스크립트를 돌리기 전까지 목록에서 빠진다 — 이 훅이 아니라 데이터 이관으로 푼다.
+    const co = [where('companyId', '==', companyId)];
+    const guarded = <T,>(callback: (data: T[]) => void) => (data: T[]) => { if (!cancelled) callback(data); };
+    const listen: typeof subscribeToCollection = (name, callback, constraints, onError) => subscribeToCollection(name, guarded(callback), constraints, onError);
+    const listenRecent: typeof subscribeToRecentCollection = (name, field, days, callback, constraints) => subscribeToRecentCollection(name, field, days, guarded(callback), constraints);
+    authReady.then(() => {
+      if (cancelled) return;
+      /**
+       * **관리자만 거는 구독** — 전표·자금·재무·문서함. 직원 로그인이면 빈 배열로 둔다.
+       * 규칙(`adminOnlyCollection`)과 짝이 맞아야 한다.
+       */
       unsubscribes = [
-        ...관리자구독,
-        subscribeToCollection<Post>('notices', setNoticePosts, co),
-        subscribeToCollection<PalletStock>('pallets', setPallets, co),
-        subscribeToRecentCollection<PalletTransaction>('palletTransactions', 'date', 7, setPalletTransactions, co),
-        subscribeToCollection<Employee>('employees', setEmployees, co),
-        subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests, co),
-        subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests, co),
-        subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders, co),
-        subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }, co),
-        subscribeToCollection<Partner>('partners', setPartners, co),
-        subscribeToCollection<ChatRoom>('chatRooms', setChatRooms, co),
-        subscribeToRecentCollection<ChatMessage>('chatMessages', 'createdAt', 7, setChatMessages, co),
+        listen<Post>(COL.notices, setNoticePosts, co),
+        listen<PalletStock>(COL.pallets, setPallets, co),
+        listenRecent<PalletTransaction>(COL.palletTransactions, 'date', 7, setPalletTransactions, co),
+        listen<Employee>(COL.employees, setEmployees, co),
+        listen<LeaveRequest>(COL.leaveRequests, setLeaveRequests, co),
+        listen<AdjustmentRequest>(COL.adjustmentRequests, setAdjustmentRequests, co),
+        listen<PurchaseOrder>(COL.purchaseOrders, setPurchaseOrders, co),
+        listen<Item>(COL.items, (data) => { setItems(data); markLoaded('items'); }, co),
+        listen<Partner>(COL.partners, setPartners, co),
+        listen<ChatRoom>(COL.chatRooms, setChatRooms, co),
+        listenRecent<ChatMessage>(COL.chatMessages, 'createdAt', 7, setChatMessages, co),
         // rawMaterialLedger: 전역 구독 제거 — 원료수불부/재고관리 화면이 열릴 때만 fetchDateRange로 전체 조회(AdminApp).
         //   (앱 시작 시 모든 사용자가 7일치를 읽던 낭비 제거. 쓰기 시엔 ledgerReloadKey로 재조회.)
-        subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger, co),
-        subscribeToCollection<AppNotification>('notifications', setAppNotifications, co),
-        subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex)), co),
-        subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests, co),
-        subscribeToCollection<ItemReceipt>('itemReceipts', setItemReceipts, co),
+        listenRecent<{ id: string; type: string; date: string; amount: number }>(COL.sesameInputLedger, 'date', 7, setSesameInputLedger, co),
+        listen<AppNotification>(COL.notifications, setAppNotifications, co),
+        listen<WorkOrderItem>(COL.workOrderItems, (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex)), co),
+        listenRecent<ReturnRequest>(COL.returnRequests, 'createdAt', 7, setReturnRequests, co),
+        listen<ItemReceipt>(COL.itemReceipts, setItemReceipts, co),
         //  회사별 설정 문서 — 문서 id 를 회사 id 로 둬 두 회사가 서로 덮어쓰지 않는다.
-        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), setCompanyInfo),
+        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), value => { if (!cancelled) setCompanyInfo(value); }),
       ];
     });
 
@@ -299,6 +317,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         'orders',
         (data) => {
           // 진행 중 주문은 오래됐어도 업무 대상이다. 구독 기간은 완료 이력에만 적용한다.
+          if (cancelled) return;
           setOrders(data.filter(order => order.status !== OrderStatus.DELIVERED
             || dateOfLocal(order.deliveredAt || order.deliveryDate || order.createdAt) >= cutoff));
           markLoaded('orders');
@@ -364,33 +383,52 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
    * useMemo에서 세우는 건 이 값이 **자식 렌더보다 먼저** 서야 하기 때문이다(같은 입력이면
    * 같은 인덱스라 여러 번 돌아도 결과가 같다).
    */
-  const bomIndex = useMemo(() => buildBomIndex(items, itemBoms), [items, itemBoms]);
+  const bomIndex = useMemo(() => buildBomIndex(enabled ? items.filter(row => companyOf(row) === companyId) : [], enabled ? itemBoms.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, items, itemBoms]);
   setBomIndex(bomIndex);
   //  포장 환산표도 같은 방식으로 — 개입수의 근거는 BOM 아니면 이 표, 둘뿐이다
-  const packIndex = useMemo(() => buildPackIndex(itemPacks), [itemPacks]);
+  const packIndex = useMemo(() => buildPackIndex(enabled ? itemPacks.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, itemPacks]);
   setPackIndex(packIndex);
 
+  const scopedData = useMemo(() => {
+    const visibleRows = <T extends object,>(rows: T[]): T[] => enabled ? rows.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : [];
+    return {
+      purchaseOrders: visibleRows(purchaseOrders),
+      items: visibleRows(items),
+      partnerItems: visibleRows(partnerItems),
+      partners: visibleRows(partners),
+      employees: visibleRows(employees),
+      leaveRequests: visibleRows(leaveRequests),
+      pallets: visibleRows(pallets),
+      palletTransactions: visibleRows(palletTransactions),
+      adjustmentRequests: visibleRows(adjustmentRequests),
+      noticePosts: visibleRows(noticePosts),
+      chatRooms: visibleRows(chatRooms),
+      chatMessages: visibleRows(chatMessages),
+      sesameInputLedger: visibleRows(sesameInputLedger),
+      appNotifications: visibleRows(appNotifications),
+      workOrderItems: visibleRows(workOrderItems),
+      itemFormulas: visibleRows(itemFormulas),
+      itemBoms: visibleRows(itemBoms),
+      itemPacks: visibleRows(itemPacks),
+      returnRequests: visibleRows(returnRequests),
+      itemReceipts: visibleRows(itemReceipts),
+      issuedStatements: isAdmin ? visibleRows(issuedStatements) : [],
+      accountGroups: isAdmin ? visibleRows(accountGroups) : [],
+      accountCodes: isAdmin ? visibleRows(accountCodes) : [],
+      fixedCostTemplates: isAdmin ? visibleRows(fixedCostTemplates) : [],
+      expensePresets: isAdmin ? visibleRows(expensePresets) : [],
+      cashFlowManual: isAdmin ? visibleRows(cashFlowManual) : [],
+      inventorySnapshots: isAdmin ? visibleRows(inventorySnapshots) : [],
+      cashAccounts: isAdmin ? visibleRows(cashAccounts) : [],
+      cashEntries: isAdmin ? visibleRows(cashEntries) : [],
+      settlements: isAdmin ? visibleRows(settlements) : [],
+      productionSalesLogs: isAdmin ? visibleRows(productionSalesLogs) : [],
+      pendingStatementEdits: isAdmin ? visibleRows(pendingStatementEdits) : [],
+    };
+  }, [enabled, companyId, isAdmin, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
-    orders: visibleOrders, purchaseOrders,
-    items,
-    partnerItems,
-    setPartnerItems,
-    partners,
-    employees, leaveRequests,
-    pallets, palletTransactions, adjustmentRequests,
-    noticePosts, chatRooms, chatMessages,
-    rawMaterialLedger, sesameInputLedger,
-    appNotifications, workOrderItems, issuedStatements,
-    itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts,
-    companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
-    cashAccounts, cashEntries, settlements,
-    productionSalesLogs, pendingStatementEdits,
-    isDataLoading,
-    refreshStaticData,
-    historicalOrders,
-    loadHistoricalOrders,
-    isLoadingHistoricalOrders,
-    ordersMonths,
-    setOrdersMonths,
+    ...scopedData,
+    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: enabled ? companyInfo : null,
+    isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

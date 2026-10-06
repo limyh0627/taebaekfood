@@ -8,7 +8,8 @@ const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ serviceWorkers: 'allow' });
   const page = await context.newPage();
-  await page.goto(appUrl);
+  page.setDefaultTimeout(90000);
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.evaluate(() => navigator.serviceWorker.register('/share-target-sw.js'));
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();

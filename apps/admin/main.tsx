@@ -151,6 +151,7 @@ const AdminRoot: React.FC = () => {
 
   return (
     <div className={usingFirebaseEmulators ? 'local-test-admin' : undefined}>
+      <React.Suspense fallback={<div role="status" className="p-8 text-slate-500">화면을 불러오는 중입니다.</div>}>
       <AdminApp
       currentUser={runtimeUser}
       companyId={companyId}
@@ -165,6 +166,7 @@ const AdminRoot: React.FC = () => {
       onPreviewStaff={!previewAsStaff ? () => setPreviewAsStaff(true) : undefined}
       onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined}
       />
+      </React.Suspense>
     </div>
   );
 };

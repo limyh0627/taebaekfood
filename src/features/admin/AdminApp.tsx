@@ -29,6 +29,7 @@ import { isBulkItem, holdsUnitStock, isPhysicalInventoryItem } from '../../share
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
+import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { adjustStockByQty, stocktakeByQty } from '../../shared/services/unpackService';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
@@ -91,18 +92,18 @@ import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
 import LargeModalShell from '../../shared/components/LargeModalShell';
 import ModalShell from '../../shared/components/ModalShell';
-import Dashboard from '../../../components/Dashboard';
+const Dashboard = React.lazy(() => import('../../../components/Dashboard'));
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
-import BomIntegrityPanel from '../../../components/BomIntegrityPanel';
-import AIConsultant from '../../../components/AIConsultant';
+const BomIntegrityPanel = React.lazy(() => import('../../../components/BomIntegrityPanel'));
+const AIConsultant = React.lazy(() => import('../../../components/AIConsultant'));
 import AddOrderModal from '../../../components/AddOrderModal';
 import PasteOrderModal from '../../../components/PasteOrderModal';
-import PartnerManager from '../../../components/PartnerManager';
+const PartnerManager = React.lazy(() => import('../../../components/PartnerManager'));
 import DeliveryManager from '../../../components/DeliveryManager';
 import PalletManager from '../../../components/PalletManager';
 import AdminAuthModal from '../../../components/AdminAuthModal';
-import HRManager from '../../../components/HRManager';
+const HRManager = React.lazy(() => import('../../../components/HRManager'));
 import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
@@ -142,8 +143,8 @@ import { buildCostFn } from '../../shared/bomCost';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
-import ItemPriceManager from '../../../components/ItemPriceManager';
-import TaxStatement from '../../../components/TaxStatement';
+const ItemPriceManager = React.lazy(() => import('../../../components/ItemPriceManager'));
+const TaxStatement = React.lazy(() => import('../../../components/TaxStatement'));
 import OfficeTalk from '../../../components/OfficeTalk';
 import { extractedOfficeTalkMessageIds } from '../../shared/officeTalkOrder';
 import { notify, loadNotifyMode } from '../../shared/notify';
@@ -154,10 +155,10 @@ import { roomNameFor } from '../../shared/roomName';
 import { leaveStatusPatch } from '../../shared/leave';
 import AccountMenu, { accountProfileImageUrl } from '../../../components/AccountMenu';
 const MyPage = React.lazy(() => import('../../../components/MyPage'));
-import AdminChecklist from '../../../components/AdminChecklist';
-import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
-import DocumentManager from '../../../components/DocumentManager';
-import QuotationManager from '../../../components/QuotationManager';
+const AdminChecklist = React.lazy(() => import('../../../components/AdminChecklist'));
+const PartnerSignupApproval = React.lazy(() => import('../../../components/PartnerSignupApproval'));
+const DocumentManager = React.lazy(() => import('../../../components/DocumentManager'));
+const QuotationManager = React.lazy(() => import('../../../components/QuotationManager'));
 import type * as ExcelJSType from 'exceljs';
 
 const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
@@ -1169,7 +1170,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const ps = partnerIn.find(s => s.itemId === id || (s as any).itemId === id);
     const partnerId = ps?.partnerId || (ps as any)?.partnerId;
     const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-    await addItem('purchaseOrders', {
+    await executeEmployeeCommand({ kind: 'create', collection: 'purchaseOrders', data: {
       id: `po-${Date.now()}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: id, itemName: product?.name ?? '',
       //  **수량은 재고 단위로 저장한다.** 박스로 골랐으면 여기서 풀고 '몇 박스'만 따로 남긴다 —
       //  읽는 쪽마다 곱하면 한 곳만 빠뜨려도 재고가 어긋난다(판매 주문이 이미 이 방식이다).
@@ -1182,7 +1183,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       status: 'pending',
       confirmedByUser: true, createdAt: new Date().toISOString(),
       ...(partnerId ? { partnerId, partnerName } : {}),
-    });
+    } });
   };
 
   const handleRemoveOrderRequest = async (id: string) => {
@@ -1243,11 +1244,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
         //  boxQuantity 는 '몇 박스라고 말했는지'만 남긴다(명세서·목록 표시용).
         return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', ...(it.boxQuantity ? { boxQuantity: it.boxQuantity } : {}) };
       });
-      await addItem('purchaseOrders', {
+      await executeEmployeeCommand({ kind: 'create', collection: 'purchaseOrders', data: {
         id: `po-${base}-${gi++}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: '', itemName: '', quantity: 0,
         items: poItems, status: 'pending', createdAt,
         ...(g.partnerId ? { partnerId: g.partnerId, partnerName: g.partnerName } : {}),
-      });
+      } });
     }
   };
 
@@ -1482,7 +1483,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         saveOrder: async (identity, order) => {
           // 응답만 끊기고 DB에는 저장됐을 수도 있어 재시도에서 같은 ID·카드번호를 다시 쓴다.
           내가넣은주문.current.add(identity.id);
-          await addItem('orders', {
+          await executeEmployeeCommand({ kind: 'create', collection: 'orders', data: {
             ...order,
             items: ensureOrderLineIds(order.items),
             companyId,
@@ -1492,7 +1493,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             ...(kind === 'paste' && pasteOrderSourceMessageId ? { sourceChatMessageId: pasteOrderSourceMessageId } : {}),
             createdAt: order.createdAt || new Date().toISOString(),
             status: OrderStatus.PENDING,
-          });
+          } });
         },
         followUps: [
           {
@@ -1761,7 +1762,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const handleFinishConfirmedOrder = async (id: string) => {
     try {
-      await confirmUnitPurchaseOrderReceipt(id, currentUser?.name, allItems);
+      await executeEmployeeCommand({ kind: 'receive', poId: id, actorName: currentUser?.name, items: allItems });
       setLedgerReloadKey(k => k + 1);
       return true;
     } catch (err) {
@@ -2888,6 +2889,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
+                    companyId={companyId}
                     items={allItems}
                     partnerItems={partnerItems}
                     partners={partners}
@@ -4661,14 +4663,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   });
                 } else {
                   const product = allItems.find(p => p.id === item.id);
-                  await addItem('purchaseOrders', {
+                  await executeEmployeeCommand({ kind: 'create', collection: 'purchaseOrders', data: {
                     id: item.id, cardNo: nextPoNo(today(), purchaseOrders), itemId: item.id, itemName: product?.name ?? '',
                     //  수량은 재고 단위 그대로 — 박스 표기는 담을 때 이미 풀렸다
                     quantity: item.quantity,
                     partnerId: item.partnerId, partnerName: item.partnerName,
                     status: 'invoiced', createdAt: new Date().toISOString(),
                     invoicedAt: new Date().toISOString(),
-                  });
+                  } });
                 }
               }}
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
@@ -4870,6 +4872,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'return-management' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <ReturnManager
+                companyId={companyId}
                 items={allItems}
                 partners={partners}
                 orders={allOrders}

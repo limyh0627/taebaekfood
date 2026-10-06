@@ -1,3 +1,4 @@
+import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect } from 'react';
 import {
@@ -16,13 +17,16 @@ import {
   Partner,
   Order,
   IssuedStatement,
+  CompanyId,
 } from '../src/shared/types';
-import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { dateOfLocal, monthStart, today } from '../src/shared/day';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
+import { where } from 'firebase/firestore';
 
 interface ReturnManagerProps {
+  companyId: CompanyId;
   items: Item[];
   partners: Partner[];
   orders: Order[];
@@ -37,6 +41,7 @@ type Tab = '접수' | '이력';
 const RETURN_REASONS: ReturnReason[] = ['품질불량', '오배송', '과잉재고', '기타'];
 
 const ReturnManager: React.FC<ReturnManagerProps> = ({
+  companyId,
   items, partners,
   orders,
   issuedStatements,
@@ -62,8 +67,13 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
-    return subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests);
-  }, []);
+    let active = true;
+    setReturnRequests([]);
+    const stop = subscribeToCollection<ReturnRequest>('returnRequests', rows => {
+      if (active) setReturnRequests(rows);
+    }, [where('companyId', '==', companyId)]);
+    return () => { active = false; stop(); };
+  }, [companyId]);
 
   // 거래처 변경 시 하위 선택 초기화
   useEffect(() => {
@@ -73,7 +83,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   }, [selectedClientId]);
 
   const sellableProducts = items.filter(p =>
-    ['완제품', '향미유', '고춧가루'].includes(p.type as string)
+    ['완제품', '향미유', '고춧가루', 'product', 'wip', 'goods'].includes(p.type as string)
   );
 
   const partnerOrders = orders
@@ -149,7 +159,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
         createdAt: new Date().toISOString(),
         ...(note && { note }),
       };
-      await addItem('returnRequests', req);
+      await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: req });
       setSelectedClientId('');
       setReturnLineItems([]);
       setNote('');

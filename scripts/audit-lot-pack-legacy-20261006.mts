@@ -19,10 +19,10 @@ const submaterialLots = items
     activeLotQuantity: item.lots.filter((lot: { status?: string }) => lot.status !== 'depleted')
       .reduce((sum: number, lot: { qtyRemaining?: number }) => sum + Number(lot.qtyRemaining || 0), 0),
   }));
-const legacyBox = items.filter(item => item.defaultBoxConfig != null || item.boxSize != null)
+const legacyBox = items.filter(item => item.defaultBoxConfig != null || item.boxSize != null || item.unpackTo != null || item.boxQuantity != null)
   .map(item => ({
     id: item.id, name: item.name, type: item.type, stock: item.stock,
-    defaultBoxConfig: item.defaultBoxConfig, boxSize: item.boxSize,
+    defaultBoxConfig: item.defaultBoxConfig, boxSize: item.boxSize, unpackTo: item.unpackTo, boxQuantity: item.boxQuantity,
     pack: packByItem.get(item.id) ?? null,
   }));
 console.log(JSON.stringify({ project: db.projectId, releaseGate: {

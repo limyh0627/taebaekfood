@@ -1,7 +1,10 @@
+import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
+import type { CompanyId } from '../src/shared/types';
+import { where } from 'firebase/firestore';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect } from 'react';
 import { RotateCcw, History, Truck, X, ChevronDown, Loader2 } from 'lucide-react';
-import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { subscribeToCollection } from '../src/shared/services/firebaseService';
 import { Item, Order, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { dateOfLocal, monthStart, today } from '../src/shared/day';
@@ -12,6 +15,7 @@ import { isLinkedToPartner } from '../src/shared/partnerPrice';
 type ReturnTab = '받기' | '보내기' | '이력';
 
 interface ReceivingReturnsManagerProps {
+  companyId: CompanyId;
   items: Item[];
   /** 거래처–품목 연결 — 반품 넣을 품목을 고르는 데 쓴다 */
   partnerItems?: PartnerItem[];
@@ -25,6 +29,7 @@ interface ReceivingReturnsManagerProps {
 }
 
 const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
+  companyId,
   items,
   partnerItems,
   partners,
@@ -40,7 +45,14 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
 
   //  반품 목록은 실시간 구독 — 다른 사람이 넣은 요청이 바로 떠야 한다
-  useEffect(() => subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests), []);
+  useEffect(() => {
+    let active = true;
+    setReturnRequests([]);
+    const stop = subscribeToCollection<ReturnRequest>('returnRequests', rows => {
+      if (active) setReturnRequests(rows);
+    }, [where('companyId', '==', companyId)]);
+    return () => { active = false; stop(); };
+  }, [companyId]);
 
   // ── Returns form ──
   const [returnClientId, setReturnClientId] = useState('');
@@ -155,7 +167,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     if (items.length === 0) { alert('반품 수량을 1개 이상 입력해주세요.'); return; }
     setReturnSaving(true);
     try {
-      await addItem('returnRequests', {
+      await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: {
         partnerId: returnClientId,
         partnerName: partner.name,
         items,
@@ -164,7 +176,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         createdAt: new Date().toISOString(),
         createdBy: currentUser.name,
         ...(returnNote && { note: returnNote }),
-      });
+      } });
       setReturnClientId('');
       setReturnClientSearch('');
       setReturnItems([]);
@@ -191,7 +203,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     if (items.length === 0) { alert('반품 수량을 1개 이상 입력해주세요.'); return; }
     setPrSaving(true);
     try {
-      await addItem('returnRequests', {
+      await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: {
         partnerId: prSupplierId,
         partnerName: inboundPartner.name,
         items,
@@ -201,7 +213,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         createdAt: new Date().toISOString(),
         createdBy: currentUser.name,
         ...(prNote && { note: prNote }),
-      });
+      } });
       setPrSupplierId('');
       setPrSupplierSearch('');
       setPrItems([]);

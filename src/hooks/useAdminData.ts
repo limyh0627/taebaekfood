@@ -38,8 +38,12 @@ export interface AdminData {
 export function useAdminData(enabled: boolean, companyId: CompanyId = 'taebaek'): AdminData {
   const [fixedCosts, setFixedCosts] = useState<FixedCostEntry[]>([]);
   const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
+  const [loadedCompany, setLoadedCompany] = useState<CompanyId | null>(null);
 
   useEffect(() => {
+    setFixedCosts([]);
+    setProductionRecords([]);
+    setLoadedCompany(null);
     if (!enabled) return;
 
     let unsubscribes: (() => void)[] = [];
@@ -49,8 +53,16 @@ export function useAdminData(enabled: boolean, companyId: CompanyId = 'taebaek')
     authReady.then(() => {
       if (cancelled) return;
       unsubscribes = [
-        subscribeToCollection<FixedCostEntry>('fixedCosts', setFixedCosts, co),
-        subscribeToCollection<ProductionRecord>('productionRecords', setProductionRecords, co),
+        subscribeToCollection<FixedCostEntry>('fixedCosts', rows => {
+          if (cancelled) return;
+          setFixedCosts(rows);
+          setLoadedCompany(companyId);
+        }, co),
+        subscribeToCollection<ProductionRecord>('productionRecords', rows => {
+          if (cancelled) return;
+          setProductionRecords(rows);
+          setLoadedCompany(companyId);
+        }, co),
       ];
     });
 
@@ -60,5 +72,6 @@ export function useAdminData(enabled: boolean, companyId: CompanyId = 'taebaek')
     };
   }, [enabled, companyId]);
 
-  return { fixedCosts, productionRecords };
+  const visible = enabled && loadedCompany === companyId;
+  return { fixedCosts: visible ? fixedCosts : [], productionRecords: visible ? productionRecords : [] };
 }
