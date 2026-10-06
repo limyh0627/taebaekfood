@@ -133,6 +133,6 @@ describe('신규 주문 창의 거래처 진행 주문', () => {
     fireEvent.click(within(firstOrder).getByRole('button', { name: 'ORD-260909-01 2품목 보기' }));
     expect(within(firstOrder).getByText('생들기름 300ml')).toBeInTheDocument();
     expect(within(firstOrder).getByText('5병')).toBeInTheDocument();
-    expect(within(firstOrder).getByText('2박스 (24개)')).toBeInTheDocument();
+    expect(within(firstOrder).getByText('2박스')).toBeInTheDocument();
   });
 });

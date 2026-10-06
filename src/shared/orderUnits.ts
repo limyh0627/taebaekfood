@@ -150,16 +150,14 @@ export const boxCountOf = (item: Pick<OrderItem, 'quantity' | 'boxQuantity'>): n
  * 전표의 미발행 주문 두 목록에 적을 수량 — 어느 화면에서 보든 같은 말을 쓰게 한다.
  *
  * 박스로 받은 주문은 `quantity`에 낱개 수량, `boxQuantity`에 주문한 박스 수가 든다.
- * 박스 수만 보이면 실제 출고량을 모르고, 낱개 수만 보이면 몇 박스를 주문했는지 모른다.
- * 둘 다 있는 주문은 `2박스 (24개)`처럼 함께 적는다.
+ * 요약 화면에는 주문한 수량만 표시한다. 내부 환산수량은 재고·금액 계산에만 쓴다.
  */
 export function orderItemQuantityLabel(
   item: Pick<OrderItem, 'quantity' | 'isBoxUnit' | 'boxQuantity' | 'unitsPerBox'>,
   unit = '개',
 ): string {
   if (item.isBoxUnit && item.boxQuantity) {
-    const each = item.unitsPerBox ? ` (${item.quantity}개)` : '';
-    return `${item.boxQuantity}박스${each}`;
+    return `${item.boxQuantity}박스`;
   }
   return `${item.quantity}${unit || '개'}`;
 }

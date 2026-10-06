@@ -22,7 +22,7 @@ describe('주문 품목 수정 차이', () => {
 
   it('박스 줄은 박스 수로 적는다 — 낱개만 보면 몇 박스인지 모른다', () => {
     const 박스 = (n: number) => 줄({ isBoxUnit: true, boxQuantity: n, quantity: n * 10, unitsPerBox: 10 });
-    expect(diffOrderItems([박스(5)], [박스(8)])[0].text).toBe('수량 — 볶음참깨/1kg 5박스 (50개) → 8박스 (80개)');
+    expect(diffOrderItems([박스(5)], [박스(8)])[0].text).toBe('수량 — 볶음참깨/1kg 5박스 → 8박스');
   });
 
   it('줄을 넣으면 추가로, 빼면 삭제로 적는다', () => {

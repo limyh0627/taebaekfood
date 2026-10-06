@@ -66,7 +66,7 @@ describe('미발행 주문의 품목·수량', () => {
     expect(p.on.setSelectedClientId).not.toHaveBeenCalled();
     expect(within(card).getByText('생들기름 300ml')).toBeInTheDocument();
     expect(within(card).getByText('5병')).toBeInTheDocument();
-    expect(within(card).getByText('2박스 (24개)')).toBeInTheDocument();
+    expect(within(card).getByText('2박스')).toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: 'ORD-260908-01 2품목 접기' }));
     expect(within(card).queryByText('생들기름 300ml')).not.toBeInTheDocument();
@@ -79,7 +79,7 @@ describe('미발행 주문의 품목·수량', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'ORD-260908-01 2품목 보기' }));
     expect(within(card).getByText('생들기름 300ml')).toBeInTheDocument();
     expect(within(card).getByText('5병')).toBeInTheDocument();
-    expect(within(card).getByText('2박스 (24개)')).toBeInTheDocument();
+    expect(within(card).getByText('2박스')).toBeInTheDocument();
   });
 
   it('날짜 필터를 위에 두고 주문 선택·건수·작성·해제를 한 줄에 둔다', () => {
