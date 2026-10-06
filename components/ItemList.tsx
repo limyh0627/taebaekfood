@@ -747,13 +747,9 @@ const ItemList: React.FC<ItemListProps> = ({
   const selectedLotItem = selectedLot ? lotItems.find(item => item.id === selectedLot.itemId) ?? null : null;
   const selectedLotData = selectedLotItem?.lots?.find(lot => lot.id === selectedLot?.lotId) ?? null;
   const lotKgOf = (item: Item): number => {
-    const raw = isRawHolder(item);
     return (item.lots ?? [])
-      .filter(l => l.status === 'active' && (raw ? (l.kgRemaining ?? 0) !== 0 : (l.qtyRemaining ?? 0) !== 0))
-      .reduce((sum, l) => {
-        if (raw || typeof l.kgRemaining === 'number') return sum + (l.kgRemaining ?? 0);
-        return sum + (stockKg(l.qtyRemaining ?? 0, item, id => items.find(x => x.id === id)) ?? 0);
-      }, 0);
+      .filter(l => l.status === 'active' && (l.kgRemaining ?? 0) !== 0)
+      .reduce((sum, l) => sum + (l.kgRemaining ?? 0), 0);
   };
   const activeLotsOf = (item: Item) => {
     const raw = isRawHolder(item);
@@ -1768,8 +1764,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <tbody>
                       {pagedLotRows.map(({ item, lot }, index) => {
                         const raw = isRawHolder(item);
-                        const goods = item.type === 'goods';
-                        const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
+                        const kg = Number(lot.kgRemaining ?? 0);
                         const lotState = lotStateOf(item, lot);
                         return <tr key={`${item.id}-${lot.id}`} onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
                           className={`cursor-pointer text-[10px] text-slate-700 transition-colors ${index % 2 ? 'bg-slate-50/40 hover:bg-indigo-50/60' : 'hover:bg-indigo-50/60'}`}>
@@ -1786,7 +1781,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           </td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-xs font-black text-slate-800">{item.name}</td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500">{item.spec || '-'}</td>
-                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{goods ? `${Number(lot.qtyRemaining ?? 0).toLocaleString()} ${item.unit || '개'}` : <>{(Math.round(kg * 10) / 10).toLocaleString()} kg{!raw && <small className="text-[9px] text-slate-400">({lot.qtyRemaining ?? 0}{item.unit || '개'})</small>}</>}<ChevronRight size={14} className="text-slate-300" /></span></td>
+                          <td className="border-b-2 border-slate-300 px-3 py-2.5 text-right text-sm font-black text-slate-900 tabular-nums"><span className="inline-flex items-center gap-2">{raw ? `${(Math.round(kg * 10) / 10).toLocaleString()} kg` : `${Number(lot.qtyRemaining ?? 0).toLocaleString()} 개`}<ChevronRight size={14} className="text-slate-300" /></span></td>
                         </tr>;
                       })}
                     </tbody>
@@ -1812,19 +1807,18 @@ const ItemList: React.FC<ItemListProps> = ({
                 <div className="space-y-4">
                   {visibleLotItems.map(item => {
                     const raw = isRawHolder(item);
-                    const goods = item.type === 'goods';
                     const activeLots = displayedLotsOf(item);
                     if (activeLots.length === 0) return null;
                     return <section key={item.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
                       <div><h4 className="text-xs font-black text-slate-800">{item.name}</h4><p className="text-[9px] font-bold text-slate-400">{item.spec || '규격 없음'} · {activeTab === 'lot-history' ? '완료' : '활성'} 로트 {activeLots.length}건</p></div>
-                      <span className="text-xs font-black text-slate-700 tabular-nums">{goods
-                        ? `${activeLots.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0).toLocaleString()} ${item.unit || '개'}`
-                        : `${(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg`}</span>
+                      <span className="text-xs font-black text-slate-700 tabular-nums">{raw
+                        ? `${(Math.round(lotKgOf(item) * 10) / 10).toLocaleString()} kg`
+                        : `${activeLots.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0).toLocaleString()} 개`}</span>
                     </header>
                     <div className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3">
                   {activeLots.map(lot => {
-                    const kg = Number(lot.kgRemaining ?? (stockKg(Number(lot.qtyRemaining ?? 0), item, id => items.find(x => x.id === id)) ?? 0));
+                    const kg = Number(lot.kgRemaining ?? 0);
                     return <button key={`${item.id}-${lot.id}`} type="button" onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
                       className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-indigo-300 hover:shadow-sm">
                       <div className="flex items-start gap-3">
@@ -1834,9 +1828,9 @@ const ItemList: React.FC<ItemListProps> = ({
                       </div>
                       <div className="mt-4">
                         <span className="block text-[9px] font-black text-slate-400">로트 잔량</span>
-                        <span className="mt-1 block text-base font-black text-slate-900 tabular-nums">{goods
-                          ? `${Number(lot.qtyRemaining ?? 0).toLocaleString()} ${item.unit || '개'}`
-                          : `${(Math.round(kg * 10) / 10).toLocaleString()} kg`}</span>
+                        <span className="mt-1 block text-base font-black text-slate-900 tabular-nums">{raw
+                          ? `${(Math.round(kg * 10) / 10).toLocaleString()} kg`
+                          : `${Number(lot.qtyRemaining ?? 0).toLocaleString()} 개`}</span>
                       </div>
                       <span className="mt-3 flex items-center justify-end text-[10px] font-bold text-indigo-500">로트 상세 보기</span>
                     </button>;

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   ShoppingBag, 
   User, 
@@ -23,7 +23,7 @@ interface PartnerPortalProps {
    * 전에는 죽은 `items.price` 를 보느라 모든 주문이 0원으로 들어갔다(2026-09-04).
    */
   partnerItems?: PartnerItem[];
-  onOrderSubmit: (_order: Order) => void;
+  onOrderSubmit: (_order: Order) => Promise<unknown>;
   onExit: () => void;
 }
 
@@ -33,6 +33,8 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
   const [cart, setCart] = useState<{ [itemId: string]: number }>({});
   const [isSuccess, setIsSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +67,9 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
     });
   };
 
+  /** 이 거래처에 파는 단가. 안 정해져 있으면 undefined — 0 으로 눙치지 않는다. */
+  const 단가 = (itemId: string) => salePriceOf(partnerItems, selectedClient?.id ?? '', itemId);
+
   // Fix: Explicitly type reduce parameters to avoid arithmetic error with unknown types
   const totalAmount = Object.entries(cart).reduce((sum: number, [id, qty]) => {
     const product = items.find(p => p.id === id);
@@ -72,11 +77,10 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
     return sum + (product ? (단가(product.id) ?? 0) * (qty as number) : 0);
   }, 0);
 
-  /** 이 거래처에 파는 단가. 안 정해져 있으면 undefined — 0 으로 눙치지 않는다. */
-  const 단가 = (itemId: string) => salePriceOf(partnerItems, selectedClient?.id ?? '', itemId);
-
-  const handleSubmit = () => {
-    if (!selectedClient) return;
+  const handleSubmit = async () => {
+    if (!selectedClient || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
 
     const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
       const product = items.find(p => p.id === id)!;
@@ -104,9 +108,16 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
       region: selectedClient.region || '미지정'
     };
 
-    onOrderSubmit(newOrder);
-    setIsSuccess(true);
-    setStep('confirm');
+    try {
+      await onOrderSubmit(newOrder);
+      setIsSuccess(true);
+      setStep('confirm');
+    } catch (error) {
+      window.alert(`주문을 저장하지 못했습니다. ${error instanceof Error ? error.message : '다시 시도해 주세요.'}`);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   if (step === 'auth') {
@@ -259,6 +270,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
             <div className="max-w-md mx-auto pointer-events-auto">
                <button 
                   onClick={handleSubmit}
+                  disabled={saving}
                   className="w-full bg-slate-900 text-white p-6 rounded-[32px] shadow-2xl flex items-center justify-between hover:bg-black hover:scale-[1.02] transition-all group"
                >
                   <div className="flex items-center space-x-4">
@@ -268,7 +280,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
                      <div className="text-left">
                         {/* Fix: Explicitly type reduce parameters to avoid arithmetic error with unknown types */}
                         <p className="text-[10px] font-black uppercase tracking-widest opacity-60">총 {Object.values(cart).reduce((a: number, b: number) => a + b, 0)}개 상품 선택됨</p>
-                        <p className="text-xl font-black">{totalAmount.toLocaleString()}원 주문하기</p>
+                        <p className="text-xl font-black">{saving ? '주문 저장 중…' : `${totalAmount.toLocaleString()}원 주문하기`}</p>
                      </div>
                   </div>
                   <ArrowRight size={24} className="group-hover:translate-x-2 transition-transform" />

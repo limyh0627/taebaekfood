@@ -158,7 +158,7 @@ const LotTimeline: React.FC<{
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-black text-slate-700">{row.title}</span>
-              {row.delta != null && <span className={`text-[11px] font-black tabular-nums ${row.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{row.delta > 0 ? '+' : ''}{fmt(row.delta)}{isRawHolder(item) ? ' kg' : ` ${item.unit || '개'}`}</span>}
+              {row.delta != null && <span className={`text-[11px] font-black tabular-nums ${row.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{row.delta > 0 ? '+' : ''}{fmt(row.delta)}{isRawHolder(item) ? ' kg' : ' 개'}</span>}
             </div>
             <p className="mt-0.5 text-[10px] font-bold text-slate-400">
               {row.date ? `${row.businessDate ? '기록 ' : ''}${recordedTime(row.date)}` : '-'}
