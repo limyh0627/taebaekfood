@@ -446,9 +446,11 @@ export function allocatePartnerCash(
   opening?: Map<string, number>,
 ): Map<string, number> {
   //  기초이월 전표도 후보에 넣는다 — 안 넣으면 그걸 갚은 수금이 새 전표를 갉아먹는다(isReceivableStmt 주석 참조).
-  const mine = statements
+  const eligible = statements
     .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
-    .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+    .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id.localeCompare(b.id));
+  const mine = eligible.filter(s => (opening?.get(s.id) ?? s.totalAmount ?? 0) > 0);
+  const returnCredit = -eligible.reduce((sum, s) => sum + Math.min(0, opening?.get(s.id) ?? s.totalAmount ?? 0), 0);
   const left = new Map(mine.map(s => [s.id, opening?.get(s.id) ?? (s.totalAmount ?? 0)]));
   if (!mine.length) return left;
 
@@ -467,7 +469,7 @@ export function allocatePartnerCash(
   }
 
   // 2) 남은 돈은 오래된 순으로
-  let rem = Math.max(0, partnerPaid(partnerId, type, cashEntries) - pinned);
+  let rem = Math.max(0, partnerPaid(partnerId, type, cashEntries) - pinned + returnCredit);
   for (const s of mine) {
     if (rem <= 0) break;
     const open = left.get(s.id) ?? 0;

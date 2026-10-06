@@ -5,6 +5,13 @@ import {
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
 
+it('과거 반품은 오래된 미지급에 먼저 적용되어 서버와 전표별 지불액이 일치한다', () => {
+  const statement = (id: string, date: string, amount: number) => ({ id, partnerId: 'p-return', partnerName: '청정', type: '매입', tradeDate: date,
+    totalAmount: amount, totalTax: 0, items: [{ accountCode: '500', supply: amount, tax: 0, total: amount }] } as IssuedStatement);
+  const open = allocatePartnerCash('p-return', '매입', [statement('old', '2026-08-01', 1000000), statement('return', '2026-08-21', -693000), statement('new', '2026-10-06', 2200000)], []);
+  expect([...open]).toEqual([['old', 307000], ['new', 2200000]]);
+});
+
 const acct = (over: Partial<CashAccount> = {}): CashAccount => ({
   id: 'a1', name: '기업은행', type: '통장',
   openingBalance: 1_000_000, openingDate: '2026-07-01',
