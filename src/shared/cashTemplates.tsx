@@ -363,7 +363,8 @@ export function CashTemplateModal({
   }, [templates, q, tab, accountCodes, selectedGroup]);
   return (
     <ModalShell title={`템플릿 ${shown.length === templates.length ? templates.length : `${shown.length}/${templates.length}`}`} onClose={onClose}
-      className="h-[80dvh]" bodyClassName="flex min-h-0 flex-col !p-0">
+      className="h-[80dvh]" bodyClassName="flex min-h-0 flex-col !p-0"
+      footer={<button onClick={onClose} className="w-full rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-200">닫기</button>}>
         {/* 방향(출금·입금·발생)은 고른 템플릿이 정한다 — 여기서 먼저 고르게 하면
             템플릿 화면과 목록이 달라 보이고, 방향을 잘못 잡으면 찾던 게 안 뜬다. */}
         <div className="px-4 py-3 border-b border-slate-100 shrink-0 space-y-2.5 md:px-5">

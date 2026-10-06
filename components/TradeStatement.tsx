@@ -3,7 +3,7 @@ import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DateChipButton from '../src/shared/components/DateChipButton';
-import { settleStatus, settlementTypeOf, settlementDirectionOf } from '../src/features/admin/voucherMerge';
+import { settleStatus, settlementTypeOf, settlementDirectionOf, isAccruedPayableStatement } from '../src/features/admin/voucherMerge';
 import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
 import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
 import { today, dateOfLocal, monthStart } from '../src/shared/day';
@@ -612,6 +612,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (paySaving.current) return;
     paySaving.current = true;
     try {
+    if (isAccruedPayableStatement(stmt)) {
+      if (!onIssueCashEntry) throw new Error('미지급비용 지불 서버가 연결되지 않았습니다.');
+      const paid = cashEntries.filter(entry => entry.linkedAccrualStatementId === stmt.id && entry.dir === '출금' && entry.accountCode === '275');
+      if (!payAccountId || !activeCashAccounts.some(account => account.id === payAccountId)) throw new Error('출금 계좌를 선택해 주세요.');
+      if (input.amount > stmt.totalAmount - paid.reduce((sum, entry) => sum + entry.amount, 0)) throw new Error('지불액이 남은 미지급비용보다 큽니다.');
+      await onIssueCashEntry({ id: `accrual-pay-${stmt.id}-${paid.length + 1}`, companyId, date: input.date,
+        cashAccountId: payAccountId, dir: '출금', amount: input.amount, accountCode: '275',
+        linkedAccrualStatementId: stmt.id, note: input.note || `${stmt.docNo} 미지급비용 지불`, createdAt: new Date().toISOString() });
+      setCashModal(null);
+      return;
+    }
     await recordPayment([{ stmt, amount: input.amount }], {
       date: input.date, method: input.method, note: input.note || undefined,
       cashAccountId: payAccountId,

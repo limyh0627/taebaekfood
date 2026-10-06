@@ -4,7 +4,7 @@ import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
 import { companyOf, type IssuedStatement, type CashEntry, type AccountCode, type PaymentMethod, type Partner, type CompanyId } from '../../src/shared/types';
 import { cashEditSplit, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../../src/shared/cashEntryEdit';
-import { settlementTypeOf } from '../../src/features/admin/voucherMerge';
+import { settlementTypeOf, isAccruedPayableStatement } from '../../src/features/admin/voucherMerge';
 import { formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
 import ModalShell from '../../src/shared/components/ModalShell';
 import SearchableSelect from '../../src/shared/components/SearchableSelect';
@@ -81,6 +81,7 @@ function SettleBody({
   stmt, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle,
 }: Props & { stmt: IssuedStatement }) {
   const isBuy = settlementTypeOf(stmt) === '매입';
+  const accrued = isAccruedPayableStatement(stmt);
   /**
    * 기본값은 **이 전표에 남은 금액**. 총액을 박아 두면 이미 절반을 낸 전표에서도 전액이
    * 찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
@@ -103,7 +104,8 @@ function SettleBody({
     //  초과 판정은 **거래처 잔액 기준** — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
     const live = latestStatement(stmt.id) ?? stmt;
     const lb = partnerBalances.get(live.partnerId);
-    const bal = settlementTypeOf(live) === '매입' ? (lb?.payable ?? 0) : (lb?.receivable ?? 0);
+    const bal = accrued ? getBalance(live) : settlementTypeOf(live) === '매입' ? (lb?.payable ?? 0) : (lb?.receivable ?? 0);
+    if (accrued && amt > bal) { setOverWarn(true); return; }
     if (amt > bal && !forceOver) { setOverWarn(true); return; }
     setOverWarn(false);
     onSettle(live, { amount: amt, date, method, note: note.trim(), scope });
@@ -140,7 +142,7 @@ function SettleBody({
 
         <div className="flex gap-2">
           {box('stmt', '이 전표', getBalance(stmt), '이 전표부터 갚음')}
-          {box('partner', '거래처 잔액', partnerLeft, '오래된 전표부터 갚음')}
+          {!accrued && box('partner', '거래처 잔액', partnerLeft, '오래된 전표부터 갚음')}
         </div>
 
         <div className="space-y-3">
@@ -187,11 +189,12 @@ function SettleBody({
           return (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
               <p className="font-black text-amber-700">
-                입력금액이 잔액({fmt(getBalance(live))}원)을 초과합니다. 초과분은 {overLabelOf(settlementTypeOf(stmt))}으로 전환됩니다.
+                {accrued ? `입력금액이 미지급비용 잔액(${fmt(getBalance(live))}원)을 초과합니다.`
+                  : `입력금액이 잔액(${fmt(getBalance(live))}원)을 초과합니다. 초과분은 ${overLabelOf(settlementTypeOf(stmt))}으로 전환됩니다.`}
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setOverWarn(false)} className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-black">취소</button>
-                <button onClick={() => submit(true)} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>
+                {!accrued && <button onClick={() => submit(true)} className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>}
               </div>
             </div>
           );

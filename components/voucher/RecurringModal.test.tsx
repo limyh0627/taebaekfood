@@ -56,11 +56,11 @@ describe('템플릿 창 — 자동 발행 대상', () => {
     expect(목록().queryByRole('listitem', { name: '차량 할부금' })).toBeNull();
     expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
   });
-  it('그룹 선택이 템플릿과 자동 발행 목록을 함께 거르고 창 높이는 고정한다', async () => {
+  it('그룹 선택이 템플릿과 자동 발행 목록을 함께 거르고 창 최대 높이를 제한한다', async () => {
     const user = userEvent.setup();
     띄우기({ templates: [템플릿({ group: '차량' }), 템플릿({ id: 't2', name: '보험료', group: '보험', accountCode: '821' }), 템플릿({ id: 't3', name: '수동 차량', group: '차량', autoIssue: false })] }, false);
     const dialog = screen.getByRole('dialog', { name: '템플릿' });
-    expect(dialog).toHaveClass('h-[88dvh]');
+    expect(dialog).toHaveClass('max-h-[88dvh]');
     await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '차량');
     expect(screen.getByText('수동 차량')).toBeVisible();
     expect(screen.queryByText('보험료')).toBeNull();
@@ -71,7 +71,7 @@ describe('템플릿 창 — 자동 발행 대상', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: '템플릿 그룹' }), '보험');
     expect(목록().getByRole('listitem', { name: '보험료' })).toBeVisible();
     expect(목록().queryByRole('listitem', { name: '차량 할부금' })).toBeNull();
-    expect(dialog).toHaveClass('h-[88dvh]');
+    expect(dialog).toHaveClass('max-h-[88dvh]');
   });
   it('전체 템플릿에서는 월·발행목록을 숨기고 자동 탭에서만 보여 준다', () => {
     띄우기({}, false);

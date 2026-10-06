@@ -667,7 +667,6 @@ export const OrderCard = memo<OrderCardProps>(({
                         <input type="number" value={item.boxQuantity ?? 1} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
                           className="w-8 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
                         <span className="text-[8px] font-bold text-slate-400">박스</span>
-                        {qtyPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
                       </div>
                     ) : (
                       <div className="flex items-center gap-0.5 shrink-0">
@@ -741,12 +740,10 @@ export const OrderCard = memo<OrderCardProps>(({
                       const box = item.isBoxUnit && item.boxQuantity;
                       const qty = box ? item.boxQuantity! : item.quantity;
                       const unit = box ? '박스' : (productInfo?.unit || '개');
-                      const sub = box && item.unitsPerBox ? `${item.quantity}개` : '';
                       return (
                         <span className={`ml-auto pl-1.5 shrink-0 whitespace-nowrap ${isItemChecked ? 'opacity-50' : ''}`}>
                           <span className={`text-base font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
                           <span className="text-[12px] font-normal text-slate-400 ml-0.5">{unit}</span>
-                          {sub && <span className="text-[12px] font-normal text-slate-300 ml-1">{sub}</span>}
                         </span>
                       );
                     })()}

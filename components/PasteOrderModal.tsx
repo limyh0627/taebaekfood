@@ -5,13 +5,13 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { validateExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
 import { defaultShipToId, activeShipTos, linksForShipTo } from '../src/shared/shipTo';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
-import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet, PalletStock } from '../types';
+import { Item, PartnerItem, Order, Partner, OrderPallet, PalletStock } from '../types';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
-import { boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
+import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import ModalShell from '../src/shared/components/ModalShell';
 import { clampNote, NOTE_MAX } from '../src/shared/orderNote';
 
@@ -296,65 +296,23 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const matchedLineCount = parsedLines.filter(line => !!line.selectedProductId).length;
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
-  const getBoxConfig = (itemId: string) => {
-    const pc = partnerOut.find(p => p.itemId === itemId && p.partnerId === selectedClient?.id);
-    if (pc?.boxTypeId) return { unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId };
-    const p = items.find(pr => pr.id === itemId);
-    const unitsPerBox = unitsPerBoxOf(p);
-    if (unitsPerBox > 1) return { unitsPerBox, boxType: '', boxSubId: undefined };
-    // 향미유·고춧가루는 별도 박스 SKU가 없고 item_pack 환산표가 개입수를 안다.
-    // 일반 주문과 같은 공용 함수를 써야 복사 주문만 8박스→8개로 저장되는 일이 없다.
-    return { unitsPerBox: 0, boxType: '' };
-  };
-
   const handleSubmit = async () => {
     if (savingRef.current || !orderDate || !deadline || !selectedClient) return;
-    const validLines = parsedLines.filter(l => l.selectedProductId && l.qty > 0);
-    const orderItems: OrderItem[] = validLines.flatMap(line => {
-      const product = items.find(p => p.id === line.selectedProductId);
-      if (!product) return [];
-      const cfg = getBoxConfig(line.selectedProductId!);
-      const uPerBox = cfg.unitsPerBox;
-      const actualQty = line.isBox && uPerBox > 0 ? line.qty * uPerBox : line.qty;
-      const price = boxDerivedUnitPrice(product, selectedClient.id, partnerOut) ?? 0;
-      //  **그 집이 뭐라고 불렀는지 같이 적어 둔다**(2026-09-16) — 다음 주문을 읽을 때
-      //  이 짝이 그대로 근거가 된다(`historyLines`). 사람이 확인 표에서 고른 뒤라
-      //  **사람이 맞다고 한 답**이다. 우리 이름과 똑같으면 보탤 것이 없어 안 적는다.
-      const 그집말 = line.rawText?.trim();
-      return [{
-        itemId: line.selectedProductId!,
-        name: product.name,
-        ...(그집말 && 그집말 !== product.name ? { orderedAs: 그집말.slice(0, 80) } : {}),
-        quantity: actualQty,
-        price,
-        ...(line.isBox ? {
-          isBoxUnit: true,
-          boxQuantity: line.qty,
-          ...(uPerBox > 0 ? { unitsPerBox: uPerBox, boxType: cfg.boxType } : {}),
-        } : {}),
-      }];
+    const draft = buildNewOrderDraft({
+      partner: selectedClient, items, partnerItems: partnerOut,
+      lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
+        itemId: line.selectedProductId!, quantity: line.qty, isBoxUnit: line.isBox,
+        orderedAs: line.rawText,
+      })),
+      orderDate, deliveryDate: deadline, shipToId,
+      note: orderNote, noteImportant, pallets,
     });
-    if (!orderItems.length) return;
-    const totalAmount = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
+    if (!draft.items.length) return;
     savingRef.current = true;
     setIsSaving(true);
     setSaveError('');
     try {
-      await onSave({
-        partnerId: selectedClient.id,
-        partnerName: selectedClient.name,
-        ...(shipToId ? { shipToId } : {}),
-        email: selectedClient.email || '',
-        createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
-        items: orderItems,
-        ...(orderNote.trim() ? { note: clampNote(orderNote.trim()), ...(noteImportant ? { noteImportant: true } : {}) } : {}),
-        totalAmount,
-        deliveryDate: new Date(deadline).toISOString(),
-        source: (isDelivery ? '택배' : '일반') as OrderSource,
-        pallets: pallets.filter(p => p.quantity > 0),
-        region: selectedClient.region || '미지정',
-        ...(isDelivery ? { deliveryBoxes: [] } : {}),
-      });
+      await onSave(draft);
     } catch (error) {
       console.error('복사 주문 저장 실패', error);
       setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');

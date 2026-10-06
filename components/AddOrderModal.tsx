@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today, addDays, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown, CalendarDays, Hand, Package } from 'lucide-react';
-import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShipMethod } from '../types';
+import { Item, PartnerItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShipMethod } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { defaultShipToId, activeShipTos, linksForShipTo, partnerLabel } from '../src/shared/shipTo';
@@ -21,6 +21,7 @@ import OrderStatusDot from '../src/shared/components/OrderStatusDot';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import ModalShell from '../src/shared/components/ModalShell';
+import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -519,56 +520,18 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     e?.preventDefault();
     if (savingRef.current || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0) return;
 
-    const orderItems: OrderItem[] = selectedItems.flatMap(item => {
-      if (!item.quantity || item.quantity <= 0) return [];
-      const product = items.find(p => p.id === item.itemId)
-        ?? items.find(p => String(p.id).trim() === String(item.itemId).trim());
-      if (!product) return [];
-      const uPerBox = item.unitsPerBox ?? 0;
-      const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
-      // 박스 품목은 낱개단가×개입수로 파생, 아니면 품목 단가
-      const boxPrice = selectedPartner ? boxDerivedUnitPrice(product, selectedPartner.id, partnerOut) : undefined;
-      return [{
-        itemId: item.itemId,
-        name: product.name || '알 수 없는 상품',
-        quantity: actualQty,
-        price: boxPrice ?? 0,
-        ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType } : {}),
-        ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}),   // 겉박스 — 박스 품목/일반 공통
-        ...(item.displaySize ? { displaySize: item.displaySize } : {}),
-      }];
+    const draft = buildNewOrderDraft({
+      partner: selectedPartner, items, partnerItems: partnerOut, lines: selectedItems,
+      orderDate, deliveryDate: deadline, shipToId,
+      source: (isDelivery && source === '일반') ? '택배' : source,
+      shipMethod, note: orderNote, noteImportant, pallets,
     });
-
-    const totalAmount = selectedItems.reduce((sum, item) => {
-      if (!item.quantity || item.quantity <= 0) return sum;
-      const product = items.find(p => String(p.id).trim() === String(item.itemId).trim());
-      if (!product) return sum;
-      const uPerBox = item.unitsPerBox ?? 0;
-      const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
-      const boxPrice = selectedPartner ? boxDerivedUnitPrice(product, selectedPartner.id, partnerOut) : undefined;
-      return sum + (boxPrice ?? 0) * actualQty;
-    }, 0);
+    if (!draft.items.length) return;
 
     savingRef.current = true;
     setIsSaving(true);
     try {
-      await onSave({
-        partnerId: selectedPartner.id,
-        partnerName: selectedPartner.name || '이름 없음',
-        //  **어디로 가나**(2026-09-16) — 화면에 찍는 이름은 `shipTo.orderPartnerLabel` 이 만든다.
-        ...(shipToId ? { shipToId } : {}),
-        email: selectedPartner.email || '',
-        createdAt: new Date(`${orderDate}T00:00:00+09:00`).toISOString(),
-        items: orderItems,
-        ...(orderNote.trim() ? { note: clampNote(orderNote.trim()), ...(noteImportant ? { noteImportant: true } : {}) } : {}),
-        totalAmount,
-        deliveryDate: new Date(deadline).toISOString(),
-        source: (isDelivery && source === '일반') ? '택배' : source,
-        pallets: pallets.filter(p => p.quantity > 0),
-        region: selectedPartner.region || '미지정',
-        shipMethod,
-        ...(isDelivery ? { deliveryBoxes: [] } : {}),
-      });
+      await onSave(draft);
     } finally {
       savingRef.current = false;
       setIsSaving(false);

@@ -887,6 +887,17 @@ export default function VoucherComposer({
                   )}
 
                   <div className="space-y-2">
+                    {qpAccrRows.length <= 2 && <div className="w-1/2 pr-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+                      <input type="text" inputMode="numeric" placeholder="0"
+                        value={formatMoneyInput(qpAccrRows[0]?.price ?? '')}
+                        onChange={e => changeMoneyInput(e.currentTarget, price => setQpAccrRows(prev => {
+                          if (quickPayClientId) return prev.map((row, index) => index === 0 ? { ...row, price } : row);
+                          if (prev.length === 1) return [{ ...prev[0], price }, { name: '', price, side: '대변' }];
+                          return prev.map(row => ({ ...row, price }));
+                        }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-3 text-right text-xl font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300"/>
+                    </div>}
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">계정 · 금액</label>
                     {qpAccrRows.map((r, idx) => (
                       <div key={idx} className="flex items-center gap-1.5">

@@ -70,7 +70,8 @@ export default function RecurringModal({
   };
 
   return (
-    <ModalShell title="템플릿" onClose={onClose} className="h-[88dvh]" bodyClassName="space-y-4">
+    <ModalShell title="템플릿" onClose={onClose} className="max-h-[88dvh]" bodyClassName="space-y-4"
+      footer={<button onClick={onClose} className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>}>
         <p className="text-[11px] text-slate-400 leading-snug">
           일반전표 발행에서 고르는 <b>템플릿</b> 목록입니다. 스위치를 켜면 매달 정한 날에
           저절로 발행됩니다(앱을 안 켜도 됩니다). 새 템플릿은 일반전표 발행에서 <b>[템플릿으로 저장]</b>으로 만듭니다.
@@ -142,9 +143,6 @@ export default function RecurringModal({
         {msg && <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">{msg}</p>}
         </>}
 
-        {/* 통째로 내는 버튼은 없앴다 — 줄마다 발행한다 */}
-        <button onClick={onClose}
-          className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
     </ModalShell>
   );
 }

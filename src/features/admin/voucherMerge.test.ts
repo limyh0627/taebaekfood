@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeStatements, voucheredOrderIds, canSettleStatement, settleStatus, settlementTypeOf, settlementDirectionOf } from './voucherMerge';
+import { mergeStatements, voucheredOrderIds, canSettleStatement, settleStatus, settlementTypeOf, settlementDirectionOf, accruedPayableBalance } from './voucherMerge';
 import type { IssuedStatement } from '../../shared/types';
 
 /**
@@ -84,6 +84,22 @@ describe('전표가 걸린 주문 id', () => {
 });
 
 describe('수금·지불 버튼을 달 전표인가', () => {
+  it('거래처가 없는 275 미지급비용 상여금도 지불 대상으로 보여준다', () => {
+    const bonus = 전표({ id: 'bonus', type: '비용', partnerId: '', partnerName: '상여금 총액', totalAmount: 2400000,
+      items: [
+        { name: '상여금 총액', accountCode: '802', side: '차변', total: 2400000 },
+        { name: '실지급 예정액', accountCode: '275', side: '대변', total: 2400000 },
+      ] } as never);
+    expect(canSettleStatement(bonus, 2400000)).toBe(true);
+    expect(settlementTypeOf(bonus)).toBe('매입');
+    expect(settlementDirectionOf(bonus)).toBe('출금');
+    expect(settleStatus(bonus, 2400000).label).toBe('미지급');
+    expect(canSettleStatement(bonus, 0)).toBe(false);
+    expect(accruedPayableBalance(bonus, [
+      { id: 'pay1', linkedAccrualStatementId: 'bonus', companyId: 'taebaek', dir: '출금', accountCode: '275', amount: 900000 },
+      { id: 'wrong-company', linkedAccrualStatementId: 'bonus', companyId: 'punghoe', dir: '출금', accountCode: '275', amount: 2400000 },
+    ] as never, 'taebaek')).toBe(1500000);
+  });
   /**
    * 예전엔 `남은금액 > 0` 하나로 봤다. 남은금액은 배분에 없으면 총액으로 물러서므로,
    * 갚을 상대가 없는 전표까지 전액 미결제로 잡혀 지불처리 버튼이 붙었다(비용 25건).

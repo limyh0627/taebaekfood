@@ -1,4 +1,4 @@
-import type { IssuedStatement } from '../../shared/types';
+import type { IssuedStatement, CashEntry, CompanyId } from '../../shared/types';
 import { isReceivableStmt } from './cashLedger';
 import { companyOf } from '../../shared/types';
 
@@ -61,12 +61,24 @@ export function voucheredOrderIds(statements: Pick<IssuedStatement, 'orderId'>[]
  *
  * 기초이월은 type 이 '비용'이지만 108·251 을 세우므로 여기 걸린다 — 실제로 갚아야 할 것이다.
  */
+export function isAccruedPayableStatement(s: IssuedStatement): boolean {
+  return s.type === '비용' && !s.partnerId && s.totalAmount > 0 &&
+    (s.items ?? []).some(item => item.accountCode === '275' && item.side === '대변' && item.total > 0);
+}
+
+export function accruedPayableBalance(s: IssuedStatement, entries: CashEntry[], companyId: CompanyId): number {
+  return s.totalAmount - entries.filter(entry => entry.linkedAccrualStatementId === s.id &&
+    entry.dir === '출금' && entry.accountCode === '275' && companyOf(entry) === companyId)
+    .reduce((sum, entry) => sum + entry.amount, 0);
+}
+
 export function canSettleStatement(s: IssuedStatement, balance: number): boolean {
-  return (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && balance > 0;
+  return (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입') || isAccruedPayableStatement(s)) && balance > 0;
 }
 
 /** 일반전표는 type이 '비용'이어도 채권·채무 계정의 차·대 방향으로 결제한다. */
 export function settlementTypeOf(s: IssuedStatement): '매출' | '매입' {
+  if (isAccruedPayableStatement(s)) return '매입';
   const payable = isReceivableStmt(s, '매입');
   const receivable = isReceivableStmt(s, '매출');
   if (payable !== receivable) return payable ? '매입' : '매출';
@@ -96,7 +108,7 @@ export interface SettleStatus {
 
 export function settleStatus(s: IssuedStatement, balance: number): SettleStatus {
   //  채권·채무를 안 세우는 전표는 받을 것도 줄 것도 없다 — 빈칸이 아니라 '해당없음'이다.
-  if (!isReceivableStmt(s, '매출') && !isReceivableStmt(s, '매입')) return { state: 'none', label: '—' };
+  if (!isReceivableStmt(s, '매출') && !isReceivableStmt(s, '매입') && !isAccruedPayableStatement(s)) return { state: 'none', label: '—' };
   const 매입 = settlementTypeOf(s) === '매입';
   const 총액 = Number(s.totalAmount ?? 0);
   const 남은 = Number(balance ?? 0);

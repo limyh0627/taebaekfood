@@ -31,6 +31,16 @@ const renderList = () => {
 };
 
 describe('주문 리스트 비고와 모바일 목록', () => {
+  it.each(['일반', '추출'])('%s 등록 박스 주문 카드에는 주문수량만 표시한다', (source) => {
+    const boxedOrder = { ...order, id: `box-${source}`, items: [{ itemId: 'p1', name: '참기름', quantity: 60, price: 0, isBoxUnit: true, boxQuantity: 3, unitsPerBox: 20 }] } as Order;
+    render(<OrdersList companyId="taebaek" title="주문" subtitle="" groupBy="status"
+      allowedStatuses={[OrderStatus.PENDING]} orders={[boxedOrder]} partners={[]} items={products}
+      onUpdateStatus={vi.fn()} onUpdateDeliveryDate={vi.fn()} onDeleteOrder={vi.fn()}
+      onAddClick={vi.fn()} onUpdateNote={vi.fn()} />);
+    const card = document.getElementById(`order-card-box-${source}`);
+    expect(card?.textContent).toContain('3박스');
+    expect(card?.textContent).not.toContain('60개');
+  });
   it('보드에서는 이관된 비고를 주문 카드 아래 한 영역에 모은다', () => {
     render(<OrdersList companyId="taebaek" title="주문" subtitle="" groupBy="status"
       allowedStatuses={[OrderStatus.PENDING]} orders={[order]} partners={[]} items={products}

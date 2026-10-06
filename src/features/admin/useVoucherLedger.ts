@@ -4,7 +4,7 @@ import { openingDocId } from '../../shared/types';
 import { fetchDateRange, fetchByIds, fetchWhere } from '../../shared/services/firebaseService';
 import { buildJournals } from '../../shared/buildJournals';
 import { allocatePartnerCash } from './cashLedger';
-import { mergeStatements, voucheredOrderIds, canSettleStatement } from './voucherMerge';
+import { mergeStatements, voucheredOrderIds, canSettleStatement, isAccruedPayableStatement, accruedPayableBalance } from './voucherMerge';
 import {
   anchorBefore, readFrom, openStatementIds, allocationInputs, balancesWithAnchor,
   type PartnerAnchor,
@@ -261,8 +261,10 @@ export function useVoucherLedger({
   }, [anchor, mergedStatements, cashEntries, settlements]);
   //  배분에 없으면 총액으로 물러선다 — 채권·채무를 안 세우는 전표(감가상각·급여 등)가 그렇다
   const getBalance = useCallback(
-    (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount,
-    [openByStmt]);
+    (s: IssuedStatement) => isAccruedPayableStatement(s)
+      ? accruedPayableBalance(s, cashEntries, companyId)
+      : openByStmt.get(s.id) ?? s.totalAmount,
+    [openByStmt, cashEntries, companyId]);
   /**
    * **수금·지불 버튼을 달 전표인가** — 채권(108)·채무(251)를 세우는 것만.
    *

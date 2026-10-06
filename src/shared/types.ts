@@ -1540,6 +1540,8 @@ export interface CashAccount {
 
 export interface CashEntry {
   id: string;
+  /** 거래처 없는 275 미지급비용 전표를 지급한 출금 전표의 연결 근거. */
+  linkedAccrualStatementId?: string;
   /** 대출별 보조원장 연결. 기존 자금전표에는 없고 회계 분개에는 영향을 주지 않는다. */
   loanId?: string;
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
