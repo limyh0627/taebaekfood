@@ -1,6 +1,6 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-07
 
-기준: 기존 통합 저장소 534b67fa 이후 문서 보완. 운영 제품 소스 기준은 마지막 제품 변경 955e4ab8. 이 문서는 **코드에서 확인한 관계**이며 Firestore 전 문서 실측, 외래키 강제, 모든 읽기·쓰기 완전 추적을 주장하지 않는다. registry와 생성기 결과는 field-dictionary.generated.md/json에서 재생성한다.
+기준: 기존 통합 저장소 534b67fa 이후 문서 보완. 원료·주문 관계는 제품 변경 955e4ab8을 기준으로 확인했고, 이어 거래처 원장 조회 화면을 보완했다. 이 문서는 **코드에서 확인한 관계**이며 Firestore 전 문서 실측, 외래키 강제, 모든 읽기·쓰기 완전 추적을 주장하지 않는다. registry와 생성기 결과는 field-dictionary.generated.md/json에서 재생성한다.
 
 ## 현재 관계 — 코드에서 확인
 
@@ -14,6 +14,8 @@ erDiagram
   orders ||--o{ orderStatusAudits : orderId
   orders ||--o{ issuedStatements : orderId
   issuedStatements ||--o{ settlements : statementId
+  partners ||--o{ cashEntries : partnerId
+  cashAccounts ||--o{ cashEntries : cashAccountId
   items ||--o{ item_bom : parent_id_and_child_id
   items ||--o{ itemReceipts : itemId
   purchaseOrders ||--o{ itemReceipts : poId
@@ -61,6 +63,8 @@ erDiagram
 | voucherMutationOperations | 서버 전표 수정 idempotency 영수증 | Functions에 실제 참조·쓰기 있음. Hosting 배포만으로 서버 배포 상태를 보증하지 않는다. editIssuedStatementCommand.ts:38 |
 | authLoginAttempts | 로그인 실패 횟수/차단 시각/만료 | 서버 전용 보안 경로. employeeLogin.ts:32 |
 | rawDocEntries | 모델/설계 주석·순수 계산에 등장 | 조사 범위에서 DB 접근 호출 확인 못함. 위 서류 연결 차이 참조. |
+
+거래처 원장 조회 보완: components/PartnerLedger.tsx는 회사로 제한한 전표·자금 자료를 buildJournals로 해석해 전체 이력과 계정 필터·계정별 기초/당기/기말을 함께 표시한다. 108/251/253/133/254 잔액을 합치지 않으며, 비용전표 대체의 133/254 거래처 태그 누락은 원본 거래처로 읽기 중에만 보완한다. 분개 실패는 경고 이력으로 남기고 잔액에서 제외한다. 독립 수동분개 저장본의 UI 전달 경로는 없으며, helper의 수동분개 시험을 해당 저장본 조회 완료로 주장하지 않는다.
 
 ## 지향 관계 — 미구현/검토 제안
 

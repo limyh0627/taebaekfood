@@ -202,7 +202,7 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `itemUnpackMove
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 490개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -572,12 +572,13 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | ReturnCardProps | components/ReceivingReturnsManager.tsx:593 | interface | direct-properties-only | req, isAdmin, isProcessing, onProcess |
 | ItemFormulaRow | components/ProductionManager.tsx:10 | type-alias | direct-properties-only | parent_key, child_name, ratio, yield_rate |
 | ProductionManagerProps | components/ProductionManager.tsx:28 | interface | direct-properties-only | records, items, orders, ledger, itemFormulas, onAdd, onDelete, onUpdate, currentUserName |
-| LedgerRow | src/features/admin/cashLedger.ts:12 | interface | direct-properties-only | entry, balance |
-| AccountLedger | src/features/admin/cashLedger.ts:18 | interface | direct-properties-only | account, opening, rows, totalIn, totalOut, closing |
-| PartnerLedgerRow | src/features/admin/cashLedger.ts:154 | interface | direct-properties-only | kind, id, date, label, docNo, sourceId, time, amount, balance, source, opening |
-| PartnerLedger | src/features/admin/cashLedger.ts:178 | interface | direct-properties-only | rows, opening, accrued, paid, balance |
-| Ev | src/features/admin/cashLedger.ts:216 | type-alias | direct-properties-only | row, ts, order |
-| PartnerCashPart | src/features/admin/cashLedger.ts:485 | interface | direct-properties-only | code, reduce, note |
+| LedgerRow | src/features/admin/cashLedger.ts:13 | interface | direct-properties-only | entry, balance |
+| AccountLedger | src/features/admin/cashLedger.ts:19 | interface | direct-properties-only | account, opening, rows, totalIn, totalOut, closing |
+| PartnerHistorySource | src/features/admin/cashLedger.ts:155 | type-alias | non-object-alias-not-expanded |  |
+| PartnerLedgerRow | src/features/admin/cashLedger.ts:258 | interface | direct-properties-only | kind, id, date, label, docNo, sourceId, time, amount, balance, source, opening |
+| PartnerLedger | src/features/admin/cashLedger.ts:282 | interface | direct-properties-only | rows, opening, accrued, paid, balance |
+| Ev | src/features/admin/cashLedger.ts:320 | type-alias | direct-properties-only | row, ts, order |
+| PartnerCashPart | src/features/admin/cashLedger.ts:589 | interface | direct-properties-only | code, reduce, note |
 | SettleState | src/features/admin/voucherMerge.ts:101 | type-alias | non-object-alias-not-expanded |  |
 | SettleStatus | src/features/admin/voucherMerge.ts:103 | interface | direct-properties-only | state, label |
 | EvidenceType | src/features/statements/domain/evidence.ts:18 | type-alias | non-object-alias-not-expanded |  |
@@ -1137,7 +1138,7 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | FixedCostTemplate | itemName | 선택 | string | src/shared/types.ts:1047 | 3 |
 | IssuedStatementItem | itemId | 선택 | string | src/shared/types.ts:1069 | 5 |
 | IssuedStatementItem | lineKind | 선택 | StatementLineKind | src/shared/types.ts:1071 | 1 |
-| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1072 | 21 |
+| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1072 | 22 |
 | IssuedStatementItem | spec | 필수 | string | src/shared/types.ts:1073 | 4 |
 | IssuedStatementItem | qty | 필수 | number | src/shared/types.ts:1074 | 10 |
 | IssuedStatementItem | price | 필수 | number | src/shared/types.ts:1075 | 2 |
@@ -1145,7 +1146,7 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | IssuedStatementItem | tax | 필수 | number | src/shared/types.ts:1077 | 10 |
 | IssuedStatementItem | total | 필수 | number | src/shared/types.ts:1078 | 16 |
 | IssuedStatementItem | isTaxExempt | 필수 | boolean | src/shared/types.ts:1079 | 6 |
-| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1084 | 14 |
+| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1084 | 15 |
 | IssuedStatementItem | side | 선택 | '차변' \| '대변' | src/shared/types.ts:1097 | 10 |
 | StatementParty | name | 필수 | string | src/shared/types.ts:1102 | 0 |
 | StatementParty | bizNo | 필수 | string | src/shared/types.ts:1103 | 0 |
@@ -1157,21 +1158,21 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | StatementParty | fax | 필수 | string | src/shared/types.ts:1109 | 0 |
 | StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1113 | 1 |
 | StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1114 | 1 |
-| IssuedStatement | id | 필수 | string | src/shared/types.ts:1118 | 105 |
+| IssuedStatement | id | 필수 | string | src/shared/types.ts:1118 | 109 |
 | IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1120 | 0 |
 | IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1121 | 0 |
 | IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1123 | 1 |
 | IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1124 | 17 |
-| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1125 | 77 |
-| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1126 | 66 |
-| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1127 | 53 |
-| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1128 | 26 |
+| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1125 | 80 |
+| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1126 | 67 |
+| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1127 | 60 |
+| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1128 | 29 |
 | IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1129 | 7 |
-| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1130 | 37 |
+| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1130 | 40 |
 | IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1131 | 3 |
 | IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1132 | 4 |
 | IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1133 | 47 |
-| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1134 | 37 |
+| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1134 | 39 |
 | IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1136 | 3 |
 | IssuedStatement | memo | 선택 | string | src/shared/types.ts:1141 | 3 |
 | IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1149 | 3 |
@@ -1325,25 +1326,25 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1465 | 2 |
 | PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1466 | 0 |
 | AccountCode | id | 필수 | string | src/shared/types.ts:1473 | 25 |
-| AccountCode | code | 필수 | string | src/shared/types.ts:1474 | 97 |
-| AccountCode | name | 필수 | string | src/shared/types.ts:1475 | 58 |
+| AccountCode | code | 필수 | string | src/shared/types.ts:1474 | 98 |
+| AccountCode | name | 필수 | string | src/shared/types.ts:1475 | 59 |
 | AccountCode | groupId | 선택 | string | src/shared/types.ts:1476 | 11 |
 | AccountCode | type | 선택 | AccountType | src/shared/types.ts:1478 | 17 |
-| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1479 | 8 |
+| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1479 | 9 |
 | AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1480 | 1 |
 | AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1485 | 0 |
 | AccountCode | note | 선택 | string | src/shared/types.ts:1486 | 0 |
-| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1491 | 31 |
-| JournalLine | debit | 필수 | number | src/shared/types.ts:1492 | 32 |
-| JournalLine | credit | 필수 | number | src/shared/types.ts:1493 | 28 |
-| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1494 | 8 |
+| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1491 | 35 |
+| JournalLine | debit | 필수 | number | src/shared/types.ts:1492 | 34 |
+| JournalLine | credit | 필수 | number | src/shared/types.ts:1493 | 30 |
+| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1494 | 12 |
 | JournalLine | note | 선택 | string | src/shared/types.ts:1495 | 1 |
-| JournalEntry | id | 필수 | string | src/shared/types.ts:1499 | 5 |
-| JournalEntry | date | 필수 | string | src/shared/types.ts:1500 | 13 |
-| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1501 | 27 |
-| JournalEntry | memo | 선택 | string | src/shared/types.ts:1502 | 2 |
-| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1503 | 4 |
-| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1504 | 13 |
+| JournalEntry | id | 필수 | string | src/shared/types.ts:1499 | 10 |
+| JournalEntry | date | 필수 | string | src/shared/types.ts:1500 | 15 |
+| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1501 | 32 |
+| JournalEntry | memo | 선택 | string | src/shared/types.ts:1502 | 3 |
+| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1503 | 9 |
+| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1504 | 14 |
 | JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1505 | 0 |
 | JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1506 | 0 |
 | AccountGroup | id | 필수 | string | src/shared/types.ts:1514 | 24 |
@@ -1361,21 +1362,21 @@ shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다
 | CashAccount | active | 필수 | boolean | src/shared/types.ts:1536 | 12 |
 | CashAccount | note | 선택 | string | src/shared/types.ts:1537 | 0 |
 | CashAccount | createdAt | 필수 | string | src/shared/types.ts:1538 | 0 |
-| CashEntry | id | 필수 | string | src/shared/types.ts:1542 | 44 |
+| CashEntry | id | 필수 | string | src/shared/types.ts:1542 | 48 |
 | CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1544 | 2 |
 | CashEntry | loanId | 선택 | string | src/shared/types.ts:1546 | 1 |
 | CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1548 | 0 |
-| CashEntry | docNo | 선택 | string | src/shared/types.ts:1554 | 7 |
-| CashEntry | date | 필수 | string | src/shared/types.ts:1555 | 38 |
+| CashEntry | docNo | 선택 | string | src/shared/types.ts:1554 | 10 |
+| CashEntry | date | 필수 | string | src/shared/types.ts:1555 | 41 |
 | CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1556 | 3 |
-| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1567 | 44 |
+| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1567 | 45 |
 | CashEntry | amount | 필수 | number | src/shared/types.ts:1568 | 24 |
-| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1569 | 29 |
-| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1570 | 14 |
-| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1571 | 22 |
-| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1578 | 22 |
+| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1569 | 36 |
+| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1570 | 16 |
+| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1571 | 23 |
+| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1578 | 23 |
 | CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1594 | 0 |
-| CashEntry | note | 선택 | string | src/shared/types.ts:1595 | 16 |
+| CashEntry | note | 선택 | string | src/shared/types.ts:1595 | 17 |
 | CashEntry | createdAt | 필수 | string | src/shared/types.ts:1596 | 14 |
 | CashEntry | createdBy | 선택 | string | src/shared/types.ts:1597 | 5 |
 | Settlement | id | 필수 | string | src/shared/types.ts:1603 | 9 |

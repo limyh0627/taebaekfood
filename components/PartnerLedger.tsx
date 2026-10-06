@@ -1,10 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
-import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement } from '../src/shared/types';
+import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement, companyOf } from '../src/shared/types';
 import { endOfMonth, monthStart, today } from '../src/shared/day';
 import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import VoucherSlip from '../src/shared/VoucherSlip';
-import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
+import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash, partnerAccountHistory, partnerAccountBalances, PartnerHistorySource } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 import { downloadListExcel } from '../src/shared/listExcel';
@@ -25,11 +25,14 @@ interface Props {
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function PartnerLedger({ companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements = [], onOpenVoucher }: Props) {
+export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], onOpenVoucher }: Props) {
+  const issuedStatements = useMemo(() => allStatements.filter(s => companyOf(s) === companyId), [allStatements, companyId]);
+  const cashEntries = useMemo(() => allCashEntries.filter(e => companyOf(e) === companyId), [allCashEntries, companyId]);
   //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
   //  전표번호를 누르면 **그 자리에서** 전표를 보여준다 — 다른 화면으로 안 보낸다
   //  (2026-09-03 사장님). 전표 모양은 shared/VoucherSlip 하나뿐이라 새로 안 짓는다.
-  const [openVoucher, setOpenVoucher] = useState<{ sourceId: string; docNo: string } | null>(null);
+  const [openVoucher, setOpenVoucher] = useState<{ companyId: CompanyId; sourceType: PartnerHistorySource; sourceId: string; docNo: string } | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState('');
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
   const [payOpen, setPayOpen] = useState(false);
@@ -54,11 +57,11 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
     setPayOpen(true);
   };
   const [payForm, setPayForm] = useState({ amount: '', date: today(), note: '' });
-  // 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 원장도 잔액도 거기서 뽑는다.
-  // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
-  const journals = useMemo(
-    () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes }).entries,
+  // 전표·자금의 파생 분개는 공용 buildJournals로 읽는다. 결제를 별도로 더하면 두 번 센다.
+  const journalResult = useMemo(
+    () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes }),
     [issuedStatements, cashEntries, accountCodes]);
+  const journals = journalResult.entries;
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
@@ -119,8 +122,30 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
     return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements);
   }, [selId, type, issuedStatements, cashEntries, settlements]);
 
-  const shown = balances.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
-  const sel = balances.find(b => b.partnerId === selId) ?? shown[0];
+  const allPartners = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const record of [...issuedStatements, ...cashEntries]) if (record.partnerId)
+      names.set(record.partnerId, record.partnerName || names.get(record.partnerId) || `(ID: ${record.partnerId})`);
+    for (const je of journals) for (const line of je.lines) if (line.partnerId && !names.has(line.partnerId))
+      names.set(line.partnerId, `(ID: ${line.partnerId})`);
+    return [...names].map(([partnerId, partnerName]) => ({ partnerId, partnerName,
+      balance: balances.find(b => b.partnerId === partnerId)?.balance ?? 0,
+      count: issuedStatements.filter(s => s.partnerId === partnerId).length + cashEntries.filter(e => e.partnerId === partnerId).length,
+    })).sort((a, b) => a.partnerName.localeCompare(b.partnerName, 'ko'));
+  }, [issuedStatements, cashEntries, journals, balances]);
+  const shown = allPartners.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
+  const sel = shown.find(b => b.partnerId === selId) ?? shown[0];
+  const accountHistory = useMemo(() => sel ? partnerAccountHistory(sel.partnerId, issuedStatements, cashEntries,
+    journals, journalResult.skipped, companyId) : null, [sel?.partnerId, issuedStatements, cashEntries, journals, journalResult.skipped, companyId]);
+  const accountBalances = useMemo(() => partnerAccountBalances(accountHistory?.rows ?? [], accountCodes, periodRange?.from, periodRange?.to),
+    [accountHistory, accountCodes, periodRange]);
+  const historyCodes = [...new Set([...(accountHistory?.history.flatMap(row => row.accounts) ?? []), ...accountBalances.map(row => row.code)])].sort();
+  const activeAccount = historyCodes.includes(selectedAccount) ? selectedAccount : '';
+  const visibleHistory = accountHistory?.history.filter(row => (!periodRange || (row.date >= periodRange.from && row.date <= periodRange.to))
+    && (!activeAccount || row.accounts.includes(activeAccount))) ?? [];
+  const unlinkedCount = [...issuedStatements, ...cashEntries].filter(record => !record.partnerId && record.partnerName?.trim()
+    && (!periodRange || (('tradeDate' in record ? record.tradeDate : record.date) >= periodRange.from
+      && ('tradeDate' in record ? record.tradeDate : record.date) <= periodRange.to))).length;
   const fullLedger = useMemo(
     () => (sel ? buildPartnerLedger(sel.partnerId, type, issuedStatements, cashEntries, journals) : null),
     [sel, type, issuedStatements, cashEntries, journals],
@@ -140,6 +165,9 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
 
   return (
     <div className="space-y-4">
+      {unlinkedCount > 0 && <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        거래처가 연결되지 않은 전표 {unlinkedCount}건은 이름으로 연결하지 않습니다. 전표의 거래처 연결을 확인하세요.
+      </p>}
       {/* 헤더 */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
@@ -228,8 +256,45 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
           </div>
         </div>
 
-        {/* 원장 */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="space-y-4 min-w-0">
+          <section aria-label="전체 거래처 원장" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
+              <select aria-label="계정 필터" value={activeAccount} onChange={e => setSelectedAccount(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
+                <option value="">모든 계정</option>
+                {historyCodes.map(code => <option key={code} value={code}>{code} {codeName.get(code) ?? accountBalances.find(row => row.code === code)?.name ?? '계정 미정'}</option>)}
+              </select>
+            </div>
+            <div className="overflow-x-auto p-4">
+              <table aria-label="거래처 계정별 잔액" className="w-full min-w-[600px] text-xs text-right">
+                <thead className="text-slate-400"><tr><th className="text-left p-2">계정</th><th>기초</th><th>차변</th><th>대변</th><th>기말 잔액</th></tr></thead>
+                <tbody>{accountBalances.filter(row => !activeAccount || row.code === activeAccount).map(row => <tr key={row.code} className="border-t border-slate-100 tabular-nums">
+                  <th scope="row" className="text-left p-2 font-bold">{row.code} {row.name}<span className="ml-1 text-[10px] text-slate-400">({row.normalBalance === 'credit' ? '대변' : '차변'} 잔액)</span></th>
+                  <td>{fmt(row.opening)}</td><td>{fmt(row.debit)}</td><td>{fmt(row.credit)}</td><td className="font-black">{fmt(row.closing)}</td>
+                </tr>)}</tbody>
+              </table>
+              <p className="mt-2 text-[10px] text-slate-400">잔액은 거래처가 연결된 계정별로 표시합니다. 선급·선수금 대체전표는 원본 거래처를 확인하며, 자산과 부채를 합산하지 않습니다.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table aria-label="거래처 전체 전표" className="w-full min-w-[780px] text-xs">
+                <thead className="bg-slate-50 text-slate-400"><tr>{['일자', '구분', '적요', '전표번호', '계정 내역', '확인'].map(title => <th key={title} className="text-left px-4 py-2.5 whitespace-nowrap">{title}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">{visibleHistory.map(row => <tr key={row.key}>
+                  <td className="px-4 py-3 whitespace-nowrap">{row.date}</td><td className="px-4 py-3">{row.kind}</td><td className="px-4 py-3">{row.label}</td>
+                  <td className="px-4 py-3 whitespace-nowrap"><button type="button" className="text-indigo-600 underline font-bold"
+                    onClick={() => setOpenVoucher({ companyId, sourceType: row.sourceType, sourceId: row.sourceId, docNo: row.docNo || row.sourceId })}>{row.docNo || '상세 보기'}</button></td>
+                  <td className="px-4 py-3">{row.lines.length ? row.lines.filter(line => !activeAccount || line.accountCode === activeAccount).map((line, index) => <div key={index} className="whitespace-nowrap tabular-nums">
+                    {line.accountCode} {codeName.get(line.accountCode) ?? ''} · {line.debit ? `차변 ${fmt(line.debit)}` : `대변 ${fmt(line.credit)}`}
+                  </div>) : row.accounts.map(code => `${code} ${codeName.get(code) ?? ''}`).join(', ') || '계정 미정'}</td>
+                  <td className="px-4 py-3 text-amber-700">{row.warning ? `${row.warning} · 잔액 제외` : ''}</td>
+                </tr>)}{visibleHistory.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">거래 내역이 없습니다</td></tr>}</tbody>
+              </table>
+            </div>
+          </section>
+        {/* 기존 결제 원장은 같은 화면에서 펼친다. 전체 이력과 별도 탭으로 갈라 놓지 않는다. */}
+        <details open className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <summary className="px-5 py-3 cursor-pointer text-xs font-black text-slate-600">미수·미지급 결제 원장</summary>
+        <div>
           <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-3 flex-wrap">
             <span className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'}</span>
             {ledger && (
@@ -320,7 +385,7 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {r.docNo
                         ? (r.sourceId
-                            ? <button type="button" onClick={() => setOpenVoucher({ sourceId: r.sourceId!, docNo: r.docNo! })}
+                            ? <button type="button" onClick={() => setOpenVoucher({ companyId, sourceType: r.source === 'cash' ? 'cash' : 'statement', sourceId: r.sourceId!, docNo: r.docNo! })}
                                 className="text-[11px] font-black text-indigo-600 hover:text-indigo-800 underline underline-offset-2 tabular-nums">
                                 {r.docNo}
                               </button>
@@ -360,14 +425,18 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
             같은 결제를 두 곳에 적으면 이중으로 빠집니다.
           </p>
         </div>
+        </details>
+        </div>
       </div>
       {/*  전표 상세 — 원장에서 번호를 누르면 그 자리에서 뜬다.
            **분개가 아니라 품목 표**다(2026-09-03 사장님) — 전표 화면의 상세보기와 같은 것을 본다.
            분개는 접어 두고, 궁금하면 펼친다. */}
-      {openVoucher && (() => {
-        const st = issuedStatements.find(x => x.id === openVoucher.sourceId);
-        const ce = cashEntries.find(x => x.id === openVoucher.sourceId);
-        const je = journals.find(j2 => j2.sourceId === openVoucher.sourceId) ?? null;
+      {openVoucher && openVoucher.companyId === companyId && (() => {
+        const st = openVoucher.sourceType === 'statement' ? issuedStatements.find(x => x.id === openVoucher.sourceId) : undefined;
+        const ce = openVoucher.sourceType === 'cash' ? cashEntries.find(x => x.id === openVoucher.sourceId) : undefined;
+        const je = journals.find(j2 => (openVoucher.sourceType === 'cash' ? j2.sourceType === '자금'
+          : openVoucher.sourceType === 'manual' ? j2.sourceType === '수동' : j2.sourceType !== '자금' && j2.sourceType !== '수동')
+          && (openVoucher.sourceType === 'manual' ? j2.id === openVoucher.sourceId : j2.sourceId === openVoucher.sourceId)) ?? null;
         const items = st?.items ?? [];
         return (
           <LargeModalShell title={`전표 ${openVoucher.docNo}`} onClose={() => setOpenVoucher(null)} bodyClassName="!p-0">
@@ -442,7 +511,7 @@ export default function PartnerLedger({ companyId, issuedStatements, cashEntries
                 </details>
               </div>
 
-              {onOpenVoucher && (
+              {onOpenVoucher && st && (
                 <div className="px-5 py-4 border-t border-slate-100">
                   <button onClick={() => { onOpenVoucher(openVoucher.sourceId, openVoucher.docNo); setOpenVoucher(null); }}
                     className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black hover:bg-slate-50">

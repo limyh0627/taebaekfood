@@ -7,7 +7,7 @@ for(const [app, origin] of [['admin','https://taebaek-staff.web.app'],['staff','
  const entry=localHtml.match(/src="(\/assets\/index-[^"]+\.js)"/)?.[1];
  const remoteHtml=await (await fetch(`${origin}/?verify=${Date.now()}`,{cache:'no-store'})).text();
  if(!entry||!remoteHtml.includes(entry)) throw new Error(`Entry differs: ${app}`);
- const paths=[entry,...readdirSync(`${dir}/assets`).filter(name=>/^(AdminApp|TradeStatement)-.*\.js$/.test(name)).map(name=>`/assets/${name}`)];
+ const paths=[entry,...readdirSync(`${dir}/assets`).filter(name=>/^(AdminApp|TradeStatement|PartnerLedger)-.*\.js$/.test(name)).map(name=>`/assets/${name}`)];
  for(const path of paths){const response=await fetch(`${origin}${path}`);if(!response.ok)throw new Error(`${app} ${path}: ${response.status}`);const remote=Buffer.from(await response.arrayBuffer()),local=readFileSync(`${dir}${path}`);if(hash(remote)!==hash(local))throw new Error(`SHA differs: ${path}`);results.push({app,path,sha256:hash(local),matched:true});}
 }
 writeFileSync('outputs/latest-request-deploy-verification.json',JSON.stringify(results,null,2));

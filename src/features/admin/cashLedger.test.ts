@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts, cashPaidByMonth,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts, cashPaidByMonth, partnerAccountHistory, partnerAccountBalances,
 } from './cashLedger';
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
@@ -802,5 +802,72 @@ describe('partnerLedgerForPeriod — 전월 기말을 다음 달 기초로', () 
     const june = partnerLedgerForPeriod(all, '2026-06-01', '2026-06-30');
     expect(june.opening).toBe(0);
     expect(june.balance).toBe(0);
+  });
+});
+
+describe('거래처 전체 계정 원장', () => {
+  const original = (id: string, docNo = id, date = '2026-08-01') => ({ id, companyId: 'taebaek', partnerId: 'p1', partnerName: '거래처',
+    docNo, type: '비용', tradeDate: date, items: [] } as unknown as IssuedStatement);
+  const journal = (id: string, sourceType: JournalEntry['sourceType'], lines: JournalEntry['lines'], sourceId = id, date = '2026-08-01'): JournalEntry => ({
+    id, sourceType, sourceId, date, createdAt: `${date}T00:00:00`, lines,
+  });
+  it('같은 ID의 전표·자금·수동분개를 구분하고 원본·분개·중복입력을 한 번만 센다', () => {
+    const s = original('same');
+    const c = entry('same', '2026-08-01', '출금', 40, { partnerId: 'p1', accountCode: '133' });
+    const js = journal('je-same', '대체', [{ accountCode: '133', debit: 100, credit: 0 }, { accountCode: '375', debit: 0, credit: 100 }], 'same');
+    const jc = journal('je-cash-same', '자금', [{ accountCode: '133', partnerId: 'p1', debit: 40, credit: 0 }], 'same');
+    const jm = journal('same', '수동', [{ accountCode: '254', partnerId: 'p1', debit: 0, credit: 20 }], 'same');
+    const result = partnerAccountHistory('p1', [s], [c], [js, jc, jm, jc], [], 'taebaek');
+    expect(result.history.map(row => row.key)).toEqual(['taebaek:cash:same', 'taebaek:manual:same', 'taebaek:statement:same']);
+    expect(result.rows).toHaveLength(3);
+    const balances = partnerAccountBalances(result.rows, []);
+    expect(balances.find(row => row.code === '133')?.closing).toBe(140);
+    expect(balances.find(row => row.code === '254')?.closing).toBe(20);
+    expect(balances.some(row => row.code === '375')).toBe(false);
+  });
+  it('계정 정상방향으로 기초·당기·기말을 분리하고 미래 기초와 타 거래처를 제외한다', () => {
+    const opening = original('opening', '기초 선급', '2026-07-31');
+    const future = original('future', '기초 미래', '2026-09-01');
+    const movements = journal('m', '수동', [
+      { accountCode: '108', partnerId: 'p1', debit: 30, credit: 0 },
+      { accountCode: '251', partnerId: 'p1', debit: 0, credit: 40 },
+      { accountCode: '253', partnerId: 'p1', debit: 10, credit: 50 },
+      { accountCode: '254', partnerId: 'p1', debit: 0, credit: 60 },
+      { accountCode: '133', partnerId: 'p2', debit: 999, credit: 0 },
+      { accountCode: '900', partnerId: 'p1', debit: 7, credit: 0 },
+    ]);
+    const result = partnerAccountHistory('p1', [opening, future], [], [
+      journal('open', '대체', [{ accountCode: '133', debit: 100, credit: 0 }], 'opening', '2026-07-31'),
+      journal('future', '대체', [{ accountCode: '133', debit: 999, credit: 0 }], 'future', '2026-09-01'), movements,
+    ], [], 'taebaek');
+    const balances = partnerAccountBalances(result.rows, [], '2026-08-01', '2026-08-31');
+    expect(balances.find(row => row.code === '133')).toMatchObject({ opening: 100, debit: 0, credit: 0, closing: 100 });
+    expect(balances.find(row => row.code === '108')?.closing).toBe(30);
+    expect(balances.find(row => row.code === '251')?.closing).toBe(40);
+    expect(balances.find(row => row.code === '253')?.closing).toBe(40);
+    expect(balances.find(row => row.code === '254')?.closing).toBe(60);
+    expect(balances.find(row => row.code === '900')?.closing).toBe(7);
+    expect(partnerAccountBalances(result.rows, [], '2026-06-01', '2026-06-30').every(row => row.closing === 0)).toBe(true);
+  });
+  it('분개실패는 전체 이력에 경고하되 잔액에서 빼고 다른 회사 원본은 포함하지 않는다', () => {
+    const bad = original('bad');
+    const foreign = { ...original('foreign'), companyId: 'punghoe' as const };
+    const result = partnerAccountHistory('p1', [bad, foreign], [], [
+      journal('bad-je', '대체', [{ accountCode: '108', partnerId: 'p1', debit: 100, credit: 0 }], 'bad'),
+      journal('foreign-je', '대체', [{ accountCode: '108', partnerId: 'p1', debit: 999, credit: 0 }], 'foreign'),
+      journal('orphan', '매출', [{ accountCode: '108', partnerId: 'p1', debit: 777, credit: 0 }], 'missing'),
+    ], [{ sourceType: '대체', id: 'bad', reason: '불균형' }], 'taebaek');
+    expect(result.history.map(row => row.sourceId)).toEqual(['bad', 'missing']);
+    expect(result.history.map(row => row.warning)).toEqual(['분개 확인 필요: 불균형', '원본 확인 필요']);
+    expect(result.rows).toHaveLength(0);
+  });
+  it('ID 없는 원본은 동명 거래처에 붙이지 않고 수동분개도 회사별로 가른다', () => {
+    const noId = { ...original('missing-id'), partnerId: '' };
+    const manual = journal('same-manual', '수동', [{ accountCode: '108', partnerId: 'p1', debit: 5, credit: 0 }]);
+    const foreign = { ...manual, id: 'foreign-manual', companyId: 'punghoe' as const };
+    const result = partnerAccountHistory('p1', [noId], [], [manual, foreign], [], 'taebaek');
+    expect(result.history.map(row => row.key)).toEqual(['taebaek:manual:same-manual']);
+    expect(result.rows).toHaveLength(1);
+    expect(partnerAccountBalances(result.rows, []).find(row => row.code === '108')?.closing).toBe(5);
   });
 });
