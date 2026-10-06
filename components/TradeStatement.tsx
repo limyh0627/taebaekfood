@@ -1,5 +1,6 @@
 
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
+import { useDeleteConfirmation } from '../src/shared/components/useDeleteConfirmation';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import DateChipButton from '../src/shared/components/DateChipButton';
@@ -389,6 +390,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 현재 전표 세션에서 이미 issuedStatement에 저장했는지 추적 (인쇄 중복 방지)
   const hasIssuedRef = useRef(false);
   const saveBusyRef = useRef(false);
+  const confirmDelete = useDeleteConfirmation();
   const [isSaving, setIsSaving] = useState(false);
   // 전표 저장 뒤 단가 저장만 실패해도 재시도는 같은 전표에 쓴다. 새 ID면 중복 발행된다.
   const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
@@ -646,14 +648,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
   // 예전엔 이걸 settlement id로 알고 찾아서 늘 못 찾고 아무것도 안 지웠다 — 삭제가 안 되던 원인.
   const deletePayTimelineRow = async (paymentId: string, _src: IssuedStatement) => {
-    if (!await appConfirm('이 수금/지불을 삭제할까요?')) return;
     // 자금기록 id로 바로 찾고, 못 찾으면 settlement id로도 한 번 더 본다(옛 행 대비)
     const ceId = cashEntries.some(c => c.id === paymentId)
       ? paymentId
       : settlements.find(s => s.id === paymentId)?.cashEntryId;
     if (!ceId) { alert('이 수금 기록을 찾지 못했습니다. 자금원장에서 지워 주세요.'); return; }
-    settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
-    onDeleteCashEntry?.(ceId);
+    await confirmDelete(`cash:${ceId}`, '이 수금/지불을 삭제할까요?', async () => {
+      settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
+      await onDeleteCashEntry?.(ceId);
+    });
   };
 
   /** 외상매출금(108)·외상매입금(251)으로 잡은 자금은 전표에 붙어야 미수/미지급이 줄어든다.
@@ -2144,7 +2147,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               if (row.kind === 'cash') {
                 return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
                   journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
-                  onDelete={onDeleteCashEntry ? async () => { if (await appConfirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); } : undefined}
+                  onDelete={onDeleteCashEntry ? () => confirmDelete(`cash:${row.entry.id}`, '이 자금 전표를 삭제할까요?', () => onDeleteCashEntry(row.entry.id)) : undefined}
                   journalPreview={expandedJournal.has(view.key)
                     ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalizeCashEntry(row.entry), true)}</div>
                     : undefined}/>;
@@ -2313,7 +2316,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                <button onClick={async()=>{if(await appConfirm('이 전표를 삭제하시겠습니까?')){deleteStatement(detailStmt.id);setDetailStmt(null);}}}
+                <button onClick={() => confirmDelete(`statement:${detailStmt.id}`, '이 전표를 삭제하시겠습니까?', () => { deleteStatement(detailStmt.id); setDetailStmt(null); })}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
                   <X size={12}/>삭제
                 </button>
@@ -2666,7 +2669,7 @@ ${names}
               issuePayAmount={issuePayAmount} totalAmount={totalAmount}
               onIssuePayChange={checked=>{setIssuePay(checked);if(checked)setIssuePayAmount(String(Math.round(totalAmount)));}}
               onIssuePayAmountChange={setIssuePayAmount} onSaveEdit={handleSaveEdit}
-              onDelete={async()=>{if(editingStmt&&await appConfirm('이 전표를 삭제하시겠습니까?')){deleteStatement(editingStmt.id);closeCreate();}}}
+              onDelete={() => { if (editingStmt) return confirmDelete(`statement:${editingStmt.id}`, '이 전표를 삭제하시겠습니까?', () => { deleteStatement(editingStmt.id); closeCreate(); }); }}
               onEdit={()=>setIsEditMode(true)} onPrint={handlePrint} onIssue={handleIssue} onExcel={handleExcel}/>}
             <style>{`@media print{.no-print{display:none!important;}}`}</style>
 

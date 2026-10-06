@@ -1,4 +1,5 @@
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
+import { useDeleteConfirmation } from '../src/shared/components/useDeleteConfirmation';
 import React, { useMemo, useRef, useState } from 'react';
 import { monthStart, today } from '../src/shared/day';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
@@ -41,6 +42,7 @@ export default function CashLedger({
   onAddCashAccount, onUpdateCashAccount, onAddCashEntry, onDeleteCashEntry,
   onAddSettlement, onDeleteSettlement,
 }: Props) {
+  const confirmDelete = useDeleteConfirmation();
   const [activeId, setActiveId] = useState<string>('');
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
@@ -197,7 +199,7 @@ export default function CashLedger({
                           className={`transition-all ${open > 0 ? 'text-indigo-400 hover:text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'}`}>
                           <Link2 size={13} />
                         </button>
-                        <button onClick={async () => { if (await appConfirm('이 거래를 삭제할까요?')) onDeleteCashEntry(entry.id); }}
+                        <button aria-label="거래 삭제" onClick={() => confirmDelete(entry.id, '이 거래를 삭제할까요?', () => onDeleteCashEntry(entry.id))}
                           className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all">
                           <Trash2 size={12} />
                         </button>
