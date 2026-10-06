@@ -82,7 +82,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   useEffect(() => {
     if (!searchTerm.trim()) return;
     const frame = requestAnimationFrame(placeSearchResults);
-    return () => cancelAnimationFrame(frame);
+    const viewport = window.visualViewport;
+    window.addEventListener('resize', placeSearchResults);
+    viewport?.addEventListener('resize', placeSearchResults);
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(placeSearchResults);
+    if (scrollBodyRef.current) observer?.observe(scrollBodyRef.current);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', placeSearchResults);
+      viewport?.removeEventListener('resize', placeSearchResults);
+      observer?.disconnect();
+    };
   }, [searchTerm]);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   /**

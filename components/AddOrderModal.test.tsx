@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AddOrderModal from './AddOrderModal';
 import { OrderStatus, type Item, type Order, type Partner, type PartnerItem } from '../src/shared/types';
@@ -65,6 +65,25 @@ describe('옛 박스 설정과 포장 환산표 충돌', () => {
 });
 
 describe('신규 주문 창의 거래처 진행 주문', () => {
+  it('검색 후 키보드가 화면을 줄여도 결과를 보이는 쪽으로 옮기고 선택할 수 있다', () => {
+    const viewport = new EventTarget();
+    vi.stubGlobal('visualViewport', viewport);
+    try {
+      render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
+      const input = screen.getByPlaceholderText(/거래처명 또는 초성 검색/);
+      const body = input.closest('.overflow-y-auto') as HTMLElement;
+      vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({ top: 315, bottom: 365 } as DOMRect);
+      const bodyRect = vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 84, bottom: 844 } as DOMRect);
+      fireEvent.change(input, { target: { value: '가을' } });
+      expect(screen.getAllByRole('button', { name: /가을식품/ })[0].parentElement).toHaveClass('top-full');
+      bodyRect.mockReturnValue({ top: 84, bottom: 389 } as DOMRect);
+      act(() => { viewport.dispatchEvent(new Event('resize')); });
+      const result = screen.getAllByRole('button', { name: /가을식품/ })[0];
+      expect(result.parentElement).toHaveClass('bottom-full');
+      fireEvent.click(result);
+      expect(screen.getByRole('heading', { name: '주문 품목' })).toBeInTheDocument();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('검색칸 아래 공간이 부족하면 거래처 결과를 위쪽에 보여준다', () => {
     render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
     const input = screen.getByPlaceholderText(/거래처명 또는 초성 검색/);
