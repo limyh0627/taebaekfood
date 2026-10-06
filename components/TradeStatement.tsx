@@ -32,7 +32,6 @@ import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import OrderPicker from './OrderPicker';
 import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
 import { lineAmountOf } from '../src/shared/lineAmount';
-import { splitPayment, owedNow } from '../src/shared/paymentSplit';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
@@ -70,19 +69,19 @@ import { buildReceiptHtml, buildStatementPrintHtml, printStatementViaIframe } fr
 import { buildIssuedStatementDraft } from '../src/features/statements/domain/statementDraft';
 import { downloadStatementExcel } from '../src/features/statements/infrastructure/statementExcel';
 import { quickItemMetrics } from '../src/features/statements/domain/quickItemModel';
-import { stampFor, timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
+import { timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts, buildPartnerLedger } from '../src/features/admin/cashLedger';
-import { AR, AP, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
+import { AR, AP, journalizeCashEntry } from '../src/shared/autoJournal';
 import { templateAccrRows } from '../src/shared/cashTemplates';
 import { buildCashEditPatch, cashEditAmount, cashEditPartner, cashPartnerChangeError, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
-import { PREPAID, ADVANCE_IN } from '../src/shared/interCompany';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
+import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
@@ -96,7 +95,7 @@ interface TradeStatementProps {
   cashAccounts?: CashAccount[];
   cashEntries?: CashEntry[];
   settlements?: Settlement[];
-  onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
+  onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void | Promise<unknown>;
   onIssueCashEntry?: (entry: CashEntry) => Promise<unknown>;
   onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void | Promise<void>;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void | Promise<void>;
@@ -584,84 +583,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     allocations: { stmt: IssuedStatement; amount: number }[],
     opts: { date: string; method?: PaymentMethod; note?: string; cashAccountId?: string; pin?: boolean },
   ) => {
-    const total = allocations.reduce((a, x) => a + x.amount, 0);
-    if (total <= 0) return;
-    if (!onAddCashEntry) return;
-    // 계좌를 안 쓰기로 함 → 계좌 없어도 cashAccountId=''(미지정)로 자금원장에 기록.
-    const acctId = opts.cashAccountId || cashAccounts.find(a => a.active)?.id || '';
-    const first = allocations[0].stmt;
-
-    // 상대계정 판정은 settlementAccountCode 한 곳에 있다(테스트로 잠가 뒀다).
-    const groupTypeOf = (code: string) =>
-      accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
-    const itemCodes = allocations.flatMap(({ stmt }) =>
-      (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
-    const settlementType = settlementTypeOf(first);
-    const payCode = settlementAccountCode(settlementType, itemCodes, groupTypeOf);
-
-    /*
-     * **갚을 것보다 많이 받았으면 그 초과분은 채권 상계가 아니다.**
-     *
-     * 매출 초과 → 259 선수금(미리 받은 돈, 부채) · 매입 초과 → 131 선급금(미리 준 돈, 자산).
-     * 예전엔 전액을 108/251에 몰아서 채권·채무가 음수로 밀렸다 —
-     * "안 진 빚을 갚았다"가 되는 자리다. 화면은 "초과분은 선수금으로 전환됩니다"라고
-     * 적어 놓고 실제로는 안 그랬으니, 안내가 거짓말을 하고 있었다.
-     *
-     * 초과 판정은 **거래처 잔액**으로 한다 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
-     */
-    const isSale = settlementType === '매출';
-    const pb0 = partnerBalances.get(first.partnerId);
-    /**
-     * **방금 끊은 전표는 아직 거래처 잔액에 안 잡혔다.**
-     *
-     * 거래명세서를 끊으면서 같은 클릭으로 수금하면 `partnerBalances`는 그 전표를 모른다
-     * (화면 상태가 아직 안 돌았다). 그래서 받을 돈이 0으로 보이고 **전액이 초과수금**으로 갔다 —
-     * 피쉬메이저 632,000이 그렇게 259 선수금에 앉았다. 같은 날 외상매출금 632,000과 함께
-     * 양쪽에 남아, 상계돼야 할 것이 둘 다 살아 있었다.
-     *
-     * 목록에서 수금할 때는 그 전표가 이미 잔액에 있으므로 더할 게 없다(pending = 0).
-     */
-    const pending = allocations
-      .filter(({ stmt }) => !mergedStatements.some(s => s.id === stmt.id))
-      .reduce((a, { stmt }) => a + Math.max(0, Math.round(stmt.totalAmount ?? 0)), 0);
-    const owed = owedNow(isSale ? pb0?.receivable : pb0?.payable, pending);
-    const { settled, over } = splitPayment(total, owed);
-    const overCode = isSale ? ADVANCE_IN : PREPAID;
-
-    const entryId = `cash-${Date.now()}`;
-    onAddCashEntry({
-      id: entryId,
-      //  초과가 없으면 예전과 똑같은 한 줄짜리 모양 — 목록·분개·수정 어디서도 안 갈린다
-      ...(over > 0 && payCode
-        ? { lines: [
-            ...(settled > 0 ? [{ accountCode: payCode, amount: settled, note: isSale ? '미수 상계' : '미지급 상계' }] : []),
-            { accountCode: overCode, amount: over, note: isSale ? '초과수금 — 선수금' : '초과지급 — 선급금' },
-          ] }
-        : payCode ? { accountCode: payCode } : {}),
-      date: opts.date,
-      cashAccountId: acctId,
-      dir: settlementDirectionOf(first),
-      amount: total,
-      ...(first.partnerId ? { partnerId: first.partnerId, partnerName: first.partnerName ?? '' } : {}),
-      note: opts.note || `${first.partnerName ?? ''} ${isSale ? '수금' : '지불'}`.trim(),
-      createdAt: stampFor(opts.date),
+    const total = allocations.reduce((sum, row) => sum + row.amount, 0);
+    const first = allocations[0]?.stmt;
+    if (!first?.partnerId || total <= 0) throw new Error('거래처와 수금·지불 금액을 확인해 주세요.');
+    if (allocations.some(row => row.stmt.partnerId !== first.partnerId)) throw new Error('서로 다른 거래처를 한 번에 수금할 수 없습니다.');
+    const cashAccountId = opts.cashAccountId || '';
+    if (!cashAccountId || !cashAccounts.some(account => account.id === cashAccountId && account.active)) throw new Error('입출금 계좌를 선택해 주세요.');
+    return recordPartnerPayment(companyId, {
+      tradeDate: opts.date, partnerId: first.partnerId, direction: settlementDirectionOf(first),
+      amount: total, cashAccountId, pin: opts.pin !== false,
+      allocations: opts.pin === false ? [] : allocations.map(row => ({ statementId: row.stmt.id, amount: row.amount })),
+      note: opts.note || `${first.partnerName ?? ''} ${settlementTypeOf(first) === '매출' ? '수금' : '지불'}`.trim(),
     });
-    /**
-     * **누른 전표에 붙인다(settlement).**
-     *
-     * 안 붙이면 그 돈이 거래처 잔액에만 들어가고, allocatePartnerCash가 **오래된 전표부터**
-     * 채운다 — 500,000짜리 전표에 100,000만 넣었는데 엉뚱한 옛 전표가 완납으로 잡혀
-     * 그쪽 수금/지불 버튼이 사라졌다. 누른 전표에 그만큼만 붙어야 남은 금액이 남는다.
-     *
-     * 고아가 될 자리는 없다 — allocatePartnerCash는 `liveCash`에 있는 자금기록만 보고,
-     * 자금기록을 지우면 deletePayTimelineRow가 붙은 settlement도 같이 지운다.
-     */
-    //  pin=false면 안 붙인다 — 그때는 오래된 전표부터 채워지는 게 사장님이 고른 뜻이다.
-    if (opts.pin !== false) {
-      for (const { stmt, amount } of allocations) {
-        if (amount > 0) onAddSettlement?.({ id: `st-${entryId}-${stmt.id}`, cashEntryId: entryId, statementId: stmt.id, amount, createdAt: new Date().toISOString() });
-      }
-    }
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
@@ -675,18 +608,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 자금기록 id가 `cash-${Date.now()}`라 밀리초만 달라도 다른 문서가 되어 막을 데가 없다.
    */
   const paySaving = useRef(false);
-  const savePayment = (stmt: IssuedStatement, input: SettleInput) => {
+  const savePayment = async (stmt: IssuedStatement, input: SettleInput) => {
     if (paySaving.current) return;
-    recordPayment([{ stmt, amount: input.amount }], {
+    paySaving.current = true;
+    try {
+    await recordPayment([{ stmt, amount: input.amount }], {
       date: input.date, method: input.method, note: input.note || undefined,
       cashAccountId: payAccountId,
       //  '거래처 잔액'을 골랐으면 전표에 안 붙인다 — 오래된 전표부터 채워진다.
       pin: input.scope === 'stmt',
     });
-    paySaving.current = true;
     setCashModal(null);
-    //  창이 닫힌 뒤 잠깐 잠근다 — 같은 클릭 묶음에서 두 번 새는 것만 막으면 된다
-    setTimeout(() => { paySaving.current = false; }, 800);
+    } catch (e) {
+      alert(저장실패문구(e));
+    } finally {
+      paySaving.current = false;
+    }
   };
 
   // 타임라인의 수금/지불 행 삭제 — 그 cashEntry와 거기 붙은 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
@@ -1553,7 +1490,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (issuePay) {
         const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
         if (amt > 0) {
-          recordPayment([{ stmt, amount: amt }], {
+          await recordPayment([{ stmt, amount: amt }], {
             date: tradeDate, method: '계좌이체', cashAccountId: activeCashAccounts[0]?.id ?? '', pin: true,
           });
         }

@@ -4763,12 +4763,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   {ledgerTab === 'partner' ? (
                     <PartnerLedger
+                      companyId={companyId}
                       issuedStatements={issuedStatements}
                       cashEntries={companyCashEntries}
+                      cashAccounts={companyCashAccounts}
                       accountCodes={appData.accountCodes}
                       onOpenVoucher={(_id, docNo) => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
                       settlements={appData.settlements}
-                      onAddCashEntry={(e) => addCashEntry(e)}
                     />
                   ) : (
                   <CashLedger
@@ -4783,7 +4784,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     currentUser={currentUser}
                     onAddCashAccount={(a) => createCashAccountWithOpening(companyId, { ...a, companyId })}
                     onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
-                    onAddCashEntry={(e) => addCashEntry(e)}
+                    onAddCashEntry={(e) => issueNumberedCashEntry({ ...e, companyId, createdBy: e.createdBy ?? currentUser?.name })}
                     onDeleteCashEntry={deleteCashEntry}
                     onAddSettlement={(x) => addItem('settlements', x)}
                     onDeleteSettlement={(id) => deleteItem('settlements', id)}

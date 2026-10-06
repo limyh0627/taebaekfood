@@ -1,5 +1,5 @@
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { monthStart, today } from '../src/shared/day';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
@@ -27,7 +27,7 @@ interface Props {
   currentUser?: { id: string; name: string } | null;
   onAddCashAccount: (a: Omit<CashAccount, 'id'> & { id: string }) => void | Promise<unknown>;
   onUpdateCashAccount: (id: string, data: Partial<CashAccount>) => void;
-  onAddCashEntry: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
+  onAddCashEntry: (e: Omit<CashEntry, 'id'> & { id: string }) => void | Promise<unknown>;
   onDeleteCashEntry: (id: string) => void;
   onAddSettlement: (s: Omit<Settlement, 'id'> & { id: string }) => void;
   onDeleteSettlement: (id: string) => void;
@@ -372,6 +372,8 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   const [partnerId, setPartnerId] = useState('');
   const [accountCode, setAccountCode] = useState('');
   const [note, setNote] = useState('');
+  const [savingEntry, setSavingEntry] = useState(false);
+  const saveLock = useRef(false);
   // 대출 상환 전용
   const [loanCode, setLoanCode] = useState('260');   // 260 단기 / 293 장기
   const [loanId, setLoanId] = useState('');
@@ -523,10 +525,30 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
     });
   };
 
-  const save = () => {
-    if (!canSave) return;
-    for (const e of buildEntries()) onAdd(e as any);
-    onClose();
+  const save = async () => {
+    if (!canSave || saveLock.current) return;
+    const entries = buildEntries();
+    if (entries.some(entry => [entry.accountCode, ...(entry.lines ?? []).map(line => line.accountCode)]
+      .some(code => ['108', '251', '253'].includes(String(code))))) {
+      alert('거래처 수금·지불은 거래명세서 또는 거래처원장에서 처리해 주세요.');
+      return;
+    }
+    if (entries.some(entry => [entry.accountCode, ...(entry.lines ?? []).map(line => line.accountCode)]
+      .some(code => ['260', '293'].includes(String(code))))) {
+      alert('대출 차입·상환은 대출 관리에서 처리해 주세요.');
+      return;
+    }
+    saveLock.current = true;
+    setSavingEntry(true);
+    try {
+      for (const entry of entries) await onAdd(entry as CashEntry);
+      onClose();
+    } catch (error) {
+      alert(`자금전표 저장에 실패했습니다. 입력은 유지됩니다.\n${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      saveLock.current = false;
+      setSavingEntry(false);
+    }
   };
 
   return (
@@ -803,9 +825,9 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200">취소</button>
-          <button onClick={save} disabled={!canSave}
+          <button onClick={save} disabled={!canSave || savingEntry}
             className="flex-[2] py-3 rounded-xl bg-slate-800 text-white text-sm font-black hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed">
-            저장
+            {savingEntry ? '저장 중…' : '저장'}
           </button>
         </div>
 

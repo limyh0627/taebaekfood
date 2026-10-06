@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
-import { AccountCode, CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
+import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement } from '../src/shared/types';
 import { endOfMonth, monthStart, today } from '../src/shared/day';
-import { claimDocNo } from '../src/shared/voucherStamp';
-import { buildPaymentEntry } from '../src/shared/payment';
+import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerLedgerForPeriod, partnerBalances, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
@@ -13,24 +12,20 @@ import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 interface Props {
+  companyId: CompanyId;
   issuedStatements: IssuedStatement[];
   cashEntries: CashEntry[];
+  cashAccounts: CashAccount[];
   accountCodes: AccountCode[];
   /** 전표에 붙여 둔 수금 지정 — 남은 금액을 셀 때 쓴다 */
   settlements?: Settlement[];
   /** 전표번호를 눌렀을 때 — 그 전표를 열어 보여준다 */
   onOpenVoucher?: (sourceId: string, docNo: string) => void;
-  /**
-   * 수금·지불을 자금원장에 적는다.
-   * 이 기능은 **거래처통계에 있던 것**인데 거기로 옮겨 왔다(2026-09-03 사장님) —
-   * 거래처통계는 매출 추이·이익률을 보는 자리고, 돈이 오가는 일은 원장이 할 일이다.
-   */
-  onAddCashEntry?: (e: CashEntry) => void;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes, settlements = [], onOpenVoucher, onAddCashEntry }: Props) {
+export default function PartnerLedger({ companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements = [], onOpenVoucher }: Props) {
   //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
   //  전표번호를 누르면 **그 자리에서** 전표를 보여준다 — 다른 화면으로 안 보낸다
   //  (2026-09-03 사장님). 전표 모양은 shared/VoucherSlip 하나뿐이라 새로 안 짓는다.
@@ -38,6 +33,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
   const [payOpen, setPayOpen] = useState(false);
+  const [payAccountId, setPayAccountId] = useState('');
   /**
    * 수금·지불 창을 연다. 금액을 미리 채워 두면 바로 누르기만 하면 된다 —
    * 거래처 목록의 잔액을 누르거나, 전표 줄의 남은 금액을 누르면 그 값이 들어온다.
@@ -90,19 +86,28 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
    * 오래된 것부터 알아서 맞춘다. 전표에 매다는 옛 경로는 걷어냈다.
    * 계정은 매출이면 108(외상매출금), 매입이면 251(외상매입금)이다.
    */
-  const savePay = () => {
-    if (!sel || !onAddCashEntry) return;
+  const paySaving = useRef(false);
+  const savePay = async () => {
+    if (!sel) return;
+    if (paySaving.current) return;
     const amt = parseMoneyInput(payForm.amount);
     if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 넣으세요.'); return; }
+    if (!payAccountId || !cashAccounts.some(account => account.id === payAccountId && account.active)) { alert('입출금 계좌를 선택해 주세요.'); return; }
     //  셈은 shared/payment 하나다 — 여기서 또 짓지 않는다
-    onAddCashEntry(buildPaymentEntry({
-      partnerId: sel.partnerId, partnerName: sel.partnerName, type,
-      amount: amt, date: payForm.date,
+    paySaving.current = true;
+    try {
+    await recordPartnerPayment(companyId, {
+      tradeDate: payForm.date, partnerId: sel.partnerId, direction: type === '매출' ? '입금' : '출금',
+      amount: amt, cashAccountId: payAccountId, pin: false, allocations: [],
       note: [`${sel.partnerName} ${type === '매출' ? '수금' : '지불'}`, payForm.note].filter(Boolean).join(' · '),
-      docNo: claimDocNo(payForm.date, cashEntries),
-    }));
+    });
     setPayOpen(false);
     setPayForm({ amount: '', date: today(), note: '' });
+    } catch (error) {
+      alert(`수금·지불 저장에 실패했습니다. 입력 내용은 그대로 있습니다.\n${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      paySaving.current = false;
+    }
   };
 
   /**
@@ -204,7 +209,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                   <span className="text-[10px] text-slate-400">전표 {b.count}건</span>
                   {/*  **잔액을 누르면 그 금액으로 수금·지불 창이 열린다**(2026-09-03 사장님).
                        거래처를 고르는 클릭과 겹치지 않게 이름 쪽만 고르기로 둔다. */}
-                  {b.balance !== 0 && onAddCashEntry ? (
+                  {b.balance !== 0 ? (
                     <button type="button"
                       onClick={() => openPay(b.balance, { partnerId: b.partnerId, partnerName: b.partnerName })}
                       title={`${fmt(b.balance)}원 ${type === '매출' ? '수금' : '지불'}`}
@@ -264,7 +269,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
             </button>}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
                  색은 들어오면 파랑, 나가면 빨강. */}
-            {sel && onAddCashEntry && (
+            {sel && (
               <button type="button" onClick={() => openPay(sel.balance)}
                 className={`ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black text-white transition-all ${
                   type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
@@ -329,7 +334,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                       {(() => {
                         //  전표 줄에만, 그리고 남은 게 있을 때만 단추를 단다
                         const 남은 = r.kind === '전표' && r.sourceId ? (openByStmt.get(r.sourceId) ?? 0) : 0;
-                        if (남은 <= 0 || !onAddCashEntry) return <span className="text-slate-200">—</span>;
+                        if (남은 <= 0) return <span className="text-slate-200">—</span>;
                         return (
                           <button type="button" onClick={() => openPay(남은, undefined, r.date)}
                             title={`${fmt(남은)}원 ${type === '매출' ? '수금' : '지불'}`}
@@ -472,6 +477,14 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 <input type="date" value={payForm.date} aria-label={`${type === '매출' ? '수금' : '지불'} 날짜`}
                   onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">입출금 계좌</p>
+                <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)} aria-label="입출금 계좌"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400">
+                  <option value="">계좌 선택</option>
+                  {cashAccounts.filter(account => account.active).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
               </div>
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">메모 <span className="text-slate-300 normal-case">(선택)</span></p>

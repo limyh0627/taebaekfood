@@ -79,7 +79,7 @@ interface Props {
   recordPayment: (
     _allocations: { stmt: IssuedStatement; amount: number }[],
     _opts: { date: string; method?: PaymentMethod; note?: string; cashAccountId?: string; pin?: boolean },
-  ) => void;
+  ) => void | Promise<unknown>;
   /** 미리보기 전표 그리기 — 화면과 같은 양식을 쓴다 */
   renderJournal: (_je: JournalEntry | null, _compact?: boolean, _meta?: { date?: string; docNo?: string }) => React.ReactNode;
 }
@@ -370,7 +370,7 @@ export default function VoucherComposer({
             alert('상계와 일반 입출금은 각각 나누어 발행해 주세요.');
             return;
           }
-          if (allocations.length) recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
+          if (allocations.length) await recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
           if (plainAmt > 0) {
             // 쪼갠 줄이 있으면 lines로 끊는다 — amount는 줄 합이고 accountCode는 안 쓴다(types.ts CashEntry 주석).
             await saveCashEntry({
@@ -722,7 +722,7 @@ export default function VoucherComposer({
           if (qpMode === '급여') { if (grs > 0 && ded >= 0 && net >= 0) doSalarySave(); return; }
           if (!canSave) return;
           // 상계 초과분(줄돈/받을돈 전환) 경고 — 거래처 있고 상계보다 많은데 계정도 없으면 canSave가 막음
-          doGeneralSave();
+          void doGeneralSave().catch(error => alert(`수금·지불 저장에 실패했습니다. 입력 내용은 그대로 있습니다.\n${error instanceof Error ? error.message : String(error)}`));
         };
 
         return (
