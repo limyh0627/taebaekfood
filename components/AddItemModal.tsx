@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { where, doc, getDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
-import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, SubmaterialComponent } from '../types';
+import { CompanyId, Item, InventoryCategory, ItemSubtype, Partner, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
@@ -104,12 +104,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
     minStock: initialData?.minStock || 10,
     unit: initialData?.unit || '개',
     freightType: (initialData?.freightType || 's') as 's' | 'a' | 'b' | 'c' | 'd' | 'e',
-    defaultBoxConfig: initialData?.defaultBoxConfig ?? (
-      (initialData?.defaultBoxConfig?.unitsPerBox ?? 0) > 0
-        ? { boxType: '', unitsPerBox: initialData!.defaultBoxConfig!.unitsPerBox! }
-        : { boxType: '', unitsPerBox: 0 }
-    ),
-    partnerBoxConfigs: initialData?.partnerBoxConfigs ?? [] as ClientBoxConfig[],
     spec: initialData?.spec || '',
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
@@ -306,9 +300,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
       if (!go) { pumokRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     }
 
-    const isProductCategory = ['product', 'goods', 'wip', 'raw'].includes(formData.type);
-    const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
-
     const effectiveSpec = formData.spec;   // 칸을 고치는 즉시 들어간다 — 따로 담아 둘 게 없다
 
     const finalProduct: Item = {
@@ -327,8 +318,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
       //   items.submaterials는 로딩 때 withDerivedSubmaterials가 item_bom에서 통째로 다시 만들므로,
       //   여기에 써 두면 아무도 안 읽는 옛 값이 문서에 남아 나중에 진단할 때 헷갈린다.
       ...(formData.type === 'box' && { freightType: formData.freightType }),
-      ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
-      ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
       ...(effectiveSpec && { spec: effectiveSpec }),
       ...(formData.품목 && { 품목: formData.품목 }),
       //  **거래처 연결은 partner_item 에만 쓴다**(2026-09-06) — 옛 칸(partnerIds)에
@@ -501,8 +490,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                 //  개입수의 근거는 BOM 수량이다(unpackComponent가 여기를 읽는다). 규격 글자는 따라 적는 것.
                 submaterials: fd.submaterials.map(c => c.id === boxComp!.id ? { ...c, stock: n } : c),
                 spec: baseSpec && n > 1 ? `${baseSpec} * ${n}` : baseSpec,
-                ...(fd.defaultBoxConfig.unitsPerBox > 0
-                  ? { defaultBoxConfig: { ...fd.defaultBoxConfig, unitsPerBox: n } } : {}),
               }));
             };
             //  숫자·단위를 고치면 **바로** 규격이 된다. 예전엔 칩으로 골라야 했고 '추가'를

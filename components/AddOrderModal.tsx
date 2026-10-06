@@ -362,8 +362,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   const getPartnerBoxConfigs = (itemId: string, _partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     const p = items.find(pr => pr.id === itemId);
     const currentUnits = unitsPerBoxOf(p);
-    if (currentUnits > 1) return [{ unitsPerBox: currentUnits, boxType: p?.defaultBoxConfig?.boxType ?? '' }];
-    if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
+    if (currentUnits > 1) return [{ unitsPerBox: currentUnits, boxType: '' }];
     return [];
   };
 

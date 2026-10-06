@@ -301,8 +301,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if (pc?.boxTypeId) return { unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId };
     const p = items.find(pr => pr.id === itemId);
     const unitsPerBox = unitsPerBoxOf(p);
-    if (unitsPerBox > 1) return { unitsPerBox, boxType: p?.defaultBoxConfig?.boxType ?? '', boxSubId: undefined };
-    if (p?.defaultBoxConfig?.unitsPerBox) return p.defaultBoxConfig;
+    if (unitsPerBox > 1) return { unitsPerBox, boxType: '', boxSubId: undefined };
     // 향미유·고춧가루는 별도 박스 SKU가 없고 item_pack 환산표가 개입수를 안다.
     // 일반 주문과 같은 공용 함수를 써야 복사 주문만 8박스→8개로 저장되는 일이 없다.
     return { unitsPerBox: 0, boxType: '' };
