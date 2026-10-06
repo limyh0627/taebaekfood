@@ -136,7 +136,6 @@ import {
 } from './orderCreation';
 import { createOemEngine } from './oemEngine';
 import { issueOemBatchJob, recoverableOemDrafts } from './oemIssueJob';
-import { applyOemReceiptInventory } from './oemReceiptInventory';
 import { applyOemFeeStatement } from './oemFeeStatement';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
@@ -208,6 +207,7 @@ import {
   confirmUnitPurchaseOrderReceipt,
   deletePendingPurchaseOrder,
   createCashAccountWithOpening,
+  receiveOemFinishedGoodsCommand,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -1735,10 +1735,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
-    companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula, issuedStatements,
+    companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula,
     issueOemBatchJob: input => issueOemBatchJob(db, input),
-    applyOemReceiptInventory: input => applyOemReceiptInventory(db, input),
-    applyOemFeeStatement: input => applyOemFeeStatement(db, input),
+    applyOemReceiptInventory: input => receiveOemFinishedGoodsCommand({
+      poId: input.poId, operationId: input.operationId, date: input.date,
+      returns: input.items.map(row => ({ itemId: row.itemId, qty: row.qty })),
+      unitPricePerKg: input.feeRequest.oemFeePerKg,
+    }),
+    applyOemFeeStatement,
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {

@@ -366,7 +366,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
     return [];
   };
-  const getItemCustomerConfigs = (_itemId: string, _partnerId?: string): { id: string; box_item_id?: string; qty_per_box?: number }[] => [];
 
   // 선택 1건을 어떻게 초기화할지 — 토글·변형 전환에서 공유
   const buildSelection = (itemId: string): typeof selectedItems[0] => {
@@ -376,14 +375,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     if (product && isBoxStockItem(product)) {
       // 겉박스는 박스 품목 BOM에 들어있어 생산 때 깎인다 — 주문 라인엔 안 싣는다(이중차감 방지)
       return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: 0, boxType: '' };
-    }
-        if (product?.isRawMaterial && selectedPartner) {
-      const rules = getItemCustomerConfigs(itemId, selectedPartner.id);
-      if (rules.length >= 1) {
-        const rule = rules[0];
-        const qpb = rule.qty_per_box ?? 0;
-        return { itemId, quantity: 1, isBoxUnit: qpb > 1, unitsPerBox: qpb, boxType: rule.box_item_id ?? '', boxSubId: rule.box_item_id || undefined, displaySize: product?.netContent };
-      }
     }
     const configs = getPartnerBoxConfigs(itemId, selectedPartner?.id);
     // 개입수는 품목이 안다(BOM → 포장 환산표). 거래처 포장설정이 있으면 그게 먼저.
@@ -464,7 +455,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     const totalUnits = selection.isBoxUnit && uPerBox > 0 ? boxQty * uPerBox : boxQty;
     const availableConfigs = getPartnerBoxConfigs(product.id, selectedPartner?.id);
     const isBoxMode = selection.isBoxUnit && uPerBox > 0;
-    const icConfigs = getItemCustomerConfigs(product.id, selectedPartner?.id);
     return (
       <div
         className={`flex flex-col gap-1.5 p-1.5 rounded-xl border transition-colors ${
@@ -472,45 +462,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 통합 품목 규격 선택 (isRawMaterial + 여러 포장 규격) */}
-        {icConfigs.length > 1 && (
-          <div className="flex flex-wrap gap-1">
-            {icConfigs.map(rule => {
-              const boxItem = submaterials.find(s => s.id === rule.box_item_id);
-              const label = boxItem?.name ?? rule.box_item_id ?? '';
-              return (
-                <button
-                  key={rule.id}
-                  type="button"
-                  onClick={() => { const qpb = rule.qty_per_box ?? 0; updateItem(product.id, {
-                    displaySize: items.find(p => p.id === product.id)?.netContent,
-                    unitsPerBox: qpb,
-                    isBoxUnit: qpb > 1,
-                    boxType: rule.box_item_id ?? '',
-                    boxSubId: rule.box_item_id || undefined,
-                  }); }}
-                  className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition-all ${
-                    selection.boxType === rule.box_item_id
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {/* 자동 선택된 규격 표시 (1개만 있을 때) */}
-        {icConfigs.length === 1 && selection.displaySize && (
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-              {selection.displaySize}
-            </span>
-          </div>
-        )}
-
-
         {/* 박스 종류 선택 (박스 모드 + 여러 configs) */}
         {isBoxMode && availableConfigs.length > 1 && (
           <div className="flex flex-wrap gap-1">

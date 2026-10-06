@@ -83,7 +83,8 @@ function harness(items: Item[]) {
         }
       }
       pos[input.poId] = { ...(pos[input.poId] ?? {}), ...input.poPatch, oemReceiptOperationId: input.operationId };
-      return 'applied';
+      return { status: 'applied', receivedKg: input.poPatch.oemReceivedKg ?? 0,
+        loss: 5, lotNos: {} };
     },
     buildFormula,
   });
@@ -130,43 +131,36 @@ describe('외주 한 바퀴 — 참깨 보내고 볶음참깨 받기', () => {
     expect(h.lots).toHaveLength(0);
   });
 
-  it('벌크로 받으면 로트에 쌓이고, 수불부는 두 번 안 잡힌다', async () => {
+  it('벌크 입고는 첫 쓰기 전에 거절한다', async () => {
     const h = harness(items);
     const po = {
       id: 'oem-2', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 100 }],
     } as unknown as PurchaseOrder;
 
-    const { receivedKg } = await h.engine.receiveOemBatch({
+    await expect(h.engine.receiveOemBatch({
       po, returns: [], bulk: [{ material: '볶음참깨', kg: 96 }], date: '2026-08-25',
-    });
-
-    expect(receivedKg).toBe(96);
-    // 로트에 +96 — adjustRawLots가 원장 기록까지 함께 한다
-    expect(h.lots).toEqual([{ material: '볶음참깨', deltaKg: 96, note: expect.stringContaining('푸미푸드') }]);
-    // 그래서 여기서 또 쓰면 두 번 잡힌다 — 안 쓴다
+    })).rejects.toThrow('벌크 OEM 입고');
+    expect(h.lots).toEqual([]);
     expect(h.ledger).toHaveLength(0);
   });
 
-  it('완포장 + 벌크를 같이 받아도 각각 제자리로 간다', async () => {
+  it('완포장과 벌크 혼합도 완제품 쓰기 전에 거절한다', async () => {
     const h = harness(items);
     const po = {
       id: 'oem-3', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
       oemSent: [{ material: '참깨', kg: 100 }],
     } as unknown as PurchaseOrder;
 
-    const { receivedKg } = await h.engine.receiveOemBatch({
+    await expect(h.engine.receiveOemBatch({
       po,
       returns: [{ itemId: 'PLDhkjOgcPIhO1hhReHm', qty: 50 }],
       bulk: [{ material: '볶음참깨', kg: 45 }],
       date: '2026-08-25',
-    });
-
-    expect(receivedKg).toBe(95);
-    expect(h.stocks['PLDhkjOgcPIhO1hhReHm']).toBe(2 + 50);
-    //  완포장분은 원장에 안 남긴다(2026-09-10 원자화 5단계). 벌크만 실제 원장에 붙는다.
+    })).rejects.toThrow('벌크 OEM 입고');
+    expect(h.stocks['PLDhkjOgcPIhO1hhReHm']).toBeUndefined();
     expect(h.ledger).toEqual([]);
-    expect(h.lots).toEqual([expect.objectContaining({ material: '볶음참깨', deltaKg: 45 })]);
+    expect(h.lots).toEqual([]);
   });
 
   it('서류용 품목이 비어 있으면 수불부에 안 잡힌다 — 이게 빠지는 원인', async () => {
@@ -201,7 +195,7 @@ describe('박스 로트 — 어느 로트가 어디로 갔는지 남는다', () 
     const fresh = lots[1];
     expect(fresh).toMatchObject({
       material: '볶음참깨',      // 물질 축 — 벌크 로트와 같은 키로 묶인다
-      lotNo: '260825-01',        // 우리가 매긴다
+      receivedDate: '2026-08-25', // 번호는 실제 DB 경계에서 붙인다
       qtyRemaining: 5,
       unitKg: 20,
       kgRemaining: 100,          // 5박스 × 20kg
@@ -211,7 +205,7 @@ describe('박스 로트 — 어느 로트가 어디로 갔는지 남는다', () 
     expect(h.stocks['box20']).toBe(15 + 5);
   });
 
-  it('규격이 달라도 같은 날 볶은 건 로트번호가 이어진다', async () => {
+  it('규격이 달라도 같은 물질·날짜를 DB 발급 경계에 넘긴다', async () => {
     const h = harness(items);
     const po = {
       id: 'oem-6', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi',
@@ -224,17 +218,19 @@ describe('박스 로트 — 어느 로트가 어디로 갔는지 남는다', () 
       date: '2026-08-25',
     });
 
-    // 박스 20입 → -01, 낱개 → -02. 품목이 달라도 번호가 겹치지 않는다(실물 박스와 장부가 같아진다)
-    expect(h.productLots['box20'].at(-1).lotNo).toBe('260825-01');
-    expect(h.productLots['PLDhkjOgcPIhO1hhReHm'].at(-1).lotNo).toBe('260825-02');
+    expect(h.productLots['box20'].at(-1)).toMatchObject({ material: '볶음참깨', receivedDate: '2026-08-25' });
+    expect(h.productLots['PLDhkjOgcPIhO1hhReHm'].at(-1)).toMatchObject({ material: '볶음참깨', receivedDate: '2026-08-25' });
+    expect(h.productLots['box20'].at(-1).lotNo).toBeUndefined();
+    expect(h.productLots['PLDhkjOgcPIhO1hhReHm'].at(-1).lotNo).toBeUndefined();
   });
 
   it('벌크로 받은 몫엔 완제품 로트를 안 만든다 — 원료 로트로 이미 갔다', async () => {
     const h = harness(items);
     const po = { id: 'oem-7', poType: 'oem', status: 'invoiced', partnerName: '푸미푸드', oemPartnerId: 'p-pumi', oemSent: [{ material: '참깨', kg: 100 }] } as unknown as PurchaseOrder;
-    await h.engine.receiveOemBatch({ po, returns: [], bulk: [{ material: '볶음참깨', kg: 96 }], date: '2026-08-25' });
+    await expect(h.engine.receiveOemBatch({ po, returns: [], bulk: [{ material: '볶음참깨', kg: 96 }], date: '2026-08-25' }))
+      .rejects.toThrow('벌크 OEM 입고');
     expect(h.productLots).toEqual({});
-    expect(h.lots).toHaveLength(1);
+    expect(h.lots).toHaveLength(0);
   });
 });
 

@@ -3,11 +3,9 @@ import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
 import { issueOemBatchJob } from './oemIssueJob';
-import { applyOemFeeStatement } from './oemFeeStatement';
 import { applyOemReceiptInventory } from './oemReceiptInventory';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { inventoryDocId, operationDocId } from '../../shared/rawInventoryCore';
-import type { IssuedStatement } from '../../shared/types';
 
 const emulatorReady = async () => {
   try { return (await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) })).status < 500; }
@@ -61,27 +59,6 @@ describe.skipIf(!ready)('OEM 작업 실제 Firestore 에뮬레이터', () => {
     expect(await issueOemBatchJob(db, input)).toEqual({ poId: input.jobId });
     expect((await getDoc(doc(db, 'items', 'oem-raw-a'))).data()?.stock).toBe(80);
     await expect(issueOemBatchJob(db, { ...input, sent: [{ ...input.sent[0]!, kg: 1 }] })).rejects.toThrow('내용이 다릅니다');
-  }, 20_000);
-
-  it('가공비 전표와 PO 링크를 한 번만 저장하고, 옛 미연결 전표는 새로 발행하지 않는다', async () => {
-    const db = env.authenticatedContext('u-admin', { employeeId: 'admin', companyId: 'taebaek', isAdmin: true }).firestore() as unknown as Firestore;
-    await env.withSecurityRulesDisabled(async ctx => {
-      await setDoc(doc(ctx.firestore(), 'purchaseOrders', 'oem-fee-emulator-1'), { id: 'oem-fee-emulator-1', companyId: 'taebaek', poType: 'oem', status: 'received', partnerName: '시험 공장' });
-      await setDoc(doc(ctx.firestore(), 'purchaseOrders', 'oem-fee-emulator-old'), { id: 'oem-fee-emulator-old', companyId: 'taebaek', poType: 'oem', status: 'received', partnerName: '시험 공장' });
-      await setDoc(doc(ctx.firestore(), 'issuedStatements', 'stmt-old-random'), { id: 'stmt-old-random', companyId: 'taebaek', type: '매입', orderId: 'oem-fee-emulator-old' });
-    });
-    const statement: IssuedStatement = {
-      id: 'OEMFEE-oem-fee-emulator-1', companyId: 'taebaek', issuedAt: '2026-09-24T09:00:00+09:00', tradeDate: '2026-09-24',
-      type: '매입', partnerId: 'factory-a', partnerName: '시험 공장', orderId: 'oem-fee-emulator-1', docNo: '가공260924-001',
-      totalSupply: 1000, totalTax: 100, totalAmount: 1100, items: [],
-    };
-    const input = { companyId: 'taebaek' as const, poId: 'oem-fee-emulator-1', perKg: 500, statement };
-    expect(await applyOemFeeStatement(db, input)).toBe(statement.id);
-    expect((await getDoc(doc(db, 'purchaseOrders', input.poId))).data()?.linkedStatementId).toBe(statement.id);
-    expect((await getDoc(doc(db, 'issuedStatements', statement.id))).data()?.totalAmount).toBe(1100);
-    expect(await applyOemFeeStatement(db, input)).toBe(statement.id);
-    await expect(applyOemFeeStatement(db, { ...input, poId: 'oem-fee-emulator-old', statement: { ...statement, id: 'OEMFEE-oem-fee-emulator-old', orderId: 'oem-fee-emulator-old' } })).rejects.toThrow('기존 가공비 전표');
-    expect((await getDoc(doc(db, 'issuedStatements', 'OEMFEE-oem-fee-emulator-old'))).exists()).toBe(false);
   }, 20_000);
 
   it('회사 다른 원료 출고와 완제품 입고를 실제 규칙·거래 경계에서 거절한다', async () => {

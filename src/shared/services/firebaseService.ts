@@ -24,9 +24,11 @@ import {
   documentId,
   arrayUnion,
 } from "firebase/firestore";
-import { auth, authReady, db } from "../firebase";
+import { auth, authReady, db, functions } from "../firebase";
+import { httpsCallable } from 'firebase/functions';
 import { today } from '../day';
-import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder } from "../types";
+import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement } from "../types";
+import { requireActiveReleaseId } from '../releaseGate';
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
 import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock, isPhysicalInventoryItem } from '../itemTaxonomy';
@@ -69,6 +71,29 @@ export const companyScopedWriteData = async (
   const token = await user.getIdTokenResult();
   return withClaimCompany(collectionName, data, { companyId: token.claims.companyId });
 };
+
+export async function activeReleaseId(): Promise<string> {
+  await authReady;
+  return requireActiveReleaseId((await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data());
+}
+
+export async function issueOemFeeVoucherCommand(input: { poId: string; perKg: number; statement: IssuedStatement }): Promise<string> {
+  const releaseId = await activeReleaseId();
+  const scoped = await companyScopedWriteData('issuedStatements', stripUndefined(input.statement) as Record<string, unknown>);
+  const reason = statementBlockReason(scoped as Partial<IssuedStatement>);
+  if (reason) throw new Error(`가공비 전표를 만들 수 없습니다 — ${reason}`);
+  const call = httpsCallable<typeof input & { releaseId: string }, string>(functions, 'issueOemFeeVoucherCommand');
+  return (await call({ ...input, releaseId, statement: scoped as unknown as IssuedStatement })).data;
+}
+
+export async function receiveOemFinishedGoodsCommand(input: {
+  poId: string; operationId: string; date: string; returns: { itemId: string; qty: number }[]; unitPricePerKg?: number;
+}): Promise<{ status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }> {
+  const releaseId = await activeReleaseId();
+  const call = httpsCallable<typeof input & { releaseId: string },
+    { status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }>(functions, 'receiveOemFinishedGoodsCommand');
+  return (await call({ ...input, releaseId })).data;
+}
 
 export const subscribeToDocument = <T>(
   collectionName: CollectionName,

@@ -691,7 +691,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
   /** 로트의 소유자는 물질명이 아니라 품목 ID다. 같은 깨라도 벌크·낱개·박스를 합치면 실제 재고처럼 오해한다. */
   const lotItems = useMemo(() => inventoryItems
-    .filter(p => isRawHolder(p) || (p.lots ?? []).some(l => l.qtyRemaining != null))
+    .filter(p => !isSubmaterial(p.type) && (isRawHolder(p) || (p.lots ?? []).some(l => l.qtyRemaining != null)))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
   [inventoryItems]);
   const visibleLotItems = useMemo(() => lotItems.filter(item => {

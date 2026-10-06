@@ -46,10 +46,13 @@ describe('재고 목록 표시 규칙', () => {
     expect(src).toContain('별도의 입출고, 생산과정 없이 재고수량이 변경됩니다.');
   });
 
-  it('재고관리 내부 탭이 아니라 별도 생산관리 메뉴에서 생산·로트를 연다', () => {
+  it('생산관리에서 로트와 사용기록을 열고 부자재 로트는 제외한다', () => {
     expect(src).toContain("mode?: 'inventory' | 'lots'");
     expect(src).toContain("mode === 'lots' ? '생산 관리' : '재고 관리'");
-    expect(src).toContain("setActiveTab('production')");
+    expect(src).toContain("mode === 'lots' ? 'lots' : 'master'");
+    expect(src).toContain("setRawEntryModal({ mode: 'usage' })");
+    expect(src).toContain('!isSubmaterial(p.type)');
+    expect(src).not.toContain("setActiveTab('production')");
     expect(src).not.toContain('<span>로트 관리</span>');
   });
 

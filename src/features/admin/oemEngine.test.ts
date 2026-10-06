@@ -42,7 +42,8 @@ function makeDeps() {
         updates.push({ c: 'items', id: row.itemId, d: { stock: current + row.qty, ...(row.lot ? { lots: [row.lot] } : {}) } });
       }
       updates.push({ c: 'purchaseOrders', id: input.poId, d: input.poPatch });
-      return 'applied';
+      return { status: 'applied', receivedKg: input.poPatch.oemReceivedKg,
+        loss: 1000 - input.poPatch.oemReceivedKg, lotNos: {} };
     },
     // 원료식 — 볶음참깨 완제품은 전량 '볶음참깨' 원료로 잡힌다
     buildFormula: (key: string) => (/볶음참깨/.test(key) ? [{ raw: '볶음참깨', ratio: 1 }] : []),
@@ -171,12 +172,12 @@ describe('receiveOemBatch (가공입고)', () => {
     const eng = createOemEngine(deps as any);
     await expect(eng.receiveOemBatch({
       po: { ...openPo, companyId: 'punghoe' }, returns: [{ itemId: 'box10', qty: 1 }],
-      bulk: [{ material: '볶음참깨', kg: 10 }], date: '2026-07-17',
+      date: '2026-07-17',
     })).rejects.toThrow('다른 회사');
     deps.items = items.map(row => row.id === 'box10' ? { ...row, companyId: 'punghoe' as const } : row);
     await expect(createOemEngine(deps as any).receiveOemBatch({
       po: openPo, returns: [{ itemId: 'box10', qty: 1 }],
-      bulk: [{ material: '볶음참깨', kg: 10 }], date: '2026-07-17',
+      date: '2026-07-17',
     })).rejects.toThrow('현재 회사');
     expect(rawCalls).toHaveLength(0);
     expect(updates).toHaveLength(0);
@@ -270,4 +271,17 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     expect(adds).toHaveLength(0);
     expect(updates).toHaveLength(0);
   });
+});
+
+it('화면의 기존 로트 번호는 재발급하지 않고 물질·입고일을 저장 경계로 전달한다', async()=>{
+  const {deps,updates}=makeDeps();
+  deps.items = items.map(row=>({...row,lots:[{id:'old',lotNo:'260913-90',material:'볶음참깨'}]})) as Item[];
+  await createOemEngine(deps as any).receiveOemBatch({
+    po:{id:'number-boundary',poType:'oem',status:'invoiced',companyId:'taebaek',oemPartnerId:'oem1'} as PurchaseOrder,
+    returns:[{itemId:'box20',qty:1}],date:'2026-09-13',
+  });
+  const lot=updates.find(row=>row.c==='items')!.d.lots[0];
+  expect(lot).toMatchObject({material:'볶음참깨',receivedDate:'2026-09-13',qtyIn:1,unitKg:20});
+  expect(lot.id).toBe('lot-oem-number-boundary-box20');
+  expect(lot.lotNo).toBeUndefined();
 });

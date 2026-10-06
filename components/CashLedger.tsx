@@ -7,7 +7,7 @@ import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settleme
 import { useLoanContracts } from '../src/shared/useLoanContracts';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
-import { journalizeCashEntry } from '../src/shared/autoJournal';
+import { AR, AP, OTHER_PAYABLE, journalizeCashEntry } from '../src/shared/autoJournal';
 import { stampFor } from '../src/shared/voucherStamp';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
@@ -529,7 +529,7 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
     if (!canSave || saveLock.current) return;
     const entries = buildEntries();
     if (entries.some(entry => [entry.accountCode, ...(entry.lines ?? []).map(line => line.accountCode)]
-      .some(code => ['108', '251', '253'].includes(String(code))))) {
+      .some(code => [AR, AP, OTHER_PAYABLE].includes(String(code))))) {
       alert('거래처 수금·지불은 거래명세서 또는 거래처원장에서 처리해 주세요.');
       return;
     }
