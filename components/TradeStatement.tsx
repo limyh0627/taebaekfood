@@ -144,6 +144,8 @@ interface TradeStatementProps {
   onDeleteIssuedStatement?: (id: string) => void;
   pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
+  composerOnly?: boolean;
+  onComposerClose?: () => void;
   confirmedOrders?: PurchaseOrder[];
   orderRequests?: PurchaseOrder[];
   onAddConfirmedOrder?: (item: { id: string; quantity: number; isBox?: boolean; partnerId?: string; partnerName?: string }) => void;
@@ -231,6 +233,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onDeleteIssuedStatement,
   pendingInvoice,
   onClearPendingInvoice,
+  composerOnly = false,
+  onComposerClose,
   confirmedOrders = [],
   orderRequests = [],
   onAddConfirmedOrder,
@@ -1030,7 +1034,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
+  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; onComposerClose?.(); };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1910,7 +1914,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
-
+      {!composerOnly && <>
       <PageHeader
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
@@ -2350,6 +2354,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </LargeModalShell>
       )}
 
+      </>}
+      </>}
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {createMode && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
@@ -2362,7 +2368,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               //  셈은 `allPartnerBalances`(분개 기준) 한 곳 — 거래처 원장과 같은 숫자여야 한다.
               balance={selectedClient ? partnerBalances.get(selectedClient.id) : undefined}
               tradeDate={tradeDate} onTradeDate={setTradeDate}
-              onNew={() => { closeCreate(); setTimeout(() => setCreateMode(stmtType), 50); }} onClose={closeCreate}/>
+              onNew={() => { if (composerOnly) openCreate(stmtType); else { closeCreate(); setTimeout(() => setCreateMode(stmtType), 50); } }} onClose={closeCreate}/>
 
             <StatementPartnerBar partners={availableClients} selectedPartnerId={selectedClientId}
               search={partnerSearch} sale={createMode === '매출'} editing={!!editingStmt}
@@ -2684,7 +2690,6 @@ ${names}
             setSelectedOrderIds([order.id]);setTradeDate(today());setShowPreview(false);setEditablePrices({});setTaxExemptOverrides({});
           }
         }}/>}
-      </>}
 
     </div>
   );

@@ -26,7 +26,7 @@ import {
 } from "firebase/firestore";
 import { auth, authReady, db, functions } from "../firebase";
 import { httpsCallable } from 'firebase/functions';
-import { today } from '../day';
+import { today, isCalendarDay } from '../day';
 import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement } from "../types";
 import { requireActiveReleaseId } from '../releaseGate';
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
@@ -147,7 +147,7 @@ export async function saveOpeningBalancesWithDb(
     if (snap.data()?.hasInventoryOpening && Number(snap.data()?.amounts?.[INVENTORY] ?? 0) !== Number(amounts[INVENTORY] ?? 0)) {
       throw new Error('146 재고자산 기초 합계는 직접 변경할 수 없습니다. 품목별 기초 전표를 확인하세요.');
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
+    if (!isCalendarDay(date) || Object.values(amounts).some(v => !Number.isFinite(v) || v < 0)) {
       throw new Error('기초일과 계정별 금액을 확인하세요.');
     }
     // Replace the amounts map: merge would silently retain an account the user cleared.
@@ -210,7 +210,7 @@ export async function createOpeningPartnerBalance(companyId: CompanyId, date: st
 /** Register the loan and its opening liability together; ordinary borrowing uses a zero opening principal. */
 export async function createLoanWithOpeningWithDb(store: Firestore, companyId: CompanyId, loan: LoanContract): Promise<'created' | 'unchanged'> {
   if (loan.companyId !== companyId || !loan.id || !loan.name?.trim() || !loan.lenderName?.trim() ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(loan.openingDate) || !Number.isInteger(loan.openingPrincipal) || loan.openingPrincipal < 0 ||
+      !isCalendarDay(loan.openingDate) || !Number.isInteger(loan.openingPrincipal) || loan.openingPrincipal < 0 ||
       (loan.accountCode !== '260' && loan.accountCode !== '293')) throw new Error('대출 회사·계정·기초일·원금을 확인하세요.');
   const loanRef = doc(store, 'loanContracts', loan.id);
   const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
@@ -254,7 +254,7 @@ export async function createLoanWithOpening(companyId: CompanyId, loan: LoanCont
 /** The account ledger and the accounting opening voucher are one operation. */
 export async function createCashAccountWithOpeningWithDb(store: Firestore, companyId: CompanyId, account: CashAccount): Promise<'created' | 'unchanged'> {
   if (account.companyId !== companyId || !account.id || !account.name?.trim() ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(account.openingDate) || !Number.isInteger(account.openingBalance) || account.openingBalance < 0 ||
+      !isCalendarDay(account.openingDate) || !Number.isInteger(account.openingBalance) || account.openingBalance < 0 ||
       !['통장', '현금', '카드'].includes(account.type)) throw new Error('계좌 회사·이름·기초일·잔액을 확인하세요.');
   if (account.type === '카드' && account.openingBalance > 0) throw new Error('카드 기초잔액은 계좌 자산과 다릅니다. 카드 계좌는 0원으로 등록하세요.');
   const existing = await getDocs(query(collection(store, 'cashAccounts'), where('companyId', '==', companyId)));
@@ -309,7 +309,7 @@ export async function createCashAccountWithOpening(companyId: CompanyId, account
 export async function createOpeningInventoryWithDb(
   store: Firestore, companyId: CompanyId, date: string, itemId: string, quantity: number, value: number,
 ): Promise<'created' | 'unchanged'> {
-  if (!itemId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(quantity) || quantity <= 0 ||
+  if (!itemId || !isCalendarDay(date) || !Number.isFinite(quantity) || quantity <= 0 ||
       !Number.isInteger(value) || value <= 0) throw new Error('기초 재고 날짜·수량·평가금액을 확인하세요.');
   const itemRef = doc(store, COL.items, itemId);
   const openingRef = doc(store, 'openingBalances', openingDocId(companyId));

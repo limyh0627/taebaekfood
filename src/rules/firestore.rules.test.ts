@@ -50,6 +50,16 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  it('공지는 직원이 읽되 관리자만 작성·고정·삭제한다', async () => {
+    const target = (db: any) => doc(db, 'notices', 'notice-test');
+    await assertSucceeds(setDoc(target(관리자()), { companyId: 'taebaek', title: '공지' }));
+    await assertSucceeds(getDoc(target(태백직원())));
+    await assertFails(updateDoc(target(태백직원()), { pinned: true }));
+    await assertFails(deleteDoc(target(태백직원())));
+    await assertFails(getDoc(target(풍회관리자())));
+    await assertSucceeds(updateDoc(target(관리자()), { pinned: true }));
+    await assertSucceeds(deleteDoc(target(관리자())));
+  });
   beforeAll(async () => {
     env = await initializeTestEnvironment({
       projectId: 'demo-rules-test',

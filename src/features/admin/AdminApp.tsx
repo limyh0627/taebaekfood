@@ -415,6 +415,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const { fixedCosts, productionRecords } = adminData;
 
   const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null>(null);
+  const [showInboundInvoice, setShowInboundInvoice] = useState(false);
   /**
    * 문서함에서 지금 고른 자리 — **생산판매기록부를 문서함에 얹기 위한 것.**
    * 그 화면은 서류관리 화면 안 커다란 IIFE 안에서 만들어져서 밖으로 못 뺀다.
@@ -2741,7 +2742,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               issuedStatements={issuedStatements}
               onRequestPurchaseInvoice={(partnerId, partnerName, items, poIds) => {
                 setPendingInvoice({ partnerId, partnerName, items, poIds });
-                setCurrentView('trade-statement');
+                setShowInboundInvoice(true);
               }}
               onOpenVoucher={docNo => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
               rawMaterialLedger={mergedRawMaterialLedger}
@@ -3103,7 +3104,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               hideDocs={inCabinetDoc}
             />
           )}
-          {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
+          {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} onAddPost={(post) => addItem('notices', post)} onUpdatePost={(id, patch) => updateItem('notices', id, patch)} onDeletePost={(id) => deleteItem('notices', id)} />}
           {currentView === 'pallets' && (
             <PalletManager
               pallets={pallets}
@@ -4558,8 +4559,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             );
           })()}
-          {currentView === 'trade-statement' && (
+          {(currentView === 'trade-statement' || showInboundInvoice) && (
             <TradeStatement
+              composerOnly={currentView !== 'trade-statement'}
+              onComposerClose={() => { setShowInboundInvoice(false); setPendingInvoice(null); }}
               orders={allOrders}
               allItems={allItems}
               partners={partners}

@@ -150,8 +150,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
   const [deliveryTab, setDeliveryTab] = useState<'캘린더' | '리스트' | '보드'>('캘린더');
   const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const [queryDateFrom, setQueryDateFrom] = useState(`${todayKey.slice(0, 7)}-01`);
-  const [queryDateTo, setQueryDateTo] = useState(todayKey);
+  const [queryDateFrom, setQueryDateFrom] = useState('');
+  const [queryDateTo, setQueryDateTo] = useState('');
   const [queryText, setQueryText] = useState('');
   const [queryField, setQueryField] = useState('');
   const [queryValue, setQueryValue] = useState('');
@@ -221,7 +221,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
        *  예전 주문(배송완료)도 들인다. 캘린더가 그걸 따로 모아(`deliveredSchedules`)
        *  '이전 N건' 으로 접어 두기 때문이다 — 전에는 여기서 막혀 그 접힘이 늘 비어 있었다. */
       if (order.partnerName === '생산기록') return false;
-      const orderDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(order.createdAt));
+      const orderDate = queryDateKey(order.createdAt);
       if (queryDateFrom && orderDate < queryDateFrom) return false;
       if (queryDateTo && orderDate > queryDateTo) return false;
       if (!normalized) return true;
@@ -465,7 +465,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
   const 묶음숫자색: Record<string, string> = {
     택배: 'text-pink-600',
     배송: 'text-sky-600',
-    직접수령: 'text-emerald-600',
+    수령: 'text-emerald-600',
+    화물: 'text-slate-600',
   };
 
   const 접힌묶음 = (열쇠: string, 방식: string) => {
@@ -1018,12 +1019,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       {!calendarOnly && <section className="order-3 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="delivery-query-title">
         <div className="flex min-h-11 items-center gap-2 border-b border-slate-200 px-4 py-2.5">
           <h3 id="delivery-query-title" className="text-xs font-black text-slate-900">검색조건</h3>
-          <button type="button" onClick={() => { setQueryDateFrom(`${todayKey.slice(0, 7)}-01`); setQueryDateTo(todayKey); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
+          <button type="button" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); setQueryText(''); setQueryStatus('all'); setQueryField(''); setQueryValue(''); }} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-[11px] font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"><RotateCcw size={12} aria-hidden="true" />초기화</button>
         </div>
         <div className="flex flex-wrap items-end gap-3 p-3 md:p-4">
           <label className="flex flex-col gap-1 text-[10px] font-bold text-slate-500">
             주문일
             <span className="flex flex-wrap items-center gap-2">
+              <button type="button" aria-label="기간 전체" onClick={() => { setQueryDateFrom(''); setQueryDateTo(''); }} className="text-xs font-bold">기간 전체</button>
               <input type="date" value={queryDateFrom} max={queryDateTo || undefined} onChange={event => setQueryDateFrom(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" aria-label="주문일 시작" />
               <span className="text-xs text-slate-400">~</span>
               <input type="date" value={queryDateTo} min={queryDateFrom || undefined} onChange={event => setQueryDateTo(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-300" aria-label="주문일 종료" />

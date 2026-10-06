@@ -33,6 +33,14 @@ describe.skipIf(!준비됨)('회사별 권한 (Storage 규칙)', () => {
     employeeId: `admin-${companyId}`, companyId, isAdmin: true,
   }).storage();
 
+  it('공지 사진은 같은 회사 관리자만 작성한다', async () => {
+    const path = 'companies/taebaek/notices/post-1/image';
+    await assertSucceeds(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/png' }));
+    await assertFails(uploadBytes(ref(직원('taebaek'), path), bytes, { contentType: 'image/png' }));
+    await assertFails(uploadBytes(ref(관리자('punghoe'), path), bytes, { contentType: 'image/png' }));
+    await assertFails(uploadBytes(ref(관리자('taebaek'), path), bytes, { contentType: 'image/svg+xml' }));
+  });
+
   it('직원은 자기 회사 오피스톡에만 올린다', async () => {
     await assertSucceeds(uploadBytes(ref(직원('taebaek'), 'companies/taebaek/officetalk/ROOM-1/a.jpg'), bytes));
     await assertFails(uploadBytes(ref(직원('taebaek'), 'companies/punghoe/officetalk/ROOM-1/a.jpg'), bytes));

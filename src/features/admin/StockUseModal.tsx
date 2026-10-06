@@ -39,6 +39,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
   );
 
   const totalUse = states.reduce((s, x) => s + x.own + (x.loose?.value ?? 0), 0);
+  const needsProduction = states.some(x => x.shortUnits > 0);
   const hasUsableStock = states.some(x => x.ownMax > 0 || (x.loose?.max ?? 0) > 0);
 
   const confirmUse = async () => {
@@ -88,17 +89,17 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
             disabled={confirming}
             className={`flex-[2] py-2.5 text-white font-black rounded-xl text-sm transition-all ${hasUsableStock ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-500 hover:bg-amber-600'}`}
           >
-            {totalUse > 0 ? `재고 사용하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`}
+            {needsProduction ? (totalUse > 0 ? `부족분 생산하고 ${completionLabel}` : `전량 생산하고 ${completionLabel}`) : `재고 사용하고 ${completionLabel}`}
           </button>
         </div>
       }
     >
         <p className="text-sm font-bold leading-snug text-slate-800">
-          {hasUsableStock ? '재고 사용량을 확인해 주세요' : '재고가 없어 전량 생산합니다'}
+          {needsProduction ? '가용재고가 부족하여 부족한 수량을 생산합니다' : '가용재고 사용량을 확인해 주세요'}
         </p>
         <p className="mt-1.5 text-xs font-medium leading-5 text-slate-500">
           {partnerName} · {hasUsableStock
-            ? '쓴 만큼 재고에서 빠지고, 모자란 만큼만 새로 생산합니다'
+            ? '다른 주문이 확보한 재고는 제외합니다. 부족분을 생산하고 이 주문 몫을 확보한 뒤 완료합니다'
             : '아래 주문 수량 전부를 새로 생산합니다'}
         </p>
 
@@ -109,7 +110,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black text-slate-900 truncate">{row.name}</p>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    주문 {row.ordered}{row.unitLabel} · 재고 {row.stock}{row.unitLabel}
+                    주문 {row.ordered}{row.unitLabel} · 가용재고 {row.stock}{row.unitLabel}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -130,7 +131,7 @@ const StockUseModal: React.FC<Props> = ({ partnerName, rows, completionLabel = '
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-black text-slate-700 truncate">{loose.need > 0 ? row.loose!.name : ''}</p>
                     <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                      박스 {shortUnits}개 만들려면 {loose.need}{row.loose!.unitLabel} 필요 · 재고 {row.loose!.stock}{row.loose!.unitLabel}
+                      박스 {shortUnits}개 만들려면 {loose.need}{row.loose!.unitLabel} 필요 · 가용재고 {row.loose!.stock}{row.loose!.unitLabel}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">

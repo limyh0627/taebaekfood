@@ -1,3 +1,4 @@
+import { isCalendarDay } from './day';
 import type { CompanyId, IssuedStatement, Partner } from './types';
 import { AR, AP, journalizeTransfer } from './autoJournal';
 
@@ -5,7 +6,7 @@ export type OpeningPartnerCode = typeof AR | typeof AP;
 
 /** One opening receivable/payable is one balanced, partner-linked transfer voucher. */
 export function openingPartnerStatement(companyId: CompanyId, date: string, partner: Partner, code: OpeningPartnerCode, amount: number): IssuedStatement {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(amount) || amount <= 0 || !partner.id || !partner.name) {
+  if (!isCalendarDay(date) || !Number.isInteger(amount) || amount <= 0 || !partner.id || !partner.name) {
     throw new Error('기초일·거래처·0원 초과 정수 금액을 확인하세요.');
   }
   if (partner.companyId && partner.companyId !== companyId) throw new Error('다른 회사 거래처입니다.');

@@ -116,6 +116,21 @@ describe('앞 주문이 깎은 재고를 뒤 주문이 다시 쓰지 못한다',
     expect((b.rawConsumedLots ?? []).length).toBeGreaterThan(0);
   });
 
+  it('두 주문이 모두 작업완료할 때 다른 주문 몫을 빼고 부족분만 생산한다', async () => {
+    const items = [낱개(10), 벌크()];
+    const a = 주문('먼저완료', 8), b = 주문('나중완료', 7);
+    const { engine, lotKg } = harness(items, [a, b]);
+    await engine.reconcileOrderStock(a, OrderStatus.DISPATCHED);
+    await engine.reconcileOrderStock(b, OrderStatus.DISPATCHED);
+    expect(b.producedUnits).toEqual([{ itemId: 'loose', qty: 5 }]);
+    expect(lotKg('bulk')).toBe(995);
+    expect(dbx.stock.get('loose')).toBe(15);
+    expect(dbx.reservations.get('loose')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ orderId: a.id, qty: 8, state: 'allocated' }),
+      expect.objectContaining({ orderId: b.id, qty: 7, state: 'allocated' }),
+    ]));
+  });
+
   it('작업완료 주문 몫은 출고 전에도 뒤 주문이 다시 쓰지 못한다', async () => {
     const items = [낱개(30), 벌크()];
     const a = 주문('먼저작업', 5), b = 주문('뒤에작업', 30);

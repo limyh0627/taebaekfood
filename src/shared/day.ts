@@ -19,7 +19,7 @@ export interface KstDateRangeUtc {
   endExclusive: string;
 }
 
-const isCalendarDay = (value: string): boolean => {
+export const isCalendarDay = (value: string): boolean => {
   const match = DAY_RE.exec(value);
   if (!match) return false;
   const year = Number(match[1]);

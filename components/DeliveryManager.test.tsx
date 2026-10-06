@@ -38,6 +38,15 @@ const 주문 = (id: string, partnerId: string, status: OrderStatus): Order => ({
 });
 
 describe('주간 배송 캘린더', () => {
+  it('주문일이 잘못된 주문이 있어도 캘린더와 날짜 필터를 연다', () => {
+    const order = { ...주문('invalid-date', 'p1', OrderStatus.DISPATCHED), createdAt: '잘못된 날짜' };
+    render(<DeliveryManager companyId="taebaek" orders={[order]} partners={partners} items={items} />);
+    expect(screen.getByRole('button', { name: `${Number(today().slice(8, 10))}일 배송 상세 보기` })).toBeInTheDocument();
+    expect(screen.getByLabelText('주문일 시작')).toHaveValue('');
+    expect(screen.getByLabelText('주문일 종료')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('주문일 시작'), { target: { value: today() } });
+    expect(screen.getByRole('button', { name: '기간 전체' })).toBeInTheDocument();
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it('캘린더를 기본 뷰로 열고 배송 대상 상태만 집계한다', () => {

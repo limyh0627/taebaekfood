@@ -30,6 +30,9 @@ describe('박스 로트 — 만들기', () => {
     const carried = withCarryOverProductLot([], 15, '볶음참깨', 20);
     expect(carried).toHaveLength(1);
     expect(carried[0]).toMatchObject({ supplierName: '이월', qtyRemaining: 15, kgRemaining: 300 });
+    expect(carried[0].lotNo).toMatch(/^이월-\d{8}$/);
+    expect(withCarryOverProductLot([], -1, '볶음참깨', 20)).toEqual([]);
+    expect(() => withCarryOverProductLot([], 15, '볶음참깨', -20)).toThrow('단위 중량');
     // 이미 로트가 있으면 다시 안 만든다(중복 이월 방지)
     expect(withCarryOverProductLot(carried, 15, '볶음참깨', 20)).toBe(carried);
   });

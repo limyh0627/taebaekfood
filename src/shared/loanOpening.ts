@@ -1,9 +1,10 @@
+import { isCalendarDay } from './day';
 import type { CompanyId, IssuedStatement } from './types';
 import type { LoanContract } from './loanLedger';
 import { journalizeTransfer } from './autoJournal';
 
 export function loanOpeningStatement(loan: LoanContract): IssuedStatement {
-  if (!loan.id || !loan.companyId || !/^\d{4}-\d{2}-\d{2}$/.test(loan.openingDate) ||
+  if (!loan.id || !loan.companyId || !isCalendarDay(loan.openingDate) ||
       !Number.isInteger(loan.openingPrincipal) || loan.openingPrincipal <= 0 ||
       (loan.accountCode !== '260' && loan.accountCode !== '293')) {
     throw new Error('대출 기초일·계정·0원 초과 정수 원금을 확인하세요.');

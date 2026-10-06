@@ -53,6 +53,15 @@ describe.skipIf(!ready)('계좌 기초잔액 (Firestore Emulator)', () => {
     await saveOpeningBalancesWithDb(store(), 'punghoe', '2026-07-31', { '103': 100_000 });
     expect(await createCashAccountWithOpeningWithDb(store(), 'punghoe', account('new'))).toBe('created');
   });
+  it('없는 날짜는 계좌와 수기 기초잔액 양쪽에서 거절하고 문서를 남기지 않는다', async () => {
+    await expect(createCashAccountWithOpeningWithDb(store(), 'punghoe', {
+      ...account('invalid-day'), openingDate: '2026-02-29', openingBalance: 0,
+    })).rejects.toThrow('기초일');
+    await expect(saveOpeningBalancesWithDb(store(), 'punghoe', '2026-04-31', {})).rejects.toThrow('기초일');
+    expect((await getDoc(doc(store(), 'cashAccounts', 'invalid-day'))).exists()).toBe(false);
+    expect((await getDoc(doc(store(), 'openingBalances', 'main-punghoe'))).exists()).toBe(false);
+  });
+
   it('다른 회사 계좌와 카드 기초잔액을 거절한다', async () => {
     await expect(createCashAccountWithOpeningWithDb(store(), 'punghoe', { ...account('wrong'), companyId: 'taebaek' })).rejects.toThrow('회사');
     await expect(createCashAccountWithOpeningWithDb(store(), 'punghoe', account('card', '카드'))).rejects.toThrow('카드');

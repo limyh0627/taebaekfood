@@ -108,6 +108,7 @@ describe('withCarryOverLot — 로트 없는데 재고>0이면 이월 로트로 
     expect(out).toHaveLength(1);
     expect(out[0].kgRemaining).toBe(10);
     expect(out[0].supplierName).toBe('이월');
+    expect(out[0].lotNo).toMatch(/^이월-\d{8}$/);
   });
   it('로트 있으면 그대로', () => {
     const existing = [lot('a', 5)];
@@ -115,6 +116,8 @@ describe('withCarryOverLot — 로트 없는데 재고>0이면 이월 로트로 
   });
   it('재고 0이면 생성 안 함', () => {
     expect(withCarryOverLot([], 0, '참깨')).toHaveLength(0);
+    expect(withCarryOverLot([], -1, '참깨')).toHaveLength(0);
+    expect(withCarryOverLot([], Number.NaN, '참깨')).toHaveLength(0);
   });
 });
 

@@ -30,10 +30,11 @@ export function withCarryOverLot(
 ): RawMaterialLot[] {
   if (lots.length > 0) return lots;
   const carryKg = round3(currentStockUnit);   // stock은 이미 kg
-  if (carryKg <= 0) return lots;
+  if (!Number.isFinite(carryKg) || carryKg <= 0) return lots;
   const now = new Date().toISOString();
   return [{
     id: `lot-carry-${material}-${Date.now()}`,
+    lotNo: `이월-${todayStr().replaceAll('-', '')}`,
     supplierName: '이월',
     kgIn: carryKg,
     kgRemaining: carryKg,
@@ -45,7 +46,7 @@ export function withCarryOverLot(
 
 /**
  * 자동 로트번호: 입고일(YYMMDD) + 같은 날 순번(2자리). 예) 2026-06-15 → "260615-01", "260615-02"…
- * 기존 lots 중 같은 날짜 접두사를 가진 번호 개수로 순번을 매김(이월 로트는 번호가 없어 무관).
+ * 이월 번호는 일반 입고 번호와 접두사를 달리한다.
  */
 export function nextLotNo(lots: RawMaterialLot[], receivedDate: string): string {
   const ymd = (receivedDate ?? '').replace(/-/g, '').slice(2); // 2026-06-15 → 260615
@@ -296,9 +297,11 @@ export function withCarryOverProductLot(
 ): RawMaterialLot[] {
   if (lots.length > 0) return lots;
   const qty = round3(currentQty);
-  if (qty <= 0) return lots;
+  if (!Number.isFinite(qty) || qty <= 0) return lots;
+  if (!Number.isFinite(unitKg) || unitKg < 0) throw new Error('이월 로트의 단위 중량을 확인해 주세요.');
   return [{
     id: carryOver?.id ?? `lot-carry-${material}-${Date.now()}`,
+    lotNo: `이월-${(carryOver?.receivedDate ?? todayStr()).replaceAll('-', '')}`,
     material,
     supplierName: '이월',
     qtyIn: qty, qtyRemaining: qty, unitKg,

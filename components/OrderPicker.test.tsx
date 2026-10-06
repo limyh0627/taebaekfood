@@ -43,6 +43,31 @@ function props(selectedClientId = '', selectedOrderIds: string[] = []): OrderPic
 }
 
 describe('미발행 주문의 품목·수량', () => {
+  it('전체 조회에 품목 배열 없는 옛 주문이 들어와도 목록과 품목 펼치기가 깨지지 않는다', () => {
+    const p = props();
+    p.filter.onlyActive = false;
+    p.data.activeOrders = [{ ...order, items: undefined } as unknown as Order];
+    render(<OrderPicker {...p} />);
+    fireEvent.click(screen.getByRole('button', { name: 'ORD-260908-01 0품목 보기' }));
+    expect(screen.getByTestId('active-order-order-1')).toBeInTheDocument();
+  });
+
+  it('거래처 선택 전 묶음 발주와 예정 발주를 보여주고 기존 카드로 전표를 연결한다', () => {
+    const p = props();
+    p.mode.createMode = '매입';
+    p.data.confirmedOrders = [{ id: 'po-group', partnerId: partner.id, items: [{ itemId: 'oil', name: '생들기름', quantity: 3 }] } as any];
+    p.data.orderRequests = [{ id: 'po-request', partnerId: partner.id, itemId: 'gift', quantity: 2 } as any,
+      { id: 'po-issued', partnerId: partner.id, linkedStatementId: 'statement' } as any];
+    render(<OrderPicker {...p} />);
+    expect(screen.getByRole('button', { name: '미발행 발주 선택 po-request' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '미발행 발주 선택 po-issued' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '미발행 발주 선택 po-group' }));
+    expect(p.on.setSelectedClientId).toHaveBeenCalledWith(partner.id);
+    expect(p.on.setLoadedPoIds).toHaveBeenCalledWith(['po-group']);
+    expect(p.on.poToManualRows).toHaveBeenCalledWith(p.data.confirmedOrders[0]);
+    expect(p.on.goCompose).toHaveBeenCalledOnce();
+  });
+
   it('미발행을 맨 앞에 두고 상태를 글자 색으로만 보이며 N품목을 눌러 품목을 여닫는다', () => {
     const p = props();
     render(<OrderPicker {...p}/>);

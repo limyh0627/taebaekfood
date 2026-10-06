@@ -139,7 +139,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   //  사 온 기록 — 제품별원장이 '입고' 줄로 읽는다(2026-09-03부터)
   const [itemReceipts, setItemReceipts] = useState<ItemReceipt[]>([]);
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<{ companyId: CompanyId; value: CompanyInfo | null } | null>(null);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
@@ -295,7 +295,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         listenRecent<ReturnRequest>(COL.returnRequests, 'createdAt', 7, setReturnRequests, co),
         listen<ItemReceipt>(COL.itemReceipts, setItemReceipts, co),
         //  회사별 설정 문서 — 문서 id 를 회사 id 로 둬 두 회사가 서로 덮어쓰지 않는다.
-        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), value => { if (!cancelled) setCompanyInfo(value); }),
+        subscribeToDocument<CompanyInfo>('settings', companySettingDocId(companyId, 'company'), value => { if (!cancelled) setCompanyInfo({ companyId, value }); }),
       ];
     });
 
@@ -428,7 +428,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   }, [enabled, companyId, isAdmin, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
     ...scopedData,
-    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: enabled ? companyInfo : null,
+    orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: enabled && companyInfo?.companyId === companyId ? companyInfo.value : null,
     isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };
 }

@@ -120,7 +120,7 @@ service cloud.firestore {
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
       return c in ['employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
-                   'chatRooms', 'chatMessages', 'notifications'];
+                   'chatRooms', 'chatMessages', 'notifications', 'notices'];
     }
 
     //  다른 문서를 읽어 견주는 자리가 셋 있다(오피스톡 방·메시지·알림).
@@ -260,6 +260,12 @@ service cloud.firestore {
                     && request.resource.data.diff(resource.data).affectedKeys()
                       .hasOnly(['readBy', 'dismissedBy']);
       allow delete: if deleteOk();
+    }
+
+    match /notices/{id} {
+      allow read: if readOk();
+      allow create, update: if isAdmin() && createUpdateOk();
+      allow delete: if isAdmin() && deleteOk();
     }
 
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────

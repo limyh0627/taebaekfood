@@ -13,22 +13,61 @@ import {
 import { Post } from '../types';
 import PageHeader from './PageHeader';
 import ModalShell from '../src/shared/components/ModalShell';
+import type { CompanyId } from '../src/shared/types';
+import { uploadNoticeImage, deleteNoticeImages } from '../src/shared/noticeImage';
+import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 
 interface NoticeBoardProps {
   posts: Post[];
-  onAddPost?: (_post: Post) => void;
+  companyId?: CompanyId;
+  onAddPost?: (_post: Post) => unknown | Promise<unknown>;
+  onUpdatePost?: (id: string, patch: Partial<Post>) => unknown | Promise<unknown>;
+  onDeletePost?: (id: string) => unknown | Promise<unknown>;
 }
 
-const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
+const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, onUpdatePost, onDeletePost }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', content: '', author: '', tag: '공지' as '공지' | '긴급' | '매뉴얼' | '업무' });
+  const [blocks, setBlocks] = useState<NonNullable<Post['blocks']>>([]);
+  const [pinned, setPinned] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [draftId, setDraftId] = useState(() => `notice-${crypto.randomUUID()}`);
+  const closeDraft = async () => {
+    if (busy) return;
+    try { await deleteNoticeImages(blocks); setBlocks([]); setShowForm(false); }
+    catch (error) { await appNotice(String(error)); }
+  };
+  const uploadPhotos = async (files: File[]) => {
+    if (!companyId || busy) return;
+    setBusy(true);
+    try {
+      // Retain each successful upload even if a later image fails, so cancel can clean it up.
+      for (const file of files) {
+        const image = await uploadNoticeImage(companyId, draftId, file);
+        setBlocks(previous => [...previous, image]);
+      }
+    } catch (error) { await appNotice(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+  const savePost = async () => {
+    if (!onAddPost || busy || !form.title.trim() || (!form.content.trim() && blocks.length === 0)) return;
+    setBusy(true);
+    try {
+      const body: NonNullable<Post['blocks']> = [...(form.content.trim() ? [{ type: 'text' as const, text: form.content }] : []), ...blocks];
+      await onAddPost({ id: draftId, ...form, author: form.author || '관리자', date: today(), pinned,
+        content: body.map(b => b.type === 'text' ? b.text : b.caption).join('\n'), blocks: body });
+      setBlocks([]); setPinned(false); setDraftId(`notice-${crypto.randomUUID()}`);
+      setForm({ title: '', content: '', author: '', tag: '공지' }); setShowForm(false);
+    } catch (error) { await appNotice(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
 
   const filteredPosts = posts.filter(post => 
     post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     post.content.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ).sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.date.localeCompare(a.date));
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
@@ -74,6 +113,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
                     {post.tag}
                   </span>
                   <h3 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{post.title}</h3>
+                  {post.pinned && <span className="text-xs font-bold text-rose-600">상단 고정</span>}
                 </div>
                 <div className="flex items-center space-x-4 text-xs text-slate-400 font-medium">
                   <span className="flex items-center"><User size={12} className="mr-1.5" />{post.author}</span>
@@ -88,7 +128,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
 
       {/* 공지 작성 모달 */}
       {showForm && onAddPost && (
-        <ModalShell title="공지 작성" onClose={() => setShowForm(false)}>
+        <ModalShell title="공지 작성" onClose={() => { void closeDraft(); }}>
           <div className="space-y-5">
             <div className="space-y-4">
               <input
@@ -98,6 +138,24 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
                 onChange={e => setForm({ ...form, title: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <div className="flex flex-wrap gap-3 items-center">
+                <label className="cursor-pointer border rounded-xl px-3 py-2 text-sm">사진 첨부
+                  <input aria-label="사진 첨부" className="hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={e => { void uploadPhotos(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+                </label>
+                <button type="button" disabled={busy} onClick={() => setBlocks([...blocks, { type: 'text', text: '' }])} className="border rounded-xl px-3 py-2 text-sm">글 단락 추가</button>
+                <label className="text-sm"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} /> 상단 고정</label>
+              </div>
+              {blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
+                {block.type === 'text' ? <textarea aria-label={`글 단락 ${index + 1}`} rows={4} value={block.text} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full border rounded-lg p-3" /> : <>
+                  <img src={block.url} alt={block.caption || '첨부 사진'} className="max-h-80 mx-auto rounded-lg" />
+                  <input aria-label={`사진 설명 ${index + 1}`} placeholder="사진 설명" value={block.caption} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, caption: e.target.value } : b))} className="w-full border rounded-lg p-2" />
+                </>}
+                <div className="flex gap-3 text-sm">
+                  <button disabled={busy || index === 0} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>위로</button>
+                  <button disabled={busy || index === blocks.length - 1} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>아래로</button>
+                  <button disabled={busy} className="text-rose-600" onClick={async () => { setBusy(true); try { await deleteNoticeImages([block]); setBlocks(previous => previous.filter((_, i) => i !== index)); } catch (error) { await appNotice(String(error)); } finally { setBusy(false); } }}>삭제</button>
+                </div>
+              </div>)}
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
@@ -123,24 +181,13 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
               />
             </div>
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
+              <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
               <button
-                onClick={() => {
-                  if (!form.title || !form.content) return;
-                  onAddPost({
-                    id: `notice-${Date.now()}`,
-                    title: form.title,
-                    content: form.content,
-                    author: form.author || '관리자',
-                    date: today(),
-                    tag: form.tag,
-                  });
-                  setForm({ title: '', content: '', author: '', tag: '공지' });
-                  setShowForm(false);
-                }}
+                disabled={busy}
+                onClick={() => { void savePost(); }}
                 className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
               >
-                등록
+                {busy ? '처리 중…' : '등록'}
               </button>
             </div>
           </div>
@@ -165,9 +212,20 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
                 </div>
               </div>
               <div className="text-slate-600 leading-relaxed whitespace-pre-wrap font-medium min-h-[200px]">
-                {selectedPost.content}
+                {selectedPost.blocks?.length ? selectedPost.blocks.map((block, i) => block.type === 'text'
+                  ? <p key={i} className="mb-5">{block.text}</p>
+                  : <figure key={block.path} className="my-5"><img src={block.url} alt={block.caption || '공지 사진'} className="w-full rounded-xl" /><figcaption className="text-center text-sm mt-2">{block.caption}</figcaption></figure>) : selectedPost.content}
               </div>
               <div className="pt-6 border-t border-slate-50 flex justify-end">
+                {onUpdatePost && <button disabled={busy} className="mr-4 text-sm font-bold" onClick={async () => {
+                  setBusy(true); try { await onUpdatePost(selectedPost.id, { pinned: !selectedPost.pinned }); setSelectedPost({ ...selectedPost, pinned: !selectedPost.pinned }); }
+                  catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
+                }}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
+                {onDeletePost && <button disabled={busy} className="mr-4 text-sm font-bold text-rose-600" onClick={async () => {
+                  if (!await appConfirm('이 공지를 삭제할까요?')) return;
+                  setBusy(true); try { await onDeletePost(selectedPost.id); setSelectedPost(null); await deleteNoticeImages(selectedPost.blocks); }
+                  catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
+                }}>공지 삭제</button>}
                 <button 
                   onClick={() => setSelectedPost(null)}
                   className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all"

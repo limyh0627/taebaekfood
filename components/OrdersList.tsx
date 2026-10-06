@@ -1684,6 +1684,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateTo, setHistoryDateTo] = useState('');
   const [activeDateFrom, setActiveDateFrom] = useState(() => `${seoulDateInput().slice(0, 7)}-01`);
   const [activeDateTo, setActiveDateTo] = useState(() => seoulDateInput());
+  const [operationDateFrom, setOperationDateFrom] = useState('');
+  const [operationDateTo, setOperationDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
   /**
    * `workGroup` = **작업 그룹**(2026-09-11 사장님: "기름 깨 미분류가 세 개의 그룹이 되는거지").
@@ -1811,7 +1813,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   useEffect(() => {
     setListPage(1);
-  }, [listStatusTab, listFilterField, listFilterValue, searchTerm, activeDateFrom, activeDateTo, listSort, includeLegacyHistory]);
+  }, [listStatusTab, listFilterField, listFilterValue, searchTerm, activeDateFrom, activeDateTo, operationDateFrom, operationDateTo, listSort, includeLegacyHistory]);
   //  이력도 조건이 바뀌면 첫 쪽으로 — 3쪽을 보다가 조건을 좁히면 빈 쪽이 뜬다.
   useEffect(() => { setHistoryPage(1); }, [searchTerm, activeDateFrom, activeDateTo]);
 
@@ -2000,12 +2002,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
   }, [orders, searchTerm]);
 
   const activePeriodOrders = useMemo(() => embeddedListOnly ? orders : orders.filter(order => {
-    if (visibleActiveConfigs.some(config => config.statusFilter.includes(order.status))) return true;
+    if (visibleActiveConfigs.some(config => config.statusFilter.includes(order.status))) {
+      const day = dateOfLocal(order.createdAt);
+      return (!operationDateFrom || day >= operationDateFrom) && (!operationDateTo || day <= operationDateTo);
+    }
     if (!legacyHistoryEnabled || order.status !== OrderStatus.DELIVERED) return false;
     const completedDate = dateOfLocal(order.deliveredAt || order.deliveryDate || order.createdAt);
     return (!activeDateFrom || completedDate >= activeDateFrom)
       && (!activeDateTo || completedDate <= activeDateTo);
-  }), [orders, activeDateFrom, activeDateTo, embeddedListOnly, visibleActiveConfigs, legacyHistoryEnabled]);
+  }), [orders, activeDateFrom, activeDateTo, operationDateFrom, operationDateTo, embeddedListOnly, visibleActiveConfigs, legacyHistoryEnabled]);
 
   const activeOperationOrders = useMemo(
     () => activePeriodOrders.filter(order => visibleActiveConfigs.some(config => config.statusFilter.includes(order.status))),
@@ -2253,7 +2258,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     <button type="button" onClick={() => { setActiveDateFrom(sharedQuickMonthStart); setActiveDateTo(sharedQuickToday); }} className={sharedQuickRangeClass(activeDateFrom === sharedQuickMonthStart && activeDateTo === sharedQuickToday)} aria-label="이번 달">이번 달</button>
                   </span>
                 </span>
-              </label> : <span className="order-1 w-full text-xs font-bold text-slate-500">진행 중 주문 전체 · 날짜 제한 없음</span>}
+              </label> : <div className="order-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                <span>{operationDateFrom || operationDateTo ? '주문일 기간 조회' : '진행 중 주문 전체 · 날짜 제한 없음'}</span>
+                <input aria-label="진행 주문일 시작" type="date" value={operationDateFrom} max={operationDateTo || undefined} onChange={e => setOperationDateFrom(e.target.value)} className="h-9 border rounded-md px-2" />
+                <span>~</span>
+                <input aria-label="진행 주문일 종료" type="date" value={operationDateTo} min={operationDateFrom || undefined} onChange={e => setOperationDateTo(e.target.value)} className="h-9 border rounded-md px-2" />
+                <button onClick={() => { setOperationDateFrom(''); setOperationDateTo(''); }}>기간 전체</button>
+              </div>}
               {/*  '예전 주문 이력 포함' 체크는 없앴다(2026-09-11 사장님) — 이력은 이제 **탭**이다.
                    섞어 보여 주던 길을 두면 같은 것을 두 군데서 보게 되고, 어느 쪽이 맞는지 헷갈린다. */}
               <span className="order-2 h-0 basis-full" aria-hidden="true" />
@@ -3238,8 +3249,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <div role="columnheader" className="relative flex min-h-10 flex-col justify-center border-r border-slate-300 px-3 leading-tight">
                     {/*  **주문일만 정렬한다** — 아래 출고예정일은 눌러 고치는 칸이라 정렬을 얹으면
                          무엇을 세운 것인지 헷갈린다. */}
-                    {정렬머리('orderDate', '주문일', 'text-left')}
-                    <span className="text-[10px] font-bold text-slate-400">출고예정일</span>{resizeHandle('dates')}
+                    <span>출고예정일</span>{resizeHandle('dates')}
                   </div>
                   <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">{정렬머리('partner', '거래처')}{resizeHandle('partner')}</div>
                   {embeddedListOnly && <div role="columnheader" className="relative flex min-h-10 items-center border-r border-slate-300 px-3">주소{resizeHandle('address')}</div>}
@@ -3286,11 +3296,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           {/*  `ORD-` 는 전부 붙는 머리라 읽을 정보가 없다 — 떼고 숫자만 보여 준다
                                (2026-09-11 사장님). 원래 번호는 마우스를 올리면 나온다. */}
                           <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{(cardNoLabel(order) || order.id).replace(/^ORD-/, '')}</span>
-                          <span className={`w-fit rounded-md px-1.5 py-0.5 text-[9px] font-black ${statusChip(order.status)}`}>{statusLabel(order.status)}</span>
+                          <span className="text-[9px] font-bold text-slate-600">{statusLabel(order.status)}</span>
                         </div>
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-1.5 py-1">
-                          <span className="px-1.5 font-bold tabular-nums text-slate-500">{fmtYYMMDD(new Date(order.createdAt))}</span>
                           <EditableDeliveryDate
                             label={`${partnerName} 출고예정일`}
                             value={order.deliveryDate}
@@ -3309,7 +3318,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                  (2026-09-11 사장님: "거래처에 > 일반 거래처명이게 낫겠다").
                                  두 줄로 쌓으면 줄 높이가 두 배가 되어 한 화면에 덜 들어왔다. */}
                             <span className="flex min-w-0 items-center gap-1.5" title={`${order.source} · ${partnerName}`}>
-                              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black ${channelStyle(order.source).chip}`} title={order.source}>{channelStyle(order.source).short}</span>
+                              <span className="shrink-0 text-[9px] font-bold text-slate-500" title={order.source}>{channelStyle(order.source).short}</span>
                               <span className="min-w-0 truncate">{partnerName}</span>
                               {order.status === OrderStatus.DELIVERED && <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">예전</span>}
                             </span>
@@ -3467,7 +3476,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                방식은 없고 송장 고르개나 팔레트 단추만 서 있었다 — 택배인지
                                우리 차가 가는지를 **이 칸에서 바로 읽을 수 있어야** 한다.
                                판정은 `shipMethodOf` 하나다. */}
-                          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-black text-slate-600">{shipMethodOf(order)}</span>
+                          <span className="shrink-0 text-[9px] font-bold text-slate-600">{shipMethodOf(order)}</span>
                           {shipMethodOf(order) === '택배' ? (
                           <>
                           <select
@@ -3940,6 +3949,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             현장이 다 만든 것을 다시 만든다. 목록에서 빼지 않고 **줄을 그어
                             남겨 두는** 까닭은, 없으면 "내가 안 담은 건가 원래 없는 건가"를
                             못 가리기 때문이다. 주문 카드에서 완료 줄을 긋는 것과 같은 모양이다. */
+                        const product = items.find(item => item.id === wi.itemId);
+                        const display = splitNameVolume({ name: product?.name || wi.itemName, spec: product?.spec });
+                        const specification = specText(product?.spec) || display.vol;
                         const 끝났나 = isWorkComplete(wi);
                         const isSelected = pickerOrdering.includes(wi.key);
                         const 담긴그룹 = pickerAssign[wi.key];
@@ -3961,7 +3973,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               setPickerAssign(prev => ({ ...prev, [wi.key]: pickerGroup }));
                             }}
                             aria-disabled={끝났나}
-                            className={`mx-2 flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ${
+                            className={`mx-2 flex items-center gap-3 border-b border-slate-200 px-3 py-3 transition-colors ${
                               끝났나 ? 'cursor-default opacity-60'
                                 : isSelected ? `cursor-pointer ${그룹색(pickerGroups, 담긴그룹).줄}`
                                 : 'cursor-pointer hover:bg-slate-50'}`}
@@ -3984,7 +3996,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                               <span className="flex min-w-0 flex-col leading-tight">
                                 <span className={`truncate text-[11px] font-black ${끝났나 ? 'text-slate-400 line-through' : 'text-indigo-600'}`}>{거래처}</span>
                                 <span className={`truncate text-sm font-bold ${
-                                  끝났나 ? 'text-slate-400 line-through' : isSelected ? 'text-slate-800' : 'text-slate-700'}`}>{wi.itemName}</span>
+                                  끝났나 ? 'text-slate-400 line-through' : isSelected ? 'text-slate-800' : 'text-slate-700'}`}>{display.base}</span>
+                                {specification && <span className="mt-1 text-xs font-medium text-slate-500">규격 {specification}</span>}
                               </span>
                             </span>
                             {/*  **오른쪽은 위아래로 나눈다**(2026-09-16 사장님: "기름이 밑에가

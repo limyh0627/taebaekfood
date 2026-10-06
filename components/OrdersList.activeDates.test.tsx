@@ -28,6 +28,11 @@ it('오래된 진행 주문은 보드·리스트에 남고 완료 이력만 완�
   fireEvent.click(screen.getByRole('button', { name: '리스트' }));
   const list = screen.getByRole('table', { name: '주문 리스트' });
   for (const order of active) expect(list.textContent).toContain(order.partnerName);
+  expect(list.querySelector('[role="columnheader"]')?.parentElement?.textContent).not.toContain('주문일');
+  fireEvent.change(screen.getByLabelText('진행 주문일 시작'), { target: { value: today() } });
+  expect(list.textContent).not.toContain(active[0].partnerName);
+  fireEvent.click(screen.getByRole('button', { name: '기간 전체' }));
+  expect(list.textContent).toContain(active[0].partnerName);
 
   fireEvent.change(screen.getByRole('searchbox', { name: '전체 검색' }), { target: { value: 'ORD-260922-004' } });
   expect(list.textContent).toContain('260922-004');

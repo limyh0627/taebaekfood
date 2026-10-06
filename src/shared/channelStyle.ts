@@ -1,5 +1,6 @@
 import { User, Truck, Store, LayoutGrid } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { ShipMethod } from './types';
 
 /**
  * **거래처 채널(일반·택배·스마트스토어)의 아이콘과 색.**
@@ -49,15 +50,15 @@ export const channelStyle = (t?: string): ChannelStyle => 표[t as ChannelKey] ?
  * **배송방식의 기본값은 채널이 정한다**(2026-09-12 사장님: "스마트스토어랑 택배는
  * 배송방식이 기본이 택배"). 택배로 나가는 채널이면 택배, 아니면 우리 차가 도는 배송.
  */
-export const defaultShipMethod = (channel?: string): '배송' | '직접수령' | '택배' =>
+export const defaultShipMethod = (channel?: string): ShipMethod =>
   isDeliveryChannel(channel) ? '택배' : '배송';
 
 /**
  * 이 주문이 어떻게 나가나. **안 적힌 옛 주문은 채널로 읽는다** —
  * 화면마다 따로 따지면 같은 주문이 여기선 택배, 저기선 배송으로 보인다.
  */
-export const shipMethodOf = (order: { shipMethod?: '배송' | '직접수령' | '택배'; source?: string }) =>
-  order.shipMethod ?? defaultShipMethod(order.source);
+export const shipMethodOf = (order: { shipMethod?: ShipMethod | '직접수령'; source?: string }): ShipMethod =>
+  order.shipMethod === '직접수령' ? '수령' : order.shipMethod ?? defaultShipMethod(order.source);
 
 /** 거래처를 만들 때 고르는 차례 */
 export const CHANNELS: ChannelKey[] = ['일반', '택배', '스마트스토어'];

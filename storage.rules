@@ -22,6 +22,14 @@ service firebase.storage {
       allow read, write: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
     }
 
+    match /companies/{companyId}/notices/{postId}/{fileName} {
+      allow read: if isOwnCompany(companyId);
+      allow create, update: if isOwnCompany(companyId) && request.auth.token.isAdmin == true
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if isOwnCompany(companyId) && request.auth.token.isAdmin == true;
+    }
+
     match /companies/{companyId}/officetalk/{allPaths=**} {
       allow read, write: if isOwnCompany(companyId);
     }

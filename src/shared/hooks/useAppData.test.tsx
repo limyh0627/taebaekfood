@@ -10,6 +10,7 @@ const mock = vi.hoisted(() => ({
   fetchCollection: vi.fn(),
   onOrders: null as null | ((orders: Order[]) => void),
   listeners: [] as Array<{ name: string; callback: (rows: any[]) => void }>,
+  documents: [] as Array<{ id: string; callback: (value: any) => void }>,
 }));
 
 vi.mock('../firebase', () => ({ authReady: Promise.resolve() }));
@@ -21,7 +22,10 @@ vi.mock('../services/firebaseService', () => ({
     return () => {};
   },
   subscribeToRecentCollection: () => () => {},
-  subscribeToDocument: () => () => {},
+  subscribeToDocument: (_name: string, id: string, callback: (value: any) => void) => {
+    mock.documents.push({ id, callback });
+    return () => {};
+  },
   fetchDateRange: async () => [],
   fetchCollection: mock.fetchCollection,
 }));
@@ -75,6 +79,24 @@ describe('과거 주문 회사 전환', () => {
     rerender({ enabled: true });
     expect(result.current.historicalOrders).toEqual([]);
   });
+});
+
+it('회사 전환 직후 옛 회사 설정을 숨기고 늦은 설정 응답도 버린다', async () => {
+  mock.documents.length = 0;
+  mock.fetchCollection.mockResolvedValue([]);
+  const { result, rerender } = renderHook(({ company }) => useAppData(true, company, true), {
+    initialProps: { company: 'taebaek' as 'taebaek' | 'punghoe' },
+  });
+  await waitFor(() => expect(mock.documents).toHaveLength(1));
+  const old = mock.documents[0];
+  act(() => old.callback({ name: '태백' }));
+  expect(result.current.companyInfo).toMatchObject({ name: '태백' });
+  rerender({ company: 'punghoe' });
+  expect(result.current.companyInfo).toBeNull();
+  await waitFor(() => expect(mock.documents).toHaveLength(2));
+  act(() => mock.documents[1].callback({ name: '풍회' }));
+  act(() => old.callback({ name: '늦은 태백' }));
+  expect(result.current.companyInfo).toMatchObject({ name: '풍회' });
 });
 
 it('직원은 재무 구독을 걸지 않고 회사 전환 뒤 늦은 업무 응답을 무시한다', async () => {

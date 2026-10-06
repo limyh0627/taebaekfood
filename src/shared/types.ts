@@ -197,7 +197,7 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
  *
  * 안 적힌 옛 주문은 채널로 읽는다 — 판정은 `shipMethodOf` 한 곳이 한다.
  */
-export type ShipMethod = '배송' | '직접수령' | '택배';
+export type ShipMethod = '배송' | '화물' | '수령' | '택배';
 
 /**
  * **송장 양식** — 택배사가 주는 A~E 중 어느 것을 쓰는가
@@ -278,7 +278,7 @@ export interface Order {
   shipToId?: string;
   deliveryBoxes?: DeliveryBox[];
   /** 어떻게 나가나 — 안 적혔으면 채널로 읽는다(`shipMethodOf`). */
-  shipMethod?: ShipMethod;
+  shipMethod?: ShipMethod | '직접수령'; // 이전 주문은 읽을 때 '수령'으로 표시한다.
   invoicePrinted?: boolean;
   /**
    * **송장 단계** — `-`(안 함) · `printed`(출력) · `attached`(부착).
@@ -646,6 +646,8 @@ export interface Post {
   content: string;
   date: string;
   tag: '공지' | '긴급' | '매뉴얼' | '업무';
+  pinned?: boolean;
+  blocks?: ({ type: 'text'; text: string } | { type: 'image'; url: string; path: string; caption: string })[];
 }
 
 export interface FileItem {

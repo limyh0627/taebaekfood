@@ -1,9 +1,10 @@
+import { isCalendarDay } from './day';
 import type { CompanyId, IssuedStatement, Item } from './types';
 import { INVENTORY, journalizeTransfer } from './autoJournal';
 
 /** 한 품목의 기초 수량과 평가액을 회계 장부에서도 찾을 수 있는 대체전표로 남긴다. */
 export function inventoryOpeningStatement(companyId: CompanyId, date: string, item: Item, quantity: number, value: number): IssuedStatement {
-  if (!item.id || !item.name?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+  if (!item.id || !item.name?.trim() || !isCalendarDay(date) ||
       !Number.isFinite(quantity) || quantity <= 0 || !Number.isInteger(value) || value <= 0) {
     throw new Error('기초 재고의 품목·날짜·수량·평가금액을 확인하세요.');
   }

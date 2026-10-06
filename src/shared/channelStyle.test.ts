@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
-import { channelStyle, isDeliveryChannel, CHANNELS } from './channelStyle';
+import { channelStyle, isDeliveryChannel, CHANNELS, shipMethodOf } from './channelStyle';
 
 describe('channelStyle', () => {
+  it('네 출고 방식을 표시하고 기존 직접수령은 수령으로 읽는다', () => {
+    for (const shipMethod of ['배송', '화물', '수령', '택배'] as const) expect(shipMethodOf({ shipMethod })).toBe(shipMethod);
+    expect(shipMethodOf({ shipMethod: '직접수령' })).toBe('수령');
+  });
   it('세 채널이 다 있다', () => {
     expect(CHANNELS).toEqual(['일반', '택배', '스마트스토어']);
     for (const c of CHANNELS) expect(channelStyle(c).icon).toBeTruthy();

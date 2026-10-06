@@ -98,13 +98,15 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
   const { createMode, manualMode, editingStmt } = mode;
   const { selectedClientId, selectedOrderId, selectedOrderIds } = pick;
   const { onlyActive, dateFrom, dateTo, orderDateQuick, activeVisible, partnerSearch } = filter;
-  const { activeOrders, partnerOrders, confirmedBySupplier, orderRequestsBySupplier,
+  const { activeOrders: rawActiveOrders, partnerOrders: rawPartnerOrders, confirmedBySupplier, orderRequestsBySupplier,
           confirmedOrders, orderRequests, mergedStatements, allItems, partners, isVouchered } = data;
   const {
     setSelectedClientId, setSelectedOrderIds, setManualMode, setManualItems,
     setDateFrom, setDateTo, setOrderDateQuick, setActiveVisible, setTradeDate,
     setLoadedPoIds, setWarnDuplicate, goCompose, handleOrderClick, poToManualRows, updateOrderAccountingExclusion,
   } = on;
+  const activeOrders = React.useMemo(() => rawActiveOrders.map(order => ({ ...order, items: Array.isArray(order.items) ? order.items : [] })), [rawActiveOrders]);
+  const partnerOrders = React.useMemo(() => rawPartnerOrders.map(order => ({ ...order, items: Array.isArray(order.items) ? order.items : [] })), [rawPartnerOrders]);
   const itemById = React.useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
   const [previewOrder, setPreviewOrder] = React.useState<Order | null>(null);
   const [expandedOrderIds, setExpandedOrderIds] = React.useState<Set<string>>(() => new Set());
@@ -389,39 +391,40 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
               빈 화면이었다. 대칭으로 맞춘다(2026-09-03 사장님).
               누르면 그 거래처로 들어가 발주 목록이 뜬다 — 매출 쪽과 같은 흐름이다.
             */}
-            {createMode==='매입' && !selectedClientId && (() => {
-              const 그룹 = confirmedBySupplier
-                .filter(g => matchesSearch(g.partnerName || '', partnerSearch))
-                .filter(g => g.items.length > 0)
-                .sort((a, b) => (a.partnerName || '').localeCompare(b.partnerName || '', 'ko'));
-              const 합 = 그룹.reduce((n, g) => n + g.items.length, 0);
-              if (!그룹.length) return null;
+            {createMode==='매입' && !selectedClientId && !manualMode && !editingStmt && (() => {
+              const cards = [...confirmedOrders, ...orderRequests]
+                .filter(po => !po.linkedStatementId)
+                .filter(po => matchesSearch(partners.find(p => p.id === po.partnerId)?.name || po.partnerName || '', partnerSearch));
               return (
                 <div className="flex-1 min-h-0 flex flex-col">
-                  <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">미발행 발주</span>
-                    <span className="text-[10px] text-slate-400">{합}건</span>
+                  <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] font-black text-slate-500">미발행 발주</span>
+                    <span className="text-[10px] text-slate-400">{cards.length}건</span>
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-                    {그룹.map(g => (
-                      <button key={g.partnerId || g.partnerName}
-                        onClick={() => { setSelectedClientId(g.partnerId ?? ''); setManualMode(false); }}
-                        className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-rose-50 transition-colors">
+                    {cards.map(po => (
+                      <button key={po.id} type="button" aria-label={`미발행 발주 선택 ${po.id}`}
+                        onClick={() => {
+                          setSelectedClientId(po.partnerId || '');
+                          setManualItems(poToManualRows(po));
+                          setLoadedPoIds([po.id]);
+                          setTradeDate(today());
+                          setManualMode(true);
+                          goCompose();
+                        }}
+                        className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-rose-50">
                         <VoucherStatusDot issued={false} className="w-16 shrink-0" />
-                        <span className="font-black text-slate-800 w-40 truncate shrink-0">{g.partnerName || '거래처 미지정'}</span>
-                        <span className="text-slate-400 flex-1 min-w-0 truncate">
-                          {g.items.slice(0, 2).map(x => x.product?.name).filter(Boolean).join(', ')}
-                          {g.items.length > 2 && ` 외 ${g.items.length - 2}`}
-                        </span>
-                        <span className="text-slate-600 font-bold shrink-0">{g.items.length}품목</span>
-                        <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                        <span className="font-bold text-slate-800">{partners.find(p => p.id === po.partnerId)?.name || po.partnerName || '거래처 미지정'}</span>
+                        <span className="text-slate-400 flex-1 min-w-0 truncate">{itemSummary(poLines(po).map(line => ({ name: line.name || allItems.find(item => item.id === line.itemId)?.name || '품목' })))}</span>
+                        <span className="text-slate-600 shrink-0">{poLines(po).length}품목</span>
+                        <ChevronRight size={14} className="text-slate-300 shrink-0" />
                       </button>
                     ))}
+                    {cards.length === 0 && <p className="px-5 py-6 text-xs text-slate-400">미발행 발주가 없습니다.</p>}
                   </div>
                 </div>
               );
             })()}
-
             {/* ── 진행 주문 목록 (매출·진행주문만·거래처 미선택) ── */}
             {createMode==='매출' && !selectedClientId && activeOrders.length > 0 && (() => {
               const listOrders = (onlyActive ? activeOrders.filter(o => !isVouchered(o)) : activeOrders)

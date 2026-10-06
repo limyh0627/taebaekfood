@@ -60,6 +60,15 @@ beforeEach(() => {
 });
 
 describe('전표 목록 화면 구성', () => {
+  it('입고 화면에서는 목록을 펼치지 않고 같은 발행 모달만 열어 저장 후 닫는다', async () => {
+    const close = vi.fn();
+    const { onApplyStatement } = setup(undefined, undefined, { composerOnly: true, onComposerClose: close, pendingInvoice: { ...pendingInvoice, poIds: ['po-existing'] } });
+    expect(screen.queryByRole('heading', { name: '검색조건' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '매입 전표 작성' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(onApplyStatement).toHaveBeenCalledOnce());
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  });
   it('주문 목록과 같은 검색조건·거래유형·조회 결과 순서로 구성한다', () => {
     setup(undefined, undefined, { pendingInvoice: null });
 

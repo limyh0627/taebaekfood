@@ -1580,7 +1580,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
                       <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
-                      <td className="px-3 py-3 text-[11px] font-black text-slate-600">{row.status}</td>
+                      <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{row.status}</span></td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
                       <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
@@ -1599,7 +1599,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           const partnerName = po.partnerName || inboundPartners.find(p => p.id === partnerId)?.name || '';
                           if (!partnerId || !onRequestPurchaseInvoice) { alert('매입 거래처를 연결한 뒤 전표를 발행해 주세요.'); return; }
                           onRequestPurchaseInvoice(partnerId, partnerName, lines.map(line => ({ itemId: line.itemId, name: line.name || productMap.get(line.itemId)?.name || '', spec: productMap.get(line.itemId)?.spec || '', qty: line.quantity, price: 0 })), [po.id]);
-                        }} className="text-indigo-600 underline">발행하기</button>;
+                        }} className="font-bold text-rose-600 underline">발행하기</button>;
                       })()}</td>
                       <td className="px-3 py-3 text-center">{row.status !== '완료' && <button type="button" onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
                     </tr>

@@ -695,7 +695,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                   <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
                     {([
                       { key: '배송' as const, icon: Truck, 색: 'bg-indigo-600' },
-                      { key: '직접수령' as const, icon: Hand, 색: 'bg-teal-600' },
+                      { key: '화물' as const, icon: Truck, 색: 'bg-slate-700' },
+                      { key: '수령' as const, icon: Hand, 색: 'bg-teal-600' },
                       { key: '택배' as const, icon: Package, 색: 'bg-pink-600' },
                     ]).map(칸 => {
                       const 골랐나 = shipMethod === 칸.key;

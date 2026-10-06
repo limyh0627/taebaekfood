@@ -1,3 +1,4 @@
+import { isCalendarDay } from './day';
 import type { CashAccount, IssuedStatement } from './types';
 import { BANK, journalizeTransfer } from './autoJournal';
 import { STANDARD_ACCOUNT } from './accountChart';
@@ -6,7 +7,7 @@ export const openingCashAccountCode = (account: Pick<CashAccount, 'type'>): stri
   account.type === '현금' ? STANDARD_ACCOUNT.CASH : BANK;
 
 export function cashOpeningStatement(account: CashAccount): IssuedStatement {
-  if (!account.id || !account.companyId || !/^\d{4}-\d{2}-\d{2}$/.test(account.openingDate) ||
+  if (!account.id || !account.companyId || !isCalendarDay(account.openingDate) ||
       !Number.isInteger(account.openingBalance) || account.openingBalance <= 0 || account.type === '카드') {
     throw new Error('현금·통장 기초일과 0원 초과 정수 잔액을 확인하세요.');
   }
