@@ -578,7 +578,6 @@ export interface Item {
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
   //  boxSize 는 걷어냈다(2026-09-02) — 개입수의 근거는 **BOM 아니면 item_pack** 둘뿐이다.
   //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
-  defaultBoxConfig?: BoxConfig;       // @deprecated
   partnerBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
@@ -599,7 +598,6 @@ export interface Item {
    * **무엇이 얼마나 나오는지는 짐작하지 않는다** — 그건 BOM 이 근거다(`canUnpack`).
    */
   unpackable?: boolean;
-  unpackTo?: { itemId: string; count: number }; // 박스 개봉 — 이 품목 1개 개봉 시 대상 품목 재고 +count (예: 10kg박스 → 낱개 +10)
   isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
   rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨"). 캔/포대 매입 SKU가 어느 원료(raw)에 귀속되는지 연결
   packageType?: string;       // 입고 포장 단위 ('캔' | '포대' | '자루') — 매입 SKU에만 사용

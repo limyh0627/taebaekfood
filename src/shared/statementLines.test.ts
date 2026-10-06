@@ -1,17 +1,19 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { manualLines, manualAccountCode, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
 import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
 
-afterEach(() => resetPackIndex());
+import { buildBomIndex, resetBomIndex, setBomIndex } from './bomIndex';
+afterEach(() => { resetPackIndex(); resetBomIndex(); });
 
 const 품목 = (o: any) => o as any;
 const 주문 = (items: any[]) => ({ id: 'o1', items } as any);
 const 단가 = (o: any) => o as any;
 
 //  참기름 1750ml 낱개 / 그 10개들이 박스
-const 낱개 = 품목({ id: 'loose', name: '참기름/1750ml', spec: '1750ml', unit: '개' });
-const 박스 = 품목({ id: 'box', name: '참기름/1750ml 박스', unit: '박스', unpackTo: { itemId: 'loose', count: 10 } });
+const 낱개 = 품목({ id: 'loose', name: '참기름/1750ml', spec: '1750ml', unit: '개', type: 'product' });
+const 박스 = 품목({ id: 'box', name: '참기름/1750ml 박스', unit: '박스' });
 const 목록 = [낱개, 박스];
+beforeEach(() => setBomIndex(buildBomIndex(목록, [{ parent_id: 'box', child_id: 'loose', quantity: 10 }])));
 
 /**
  * **이름을 직접 쳐도 그 거래처 품목이면 기록이 남아야 한다**(2026-09-10 사장님).

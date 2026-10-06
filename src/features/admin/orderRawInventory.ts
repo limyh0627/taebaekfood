@@ -27,7 +27,7 @@ const kg3 = (value: number) => Math.round(value * 1000) / 1000;
  * 박스는 BOM이 정한 개입수까지 `unpackQty`로 편 뒤 한 공식을 쓴다.
  */
 export function oemLedgerKg(
-  product: Pick<Item, 'id' | 'unpackTo' | 'spec'>,
+  product: Pick<Item, 'id' | 'spec'>,
   units: number,
   formula: readonly { raw: string; ratio: number }[],
 ): RawUsageKg {

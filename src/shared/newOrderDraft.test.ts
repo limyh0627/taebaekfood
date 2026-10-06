@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { buildNewOrderDraft } from './newOrderDraft';
 import { buildPackIndex, resetPackIndex, setPackIndex } from './packIndex';
+import { buildBomIndex, resetBomIndex, setBomIndex } from './bomIndex';
 import type { Item, Partner, PartnerItem } from './types';
 
-afterEach(resetPackIndex);
+afterEach(() => { resetPackIndex(); resetBomIndex(); });
 const partner = { id: 'partner', name: '거래처', type: '스마트스토어' } as Partner;
 const loose = { id: 'loose', name: '참기름', type: 'product', unit: '병' } as Item;
-const box = { id: 'box', name: '참기름', type: 'product', unit: '박스', unpackTo: { itemId: 'loose', count: 20 } } as Item;
+const box = { id: 'box', name: '참기름', type: 'product', unit: '박스' } as Item;
+beforeEach(() => setBomIndex(buildBomIndex([loose, box], [{ parent_id: 'box', child_id: 'loose', quantity: 20 }])));
 const base = {
   partner, items: [loose, box], pallets: [], orderDate: '2026-10-06', deliveryDate: '2026-10-08',
   partnerItems: [{ id: 'price', itemId: 'loose', partnerId: 'partner', Direction: 'out', price: 1000, qtyPerBox: 99, boxTypeId: 'old-box' }] as PartnerItem[],

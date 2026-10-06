@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { kgPerStockUnit, stockKg } from './orderUnits';
-import { resetBomIndex, setBomIndex } from './bomIndex';
+import { buildBomIndex, resetBomIndex, setBomIndex } from './bomIndex';
 
-const 낱개 = { id: 'loose', spec: '1kg' };
-const 박스10 = { id: 'b10', spec: '1kg * 10', unpackTo: { itemId: 'loose', count: 10 } } as any;
-const 박스20 = { id: 'b20', spec: '1kg * 20', unpackTo: { itemId: 'loose', count: 20 } } as any;
+const 낱개 = { id: 'loose', type: 'product', spec: '1kg' };
+const 박스10 = { id: 'b10', spec: '1kg * 10' } as any;
+const 박스20 = { id: 'b20', spec: '1kg * 20' } as any;
+beforeEach(() => setBomIndex(buildBomIndex([낱개, 박스10, 박스20] as any, [{ parent_id: 'b10', child_id: 'loose', quantity: 10 }, { parent_id: 'b20', child_id: 'loose', quantity: 20 }])));
+afterEach(resetBomIndex);
 const 찾기 = (id: string) => ({ loose: 낱개 } as any)[id];
 
 describe('kgPerStockUnit — 재고 1단위가 몇 kg', () => {

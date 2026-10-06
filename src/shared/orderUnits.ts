@@ -4,7 +4,7 @@ import { packUnitsOf } from './packIndex';
 import { parseSpecCount, parsePackageKg } from '../constants/formula';
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
-type BoxLike = Pick<Item, 'id' | 'unpackTo'>;
+type BoxLike = Pick<Item, 'id'>;
 
 /**
  * 박스 품목의 낱개 구성 — **BOM에서 읽는다.**
@@ -16,7 +16,6 @@ type BoxLike = Pick<Item, 'id' | 'unpackTo'>;
  *   · 개봉(박스 −1 → 낱개 +count)
  *   · 재고 단위 환산 (주문 quantity가 낱개로 들어와도 재고는 박스로 뺀다)
  *
- * 옛 `unpackTo` 필드는 BOM에 구성품이 없을 때만 본다(이전 데이터 호환).
  */
 /**
  * **묶음 갈래 — 이 품목이 다른 완제품을 담고 있나, 어떤 식으로.**
@@ -46,8 +45,7 @@ export function 묶음갈래of(완제품구성: readonly { qty: number }[]): 묶
 export function unpackComponent(product: BoxLike | undefined): { itemId: string; count: number } | null {
   const comps = bomOf(product?.id).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
   if (묶음갈래of(comps) === '박스') return { itemId: comps[0].childId, count: comps[0].qty };
-  const legacy = product?.unpackTo;
-  return legacy && legacy.count > 1 ? { itemId: legacy.itemId, count: legacy.count } : null;
+  return null;
 }
 
 /** 재고 단위가 박스인 품목인가 (BOM에 낱개 구성품이 물려 있는 것) */
@@ -76,11 +74,11 @@ export function boxDerivedUnitPrice(
  * 박스 품목의 BOM(unpackComponent)이 이 낱개를 가리키면 짝이다.
  * count 오름차순(10kg박스 < 20kg박스).
  */
-export function boxSiblings<T extends Pick<Item, 'id' | 'unpackTo' | 'archived'>>(
+export function boxSiblings<T extends Pick<Item, 'id' | 'archived'>>(
   loose: Pick<Item, 'id'>, all: T[],
 ): { item: T; count: number }[] {
   //  BOM 역방향으로 이 낱개를 문 부모만 본다 — 예전엔 전 품목을 훑으며 unpackComponent를
-  //  두 번씩 불렀다(품목 수 × 2회). 옛 unpackTo 품목은 인덱스에 안 잡히므로 그쪽은 그대로 훑는다.
+  //  두 번씩 불렀다(품목 수 × 2회).
   const byId = new Map(all.map(p => [p.id, p]));
   const hits = new Map<string, { item: T; count: number }>();
   for (const { parentId } of bomParentsOf(loose.id)) {
@@ -88,11 +86,6 @@ export function boxSiblings<T extends Pick<Item, 'id' | 'unpackTo' | 'archived'>
     if (!item || item.archived) continue;
     const uc = unpackComponent(item);
     if (uc && uc.count > 1 && uc.itemId === loose.id) hits.set(parentId, { item, count: uc.count });
-  }
-  for (const p of all) {
-    if (p.archived || hits.has(p.id)) continue;
-    const legacy = p.unpackTo;
-    if (legacy && legacy.count > 1 && legacy.itemId === loose.id) hits.set(p.id, { item: p, count: legacy.count });
   }
   return [...hits.values()].sort((a, b) => a.count - b.count);
 }
@@ -285,7 +278,7 @@ export function itemKg(item: Item): number {
  * 낱개 밑에 박스 품목을 붙여 정렬한다 — 목록에서 둘이 떨어져 있으면 같은 물건인 줄 모른다.
  * 박스(unpackComponent)의 낱개가 목록에 있으면 그 아래로, 없으면(orphan) 단독으로 둔다.
  */
-export function groupLooseBoxRows<T extends Pick<Item, 'id' | 'unpackTo'>>(arr: T[]): { p: T; isChild: boolean }[] {
+export function groupLooseBoxRows<T extends Pick<Item, 'id'>>(arr: T[]): { p: T; isChild: boolean }[] {
   const inList = new Set(arr.map(p => p.id));
   const boxByParent = new Map<string, T[]>();
   const looseOrOrphan: T[] = [];

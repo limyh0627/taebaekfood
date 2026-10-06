@@ -50,12 +50,12 @@ describe('unpackComponent — BOM에서 읽는다', () => {
     expect(unpackComponent(낱개)).toBeNull();
     expect(unpackComponent(undefined)).toBeNull();
   });
-  it('BOM에 없으면 옛 unpackTo로 폴백', () => {
-    expect(unpackComponent(it_({ id: '옛품목', unpackTo: { itemId: 낱개ID, count: 20 } })))
-      .toEqual({ itemId: 낱개ID, count: 20 });
+  it('BOM에 없으면 옛 unpackTo가 남아 있어도 박스로 판정하지 않는다', () => {
+    expect(unpackComponent(it_({ id: '옛품목', unpackTo: { itemId: 낱개ID, count: 20 } } as any)))
+      .toBeNull();
   });
   it('BOM이 우선 — unpackTo와 다르면 BOM을 쓴다', () => {
-    expect(unpackComponent({ ...박스20, unpackTo: { itemId: 'x', count: 99 } }))
+    expect(unpackComponent({ ...박스20, unpackTo: { itemId: 'x', count: 99 } } as any))
       .toEqual({ itemId: 낱개ID, count: 20 });
   });
   it('BOM이 안 세워졌으면 아무것도 못 읽는다 — 로딩 전 상태', () => {
@@ -108,9 +108,9 @@ describe('boxSiblings — 낱개↔박스 짝', () => {
   it('archived 박스는 제외', () => {
     expect(boxSiblings(낱개, [{ ...box10, archived: true }, box20])).toHaveLength(1);
   });
-  it('옛 unpackTo 품목도 짝으로 잡는다 — BOM에는 안 잡히는 자리', () => {
-    const 옛박스 = it_({ id: '옛박스', type: 'product', unpackTo: { itemId: 낱개ID, count: 6 } });
-    expect(boxSiblings(낱개, [옛박스, box20]).map(x => x.count)).toEqual([6, 20]);
+  it('옛 unpackTo만 있는 품목은 박스 짝에 포함하지 않는다', () => {
+    const 옛박스 = it_({ id: '옛박스', type: 'product', unpackTo: { itemId: 낱개ID, count: 6 } } as any);
+    expect(boxSiblings(낱개, [옛박스, box20]).map(x => x.count)).toEqual([20]);
   });
 });
 
