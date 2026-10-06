@@ -23,7 +23,6 @@ const 낱개 = mk({ id: 'loose', name: '볶음참깨-낱개/1kg', type: 'product
 // 박스 완제품 — 낱개×10 + 6호박스 + 테이프(0). 품목도 있지만 조립이라 원료식 skip 돼야
 const 박스 = mk({
   id: 'box10', name: '볶음참깨/10kg박스', type: 'product', spec: '10kg', 품목: '시골향볶음참깨',
-  unpackTo: { itemId: 'loose', count: 10 },
 });
 
 // 기름 완제품 — 1750ml 통깨참기름 + 병

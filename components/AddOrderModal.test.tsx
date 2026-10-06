@@ -51,7 +51,7 @@ describe('옛 박스 설정과 포장 환산표 충돌', () => {
     setPackIndex(buildPackIndex([{ item_id: 'f6', units_per_box: 12 }]));
     try {
       const item = { id: 'f6', name: '포장 설정 충돌 품목', unit: '개', type: 'goods',
-        defaultBoxConfig: { unitsPerBox: 10, boxType: '' } } as Item;
+        defaultBoxConfig: { unitsPerBox: 10, boxType: '' } } as unknown as Item;
       render(<AddOrderModal items={[item]} orders={[]} partners={partners}
         partnerItems={[{ id: 'f6-link', itemId: item.id, partnerId: 'partner-1', Direction: 'out', price: 0 } as PartnerItem]}
         palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
