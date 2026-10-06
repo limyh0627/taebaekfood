@@ -80,11 +80,6 @@ const CostManager: React.FC<CostManagerProps> = ({
     }
     return out;
   }, [shownTpls]);
-  const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
-  const [editForm, setEditForm] = useState({
-    name: '', group: '', amount: '', partnerName: '',
-    postMode: '합침' as '합침' | '분리', autoIssue: false, issueDay: '1', taxExempt: false,
-  });
 
   const handleAddTemplate = async () => {
     const amount = Number(tplForm.amount.replace(/,/g, ''));
