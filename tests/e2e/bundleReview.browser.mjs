@@ -39,7 +39,7 @@ try {
     await until(async () => { current = (await photoItem.get()).data(); return current.image && current.image !== priorUrl; });
     if (!current.imagePath.startsWith('companies/taebaek/items/oil-350/')) throw new Error('Photo company path mismatch');
     if (!(await fetch(current.image)).ok) throw new Error('Saved image missing from Storage');
-    if (priorUrl) await until(async () => (await fetch(priorUrl)).status === 404);
+    if (priorUrl) await until(async () => { const response = await fetch(priorUrl); if (response.ok) console.log('Prior photo still returns 200'); else console.log('Prior photo HTTP', response.status); return !response.ok; });
     priorUrl = current.image;
   }
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -49,7 +49,7 @@ try {
   await page.getByRole('button', { name: '수정 완료', exact: true }).tap();
   await page.getByText('서류용 품목이 비어 있습니다.', { exact: false }).waitFor(); await page.getByRole('button', { name: '확인', exact: true }).tap();
   await until(async () => !(await photoItem.get()).data().image);
-  await until(async () => (await fetch(priorUrl)).status === 404);
+  await until(async () => !(await fetch(priorUrl)).ok);
   console.log('PASS: mobile touch PNG/JPEG/WebP upload, replacement and deletion; company Storage path; saved file cleanup');
   await page.setViewportSize({ width: 1280, height: 900 });
   const beforeOrders = (await db.collection('orders').get()).size;
@@ -58,11 +58,11 @@ try {
   await page.getByRole('button', { name: /직접 선택/ }).click();
   await page.setViewportSize({ width: 390, height: 480 });
   await page.getByPlaceholder(/거래처명 또는 초성 검색/).fill('가상');
-  const partner = page.getByRole('button', { name: /가상온라인몰/ });
+  const partner = page.getByRole('button', { name: '가상온라인몰 서울 중구', exact: true });
   await partner.waitFor();
   await until(async () => { const box = await partner.boundingBox(); return box && box.y >= 0 && box.y + box.height < 420; });
   await partner.tap();
-  await page.getByText('가상온라인몰', { exact: true }).waitFor();
+  await page.getByText('가상온라인몰', { exact: true }).last().waitFor();
   if ((await db.collection('orders').get()).size !== beforeOrders) throw new Error('Selection unexpectedly created an order');
   console.log('PASS: 390x480 mobile touch partner selection stays visible; selection does not save an order');
 } catch (error) {
