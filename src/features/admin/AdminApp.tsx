@@ -2730,10 +2730,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               currentUser={currentUser}
               isAdmin={isAdmin}
               issuedStatements={issuedStatements}
-              onRequestPurchaseInvoice={(partnerId, partnerName, items) => {
-                setPendingInvoice({ partnerId, partnerName, items });
+              onRequestPurchaseInvoice={(partnerId, partnerName, items, poIds) => {
+                setPendingInvoice({ partnerId, partnerName, items, poIds });
                 setCurrentView('trade-statement');
               }}
+              onOpenVoucher={docNo => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
               rawMaterialLedger={mergedRawMaterialLedger}
               linesUsingRaw={linesUsingRaw}
               

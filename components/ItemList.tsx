@@ -224,7 +224,8 @@ interface ItemListProps {
   linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
   /** 로트 탭 — 어느 박스 로트가 어느 거래처로 나갔는지 거꾸로 읽는다(회수·클레임) */
   orders?: Order[];
-  onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
+  onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>, poIds?: string[]) => void;
+  onOpenVoucher?: (docNo: string) => void;
   issuedStatements?: IssuedStatement[];
   /** 원료 손입력·실사 — 로트·원장·품목재고를 **한 트랜잭션**에 넣는다(AdminApp 이 명령을 부른다). */
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string }>;
@@ -257,7 +258,7 @@ const CLIENT_BADGE_COLORS = [
   'bg-orange-50 text-orange-500',
   'bg-indigo-50 text-indigo-500',
 ];
-type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'production' | 'lots' | 'lot-history';
+type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots' | 'lot-history';
 
 /**
  * 필터 드롭다운 하나 — 라벨 + 고른 값 요약 + 펼치면 선택지.
@@ -348,6 +349,7 @@ const ItemList: React.FC<ItemListProps> = ({
   rawMaterialLedger, linesUsingRaw,
   orders,
   onRequestPurchaseInvoice,
+  onOpenVoucher,
   issuedStatements = [],
   onAddRawMaterialEntry,
   onLedgerChanged,
@@ -587,8 +589,8 @@ const ItemList: React.FC<ItemListProps> = ({
   };
 
   const [topTab, setTopTab] = useState<TopTab>('product');
-  const [activeTab, setActiveTab] = useState<MainTab>(mode === 'lots' ? 'production' : 'master');
-  useEffect(() => { setActiveTab(mode === 'lots' ? 'production' : 'master'); }, [mode]);
+  const [activeTab, setActiveTab] = useState<MainTab>(mode === 'lots' ? 'lots' : 'master');
+  useEffect(() => { setActiveTab(mode === 'lots' ? 'lots' : 'master'); }, [mode]);
   const [flowTypeFilter, setFlowTypeFilter] = useState<FlowTypeFilter>('전체');
   const [flowStatusFilter, setFlowStatusFilter] = useState<FlowStatusFilter>('전체');
   const [flowPage, setFlowPage] = useState(1);
@@ -1250,7 +1252,6 @@ const ItemList: React.FC<ItemListProps> = ({
 
       {mode === 'lots' && (
         <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
-          <button onClick={() => setActiveTab('production')} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'production' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}><Factory size={13} className="mr-1.5 inline" />생산</button>
           <button onClick={() => { setLotStatus('all'); setActiveTab('lots'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lots' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}><Layers size={13} className="mr-1.5 inline" />로트</button>
           <button onClick={() => { setLotStatus('complete'); setActiveTab('lot-history'); }} className={`rounded-lg px-4 py-2 text-xs font-black transition-all ${activeTab === 'lot-history' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}><History size={13} className="mr-1.5 inline" />로트 이력</button>
         </div>
@@ -1322,11 +1323,6 @@ const ItemList: React.FC<ItemListProps> = ({
               <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
                 <RotateCcw size={13} /><span>반품 처리</span>
                 {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
-              </button>
-            )}
-            {oemEnabled && (
-              <button onClick={() => setOemIssueOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-black transition-all shadow-sm">
-                <Factory size={13} /><span>외주 발주</span>
               </button>
             )}
           </div>
@@ -1581,23 +1577,38 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="overflow-x-auto border-y-2 border-slate-400 bg-white">
               <table className="w-full min-w-[760px] table-fixed text-left">
                 <thead className="border-b-2 border-slate-400 bg-slate-50 text-[11px] font-black text-slate-500">
-                  <tr><th className="w-20 px-4 py-3">유형</th><th className="w-24 px-3 py-3">상태</th><th className="w-28 px-3 py-3">일자</th><th className="w-40 px-3 py-3">거래처</th><th className="px-3 py-3">품목</th><th className="w-28 px-3 py-3 text-right">수량</th><th className="w-20 px-3 py-3 text-center">상세</th></tr>
+                  <tr><th className="w-28 px-3 py-3">일자</th><th className="w-20 px-3 py-3">유형</th><th className="w-24 px-3 py-3">상태</th><th className="w-40 px-3 py-3">거래처</th><th className="px-3 py-3">품목</th><th className="w-28 px-3 py-3 text-right">수량</th><th className="w-28 px-3 py-3 text-center">전표</th><th className="w-28 px-3 py-3 text-center">작업</th></tr>
                 </thead>
                 <tbody>
                   {visible.map(row => (
-                    <tr key={row.key} className="border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70">
-                      <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
-                      <td className="px-3 py-3">
-                        <button type="button" disabled={row.status === '완료' || (row.type === '입고' && row.status === '대기')} onClick={event => { event.stopPropagation(); requestTransition(row); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-black ${row.status === '예정' ? 'bg-sky-50 text-sky-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'cursor-default bg-slate-100 text-slate-500'}`}>{row.status}</button>
-                      </td>
+                    <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
                       <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
+                      <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
+                      <td className="px-3 py-3 text-[11px] font-black text-slate-600">{row.status}</td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
                       <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
-                      <td className="px-3 py-3 text-center"><button type="button" onClick={event => { event.stopPropagation(); const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">보기</button></td>
+                      <td className="px-3 py-3 text-center text-xs font-bold">{(() => {
+                        const linkedId = row.source.linkedStatementId;
+                        const linked = issuedStatements.find(statement => statement.id === linkedId);
+                        if (linkedId) return linked?.docNo
+                          ? <button type="button" onClick={event => { event.stopPropagation(); onOpenVoucher?.(linked.docNo); }} className="text-indigo-600 underline">{linked.docNo}</button>
+                          : <span title="연결 전표를 조회할 수 없습니다." className="text-slate-500">{linkedId}</span>;
+                        if (!isAdmin || row.type === '반품') return <span className="text-slate-400">—</span>;
+                        return <button type="button" onClick={event => {
+                          event.stopPropagation();
+                          const po = row.source as PurchaseOrder;
+                          const lines = poLines(po);
+                          const partnerId = po.partnerId || psMap.get(lines[0]?.itemId) || '';
+                          const partnerName = po.partnerName || inboundPartners.find(p => p.id === partnerId)?.name || '';
+                          if (!partnerId || !onRequestPurchaseInvoice) { alert('매입 거래처를 연결한 뒤 전표를 발행해 주세요.'); return; }
+                          onRequestPurchaseInvoice(partnerId, partnerName, lines.map(line => ({ itemId: line.itemId, name: line.name || productMap.get(line.itemId)?.name || '', spec: productMap.get(line.itemId)?.spec || '', qty: line.quantity, price: 0 })), [po.id]);
+                        }} className="text-indigo-600 underline">발행하기</button>;
+                      })()}</td>
+                      <td className="px-3 py-3 text-center">{row.status !== '완료' && <button type="button" onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
                     </tr>
                   ))}
-                  {visible.length === 0 && <tr><td colSpan={7} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
+                  {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1689,24 +1700,12 @@ const ItemList: React.FC<ItemListProps> = ({
         />
       )}
 
-      {activeTab === 'production' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-black text-slate-900">원료 사용 기록</h3>
-              <p className="mt-1 text-xs font-bold text-slate-400">생산에 사용한 원료를 선택하고 사용량을 기록합니다.</p>
-            </div>
-            <button type="button" onClick={() => setRawEntryModal({ mode: 'usage' })} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white shadow-sm hover:bg-indigo-700">
-              <FileDown size={14} />사용 기록
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {(activeTab === 'lots' || activeTab === 'lot-history') && (
         <div className="flex flex-col gap-3 flex-none lg:flex-1 min-h-0">
           <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap shadow-sm">
+            <button type="button" onClick={() => setRawEntryModal({ mode: 'usage' })} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white">사용 기록</button>
+            {oemEnabled && onOemIssue && <button type="button" onClick={() => setOemIssueOpen(true)} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-black text-white">외주 발주</button>}
             <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input type="text" placeholder="품목명·규격 검색" value={lotSearch} onChange={e => setLotSearch(e.target.value)}
