@@ -50,6 +50,51 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  describe('서버 공통 전환 설정 단건 조회', () => {
+    const gate = (db: any) => doc(db, 'appMeta', 'releaseCutover');
+    beforeEach(async () => {
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(gate(ctx.firestore()), { status: 'active', releaseId: 'release-test' });
+        await setDoc(doc(ctx.firestore(), 'appMeta', 'workOrderReset_taebaek'), { companyId: 'taebaek', date: '2026-10-07' });
+      });
+    });
+    it('양사 관리자는 회사 없는 전환 설정을 단건으로 읽는다', async () => {
+      await assertSucceeds(getDoc(gate(관리자())));
+      await assertSucceeds(getDoc(gate(풍회관리자())));
+    });
+    it('직원·미로그인·회사 없는 관리자는 읽지 못한다', async () => {
+      await assertFails(getDoc(gate(태백직원())));
+      await assertFails(getDoc(gate(풍회직원())));
+      await assertFails(getDoc(gate(미로그인())));
+      const invalid = env.authenticatedContext('invalid-admin', { employeeId: 'admin', isAdmin: true }).firestore();
+      await assertFails(getDoc(gate(invalid)));
+    });
+    it('관리자도 전환 설정 목록·수정·삭제를 할 수 없다', async () => {
+      await assertFails(getDocs(collection(관리자(), 'appMeta')));
+      await assertFails(updateDoc(gate(관리자()), { status: 'paused' }));
+      await assertFails(deleteDoc(gate(관리자())));
+    });
+    it('회사값이 붙어도 포괄 규칙으로 전환 설정을 쓰거나 직원이 읽지 못한다', async () => {
+      await env.withSecurityRulesDisabled(ctx => setDoc(gate(ctx.firestore()), { companyId: 'taebaek', status: 'active' }));
+      await assertSucceeds(getDoc(gate(관리자())));
+      await assertFails(getDoc(gate(태백직원())));
+      await assertFails(getDocs(query(collection(관리자(), 'appMeta'), where('companyId', '==', 'taebaek'))));
+      await assertFails(setDoc(gate(관리자()), { companyId: 'taebaek', status: 'paused' }));
+      await assertFails(updateDoc(gate(관리자()), { status: 'paused' }));
+      await assertFails(deleteDoc(gate(관리자())));
+    });
+    it('없는 전환 설정도 앱에서 생성하지 못한다', async () => {
+      await env.withSecurityRulesDisabled(ctx => deleteDoc(gate(ctx.firestore())));
+      await assertFails(setDoc(gate(관리자()), { companyId: 'taebaek', status: 'active' }));
+      await assertFails(setDoc(gate(태백직원()), { companyId: 'taebaek', status: 'active' }));
+    });
+    it('다른 회사별 appMeta의 기존 읽기·쓰기 경계를 유지한다', async () => {
+      const own = doc(태백직원(), 'appMeta', 'workOrderReset_taebaek');
+      await assertSucceeds(getDoc(own));
+      await assertSucceeds(updateDoc(own, { date: '2026-10-08' }));
+      await assertFails(getDoc(doc(풍회관리자(), 'appMeta', 'workOrderReset_taebaek')));
+    });
+  });
   it('공지는 직원이 읽되 관리자만 작성·고정·삭제한다', async () => {
     const target = (db: any) => doc(db, 'notices', 'notice-test');
     await assertSucceeds(setDoc(target(관리자()), { companyId: 'taebaek', title: '공지' }));

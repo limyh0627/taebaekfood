@@ -268,22 +268,31 @@ service cloud.firestore {
       allow delete: if isAdmin() && deleteOk();
     }
 
+    // 전환 문서는 회사 없는 서버 공통 설정이라 관리자 단건 조회만 예외로 연다.
+    function isReleaseCutoverPath() {
+      return request.path == /databases/$(database)/documents/appMeta/releaseCutover;
+    }
+    match /appMeta/releaseCutover {
+      allow get: if isAdmin() && myCompany() in ['taebaek', 'punghoe'];
+    }
+
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
     //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워
     //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
     //  안 붙이면 저장하는 족족 여기서 막힌다(그게 의도다. 조용히 새는 것보다 낫다).
     match /{collection}/{document=**} {
-      allow get: if !hasOwnRule(collection)
+      allow get: if !hasOwnRule(collection) && !isReleaseCutoverPath()
                  && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                  && getOk();
-      allow list: if !hasOwnRule(collection)
+      // 목록 요청에는 개별 문서 경로가 없어 전환 설정만 제외할 수 없다. 앱은 메타 단건 조회만 쓴다.
+      allow list: if !hasOwnRule(collection) && collection != 'appMeta'
                   && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                   && readOk();
-      allow create, update: if !hasOwnRule(collection)
+      allow create, update: if !hasOwnRule(collection) && !isReleaseCutoverPath()
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
                             && inventoryQuantityOk(collection);
-      allow delete: if !hasOwnRule(collection)
+      allow delete: if !hasOwnRule(collection) && !isReleaseCutoverPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk();
     }
