@@ -20,10 +20,13 @@ const rows = await Promise.all(Object.entries(targets).map(async ([collection, f
   }
   return { collection, companies };
 }));
-const [items, links] = await Promise.all([
-  db.collection('items').select('companyId', 'partnerIds', 'isSmartStore').get(),
+const [items, links, partners] = await Promise.all([
+  db.collection('items').select('companyId', 'partnerIds', 'isSmartStore', 'archived').get(),
   db.collection('partner_item').select('companyId', 'itemId', 'partnerId', 'Direction').get(),
+  db.collection('partners').select('companyId', 'archived').get(),
 ]);
+const partnerById = new Map(partners.docs.map(doc => [doc.id, doc.data()]));
+const missingLinkReasons: Record<string, number> = {};
 const saleLinks = new Set(links.docs.filter(doc => doc.get('Direction') !== 'in')
   .map(doc => JSON.stringify([doc.get('companyId'), doc.get('itemId'), doc.get('partnerId')])));
 const connectionAudit: Record<string, { legacyConnections: number; missingSaleLinks: number; smartStoreMarkers: number; markersWithoutNewFlag: number; malformedLists: number }> = {};
@@ -39,11 +42,19 @@ for (const doc of items.docs) {
       if (doc.get('isSmartStore') !== true) counts.markersWithoutNewFlag++;
     } else {
       counts.legacyConnections++;
-      if (!saleLinks.has(JSON.stringify([doc.get('companyId'), doc.id, id]))) counts.missingSaleLinks++;
+      if (!saleLinks.has(JSON.stringify([doc.get('companyId'), doc.id, id]))) {
+        counts.missingSaleLinks++;
+        const partner = partnerById.get(String(id));
+        const reason = !partner ? 'missingPartner' : partner.companyId !== doc.get('companyId') ? 'differentCompany'
+          : doc.get('archived') === true ? 'archivedItem' : partner.archived === true ? 'archivedPartner'
+          : links.docs.some(link => link.get('companyId') === doc.get('companyId') && link.get('itemId') === doc.id
+            && link.get('partnerId') === id && link.get('Direction') === 'in') ? 'purchaseOnly' : 'activeUnlinked';
+        missingLinkReasons[reason] = (missingLinkReasons[reason] ?? 0) + 1;
+      }
     }
   }
 }
-const result = { project: db.projectId, auditedAt: new Date().toISOString(), readOnly: true, rows, connectionAudit };
+const result = { project: db.projectId, auditedAt: new Date().toISOString(), readOnly: true, rows, connectionAudit, missingLinkReasons };
 mkdirSync('outputs', { recursive: true });
 writeFileSync('outputs/deprecated-field-counts.json', JSON.stringify(result, null, 2));
 console.log(JSON.stringify(result, null, 2));
