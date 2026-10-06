@@ -159,12 +159,12 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   });
 
   const finishedProducts = useMemo(
-    () => items.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.type === '완제품')),
+    () => items.filter(p => !p.archived && (p.type === 'product' || p.type === '완제품')),
     [items]
   );
 
   const wipProducts = useMemo(
-    () => items.filter(p => !p.archived && p.itemType === 'WIP'),
+    () => items.filter(p => !p.archived && p.type === 'wip'),
     [items]
   );
 
@@ -340,8 +340,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1.5">생산 품목 (FINISHED)</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5">생산 품목</label>
               <select
+                aria-label="생산 품목"
                 value={form.itemId}
                 onChange={e => setForm(f => ({ ...f, itemId: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
@@ -373,8 +374,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1.5">투입 WIP 품목 <span className="font-normal text-slate-400">(옵션)</span></label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5">투입 반제품 <span className="font-normal text-slate-400">(옵션)</span></label>
               <select
+                aria-label="투입 반제품"
                 value={form.wipItemId}
                 onChange={e => setForm(f => ({ ...f, wipItemId: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
@@ -388,7 +390,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
             {form.wipItemId && (
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1.5">WIP 투입 수량</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">반제품 투입 수량</label>
                 <input
                   type="number"
                   value={form.wipUsed}
