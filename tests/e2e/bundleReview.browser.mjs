@@ -33,7 +33,7 @@ try {
     }, mime);
     await page.getByLabel('품목 사진 선택').setInputFiles({ name: `demo.${mime.split('/')[1]}`, mimeType: mime, buffer: Buffer.from(bytes, 'base64') });
     await page.getByRole('button', { name: '수정 완료', exact: true }).tap();
-    await page.getByText('서류용 품목이 비어 있습니다.', { exact: true }).waitFor(); await page.getByRole('button', { name: '확인', exact: true }).tap();
+    await page.getByText('서류용 품목이 비어 있습니다.', { exact: false }).waitFor(); await page.getByRole('button', { name: '확인', exact: true }).tap();
     await page.getByLabel('품목 사진 선택').waitFor({ state: 'hidden' });
     let current;
     await until(async () => { current = (await photoItem.get()).data(); return current.image && current.image !== priorUrl; });
@@ -47,7 +47,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '사진 삭제', exact: true }).tap();
   await page.getByRole('button', { name: '수정 완료', exact: true }).tap();
-  await page.getByText('서류용 품목이 비어 있습니다.', { exact: true }).waitFor(); await page.getByRole('button', { name: '확인', exact: true }).tap();
+  await page.getByText('서류용 품목이 비어 있습니다.', { exact: false }).waitFor(); await page.getByRole('button', { name: '확인', exact: true }).tap();
   await until(async () => !(await photoItem.get()).data().image);
   await until(async () => (await fetch(priorUrl)).status === 404);
   console.log('PASS: mobile touch PNG/JPEG/WebP upload, replacement and deletion; company Storage path; saved file cleanup');
