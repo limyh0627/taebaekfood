@@ -77,6 +77,14 @@ export async function activeReleaseId(): Promise<string> {
   return requireActiveReleaseId((await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data());
 }
 
+export async function editIssuedStatementCommand(id: string, patch: Partial<IssuedStatement>, expectedRevision: number, operationId: string): Promise<void> {
+  await authReady;
+  if (!auth.currentUser) throw new Error('로그인이 만료됐습니다. 다시 로그인해 주세요.');
+  const releaseId = await activeReleaseId();
+  const call = httpsCallable(functions, 'editIssuedStatementCommand');
+  await call({ statementId: id, patch: stripUndefined(patch), expectedRevision, operationId, releaseId });
+}
+
 export async function issueOemFeeVoucherCommand(input: { poId: string; perKg: number; statement: IssuedStatement }): Promise<string> {
   const releaseId = await activeReleaseId();
   const scoped = await companyScopedWriteData('issuedStatements', stripUndefined(input.statement) as Record<string, unknown>);

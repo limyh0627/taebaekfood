@@ -19,6 +19,7 @@ const REGION = 'asia-northeast3';
 //  열쇠를 앱에 두면 브라우저에서 그대로 보이므로 서버에만 둔다. 자세한 것은 그 파일에.
 export { extractOrder } from './extractOrder';
 export { employeeLogin } from './employeeLogin';
+export { editIssuedStatementCommand } from './editIssuedStatementCommand';
 
 // 아이디 찾기: 이름 + 연락처가 일치하는 계정의 username 반환
 export const findUsername = onCall({ region: REGION }, async (request) => {

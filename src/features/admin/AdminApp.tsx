@@ -192,6 +192,7 @@ import { boxSpecUpdates } from '../../shared/boxSpec';
 import {
   addItem,
   updateItem,
+  editIssuedStatementCommand,
   deleteItem,
   setProductClients,
   setProductSuppliers,
@@ -340,8 +341,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 거래일이 바뀌어도 시각 도장이 안 따라갔다(`shared/statementEdit` 참고).
    */
   const updateStatement = useCallback(
-    (id: string, data: Partial<IssuedStatement>) =>
-      updateItem('issuedStatements', id, statementEditPatch(data, issuedStatements.find(s => s.id === id))),
+    (id: string, data: Partial<IssuedStatement>) => {
+      const current = issuedStatements.find(s => s.id === id);
+      if (!current) throw new Error('수정할 전표를 찾지 못했습니다. 화면을 새로고침해 주세요.');
+      return editIssuedStatementCommand(id, statementEditPatch(data, current), Number((current as IssuedStatement & { mutationRevision?: number }).mutationRevision ?? 0), crypto.randomUUID());
+    },
     [issuedStatements],
   );
 
