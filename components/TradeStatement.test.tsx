@@ -107,6 +107,18 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     expect(appConfirm).toHaveBeenCalledWith(expect.stringContaining('입고대기에 등록할까요?'));
   });
 
+  it('기존 입고대기에서 발행하면 추가 질문 없이 기존 발주만 연결한다', async () => {
+    const { onApplyStatement } = setup(undefined, undefined, {
+      pendingInvoice: { ...pendingInvoice, poIds: ['existing-inbound-po'] },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+    await waitFor(() => expect(onApplyStatement).toHaveBeenCalledTimes(1));
+    expect(appConfirm).not.toHaveBeenCalled();
+    expect(onApplyStatement).toHaveBeenCalledWith(expect.objectContaining({
+      poIds: ['existing-inbound-po'], newPoItems: [],
+    }));
+  });
+
   it('비용성 매입만 있으면 입고대기를 묻지 않는다', async () => {
     const 비용품목 = { ...item, type: 'service' } as Item;
     const { onApplyStatement } = setup(undefined, undefined, { allItems: [비용품목] });

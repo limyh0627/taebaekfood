@@ -1483,11 +1483,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     // 모달 밖에서 들어온 옛 줄도 발행 직전 같은 확인을 거친다.
     const skipLinkIds = await confirmUnlinkedLines();
     if (!skipLinkIds) return;
-    // 매입전표라고 무조건 묻지 않는다. 현재는 품목 분류를 기준으로 실물 재고 줄이 있거나,
-    // 이미 발주카드에서 넘어온 전표일 때만 묻는다. 대상 선정 방식 자체는 추후 개선한다.
-    const 입고확인필요 = stmtType === '매입' && (
-      loadedPoIds.length > 0 || hasInboundInventoryLines(lineItems, allItems)
-    );
+    // 기존 발주·입고대기는 새 카드를 만들지 않고 전표만 연결한다.
+    const 입고확인필요 = stmtType === '매입' && loadedPoIds.length === 0
+      && hasInboundInventoryLines(lineItems, allItems);
     const registerInbound = !입고확인필요 || await appConfirm(
       '이 매입전표의 재고 품목을 입고대기에 등록할까요?\n\n' +
       '예: 입고대기에 등록\n아니오: 매입전표만 발행'
