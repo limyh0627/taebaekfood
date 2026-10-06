@@ -2895,3 +2895,10 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
   - 원료·상품만 있는 출고 주문도 생산판매일지 처리 후 주문 이력으로 이동하도록 마감 대상과 판매 표 필터를 분리했다.
   - 클라이언트 직접 `addDoc`·`setDoc` 생성을 막는 정적 감사와 생산판매일지 회사 경계 Emulator 시험을 추가했다.
   - 정기 자동전표·자금전표에 템플릿의 `companyId`를 저장하도록 보완했다.
+
+## 2026-10-07 — 김밥담 출고 실패 잠금 해제
+
+- 사용자 직접 요청. orders/ORD-1791261355911 (ORD-261006-010, taebaek) inventoryOperation만 null로 변경. 실패 operationId order-status-ORD-1791261355911-1791273219444.
+- 생산 완료 job3/원장5는 실패 이전. 출고 snapshot/소진내역 없음, 실패 감사 stockAdjustments0. 주문 및 관련 문서를 transaction에서 원본 대조한 뒤 적용. 주문 DISPATCHED·생산 증거·품목 stock/lot/예약 보존, 재고쓰기0.
+- 백업/근거/검증: outputs/gimbapdam-unlock-20261007/{before,evidence,verification}.json. scripts/fix-gimbapdam-inventory-lock-20261007.mts --undo는 이후 주문 변경이 없을 때만 복원. dry 기본, 재적용은 주문 원본 대조로 차단.
+- 최초 적용은 저장 문서 id와 조사용 id의 중복 비교로 쓰기 전에 중단. 비교 수정 후 적용 및 별도 재조회 검증 완료. Hosting 변경 없음.

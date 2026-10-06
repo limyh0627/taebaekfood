@@ -4,6 +4,700 @@ COL 67개, 선언 필드 724개, 운영 소스 317개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다.
 
+## Firestore 경로 보완
+
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 187건. 동적 문서 ID도 미해석으로 보존하며, 미해석 139건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 0건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+
+COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `itemUnpackMovements`, `voucherMutationOperations`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
+
+| 위치 | 실행 | API | 문맥 | 깊이 | 경로 (중괄호는 동적식) | COL 밖 |
+| --- | --- | --- | --- | --- | --- | --- |
+| src/shared/services/rawInventoryService.ts:167 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(command.operationId)} |  |
+| src/shared/services/rawInventoryService.ts:168 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{legacyOperationDocId(command.operationId)} |  |
+| src/shared/services/rawInventoryService.ts:169 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(command.companyId, command.rawItemId)} |  |
+| src/shared/services/rawInventoryService.ts:170 | client | doc | root / top-level-candidate | 미해석 | items/{command.rawItemId} |  |
+| src/shared/services/rawInventoryService.ts:172 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(originalId \|\| '_none_')} |  |
+| src/shared/services/rawInventoryService.ts:173 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{legacyOperationDocId(originalId \|\| '_none_')} |  |
+| src/shared/services/rawInventoryService.ts:174 | client | doc | root / top-level-candidate | 미해석 | rawInventoryReversalGuards/{operationDocId(originalId \|\| '_none_')} |  |
+| src/shared/services/rawInventoryService.ts:324 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(companyId, rawItemId)} |  |
+| src/shared/services/rawInventoryService.ts:341 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(input.companyId, input.rawItemId)} |  |
+| src/shared/services/rawInventoryService.ts:342 | client | doc | root / top-level-candidate | 미해석 | items/{input.rawItemId} |  |
+| src/shared/services/firebaseService.ts:77 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/shared/services/firebaseService.ts:111 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{docId} |  |
+| src/shared/services/firebaseService.ts:118 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{docId} |  |
+| src/shared/services/firebaseService.ts:125 | client | doc | root / top-level-candidate | 미해석 | openingBalances/{openingDocId(companyId)} |  |
+| src/shared/services/firebaseService.ts:173 | client | doc | root / top-level-candidate | 미해석 | partners/{partnerId} |  |
+| src/shared/services/firebaseService.ts:174 | client | doc | root / top-level-candidate | 미해석 | openingBalances/{openingDocId(companyId)} |  |
+| src/shared/services/firebaseService.ts:176 | client | doc | root / top-level-candidate | 미해석 | issuedStatements/{`opening-partner-${companyId}-${date}-${partnerId}-${code}`} |  |
+| src/shared/services/firebaseService.ts:215 | client | doc | root / top-level-candidate | 미해석 | loanContracts/{loan.id} |  |
+| src/shared/services/firebaseService.ts:216 | client | doc | root / top-level-candidate | 미해석 | openingBalances/{openingDocId(companyId)} |  |
+| src/shared/services/firebaseService.ts:217 | client | doc | root / top-level-candidate | 미해석 | issuedStatements/{`opening-loan-${companyId}-${loan.id}`} |  |
+| src/shared/services/firebaseService.ts:218 | client | doc | root / top-level-candidate | 미해석 | partners/{loan.partnerId} |  |
+| src/shared/services/firebaseService.ts:260 | client | collection | root / top-level | 1 | cashAccounts |  |
+| src/shared/services/firebaseService.ts:262 | client | doc | root / top-level-candidate | 미해석 | cashAccounts/{account.id} |  |
+| src/shared/services/firebaseService.ts:263 | client | doc | root / top-level-candidate | 미해석 | openingBalances/{openingDocId(companyId)} |  |
+| src/shared/services/firebaseService.ts:264 | client | doc | root / top-level-candidate | 미해석 | issuedStatements/{`opening-cash-${companyId}-${account.id}`} |  |
+| src/shared/services/firebaseService.ts:314 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/shared/services/firebaseService.ts:315 | client | doc | root / top-level-candidate | 미해석 | openingBalances/{openingDocId(companyId)} |  |
+| src/shared/services/firebaseService.ts:316 | client | doc | root / top-level-candidate | 미해석 | issuedStatements/{`opening-inventory-${companyId}-${itemId}`} |  |
+| src/shared/services/firebaseService.ts:388 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:409 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:444 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:484 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:487 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:493 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:503 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:516 | client | doc | root / top-level-candidate | 미해석 | notifications/{id} |  |
+| src/shared/services/firebaseService.ts:546 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{itemId} |  |
+| src/shared/services/firebaseService.ts:576 | client | doc | root / top-level-candidate | 미해석 | items/{rawItemId} |  |
+| src/shared/services/firebaseService.ts:596 | client | collection | root / subcollection-candidate | 미해석 | {parentCollection}/{parentId}/{subCollectionName} |  |
+| src/shared/services/firebaseService.ts:615 | client | doc | root / subcollection-candidate | 미해석 | {parentCollection}/{parentId}/{subCollectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:618 | client | collection | root / subcollection-candidate | 미해석 | {parentCollection}/{parentId}/{subCollectionName} |  |
+| src/shared/services/firebaseService.ts:630 | client | doc | root / subcollection-candidate | 미해석 | {parentCollection}/{parentId}/{subCollectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:640 | client | doc | root / subcollection-candidate | 미해석 | {parentCollection}/{parentId}/{subCollectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:655 | client | collection | root / top-level | 1 | partner_item |  |
+| src/shared/services/firebaseService.ts:688 | client | collection | root / top-level | 1 | partner_item |  |
+| src/shared/services/firebaseService.ts:735 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:749 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:769 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:782 | client | collection | root / top-level-candidate | 미해석 | {collectionName} |  |
+| src/shared/services/firebaseService.ts:802 | client | doc | root / top-level-candidate | 미해석 | {op.collection}/{op.id} |  |
+| src/shared/services/firebaseService.ts:819 | client | doc | root / top-level-candidate | 미해석 | items/{receipt.itemId} |  |
+| src/shared/services/firebaseService.ts:820 | client | doc | root / top-level-candidate | 미해석 | itemReceipts/{receipt.id} |  |
+| src/shared/services/firebaseService.ts:858 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
+| src/shared/services/firebaseService.ts:861 | client | collection | root / top-level | 1 | itemReceipts |  |
+| src/shared/services/firebaseService.ts:863 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| src/shared/services/firebaseService.ts:876 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
+| src/shared/services/firebaseService.ts:876 | client | doc | root / top-level-candidate | 미해석 | itemReceipts/{`rcv-po-${encodeURIComponent(poId)}-${encodeURIComponent(line.itemId)}`} |  |
+| src/shared/services/firebaseService.ts:974 | client | collection | root / top-level | 1 | itemReceipts |  |
+| src/shared/services/firebaseService.ts:976 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| src/shared/services/firebaseService.ts:979 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
+| src/shared/services/firebaseService.ts:989 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
+| src/shared/services/firebaseService.ts:1012 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:1029 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
+| src/shared/services/unpackService.ts:60 | client | doc | root / top-level-candidate | 미해석 | items/{plan.canItemId} |  |
+| src/shared/services/unpackService.ts:61 | client | doc | root / top-level-candidate | 미해석 | items/{plan.bulkItemId} |  |
+| src/shared/services/unpackService.ts:62 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(operationId)} |  |
+| src/shared/services/unpackService.ts:80 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(bulkCompany, plan.bulkItemId)} |  |
+| src/shared/services/unpackService.ts:223 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/shared/services/unpackService.ts:291 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| components/AddItemModal.tsx:357 | client | doc | root / top-level-candidate | 미해석 | items/{finalProduct.id} |  |
+| components/AddItemModal.tsx:372 | client | doc | root / top-level-candidate | 미해석 | items/{finalProduct.id} |  |
+| src/features/admin/oemReceiptInventory.ts:53 | client | collection | root / top-level | 1 | adjustmentRequests |  |
+| src/features/admin/oemReceiptInventory.ts:57 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{input.poId} |  |
+| src/features/admin/oemReceiptInventory.ts:58 | client | doc | root / top-level-candidate | 미해석 | adjustmentRequests/{`OEMFEE-${input.poId}`} |  |
+| src/features/admin/oemReceiptInventory.ts:59 | client | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
+| src/shared/services/rawInventoryJob.ts:54 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{input.jobId} |  |
+| src/shared/services/rawInventoryJob.ts:119 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{jobId} |  |
+| src/shared/services/rawInventoryJob.ts:126 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(opId)} |  |
+| src/shared/services/rawInventoryJob.ts:127 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{legacyOperationDocId(opId)} |  |
+| src/features/admin/oemIssueJob.ts:87 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{input.jobId} |  |
+| src/features/admin/oemIssueJob.ts:129 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{draft.id} |  |
+| src/features/admin/oemIssueJob.ts:141 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{draft.id} |  |
+| src/shared/services/boxUnpackService.ts:20 | client | doc | root / top-level-candidate | 미해석 | items/{boxItemId} |  |
+| src/shared/services/boxUnpackService.ts:21 | client | doc | root / top-level-candidate | 미해석 | items/{unitItemId} |  |
+| src/shared/services/boxUnpackService.ts:22 | client | doc | root / top-level-candidate | 미해석 | itemUnpackMovements/{operationId} | itemUnpackMovements |
+| src/shared/push.ts:92 | client | doc | root / top-level-candidate | 미해석 | employees/{employeeId} |  |
+| src/shared/push.ts:120 | client | doc | root / top-level-candidate | 미해석 | employees/{employeeId} |  |
+| src/features/admin/orderItemStock.ts:114 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/features/admin/orderItemStock.ts:204 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/features/admin/orderItemStock.ts:252 | client | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
+| src/features/admin/orderItemStock.ts:313 | client | doc | root / top-level-candidate | 미해석 | orders/{orderMutation.orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:128 | client | doc | root / top-level-candidate | 미해석 | orderStatusAudits/{ticket.operationId} |  |
+| src/features/admin/orderInventoryCancellation.ts:140 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:164 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:175 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:229 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| src/features/admin/orderInventoryCancellation.ts:277 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| src/features/admin/orderStockEngine.ts:355 | client | doc | root / top-level-candidate | 미해석 | orders/{order.id} |  |
+| src/features/admin/orderStockEngine.ts:613 | client | doc | root / top-level-candidate | 미해석 | orders/{id} |  |
+| src/shared/ledgerLotCheck.ts:66 | client | doc | root / top-level-candidate | 미해석 | items/{rawItemId} |  |
+| src/shared/ledgerLotCheck.ts:67 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| src/shared/ledgerLotCheck.ts:68 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| components/OfficeTalk.tsx:202 | client | collection | root / top-level | 1 | chatMessages |  |
+| src/features/statements/infrastructure/issueTradeStatementCommand.ts:21 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/statements/infrastructure/issueTradeStatementCommand.ts:34 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/statements/infrastructure/issueTradeStatementCommand.ts:51 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/statements/infrastructure/issueTradeStatementCommand.ts:74 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/statements/infrastructure/issueTradeStatementCommand.ts:89 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${input.partnerId}`} | appMeta |
+| src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:13 | client | doc | root / top-level-candidate | 미해석 | {write.collection}/{write.id} |  |
+| src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:16 | client | doc | root / top-level-candidate | 미해석 | {write.collection}/{write.id} |  |
+| components/HaccpChecklist.tsx:509 | client | collection | root / top-level | 1 | haccp_temp |  |
+| components/HaccpChecklist.tsx:514 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'temp_zones')} |  |
+| components/HaccpChecklist.tsx:559 | client | doc | root / top-level-candidate | 미해석 | haccp_temp/{selected.id} |  |
+| components/HaccpChecklist.tsx:570 | client | doc | root / top-level-candidate | 미해석 | haccp_temp/{selected.id} |  |
+| components/HaccpChecklist.tsx:577 | client | doc | root / top-level-candidate | 미해석 | haccp_temp/{id} |  |
+| components/HaccpChecklist.tsx:1069 | client | collection | root / top-level | 1 | haccp_incoming |  |
+| components/HaccpChecklist.tsx:1352 | client | collection | root / top-level | 1 | haccp_cleaning |  |
+| components/HaccpChecklist.tsx:1386 | client | doc | root / top-level-candidate | 미해석 | haccp_cleaning/{currentRecord.id} |  |
+| components/HaccpChecklist.tsx:1395 | client | doc | root / top-level-candidate | 미해석 | haccp_cleaning/{currentRecord.id} |  |
+| components/HaccpChecklist.tsx:1839 | client | collection | root / top-level | 1 | haccp_sanitation |  |
+| components/HaccpChecklist.tsx:1846 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'sanitation')} |  |
+| components/HaccpChecklist.tsx:1990 | client | doc | root / top-level-candidate | 미해석 | haccp_sanitation/{selected.id} |  |
+| components/HaccpChecklist.tsx:2013 | client | doc | root / top-level-candidate | 미해석 | haccp_sanitation/{selected.id} |  |
+| components/HaccpChecklist.tsx:2026 | client | doc | root / top-level-candidate | 미해석 | haccp_sanitation/{id} |  |
+| components/HaccpChecklist.tsx:2514 | client | collection | root / top-level | 1 | haccp_personal_hygiene |  |
+| components/HaccpChecklist.tsx:2521 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'personal_hygiene')} |  |
+| components/HaccpChecklist.tsx:2593 | client | doc | root / top-level-candidate | 미해석 | haccp_personal_hygiene/{selected.id} |  |
+| components/HaccpChecklist.tsx:2607 | client | doc | root / top-level-candidate | 미해석 | haccp_personal_hygiene/{selected.id} |  |
+| components/HaccpChecklist.tsx:2614 | client | doc | root / top-level-candidate | 미해석 | haccp_personal_hygiene/{id} |  |
+| components/HaccpChecklist.tsx:2865 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'personal_hygiene')} |  |
+| components/HaccpChecklist.tsx:2992 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'temp_zones')} |  |
+| components/HaccpChecklist.tsx:3128 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'sanitation')} |  |
+| components/HaccpChecklist.tsx:3293 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'staff_tab_order')} |  |
+| components/HaccpChecklist.tsx:3443 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, templateKey)} |  |
+| components/HaccpChecklist.tsx:3558 | client | collection | root / top-level | 1 | haccp_periodic_sanitation |  |
+| components/HaccpChecklist.tsx:3565 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'weekly_sanitation')} |  |
+| components/HaccpChecklist.tsx:3574 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'monthly_sanitation')} |  |
+| components/HaccpChecklist.tsx:3650 | client | doc | root / top-level-candidate | 미해석 | haccp_periodic_sanitation/{selected.id} |  |
+| components/HaccpChecklist.tsx:3664 | client | doc | root / top-level-candidate | 미해석 | haccp_periodic_sanitation/{selected.id} |  |
+| components/HaccpChecklist.tsx:3675 | client | doc | root / top-level-candidate | 미해석 | haccp_periodic_sanitation/{id} |  |
+| components/HaccpChecklist.tsx:4003 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'closing_checklist')} |  |
+| components/HaccpChecklist.tsx:4106 | client | collection | root / top-level | 1 | haccp_closing_checklist |  |
+| components/HaccpChecklist.tsx:4113 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'closing_checklist')} |  |
+| components/HaccpChecklist.tsx:4178 | client | doc | root / top-level-candidate | 미해석 | haccp_closing_checklist/{selected.id} |  |
+| components/HaccpChecklist.tsx:4192 | client | doc | root / top-level-candidate | 미해석 | haccp_closing_checklist/{selected.id} |  |
+| components/HaccpChecklist.tsx:4203 | client | doc | root / top-level-candidate | 미해석 | haccp_closing_checklist/{id} |  |
+| components/HaccpChecklist.tsx:4466 | client | doc | root / top-level-candidate | 미해석 | haccp_templates/{haccpTemplateDocId(companyId, 'haccp_tab_order')} |  |
+| components/BenzopyreneLog.tsx:47 | client | collection | root / top-level | 1 | benzopyreneTests |  |
+| components/BenzopyreneLog.tsx:77 | client | doc | root / top-level-candidate | 미해석 | benzopyreneTests/{id} |  |
+| components/BenzopyreneLog.tsx:87 | client | doc | root / top-level-candidate | 미해석 | benzopyreneTests/{id} |  |
+| src/features/admin/AdminApp.tsx:478 | client | collection | root / top-level | 1 | users |  |
+| src/features/admin/AdminApp.tsx:547 | client | collection | root / top-level | 1 | rawInventories |  |
+| src/features/admin/AdminApp.tsx:548 | client | collection | root / top-level | 1 | items |  |
+| src/features/admin/AdminApp.tsx:959 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`workOrderReset_${companyId}`} | appMeta |
+| src/features/admin/AdminApp.tsx:969 | client | collection | root / top-level | 1 | workOrderItems |  |
+| src/features/admin/AdminApp.tsx:2070 | client | collection | root / top-level | 1 | docSheetTitles |  |
+| src/features/admin/AdminApp.tsx:2726 | client | doc | root / top-level-candidate | 미해석 | {type === '입고' ? 'purchaseOrders' : 'returnRequests'}/{id} |  |
+| src/features/admin/AdminApp.tsx:5059 | client | collection | root / top-level | 1 | partner_item |  |
+| src/features/admin/AdminApp.tsx:5088 | client | doc | root / top-level-candidate | 미해석 | partner_item/{id} |  |
+| src/shared/employeeAuth.ts:19 | client | doc | root / top-level-candidate | 미해석 | employees/{credential.user.uid} |  |
+| functions/src/editIssuedStatementCommand.ts:36 | server | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| functions/src/editIssuedStatementCommand.ts:37 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{statementId} |  |
+| functions/src/editIssuedStatementCommand.ts:37 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/editIssuedStatementCommand.ts:38 | server | doc | root / top-level-candidate | 미해석 | voucherMutationOperations/{operationId} | voucherMutationOperations |
+| functions/src/editIssuedStatementCommand.ts:38 | server | collection | root / top-level | 1 | voucherMutationOperations | voucherMutationOperations |
+| functions/src/editIssuedStatementCommand.ts:39 | server | collection | root / top-level | 1 | settlements |  |
+| functions/src/employeeLogin.ts:32 | server | doc | root / top-level-candidate | 미해석 | authLoginAttempts/{loginKey(username, request.rawRequest.ip ?? 'unknown')} | authLoginAttempts |
+| functions/src/employeeLogin.ts:32 | server | collection | root / top-level | 1 | authLoginAttempts | authLoginAttempts |
+| functions/src/employeeLogin.ts:39 | server | collection | root / top-level | 1 | employees |  |
+| functions/src/index.ts:32 | server | collection | root / top-level | 1 | users |  |
+| functions/src/index.ts:53 | server | collection | root / top-level | 1 | users |  |
+| functions/src/index.ts:110 | server | collection | root / top-level | 1 | items |  |
+| functions/src/index.ts:127 | server | doc | root / top-level-candidate | 미해석 | inventorySnapshots/{co === 'taebaek' ? `inv-snap-${yearMonth}` : `inv-snap-${co}-${yearMonth}`} |  |
+| functions/src/index.ts:127 | server | collection | root / top-level | 1 | inventorySnapshots |  |
+| functions/src/index.ts:162 | server | collection | root / top-level | 1 | fixedCostTemplates |  |
+| functions/src/index.ts:193 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{`AUTO-${id}-${ym}`} |  |
+| functions/src/index.ts:193 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/index.ts:212 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/index.ts:241 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{`AUTO-${id}-${ym}`} |  |
+| functions/src/index.ts:241 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/index.ts:306 | server | doc | root / top-level-candidate | 미해석 | employees/{empId} |  |
+| functions/src/index.ts:306 | server | collection | root / top-level | 1 | employees |  |
+| functions/src/index.ts:333 | server | collection | root / top-level | 1 | employees |  |
+| functions/src/index.ts:376 | server | doc | root / top-level-candidate | 미해석 | chatRooms/{String(msg.roomId)} |  |
+| functions/src/index.ts:376 | server | collection | root / top-level | 1 | chatRooms |  |
+| functions/src/index.ts:384 | server | doc | root / top-level-candidate | 미해석 | employees/{id} |  |
+| functions/src/index.ts:384 | server | collection | root / top-level | 1 | employees |  |
+
+## 별도 모델 보완
+
+shared/types.ts 외 interface/type alias 489개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+
+| 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
+| --- | --- | --- | --- | --- |
+| RawUnit | src/constants/formula.ts:57 | type-alias | non-object-alias-not-expanded |  |
+| AppConfirmOptions | src/shared/components/appDialog.ts:1 | interface | direct-properties-only | title, message, confirmText, cancelText, tone |
+| AppPromptOptions | src/shared/components/appDialog.ts:9 | interface | direct-properties-only | title, message, defaultValue, placeholder, confirmText |
+| ConfirmRequest | src/shared/components/appDialog.ts:17 | type-alias | non-object-alias-not-expanded |  |
+| NoticeRequest | src/shared/components/appDialog.ts:18 | type-alias | direct-properties-only | kind, title, message, resolve |
+| PromptRequest | src/shared/components/appDialog.ts:19 | type-alias | non-object-alias-not-expanded |  |
+| AppDialogRequest | src/shared/components/appDialog.ts:20 | type-alias | non-object-alias-not-expanded |  |
+| AlertTone | src/shared/components/AlertModalShell.tsx:21 | type-alias | non-object-alias-not-expanded |  |
+| Props | src/shared/components/AlertModalShell.tsx:36 | interface | direct-properties-only | title, tone, icon, onClose, wide, children, footer |
+| ConfirmModalProps | src/shared/components/ConfirmModal.tsx:13 | interface | direct-properties-only | title, tone, icon, message, subMessage, body, confirmDisabled, footerNote, confirmText, cancelText, confirmOnly, onConfirm, onCancel |
+| KstDateRangeUtc | src/shared/day.ts:17 | interface | direct-properties-only | startInclusive, endExclusive |
+| LineAmount | src/shared/lineAmount.ts:43 | interface | direct-properties-only | gross, supply, tax |
+| Margin | src/shared/margin.ts:26 | interface | direct-properties-only | supply, cost, margin, marginRate, markupRate |
+| PrintableLine | src/shared/docName.ts:44 | interface | direct-properties-only | name, spec |
+| BomCostCtx | src/shared/bomCost.ts:19 | interface | direct-properties-only | allItems, formulaOf, formulaRowsOf, processingFeeOf, itemBoms |
+| CostFn | src/shared/bomCost.ts:48 | interface | direct-properties-only | effective, rollup |
+| CostCalcRow | src/features/admin/costCalc.ts:18 | interface | direct-properties-only | itemId, qty |
+| CostCalcLine | src/features/admin/costCalc.ts:24 | interface | direct-properties-only | itemId, name, spec, unit, qty, unitCost, amount |
+| CostCalcResult | src/features/admin/costCalc.ts:37 | interface | direct-properties-only | lines, cost, fee, price, margin, marginRate, markupRate |
+| CategoryKey | src/shared/taxonomy.ts:19 | type-alias | non-object-alias-not-expanded |  |
+| TaxonomyRow | src/shared/taxonomy.ts:47 | interface | direct-properties-only | id, kind, key, parent, label, order, hidden |
+| Taxonomy | src/shared/taxonomy.ts:58 | interface | direct-properties-only | types, allTypes, labelOf, subtypesOf, categoriesOf, seeded |
+| TypeKey | src/shared/itemTaxonomy.ts:88 | type-alias | non-object-alias-not-expanded |  |
+| BomLine | src/shared/bomIndex.ts:19 | interface | direct-properties-only | childId, qty, child |
+| BomDraftLine | src/shared/bomIndex.ts:36 | interface | direct-properties-only | childId, qty |
+| BomParentLine | src/shared/bomIndex.ts:42 | interface | direct-properties-only | parentId, qty, parent |
+| BomIndex | src/shared/bomIndex.ts:48 | interface | direct-properties-only |  |
+| RawUsersDeps | src/shared/rawUsers.ts:28 | interface | direct-properties-only | allItems, bomOf, buildFormula, baseRawName |
+| LotMixSetting | src/shared/lotUtils.ts:3 | interface | direct-properties-only | topPercent, ratios |
+| ProductLotTake | src/shared/lotUtils.ts:320 | interface | direct-properties-only | lotId, lotNo, receivedDate, supplierName, qty |
+| PackRow | src/shared/packIndex.ts:26 | interface | direct-properties-only | item_id, units_per_box |
+| PackIndex | src/shared/packIndex.ts:31 | interface | direct-properties-only | of, size |
+| BoxLike | src/shared/orderUnits.ts:7 | type-alias | non-object-alias-not-expanded |  |
+| 묶음갈래 | src/shared/orderUnits.ts:37 | type-alias | non-object-alias-not-expanded |  |
+| AnchorResult | src/shared/lotAnchor.ts:40 | interface | direct-properties-only | lots, deltaQty, beforeQty |
+| CollectionName | src/shared/collections.ts:99 | type-alias | non-object-alias-not-expanded |  |
+| StocktakeAnchor | src/shared/rawInventoryCore.ts:35 | interface | direct-properties-only | effectiveAt, operationId, sequence |
+| RawInventoryState | src/shared/rawInventoryCore.ts:49 | interface | direct-properties-only | id, companyId, rawItemId, materialSnapshot, stockKg, activeLots, recentDepletedLots, stocktakeAnchor, revision, lastProcessedAt |
+| LotChange | src/shared/rawInventoryCore.ts:81 | interface | direct-properties-only | lotId, supplierName, lotNo, receivedDate, deltaKg, beforeKg, afterKg, lotSnapshot |
+| RawMovementKind | src/shared/rawInventoryCore.ts:98 | type-alias | non-object-alias-not-expanded |  |
+| RawInventoryMovement | src/shared/rawInventoryCore.ts:109 | interface | direct-properties-only | id, operationId, commandHash, companyId, rawItemId, materialSnapshot, effectiveAt, recordedAt, sequence, kind, reportedDeltaKg, appliedDeltaKg, balanceAfterKg, targetKg, targetLotId, targetLotKg, lotChanges, source, reversalOf, stocktakeAnchorBefore, backdatedBeforeStocktake, actorId, actorName |
+| ReversalGuard | src/shared/rawInventoryCore.ts:150 | interface | direct-properties-only | id, originalOperationId, reverseOperationId, companyId, rawItemId, createdAt |
+| RawInventoryJob | src/shared/rawInventoryCore.ts:160 | interface | direct-properties-only | id, companyId, source, expectedOperationIds, status, lastError, createdAt, completedAt |
+| RawSourceType | src/shared/rawInventoryCore.ts:176 | type-alias | non-object-alias-not-expanded |  |
+| CommandBase | src/shared/rawInventoryCore.ts:182 | interface | direct-properties-only | operationId, companyId, rawItemId, materialSnapshot, effectiveAt, source, actorId, actorName, backdatedIntent |
+| ReceiveLotInput | src/shared/rawInventoryCore.ts:203 | interface | direct-properties-only | supplierId, supplierName, packageType, packageKg, qtyIn, poId |
+| RawInventoryCommand | src/shared/rawInventoryCore.ts:212 | type-alias | non-object-alias-not-expanded |  |
+| RawRejectCode | src/shared/rawInventoryCore.ts:227 | type-alias | non-object-alias-not-expanded |  |
+| RawApplyResult | src/shared/rawInventoryCore.ts:251 | type-alias | non-object-alias-not-expanded |  |
+| ApplyDeterministic | src/shared/rawInventoryCore.ts:258 | interface | direct-properties-only | now, newLotId, carryOverLotId |
+| LegacyLedgerFields | src/shared/services/rawInventoryService.ts:38 | interface | direct-properties-only | note, type, addedBy, orderId, canSize, canCount, canSizeTag, originalAmount, originalUnit |
+| RawCommandOptions | src/shared/services/rawInventoryService.ts:144 | interface | direct-properties-only | now, newLotId, carryOverLotId, db, mirrorToItem, legacy |
+| ItemReceipt | src/shared/receipt.ts:27 | interface | direct-properties-only | id, itemId, itemName, quantity, unit, partnerId, partnerName, date, poId, companyId, addedBy, createdAt |
+| ReceiptResult | src/shared/receipt.ts:46 | interface | direct-properties-only | kind, baseName, kgIn |
+| AutoJournalOptions | src/shared/autoJournal.ts:95 | interface | direct-properties-only | cashAccountCode |
+| OpeningBalance | src/shared/autoJournal.ts:338 | interface | direct-properties-only | date, lines, capitalAccount |
+| CompanyClaim | src/shared/companyWriteBoundary.ts:14 | type-alias | direct-properties-only | companyId |
+| OpeningPartnerCode | src/shared/openingPartnerBalance.ts:5 | type-alias | non-object-alias-not-expanded |  |
+| LoanContract | src/shared/loanLedger.ts:6 | interface | direct-properties-only | id, companyId, name, lenderName, partnerId, accountCode, openingDate, openingPrincipal, maturityDate, note, createdAt |
+| LoanMovement | src/shared/loanLedger.ts:20 | interface | direct-properties-only | entry, principalDelta |
+| CompanyWriteOperation | src/shared/services/firebaseService.ts:791 | type-alias | non-object-alias-not-expanded |  |
+| CreateCommand | src/shared/services/employeeCommand.ts:5 | type-alias | direct-properties-only | kind, collection, data |
+| ReceiveCommand | src/shared/services/employeeCommand.ts:9 | type-alias | direct-properties-only | kind, poId, actorName, items |
+| UnpackPlan | src/shared/canUnpack.ts:36 | interface | direct-properties-only | canItemId, canName, cans, bulkItemId, bulkName, bulkUnit, perCan, bulkQty, discarded |
+| UnpackReject | src/shared/canUnpack.ts:60 | type-alias | non-object-alias-not-expanded |  |
+| UnpackResult | src/shared/canUnpack.ts:68 | type-alias | non-object-alias-not-expanded |  |
+| UnpackLotMove | src/shared/unpackLots.ts:36 | interface | direct-properties-only | canLotId, lotNo, supplierName, receivedDate, cans, bulkQty |
+| UnpackLotResult | src/shared/unpackLots.ts:48 | interface | direct-properties-only | canLots, bulkLots, moves, shortageQty |
+| UnpackOutcome | src/shared/services/unpackService.ts:44 | interface | direct-properties-only | ok, message, moves |
+| PageHeaderProps | src/shared/components/PageHeader.tsx:3 | interface | direct-properties-only | title, subtitle, right |
+| OrderCreationModalHeaderProps | src/shared/components/OrderCreationModalHeader.tsx:4 | interface | direct-properties-only | currentLabel, description, onBack, onClose |
+| ModalShellProps | src/shared/components/ModalShell.tsx:4 | interface | direct-properties-only | title, subtitle, onClose, children, footer, className, bodyClassName, layer, size |
+| LargeModalShellProps | src/shared/components/LargeModalShell.tsx:4 | type-alias | non-object-alias-not-expanded |  |
+| Line | src/shared/orderLine.ts:26 | type-alias | non-object-alias-not-expanded |  |
+| GroupMark | src/shared/rowGroup.ts:19 | interface | direct-properties-only | groupId, groupName, groupFirst, groupLast |
+| GroupOf | src/shared/rowGroup.ts:27 | interface | direct-properties-only | id, name |
+| PriceRange | src/shared/partnerPrice.ts:40 | interface | direct-properties-only | min, max, count |
+| ChannelKey | src/shared/channelStyle.ts:15 | type-alias | non-object-alias-not-expanded |  |
+| ChannelStyle | src/shared/channelStyle.ts:17 | interface | direct-properties-only | icon, label, short, chip, fg, bg |
+| SearchableSelectOption | src/shared/components/SearchableSelect.tsx:24 | interface | direct-properties-only | value, label |
+| SearchableSelectProps | src/shared/components/SearchableSelect.tsx:29 | interface | direct-properties-only | value, onChange, options, disabled, className, searchThreshold, ariaLabel |
+| CompanySettingKind | src/shared/companySettings.ts:10 | type-alias | non-object-alias-not-expanded |  |
+| DeliveryTimeSlot | src/shared/deliveryTimeSlot.ts:16 | type-alias | non-object-alias-not-expanded |  |
+| DeliveryOrderingDoc | src/shared/deliveryTimeSlot.ts:18 | interface | direct-properties-only | ordering, timeSlots |
+| OrderActivityRow | src/shared/orderActivityLog.ts:24 | interface | direct-properties-only | at, who, what, detail, kind |
+| LegacyNoteItem | src/shared/orderNote.ts:18 | type-alias | direct-properties-only | name, note, noteImportant, noteBy, noteAt |
+| NoteOrder | src/shared/orderNote.ts:19 | type-alias | direct-properties-only | note, noteImportant, items |
+| MigratedNoteOrder | src/shared/orderNote.ts:20 | type-alias | non-object-alias-not-expanded |  |
+| ShipDeductionRow | src/shared/shipDeduction.ts:41 | interface | direct-properties-only | itemId, name, unit, qty, before, after |
+| OrderListSortKey | src/shared/orderListSort.ts:21 | type-alias | non-object-alias-not-expanded |  |
+| OrderListHeadSort | src/shared/orderListSort.ts:22 | interface | direct-properties-only | key, dir |
+| ListFilterState | src/shared/orderListFilterChips.ts:15 | interface | direct-properties-only | dateFrom, dateTo, defaultFrom, defaultTo, filterFieldLabel, filterValue, partnerName, searchTerm, statusLabel, sortLabel, defaultSortLabel, headSort |
+| ListFilterChip | src/shared/orderListFilterChips.ts:32 | interface | direct-properties-only | key, name, value |
+| Props | components/OrderActivityLogModal.tsx:12 | interface | direct-properties-only | partnerName, rows, loading, error, onClose |
+| StatusColumnStyle | src/shared/orderStatusStyle.ts:190 | interface | direct-properties-only | color, bgColor, borderColor, textColor |
+| CalendarDayCountBadgeProps | components/CalendarDayCountBadge.tsx:3 | interface | direct-properties-only | count |
+| CalendarViewProps | components/CalendarView.tsx:7 | interface | direct-properties-only | orders, onUpdateDeliveryDate, onOrderClick |
+| BadgeVariant | src/shared/components/Badge.tsx:7 | type-alias | non-object-alias-not-expanded |  |
+| BadgeProps | src/shared/components/Badge.tsx:17 | interface | direct-properties-only | variant, children, className |
+| CompletionStatusControlProps | src/shared/components/CompletionStatusControl.tsx:4 | interface | direct-properties-only | completed, onChange, disabled, ariaLabel, title |
+| ModalActionFooterProps | src/shared/components/ModalActionFooter.tsx:3 | interface | direct-properties-only | onCancel, onPrimary, primaryLabel, primaryDisabled, cancelLabel |
+| OrderEditModalShellProps | components/OrderEditModalShell.tsx:5 | interface | direct-properties-only | title, partnerName, context, onClose, onSave, saveDisabled, headerAction, children |
+| Props | src/shared/components/DateChipButton.tsx:17 | interface | direct-properties-only | label, value, onChange, text, disabled, block |
+| CardDatePickerButtonProps | components/OrdersList.tsx:118 | interface | direct-properties-only | label, value, onChange, className, children, disabled |
+| OrdersListProps | components/OrdersList.tsx:231 | interface | direct-properties-only | companyId, title, employees, subtitle, groupBy, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms, onUpdateStatus, onUpdateDeliveryDate, onUpdateReceivedDate, onUpdatePallets, onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, onAddClick, onPasteClick, currentUserName, highlightOrderId, onHighlightClear, newOrderId, onNewOrderIdClear, workOrderItems, onSetWorkOrderItems, onLoadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, onChangeOrdersMonths, embeddedListOnly, calendarSlot |
+| OrderCardProps | components/OrdersList.tsx:296 | interface | direct-properties-only | order, partners, items, partnerItems, palletStocks, itemBoms, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleItemChecked, onDeleteOrder, currentUserName, gridCols, isListView, tintedHeader, isHighlighted, highlightOrderId, readOnly, onEditOrder, onRequestShip |
+| OrderSourceGroupProps | components/OrdersList.tsx:336 | interface | direct-properties-only | colId, source, orders, gridCols, collapsedCategories, onToggleCategory, partners, items, partnerItems, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onToggleInvoicePrinted, onToggleItemChecked, onDeleteOrder, currentUserName, isListView, highlightOrderId, onCardClick, onEditOrder, tintedHeader |
+| DeliveryRowProps | components/OrdersList.tsx:369 | interface | direct-properties-only | order, partnerName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes |
+| TabType | components/OrdersList.tsx:377 | type-alias | non-object-alias-not-expanded |  |
+| WorkItem | components/OrdersList.tsx:1695 | type-alias | direct-properties-only | key, orderId, itemId, lineKey, itemName, partnerName, qty, category, workGroup, groupId, groupName |
+| RoleLike | src/shared/partnerRole.ts:17 | type-alias | non-object-alias-not-expanded |  |
+| ProductModalProps | components/AddItemModal.tsx:19 | interface | direct-properties-only | companyId, initialData, allSubmaterials, items, partners, partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems, itemFormulas, onSaveItemFormula, rollupCostOf |
+| SpecUnit | components/AddItemModal.tsx:64 | type-alias | non-object-alias-not-expanded |  |
+| Props | components/RawMaterialEntryModal.tsx:8 | interface | direct-properties-only | open, mode, materials, defaultMaterial, currentUserName, lotsForMaterial, onClose, onSubmit |
+| NamedItem | src/shared/itemSummary.ts:7 | interface | direct-properties-only | name |
+| LedgerTrace | src/shared/ledgerTrace.ts:36 | interface | direct-properties-only | who, where, cardNo, note |
+| ItemLedgerKind | src/features/admin/itemLedger.ts:29 | type-alias | non-object-alias-not-expanded |  |
+| ItemInventoryEntry | src/features/admin/itemLedger.ts:32 | type-alias | non-object-alias-not-expanded |  |
+| ItemLedgerRow | src/features/admin/itemLedger.ts:52 | interface | direct-properties-only | date, kind, qty, partnerName, orderId, note, balance, occurredAt, targetBalance |
+| ItemLedger | src/features/admin/itemLedger.ts:66 | interface | direct-properties-only | rows, inSum, outSum, net, gap, opening, independentlyVerified, verifiedFrom |
+| FilterType | components/RawLedgerList.tsx:10 | type-alias | non-object-alias-not-expanded |  |
+| Props | components/RawLedgerList.tsx:13 | interface | direct-properties-only | stockMovements, entries, isAdmin, currentUserName, onDelete, showMaterial, pageSize, emptyText, allEntries, orders, linesUsingRaw |
+| DayRow | components/RawLedgerList.tsx:53 | type-alias | direct-properties-only | key, date, material, received, used, adj, prev, cur, notes, who, wheres, cards, types, delIds, mine, anchor, rows, seq |
+| Props | components/RawMaterialLotPanel.tsx:12 | interface | direct-properties-only | linesUsingRaw, showLedger, product, isAdmin, linkedNote, ledgerEntries, orders, 박스로트, onDeleteEntry, currentUserName, onLotChanged, focusLotId |
+| LotShipment | components/ProductLotPanel.tsx:5 | interface | direct-properties-only | orderId, partnerName, date, qty |
+| Props | components/ProductLotPanel.tsx:12 | interface | direct-properties-only | material, items, shipmentsByLot, emptyHint |
+| TimelineRow | components/LotTimeline.tsx:9 | type-alias | direct-properties-only | id, date, title, note, businessDate, sequence, delta, balance, details, kind |
+| ProcessingFee | src/features/admin/oem.ts:33 | interface | direct-properties-only | supply, tax, total |
+| OemReceiptItemChange | src/features/admin/oemReceiptInventory.ts:5 | interface | direct-properties-only | itemId, qty, lot, material, unitKg |
+| OemReceiptInventoryInput | src/features/admin/oemReceiptInventory.ts:13 | interface | direct-properties-only | companyId, poId, operationId, date, items, poPatch, feeRequest |
+| JobCommandInput | src/shared/services/rawInventoryJob.ts:18 | interface | direct-properties-only | command, options |
+| JobCommandResult | src/shared/services/rawInventoryJob.ts:23 | type-alias | direct-properties-only | input, result |
+| RunJobOptions | src/shared/services/rawInventoryJob.ts:25 | interface | direct-properties-only | now, db |
+| RunJobOutcome | src/shared/services/rawInventoryJob.ts:30 | interface | direct-properties-only | job, results |
+| OemIssueLine | src/features/admin/oemIssueJob.ts:7 | type-alias | direct-properties-only | material, rawItemId, kg |
+| OemIssueInput | src/features/admin/oemIssueJob.ts:8 | interface | direct-properties-only | jobId, companyId, partnerId, partnerName, sent, date, note, addedBy |
+| OemIssueDraft | src/features/admin/oemIssueJob.ts:19 | type-alias | non-object-alias-not-expanded |  |
+| OemIssuePorts | src/features/admin/oemIssueJob.ts:39 | interface | direct-properties-only | prepareDraft, runRawSteps, missingRawSteps, finalizeDraft, markFailed |
+| OemFeeStatementWrite | src/features/admin/oemFeeStatement.ts:4 | interface | direct-properties-only | companyId, poId, perKg, statement |
+| OemEngineDeps | src/features/admin/oemEngine.ts:31 | interface | direct-properties-only | companyId, items, partners, issueOemBatchJob, adjustRawLots, updateItem, addItem, applyOemReceiptInventory, applyOemFeeStatement, buildFormula, processingFeeCode |
+| Props | components/OemManager.tsx:15 | interface | direct-properties-only | companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee |
+| IssueInput | components/OemManager.tsx:30 | type-alias | non-object-alias-not-expanded |  |
+| Props | components/CategoryManager.tsx:14 | interface | direct-properties-only | onClose, onSaved, usage, companyId |
+| StockClosingRow | components/ItemList.tsx:177 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
+| StockClosing | components/ItemList.tsx:178 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
+| ItemListProps | components/ItemList.tsx:189 | interface | direct-properties-only | mode, companyId, items, orderRequests, confirmedOrders, dispatchedQtyByItem, onUpdateItem, onAddItem, onAddOrderRequest, onRemoveOrderRequest, onUpdateOrderRequestQty, onUpdatePoItemQty, onRemovePoItem, onRequestPoEdit, onToggleConfirmRequestQty, onConfirmRequest, onConfirmRequests, onBulkAddConfirmedOrders, onConfirmAllRequests, onFinishConfirmedOrder, onUpdateConfirmedQty, onUpdatePendingFlowQty, onRemoveConfirmedOrder, onEditProduct, onDeleteItem, onAddAdjustmentRequest, inboundPartners, partners, partnerItems, rawMaterialLedger, linesUsingRaw, orders, onRequestPurchaseInvoice, onOpenVoucher, issuedStatements, onAddRawMaterialEntry, onDeleteRawMaterialEntry, onLedgerChanged, currentUser, isAdmin, onUpdateSubmaterial, receivedOrders, returnRequests, returnContent, returnBadge, oemEnabled, oemIssueDrafts, rawStockKg, onOemIssue, onOemReceive, onOemIssueFee |
+| MainTab | components/ItemList.tsx:261 | type-alias | non-object-alias-not-expanded |  |
+| FlowTypeFilter | components/ItemList.tsx:301 | type-alias | non-object-alias-not-expanded |  |
+| FlowStatusFilter | components/ItemList.tsx:302 | type-alias | non-object-alias-not-expanded |  |
+| InboundSubTab | components/ItemList.tsx:303 | type-alias | non-object-alias-not-expanded |  |
+| TopTab | components/ItemList.tsx:306 | type-alias | non-object-alias-not-expanded |  |
+| GroupRow | components/ItemList.tsx:1168 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
+| FlowRow | components/ItemList.tsx:1480 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
+| GridRow | components/ItemList.tsx:3458 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
+| Vouchered | src/shared/statementOrders.ts:23 | type-alias | non-object-alias-not-expanded |  |
+| PartnerOrdersInput | src/shared/statementOrders.ts:38 | interface | direct-properties-only | orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo |
+| OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | interface | direct-properties-only | status, className |
+| OrderItemLinesProps | src/shared/components/OrderItemLines.tsx:5 | interface | direct-properties-only | orderItems, itemById, className |
+| NewOrderLineInput | src/shared/newOrderDraft.ts:6 | interface | direct-properties-only | itemId, quantity, isBoxUnit, unitsPerBox, boxType, boxSubId, displaySize, orderedAs |
+| AddOrderModalProps | components/AddOrderModal.tsx:26 | interface | direct-properties-only | items, orders, partners, partnerItems, palletStocks, submaterials, onClose, onBack, onSave |
+| RawExtracted | src/shared/orderExtract.ts:24 | interface | direct-properties-only | partnerId, deliveryDate, lines, note |
+| ExtractedLine | src/shared/orderExtract.ts:31 | interface | direct-properties-only | itemId, name, qty, isBox, source |
+| ExtractResult | src/shared/orderExtract.ts:42 | interface | direct-properties-only | partnerId, partnerName, deliveryDate, note, lines, rejected |
+| CatalogItem | src/shared/orderExtract.ts:52 | interface | direct-properties-only | id, name, spec |
+| CatalogPartner | src/shared/orderExtract.ts:53 | interface | direct-properties-only | id, name |
+| HistoryOrder | src/shared/orderExtract.ts:172 | interface | direct-properties-only | partnerId, createdAt, items |
+| ParsedLine | components/PasteOrderModal.tsx:52 | type-alias | direct-properties-only | rawText, rawName, qty, isBox, selectedProductId |
+| PasteOrderModalProps | components/PasteOrderModal.tsx:102 | interface | direct-properties-only | items, partners, orders, partnerItems, palletStocks, initialText, onClose, onBack, onSave |
+| Step | components/PasteOrderModal.tsx:120 | type-alias | non-object-alias-not-expanded |  |
+| DeliveryGroup | src/shared/deliveryPlan.ts:33 | interface | direct-properties-only | id, name, orderIds |
+| DayPlan | src/shared/deliveryPlan.ts:41 | interface | direct-properties-only | ordering, timeSlots, done, by, groups |
+| DeliveryPlanDoc | src/shared/deliveryPlan.ts:55 | interface | direct-properties-only | byDate, ordering, timeSlots |
+| DayRow | src/shared/deliveryPlan.ts:99 | interface | direct-properties-only | orderId, auto, slot, done, groupId, groupName, groupFirst, groupLast |
+| DayListHandlers | components/DeliveryDayList.tsx:24 | interface | direct-properties-only | open, toggleDone, toggleSlot, remove, reorder, select |
+| Props | components/DeliveryDayList.tsx:39 | interface | direct-properties-only | rows, orders, partners, on, compact, selected, dateStr, positionOffset |
+| DeliveryManagerProps | components/DeliveryManager.tsx:44 | interface | direct-properties-only | companyId, calendarOnly, sortMode, orders, partners, items, itemBoms, partnerItems, palletStocks, currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder |
+| PalletManagerProps | components/PalletManager.tsx:29 | interface | direct-properties-only | pallets, orders, partners, palletTransactions, onUpdatePallet, onAddPalletTransaction |
+| Row | components/PalletManager.tsx:324 | type-alias | direct-properties-only | id, date, partner, pallet, type, quantity, status, note, txId |
+| AdminAuthModalProps | components/AdminAuthModal.tsx:6 | interface | direct-properties-only | onClose, onSuccess, correctPassword |
+| AnnualGrantInfo | src/shared/leave.ts:80 | interface | direct-properties-only | underOneYear, granted, anniversary, days |
+| LeaveBalance | src/shared/leave.ts:160 | interface | direct-properties-only | monthly, annual, carryOver, bonus, granted, usedTotal, usedThisMonth, scheduled, remaining, grant |
+| LeaveActor | src/shared/leave.ts:218 | interface | direct-properties-only | id, name |
+| LeaveManagerProps | components/LeaveManager.tsx:41 | interface | direct-properties-only | companyId, currentUser, employees, leaveRequests, onAddLeaveRequest, onUpdateLeaveStatus, onUpdateLeave, isAdmin |
+| LeaveTab | components/LeaveManager.tsx:53 | type-alias | non-object-alias-not-expanded |  |
+| OrgDept | components/LeaveManager.tsx:56 | interface | direct-properties-only | id, keys, name, headId, memo, tier |
+| OrgChartConfig | components/LeaveManager.tsx:64 | interface | direct-properties-only | top, departments, updatedAt |
+| AdjustmentType | src/shared/adjustmentStyle.ts:9 | type-alias | non-object-alias-not-expanded |  |
+| 딱지 | src/shared/adjustmentStyle.ts:12 | interface | direct-properties-only | label, cls |
+| ConfirmationItemsProps | components/ConfirmationItems.tsx:12 | interface | direct-properties-only | requests, isAdmin, items, onUpdateStatus, onProcessAdjustment, onDelete |
+| JournalOilRow | src/shared/salesJournal.ts:18 | interface | direct-properties-only | groupLabel, spec, 수량, 소비기한, 비고 |
+| JournalSeedRow | src/shared/salesJournal.ts:27 | interface | direct-properties-only | 품목, 용량, 수량, 소비기한, 비고 |
+| JournalSalesRow | src/shared/salesJournal.ts:36 | interface | direct-properties-only | 상호, 품목, 용량, 수량, 소비기한 |
+| JournalExtraRow | src/shared/salesJournal.ts:45 | interface | direct-properties-only | 품목, 용량, 수량, 거래처 |
+| SalesJournalData | src/shared/salesJournal.ts:52 | interface | direct-properties-only | date, oilRows, seedRows, salesRows, extraRows |
+| 줄 | src/shared/orderEditGuard.ts:55 | type-alias | non-object-alias-not-expanded |  |
+| OrderEditVerdict | src/shared/orderEditGuard.ts:149 | type-alias | non-object-alias-not-expanded |  |
+| OrderItemChange | src/shared/orderItemDiff.ts:15 | interface | direct-properties-only | kind, name, text |
+| DeviceHint | src/shared/deviceLabel.ts:16 | interface | direct-properties-only | userAgent, standalone |
+| PushResult | src/shared/push.ts:27 | interface | direct-properties-only | ok, token, reason |
+| RawUsageKg | src/features/admin/orderRawInventory.ts:12 | type-alias | non-object-alias-not-expanded |  |
+| OrderRawInventoryDeps | src/features/admin/orderRawInventory.ts:14 | interface | direct-properties-only | actorName, allItems, partners, db, addNotification, runRawInventoryJob |
+| OrderProductLotMutationResult | src/features/admin/orderProductLots.ts:4 | interface | direct-properties-only | lots, consumedLots |
+| OrderProductLotMutation | src/features/admin/orderProductLots.ts:9 | interface | direct-properties-only | itemId, apply |
+| OrderProductLotDeps | src/features/admin/orderProductLots.ts:14 | interface | direct-properties-only | allItems, shipQtyOf |
+| OrderItemStockDeps | src/features/admin/orderItemStock.ts:7 | interface | direct-properties-only | db, allItems |
+| OrderStockReservation | src/features/admin/orderItemStock.ts:16 | interface | direct-properties-only | operationId, orderId, itemIds, quantities, stockSnapshot, previousReservations, allocationQuantities, active |
+| CancellationAction | src/features/admin/orderInventoryCancellation.ts:9 | type-alias | non-object-alias-not-expanded |  |
+| CancellationTicket | src/features/admin/orderInventoryCancellation.ts:110 | interface | direct-properties-only | orderId, companyId, action, evidence, operationId |
+| CancellationReceipt | src/features/admin/orderInventoryCancellation.ts:114 | interface | direct-properties-only | id, companyId, orderId, state, cancellation |
+| CancellationResult | src/features/admin/orderInventoryCancellation.ts:118 | interface | direct-properties-only | status, operationId, code, affectedItemIds, inventoryApplied, retryable, deleted, nextStatus |
+| RollbackPlan | src/features/admin/rollbackSummary.ts:15 | interface | direct-properties-only | needed, lines, text, adjustments, legacyEvidenceWarning, warnings |
+| OrderDeleteAction | src/features/admin/rollbackSummary.ts:234 | type-alias | non-object-alias-not-expanded |  |
+| OrderDeleteStage | src/features/admin/rollbackSummary.ts:235 | type-alias | non-object-alias-not-expanded |  |
+| OrderDeleteProgress | src/features/admin/rollbackSummary.ts:238 | interface | direct-properties-only | action, state, completedStages, inventoryApplied, error, retryable |
+| OrderDeletePlan | src/features/admin/rollbackSummary.ts:247 | interface | direct-properties-only | action, allowed, nextStatus, state, message, subMessage, confirmText, blockedReasons, adjustments, completedStages, inventoryApplied, retryable |
+| StockUseChoice | src/features/admin/orderStockEngine.ts:24 | interface | direct-properties-only | own, loose |
+| StockUsePlan | src/features/admin/orderStockEngine.ts:30 | type-alias | non-object-alias-not-expanded |  |
+| OrderStatusChangeContext | src/features/admin/orderStockEngine.ts:32 | interface | direct-properties-only | approvedBy, approvedAt, approvedPlan, approvedFromStatus, orderPatch |
+| PreparedOrderStatusChange | src/features/admin/orderStockEngine.ts:40 | interface | direct-properties-only | order, plan |
+| OrderStockEngineDeps | src/features/admin/orderStockEngine.ts:58 | interface | direct-properties-only | actorName, allItems, submaterials, partners, allOrders, orders, db, buildFormula, createProductionRecordsForOrder, updateItem, addItem, claimOrderOperation, runRawInventoryJob |
+| StockUseRow | src/features/admin/stockUseRows.ts:18 | interface | direct-properties-only | idx, itemId, name, unitLabel, ordered, stock, loose |
+| StockUseRowState | src/features/admin/stockUseRows.ts:62 | interface | direct-properties-only | row, ownMax, own, shortUnits, loose |
+| Props | src/features/admin/StockUseModal.tsx:18 | interface | direct-properties-only | partnerName, rows, completionLabel, onConfirm, onCancel |
+| CatalogItemDeleteBlocker | src/features/admin/catalogItemDelete.ts:12 | interface | direct-properties-only | id, partnerName, status |
+| CatalogItemDeletePlan | src/features/admin/catalogItemDelete.ts:18 | interface | direct-properties-only | bomIds, partnerItemIds, parentNames, ownBomCount, subMessage |
+| OrderCreationIdentity | src/features/admin/orderCreation.ts:1 | interface | direct-properties-only | id, cardNo |
+| OrderCreationSession | src/features/admin/orderCreation.ts:6 | interface | direct-properties-only | identity, busy |
+| OrderCreationFollowUp | src/features/admin/orderCreation.ts:11 | interface | direct-properties-only | label, run |
+| OrderCreationResult | src/features/admin/orderCreation.ts:16 | type-alias | non-object-alias-not-expanded |  |
+| LedgerLotGap | src/shared/ledgerLotCheck.ts:19 | interface | direct-properties-only | material, ledgerKg, lotKg, gapKg |
+| NoticeBoardProps | components/NoticeBoard.tsx:20 | interface | direct-properties-only | posts, companyId, onAddPost, onUpdatePost, onDeletePost |
+| MonthPL | src/features/admin/financials.ts:87 | interface | direct-properties-only | sales, cogs, sgna, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome |
+| CashFlowDirectLine | src/features/admin/financials.ts:216 | interface | direct-properties-only | accountCode, section, inflow, outflow |
+| CashFlowDirect | src/features/admin/financials.ts:222 | interface | direct-properties-only | op, inv, fin, net, opIn, opOut, invIn, invOut, finIn, finOut, lines |
+| ItemManagerProps | components/ItemManager.tsx:29 | interface | direct-properties-only | companyId, items, partners, partnerItems, accountCodes, accountGroups, itemBoms, onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveServiceTerms, onCreateBoxItem, onCalcCost, costOf, isAdmin |
+| ChatAttachment | src/shared/chatUpload.ts:14 | interface | direct-properties-only | url, path, name, size, type, isImage |
+| PasteLike | src/shared/chatUpload.ts:57 | interface | direct-properties-only | items, files |
+| SharedFileDraft | src/shared/shareInbox.ts:8 | interface | direct-properties-only | id, file, text |
+| RoomNameLike | src/shared/roomName.ts:13 | interface | direct-properties-only | participantIds, name, nameBy, createdBy |
+| Person | src/shared/roomName.ts:23 | interface | direct-properties-only | id, name |
+| NotifyMode | src/shared/notify.ts:6 | type-alias | non-object-alias-not-expanded |  |
+| NotifyVolume | src/shared/notify.ts:57 | type-alias | non-object-alias-not-expanded |  |
+| NotifyOpts | src/shared/notify.ts:107 | interface | direct-properties-only | title, body, tag, mode, whenFocused, onClick, view |
+| MessageAction | src/shared/messageActions.ts:9 | type-alias | non-object-alias-not-expanded |  |
+| ActionCtx | src/shared/messageActions.ts:11 | interface | direct-properties-only | msg, me, isAdmin, pinned |
+| Reactions | src/shared/messageReactions.ts:21 | type-alias | non-object-alias-not-expanded |  |
+| TimestampLike | src/shared/officeTalkTime.ts:1 | type-alias | direct-properties-only | toDate, seconds, _seconds |
+| OfficeTalkProps | components/OfficeTalk.tsx:49 | interface | direct-properties-only | currentUser, employees, chatRooms, chatMessages, initialRoomId, onRoomOpened, onAddRoom, onUpdateRoom, onDeleteRoom, onSendMessage, onUpdateMessage, isAdmin, onExtractOrder, extractedMessageIds |
+| OrderLike | src/shared/newOrderAlert.ts:6 | interface | direct-properties-only | id, createdAt |
+| PickOpts | src/shared/newOrderAlert.ts:8 | interface | direct-properties-only | seeded, since, mine |
+| RoomLike | src/shared/newChatAlert.ts:6 | interface | direct-properties-only | id, name, nameBy, participantIds, lastMessage, lastUpdatedAt, lastReadBy |
+| ChatPickOpts | src/shared/newChatAlert.ts:16 | interface | direct-properties-only | userId, openRoomId, focused |
+| DocMismatch | src/shared/docOil.ts:304 | interface | direct-properties-only | date, saleKg, rawKg, diffKg, unmapped |
+| DocDropReason | src/shared/docOil.ts:325 | type-alias | non-object-alias-not-expanded |  |
+| DocDrop | src/shared/docOil.ts:326 | interface | direct-properties-only | date, partnerName, itemName, qty, reason |
+| DropOrder | src/shared/docOil.ts:334 | interface | direct-properties-only | status, deliveredAt, partnerName, items |
+| RawDocEntry | src/shared/docOil.ts:422 | interface | direct-properties-only | id, material, date, targetKg, type, note, createdAt |
+| RawDocRow | src/shared/docOil.ts:434 | interface | direct-properties-only | date, received, used, adj, prevBalance, currentBalance, note, kind |
+| RawDocSheet | src/shared/docOil.ts:445 | interface | direct-properties-only | rows, opening, closing, totalIn, totalOut |
+| Ev | src/shared/docOil.ts:472 | type-alias | direct-properties-only | date, received, used, targetKg, note, kind, createdAt |
+| PaymentInput | src/shared/payment.ts:21 | interface | direct-properties-only | partnerId, partnerName, type, amount, date, note, reverse, id, docNo, cashAccountId |
+| WorkOrderItem | src/shared/hooks/useAppData.ts:22 | interface | direct-properties-only | id, key, orderId, itemId, itemName, partnerName, qty, category, sortIndex, date, lineKey, groupId, groupName |
+| AppData | src/shared/hooks/useAppData.ts:46 | interface | direct-properties-only | orders, purchaseOrders, items, partnerItems, setPartnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, rawMaterialLedger, sesameInputLedger, appNotifications, workOrderItems, issuedStatements, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, cashAccounts, cashEntries, settlements, inventorySnapshots, productionSalesLogs, pendingStatementEdits, isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths |
+| AdminData | src/hooks/useAdminData.ts:28 | interface | direct-properties-only | fixedCosts, productionRecords |
+| StatementType | src/shared/statementLines.ts:18 | type-alias | non-object-alias-not-expanded |  |
+| ManualRow | src/shared/statementLines.ts:21 | interface | direct-properties-only | itemId, name, spec, qty, price, isTaxExempt, note, accountCode, side |
+| LineItem | src/shared/statementLines.ts:28 | interface | direct-properties-only | itemId, lineKind, key, no, name, spec, qty, price, supply, tax, total, isTaxExempt, accountCode, side, unknownItem, taxUnknown |
+| ResolvedOrderItem | src/shared/statementLines.ts:134 | interface | direct-properties-only | product, qty, perBox, unknownItem |
+| OrderLinesInput | src/shared/statementLines.ts:194 | interface | direct-properties-only | order, stmtType, allItems, partnerItems, partnerId, editablePrices, taxExemptOverrides, accountCodeOverrides |
+| LineTotals | src/shared/statementLines.ts:276 | interface | direct-properties-only | isTwoSided, supply, tax, amount |
+| TradeStatementIssueInput | src/features/statements/infrastructure/issueTradeStatementCommand.ts:7 | type-alias | direct-properties-only | operationId, statement, orderIds, poIds, newPo, costUpdates |
+| PartnerPaymentInput | src/features/statements/infrastructure/issueTradeStatementCommand.ts:64 | type-alias | direct-properties-only | tradeDate, partnerId, direction, amount, cashAccountId, pin, allocations, note |
+| StatementCommandKind | src/features/statements/domain/statementCommand.ts:21 | type-alias | non-object-alias-not-expanded |  |
+| StatementCommand | src/features/statements/domain/statementCommand.ts:23 | interface | direct-properties-only | operationId, kind, statementId, expectedVersion, companyId, partnerId, partnerName, tradeDate, type, docNo, memo, orderIds, lines, partySnapshot, totals |
+| StatementRejectionCode | src/features/statements/domain/statementCommand.ts:53 | type-alias | non-object-alias-not-expanded |  |
+| StatementRejection | src/features/statements/domain/statementCommand.ts:60 | interface | direct-properties-only | code, lineIndexes, lineNames |
+| StatementWarningCode | src/features/statements/domain/statementCommand.ts:69 | type-alias | non-object-alias-not-expanded |  |
+| StatementWarning | src/features/statements/domain/statementCommand.ts:73 | interface | direct-properties-only | code, lineIndexes, lineNames |
+| StatementCheck | src/features/statements/domain/statementCommand.ts:79 | interface | direct-properties-only | ok, rejections, warnings |
+| BuildInput | src/features/statements/domain/statementCommand.ts:86 | interface | direct-properties-only | kind, statementId, partnerId, partnerName, tradeDate, type, docNo, memo, orderIds, lines, companyId, expectedVersion, partySnapshot |
+| StatementWrite | src/features/statements/domain/statementWrites.ts:17 | interface | direct-properties-only | collection, id, data, merge |
+| StatementWritePlan | src/features/statements/domain/statementWrites.ts:25 | interface | direct-properties-only | writes, afterCommit |
+| PlanInput | src/features/statements/domain/statementWrites.ts:36 | interface | direct-properties-only | command, statement, costUpdates, recordedAt, actorId, poLinks, newPo |
+| TaxIssueScope | src/features/tax-documents/domain/taxIssue.ts:5 | type-alias | non-object-alias-not-expanded |  |
+| TaxIssuePlan | src/features/tax-documents/domain/taxIssue.ts:7 | interface | direct-properties-only | writes, statementPatches |
+| CrossCompanyBom | src/shared/itemCompany.ts:7 | interface | direct-properties-only | bomId, parentId, childId, parentCompanyId, childCompanyId |
+| IntegrityArea | src/features/admin/dataIntegrityAudit.ts:17 | type-alias | non-object-alias-not-expanded |  |
+| IntegritySeverity | src/features/admin/dataIntegrityAudit.ts:18 | type-alias | non-object-alias-not-expanded |  |
+| IntegrityIssue | src/features/admin/dataIntegrityAudit.ts:19 | interface | direct-properties-only | id, area, severity, title, detail, date, reference |
+| IntegrityAuditInput | src/features/admin/dataIntegrityAudit.ts:28 | interface | direct-properties-only | companyId, dateFrom, dateTo, orders, items, itemBoms, purchaseOrders, itemReceipts, rawMaterialLedger, rawInventories, issuedStatements, productionSalesLogs |
+| LedgerMovement | src/features/admin/dataIntegrityAudit.ts:53 | type-alias | non-object-alias-not-expanded |  |
+| LinePOClassify | src/features/admin/dataIntegrityAudit.ts:114 | interface | direct-properties-only | isRaw, holder, baseName, expectedKg |
+| RawLedgerExcelSheet | src/features/admin/rawLedgerExcel.ts:1 | interface | direct-properties-only | opening, closing, totalIn, totalOut, totalAdj, rows |
+| FormulaCell | src/features/admin/rawLedgerExcel.ts:18 | type-alias | direct-properties-only | formula, result |
+| RawLedgerExcelValue | src/features/admin/rawLedgerExcel.ts:19 | type-alias | non-object-alias-not-expanded |  |
+| DashboardLink | components/DashboardLinks.tsx:12 | interface | direct-properties-only | id, label, url, order |
+| DashboardProps | components/Dashboard.tsx:26 | interface | direct-properties-only | orders, isAdmin, items, partners, partnerItems, onNavigate, onCreatePurchaseOrder |
+| StatCardProps | components/Dashboard.tsx:37 | interface | direct-properties-only | title, value, icon, trend, color, sub, onClick |
+| FormulaRow | components/BomIntegrityPanel.tsx:9 | interface | direct-properties-only | parent_key, child_name, ratio, yield_rate |
+| Props | components/BomIntegrityPanel.tsx:10 | interface | direct-properties-only | items, itemFormulas |
+| AIConsultantProps | components/AIConsultant.tsx:6 | interface | direct-properties-only | orders, items |
+| RegionSelectProps | src/shared/components/RegionSelect.tsx:33 | interface | direct-properties-only | value, onChange, className, compact |
+| Window | components/AddPartnerModal.tsx:9 | interface | direct-properties-only | daum |
+| AddPartnerModalProps | components/AddPartnerModal.tsx:14 | interface | direct-properties-only | onClose, onSave |
+| PartnerManagerProps | components/PartnerManager.tsx:29 | interface | direct-properties-only | partners, onUpdateClient, onAddClient, onDeleteClient |
+| HRManagerProps | components/HRManager.tsx:42 | interface | direct-properties-only | companyId, employees, leaveRequests, onUpdateEmployee, onAddEmployee, onDeleteEmployee, onUpdateLeaveStatus, onUpdateLeave, onDeleteLeaveRequest, onAddLeaveRequests, onCreatePayrollEntry, onCreatePayrollAccrual |
+| ItemPriceManagerProps | components/ItemPriceManager.tsx:11 | interface | direct-properties-only | items, onEditProduct, onAddItem, onDeleteItem, onUpdateCost, partnerItems |
+| MergedItem | src/shared/mergeStatementItems.ts:15 | interface | direct-properties-only | name, spec, qty, supply, tax, total, isTaxExempt |
+| SplitMerged | src/shared/mergeStatementItems.ts:51 | interface | direct-properties-only | taxable, exempt |
+| DocParty | src/shared/docParty.ts:21 | interface | direct-properties-only | name, bizNo, ceo, addr, bizType, bizItem, tel, fax |
+| DocPartiesByIdInput | src/shared/docParty.ts:89 | interface | direct-properties-only | isSale, companyInfo, partners, partnerId, partnerName |
+| TaxStatementProps | components/TaxStatement.tsx:19 | interface | direct-properties-only | companyId, issuedStatements, partners, companyInfo, onApplyTaxIssue |
+| AdminAccessLike | src/shared/adminAccess.ts:9 | interface | direct-properties-only | id, adminAccess |
+| AdminChecklistProps | components/AdminChecklist.tsx:19 | interface | direct-properties-only | leaveRequests, adjustmentRequests, employees, returnRequests, receivedOrders, partners, issuedStatements, onUpdateLeaveStatus, onUpdateAdjustmentStatus, onDeleteAdjustmentRequest, onProcessAdjustment, pendingStatementEdits, onApproveStatementEdit, onRejectStatementEdit, orderRequests, items, partnerItems, onCreatePurchaseStatement |
+| TabType | components/AdminChecklist.tsx:40 | type-alias | non-object-alias-not-expanded |  |
+| StatementDraftItem | components/AdminChecklist.tsx:42 | interface | direct-properties-only | name, qty, price, unit, isTaxExempt |
+| ReturnStatementDraft | components/AdminChecklist.tsx:43 | interface | direct-properties-only | returnReq, partnerId, tradeDate, items |
+| PartnerSignupUser | components/PartnerSignupApproval.tsx:9 | interface | direct-properties-only | id, uid, username, name, phone, email, type, status, linkedPartnerId, createdAt |
+| Props | components/PartnerSignupApproval.tsx:22 | interface | direct-properties-only | partners |
+| DocumentManagerProps | components/DocumentManager.tsx:17 | interface | direct-properties-only | currentUser, seed, onSelect, hideDocs |
+| QuoteLineLike | src/shared/quoteTotals.ts:14 | interface | direct-properties-only | name, qty, price, cost, isTaxExempt |
+| QuoteTotals | src/shared/quoteTotals.ts:31 | interface | direct-properties-only | supply, tax, total, cost, margin, marginRate, markupRate, undecided |
+| ItemLike | src/shared/itemFilter.ts:8 | interface | direct-properties-only | name, spec, type, category, archived |
+| FilterOption | src/shared/itemFilter.ts:16 | interface | direct-properties-only | key, label, count |
+| ItemFilter | src/shared/itemFilter.ts:52 | interface | direct-properties-only | type, category, q |
+| QuotationLine | components/QuotationManager.tsx:31 | interface | direct-properties-only | itemId, name, spec, unit, qty, price, cost, isTaxExempt, note |
+| Quotation | components/QuotationManager.tsx:50 | interface | direct-properties-only | id, companyId, quoteNo, date, validUntil, partnerId, partnerName, recipientPhone, attention, deliveryTerms, paymentTerms, lines, totalSupply, totalTax, totalAmount, totalCost, note, createdAt, createdBy |
+| Props | components/QuotationManager.tsx:80 | interface | direct-properties-only | items, partners, partnerItems, companyId, currentUser, companyInfo, costOf |
+| QrLabelPrintProps | components/QrLabelPrint.tsx:7 | interface | direct-properties-only | submaterials, onClose |
+| Props | components/SmartStoreAnalytics.tsx:7 | interface | direct-properties-only | orders, partners, items, onUpdateItem |
+| Tab | components/SmartStoreAnalytics.tsx:14 | type-alias | non-object-alias-not-expanded |  |
+| TabId | components/HaccpChecklist.tsx:111 | type-alias | non-object-alias-not-expanded |  |
+| OverviewRow | components/HaccpChecklist.tsx:116 | interface | direct-properties-only | no, category, item, isOneStrike, result, note |
+| DailyCheckResult | components/HaccpChecklist.tsx:247 | type-alias | non-object-alias-not-expanded |  |
+| DailyCheckItem | components/HaccpChecklist.tsx:249 | interface | direct-properties-only | id, cycle, category, item, standard |
+| PestRow | components/HaccpChecklist.tsx:368 | interface | direct-properties-only | date, season, location, checks, corrective, inspector |
+| StorageZone | components/HaccpChecklist.tsx:473 | type-alias | direct-properties-only | name, standard |
+| TempRow | components/HaccpChecklist.tsx:475 | interface | direct-properties-only | zone, temp, result, corrective, inspector |
+| TempRecord | components/HaccpChecklist.tsx:483 | interface | direct-properties-only | id, date, measureTime, rows, createdBy, createdAt, updatedBy, updatedAt, revisionCount, confirmedBy, confirmedAt |
+| CCPHeatRow | components/HaccpChecklist.tsx:789 | interface | direct-properties-only | date, product, batch, startTime, endTime, setTemp, measuredTemp, duration, coreTemp, result, corrective, operator, verifier |
+| CCPMetalRow | components/HaccpChecklist.tsx:901 | interface | direct-properties-only | date, time, product, batch, fe, sus, feResult, susResult, productResult, corrective, operator, verifier |
+| IncomingRow | components/HaccpChecklist.tsx:1029 | interface | direct-properties-only | date, inboundPartner, material, materialType, quantity, unit, lotNo, expDate, appearance, packaging, label, certAvail, result, corrective, inspector |
+| IncomingRecord | components/HaccpChecklist.tsx:1047 | interface | direct-properties-only | id, month, rows, createdBy, createdAt, updatedBy, updatedAt, revisionCount, confirmedBy, confirmedAt |
+| MachineCleanRow | components/HaccpChecklist.tsx:1302 | interface | direct-properties-only | date, machine, used, cleanMethod, sanitizer, result, cleaner, verifier, note |
+| AreaCleanRow | components/HaccpChecklist.tsx:1314 | interface | direct-properties-only | date, area, result, sanitized, sanitizer, cleaner, note |
+| CleaningRecord | components/HaccpChecklist.tsx:1324 | interface | direct-properties-only | id, month, machineRows, areaRows, createdBy, createdAt, updatedBy, updatedAt, revisionCount, confirmedBy, confirmedAt |
+| SlotTime | components/HaccpChecklist.tsx:1635 | type-alias | non-object-alias-not-expanded |  |
+| SanitationRow | components/HaccpChecklist.tsx:1637 | interface | direct-properties-only | result, note, inspector |
+| SanitationRecord | components/HaccpChecklist.tsx:1643 | interface | direct-properties-only | id, checkDate, checkZone, checkTime, rows, specialNotes, createdBy, createdAt, updatedBy, updatedAt, revisionCount, confirmedBy, confirmedAt |
+| PersonalHygieneRow | components/HaccpChecklist.tsx:2468 | interface | direct-properties-only | name, checks, note |
+| PersonalHygieneRecord | components/HaccpChecklist.tsx:2473 | interface | direct-properties-only | id, checkDate, rows, inspector, createdBy, createdAt, updatedBy, updatedAt, revisionCount, confirmedBy, confirmedAt |
+| PeriodCycle | components/HaccpChecklist.tsx:3395 | type-alias | non-object-alias-not-expanded |  |
+| PeriodRow | components/HaccpChecklist.tsx:3397 | interface | direct-properties-only | result, note, inspector |
+| PeriodRecord | components/HaccpChecklist.tsx:3403 | interface | direct-properties-only | id, cycle, period, checkZone, rows, specialNotes, createdBy, createdAt, updatedBy, updatedAt, confirmedBy, confirmedAt |
+| ClosingRecord | components/HaccpChecklist.tsx:3974 | interface | direct-properties-only | id, checkDate, checkZone, rows, specialNotes, createdBy, createdAt, updatedBy, updatedAt, confirmedBy, confirmedAt |
+| BenzopyreneTest | components/BenzopyreneLog.tsx:10 | interface | direct-properties-only | id, productName, receivedDate, completedDate, testItem, criteria, result, judgment, lotNo, createdAt, addedBy |
+| Props | components/BenzopyreneLog.tsx:27 | interface | direct-properties-only | currentUserName, isAdmin |
+| DateRangeQuick | src/shared/components/DateRangeFilter.tsx:3 | type-alias | non-object-alias-not-expanded |  |
+| ReturnManagerProps | components/ReturnManager.tsx:28 | interface | direct-properties-only | companyId, items, partners, orders, issuedStatements, currentUser, isAdmin, onProcessReturn |
+| Tab | components/ReturnManager.tsx:39 | type-alias | non-object-alias-not-expanded |  |
+| ReturnCardProps | components/ReturnManager.tsx:432 | interface | direct-properties-only | req, isAdmin, isProcessing, onProcess |
+| ReturnTab | components/ReceivingReturnsManager.tsx:15 | type-alias | non-object-alias-not-expanded |  |
+| ReceivingReturnsManagerProps | components/ReceivingReturnsManager.tsx:17 | interface | direct-properties-only | companyId, items, partnerItems, partners, orders, currentUser, isAdmin, onProcessReturn, onLinkInbound |
+| ReturnCardProps | components/ReceivingReturnsManager.tsx:593 | interface | direct-properties-only | req, isAdmin, isProcessing, onProcess |
+| ItemFormulaRow | components/ProductionManager.tsx:10 | type-alias | direct-properties-only | parent_key, child_name, ratio, yield_rate |
+| ProductionManagerProps | components/ProductionManager.tsx:28 | interface | direct-properties-only | records, items, orders, ledger, itemFormulas, onAdd, onDelete, onUpdate, currentUserName |
+| LedgerRow | src/features/admin/cashLedger.ts:12 | interface | direct-properties-only | entry, balance |
+| AccountLedger | src/features/admin/cashLedger.ts:18 | interface | direct-properties-only | account, opening, rows, totalIn, totalOut, closing |
+| PartnerLedgerRow | src/features/admin/cashLedger.ts:154 | interface | direct-properties-only | kind, id, date, label, docNo, sourceId, time, amount, balance, source, opening |
+| PartnerLedger | src/features/admin/cashLedger.ts:178 | interface | direct-properties-only | rows, opening, accrued, paid, balance |
+| Ev | src/features/admin/cashLedger.ts:216 | type-alias | direct-properties-only | row, ts, order |
+| PartnerCashPart | src/features/admin/cashLedger.ts:485 | interface | direct-properties-only | code, reduce, note |
+| SettleState | src/features/admin/voucherMerge.ts:101 | type-alias | non-object-alias-not-expanded |  |
+| SettleStatus | src/features/admin/voucherMerge.ts:103 | interface | direct-properties-only | state, label |
+| EvidenceType | src/features/statements/domain/evidence.ts:18 | type-alias | non-object-alias-not-expanded |  |
+| VoucherKind | src/shared/timelineRows.ts:16 | type-alias | non-object-alias-not-expanded |  |
+| StmtRow | src/shared/timelineRows.ts:19 | type-alias | direct-properties-only | kind, data, cumul, dateKey, ts |
+| PayRow | src/shared/timelineRows.ts:21 | type-alias | direct-properties-only | kind, partnerId, partnerName, stmtType, offset, date, amount, method, note, paymentId, cumul, dateKey, ts, src, entry |
+| CashRow | src/shared/timelineRows.ts:32 | type-alias | direct-properties-only | kind, entry, dir, amount, accountCode, note, partnerName, cumul, date, ts, dateKey |
+| TimelineRow | src/shared/timelineRows.ts:40 | type-alias | non-object-alias-not-expanded |  |
+| TimelineFilter | src/shared/timelineRows.ts:122 | interface | direct-properties-only | from, to, kind, partner, search |
+| TimelineDeps | src/shared/timelineRows.ts:133 | interface | direct-properties-only | matchAccount, codeName |
+| CodeType | src/shared/timelineRows.ts:195 | type-alias | non-object-alias-not-expanded |  |
+| RowClass | src/shared/timelineRows.ts:197 | interface | direct-properties-only | pl, plAmount, cash, transfer |
+| TimelineTotals | src/shared/timelineRows.ts:229 | interface | direct-properties-only | stmtSum, stmtCnt, saleSum, buySum, receiveSum, receiveCnt, paySum, payCnt |
+| TimelineSortColumn | src/shared/timelineColumnSort.ts:18 | type-alias | non-object-alias-not-expanded |  |
+| TimelineSort | src/shared/timelineColumnSort.ts:20 | interface | direct-properties-only | column, dir |
+| SortOptions | src/shared/timelineColumnSort.ts:67 | interface | direct-properties-only | textOf, signOf |
+| PriceSyncLine | src/shared/partnerPriceSync.ts:25 | interface | direct-properties-only | itemId, name, price, accountCode, isTaxExempt, qty, supply |
+| PriceSyncInput | src/shared/partnerPriceSync.ts:38 | interface | direct-properties-only | type, partnerId, lines, items, partnerItems, noLinkIds, isLatest |
+| PriceSyncResult | src/shared/partnerPriceSync.ts:62 | interface | direct-properties-only | upserts, costUpdates |
+| StatementLike | src/shared/latestStatement.ts:24 | interface | direct-properties-only | id, partnerId, type, tradeDate |
+| LatestInput | src/shared/latestStatement.ts:31 | interface | direct-properties-only | this, all |
+| MonthGroup | src/shared/groupByMonth.ts:10 | interface | direct-properties-only | month, rows |
+| OrderPickerProps | components/OrderPicker.tsx:29 | interface | direct-properties-only | mode, pick, filter, data, on |
+| PickRow | src/shared/itemPick.ts:15 | interface | direct-properties-only | product, pc |
+| PickedLine | src/shared/itemPick.ts:22 | interface | direct-properties-only | itemId, name, spec, qty, price, isTaxExempt, note, accountCode |
+| PickResult | src/shared/itemPick.ts:33 | interface | direct-properties-only | toAdd, unlinked |
+| BuildJournalsInput | src/shared/buildJournals.ts:10 | interface | direct-properties-only | statements, cashEntries, accounts, opening, cashAccountMap, inventorySnapshots |
+| BuildJournalsResult | src/shared/buildJournals.ts:20 | interface | direct-properties-only | entries, skipped |
+| PartnerAnchorOpenStmt | src/features/admin/partnerAnchor.ts:34 | interface | direct-properties-only | id, date, type, remaining |
+| PartnerAnchorRow | src/features/admin/partnerAnchor.ts:43 | interface | direct-properties-only | partnerId, partnerName, receivable, payable, openStmts |
+| PartnerAnchor | src/features/admin/partnerAnchor.ts:54 | interface | direct-properties-only | id, companyId, year, asOf, rows, recordedAt |
+| AnchorInput | src/features/admin/partnerAnchor.ts:67 | interface | direct-properties-only | journals, statements, cashEntries, settlements, nameOf |
+| VoucherLedgerInput | src/features/admin/useVoucherLedger.ts:31 | interface | direct-properties-only | companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo |
+| CashEditLineDraft | src/shared/cashEntryEdit.ts:15 | interface | direct-properties-only | accountCode, amount, note |
+| CashEditForm | src/shared/cashEntryEdit.ts:21 | interface | direct-properties-only | amount, date, dir, accountCode, note, partnerId |
+| CashModalMode | components/voucher/CashEntryModal.tsx:29 | type-alias | non-object-alias-not-expanded |  |
+| SettleInput | components/voucher/CashEntryModal.tsx:34 | interface | direct-properties-only | amount, date, method, note, scope |
+| Props | components/voucher/CashEntryModal.tsx:43 | interface | direct-properties-only | mode, partners, companyId, accountCodes, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle, onSaveEdit, onDeleteEntry |
+| VoucherDir | src/shared/cashTemplates.tsx:25 | type-alias | non-object-alias-not-expanded |  |
+| CashTemplate | src/shared/cashTemplates.tsx:55 | interface | direct-properties-only | id, label, dir, mode, accountCode, note, wantsPartner, hint, amount, partnerId, taxExempt, partnerName, builtin, group, favorite, itemName, loanCode, loanId, vat, incomeTax, transferLines, unavailableCodes, insCorp, insEmp, principal, interest, gross, deduction |
+| SplitMode | src/shared/cashTemplates.tsx:141 | type-alias | non-object-alias-not-expanded |  |
+| Props | components/voucher/RecurringModal.tsx:20 | interface | direct-properties-only | companyId, templates, accountCodes, partners, isIssued, onClose, onGenerate, onCreateTemplate, onUpdateTemplate, onDeleteTemplate |
+| OverKind | src/shared/interCompany.ts:33 | type-alias | non-object-alias-not-expanded |  |
+| TransferInput | src/shared/interCompany.ts:35 | interface | direct-properties-only | from, to, date, amount, payableToTarget, overKind, fromAccountId, toAccountId, fromPartnerId, fromPartnerName, toPartnerId, toPartnerName, note |
+| TransferSplit | src/shared/interCompany.ts:54 | interface | direct-properties-only | offset, over, overKind |
+| TransferResult | src/shared/interCompany.ts:68 | interface | direct-properties-only | out, in, split |
+| SplitLine | src/shared/splitEntry.ts:24 | interface | direct-properties-only | accountCode, amount, note |
+| EntryBase | src/shared/splitEntry.ts:27 | type-alias | non-object-alias-not-expanded |  |
+| SplitInput | src/shared/splitEntry.ts:29 | interface | direct-properties-only | lines, note, fallbackNote, base, now |
+| PayrollInput | src/shared/splitEntry.ts:68 | interface | direct-properties-only | gross, deduction, salaryCode, withholdCode, note, base, now |
+| Props | components/voucher/VoucherComposer.tsx:49 | interface | direct-properties-only | companyId, initialDir, initialDate, partners, accountCodes, accountGroups, cashAccounts, fixedCostTemplates, cashEntries, statements, partnerBalances, getBalance, cashAccountId, onCashAccountId, onClose, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, onAddForCompany, recordPayment, renderJournal |
+| StatementHistoryKind | src/features/statements/ui/StatementHistoryFilters.tsx:4 | type-alias | non-object-alias-not-expanded |  |
+| StatementQuickRange | src/features/statements/ui/StatementHistoryFilters.tsx:5 | type-alias | non-object-alias-not-expanded |  |
+| StatementOrderDateQuick | src/features/statements/ui/StatementOrderDateFilter.tsx:3 | type-alias | non-object-alias-not-expanded |  |
+| StatementAccountChoice | src/features/statements/ui/StatementHistorySearchFields.tsx:3 | type-alias | direct-properties-only | value, label, path, axis, branch, isGroup, groupId |
+| StatementHistoryRowView | src/features/statements/domain/statementHistoryRowView.ts:4 | type-alias | direct-properties-only | key, kind, label, date, createdAt, owner, partner, shipTo, detail, note, amount, cumulative, isReturn |
+| ExcelListColumn | src/shared/listExcel.ts:1 | type-alias | direct-properties-only | header, width, number |
+| ExcelListValue | src/shared/listExcel.ts:2 | type-alias | non-object-alias-not-expanded |  |
+| StatementQuickItemResult | src/features/statements/ui/StatementQuickItemBar.tsx:6 | interface | direct-properties-only | pc, product |
+| Props | src/features/statements/ui/StatementQuickItemBar.tsx:11 | interface | direct-properties-only | name, spec, quantity, price, note, searchOpen, results, productCost, salePrice, unitSupply, supply, tax, marginRate, showUnitSupply, formatAmount, onNameChange, onNameFocus, onNameBlur, onSpecChange, onQuantityChange, onPriceChange, onNoteChange, onSelect, onAdd, onOpenPicker |
+| StatementItemPickerRow | src/features/statements/ui/StatementItemPicker.tsx:5 | interface | direct-properties-only | pc, product |
+| Props | src/features/statements/ui/StatementItemPicker.tsx:10 | interface | direct-properties-only | rows, search, quantities, priceEdits, linkedItemIds, priceSaveState, onSearchChange, onToggleItem, onQuantityChange, onPriceChange, onSavePrice, onSetTax, onClose, onConfirm |
+| Props | src/features/statements/ui/StatementOrderItemRows.tsx:5 | interface | direct-properties-only | items, selectedIndex, editablePrices, accountCodes, formatAmount, onSelect, onPriceChange, onTaxChange, onAccountChange |
+| StatementManualSearchResult | src/features/statements/ui/StatementManualItemRows.tsx:8 | interface | direct-properties-only | pc, product |
+| Props | src/features/statements/ui/StatementManualItemRows.tsx:13 | interface | direct-properties-only | rows, readOnly, selectedIndex, activeSearchIndex, statementType, accountCodes, items, linked, formatAmount, searchResults, onSelect, onChange, onSearchFocus, onSearchBlur, onChooseProduct, onRemove |
+| Props | src/features/statements/ui/StatementActionBar.tsx:4 | interface | direct-properties-only | editing, editMode, canIssue, saving, mode, issuePay, issuePayAmount, totalAmount, onIssuePayChange, onIssuePayAmountChange, onSaveEdit, onDelete, onEdit, onPrint, onIssue, onExcel |
+| Props | src/features/statements/ui/StatementSettlementSummary.tsx:4 | interface | direct-properties-only | type, totalAmount, balance, formatAmount, overLabel, onSettle |
+| Props | src/features/statements/ui/StatementExpensePresetRow.tsx:5 | interface | direct-properties-only | presets, managing, canAdd, canDelete, onAddRow, onCreatePreset, onDeletePreset, onToggleManaging, onAddBlankRow |
+| Props | src/features/statements/ui/StatementDuplicateWarning.tsx:6 | interface | direct-properties-only | statement, formatAmount, onOpenExisting, onReissue, onClose |
+| VoucherKind | src/shared/vouchers.ts:23 | type-alias | non-object-alias-not-expanded |  |
+| VoucherLine | src/shared/vouchers.ts:25 | interface | direct-properties-only | accountCode, name, amount |
+| Voucher | src/shared/vouchers.ts:31 | interface | direct-properties-only | id, companyId, kind, date, ts, docNo, partnerId, partnerName, memo, amount, lines, source |
+| ArApSide | src/shared/timelineBuild.ts:18 | interface | direct-properties-only | side, delta |
+| BuildTimelineInput | src/shared/timelineBuild.ts:20 | interface | direct-properties-only | statements, cashEntries, arapOf |
+| Ev | src/shared/timelineBuild.ts:34 | type-alias | non-object-alias-not-expanded |  |
+| Input | src/features/statements/hooks/useStatementTimeline.ts:15 | interface | direct-properties-only | statements, cashEntries, arapOf, from, to, kind, account, partner, search, matchAccount, codeName, sort, sortText, balanceSign, page, setPage, partnerQuery, journalBySource, accountCodes, codeType, partnerBalances |
+| VoucherSlipProps | src/shared/VoucherSlip.tsx:23 | interface | direct-properties-only | je, kind, docNo, date, codeName, partnerName, headPartner, emptyMessage, className |
+| Meta | src/features/statements/hooks/useStatementJournal.tsx:8 | type-alias | direct-properties-only | kind, docNo, date, headPartner |
+| StatementPrintDeps | src/features/statements/infrastructure/statementPrint.ts:7 | interface | direct-properties-only | companyInfo, partners, allItems, balance |
+| Input | src/features/statements/domain/statementDraft.ts:5 | interface | direct-properties-only | identity, tradeDate, type, partnerId, partnerName, orderIds, memo, totals, partySnapshot, lines, allItems |
+| Input | src/features/statements/infrastructure/statementExcel.ts:4 | interface | direct-properties-only | type, docNo, dateLabel, tradeDate, partnerName, items, totals |
+| QuickItemMetrics | src/features/statements/domain/quickItemModel.ts:4 | type-alias | direct-properties-only | supply, tax, marginRate, unitSupply, showUnitSupply |
+| Props | components/CashLedger.tsx:19 | interface | direct-properties-only | companyId, cashAccounts, cashEntries, accountCodes, fixedCostTemplates, partners, issuedStatements, settlements, currentUser, onAddCashAccount, onUpdateCashAccount, onAddCashEntry, onDeleteCashEntry, onAddSettlement, onDeleteSettlement |
+| TradeStatementProps | components/TradeStatement.tsx:88 | interface | direct-properties-only | orders, allItems, partners, partnerItems, accountCodes, accountGroups, cashAccounts, cashEntries, settlements, onAddCashEntry, onIssueCashEntry, onUpdateCashEntry, onAddSettlement, onUpdateSettlement, onDeleteCashEntry, onDeleteSettlement, onAddCashAccount, onUpdateCashAccount, fixedCostTemplates, onGenerateRecurringCosts, onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate, voucherMode, embedded, issuedStatements, onUpdateStatus, onUpsertPartnerItem, onAddIssuedStatement, onApplyStatement, companyId, onAddForCompany, onUpdateIssuedStatement, onProposeEdit, focusDocNo, onFocusHandled, onDeleteIssuedStatement, pendingInvoice, onClearPendingInvoice, composerOnly, onComposerClose, confirmedOrders, orderRequests, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, companyInfo, onSaveCompanyInfo, onUpdateItemCost, onUpdateOrder, defaultTab, expensePresets, onAddExpensePreset, onDeleteExpensePreset |
+| StatementType | components/TradeStatement.tsx:166 | type-alias | non-object-alias-not-expanded |  |
+| Period | src/shared/ui/PeriodPicker.tsx:3 | type-alias | non-object-alias-not-expanded |  |
+| PeriodPickerProps | src/shared/ui/PeriodPicker.tsx:20 | interface | direct-properties-only | period, setPeriod, years, selectedYear, setSelectedYear, selectedQuarter, setSelectedQuarter, selectedHalf, setSelectedHalf, customStart, setCustomStart, customEnd, setCustomEnd, quarterAvailable, halfAvailable, yearlyAvailable, 당월, alwaysShowDates |
+| LedgerTone | src/shared/ui/LedgerCard.tsx:22 | type-alias | non-object-alias-not-expanded |  |
+| CostManagerProps | components/CostManager.tsx:6 | interface | direct-properties-only | fixedCosts, fixedCostTemplates, issuedStatements, accountCodes, onAdd, onDelete, onAddTemplate, onUpdateTemplate, onDeleteTemplate, onGenerateRecurringCosts |
+| PartnerMonthlyRow | src/features/admin/partnerMonthlySettlement.ts:5 | interface | direct-properties-only | partnerId, opening, sales, cashReceived, cashRefunded, nonCashDecrease, receivableIncrease, closing, discrepancy |
+| NamedSettlementRow | src/features/admin/partnerMonthlyPdf.ts:11 | type-alias | non-object-alias-not-expanded |  |
+| MainTab | components/ProfitAnalysis.tsx:29 | type-alias | non-object-alias-not-expanded |  |
+| ProfitAnalysisProps | components/ProfitAnalysis.tsx:31 | interface | direct-properties-only | issuedStatements, fixedCostTemplates, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners, items, costOf, onUpdateIssuedStatement, accountGroups, accountCodes, onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots, onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual, onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements, companyId, initialTab |
+| AccountTally | src/shared/journal.ts:35 | interface | direct-properties-only | accountCode, debit, credit |
+| TrialBalanceRow | src/shared/journal.ts:60 | interface | direct-properties-only | accountCode, name, type, debit, credit, balance |
+| TrialBalance | src/shared/journal.ts:65 | interface | direct-properties-only | rows, totalDebit, totalCredit, balanced |
+| IncomeStatement | src/shared/journal.ts:112 | interface | direct-properties-only | revenue, expense, netIncome |
+| BalanceSheet | src/shared/journal.ts:122 | interface | direct-properties-only | asset, liability, equity, netIncome, balanced |
+| OpeningDoc | components/FinancialReports.tsx:17 | interface | direct-properties-only | id, date, amounts, hasLoanOpening, hasCashOpening, hasInventoryOpening |
+| Props | components/FinancialReports.tsx:19 | interface | direct-properties-only | companyId, statements, cashEntries, accounts, cashAccounts, partners, items, inventorySnapshots |
+| Props | components/LoanManager.tsx:16 | interface | direct-properties-only | companyId, cashEntries, cashAccounts, partners, currentUserName, onAddCashEntry |
+| Props | components/PartnerLedger.tsx:14 | interface | direct-properties-only | companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements, onOpenVoucher |
+| AdminAppProps | src/features/admin/AdminApp.tsx:240 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
+| NewOrderDraft | src/features/admin/AdminApp.tsx:1475 | type-alias | non-object-alias-not-expanded |  |
+| RightRow | src/features/admin/AdminApp.tsx:3261 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
+| WRow | src/features/admin/AdminApp.tsx:3667 | type-alias | direct-properties-only | spec, 수량, mfgDate |
+| UsageRow | src/features/admin/AdminApp.tsx:3971 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
+| WRow | src/features/admin/AdminApp.tsx:4413 | type-alias | direct-properties-only | spec, 수량, mfgDate |
+| StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
+| Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
+| AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
+| LoginResponse | src/shared/employeeAuth.ts:7 | type-alias | direct-properties-only | customToken, employee |
+| LoginApp | src/shared/employeeAuth.ts:9 | type-alias | non-object-alias-not-expanded |  |
+| AuthPageProps | src/shared/components/AuthPage.tsx:6 | interface | direct-properties-only | onLogin, app |
+| PartnerPortalProps | components/PartnerPortal.tsx:18 | interface | direct-properties-only | partners, items, partnerItems, onOrderSubmit, onExit |
+| Attempt | functions/src/employeeLogin.ts:12 | type-alias | direct-properties-only | failures, windowStartedAt, blockedUntil |
+| 들어온것 | functions/src/extractOrder.ts:36 | interface | direct-properties-only | text, catalog, partners, history, today |
+
+## 기존 shared 선언 필드
+
 | 모델 | 필드 | 입력 | 선언 타입 | 선언 위치 | 정적 사용처 |
 | --- | --- | --- | --- | --- | --- |
 | OrderItem | lineId | 선택 | string | src/shared/types.ts:20 | 38 |
