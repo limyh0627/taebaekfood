@@ -3104,7 +3104,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               hideDocs={inCabinetDoc}
             />
           )}
-          {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} onAddPost={(post) => addItem('notices', post)} onUpdatePost={(id, patch) => updateItem('notices', id, patch)} onDeletePost={(id) => deleteItem('notices', id)} />}
+          {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} onAddPost={isAdmin ? (post) => addItem('notices', post) : undefined} onUpdatePost={isAdmin ? (id, patch) => updateItem('notices', id, patch) : undefined} onDeletePost={isAdmin ? (id) => deleteItem('notices', id) : undefined} />}
           {currentView === 'pallets' && (
             <PalletManager
               pallets={pallets}
