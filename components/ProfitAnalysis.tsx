@@ -12,11 +12,11 @@ import PageHeader from './PageHeader';
 import PeriodPicker from '../src/shared/ui/PeriodPicker';
 import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/ui/LedgerCard';
 import CostManager from './CostManager';
-import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { makeCodeToGroup, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { partnerMonthlySettlement } from '../src/features/admin/partnerMonthlySettlement';
 import { savePartnerMonthlyPdf } from '../src/features/admin/partnerMonthlyPdf';
-import { buildJournals } from '../src/shared/buildJournals';
+import { buildProfitPeriodProjection } from '../src/features/admin/profitPeriodProjection';
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchWhere } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
@@ -317,19 +317,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // 임의 월(YYYY-MM)의 손익 — monthlyData·현금흐름표 공용. cogs = 당기 매입액(재고 미반영).
   // 손익은 분개에서 파생한다 — 전표든 자금원장이든 분개를 한 번 거치므로 이중계상이 안 생기고,
   // 부가세는 예수금·대급금으로 빠져 손익에 안 섞인다. 재무제표 탭과 같은 소스라 숫자도 일치한다.
-  const journalEntries = useMemo(
-    () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes, opening, inventorySnapshots }).entries,
-    [issuedStatements, cashEntries, accountCodes, opening, inventorySnapshots]
-  );
-  const monthPL = useCallback(
-    (ym: string) => computeMonthPLFromJournals(ym, journalEntries, accountCodes, codeToGroup),
-    [journalEntries, accountCodes, codeToGroup]
-  );
-
-  // 월별 집계
-  const monthlyData = useMemo(
-    () => periodMonths.map(ym => ({ month: `${Number(ym.split('-')[1])}월`, ym, ...monthPL(ym) })),
-    [periodMonths, monthPL]
+  const { journalEntries, monthlyData } = useMemo(
+    () => buildProfitPeriodProjection({ statements: issuedStatements, cashEntries, accounts: accountCodes,
+      opening, inventorySnapshots, periodMonths, codeToGroup }),
+    [issuedStatements, cashEntries, accountCodes, opening, inventorySnapshots, periodMonths, codeToGroup]
   );
 
   /**
