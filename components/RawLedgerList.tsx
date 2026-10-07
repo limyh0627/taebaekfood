@@ -121,7 +121,7 @@ const RawLedgerList: React.FC<Props> = ({
       flush();
     }
     return out;
-  }, [allEntries, entries, currentUserName, isAdmin, onDelete, orderById]);
+  }, [allEntries, entries, currentUserName, isAdmin, onDelete, orderById, linesUsingRaw]);
 
   // 화면에 띄울 것만 — 기간(entries)·유형(filter) 조건에 걸리는 기록이 하나라도 있는 묶음
   const shownIds = useMemo(() => new Set(entries.map(e => e.id).filter(Boolean)), [entries]);

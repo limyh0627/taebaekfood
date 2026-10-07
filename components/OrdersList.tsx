@@ -209,6 +209,12 @@ const seoulDateInput = (date = new Date()) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(date);
 
+const isCarriedOrder = (order: Order): boolean => {
+  if (![OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DISPATCHED, OrderStatus.ON_HOLD].includes(order.status)) return false;
+  const created = new Date(order.createdAt);
+  return Number.isFinite(created.getTime()) && seoulDateInput(created).slice(0, 7) < seoulDateInput().slice(0, 7);
+};
+
 const seoulWeekStart = () => {
   const today = seoulDateInput();
   const date = new Date(`${today}T00:00:00+09:00`);
@@ -535,7 +541,7 @@ export const OrderCard = memo<OrderCardProps>(({
              온전히 쓸 수 있게"). 상태가 이름 옆에 있으면 긴 거래처명이 밀려 잘렸다 —
              주문번호는 짧아서 옆자리가 남는다. */}
         <div className="flex items-baseline justify-between gap-2">
-          <p className="min-w-0 truncate text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}</p>
+          <p className="min-w-0 truncate text-[9px] font-black tabular-nums opacity-60">{cardNoLabel(order)}{isCarriedOrder(order) && <span className="ml-1 text-amber-700">이월</span>}</p>
         {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
             드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
         {/*  **상태와 진행도는 한 줄이다** — `작업중 3/5`
@@ -3296,7 +3302,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                           {/*  `ORD-` 는 전부 붙는 머리라 읽을 정보가 없다 — 떼고 숫자만 보여 준다
                                (2026-09-11 사장님). 원래 번호는 마우스를 올리면 나온다. */}
                           <span className="truncate font-black tabular-nums text-slate-600" title={cardNoLabel(order) || order.id}>{(cardNoLabel(order) || order.id).replace(/^ORD-/, '')}</span>
-                          <span className="text-[9px] font-bold text-slate-600">{statusLabel(order.status)}</span>
+                          <span className="text-[9px] font-bold text-slate-600">{statusLabel(order.status)}{isCarriedOrder(order) && <span className="ml-1 text-amber-700">이월</span>}</span>
                         </div>
                         {/*  주문일(위) · 출고예정일(아래) — 출고예정일은 그대로 눌러서 고친다. */}
                         <div role="cell" className="flex flex-col justify-center gap-0.5 border-r border-slate-300 px-1.5 py-1">
