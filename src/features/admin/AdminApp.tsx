@@ -1376,7 +1376,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const loadCatalogDeleteBlockers = async (itemId: string) => catalogItemDeleteBlockers(
     itemId,
-    await fetchWhereIn<Order>('orders', 'status', CATALOG_DELETE_BLOCKING_STATUSES),
+    await fetchWhereIn<Order>('orders', 'status', CATALOG_DELETE_BLOCKING_STATUSES, companyId),
   );
 
   const requestCatalogItemDelete = async (itemId: string) => {
@@ -1999,6 +1999,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
    */
   const handleUpdateItems = async (orderId: string, items: OrderItem[]) => {
+    const askScope = orderAskScope.current.token;
     const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
     /*  **줄 단위로 막는다**(2026-09-14 사장님: "비고 다는데 왜 … 변경이 불가능하다는 알림이 떠",
         "작업완료된게 참기름 골드밖에 없는데 왜 나머지 품목에도"). 비고·라벨·제조일은 재고와
@@ -2024,6 +2025,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     /*  **라벨·제조일을 바꾼 사람과 시각을 여기서 찍는다**(2026-09-14 사장님: "라벨이나
         작업완료 등의 상태변경 누가하고 언제 했는지 볼 수 있게"). 바꾸는 자리가 여럿이라
         자리마다 찍으면 한 곳은 새고, 이 문은 그 전부가 지난다. */
+    if (orderAskScope.current.token !== askScope) return;
     const 지금 = new Date().toISOString();
     const 찍은items = o ? stampOrderItemEdits(o.items, items, currentUser?.name, 지금) : items;
     const 작업상태 = o && [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED].includes(o.status)
@@ -2039,7 +2041,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
         orderId, at: 지금, by: currentUser?.name?.trim() || '미기록',
         changes: 바뀐것.map(change => change.text),
       } as Omit<OrderItemEdit, 'id'>)
-        .catch(error => console.error('[주문 품목 수정 기록 실패]', orderId, error));
+        .catch(error => {
+          if (orderAskScope.current.token !== askScope) return;
+          console.error('[주문 품목 수정 기록 실패]', orderId, error);
+        });
     }
   };
 

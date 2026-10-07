@@ -5,6 +5,10 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
 import { planCatalogItemDelete, catalogItemDeleteBlockMessage } from './catalogItemDelete';
+import { classifyOrderEdit, editBlockMessage } from '../../shared/orderEditGuard';
+import { stampOrderItemEdits } from '../../shared/stampOrderItemEdits';
+import { diffOrderItems } from '../../shared/orderItemDiff';
+import { workStatusFromItems } from '../../shared/orderCompletion';
 import { planOrderItemToggle } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { isGoodsItem } from '../../shared/itemTaxonomy';
@@ -268,4 +272,33 @@ it('품목 삭제 확인창은 회사 전환 시 숨고 이전 취소가 새 확
  const deps={...h.deps,catalogDeleteAsk:ask};const callback=new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps));
  const next={...ask,itemId:'next'};h.set(next);callback();expect(h.get()).toBe(next);
  h.scope.current={token:{}};expect(visible(ask,h.scope)).toBe(false);callback();expect(h.get()).toBe(next);
+});
+
+function itemsEditHarness() {
+ const scope={current:{token:{}}};const confirm=deferred();
+ const original={itemId:'old',lineId:'old-line',name:'기존품목',quantity:1,checked:true,unitPrice:100};
+ const added={itemId:'new',lineId:'new-line',name:'추가품목',quantity:2,checked:false,unitPrice:200};
+ const order={id:'A',status:OrderStatus.DISPATCHED,items:[original],itemInventory:{'old-line':{applied:true}}};
+ const update=vi.fn(async(..._args:unknown[])=>{});const add=vi.fn(async(..._args:unknown[])=>{});const log=vi.fn();const alert=vi.fn();
+ const deps={orderAskScope:scope,allOrders:[order],orders:[],classifyOrderEdit,editBlockMessage,appConfirm:()=>confirm.promise,stampOrderItemEdits,workStatusFromItems,diffOrderItems,OrderStatus,currentUser:{name:'태백'},updateItem:update,addItem:add,console:{error:log},alert};
+ return {scope,confirm,original,added,order,update,add,log,alert,run:actualNamed('handleUpdateItems',deps)};
+}
+it('주문 품목 추가 확인 중 회사가 바뀌면 이전 주문과 변경 기록을 저장하지 않는다',async()=>{
+ const h=itemsEditHarness();const waiting=h.run('A',[h.original,h.added]);h.scope.current={token:{}};h.confirm.resolve(true);await waiting;
+ expect(h.update).not.toHaveBeenCalled();expect(h.add).not.toHaveBeenCalled();
+});
+
+it('현재 회사 품목 추가는 완료 줄을 유지하고 작업중 상태와 변경 기록을 저장한다',async()=>{
+ const h=itemsEditHarness();const waiting=h.run('A',[h.original,h.added]);h.confirm.resolve(true);await waiting;
+ expect(h.update).toHaveBeenCalledWith('orders','A',{items:[h.original,h.added],status:OrderStatus.PROCESSING});expect(h.add).toHaveBeenCalledOnce();expect(h.add.mock.calls[0][0]).toBe('orderItemEdits');
+});
+it('품목 추가 확인 취소는 주문과 변경 기록을 저장하지 않는다',async()=>{
+ const h=itemsEditHarness();const waiting=h.run('A',[h.original,h.added]);h.confirm.resolve(false);await waiting;expect(h.update).not.toHaveBeenCalled();expect(h.add).not.toHaveBeenCalled();
+});
+it('품목 추가 확인 중 종료된 화면은 저장하지 않으며 늦은 기록 실패도 새 회사에 남기지 않는다',async()=>{
+ const stopped=itemsEditHarness();const before=stopped.run('A',[stopped.original,stopped.added]);stopped.scope.current={token:{}};stopped.confirm.resolve(true);await before;expect(stopped.update).not.toHaveBeenCalled();
+ const h=itemsEditHarness();const record=deferred();h.add.mockImplementation(()=>record.promise as Promise<void>);const waiting=h.run('A',[h.original,h.added]);h.confirm.resolve(true);await waiting;h.scope.current={token:{}};record.reject(new Error('기록 실패'));await Promise.resolve();await Promise.resolve();expect(h.log).not.toHaveBeenCalled();expect(h.alert).not.toHaveBeenCalled();
+});
+it('현재 회사 변경 기록 실패는 기존 오류 기록을 유지한다',async()=>{
+ const h=itemsEditHarness();h.add.mockRejectedValue(new Error('기록 실패'));const waiting=h.run('A',[h.original,h.added]);h.confirm.resolve(true);await waiting;await Promise.resolve();expect(h.log).toHaveBeenCalledOnce();
 });

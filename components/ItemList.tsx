@@ -44,7 +44,7 @@ import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterial
 import { PurchaseOrder, ReturnRequest, companyOf, poLines } from '../src/shared/types';
 import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
-import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, itemKg, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
+import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, itemKg, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
@@ -887,7 +887,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
-  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string }): Promise<boolean> => {
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs }): Promise<boolean> => {
+    const inputs = options?.inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
     if (isNaN(val) || val < 0) return false;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
@@ -950,7 +951,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         targetQty: 목표,
         ...(options?.minStock !== undefined ? { minStock: options.minStock } : {}),
         ...(options?.operationId ? { operationId: options.operationId } : {}),
-        unitKg: stockKg(1, product, id => items.find(x => x.id === id)) ?? 0,
+        unitKg: stockKg(1, product, id => items.find(x => x.id === id), inputs) ?? 0,
       });
       setToast({ message: r.message });
       return r.ok;
@@ -3771,6 +3772,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       {editable && (
                         <button onClick={async () => {
                             if (!product) return;
+                            const inputs = { bom: getBomIndex(), pack: getPackIndex() };
                             // 재고 뷰에서는 '재고분만' 0으로 — 작업완료분은 주문에 물려 있으니 남긴다.
                             // 전체 뷰에서는 현재고를 통째로 0으로 만들어 작업완료분까지 날아간다 → 미리 경고.
                             //   (실제로 이 버튼으로 작업완료 900개가 통째로 지워진 사고가 있었음)
@@ -3779,7 +3781,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                               : stockEdit
                                 ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
                                 : `"${product.name}" 현재고를 0으로 만들까요?\n\n⚠ 작업완료(미출고) ${disp}개도 함께 사라집니다. (현재고 ${cur} → 0)\n작업완료분을 남기려면 '재고' 뷰에서 지우세요.`;
-                            if (await appConfirm(msg)) commitStockEdit(product, 0, stockEdit ? disp : 0);
+                            if (await appConfirm(msg) && unpackMounted.current) commitStockEdit(product, 0, stockEdit ? disp : 0, undefined, { inputs });
                           }}
                           title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                           <Trash2 size={13} />

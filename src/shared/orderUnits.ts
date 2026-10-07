@@ -316,9 +316,10 @@ export function groupLooseBoxRows<T extends Pick<Item, 'id'>>(arr: T[]): { p: T;
 export function kgPerStockUnit(
   product: (BoxLike & { spec?: string }) | undefined,
   findItem: (id: string) => { spec?: string } | undefined,
+  inputs?: OrderUnitInputs,
 ): number | undefined {
   if (!product) return undefined;
-  const uc = unpackComponent(product);
+  const uc = unpackComponent(product, inputs);
   if (!uc) return parsePackageKg(product.spec);
   //  박스 규격(`1kg * 20`)에서 읽으면 1이 나온다 — 낱개 규격 × 개입수가 맞다
   const looseKg = parsePackageKg(findItem(uc.itemId)?.spec);
@@ -330,7 +331,8 @@ export function stockKg(
   qty: number,
   product: (BoxLike & { spec?: string }) | undefined,
   findItem: (id: string) => { spec?: string } | undefined,
+  inputs?: OrderUnitInputs,
 ): number | undefined {
-  const per = kgPerStockUnit(product, findItem);
+  const per = kgPerStockUnit(product, findItem, inputs);
   return per === undefined ? undefined : Math.round(qty * per * 1000) / 1000;
 }
