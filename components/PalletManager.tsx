@@ -17,16 +17,18 @@ import {
   Search,
   Trash2
 } from 'lucide-react';
-import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../types';
+import { PalletStock, Order, Partner, OrderStatus, PalletTransaction, CompanyId, companyOf, TAEBAEK } from '../types';
+import { where } from 'firebase/firestore';
 import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 // 모듈 캐시 — 페이지 재진입 시 24개월 과거 거래 재조회 방지 (읽기 절약). 5분 TTL.
-let palletTxCache: { data: PalletTransaction[]; at: number } | null = null;
+const palletTxCache = new Map<CompanyId, { data: PalletTransaction[]; at: number }>();
 
 interface PalletManagerProps {
+  companyId?: CompanyId;
   pallets: PalletStock[];
   orders: Order[];
   partners: Partner[];
@@ -36,6 +38,7 @@ interface PalletManagerProps {
 }
 
 const PalletManager: React.FC<PalletManagerProps> = ({
+  companyId = TAEBAEK,
   pallets,
   orders, partners,
   palletTransactions: liveTransactions,
@@ -46,27 +49,32 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   // 라이브 구독은 7일치만 → 파렛트 잔량 계산에는 과거 누적이 필수이므로 24개월치 온디맨드 로드
   // 읽기 절약: 페이지 재진입마다 다시 읽지 않도록 모듈 캐시(5분). 최근 변경분은 라이브 7일 구독으로 반영됨.
-  const [extraTransactions, setExtraTransactions] = useState<PalletTransaction[]>(palletTxCache?.data ?? []);
+  const [extraHistory, setExtraHistory] = useState(() => ({ companyId, rows: palletTxCache.get(companyId)?.data ?? [] }));
+  const extraTransactions = extraHistory.companyId === companyId ? extraHistory.rows : [];
   useEffect(() => {
-    if (palletTxCache && Date.now() - palletTxCache.at < 5 * 60 * 1000) {
-      setExtraTransactions(palletTxCache.data);
+    let cancelled = false;
+    const cached = palletTxCache.get(companyId);
+    if (cached && Date.now() - cached.at < 5 * 60 * 1000) {
+      setExtraHistory({ companyId, rows: cached.data });
       return;
     }
+    setExtraHistory({ companyId, rows: [] });
     const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const from = fromDate.toISOString().slice(0, 10);
-    fetchDateRange<PalletTransaction>('palletTransactions', 'date', from, to)
-      .then(d => { palletTxCache = { data: d, at: Date.now() }; setExtraTransactions(d); })
-      .catch(e => console.error('[PalletManager] 과거 파렛트 거래 로드 실패:', e));
-  }, []);
+    fetchDateRange<PalletTransaction>('palletTransactions', 'date', from, to, [where('companyId', '==', companyId)])
+      .then(d => { if (cancelled) return; const rows = d.filter(t => companyOf(t as PalletTransaction & { companyId?: CompanyId }) === companyId); palletTxCache.set(companyId, { data: rows, at: Date.now() }); setExtraHistory({ companyId, rows }); })
+      .catch(e => { if (!cancelled) console.error('[PalletManager] 과거 파렛트 거래 로드 실패:', e); });
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   // 라이브(7일) + 과거(24개월) 병합 — id 기준 dedup, 라이브 우선
   const palletTransactions = useMemo(() => {
     const map = new Map<string, PalletTransaction>();
     extraTransactions.forEach(t => map.set(t.id, t));
-    liveTransactions.forEach(t => map.set(t.id, t));
+    liveTransactions.filter(t => companyOf(t as PalletTransaction & { companyId?: CompanyId }) === companyId).forEach(t => map.set(t.id, t));
     return Array.from(map.values());
-  }, [liveTransactions, extraTransactions]);
+  }, [liveTransactions, extraTransactions, companyId]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PalletStock | null>(null);
@@ -375,8 +383,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         if (pallet) onUpdatePallet({ ...pallet, total: Math.max(0, pallet.total + (tx.type === 'in' ? -tx.quantity : tx.quantity)) });
       }
       // 라이브 구독(7일)이 즉시 못 지우는 과거 거래 대비 — 로컬 캐시/상태에서도 제거
-      setExtraTransactions(prev => prev.filter(t => t.id !== tx.id));
-      if (palletTxCache) palletTxCache = { data: palletTxCache.data.filter(t => t.id !== tx.id), at: palletTxCache.at };
+      setExtraHistory(prev => prev.companyId === companyId ? { ...prev, rows: prev.rows.filter(t => t.id !== tx.id) } : prev);
+      const cached = palletTxCache.get(companyId);
+      if (cached) palletTxCache.set(companyId, { ...cached, data: cached.data.filter(t => t.id !== tx.id) });
     } catch (e) {
       console.error('[파레트] 거래 삭제 실패:', e);
       alert('삭제 실패: ' + ((e as Error)?.message ?? e));

@@ -135,11 +135,16 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  // 같은 ID의 거래처 원본이 바뀌어도 이전 배송지와 이름으로 주문하지 않는다.
+  const selectedClient = partners.find(partner => partner.id === selectedClientId) ?? null;
   //  **어디로 보내나**(2026-09-16) — 주문 화면과 같은 규칙. 기본은 목록 맨 앞이고,
   //  바꾸면 품목 목록이 따라 바뀐다.
   const [shipToId, setShipToId] = useState<string | undefined>(undefined);
-  useEffect(() => { setShipToId(defaultShipToId(selectedClient ?? undefined)); }, [selectedClient?.id]);
+  useEffect(() => {
+    setShipToId(current => activeShipTos(selectedClient ?? undefined).some(shipTo => shipTo.id === current)
+      ? current : defaultShipToId(selectedClient ?? undefined));
+  }, [selectedClient]);
   const [pasteText, setPasteText] = useState(initialText);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
@@ -162,14 +167,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [noteImportant, setNoteImportant] = useState(false);
 
   const selectClient = (client: Partner) => {
-    setSelectedClient(client);
+    setSelectedClientId(client.id);
+    setShipToId(defaultShipToId(client));
     setIsDelivery(client.type === '택배' || client.type === '스마트스토어');
     setSearchTerm('');
     setStep('paste');
   };
 
   const changeClient = () => {
-    setSelectedClient(null);
+    setSelectedClientId(null);
     setPasteText('');
     setParsedLines([]);
     setPallets([]);

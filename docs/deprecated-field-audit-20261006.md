@@ -49,3 +49,29 @@
 - FixedCostTemplate.postMode: 최신 태백62/풍회39 모두0이지만 앱/동결 Functions 읽기 계약 및 구 writer 차단 확인이 필요해 유지한다.
 - AccountCode.noncash: 최신 양사 각2문서 존재. 선언 외 제품 계산은 사용하지 않으나 운영 잔존 조건이 없어 유지한다.
 - PartnerItem 외 Item.weightInKg/품목·동명 필드 및 구형 InventoryCategory는 별도 실사용/이관 계약에 속하며 이번 범위에서 제거하지 않는다.
+
+## 2026-10-07 후속 미사용 Item 필드 정리
+
+기준 배포 main `71d768f6`. 원본039의 미사용 필드 조사·제거 조건으로 추가 네 필드를 대조했다. 읽기 감사 `work/todo039-unused-item-fields-fresh-20261007.json`의 2026-10-07 12:21:23 UTC 시점 품목 태백541/풍회6, 다른회사0. null 여부와 관계없이 존재를 집계했고 아래 네 필드 모두 present/nonNull/nonEmpty 0이다. 문서 이름·ID·값을 출력하지 않았으며 운영 쓰기는 없다.
+
+| 필드 | 태백 / 풍회 존재 | 읽기·쓰기 및 대체 | 코드 제거 범위·버전 |
+| --- | --- | --- | --- |
+| Item.weightInKg | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo350ml 품목 fixture만 생성. 현재 kg 계산은 spec·BOM·로트 unitKg를 사용한다. | Item 선언과 demo fixture 키 제거 후보. 실제 배포 commit은 총괄 확정 후 기록 |
+| Item.netContent | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo fixture만 생성. 실제 내용량·규격 입력은 spec을 사용한다. | 선언과 demo fixture 키 제거 후보 |
+| Item.isRawMaterial | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo raw fixture와 감사 test의 false 초기값만 존재. 원료 판정은 type/rawMaterialName의 기존 계약을 유지한다. | 선언·demo fixture·감사 fixture 키 제거 후보 |
+| Item.variantStocks | 0 / 0 | 선언 외 제품·Functions·fixture reader/writer 0. 현재 품목·로트 stock 계산 불변. | 선언 제거 후보 |
+
+운영 데이터 삭제·이관이나 새 계산 분기 추가 없이 정확 네 선언과 demo/test 키만 제거한다. `FixedCostTemplate.statementType`과 기존 `stock`·`spec`·`rawMaterialName`·BOM·로트 필드는 유지한다. 타입 선언만 복구하는 것은 runtime 계산을 바꾸지 않으므로 이번 변경을 runtime 변이로 검출했다고 주장하지 않는다. 기존 포장9필드의 runtime 원복 변이 검출은 앞선 배포 근거이며 이번 작업으로 재계수하지 않는다. 이번 경계는 최신 정적 사용처 0, fresh DB 존재 0, 전체 타입과 기존 환산·감사 회귀로 검증한다.
+
+### 원본039 전체 잔여
+
+이번 네 필드와 앞선 포장9필드 제거는 안전한 코드 정리 범위이며 전체039 완료가 아니다. 다음 원본 대상은 각 조건 충족 전 유지한다.
+
+- `Item.partnerIds`: 판매 관계 표시용 파생 prop과 DB의 SMARTSTORE 호환 표식이 같은 이름을 사용한다. 현재 실제 SMARTSTORE legacy reader가 있어 채널 표식의 확인된 이관 없이 제거할 수 없다. 과거 판매 배열과 현재 partner_item 관계 불일치를 자동 복원하지 않는다.
+- `Item.lotsAreTotal`: 제품 계산은 이미 무시하지만 태백 문서1개 잔존. 현재는 재도입 방지 never 선언이다. 문서 필드 삭제·백업·동치의 운영 결정 없이 전체 제거 완료로 기록하지 않는다.
+- `PalletStock.inUse`: DB8문서 잔존, 화면 잔량은 거래기록으로 계산한다. 미참조 INITIAL_PALLETS의 구형값과 편집 snapshot 전달이 남아 있다. 거래기록 잔량 대조·운영 필드 삭제 결정·백업이 별도 필요하다.
+- `FixedCostTemplate.postMode`: DB존재0이나 앱/예약 Functions의 legacy 분리→줄돈 호환과 시험이 남아 있다. TODO016 명시종류 배포 완료가 이 호환 또는 모든 구형 writer의 종료를 자동 증명하지 않는다.
+- `AccountCode.noncash`: 양사 각각2문서 잔존. 현재 보고서 계산은 journal 기반이나 운영 값 삭제 결정은 없다.
+- deprecated `InventoryCategory` 분류는 실제 레거시 분류 소비자가 남아 있다. 단순 타입 일괄 축소는 하지 않는다.
+
+신규 운영 field 삭제나 데이터 이관은 승인되지 않았고 쓰기0이다. 운영 잔존 대상의 전환 없이 전체039를 완료로 바꾸지 않는다.

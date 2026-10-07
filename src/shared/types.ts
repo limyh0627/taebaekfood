@@ -569,7 +569,6 @@ export interface Item {
    * **무엇이 얼마나 나오는지는 짐작하지 않는다** — 그건 BOM 이 근거다(`canUnpack`).
    */
   unpackable?: boolean;
-  isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
   rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨"). 캔/포대 매입 SKU가 어느 원료(raw)에 귀속되는지 연결
   packageType?: string;       // 입고 포장 단위 ('캔' | '포대' | '자루') — 매입 SKU에만 사용
   packageKg?: number;         // 포장 1개당 kg (예: 캔 16.5, 포대 20, 자루 25). 없으면 spec에서 파싱
@@ -579,9 +578,6 @@ export interface Item {
   mixLotRatios?: { lotId: string; percent: number }[]; // 혼합 대상 로트별 비율. 합계 100, 없으면 예전 상위 2개 설정을 읽는다.
   phantom?: boolean;          // 즉석배합(무재고) 반제품: 재고를 안 들고, 상위 품목 출고 시 item_formula 배합비대로 원료로 전개·차감
 
-  variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
-  netContent?: string;         // 내용량 표시 (예: "200g", "300ml", "1.8L") — product만 해당
-  weightInKg?: number;         // 실중량 (kg) — product만 해당
   archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
 }
 

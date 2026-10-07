@@ -849,11 +849,12 @@ export const fetchWhereIn = async <T extends { id: string }>(
 export const fetchByIds = async <T extends { id: string }>(
   collectionName: CollectionName,
   ids: string[],
+  companyId?: CompanyId,
 ): Promise<T[]> => {
   const uniq = [...new Set(ids.filter(Boolean))];
   const out: T[] = [];
   for (let i = 0; i < uniq.length; i += 30) {
-    const snap = await getDocs(query(collection(db, collectionName), where(documentId(), 'in', uniq.slice(i, i + 30))));
+    const snap = await getDocs(query(collection(db, collectionName), where(documentId(), 'in', uniq.slice(i, i + 30)), ...(companyId ? [where('companyId', '==', companyId)] : [])));
     for (const d of snap.docs) out.push({ id: d.id, ...d.data() } as T);
   }
   return out;

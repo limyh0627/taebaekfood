@@ -10,6 +10,7 @@ import {
   type PartnerAnchor,
 } from './partnerAnchor';
 import { today } from '../../shared/day';
+import { where } from 'firebase/firestore';
 
 /**
  * **전표 화면이 딛고 선 장부** — 전표를 어디까지 떠오고, 그걸로 잔액을 어떻게 세는가.
@@ -44,9 +45,28 @@ export function useVoucherLedger({
   companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo,
 }: VoucherLedgerInput) {
   // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
-  const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
-  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [stateCompany, setStateCompany] = useState(companyId);
+  const [storedExtraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
+  const [storedFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [storedOpeningDate, setOpeningDate] = useState<string | null>(null);
+  const [storedAnchors, setAnchors] = useState<PartnerAnchor[]>([]);
+  const [storedAnchorStatements, setAnchorStatements] = useState<IssuedStatement[]>([]);
+  const [storedDeletedStmtIds, setDeletedStmtIds] = useState<Set<string>>(new Set());
+  const currentCompany = useRef(companyId);
+  currentCompany.current = companyId;
+  const ownState = stateCompany === companyId;
+  const extraStatements = ownState ? storedExtraStatements : [];
+  const openingDate = ownState ? storedOpeningDate : null;
+  const anchors = ownState ? storedAnchors : [];
+  const anchorStatements = ownState ? storedAnchorStatements : [];
+  const deletedStmtIds = ownState ? storedDeletedStmtIds : new Set<string>();
+  const isFetchingHistory = ownState && storedFetchingHistory;
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
+  useEffect(() => {
+    setStateCompany(companyId);
+    setExtraStatements([]); setOpeningDate(null); setAnchors([]); setAnchorStatements([]);
+    setDeletedStmtIds(new Set()); setIsFetchingHistory(false); fetchedRangeRef.current = null;
+  }, [companyId]);
 
   const sevenDaysAgoCutoff = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - 7);
@@ -75,21 +95,24 @@ export function useVoucherLedger({
    *
    * 기초 문서가 없으면 근거가 없으니 전부 읽는다.
    */
-  const [openingDate, setOpeningDate] = useState<string | null>(null);
   useEffect(() => {
+    let cancelled = false;
     fetchWhere<{ id: string; date: string }>('openingBalances', 'companyId', companyId)
-      .then(rows => setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null))
-      .catch(() => setOpeningDate(null));
+      .then(rows => { if (!cancelled) setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null); })
+      .catch(() => { if (!cancelled) setOpeningDate(null); });
+    return () => { cancelled = true; };
   }, [companyId]);
 
   /**
    * **연말 앵커** — 결산 때 박아 둔 거래처 잔액·미결 전표(`partnerBalanceSnapshots`).
    * 있으면 그 다음 날부터만 읽는다. 없으면 기초일부터(지금이 이 길이다 — 첫 앵커는 2026-12-31).
    */
-  const [anchors, setAnchors] = useState<PartnerAnchor[]>([]);
   useEffect(() => {
+    let cancelled = false;
     fetchWhere<PartnerAnchor>('partnerBalanceSnapshots', 'companyId', companyId)
-      .then(setAnchors).catch(() => setAnchors([]));
+      .then(rows => { if (!cancelled) setAnchors(rows.filter(row => row.companyId === companyId)); })
+      .catch(() => { if (!cancelled) setAnchors([]); });
+    return () => { cancelled = true; };
   }, [companyId]);
   const anchor = useMemo(() => anchorBefore(anchors, today()), [anchors]);
 
@@ -104,14 +127,15 @@ export function useVoucherLedger({
    * 안 갚은 전표가 '완납'으로 보인다 → 수금·지불 버튼이 사라진다.
    * 연말에 살아 있는 건 몇 장뿐이라 id로 집어 오면 싸다.
    */
-  const [anchorStatements, setAnchorStatements] = useState<IssuedStatement[]>([]);
   useEffect(() => {
+    let cancelled = false;
     const ids = openStatementIds(anchor);
     if (!ids.length) { setAnchorStatements(prev => (prev.length ? [] : prev)); return; }
-    fetchByIds<IssuedStatement>('issuedStatements', ids)
-      .then(rows => setAnchorStatements(rows.map(x => ({ ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' }))))
-      .catch(() => setAnchorStatements([]));
-  }, [anchor]);
+    fetchByIds<IssuedStatement>('issuedStatements', ids, companyId)
+      .then(rows => { if (!cancelled) setAnchorStatements(rows.map(x => ({ ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' }))); })
+      .catch(() => { if (!cancelled) setAnchorStatements([]); });
+    return () => { cancelled = true; };
+  }, [anchor, companyId]);
 
   /**
    * **잔액용 전체 적재 — 화면을 열 때 한 번.**
@@ -122,23 +146,27 @@ export function useVoucherLedger({
    * 화면에 뭘 보여줄지는 filteredHistory가 날짜로 거른다 — 적재는 넉넉히 해 둔다.
    */
   useEffect(() => {
-    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', ledgerFrom, today())
-      .then(data => setExtraStatements(prev => {
+    let cancelled = false;
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', ledgerFrom, today(), [where('companyId', '==', companyId)])
+      .then(data => { if (cancelled) return; setExtraStatements(prev => {
         const m = new Map(prev.map(x => [x.id, x]));
         for (const x of data) m.set(x.id, { ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' });
         return [...m.values()];
-      }))
+      }); })
       .catch(() => {});
-  }, [ledgerFrom]);
+    return () => { cancelled = true; };
+  }, [ledgerFrom, companyId]);
 
   useEffect(() => {
+    let cancelled = false;
     const from = histFrom || ledgerFrom;
     const to   = histTo   || today();
     if (from >= sevenDaysAgoCutoff) return;          // 최근 7일은 props로 충분 — 더 안 떠온다
     if (fetchedRangeRef.current?.from === from && fetchedRangeRef.current?.to === to) return;
     setIsFetchingHistory(true);
-    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to, [where('companyId', '==', companyId)])
       .then(data => {
+        if (cancelled) return;
         const fetched = data.map(s => ({
           ...s,
           items: s.items ?? [],
@@ -152,12 +180,13 @@ export function useVoucherLedger({
         });
         fetchedRangeRef.current = { from, to };
       })
-      .finally(() => setIsFetchingHistory(false));
-  }, [histFrom, histTo, ledgerFrom, sevenDaysAgoCutoff]);
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIsFetchingHistory(false); });
+    return () => { cancelled = true; };
+  }, [histFrom, histTo, ledgerFrom, sevenDaysAgoCutoff, companyId]);
 
   // 방금 지운 전표 — extraStatements는 한 번 떠온 스냅샷이라 삭제가 안 비친다.
   // 지운 id를 여기 담아 두고 합칠 때 걸러 낸다(다시 떠와도 안 되살아난다).
-  const [deletedStmtIds, setDeletedStmtIds] = useState<Set<string>>(new Set());
 
   /**
    * **전표의 유일한 원천.** 화면 어디서든 이걸 본다 — props(issuedStatements)를 직접
@@ -283,9 +312,10 @@ export function useVoucherLedger({
    * 담아 두고 합칠 때 걸러 낸다 — 다시 떠와도 안 되살아난다.
    */
   const forgetStatement = useCallback((id: string) => {
+    if (currentCompany.current !== companyId) return;
     setDeletedStmtIds(prev => new Set(prev).add(id));
     setExtraStatements(prev => prev.filter(s => s.id !== id));
-  }, []);
+  }, [companyId]);
 
   return {
     mergedStatements, journalBySource, partnerBalances, partnerJournals,

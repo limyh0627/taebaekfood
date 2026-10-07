@@ -3063,6 +3063,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} companyId={companyId} onAddPost={isAdmin ? (post) => addItem('notices', post) : undefined} onUpdatePost={isAdmin ? (id, patch) => updateItem('notices', id, patch) : undefined} onDeletePost={isAdmin ? (id) => deleteItem('notices', id) : undefined} />}
           {currentView === 'pallets' && (
             <PalletManager
+              key={companyId}
+              companyId={companyId}
               pallets={pallets}
               orders={allOrders}
               partners={partners}

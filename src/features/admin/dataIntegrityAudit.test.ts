@@ -13,7 +13,6 @@ const productItem = (over: Partial<Item> = {}): Item => ({
   id: 'item-1',
   name: '정상 품목',
   companyId: 'taebaek',
-  isRawMaterial: false,
   type: 'product',
   stock: 0,
   minStock: 0,

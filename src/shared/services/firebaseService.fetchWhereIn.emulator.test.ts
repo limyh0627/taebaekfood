@@ -6,7 +6,7 @@ import {connectFirestoreEmulator,getFirestore,collection,query,where,getDocs} fr
 import {initializeApp as initializeAdminApp,deleteApp as deleteAdminApp} from 'firebase-admin/app';
 import {getAuth as getAdminAuth} from 'firebase-admin/auth';
 import {getFirestore as getAdminFirestore} from 'firebase-admin/firestore';
-import {fetchWhereIn} from './firebaseService';
+import {fetchWhereIn,fetchByIds} from './firebaseService';
 import {OrderStatus,type Order} from '../types';
 import {CATALOG_DELETE_BLOCKING_STATUSES,catalogItemDeleteBlockers} from '../../features/admin/catalogItemDelete';
 const gateway=vi.hoisted(()=>({db:undefined as any,auth:undefined as any}));
@@ -29,6 +29,15 @@ describe.skipIf(process.env.CATALOG_QUERY_EMULATOR_TEST!=='true')('품목 삭제
  afterAll(async()=>{const errors:string[]=[];if(adminDb)for(const path of paths){try{if(!path.includes(prefix))throw new Error('범위');await adminDb.doc(path).delete();expect((await adminDb.doc(path).get()).exists).toBe(false);}catch{errors.push(path);}}
  if(uid&&adminAuth){try{await adminAuth.deleteUser(uid);await expect(adminAuth.getUser(uid)).rejects.toMatchObject({code:'auth/user-not-found'});}catch{errors.push(uid);}}
  if(app)await deleteApp(app);if(adminApp)await deleteAdminApp(adminApp);expect(errors).toEqual([]);},90_000);
+ it('문서 ID 조회도 실제 인증 회사 조건이 필요하며 타회사 요청은 거절한다',async()=>{
+  const ids=[prefix+'-own',prefix+'-done'];
+  const mixed=[...ids,prefix+'-foreign'];
+  await expect(fetchByIds<Order>('orders',mixed)).rejects.toMatchObject({code:'permission-denied'});
+  const own=await fetchByIds<Order>('orders',ids,'taebaek');
+  expect(own.map(row=>row.id).sort()).toEqual([...ids].sort());
+  expect(own.every(row=>row.companyId==='taebaek')).toBe(true);
+  await expect(fetchByIds<Order>('orders',[prefix+'-foreign'],'punghoe')).rejects.toMatchObject({code:'permission-denied'});
+ },60_000);
  it('상태만 조회하면 Rules가 거절하고 공용 회사 조회는 자기 진행 주문만 반환한다',async()=>{
   await expect(getDocs(query(collection(gateway.db,'orders'),where('status','in',[...CATALOG_DELETE_BLOCKING_STATUSES])))).rejects.toMatchObject({code:'permission-denied'});
   const rows=await fetchWhereIn<Order>('orders','status',CATALOG_DELETE_BLOCKING_STATUSES,'taebaek');

@@ -23,6 +23,7 @@ import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
+import { valueInventoryForCompany } from '../functions/src/shared/inventoryValuation';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -1516,6 +1517,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           .sort((a, b) => b.value - a.value);
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
+        // 장부 기록은 월말 서버와 같은 저장 원가 기준이다. 아래 상세는 현재 BOM 추정을 유지한다.
+        let bookValue = 0;
+        let bookLines: ReturnType<typeof valueInventoryForCompany>;
+        let valuationError = '';
+        try {
+          bookLines = valueInventoryForCompany(products, todayYm, companyId);
+          bookValue = bookLines?.value ?? 0;
+        } catch (error) {
+          valuationError = error instanceof Error ? error.message : '재고평가 오류';
+        }
 
         // 타입(영문/구한글) + 카테고리 → 한글 그룹 라벨
         //   상품·부자재는 타입만으론 뭔지 몰라서 카테고리(향미유·고춧가루·용기·라벨…)를 쓴다.
@@ -1565,7 +1576,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <div className="flex-1 bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Package size={18} className="text-teal-600" />
-                  <span className="text-sm font-black text-teal-700">현재 재고총액 (기말재고액)</span>
+                  <span className="text-sm font-black text-teal-700">현재 재고총액 (BOM 추정)</span>
                 </div>
                 <span className="text-2xl font-black text-teal-700">{fmt(totalValue)}원</span>
               </div>
@@ -1578,12 +1589,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <span className="text-sm font-black text-teal-700">{fmt(existingSnap.value)}원 기록됨</span>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400">현재 재고총액으로 기록합니다</span>
+                    <span className="text-xs text-slate-400">저장 원가 기준 {fmt(bookValue)}원으로 기록합니다</span>
                   )}
+                  <p className="text-xs text-slate-500">장부 기록은 저장 원가 기준입니다. 원가가 없는 품목은 0원으로 계산합니다.</p>
+                  {valuationError && <p className="text-xs text-red-600">{valuationError}</p>}
                   <button
+                    disabled={!!valuationError}
                     onClick={() => onSaveInventorySnapshot({
-                      yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString(),
-                      items: rows.map(p => ({ itemId: p.id, name: p.name, category: catLabel(p), qty: p.stock, value: p.value, ...(p.spec ? { spec: p.spec } : {}) })),
+                      yearMonth: currentYm, value: bookValue, recordedAt: new Date().toISOString(),
+                      items: (bookLines?.lines ?? []).map(line => {
+                        const p = products.find(item => item.id === line.id)!;
+                        return { itemId: p.id, name: p.name, category: catLabel(p), qty: line.stock, value: line.value, ...(p.spec ? { spec: p.spec } : {}) };
+                      }),
                     })}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-emerald-600 text-white hover:bg-teal-700'}`}>
                     <Archive size={12}/>{existingSnap ? '덮어쓰기' : '기말재고 기록'}
