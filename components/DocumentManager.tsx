@@ -47,6 +47,9 @@ const fileIconFor = (name: string, contentType: string) => {
 
 const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [], onSelect, hideDocs }) => {
   const companyId = companyOf(currentUser);
+  const confirmationScope = useRef({ companyId, token: {} });
+  if (confirmationScope.current.companyId !== companyId) confirmationScope.current = { companyId, token: {} };
+  useEffect(() => () => { confirmationScope.current = { companyId: confirmationScope.current.companyId, token: {} }; }, []);
   const [categories, setCategories] = useState<CabinetCategory[]>([]);
   const [subCategories, setSubCategories] = useState<CabinetSubCategory[]>([]);
   const [docs, setDocs] = useState<CabinetDoc[]>([]);
@@ -237,8 +240,9 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleEditNote = async (d: CabinetDoc) => {
+    const scope = confirmationScope.current.token;
     const next = await appPrompt('메모', d.note ?? '');
-    if (next === null) return;
+    if (next === null || confirmationScope.current.token !== scope) return;
     await updateItem('fileCabinetDocs', d.id, { note: next });
   };
 
@@ -251,9 +255,11 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleDeleteCategory = async (cat: CabinetCategory) => {
+    const scope = confirmationScope.current.token;
     if ((docCountByCat.get(cat.name) ?? 0) > 0) { alert(`"${cat.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
     if (subCategories.some(s => s.category === cat.name)) { alert(`"${cat.name}"에 중분류가 있어 삭제할 수 없습니다. 먼저 중분류를 삭제하세요.`); return; }
     if (!await appConfirm(`대분류 "${cat.name}"을(를) 삭제할까요?`)) return;
+    if (confirmationScope.current.token !== scope) return;
     await deleteItem('fileCabinetCategories', cat.id);
   };
 
@@ -267,8 +273,10 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleDeleteSub = async (sub: CabinetSubCategory) => {
+    const scope = confirmationScope.current.token;
     if ((docCountBySub.get(`${sub.category}|${sub.name}`) ?? 0) > 0) { alert(`"${sub.name}"에 파일이 있어 삭제할 수 없습니다.`); return; }
     if (!await appConfirm(`중분류 "${sub.name}"을(를) 삭제할까요?`)) return;
+    if (confirmationScope.current.token !== scope) return;
     await deleteItem('fileCabinetSubCategories', sub.id);
   };
 

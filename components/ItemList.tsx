@@ -2911,10 +2911,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const listed = groupLooseBoxRows(listedItems);
 
         const commit = async () => {
-          if (picked.length === 0 || makeBusy) return;
+          if (picked.length === 0 || makeBusy || !unpackMounted.current) return;
+          const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
           setMakeBusy(true);
           try {
             for (const [id, v] of picked) {
+              if (!unpackMounted.current) return;
               const p = items.find(x => x.id === id);
               if (!p || isRawHolder(p)) continue;   // 원료는 대상 아님
               const add = parseFloat(v) || 0;
@@ -2922,15 +2924,16 @@ const ItemListContent: React.FC<ItemListProps> = ({
               //  화면 값에 더하면 여러 품목을 연달아 늘릴 때 서로를 덮어쓴다 — DB 에서 읽어 더한다
               const result = await adjustStockByQty({
                 itemId: p.id, itemName: p.name, deltaQty: add,
-                unitKg: stockKg(1, p, key => items.find(x => x.id === key)) ?? 0,
+                unitKg: stockKg(1, p, key => items.find(x => x.id === key), inputs) ?? 0,
                 note: '재고 추가',
               });
+              if (!unpackMounted.current) return;
               if (!result.ok) throw new Error(result.message);
             }
             setToast({ message: `${picked.length}개 품목 재고를 늘렸습니다` });
             setIsAddModalOpen(false);
           } finally {
-            setMakeBusy(false);
+            if (unpackMounted.current) setMakeBusy(false);
           }
         };
 
