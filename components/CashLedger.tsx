@@ -1,3 +1,4 @@
+import { saveConfirmedCashBalance } from '../src/shared/services/confirmedCashBalance';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import { useDeleteConfirmation } from '../src/shared/components/useDeleteConfirmation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -166,15 +167,16 @@ export default function CashLedger({
                 <td />
               </tr>
 
-              {ledger?.rows.map(({ entry, balance }) => {
+              {ledger?.rows.map(({ entry, balance, adjustmentDelta: appliedAdjustment, confirmedAccountBalance }) => {
+                const rowAdjustment = appliedAdjustment ?? entry.balanceAdjustment?.delta;
                 const open = unmatchedCash(entry, settlements);
                 const matchedCount = settlements.filter(s => s.cashEntryId === entry.id).length;
                 return (
                   <tr key={entry.id} className="hover:bg-slate-50/50 group">
                     <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{entry.date.slice(5)}</td>
                     <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-800 min-w-[180px] whitespace-nowrap">
-                      {entry.balanceAdjustment ? `잔액 조정 · 회계 미분류 — ${entry.balanceAdjustment.reason}` : entry.note || '-'}
-                      {entry.balanceAdjustment && <p className="text-[11px] font-normal text-slate-500">{fmt(entry.balanceAdjustment.before)}원 → {fmt(entry.balanceAdjustment.target)}원 · 조정 {fmt(entry.balanceAdjustment.delta)}원</p>}
+                      {entry.balanceAdjustment ? `${confirmedAccountBalance || entry.balanceAdjustment.confirmedBalance ? '확정 잔액' : '잔액 조정'} · 회계 미분류 — ${entry.balanceAdjustment.reason}` : entry.note || '-'}
+                      {entry.balanceAdjustment && <p className="text-[11px] font-normal text-slate-500">{fmt(balance - (rowAdjustment ?? 0))}원 → {fmt(balance)}원 · 조정 {fmt(rowAdjustment ?? 0)}원</p>}
                       {matchedCount > 0 && (
                         <span className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">전표 {matchedCount}건</span>
                       )}
@@ -194,19 +196,19 @@ export default function CashLedger({
                         ? <span className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded">{entry.accountCode} {codeName.get(entry.accountCode) ?? ''}</span>
                         : <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">{entry.balanceAdjustment ? '회계 미분류' : '미지정'}</span>}
                     </td>
-                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
-                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-rose-600 tabular-nums">{entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) > 0 ? fmt(rowAdjustment ?? 0) : '') : entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-rose-600 tabular-nums">{entry.balanceAdjustment ? ((rowAdjustment ?? 0) < 0 ? fmt(Math.abs(rowAdjustment ?? 0)) : '') : entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
                     <td className={`px-4 py-2.5 text-right font-black tabular-nums ${balance < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(balance)}</td>
                     <td className="px-2 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
-                        <button disabled={!!entry.balanceAdjustment} onClick={() => { if (!entry.balanceAdjustment) setMatchTarget(entry); }} title="전표 매칭"
+                        {!confirmedAccountBalance && <button disabled={!!entry.balanceAdjustment} onClick={() => { if (!entry.balanceAdjustment) setMatchTarget(entry); }} title="전표 매칭"
                           className={`transition-all ${open > 0 ? 'text-indigo-400 hover:text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'}`}>
                           <Link2 size={13} />
-                        </button>
-                        <button aria-label="거래 삭제" onClick={() => confirmDelete(entry.id, '이 거래를 삭제할까요?', () => onDeleteCashEntry(entry.id))}
+                        </button>}
+                        {!confirmedAccountBalance && <button aria-label="거래 삭제" onClick={() => confirmDelete(entry.id, '이 거래를 삭제할까요?', () => onDeleteCashEntry(entry.id))}
                           className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all">
                           <Trash2 size={12} />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>
@@ -924,7 +926,7 @@ function AccountModalContent({ companyId = 'taebaek', accounts, cashEntries = []
           && saved.companyId === companyId && saved.cashAccountId === account.id
           && typeof saved.date === 'string' && isCalendarDay(saved.date) && saved.date >= account.openingDate && saved.date <= today()
           && typeof saved.createdAt === 'string' && typeof saved.note === 'string'
-          && meta && typeof meta.reason === 'string' && !!meta.reason.trim()
+          && meta && (meta.confirmedBalance === undefined || typeof meta.confirmedBalance === 'boolean') && typeof meta.reason === 'string' && !!meta.reason.trim()
           && Number.isSafeInteger(meta.before) && Number.isSafeInteger(meta.target) && Number.isSafeInteger(meta.delta)
           && meta.delta !== 0 && meta.target - meta.before === meta.delta
           && saved.amount === Math.abs(meta.delta) && saved.dir === (meta.delta > 0 ? '입금' : '출금')
@@ -947,21 +949,17 @@ function AccountModalContent({ companyId = 'taebaek', accounts, cashEntries = []
     if (!selected || !onAddEntry || savingLock.current || adjustInputInvalid || invalidPending) return;
     if (companyOf(selected) !== companyId || !isCalendarDay(adjustDate) || adjustDate < selected.openingDate || adjustDate > today()
         || !/^-?\d+$/.test(adjustTarget) || !Number.isSafeInteger(targetAdjustment) || !Number.isSafeInteger(beforeAdjustment)
-        || !Number.isSafeInteger(adjustmentDelta) || adjustmentDelta === 0 || !adjustReason.trim()) {
-      setDetailError('계좌 기초일 이후 오늘까지의 날짜·정수 잔액·0원이 아닌 차액·조정 사유를 확인하세요.'); return;
+        || !Number.isSafeInteger(adjustmentDelta) || (pendingAdjustment && adjustmentDelta === 0) || !adjustReason.trim()) {
+      setDetailError('계좌 기초일 이후 오늘까지의 날짜·정수 잔액·조정 사유를 확인하세요.'); return;
     }
     savingLock.current = true; setSaving(true); setDetailError('');
-    const entry: CashEntry = pendingAdjustment ?? {
-      id: `cash-adjust-${crypto.randomUUID()}`, companyId, date: adjustDate, cashAccountId: selected.id,
-      dir: adjustmentDelta > 0 ? '입금' : '출금', amount: Math.abs(adjustmentDelta), createdAt: stampFor(adjustDate),
-      note: `잔액 조정: ${adjustReason.trim()}`,
-      balanceAdjustment: { before: beforeAdjustment, target: targetAdjustment, delta: adjustmentDelta, reason: adjustReason.trim() },
-    };
     try {
-      localStorage.setItem(pendingKey(selected.id), JSON.stringify(entry));
-      setPendingAdjustment(entry);
-      await onAddEntry(entry);
-      localStorage.removeItem(pendingKey(selected.id));
+      if (pendingAdjustment) {
+        await onAddEntry(pendingAdjustment);
+        localStorage.removeItem(pendingKey(selected.id));
+      } else {
+        await saveConfirmedCashBalance(companyId, selected, adjustDate, targetAdjustment, adjustReason.trim());
+      }
       if (alive.current) { setPendingAdjustment(null); setSelected(null); }
     } catch (error) { if (alive.current) setDetailError(`잔액 조정을 저장하지 못했습니다. 같은 요청으로 다시 시도하세요. ${String(error)}`); }
     finally { if (alive.current) { savingLock.current = false; setSaving(false); } }
@@ -1002,7 +1000,7 @@ function AccountModalContent({ companyId = 'taebaek', accounts, cashEntries = []
       <p className="text-xs text-slate-500">계좌 유형: {selected.type}</p>
       {!openingMode ? <>
         <h3 className="font-bold">실잔액 맞추기</h3>
-        <p className="text-xs text-slate-500">통장 잔액만 맞춥니다. 미기록 거래의 회계 분개는 별도 확인이 필요합니다.</p>
+        <p className="text-xs text-slate-500">선택한 날짜의 통장 잔액을 확정합니다. 이전 날짜의 거래가 나중에 입력돼도 이 날짜 잔액은 유지됩니다. 미기록 거래의 회계 분개는 별도 확인이 필요합니다.</p>
         <label className="block text-xs">조정일<input aria-label="조정일" type="date" min={selected.openingDate} max={today()} value={adjustDate} disabled={saving || !!pendingAdjustment} onChange={e => setAdjustDate(e.target.value)} className="block w-full border rounded-xl p-2" /></label>
         <label className="block text-xs">실제 잔액<input aria-label="실제 잔액" value={adjustTarget.startsWith('-') ? `-${formatMoneyInput(adjustTarget.slice(1))}` : formatMoneyInput(adjustTarget)} disabled={saving || !!pendingAdjustment} onChange={e => {
           if (/^-?[\d,]*$/.test(e.target.value)) { setAdjustTarget(e.target.value.replace(/,/g, '')); setAdjustInputInvalid(false); setDetailError(''); }
@@ -1011,7 +1009,7 @@ function AccountModalContent({ companyId = 'taebaek', accounts, cashEntries = []
         <label className="block text-xs">조정 사유<input aria-label="조정 사유" value={adjustReason} disabled={saving || !!pendingAdjustment} onChange={e => setAdjustReason(e.target.value)} className="block w-full border rounded-xl p-2" /></label>
         <p className="text-sm">조정일 장부 잔액: {fmt(pendingAdjustment?.balanceAdjustment?.before ?? beforeAdjustment)}원 · 차액: {fmt(adjustmentDelta)}원</p>
         {pendingAdjustment && <p className="text-xs text-amber-700">이전에 보낸 조정 요청을 같은 내용으로 재시도합니다.</p>}
-        <button disabled={saving || invalidPending || adjustInputInvalid || !onAddEntry || adjustmentDelta === 0 || !Number.isSafeInteger(adjustmentDelta)} onClick={() => void adjust()} className="w-full rounded-xl bg-slate-800 text-white p-2 disabled:opacity-30">{saving ? '저장 중' : pendingAdjustment ? '조정 재시도' : '잔액 조정 저장'}</button>
+        <button disabled={saving || invalidPending || adjustInputInvalid || !onAddEntry || (!!pendingAdjustment && adjustmentDelta === 0) || !Number.isSafeInteger(adjustmentDelta)} onClick={() => void adjust()} className="w-full rounded-xl bg-slate-800 text-white p-2 disabled:opacity-30">{saving ? '저장 중' : pendingAdjustment ? '조정 재시도' : '잔액 조정 저장'}</button>
         <button disabled={saving || !!pendingAdjustment} onClick={() => { setOpeningMode(true); setDetailError(''); }} className="w-full border rounded-xl p-2">기초잔액 수정</button>
       </> : <>
       {onAddEntry && <button disabled={saving} onClick={() => { setOpeningMode(false); setDetailError(''); }} className="w-full border rounded-xl p-2">실잔액 맞추기</button>}

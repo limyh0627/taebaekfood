@@ -1517,13 +1517,14 @@ export interface CashAccount {
   openingDate: string;                 // 'YYYY-MM-DD' — 이 날짜 이전 거래는 잔액에 미반영
   active: boolean;                     // false면 신규 입력 목록에서 숨김
   note?: string;
+  confirmedBalances?: Array<{ date: string; balance: number; recordedAt: string; reason: string }>;
   createdAt: string;
 }
 
 export interface CashEntry {
   id: string;
   /** 통장 실잔액 차이. 회계 계정이 배정되지 않은 보조원장 조정이다. */
-  balanceAdjustment?: { before: number; target: number; delta: number; reason: string };
+  balanceAdjustment?: { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean };
   /** 거래처 없는 275 미지급비용 전표를 지급한 출금 전표의 연결 근거. */
   linkedAccrualStatementId?: string;
   /** 대출별 보조원장 연결. 기존 자금전표에는 없고 회계 분개에는 영향을 주지 않는다. */

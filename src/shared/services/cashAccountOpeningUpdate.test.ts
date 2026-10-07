@@ -91,3 +91,16 @@ it('잘못된 날짜·소수 잔액·다른 회사 및 직원 권한은 저장�
  state.claim = 'punghoe'; state.admin = false; await expect(updateCashAccountOpening('punghoe', account, account.name, account.openingDate, 100)).rejects.toThrow('관리자');
  expect(state.writes).toHaveLength(0);
 });
+
+it('화면을 연 뒤 추가된 확정 기준점은 최신 transaction 계좌로 검사하여 기초와 전표를 모두 보존한다', async () => {
+  for (const linked of [false, true]) {
+    state.rows.set(accountPath, { ...account }); state.writes.length = 0;
+    if (linked) state.rows.set(voucherPath, cashOpeningStatement(account) as unknown as Record<string, unknown>);
+    else state.rows.delete(voucherPath);
+    state.afterQuery = () => state.rows.set(accountPath, { ...account, confirmedBalances: [{ date: '2026-08-31', balance: 500, recordedAt: '2026-10-07T11:00:00Z', reason: '동시 통장 확인' }] });
+    await expect(updateCashAccountOpeningWithDb(store, 'punghoe', account, account.name,
+      linked ? '2026-09-01' : '2026-08-01', 700, '2026-10-07')).rejects.toThrow('확정 잔액 기준점');
+    expect(state.writes).toHaveLength(0); expect(state.rows.get(accountPath)?.openingBalance).toBe(account.openingBalance);
+    if (linked) expect(state.rows.get(voucherPath)?.totalAmount).toBe(account.openingBalance);
+  }
+});

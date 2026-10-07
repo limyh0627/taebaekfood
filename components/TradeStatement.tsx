@@ -1,6 +1,6 @@
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 
-import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
+import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
 import { useDeleteConfirmation } from '../src/shared/components/useDeleteConfirmation';
 import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
@@ -143,7 +143,7 @@ interface TradeStatementProps {
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
   focusDocNo?: string;
   onFocusHandled?: () => void;
-  onDeleteIssuedStatement?: (id: string) => void;
+  onDeleteIssuedStatement?: (id: string) => Promise<unknown>;
   pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
   composerOnly?: boolean;
@@ -980,13 +980,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .reduce((a, l) => a + Math.abs((l.debit ?? 0) - (l.credit ?? 0)), 0);
   }, [histAccount, journalBySource, acctHit]);
 
-  /** 전표 삭제 — 서버에 지우고 화면에서도 즉시 뺀다.
-   *  붙어 있던 매칭(settlement)도 같이 지운다. 안 지우면 없는 전표를 가리킨 채 남아
-   *  그 거래처 잔액이 갚은 것으로 계속 깎인다. */
-  const deleteStatement = (id: string) => {
-    settlements.filter(s => s.statementId === id).forEach(s => onDeleteSettlement?.(s.id));
-    onDeleteIssuedStatement?.(id);
-    forgetStatement(id);
+  /** 전표와 연결 정산의 원자 삭제가 성공한 뒤 화면에서도 뺀다. */
+  const deleteStatement = async (id: string) => {
+    const requestCompany = companyId;
+    try {
+      if (!onDeleteIssuedStatement) throw new Error('전표 삭제 기능을 사용할 수 없습니다.');
+      await onDeleteIssuedStatement(id);
+      if (!deleteViewRef.current.alive || deleteViewRef.current.companyId !== requestCompany) return false;
+      forgetStatement(id);
+      return true;
+    } catch (error) {
+      if (deleteViewRef.current.alive && deleteViewRef.current.companyId === requestCompany)
+        await appNotice(`전표를 삭제하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   };
 
   // ── 발행내역 상세 보기 ──
@@ -1002,6 +1009,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 기존 전표 수정 ──
   const [editingStmt, setEditingStmt] = useState<IssuedStatement | null>(null);
+  const deleteViewKey = `${companyId}:${detailStmt?.id ?? ''}:${editingStmt?.id ?? ''}:${createMode ?? ''}`;
+  const deleteViewRef = useRef({ key: deleteViewKey, companyId, alive: true, token: {} });
+  if (deleteViewRef.current.key !== deleteViewKey)
+    deleteViewRef.current = { key: deleteViewKey, companyId, alive: true, token: {} };
+  useEffect(() => { deleteViewRef.current.alive = true; return () => { deleteViewRef.current.alive = false; }; }, []);
+
   const [isEditMode, setIsEditMode] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
@@ -2319,7 +2332,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                <button onClick={() => confirmDelete(`statement:${detailStmt.id}`, '이 전표를 삭제하시겠습니까?', () => { deleteStatement(detailStmt.id); setDetailStmt(null); })}
+                <button onClick={() => { const token = deleteViewRef.current.token; return confirmDelete(`statement:${detailStmt.id}`, '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(detailStmt.id) && deleteViewRef.current.token === token) setDetailStmt(null); }); }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
                   <X size={12}/>삭제
                 </button>
@@ -2673,7 +2686,7 @@ ${names}
               issuePayAmount={issuePayAmount} totalAmount={totalAmount}
               onIssuePayChange={checked=>{setIssuePay(checked);if(checked)setIssuePayAmount(String(Math.round(totalAmount)));}}
               onIssuePayAmountChange={setIssuePayAmount} onSaveEdit={handleSaveEdit}
-              onDelete={() => { if (editingStmt) return confirmDelete(`statement:${editingStmt.id}`, '이 전표를 삭제하시겠습니까?', () => { deleteStatement(editingStmt.id); closeCreate(); }); }}
+              onDelete={() => { const token = deleteViewRef.current.token; if (editingStmt) return confirmDelete(`statement:${editingStmt.id}`, '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(editingStmt.id) && deleteViewRef.current.token === token) closeCreate(); }); }}
               onEdit={()=>setIsEditMode(true)} onPrint={handlePrint} onIssue={handleIssue} onExcel={handleExcel}/>}
             <style>{`@media print{.no-print{display:none!important;}}`}</style>
 

@@ -92,6 +92,7 @@ import {
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PurchaseOrder, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
 import { updatePendingFlowQuantity } from '../../shared/services/pendingFlowQuantityService';
 import { resetDailyWorkOrder } from '../../shared/services/workOrderResetService';
+import { deleteIssuedStatement } from '../../shared/services/deleteIssuedStatementService';
 import { issueRecurringVouchers } from './recurringVoucherIssue';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
@@ -4567,7 +4568,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   status: 'pending',
                 });
               }}
-              onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
+              onDeleteIssuedStatement={(id) => deleteIssuedStatement(companyId, id)}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
               confirmedOrders={invoicedPurchaseOrders}

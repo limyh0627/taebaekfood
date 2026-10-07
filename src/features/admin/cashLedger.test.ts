@@ -906,3 +906,53 @@ describe('거래처 전체 계정 원장', () => {
     expect(partnerAccountBalances(result.rows, []).find(row => row.code === '108')?.closing).toBe(5);
   });
 });
+
+describe('확정 잔액 기준점', () => {
+  const anchor = (id: string, date: string, target: number, createdAt = `${date}T00:00:00`) => entry(id, date, '입금', 1, { createdAt,
+    balanceAdjustment: { before: target - 1, target, delta: 1, reason: '통장 확인', confirmedBalance: true } });
+  it('과거와 같은 날 거래가 추가돼도 확정 월말 잔액을 유지하고 이후 거래를 이어 계산한다', () => {
+    const account = acct({ openingDate: '2026-07-31', openingBalance: 8310103 });
+    const entries = [anchor('aug', '2026-08-31', 23624012), anchor('sep', '2026-09-30', 362366),
+      entry('past', '2026-08-10', '입금', 500), entry('same-day', '2026-09-30', '출금', 900, { createdAt: '2026-10-08T00:00:00' }),
+      entry('after', '2026-10-01', '입금', 1000)];
+    expect(totalCashOnHand([account], entries, '2026-08-31')).toBe(23624012);
+    expect(totalCashOnHand([account], entries, '2026-09-30')).toBe(362366);
+    const ledger = buildAccountLedger(account, entries, '2026-09-01', '2026-10-07');
+    expect(ledger.opening).toBe(23624012); expect(ledger.closing).toBe(363366);
+    expect(ledger.totalIn).toBe(1000); expect(ledger.totalOut).toBe(900);
+    expect(ledger.rows.find(row => row.entry.id === 'sep')).toMatchObject({ balance: 362366, adjustmentDelta: 362366 - (23624012 - 900) });
+    expect(ledger.closing).toBe(ledger.opening + ledger.totalIn - ledger.totalOut + ledger.totalAdjustment);
+  });
+  it('동일 날짜 복수 확정값은 작성 시각과 ID로 안정 정렬하며 입력 배열 순서에 영향받지 않는다', () => {
+    const entries = [anchor('b', '2026-08-31', 300, 'same'), anchor('a', '2026-08-31', 200, 'same'), entry('late', '2026-08-31', '입금', 50, { createdAt: 'zz' })];
+    expect(totalCashOnHand([acct()], entries, '2026-08-31')).toBe(300);
+    expect(totalCashOnHand([acct()], [...entries].reverse(), '2026-08-31')).toBe(300);
+    expect(buildAccountLedger(acct(), entries, '', '').rows.map(row => row.entry.id)).toEqual(['late', 'a', 'b']);
+  });
+  it('flag 없는 기존 잔액 조정은 고정 delta이며 실제 입출금과 구분한다', () => {
+    const entries = [entry('deposit', '2026-08-01', '입금', 100), entry('legacy', '2026-08-31', '출금', 50, { balanceAdjustment: { before: 1000100, target: 1000050, delta: -50, reason: '기존 조정' } })];
+    const ledger = buildAccountLedger(acct(), entries, '', '');
+    expect(ledger.closing).toBe(1000050); expect(ledger.totalIn).toBe(100); expect(ledger.totalAdjustment).toBe(-50);
+  });
+});
+
+it('계좌 확정값은 번호 없는 읽기 기준점으로 월말을 유지하고 같은 날짜의 최신 기록만 사용한다', () => {
+  const account = acct({ openingBalance: 100, confirmedBalances: [
+    { date: '2026-08-31', balance: 200, recordedAt: '2026-10-07T10:00:00Z', reason: '이전 확인' },
+    { date: '2026-08-31', balance: 300, recordedAt: '2026-10-07T11:00:00Z', reason: '최신 확인' },
+    { date: '2026-09-30', balance: 0, recordedAt: '2026-10-07T11:00:00Z', reason: '0원 확인' },
+  ] });
+  const entries = [entry('past', '2026-08-31', '입금', 50), entry('after', '2026-10-01', '출금', 10)];
+  const original = structuredClone({ account, entries });
+  const ledger = buildAccountLedger(account, entries, '2026-09-01', '2026-10-07');
+  expect(ledger.opening).toBe(300); expect(ledger.closing).toBe(-10); expect(ledger.totalOut).toBe(10); expect(ledger.totalAdjustment).toBe(-300);
+  expect(ledger.rows[0]).toMatchObject({ confirmedAccountBalance: true, balance: 0, adjustmentDelta: -300, entry: { amount: 0, balanceAdjustment: { reason: '0원 확인' } } });
+  expect(totalCashOnHand([account], entries, '2026-08-31')).toBe(300);
+  expect(totalCashOnHand([account], entries, '2026-10-07')).toBe(-10);
+  expect({ account, entries }).toEqual(original);
+});
+it('계좌 확정값과 기존 자금 확정값은 같은 날 작성 시각 순으로 함께 적용한다', () => {
+  const account = acct({ confirmedBalances: [{ date: '2026-08-31', balance: 300, recordedAt: '2026-10-07T11:00:00Z', reason: '통장 확인' }] });
+  const cash = entry('cash-anchor', '2026-08-31', '입금', 1, { createdAt: '2026-10-07T12:00:00Z', balanceAdjustment: { before: 399, target: 400, delta: 1, reason: '후속 확인', confirmedBalance: true } });
+  expect(totalCashOnHand([account], [cash], '2026-08-31')).toBe(400);
+});

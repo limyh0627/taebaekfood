@@ -11,6 +11,9 @@ export const openingCashAccountCode = (account: Pick<CashAccount, 'type'>): stri
 export function cashOpeningBalanceForCurrent(account: CashAccount, entries: CashEntry[], newDate: string, currentBalance: number, asOf = today()): number {
   if (!isCalendarDay(newDate) || !isCalendarDay(asOf) || !Number.isSafeInteger(currentBalance)) throw new Error('계좌 기준일과 정수 잔액을 확인하세요.');
   const mine = entries.filter(entry => companyOf(entry) === companyOf(account));
+  if ((account.confirmedBalances ?? []).some(point => point.date >= newDate && point.date <= asOf)
+      || mine.some(entry => entry.cashAccountId === account.id && entry.date >= newDate && entry.date <= asOf && entry.balanceAdjustment?.confirmedBalance === true))
+    throw new Error('확정 잔액 기준점이 있는 기간은 기초잔액 변경으로 현재 잔액을 수정할 수 없습니다. 확정 잔액 기준점을 확인해 주세요.');
   if (mine.some(entry => entry.cashAccountId === account.id && entry.date >= newDate && entry.date <= asOf && !Number.isSafeInteger(entry.amount))) throw new Error('계좌 연결 전표의 금액을 확인하세요.');
   const movement = totalCashOnHand([{ ...account, openingDate: newDate, openingBalance: 0 }], mine, asOf);
   const opening = currentBalance - movement;

@@ -543,9 +543,22 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
   if (collectionName === 'settlements') {
     const settlementRef = id ? doc(db, collectionName, id) : doc(collection(db, collectionName));
     await runTransaction(db, async tx => {
-      const cash = await tx.get(doc(db, 'cashEntries', String(data.cashEntryId || 'missing')));
+      const [cash, statement] = await Promise.all([
+        tx.get(doc(db, 'cashEntries', String(data.cashEntryId || 'missing'))),
+        tx.get(doc(db, 'issuedStatements', String(data.statementId || 'missing'))),
+      ]);
+      if (!statement.exists() || companyOf(statement.data()) !== data.companyId) throw new Error('연결할 전표를 확인해 주세요.');
       if (!cash.exists() || companyOf(cash.data()) !== data.companyId) throw new Error('연결할 자금 내역을 확인해 주세요.');
       if (cash.data().balanceAdjustment) throw new Error('잔액 조정은 거래처 전표와 매칭할 수 없습니다.');
+      const partnerId = statement.data().partnerId;
+      if (typeof partnerId !== 'string' || !partnerId) throw new Error('연결할 전표의 거래처를 확인해 주세요.');
+      const stateRef = doc(db, 'appMeta', `partnerPaymentState_${data.companyId}_${partnerId}`);
+      const state = await tx.get(stateRef);
+      const revision = state.exists() ? state.data().revision : 0;
+      if (state.exists() && (state.data().companyId !== data.companyId || state.data().partnerId !== partnerId)) throw new Error('거래처 정산 회사가 일치하지 않습니다.');
+      if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(revision + 1)) throw new Error('거래처 정산 상태가 손상되었습니다.');
+      if (state.exists()) tx.update(stateRef, { revision: revision + 1 });
+      else tx.set(stateRef, { companyId: data.companyId, partnerId, revision: revision + 1 });
       tx.set(settlementRef, data);
     });
     return settlementRef.id;

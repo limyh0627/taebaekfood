@@ -13,6 +13,8 @@ import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 export interface LedgerRow {
   entry: CashEntry;
   balance: number;   // 이 거래 직후 잔액
+  confirmedAccountBalance?: boolean; // 계좌에 보관된 확정값: 자금 전표가 아닌 읽기 기준점
+  adjustmentDelta?: number; // 잔액 조정의 실제 적용 차액(확정 기준점은 현재 거래에서 역산)
 }
 
 /** 특정 계좌의 원장. openingDate 이전 거래는 제외(기초잔액에 이미 포함된 것으로 본다). */
@@ -48,7 +50,10 @@ export function signedAmount(e: CashEntry): number {
 function byDateThenCreated(a: CashEntry, b: CashEntry): number {
   const d = (a.date || '').localeCompare(b.date || '');
   if (d !== 0) return d;
-  return (a.createdAt || '').localeCompare(b.createdAt || '');
+  // 확정 잔액은 해당 날짜의 모든 실제 거래 이후 적용한다.
+  const anchor = Number(a.balanceAdjustment?.confirmedBalance === true) - Number(b.balanceAdjustment?.confirmedBalance === true);
+  if (anchor !== 0) return anchor;
+  return (a.createdAt || '').localeCompare(b.createdAt || '') || a.id.localeCompare(b.id);
 }
 
 /**
@@ -61,7 +66,20 @@ export function buildAccountLedger(
   from: string,
   to: string,
 ): AccountLedger {
-  const mine = allEntries
+  const confirmations = new Map<string, NonNullable<CashAccount['confirmedBalances']>[number]>();
+  for (const confirmation of account.confirmedBalances ?? []) {
+    const previous = confirmations.get(confirmation.date);
+    if (!previous || confirmation.recordedAt >= previous.recordedAt) confirmations.set(confirmation.date, confirmation);
+  }
+  const confirmedEntries: CashEntry[] = [...confirmations.values()].map(confirmation => ({
+    id: `account-confirmed:${encodeURIComponent(account.id)}:${confirmation.date}`,
+    companyId: companyOf(account), cashAccountId: account.id, date: confirmation.date,
+    createdAt: confirmation.recordedAt, dir: '입금', amount: 0,
+    balanceAdjustment: { before: confirmation.balance, target: confirmation.balance, delta: 0,
+      reason: confirmation.reason, confirmedBalance: true },
+  }));
+  const confirmedIds = new Set(confirmedEntries.map(entry => entry.id));
+  const mine = [...allEntries, ...confirmedEntries]
     .filter(e => e.cashAccountId === account.id && e.date >= account.openingDate)
     .sort(byDateThenCreated);
 
@@ -71,15 +89,18 @@ export function buildAccountLedger(
   let running = account.openingBalance;
 
   for (const e of mine) {
-    running += signedAmount(e);
+    const delta = e.balanceAdjustment?.confirmedBalance === true
+      ? e.balanceAdjustment.target - running : signedAmount(e);
+    running += delta;
     if (from && e.date < from) {
       opening = running;          // 기간 이전 → 이월잔액에만 반영
       continue;
     }
     if (to && e.date > to) break; // 정렬돼 있으므로 이후는 볼 필요 없음 (to 비면 전체)
-    if (e.balanceAdjustment) totalAdjustment += signedAmount(e);
+    if (e.balanceAdjustment) totalAdjustment += delta;
     else if (e.dir === '입금') totalIn += e.amount; else if (e.dir === '출금') totalOut += e.amount;
-    rows.push({ entry: e, balance: running });
+    rows.push({ entry: e, balance: running, ...(e.balanceAdjustment ? { adjustmentDelta: delta } : {}),
+      ...(confirmedIds.has(e.id) ? { confirmedAccountBalance: true } : {}) });
   }
 
   return { account, opening, rows, totalIn, totalOut, totalAdjustment, closing: opening + totalIn - totalOut + totalAdjustment };
@@ -87,12 +108,7 @@ export function buildAccountLedger(
 
 /** 전 계좌의 현재 잔액 합계 — "오늘 우리 돈이 얼마인가" */
 export function totalCashOnHand(accounts: CashAccount[], allEntries: CashEntry[], asOf: string): number {
-  return accounts.reduce((sum, acc) => {
-    const bal = allEntries
-      .filter(e => e.cashAccountId === acc.id && e.date >= acc.openingDate && e.date <= asOf)
-      .reduce((a, e) => a + signedAmount(e), acc.openingBalance);
-    return sum + bal;
-  }, 0);
+  return accounts.reduce((sum, acc) => sum + buildAccountLedger(acc, allEntries, '', asOf).closing, 0);
 }
 
 /**
