@@ -4,6 +4,8 @@ import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { mergeCompanyOrders } from './companyOrders';
+import { useDocSheetTitles } from './useDocSheetTitles';
+import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeningUpdate';
 ﻿
 // ============================================================
 // [ADMIN APP 경계 — 미래 분리 안내]
@@ -456,7 +458,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
   const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
-  const [sheetTitles, setSheetTitles] = useState<Record<string, string>>({});
+  const [sheetTitles, setSheetTitles] = useDocSheetTitles(companyId);
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
@@ -2068,11 +2070,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
-  useEffect(() => {
-    getDocs(query(collection(db, 'docSheetTitles'), where('companyId', '==', companyId)))
-      .then(s => setSheetTitles(Object.fromEntries(s.docs.map(d => [d.id, (d.data() as { title?: string }).title ?? '']))))
-      .catch(() => {});
-  }, [companyId]);
   const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
   const renameSheet = async (cat: string) => {
     const next = await appPrompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
@@ -4544,6 +4541,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {(currentView === 'trade-statement' || showInboundInvoice) && (
             <TradeStatement
+              currentUserId={currentUser.id}
               composerOnly={currentView !== 'trade-statement'}
               onComposerClose={() => { setShowInboundInvoice(false); setPendingInvoice(null); }}
               orders={allOrders}
@@ -4780,7 +4778,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     settlements={appData.settlements}
                     currentUser={currentUser}
                     onAddCashAccount={(a) => createCashAccountWithOpening(companyId, { ...a, companyId })}
-                    onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
+                    onUpdateCashAccount={async (id, data) => {
+                      await updateItem('cashAccounts', id, data);
+                      refreshStaticData();
+                    }}
+                    onCorrectCashAccount={async (original, name, date, targetCurrentBalance) => {
+                      await updateCashAccountOpening(companyId, original, name, date, targetCurrentBalance);
+                      refreshStaticData();
+                    }}
                     onAddCashEntry={(e) => issueNumberedCashEntry({ ...e, companyId, createdBy: e.createdBy ?? currentUser?.name })}
                     onDeleteCashEntry={deleteCashEntry}
                     onAddSettlement={(x) => addItem('settlements', x)}

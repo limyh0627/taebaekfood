@@ -158,6 +158,7 @@ interface TradeStatementProps {
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
   onUpdateOrder?: (id: string, data: Partial<Order>) => void | Promise<void>;
+  currentUserId?: string;
   defaultTab?: 'history' | 'taxinvoice';
   expensePresets?: ExpensePreset[];
   onAddExpensePreset?: (p: Omit<ExpensePreset, 'id' | 'createdAt'>) => Promise<string>;
@@ -246,6 +247,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onSaveCompanyInfo,
   onUpdateItemCost,
   onUpdateOrder,
+  currentUserId,
   defaultTab = 'history',
   expensePresets = [],
   onAddExpensePreset,
@@ -2403,6 +2405,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         accountingExcluded: true,
                         accountingExclusionReason: reason,
                         accountingExcludedAt: new Date().toISOString(),
+                        ...(currentUserId && { accountingExcludedBy: currentUserId }),
                       } : {
                         accountingExcluded: false,
                         accountingExclusionReason: '',

@@ -299,7 +299,7 @@ const FilterDrop: React.FC<{
   );
 };
 type FlowTypeFilter = '전체' | '입고' | '반품';
-type FlowStatusFilter = '전체' | '예정' | '대기' | '완료';
+type FlowStatusFilter = '전체' | '예정' | '대기' | '이력';
 type InboundSubTab = '입고' | '반품'; // 옛 카드 화면 제거 전 컴파일 호환용
 //  상단 탭 = 품목 **타입 키** 그대로. 예전엔 finished/rawmaterial 같은 별칭을 따로 뒀는데
 //  분류 관리에서 타입을 숨기거나 이름을 바꿔도 안 따라오고, 매핑 표만 늘었다.
@@ -1530,7 +1530,7 @@ const ItemList: React.FC<ItemListProps> = ({
           })),
         ]
           .filter(row => flowTypeFilter === '전체' || row.type === flowTypeFilter)
-          .filter(row => flowStatusFilter === '전체' || row.status === flowStatusFilter)
+          .filter(row => flowStatusFilter === '전체' ? row.status !== '완료' : flowStatusFilter === '이력' ? row.status === '완료' : row.status === flowStatusFilter)
           .sort((a, b) => b.date.localeCompare(a.date));
         const pageSize = 30;
         const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -1574,7 +1574,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button key={value} type="button" onClick={() => { setFlowTypeFilter(value); setFlowPage(1); }} className={`rounded-lg px-3 py-2 text-xs font-black ${flowTypeFilter === value ? 'bg-indigo-600 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>
               ))}
               <span className="ml-3 mr-1 text-[10px] font-black text-slate-400">상태</span>
-              {(['전체', '예정', '대기', '완료'] as FlowStatusFilter[]).map(value => (
+              {(['전체', '예정', '대기', '이력'] as FlowStatusFilter[]).map(value => (
                 <button key={value} type="button" onClick={() => { setFlowStatusFilter(value); setFlowPage(1); }} className={`rounded-lg px-3 py-2 text-xs font-black ${flowStatusFilter === value ? 'bg-slate-800 text-white' : 'border border-slate-200 bg-white text-slate-500'}`}>{value}</button>
               ))}
               <span className="ml-auto text-xs font-bold text-slate-400">{rows.length}건</span>

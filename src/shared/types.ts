@@ -1522,6 +1522,8 @@ export interface CashAccount {
 
 export interface CashEntry {
   id: string;
+  /** 통장 실잔액 차이. 회계 계정이 배정되지 않은 보조원장 조정이다. */
+  balanceAdjustment?: { before: number; target: number; delta: number; reason: string };
   /** 거래처 없는 275 미지급비용 전표를 지급한 출금 전표의 연결 근거. */
   linkedAccrualStatementId?: string;
   /** 대출별 보조원장 연결. 기존 자금전표에는 없고 회계 분개에는 영향을 주지 않는다. */

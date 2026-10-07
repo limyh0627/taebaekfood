@@ -38,6 +38,12 @@ const settle = (id: string, cashEntryId: string, statementId: string, amount: nu
   ({ id, cashEntryId, statementId, amount, createdAt: '' });
 
 describe('buildAccountLedger', () => {
+  it('연결된 대체 전표는 출금 합계와 현재 잔액을 바꾸지 않는다', () => {
+    const ledger = buildAccountLedger(acct(), [entry('deposit', '2026-07-03', '입금', 100), { ...entry('offset', '2026-07-04', '출금', 999), dir: '대체' }], '2026-07-01', '2026-07-31');
+    expect(ledger.totalOut).toBe(0);
+    expect(ledger.closing).toBe(1_000_100);
+    expect(ledger.rows.map(row => row.balance)).toEqual([1_000_100, 1_000_100]);
+  });
   const entries = [
     entry('e1', '2026-07-03', '입금', 3_000_000),
     entry('e2', '2026-07-08', '출금', 900_000),
@@ -803,6 +809,35 @@ describe('partnerLedgerForPeriod — 전월 기말을 다음 달 기초로', () 
     expect(june.opening).toBe(0);
     expect(june.balance).toBe(0);
   });
+});
+
+it('잔액 조정은 입출금 실적과 분리하되 계좌 행·기말·현재잔액에는 반영한다', () => {
+  const rows = [entry('in', '2026-07-02', '입금', 100), entry('out', '2026-07-03', '출금', 30),
+    entry('up', '2026-07-04', '입금', 50, { balanceAdjustment: { before: 1_000_070, target: 1_000_120, delta: 50, reason: '실잔액 확인' } }),
+    entry('down', '2026-07-05', '출금', 20, { balanceAdjustment: { before: 1_000_120, target: 1_000_100, delta: -20, reason: '실잔액 확인' } })];
+  const ledger = buildAccountLedger(acct(), rows, '2026-07-01', '2026-07-31');
+  expect(ledger).toMatchObject({ totalIn: 100, totalOut: 30, totalAdjustment: 30, closing: 1_000_100 });
+  expect(ledger.rows.map(row => row.balance)).toEqual([1_000_100, 1_000_070, 1_000_120, 1_000_100]);
+  expect(totalCashOnHand([acct()], rows, '2026-07-31')).toBe(ledger.closing);
+});
+
+it('기간 전 조정은 이월에 포함하고 기간 후 조정은 합계·기말에서 제외한다', () => {
+  const rows = [entry('old', '2026-07-02', '입금', 50, { balanceAdjustment: { before: 1_000_000, target: 1_000_050, delta: 50, reason: '실잔액 확인' } }),
+    entry('out', '2026-07-10', '출금', 30),
+    entry('future', '2026-08-01', '출금', 20, { balanceAdjustment: { before: 1_000_020, target: 1_000_000, delta: -20, reason: '실잔액 확인' } })];
+  const ledger = buildAccountLedger(acct(), rows, '2026-07-03', '2026-07-31');
+  expect(ledger).toMatchObject({ opening: 1_000_050, totalIn: 0, totalOut: 30, totalAdjustment: 0, closing: 1_000_020 });
+  expect(ledger.rows.map(row => row.entry.id)).toEqual(['out']);
+  expect(totalCashOnHand([acct()], rows, '2026-07-31')).toBe(ledger.closing);
+});
+
+it('잔액 조정은 거래처 전표에 매칭할 미정산 금액으로 취급하지 않는다', () => {
+  const adjustment = entry('adjustment', '2026-07-04', '입금', 50, {
+    balanceAdjustment: { before: 1000, target: 1050, delta: 50, reason: '실잔액 확인' },
+  });
+  expect(unmatchedCash(adjustment, [])).toBe(0);
+  expect(unmatchedCash(adjustment, [{ cashEntryId: adjustment.id, statementId: 's', amount: 10 } as Settlement])).toBe(0);
+  expect(unmatchedCash(entry('real-payment', '2026-07-04', '입금', 50), [])).toBe(50);
 });
 
 describe('거래처 전체 계정 원장', () => {

@@ -51,7 +51,7 @@ import { openingDocId, type Partner } from '../types';
 import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
 import { AR, AP, BANK, INVENTORY } from '../autoJournal';
 import { STANDARD_ACCOUNT } from '../accountChart';
-import type { LoanContract } from '../loanLedger';
+import { loanOpeningPrincipalForBalance, type LoanContract } from '../loanLedger';
 import { loanOpeningStatement } from '../loanOpening';
 import type { CashAccount } from '../types';
 import { cashOpeningStatement, openingCashAccountCode } from '../cashOpening';
@@ -249,6 +249,64 @@ export async function createLoanWithOpening(companyId: CompanyId, loan: LoanCont
   const token = await auth.currentUser?.getIdTokenResult();
   if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
   return createLoanWithOpeningWithDb(db, companyId, loan);
+}
+
+/** 기존 계약의 시작일과 현재 원금 잔액을 함께 정정한다. 전표 없는 옛 계약은 보조원장만 갱신한다. */
+export async function updateLoanOpeningWithDb(store: Firestore, companyId: CompanyId, originalLoan: LoanContract, newDate: string, targetCurrentBalance: number): Promise<void> {
+  if (originalLoan.companyId !== companyId || !originalLoan.id ||
+      (originalLoan.accountCode !== '260' && originalLoan.accountCode !== '293') ||
+      !isCalendarDay(newDate) || !Number.isSafeInteger(targetCurrentBalance) || targetCurrentBalance < 0) {
+    throw new Error('대출 회사·시작일·현재 원금 잔액을 확인하세요.');
+  }
+  const entries = await getDocs(query(collection(store, 'cashEntries'), where('companyId', '==', companyId), where('loanId', '==', originalLoan.id)));
+  const loanRef = doc(store, 'loanContracts', originalLoan.id);
+  const voucherRef = doc(store, 'issuedStatements', `opening-loan-${companyId}-${originalLoan.id}`);
+  await runTransaction(store, async tx => {
+    const [loanSnap, voucherSnap, cashSnaps] = await Promise.all([
+      tx.get(loanRef), tx.get(voucherRef), Promise.all(entries.docs.map(row => tx.get(row.ref))),
+    ]);
+    const latest = loanSnap.data();
+    const original = originalLoan as unknown as Record<string, unknown>;
+    const fields = ['companyId', 'name', 'lenderName', 'partnerId', 'accountCode', 'openingDate', 'openingPrincipal', 'maturityDate', 'note', 'createdAt', 'movementRevision', 'principalBalance'];
+    if (!loanSnap.exists() || loanSnap.id !== originalLoan.id || latest?.companyId !== companyId || fields.some(key => (latest?.[key] ?? '') !== (original[key] ?? ''))) {
+      throw new Error('대출 계약이 변경되었습니다. 새로 조회한 뒤 다시 저장하세요.');
+    }
+    const movements = cashSnaps.filter(snap => snap.exists()).map(snap => ({ ...snap.data(), id: snap.id })) as import('../types').CashEntry[];
+    if (movements.some(row => companyOf(row) !== companyId || row.loanId !== originalLoan.id)) {
+      throw new Error('대출 연결 전표가 변경되었습니다. 다시 조회하세요.');
+    }
+    const openingPrincipal = loanOpeningPrincipalForBalance(originalLoan, movements, newDate, targetCurrentBalance);
+    let voucherPatch: Record<string, unknown> | undefined;
+    if (voucherSnap.exists()) {
+      const voucher = voucherSnap.data() as IssuedStatement;
+      const accountingDate = voucher.tradeDate || voucher.issuedAt?.slice(0, 10);
+      if (voucher.companyId !== companyId || voucher.id !== voucherRef.id || voucher.docNo !== `기초대출-${originalLoan.id}` || !isCalendarDay(accountingDate) ||
+          voucher.type !== '비용' || voucher.orderId !== '' || voucher.partnerId !== (originalLoan.partnerId ?? '') ||
+          voucher.partnerName !== originalLoan.lenderName || !Array.isArray(voucher.items) || voucher.items.length !== 2 ||
+          !Number.isSafeInteger(voucher.totalAmount) || voucher.totalAmount < 0 || voucher.totalSupply !== voucher.totalAmount || voucher.totalTax !== 0 ||
+          voucher.items[0].accountCode !== '375' || voucher.items[0].side !== '차변' ||
+          voucher.items[1].accountCode !== originalLoan.accountCode || voucher.items[1].side !== '대변' ||
+          voucher.items.some(line => line.qty !== 1 || line.tax !== 0 || line.lineKind !== 'account' || line.price !== voucher.totalAmount || line.supply !== voucher.totalAmount || line.total !== voucher.totalAmount)) {
+        throw new Error('대출 기초 전표의 회사·일자·분개를 확인하세요.');
+      }
+      const amount = loanOpeningPrincipalForBalance(originalLoan, movements, accountingDate, targetCurrentBalance);
+      voucherPatch = { totalSupply: amount, totalTax: 0, totalAmount: amount,
+        items: voucher.items.map(line => ({ ...line, price: amount, supply: amount, total: amount })) };
+    }
+    const revision = latest?.movementRevision;
+    if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(revision + 1))) throw new Error('대출 원금 변경 버전을 확인하세요.');
+    tx.update(loanRef, { openingDate: newDate, openingPrincipal,
+      ...(revision !== undefined && { movementRevision: revision + 1 }),
+      ...((revision !== undefined || latest?.principalBalance !== undefined) && { principalBalance: targetCurrentBalance }) });
+    if (voucherPatch) tx.update(voucherRef, voucherPatch);
+  });
+}
+
+export async function updateLoanOpening(companyId: CompanyId, originalLoan: LoanContract, newDate: string, targetCurrentBalance: number) {
+  await authReady;
+  const token = await auth.currentUser?.getIdTokenResult();
+  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
+  return updateLoanOpeningWithDb(db, companyId, originalLoan, newDate, targetCurrentBalance);
 }
 
 /** The account ledger and the accounting opening voucher are one operation. */
@@ -480,6 +538,16 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
   }
   const { id, ...raw } = item;
   const data = await companyScopedWriteData(collectionName, stripUndefined(raw));
+  if (collectionName === 'settlements') {
+    const settlementRef = id ? doc(db, collectionName, id) : doc(collection(db, collectionName));
+    await runTransaction(db, async tx => {
+      const cash = await tx.get(doc(db, 'cashEntries', String(data.cashEntryId || 'missing')));
+      if (!cash.exists() || companyOf(cash.data()) !== data.companyId) throw new Error('연결할 자금 내역을 확인해 주세요.');
+      if (cash.data().balanceAdjustment) throw new Error('잔액 조정은 거래처 전표와 매칭할 수 없습니다.');
+      tx.set(settlementRef, data);
+    });
+    return settlementRef.id;
+  }
   if (id) {
     await setDoc(doc(db, collectionName, id), data);
     return id;

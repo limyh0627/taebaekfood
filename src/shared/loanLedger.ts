@@ -1,6 +1,7 @@
 import type { CashEntry, CompanyId } from './types';
 import { companyOf } from './types';
 import { journalizeCashEntry } from './autoJournal';
+import { isCalendarDay } from './day';
 
 /** 대출 계약별 보조원장. 새 기초원금 등록은 별도 기초 대체전표와 원자적으로 저장한다. */
 export interface LoanContract {
@@ -39,6 +40,19 @@ export function loanMovements(loan: LoanContract, entries: CashEntry[]): LoanMov
 
 export function loanBalance(loan: LoanContract, entries: CashEntry[]): number {
   return loanMovements(loan, entries).reduce((sum, row) => sum + row.principalDelta, loan.openingPrincipal);
+}
+
+/** 시작일을 바꿔도 사용자가 지정한 현재 원금 잔액이 되도록 시작 원금을 역산한다. */
+export function loanOpeningPrincipalForBalance(loan: LoanContract, entries: CashEntry[], openingDate: string, currentBalance: number): number {
+  if (!isCalendarDay(openingDate) || !Number.isSafeInteger(currentBalance) || currentBalance < 0) {
+    throw new Error('시작일과 0원 이상의 정수 잔액을 확인하세요.');
+  }
+  const delta = loanMovements({ ...loan, openingDate }, entries).reduce((sum, row) => sum + row.principalDelta, 0);
+  const principal = currentBalance - delta;
+  if (!Number.isSafeInteger(principal) || principal < 0) {
+    throw new Error('해당 시작일의 원금이 음수가 됩니다. 시작일과 현재 잔액을 확인하세요.');
+  }
+  return principal;
 }
 
 /** 거래처 이름만으로 계약을 추정하지 않고 회사·원금 계정을 함께 확인한다. */

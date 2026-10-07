@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import TradeStatement from './TradeStatement';
 import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
 import { appConfirm } from '../src/shared/components/appDialog';
+import { OrderStatus, type Order } from '../src/shared/types';
 
 // 운영 DB에 닿지 않고 저장 콜백의 완료·실패에 따른 화면 동작을 검증한다.
 vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []) }));
@@ -28,6 +29,43 @@ const price = { id: 'pi', itemId: item.id, partnerId: partner.id, Direction: 'in
   taxType: '과세', Account_Code: '500' } as PartnerItem;
 const pendingInvoice = { partnerId: partner.id, partnerName: partner.name,
   items: [{ itemId: item.id, name: item.name, spec: item.spec!, qty: 1, price: 6000 }] };
+
+describe('주문 전표 제외 기록', () => {
+  const order = { id: 'excluded-order', partnerId: partner.id, partnerName: partner.name,
+    status: OrderStatus.PENDING, createdAt: new Date().toISOString(),
+    items: [{ itemId: item.id, name: item.name, quantity: 1, price: 1000 }] } as Order;
+  function openSale(extra: Partial<React.ComponentProps<typeof TradeStatement>>) {
+    setup(undefined, undefined, { pendingInvoice: null, orders: [order], ...extra });
+    fireEvent.click(screen.getByRole('button', { name: '거래명세서' }));
+    fireEvent.click(screen.getByRole('button', { name: '매출전표' }));
+  }
+  it('신규 제외는 필수 사유와 현재 사용자 ID를 함께 저장한다', async () => {
+    const update = vi.fn(async () => {});
+    openSale({ onUpdateOrder: update, currentUserId: 'employee-17' });
+    fireEvent.click(screen.getByRole('button', { name: '전표 제외' }));
+    const save = screen.getByRole('button', { name: '제외 저장' });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText('예: 샘플 제공, 무상 출고, 전표 발행하지 않기로 협의'), { target: { value: '   ' } });
+    expect(save).toBeDisabled();
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByPlaceholderText('예: 샘플 제공, 무상 출고, 전표 발행하지 않기로 협의'), { target: { value: '  샘플 제공  ' } });
+    fireEvent.click(save);
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update.mock.calls[0]).toEqual([order.id, {
+      accountingExcluded: true, accountingExclusionReason: '샘플 제공',
+      accountingExcludedAt: expect.any(String), accountingExcludedBy: 'employee-17',
+    }]);
+  });
+  it('복구는 제외 플래그와 사유·시각·작성자를 모두 비운다', async () => {
+    const update = vi.fn(async () => {});
+    openSale({ onUpdateOrder: update, orders: [{ ...order, accountingExcluded: true,
+      accountingExclusionReason: '샘플 제공', accountingExcludedAt: '2026-10-01T00:00:00Z', accountingExcludedBy: 'old-user' }] });
+    fireEvent.click(screen.getByRole('button', { name: '복구' }));
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update.mock.calls[0]).toEqual([order.id, { accountingExcluded: false,
+      accountingExclusionReason: '', accountingExcludedAt: '', accountingExcludedBy: '' }]);
+  });
+});
 
 function deferred() {
   let resolve!: () => void;

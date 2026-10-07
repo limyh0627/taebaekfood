@@ -22,7 +22,8 @@ export interface AccountLedger {
   rows: LedgerRow[];    // 기간 내 거래 (날짜 오름차순)
   totalIn: number;      // 기간 입금 합계
   totalOut: number;     // 기간 출금 합계
-  closing: number;      // 기말 잔액 = opening + totalIn - totalOut
+  totalAdjustment: number; // 기간 잔액 조정 합계(입출금 실적과 구분)
+  closing: number;      // 기말 잔액 = opening + totalIn - totalOut + totalAdjustment
 }
 
 /** 거래처 채권·채무 계정 — 이 둘만 거래처 잔액을 움직인다 */
@@ -66,7 +67,7 @@ export function buildAccountLedger(
 
   let opening = account.openingBalance;
   const rows: LedgerRow[] = [];
-  let totalIn = 0, totalOut = 0;
+  let totalIn = 0, totalOut = 0, totalAdjustment = 0;
   let running = account.openingBalance;
 
   for (const e of mine) {
@@ -76,11 +77,12 @@ export function buildAccountLedger(
       continue;
     }
     if (to && e.date > to) break; // 정렬돼 있으므로 이후는 볼 필요 없음 (to 비면 전체)
-    if (e.dir === '입금') totalIn += e.amount; else totalOut += e.amount;
+    if (e.balanceAdjustment) totalAdjustment += signedAmount(e);
+    else if (e.dir === '입금') totalIn += e.amount; else if (e.dir === '출금') totalOut += e.amount;
     rows.push({ entry: e, balance: running });
   }
 
-  return { account, opening, rows, totalIn, totalOut, closing: opening + totalIn - totalOut };
+  return { account, opening, rows, totalIn, totalOut, totalAdjustment, closing: opening + totalIn - totalOut + totalAdjustment };
 }
 
 /** 전 계좌의 현재 잔액 합계 — "오늘 우리 돈이 얼마인가" */
@@ -144,6 +146,7 @@ export function unsettledStatements(
 
 /** 자금 이동 한 건에 대해 아직 전표에 안 붙은 금액 */
 export function unmatchedCash(entry: CashEntry, settlements: Settlement[]): number {
+  if (entry.balanceAdjustment) return 0;
   const matched = settlements
     .filter(s => s.cashEntryId === entry.id)
     .reduce((a, s) => a + s.amount, 0);

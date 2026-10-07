@@ -1,10 +1,22 @@
-import { isCalendarDay } from './day';
-import type { CashAccount, IssuedStatement } from './types';
+import { isCalendarDay, today } from './day';
+import { companyOf, type CashAccount, type CashEntry, type IssuedStatement } from './types';
+import { totalCashOnHand } from '../features/admin/cashLedger';
 import { BANK, journalizeTransfer } from './autoJournal';
 import { STANDARD_ACCOUNT } from './accountChart';
 
 export const openingCashAccountCode = (account: Pick<CashAccount, 'type'>): string =>
   account.type === '현금' ? STANDARD_ACCOUNT.CASH : BANK;
+
+/** 입력한 현재 잔액에서 새 기준일 이후 실제 입출금을 빼서 기초 잔액을 구한다. */
+export function cashOpeningBalanceForCurrent(account: CashAccount, entries: CashEntry[], newDate: string, currentBalance: number, asOf = today()): number {
+  if (!isCalendarDay(newDate) || !isCalendarDay(asOf) || !Number.isSafeInteger(currentBalance)) throw new Error('계좌 기준일과 정수 잔액을 확인하세요.');
+  const mine = entries.filter(entry => companyOf(entry) === companyOf(account));
+  if (mine.some(entry => entry.cashAccountId === account.id && entry.date >= newDate && entry.date <= asOf && !Number.isSafeInteger(entry.amount))) throw new Error('계좌 연결 전표의 금액을 확인하세요.');
+  const movement = totalCashOnHand([{ ...account, openingDate: newDate, openingBalance: 0 }], mine, asOf);
+  const opening = currentBalance - movement;
+  if (!Number.isSafeInteger(opening)) throw new Error('계좌 기초 잔액이 계산 범위를 벗어났습니다.');
+  return opening;
+}
 
 export function cashOpeningStatement(account: CashAccount): IssuedStatement {
   if (!account.id || !account.companyId || !isCalendarDay(account.openingDate) ||
