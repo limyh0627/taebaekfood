@@ -1,5 +1,12 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-07 — 풍회 10월 1일 재고 스냅샷을 9월 말로 이동
+
+- 사용자 최신 지시: 깨분 5톤 차감은 취소하고 10월 1일 재고 전체를 9월 30일 기말재고로 사용.
+- `inventorySnapshots/inv-snap-punghoe-2026-10`의 5품목·23,568,000원·실제 recordedAt를 보존하고 yearMonth만 2026-09로 변경해 `inv-snap-punghoe-2026-09`에 저장, 10월 문서는 같은 transaction에서 제거했다. 기존 9월 25,470,000원 원본도 백업했다.
+- `scripts/fix-punghoe-snapshot-month-20261007.mts --dry`·독립 코드 검수 후 `--apply` exit0, 재조회 verified=true. 별도 읽기 검사에서 품목 전체·기록시각 보존, 10월 부재, 다른 풍회 월 문서 및 버전 불변 확인. 실제 재고·로트 쓰기0.
+- 로컬 백업: `work/punghoe-snapshot-month-backup-20261007.json`. `--undo`는 10월 문서 부재·9월 본문이 이동 직후와 완전히 일치할 때만 두 원본을 복원한다. 백업과 검증 파일은 GitHub에 업로드하지 않는다.
+
 ## 2026-09-29 — 깨분참기름 캔 입고31개 누락 로트 복구
 
 - 본부장 승인: 31캔 로트 재생성 및 관련 입고경로 수정.
