@@ -1,0 +1,30 @@
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {buildBomIndex,getBomIndex,setBomIndex} from '../bomIndex';
+import {buildPackIndex} from '../packIndex';
+import type {Item} from '../types';
+const state=vi.hoisted(()=>({docs:new Map<string,any>(),onToken:null as null|(()=>void),onRead:null as null|(()=>void)}));
+vi.mock('../firebase',()=>({db:{},authReady:Promise.resolve(),auth:{currentUser:{getIdTokenResult:async()=>{state.onToken?.();return{claims:{companyId:'taebaek'}};}}}}));
+vi.mock('firebase/firestore',async original=>({...await original<typeof import('firebase/firestore')>(),doc:(_:unknown,col:string,id:string)=>({path:`${col}/${id}`,id}),runTransaction:async(_:unknown,fn:any)=>{
+ const pending=new Map<string,any>();const result=await fn({get:async(ref:any)=>{if(ref.path==='items/box')state.onRead?.();return{id:ref.id,exists:()=>state.docs.has(ref.path),data:()=>state.docs.get(ref.path)};},update:(ref:any,patch:any)=>pending.set(ref.path,{...state.docs.get(ref.path),...patch}),set:(ref:any,row:any)=>pending.set(ref.path,row)});pending.forEach((v,k)=>state.docs.set(k,v));return result;
+}}));
+const {receiveUnitStock,createOpeningInventory,createOpeningInventoryWithDb}=await import('./firebaseService');
+const items=[{id:'box',companyId:'taebaek',name:'참깨 포장',type:'product',spec:'1kg * 20',unit:'개',stock:0,minStock:0,image:'',lots:[]},{id:'loose',companyId:'taebaek',name:'참깨 낱개',type:'product',spec:'1kg',unit:'개',stock:0,minStock:0,image:''}] as Item[];
+const inputs={bom:buildBomIndex(items,[{parent_id:'box',child_id:'loose',quantity:20}]),pack:buildPackIndex()};
+const other=buildBomIndex(items,[]),original=getBomIndex();
+const receipt={id:'r',itemId:'box',itemName:'참깨 포장',quantity:2,partnerName:'공급자',date:'2026-07-31',createdAt:'2026-07-31T03:00:00Z',companyId:'taebaek' as const};
+beforeEach(()=>{state.docs.clear();state.onToken=null;state.onRead=null;state.docs.set('items/box',{...items[0]});state.docs.set('openingBalances/main',{companyId:'taebaek',date:'2026-07-31',amounts:{'146':0}});setBomIndex(inputs.bom);});
+afterEach(()=>setBomIndex(original));
+it('입고 회사 인증 대기 중 전역 BOM 교체에도 시작 회사 kg를 보존한다',async()=>{state.onToken=()=>setBomIndex(other);await receiveUnitStock(receipt);expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);});
+it('입고 transaction 조회 대기 중 전역 BOM 교체에도 시작 회사 kg를 보존한다',async()=>{state.onRead=()=>setBomIndex(other);await receiveUnitStock(receipt);expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);});
+it('기초 공개 호출은 인증 대기 전에 회사 입력을 고정한다',async()=>{state.onToken=()=>setBomIndex(other);await createOpeningInventory('taebaek','2026-07-31','box',2,100);expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);});
+it('기초 withDb 호출은 transaction 조회 대기 전에 회사 입력을 고정한다',async()=>{state.onRead=()=>setBomIndex(other);await createOpeningInventoryWithDb({} as any,'taebaek','2026-07-31','box',2,100);expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);});
+it('전역 다른 회사 BOM을 바꾸지 않고 명시 입력으로 입고와 기초 kg를 계산한다',async()=>{
+ setBomIndex(other);
+ await receiveUnitStock(receipt,inputs);
+ expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);
+ expect(getBomIndex()).toBe(other);
+ state.docs.set('items/box',{...items[0]});
+ await createOpeningInventoryWithDb({} as any,'taebaek','2026-07-31','box',2,100,inputs);
+ expect(state.docs.get('items/box').lots[0].kgRemaining).toBe(40);
+ expect(getBomIndex()).toBe(other);
+});

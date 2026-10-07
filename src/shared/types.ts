@@ -551,8 +551,6 @@ export interface Item {
    * 참기름류 0.916 / 들기름류 0.924.
    */
   density?: number;
-  wipStock?: number;
-  finishedStock?: number;
   minStock: number;
   unit: string;
   image: string;

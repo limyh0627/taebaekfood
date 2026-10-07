@@ -368,7 +368,9 @@ export async function createCashAccountWithOpening(companyId: CompanyId, account
 /** 최초 품목 재고와 146 재고자산 기초 전표를 하나의 작업으로 등록한다. */
 export async function createOpeningInventoryWithDb(
   store: Firestore, companyId: CompanyId, date: string, itemId: string, quantity: number, value: number,
+  inputs?: OrderUnitInputs,
 ): Promise<'created' | 'unchanged'> {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   if (!itemId || !isCalendarDay(date) || !Number.isFinite(quantity) || quantity <= 0 ||
       !Number.isInteger(value) || value <= 0) throw new Error('기초 재고 날짜·수량·평가금액을 확인하세요.');
   const itemRef = doc(store, COL.items, itemId);
@@ -420,7 +422,7 @@ export async function createOpeningInventoryWithDb(
       if (result.status !== 'applied') throw new Error(result.status === 'rejected' ? result.message : '기초 원료 명령이 이미 처리됐습니다.');
       writePreparedRawCommand(tx, rawCommand, rawRead, result, { legacy: { note: '기초 재고', type: 'manual' } });
     } else {
-      const anchored = anchorLotsByQty({ lots: [], targetQty: quantity, unitKg: itemKg(item),
+      const anchored = anchorLotsByQty({ lots: [], targetQty: quantity, unitKg: itemKg(item, fixedInputs),
         det: { id: `lot-${operationId}`, createdAt: recordedAt, receivedDate: date } });
       tx.update(itemRef, { stock: quantity, lots: stripUndefined(anchored.lots), stocktakeAnchors: [{
         id: operationId, date, createdAt: recordedAt, targetQty: quantity, beforeQty: 0, deltaQty: quantity, note: '기초 재고',
@@ -432,11 +434,12 @@ export async function createOpeningInventoryWithDb(
   });
 }
 
-export async function createOpeningInventory(companyId: CompanyId, date: string, itemId: string, quantity: number, value: number) {
+export async function createOpeningInventory(companyId: CompanyId, date: string, itemId: string, quantity: number, value: number, inputs?: OrderUnitInputs) {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   await authReady;
   const token = await auth.currentUser?.getIdTokenResult();
   if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return createOpeningInventoryWithDb(db, companyId, date, itemId, quantity, value);
+  return createOpeningInventoryWithDb(db, companyId, date, itemId, quantity, value, fixedInputs);
 }
 
 export const subscribeToCollection = <T extends { id: string }>(
@@ -895,12 +898,20 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
 };
 
 /** 캔 입고31개가 stock에만 남았던 사고: 품목·로트·입고근거를 같이 확정한다. */
-export async function receiveUnitStock(receipt: ItemReceipt): Promise<boolean> {
+export async function receiveUnitStock(receipt: ItemReceipt, inputs?: OrderUnitInputs): Promise<boolean> {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   if (!Number.isFinite(receipt.quantity) || receipt.quantity <= 0) throw new Error('입고 수량은 0보다 커야 합니다.');
   const data = await companyScopedWriteData('itemReceipts', stripUndefined(receipt));
-  return runTransaction(db, async tx => {
-    const itemRef = doc(db, 'items', receipt.itemId);
-    const receiptRef = doc(db, 'itemReceipts', receipt.id);
+  return receiveUnitStockWithDb(db, data as unknown as ItemReceipt, fixedInputs);
+}
+
+export async function receiveUnitStockWithDb(store: Firestore, receipt: ItemReceipt, inputs?: OrderUnitInputs): Promise<boolean> {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+  if (!Number.isFinite(receipt.quantity) || receipt.quantity <= 0) throw new Error('입고 수량은 0보다 커야 합니다.');
+  const data = stripUndefined(receipt);
+  return runTransaction(store, async tx => {
+    const itemRef = doc(store, 'items', receipt.itemId);
+    const receiptRef = doc(store, 'itemReceipts', receipt.id);
     const [itemSnap, receiptSnap] = await Promise.all([tx.get(itemRef), tx.get(receiptRef)]);
     if (!itemSnap.exists()) throw new Error('입고 품목이 없습니다.');
     const item = { ...itemSnap.data(), id: receipt.itemId } as Item;
@@ -912,7 +923,7 @@ export async function receiveUnitStock(receipt: ItemReceipt): Promise<boolean> {
     }
     const stock = Number(item.stock ?? 0);
     if (!Number.isFinite(stock) || stock < 0) throw new Error('현재 재고를 먼저 확인해 주세요.');
-    const unitKg = itemKg(item) || 0;
+    const unitKg = itemKg(item, fixedInputs) || 0;
     const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
       { id: `carry:${receipt.id}`, receivedDate: receipt.date, createdAt: receipt.createdAt });
     if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error('품목 재고와 로트 잔량이 다릅니다. 기존 누락을 확인한 뒤 입고해 주세요.');

@@ -1326,7 +1326,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 그동안은 **내릴 때 아무것도 안 물어서**, 눌러 놓고 나중에 "왜 재고가 늘었지"로 만나면
    * 되짚을 길이 없었다. 글은 `buildStatusChangeAsk` 가 만든다 — 여기는 띄우기만 한다.
    */
+  const orderAskScope = useRef({ companyId, token: {} });
+  if (orderAskScope.current.companyId !== companyId) orderAskScope.current = { companyId, token: {} };
+  useEffect(() => () => { orderAskScope.current = { ...orderAskScope.current, token: {} }; }, []);
   const [rollbackAsk, setRollbackAsk] = useState<{
+    scope: object;
     message: string; subMessage: string; confirmText: string; onConfirm: () => Promise<void>;
   } | null>(null);
   /**
@@ -1338,14 +1342,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     [OrderStatus.DISPATCHED]: 'emerald', [OrderStatus.SHIPPED]: 'sky',
     [OrderStatus.DELIVERED]: 'slate', [OrderStatus.ON_HOLD]: 'amber',
   };
-  const [rollbackSaving, setRollbackSaving] = useState(false);
+  const [rollbackBusy, setRollbackBusy] = useState<object | null>(null);
+  const rollbackBusyRef = useRef<object | null>(null);
+  const rollbackSaving = !!rollbackAsk && rollbackBusy === rollbackAsk;
 
   const [stockUseAsk, setStockUseAsk] = useState<{
-    mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
+    scope: object; mode: 'status'; orderId: string; partnerName: string; rows: StockUseRow[]; orderPatch?: Partial<Order>;
   } | {
-    mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
+    scope: object; mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
     onConfirm: (plan: StockUsePlan) => Promise<void>;
   } | null>(null);
+  const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null }>({ rollback: null, stock: null });
+  orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk };
   const [catalogDeleteAsk, setCatalogDeleteAsk] = useState<{
     itemId: string;
     itemName: string;
@@ -1503,7 +1511,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const requestOrderStatus = async (id: string, requestedStatus: OrderStatus, orderPatch?: Partial<Order>) => {
+    const askScope = orderAskScope.current.token;
     const prepared = await prepareOrderStatusChange(id, requestedStatus);
+    if (orderAskScope.current.token !== askScope) return;
     const cur = prepared?.order ?? allOrders.find(o => o.id === id) ?? orders.find(o => o.id === id);
     const nextItems = orderPatch?.items ?? cur?.items ?? [];
     // 대기중·작업중·작업완료는 사람이 고르는 값이 아니다. 남아 있는 옛 호출 경로가 어떤
@@ -1553,7 +1563,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         : [];
       const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status, plan: 계획, released: 풀릴것 });
       setRollbackAsk({
-        ...묻는글,
+        scope: askScope, ...묻는글,
         onConfirm: () => changeOrderStatus(id, status, undefined, {
           approvedBy: currentUser?.name,
           approvedAt: new Date().toISOString(),
@@ -1574,7 +1584,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       && (cur.status === OrderStatus.PENDING || cur.status === OrderStatus.PROCESSING)) {
       const 묻는글 = buildStatusChangeAsk({ partnerName: cur.partnerName, from: cur.status, to: status });
       setRollbackAsk({
-        ...묻는글,
+        scope: askScope, ...묻는글,
         onConfirm: () => changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch }),
       });
       return;
@@ -1585,7 +1595,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (!order || order.producedAt) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
     const rows = buildStockUseRows(order, allItems, appData.orderUnitInputs);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
-    setStockUseAsk({ mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
+    setStockUseAsk({ scope: askScope, mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
 
   const deletingOrders = useRef(new Set<string>());
@@ -1787,6 +1797,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       : { invoicePrinted: value !== undefined, invoiceStage: value ?? null };
 
   const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
+    const askScope = orderAskScope.current.token;
     const order = allOrders.find(o => o.id === orderId);
     if (!order || completionSaving.current.has(orderId)) return;
     const normalizedOrder = { ...order, items: ensureOrderLineIds(order.items) };
@@ -1794,7 +1805,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (!plan) return;
     const applying = plan.items[itemIdx]?.checked === true;
     const save = async (stockPlan?: StockUsePlan) => {
-      if (completionSaving.current.has(orderId)) return;
+      if (orderAskScope.current.token !== askScope || completionSaving.current.has(orderId)) return;
       completionSaving.current.add(orderId);
       try {
         const lineId = plan.items[itemIdx]?.lineId;
@@ -1802,6 +1813,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (isLegacyRollback) await requestOrderStatus(orderId, plan.status, { items: plan.items });
         else {
           await changeOrderItemCompletion(orderId, itemIdx, plan.items, plan.status, stockPlan);
+          if (orderAskScope.current.token !== askScope) return;
           /*  **품목 알림 다음에 주문 알림**(2026-09-15 사장님: "품목단위 알람 다음에 주문 자체
            *  상태변환 알람뜨게해 이건 취소는 못하고 확인버튼만 누르게 … 주문이 대기중에서
            *  작업중으로 이동합니다 확인").
@@ -1824,6 +1836,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           }
         }
       } catch (error) {
+        if (orderAskScope.current.token !== askScope) return;
         if (error instanceof Error && error.message === 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
           await requestOrderStatus(orderId, plan.status, { items: plan.items });
           return;
@@ -1870,7 +1883,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           ? [{ name: 줄이름, qty: 풀릴양, unit: unpackComponent(푸는품목) ? '박스' : (푸는품목.unit || '개') }]
           : [],
       });
-      setRollbackAsk({ ...묻는글, onConfirm: () => save() });
+      setRollbackAsk({ scope: askScope, ...묻는글, onConfirm: () => save() });
       return;
     }
 
@@ -1878,9 +1891,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
       : [];
     const startSave = () => {
+      if (orderAskScope.current.token !== askScope) return;
       if (lineRows.length === 0) { void save(); return; }
       setStockUseAsk({
-        mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
+        scope: askScope, mode: 'line', orderId, partnerName: order.partnerName, rows: lineRows,
         onConfirm: save,
       });
     };
@@ -5303,24 +5317,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {/*  임가공·완사입 품목 완료 — 재고를 쓰는지, 모자라 음수가 되는지 알린다 */}
       {/*  **되돌리기 확인창** — 글은 `buildStatusChangeAsk` 가 만든다.
            누르는 동안 단추를 잠근다(두 번 눌러 두 번 원복되는 것을 막는다). */}
-      {rollbackAsk && (
+      {rollbackAsk && rollbackAsk.scope === orderAskScope.current.token && (
         <ConfirmModal
           title="되돌리기" tone="amber" icon={RotateCcw}
           message={rollbackAsk.message}
           subMessage={rollbackAsk.subMessage}
           confirmText={rollbackSaving ? '처리 중…' : rollbackAsk.confirmText}
-          onCancel={() => { if (!rollbackSaving) setRollbackAsk(null); }}
+          onCancel={() => { if (!rollbackSaving) setRollbackAsk(current => current === rollbackAsk ? null : current); }}
           onConfirm={async () => {
-            if (rollbackSaving) return;
-            setRollbackSaving(true);
+            const ask = rollbackAsk;
+            if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.rollback !== ask || rollbackBusyRef.current === ask) return;
+            rollbackBusyRef.current = ask;
+            setRollbackBusy(ask);
             try {
-              await rollbackAsk.onConfirm();
-              setRollbackAsk(null);
+              await ask.onConfirm();
+              if (ask.scope === orderAskScope.current.token) setRollbackAsk(current => current === ask ? null : current);
             } catch (error) {
-              console.error('주문 상태 되돌리기 실패', error);
-              alert(error instanceof Error ? error.message : '되돌리지 못했습니다. 재고 작업 이력을 확인해 주세요.');
+              if (ask.scope === orderAskScope.current.token && orderAskCurrent.current.rollback === ask) {
+                console.error('주문 상태 되돌리기 실패', error);
+                alert(error instanceof Error ? error.message : '되돌리지 못했습니다. 재고 작업 이력을 확인해 주세요.');
+              }
             } finally {
-              setRollbackSaving(false);
+              if (rollbackBusyRef.current === ask) rollbackBusyRef.current = null;
+              setRollbackBusy(current => current === ask ? null : current);
             }
           }}
         />
@@ -5346,15 +5365,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onCancel={() => setAppNotice(null)}
         />
       )}
-      {stockUseAsk && (
+      {stockUseAsk && stockUseAsk.scope === orderAskScope.current.token && (
         <StockUseModal
           partnerName={stockUseAsk.partnerName}
           rows={stockUseAsk.rows}
           completionLabel={stockUseAsk.mode === 'line' ? '품목 완료' : '작업완료'}
-          onCancel={() => setStockUseAsk(null)}
+          onCancel={() => setStockUseAsk(current => current === stockUseAsk ? null : current)}
           onConfirm={async (plan: StockUsePlan) => {
             const ask = stockUseAsk;
-            setStockUseAsk(null);
+            if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.stock !== ask) return;
+            setStockUseAsk(current => current === ask ? null : current);
             if (ask.mode === 'line') {
               await ask.onConfirm(plan);
               return;
