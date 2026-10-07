@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { companyOf, type CompanyId, type Item, type Order, type RawMaterialEntry } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
+import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import type { ItemReceipt } from '../src/shared/receipt';
 import { filterItems, ALL } from '../src/shared/itemFilter';
 
@@ -41,7 +42,8 @@ const ItemLedger: React.FC<{
   /** 원료 원장도 같은 화면에서 고른다. 로트 화면에는 타임라인만 남긴다. */
   rawEntries?: RawMaterialEntry[];
   companyId: CompanyId;
-}> = ({ items, orders, receipts = [], rawEntries = [], companyId }) => {
+  orderUnitInputs?: OrderUnitInputs;
+}> = ({ items, orders, receipts = [], rawEntries = [], companyId, orderUnitInputs }) => {
   const [q, setQ] = useState('');
   const [pickedId, setPickedId] = useState('');
   //  **분류 필터**(2026-09-03 사장님) — 품목이 많아 이름으로만 찾기 어렵다.
@@ -64,8 +66,8 @@ const ItemLedger: React.FC<{
   const companyOrders = useMemo(() => orders.filter(order => companyOf(order) === companyId), [orders, companyId]);
   const companyReceipts = useMemo(() => receipts.filter(receipt => companyOf(receipt) === companyId), [receipts, companyId]);
   const ledger = useMemo(
-    () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts, rawEntries) : null),
-    [pickedId, companyOrders, items, companyReceipts, rawEntries]);
+    () => (pickedId ? buildItemLedger(pickedId, companyOrders, items, companyReceipts, rawEntries, orderUnitInputs) : null),
+    [pickedId, companyOrders, items, companyReceipts, rawEntries, orderUnitInputs]);
 
   //  좁은 화면에서는 위아래로 — 가로로 두면 오른쪽 표가 찌그러진다(shared/ui/table)
   return (

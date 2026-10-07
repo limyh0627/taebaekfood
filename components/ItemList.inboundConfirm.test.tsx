@@ -40,6 +40,7 @@ it('회사 전환 후 이전 회사 상세를 표시하지 않고 현재 회사 
     items={[{ ...item, companyId: 'punghoe' }]}
     confirmedOrders={[{ ...order, id: 'po2', companyId: 'punghoe', partnerName: '풍회 거래처' }]} />);
   expect(screen.queryByText('입고 상세')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '입고/반품' }));
   fireEvent.click(screen.getByRole('button', { name: '입고확정' }));
   fireEvent.click(screen.getAllByRole('button', { name: '입고확정' }).at(-1)!);
   await act(async () => {});

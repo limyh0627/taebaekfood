@@ -319,7 +319,7 @@ const displayStockOf = (p: any): number => {
   return p?.density ? Math.round((kg / p.density) * 1000) / 1000 : kg;
 };
 
-const ItemList: React.FC<ItemListProps> = ({
+const ItemListContent: React.FC<ItemListProps> = ({
   mode = 'inventory',
   companyId,
   items,
@@ -3907,4 +3907,5 @@ const ItemList: React.FC<ItemListProps> = ({
   );
 };
 
+const ItemList: React.FC<ItemListProps> = props => <ItemListContent key={props.companyId ?? 'taebaek'} {...props} />;
 export default ItemList;

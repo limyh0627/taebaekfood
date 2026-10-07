@@ -1620,6 +1620,7 @@ export interface CashFlowManual {
 
 export interface ProductionSalesLog {
   id: string;
+  companyId?: CompanyId;
   date: string;         // 서류 날짜
   createdAt: string;    // ISO timestamp
   createdBy: string;    // 작성자

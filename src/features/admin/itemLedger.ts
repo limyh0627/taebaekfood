@@ -2,7 +2,7 @@ import { companyOf, type Item, type Order, type RawMaterialEntry } from '../../s
 import type { RawInventoryMovement } from '../../shared/rawInventoryCore';
 import type { UnpackLotMove } from '../../shared/unpackLots';
 import { bomOf } from '../../shared/bomIndex';
-import { stockUnits } from '../../shared/orderUnits';
+import { stockUnits, type OrderUnitInputs } from '../../shared/orderUnits';
 import { dateOfLocal } from '../../shared/day';
 import type { ItemReceipt } from '../../shared/receipt';
 
@@ -88,6 +88,7 @@ export function buildItemLedger(
   /** 사 온 기록. 안 넘기면 예전처럼 주문만 본다(옛 호출부 호환). */
   receipts: ItemReceipt[] = [],
   inventoryEntries: ItemInventoryEntry[] = [],
+  inputs?: OrderUnitInputs,
 ): ItemLedger {
   const rows: ItemLedgerRow[] = [];
   const item = allItems.find(i => i.id === itemId);
@@ -112,13 +113,13 @@ export function buildItemLedger(
       for (const it of o.items) {
         if (it.itemId !== itemId) continue;
         const p = allItems.find(x => x.id === itemId);
-        const q = p ? stockUnits(it, p) : it.quantity;
+        const q = p ? stockUnits(it, p, inputs) : it.quantity;
         if (q) rows.push({ date, kind: '출고', qty: -r3(q), partnerName, orderId: o.id, note: '출고', balance: 0, occurredAt: o.shipmentConfirmedAt || o.deliveredAt || o.createdAt });
       }
     }
     //  ④ 상위 품목을 만들면서 이 품목이 구성품으로 빠져나간 양
     for (const p of (o.producedUnits ?? [])) {
-      const line = bomOf(p.itemId).find(l => l.childId === itemId);
+      const line = (inputs ? inputs.bom.of(p.itemId) : bomOf(p.itemId)).find(l => l.childId === itemId);
       if (!line || !Number(p.qty)) continue;
       const used = r3(Number(p.qty) * Number(line.qty));
       if (used) rows.push({ date, kind: '자재사용', qty: -used, partnerName, orderId: o.id, note: `${nameOf(p.itemId)} ${r3(Number(p.qty))} 생산에 씀`, balance: 0, occurredAt: o.producedAt || o.createdAt });

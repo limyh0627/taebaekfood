@@ -5,6 +5,7 @@ import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForSta
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { mergeCompanyOrders } from './companyOrders';
 import { useDocSheetTitles } from './useDocSheetTitles';
+import { useProductionSalesHistory } from './useProductionSalesHistory';
 import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeningUpdate';
 ﻿
 // ============================================================
@@ -202,7 +203,6 @@ import {
   setProductSuppliers,
   setDocument,
   fetchCollection,
-  fetchDateRange,
   fetchWhereIn,
   adjustItemStock,
   markNotificationForUser,
@@ -484,24 +484,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   }, [isAdmin, companyId]);
 
   // 라이브 구독은 7일치만 → 서류관리 > 생산판매기록부 월별 조회를 위해 24개월치 온디맨드 로드
-  const [extraProductionLogs, setExtraProductionLogs] = useState<import('../../shared/types').ProductionSalesLog[]>([]);
-  useEffect(() => {
-    const to = today();
-    const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
-    const from = fromDate.toISOString().slice(0, 10);
-    fetchDateRange<import('../../shared/types').ProductionSalesLog>(
-      'productionSalesLogs', 'date', from, to,
-      [where('companyId', '==', companyId)],
-    )
-      .then(setExtraProductionLogs)
-      .catch(e => console.error('[AdminApp] 과거 생산판매기록 로드 실패:', e));
-  }, [companyId]);
-  const mergedProductionSalesLogs = useMemo(() => {
-    const map = new Map<string, import('../../shared/types').ProductionSalesLog>();
-    extraProductionLogs.forEach(l => map.set(l.id, l));
-    productionSalesLogs.forEach(l => map.set(l.id, l));
-    return Array.from(map.values());
-  }, [productionSalesLogs, extraProductionLogs]);
+  const mergedProductionSalesLogs = useProductionSalesHistory(companyId, productionSalesLogs);
 
   /*
    * 이력을 볼 달을 **기록이 있는 마지막 달**로 한 번 맞춘다.
@@ -4718,7 +4701,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <PageHeader title="제품별원장" subtitle="품목별 기초·입고·생산·사용·출고·실사 기록" />
               <div className="flex-1 min-h-0 p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={mergedRawMaterialLedger} />
+              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={mergedRawMaterialLedger} orderUnitInputs={appData.orderUnitInputs} />
                 </React.Suspense>
               </div>
             </div>

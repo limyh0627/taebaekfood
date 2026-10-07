@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildItemLedger } from './itemLedger';
-import { buildBomIndex, setBomIndex } from '../../shared/bomIndex';
+import { buildBomIndex, getBomIndex, setBomIndex } from '../../shared/bomIndex';
+import { buildPackIndex } from '../../shared/packIndex';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 
 /**
@@ -219,5 +220,23 @@ describe('사 온 것도 원장에 선다', () => {
     const l = buildItemLedger('b1', [], [병], [입고({ quantity: -20 })]);
     expect(l.rows[1].qty).toBe(-20);
     expect(l.outSum).toBe(-20);
+  });
+});
+
+
+describe('제품별원장 명시 계산 입력', () => {
+  it('회사 A 입력은 다른 회사 전역 색인에서도 출고·자재사용 수량을 보존한다', () => {
+    const inputs = { bom: buildBomIndex(items, [
+      { parent_id: 'box', child_id: 'loose', quantity: 20 },
+      { parent_id: 'box', child_id: 'cap', quantity: 20 },
+    ]), pack: buildPackIndex() };
+    const shipped = order('a-order', { shippedOut: true, producedUnits: [{ itemId: 'box', qty: 2 }],
+      items: [{ itemId: 'box', name: '박스', quantity: 100, boxQuantity: 5 }] as Order['items'] });
+    const globalB = buildBomIndex([], []); setBomIndex(globalB);
+    const boxLedger = buildItemLedger('box', [shipped], items, [], [], inputs);
+    const capLedger = buildItemLedger('cap', [shipped], items, [], [], inputs);
+    expect(boxLedger.rows.find(row => row.kind === '출고')?.qty).toBe(-5);
+    expect(capLedger.rows.find(row => row.kind === '자재사용')?.qty).toBe(-40);
+    expect(getBomIndex()).toBe(globalB);
   });
 });
