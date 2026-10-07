@@ -429,6 +429,17 @@ describe('auditDataIntegrity — P0.3 발주 입고 라인별 대조', () => {
     expect(ids).toContain('po-receipt-qty:po-1:item-1');
   });
 
+  it('전역 BOM 없이 입력 BOM으로 원료 박스 입고 중량을 대조한다', () => {
+    const holder = productItem({ id: 'raw-holder', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg' });
+    const loose = productItem({ id: 'loose-seed', name: '볶음참깨 1kg', spec: '1kg' });
+    const box = productItem({ id: 'seed-box', name: '볶음참깨 묶음', rawMaterialName: '볶음참깨', spec: '1kg * 20', unit: '개' });
+    const po = { id: 'po-seed', companyId: 'taebaek', status: 'received', createdAt: '2026-09-16', items: [{ itemId: box.id, name: box.name, quantity: 2, unit: '개' }] } as unknown as PurchaseOrder;
+    const movement = { id: 'received-seed', companyId: 'taebaek', rawItemId: holder.id, date: '2026-09-16', material: '볶음참깨', reportedDeltaKg: 40, source: { type: 'purchase', id: po.id } } as unknown as RawMaterialEntry;
+    setBomIndex(buildBomIndex([], []));
+    const issues = auditDataIntegrity(input({ items: [holder, loose, box], itemBoms: [{ id: 'seed-bom', parent_id: box.id, child_id: loose.id, quantity: 20 }], purchaseOrders: [po], rawMaterialLedger: [movement] }));
+    expect(issues.filter(issue => issue.id.startsWith('po-'))).toEqual([]);
+  });
+
   it('개 단위 WIP(캔 반제품)는 원료로 오인해 원장을 요구하지 않는다', () => {
     // 이름이 RM_LIST 에 없어야 한다 — 캔은 완제품(참기름-캔) 이라 baseRawName 이 RM_LIST 에 없다.
     const can = productItem({ id: 'can-1', name: '시골향참기름1-캔', type: 'wip', subtype: '낱개', unit: '개' });
@@ -549,6 +560,41 @@ describe('auditDataIntegrity — 주문·판매일지·서류수불부 대조', 
     } finally {
       setBomIndex(buildBomIndex([], []));
     }
+  });
+
+  it('다른 회사의 전역 BOM이 활성화되어도 감사 입력 회사의 박스 구성을 사용한다', () => {
+    const box = productItem({ id: 'box-a', name: '태백 20개입', spec: '' });
+    const items = [box, journalItem];
+    const itemBoms = [{ id: 'bom-a', parent_id: box.id, child_id: journalItem.id, quantity: 20 }];
+    const order = { ...deliveredOrder(), items: [{ lineId: 'box-line', itemId: box.id, name: box.name, quantity: 100, boxQuantity: 5, price: 1000, checked: false }] } as Order;
+    // 풍회 렌더 후 태백 감사가 시작되는 실제 전역 교체 경계.
+    setBomIndex(buildBomIndex([productItem({ id: 'company-b', companyId: 'punghoe' })], []));
+    try {
+      const auditInput = input({ items, itemBoms, orders: [order], productionSalesLogs: [matchingLog(100)] });
+      const before = structuredClone(auditInput);
+      const issues = auditDataIntegrity(auditInput);
+      expect(issues.filter(issue => issue.id.startsWith('sales-log-qty:'))).toEqual([]);
+      expect(auditInput).toEqual(before);
+    } finally { setBomIndex(buildBomIndex([], [])); }
+  });
+
+  it('풍회 감사는 풍회 구성만 풀고 원본의 다른 회사·삭제 연결 오류는 유지한다', () => {
+    const loose = { ...journalItem, id: 'loose-b', companyId: 'punghoe' as const };
+    const box = productItem({ id: 'box-b', companyId: 'punghoe', spec: '' });
+    const other = productItem({ id: 'box-a' });
+    const itemBoms = [
+      { id: 'b-bom', parent_id: box.id, child_id: loose.id, quantity: 10 },
+      { id: 'cross', parent_id: other.id, child_id: loose.id, quantity: 777 },
+      { id: 'deleted', parent_id: 'deleted-parent', child_id: loose.id, quantity: 1 },
+    ];
+    const order = { ...deliveredOrder(), companyId: 'punghoe', items: [{ lineId: 'box-line', itemId: box.id, name: box.name, quantity: 30, boxQuantity: 3, price: 1000, checked: false }] } as Order;
+    const log = { ...matchingLog(30), companyId: 'punghoe' } as ProductionSalesLog;
+    setBomIndex(buildBomIndex([other], []));
+    try {
+      const issues = auditDataIntegrity(input({ companyId: 'punghoe', items: [other, loose, box], itemBoms, orders: [order], productionSalesLogs: [log] }));
+      expect(issues.filter(issue => issue.id.startsWith('sales-log-qty:'))).toEqual([]);
+      expect(issues.map(issue => issue.id)).toEqual(expect.arrayContaining(['orphan-bom:cross', 'orphan-bom:deleted']));
+    } finally { setBomIndex(buildBomIndex([], [])); }
   });
 
   it('판매 kg가 서류 원료 배합비로 내려가지 않으면 잡는다', () => {

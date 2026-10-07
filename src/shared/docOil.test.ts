@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel } from './docOil';
-import { buildBomIndex, setBomIndex } from './bomIndex';
+import { buildBomIndex, getBomIndex, setBomIndex } from './bomIndex';
+import { buildPackIndex } from './packIndex';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
   it('ml·L은 부피 × 밀도', () => {
@@ -333,5 +334,33 @@ describe('docSpec — 개입수 1은 규격이 아니다', () => {
     expect(docSpec('1kg')).toBe('1kg');
     expect(docSpec('16.5kg')).toBe('16.5kg');
     expect(docSpec(undefined)).toBe('');
+  });
+});
+
+
+describe('명시 BOM 입력으로 서류 환산', () => {
+  it('다른 전역 색인을 유지하면서 중첩 세트와 박스를 끝까지 같은 입력으로 푼다', () => {
+    const loose = { id: 'explicit-loose', name: '참기름', type: 'product', 품목: '시골향참기름1', spec: '350ml' } as import('./types').Item;
+    const box = { id: 'explicit-box', name: '박스', type: 'product', spec: '' } as import('./types').Item;
+    const second = { ...loose, id: 'explicit-second', 품목: '시골향들기름2' };
+    const set = { id: 'explicit-set', name: '선물세트', type: 'product' } as import('./types').Item;
+    const items = [loose, box, second, set];
+    const inputs = { bom: buildBomIndex(items, [
+      { parent_id: box.id, child_id: loose.id, quantity: 20 },
+      { parent_id: set.id, child_id: box.id, quantity: 2 },
+      { parent_id: set.id, child_id: second.id, quantity: 1 },
+    ]), pack: buildPackIndex() };
+    const previous = getBomIndex();
+    const foreign = buildBomIndex([], []); setBomIndex(foreign);
+    try {
+      const find = (id: string) => items.find(item => item.id === id);
+      expect(docSaleLines(set, 3, find, inputs)).toEqual([
+        { 품목: '시골향참기름1', spec: '350ml', qty: 120 },
+        { 품목: '시골향들기름2', spec: '350ml', qty: 3 },
+      ]);
+      expect(journalSaleLines(box, { quantity: 100, boxQuantity: 5, name: '박스' }, find, inputs)[0].qty).toBe(100);
+      expect(getBomIndex()).toBe(foreign);
+      expect(docSaleLines(box, 1, find)).toEqual([]);
+    } finally { setBomIndex(previous); }
   });
 });

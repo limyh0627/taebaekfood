@@ -1,5 +1,5 @@
 import { PRODUCT_FORMULA } from '../constants/formula';
-import { stockUnits, unpackComponent, 묶음갈래of } from './orderUnits';
+import { stockUnits, unpackComponent, 묶음갈래of, type OrderUnitInputs } from './orderUnits';
 import { bomOf } from './bomIndex';
 import type { Item, OrderItem } from './types';
 import { dateOfLocal } from './day';
@@ -189,7 +189,8 @@ export const docUnpack = (
   product: Item | undefined,
   quantity: number,
   findItem: (id: string) => Item | undefined,
-): { item: Item; qty: number }[] => 푸는중(product, quantity, findItem, 0);
+  inputs?: OrderUnitInputs,
+): { item: Item; qty: number }[] => 푸는중(product, quantity, findItem, 0, inputs);
 
 /**
  * **선물세트는 든 완제품 각각으로 푼다**(2026-09-06 사장님: "선물세트는 낱개 완제품들이
@@ -208,25 +209,26 @@ const 푸는중 = (
   quantity: number,
   findItem: (id: string) => Item | undefined,
   깊이: number,
+  inputs?: OrderUnitInputs,
 ): { item: Item; qty: number }[] => {
   if (!product) return [];
   if (깊이 > 3) return [{ item: product, qty: quantity }];   // 서로 물린 BOM에서 멈춘다
 
   //  ① 박스 — 같은 것의 묶음. 낱개로 푼다.
-  const unpack = unpackComponent(product);
+  const unpack = unpackComponent(product, inputs);
   if (unpack) {
     const loose = findItem(unpack.itemId);
-    if (loose) return 푸는중(loose, quantity * unpack.count, findItem, 깊이 + 1);
+    if (loose) return 푸는중(loose, quantity * unpack.count, findItem, 깊이 + 1, inputs);
   }
 
   //  ② 선물세트 — 다른 것을 모은 것. 든 완제품 각각으로 푼다.
   //     갈래 판정은 orderUnits 의 묶음갈래of 한 곳이 정한다(박스와 같은 규칙).
-  const 든완제품 = bomOf(product.id)
+  const 든완제품 = (inputs ? inputs.bom.of(product.id) : bomOf(product.id))
     .filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
   if (묶음갈래of(든완제품) === '세트') {
     return 든완제품.flatMap(l => {
       const c = findItem(l.childId);
-      return c ? 푸는중(c, quantity * (l.qty || 1), findItem, 깊이 + 1) : [];
+      return c ? 푸는중(c, quantity * (l.qty || 1), findItem, 깊이 + 1, inputs) : [];
     });
   }
 
@@ -238,8 +240,9 @@ export const docSaleLines = (
   product: Item | undefined,
   quantity: number,
   findItem: (id: string) => Item | undefined,
+  inputs?: OrderUnitInputs,
 ): { 품목: string; spec: string; qty: number }[] =>
-  docUnpack(product, quantity, findItem)
+  docUnpack(product, quantity, findItem, inputs)
     .map(u => ({ 품목: docPumok(u.item.품목), spec: u.item.spec ?? '', qty: u.qty }))
     .filter(l => l.품목);
 
@@ -254,10 +257,11 @@ export const journalSaleLines = (
   product: Item | undefined,
   orderItem: Pick<OrderItem, 'quantity' | 'boxQuantity' | 'isBoxUnit' | 'name' | 'displaySize'>,
   findItem: (id: string) => Item | undefined,
+  inputs?: OrderUnitInputs,
 ): { 품목: string; spec: string; qty: number }[] => {
   // 주문 quantity는 이미 낱개로 환산돼 있을 수 있다. 박스 수로 정규화한 뒤 BOM을 한 번 푼다.
-  const quantity = stockUnits(orderItem, product);
-  const unpacked = docUnpack(product, quantity, findItem);
+  const quantity = stockUnits(orderItem, product, inputs);
+  const unpacked = docUnpack(product, quantity, findItem, inputs);
   const rows = unpacked.length ? unpacked : [{ item: product, qty: quantity }];
   return rows.map(row => {
     const base = row.item ?? product;

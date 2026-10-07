@@ -33,3 +33,28 @@ it('복수 반품은 다른 단위를 개수로 합하지 않고 품목 수와 �
  expect(row.getByText('기름 외 1개')).toBeInTheDocument();
  expect(row.queryByText('27개')).not.toBeInTheDocument();
 });
+it('연결 전표 번호를 목록과 상세에서 열고 링크 클릭은 상세를 열지 않는다',()=>{
+ const onOpenVoucher=vi.fn();
+ const row=view({confirmedOrders:[{...po,status:'invoiced',linkedStatementId:'statement-1',invoicedAt:'2026-10-03T16:20:00Z'} as any],issuedStatements:[{id:'statement-1',companyId:'taebaek',docNo:'261003-001'} as any],onOpenVoucher});
+ fireEvent.click(row.getByRole('button',{name:'261003-001'}));
+ expect(onOpenVoucher).toHaveBeenCalledWith('261003-001');
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+ fireEvent.click(row.getByText('공급업체'));
+ const detail=within(screen.getByRole('dialog'));
+ expect(detail.getByText('생성')).toBeInTheDocument();
+ expect(detail.getByText('2026-10-01 10:00:00')).toBeInTheDocument();
+ expect(detail.getByText('발주확정')).toBeInTheDocument();
+ expect(detail.getByText('2026-10-04 01:20:00')).toBeInTheDocument();
+ expect(detail.getByText('실입고')).toBeInTheDocument();
+ expect(detail.getByText('미기록')).toBeInTheDocument();
+ fireEvent.click(detail.getByRole('button',{name:'261003-001'}));
+ expect(onOpenVoucher).toHaveBeenCalledTimes(2);
+});
+it.each([{statements:[]},{statements:[{id:'private-id',companyId:'punghoe',docNo:'타회사-전표'}]}])('조회되지 않은 연결 전표는 내부 ID나 타회사 번호를 노출하지 않는다 (%j)',({statements})=>{
+ const row=view({confirmedOrders:[{...po,status:'invoiced',linkedStatementId:'private-id'} as any],issuedStatements:statements as any});
+ expect(row.getByText('연결 전표 미확인')).toBeInTheDocument();
+ expect(row.queryByText('private-id')).not.toBeInTheDocument();
+ expect(row.queryByText('타회사-전표')).not.toBeInTheDocument();
+ fireEvent.click(row.getByText('공급업체'));
+ expect(within(screen.getByRole('dialog')).getByText('연결 전표 미확인')).toBeInTheDocument();
+});

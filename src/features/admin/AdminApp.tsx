@@ -28,7 +28,7 @@ import { today } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
-import { isBulkItem, holdsUnitStock, isPhysicalInventoryItem } from '../../shared/itemTaxonomy';
+import { isBulkItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
@@ -586,26 +586,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (currentView !== 'trade-statement') return;
     loadHistoricalOrders('2020-01-01', today());
   }, [currentView]);
-
-  // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
-  useEffect(() => {
-    if (isDataLoading || !isAdmin) return;
-    const now = new Date();
-    let py = now.getFullYear(), pm = now.getMonth(); // getMonth()는 0-indexed → 이전 달
-    if (pm === 0) { pm = 12; py -= 1; }
-    const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
-    const already = inventorySnapshots.some(s => s.yearMonth === prevYm);
-    if (already) return;
-    const valued = allItems.filter(p => isPhysicalInventoryItem(p) && ((p.stock ?? 0) > 0 || (p.cost ?? 0) > 0));
-    const totalValue = valued.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
-    addItem('inventorySnapshots', {
-      id: `inv-snap-${prevYm}`,
-      yearMonth: prevYm,
-      value: totalValue,
-      recordedAt: new Date().toISOString(),
-      items: valued.map(p => ({ itemId: p.id, name: p.name, category: p.type as string, qty: p.stock ?? 0, value: Math.round((p.stock ?? 0) * (p.cost ?? 0)) })),
-    });
-  }, [isDataLoading]);
 
   // 모바일 감지
   useEffect(() => {

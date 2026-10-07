@@ -6,7 +6,9 @@ import type {
 import { companyOf, poLines, type CompanyId } from '../../shared/types';
 import { docDateOf, docOilKg, docSaleLines, isSalesJournalProduct, journalSaleLines, reconcileSaleVsRaw } from '../../shared/docOil';
 import { DENSITY, PRODUCT_FORMULA, parsePackageKg } from '../../constants/formula';
-import { itemKg, stockUnits } from '../../shared/orderUnits';
+import { itemKg, stockUnits, type OrderUnitInputs } from '../../shared/orderUnits';
+import { buildBomIndex } from '../../shared/bomIndex';
+import { buildPackIndex } from '../../shared/packIndex';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { rawLotTarget } from '../../shared/rawReceipt';
 import { operationDocId, type RawInventoryState } from '../../shared/rawInventoryCore';
@@ -127,11 +129,12 @@ export function classifyPurchaseLine(
   items: Item[],
   line: PurchaseOrderItem,
   companyId: CompanyId,
+  inputs?: OrderUnitInputs,
 ): LinePOClassify {
   const product = items.find(i => i.id === line.itemId);
   const target = rawLotTarget(items, product, product?.name ?? line.name, companyId);
   if (!target) return { isRaw: false };
-  const packageKg = product ? (itemKg(product) || undefined) : parsePackageKg(line.name);
+  const packageKg = product ? (itemKg(product, inputs) || undefined) : parsePackageKg(line.name);
   const density = DENSITY[target.baseName] ?? 1;
   const u = (line.unit ?? product?.unit ?? '').toLowerCase();
   const kg = receiptToKg({ quantity: line.quantity, unit: u, density, packageKg });
@@ -146,6 +149,10 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
   const out: IntegrityIssue[] = [];
   const items = input.items.filter(item => companyOf(item) === input.companyId);
   const itemIds = new Set(items.map(item => item.id));
+  // BOM은 회사 필드가 없으므로 현재 회사 부모 품목으로 계산 범위를 정한다.
+  // 원본 itemBoms는 아래 고아 연결 감사에 그대로 사용한다.
+  const companyBoms = input.itemBoms.filter(bom => itemIds.has(bom.parent_id));
+  const unitInputs: OrderUnitInputs = { bom: buildBomIndex(items, companyBoms), pack: buildPackIndex() };
   const itemById = new Map(items.map(item => [item.id, item]));
   const orders = input.orders.filter(order => companyOf(order) === input.companyId);
   // 원료수불부는 **회사만** 잘라 낸다. 날짜로 자르면 스냅샷이 가리키는 그날 이전·이후의
@@ -360,12 +367,12 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     for (const [key, poLineGroup] of linesByItem) {
       const first = poLineGroup[0];
       const expectedQty = poLineGroup.reduce((sum, l) => sum + (Number.isFinite(l.quantity) ? l.quantity : 0), 0);
-      const classify = classifyPurchaseLine(items, first, input.companyId);
+      const classify = classifyPurchaseLine(items, first, input.companyId, unitInputs);
       if (classify.isRaw) {
         // 원료 라인: rawMaterialLedger 에 purchase 근거가 있어야 하고 kg 합이 발주 kg 과 같아야 한다.
         const holderId = classify.holder?.id;
         const expectedKgTotal = poLineGroup.reduce((sum, l) => {
-          const cls = classifyPurchaseLine(items, l, input.companyId);
+          const cls = classifyPurchaseLine(items, l, input.companyId, unitInputs);
           return sum + (cls.expectedKg ?? 0);
         }, 0);
         const rawMovements = rawLedger.filter(entry =>
@@ -482,7 +489,7 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
       if (!isSalesJournalProduct(product)) return;
       const isGiftSet = String(product?.subtype ?? product?.category ?? '').includes('선물세트');
       if (isGiftSet && product) {
-        const components = input.itemBoms.filter(bom => bom.parent_id === product.id && Number(bom.quantity) > 0);
+        const components = companyBoms.filter(bom => bom.parent_id === product.id && Number(bom.quantity) > 0);
         const productComponents = components.filter(bom => {
           const child = itemById.get(bom.child_id);
           return child?.type === 'product' || child?.type === '완제품';
@@ -491,13 +498,13 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
         for (const bom of components) {
           const child = itemById.get(bom.child_id);
           if (!child) out.push({ id: `doc-set-child-missing:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성 품목이 삭제됨', detail: `${line.name}의 구성 ${bom.child_id}를 품목 목록에서 찾을 수 없어 판매일지에서 일부가 빠질 수 있습니다.`, date: docDate, reference: refOf(order) });
-          else if ((child.type === 'product' || child.type === '완제품') && !docSaleLines(child, Number(bom.quantity) || 1, id => items.find(item => item.id === id)).length) out.push({ id: `doc-set-child-no-doc:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성품의 서류 품목 누락', detail: `${line.name} 구성품 ${child.name}은 서류용 품목으로 변환되지 않아 판매일지에서 빠집니다.`, date: docDate, reference: refOf(order) });
+          else if ((child.type === 'product' || child.type === '완제품') && !docSaleLines(child, Number(bom.quantity) || 1, id => items.find(item => item.id === id), unitInputs).length) out.push({ id: `doc-set-child-no-doc:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성품의 서류 품목 누락', detail: `${line.name} 구성품 ${child.name}은 서류용 품목으로 변환되지 않아 판매일지에서 빠집니다.`, date: docDate, reference: refOf(order) });
         }
       }
       // 화면과 같은 주문 단위 정규화를 사용해 이미 환산된 낱개 수량을 다시 곱하지 않는다.
-      const expanded = journalSaleLines(product, line, id => items.find(item => item.id === id));
+      const expanded = journalSaleLines(product, line, id => items.find(item => item.id === id), unitInputs);
       if (!expanded.length) out.push({ id: `doc-empty:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'error', title: '서류용 품목이 없어 판매 줄이 누락됨', detail: `${line.name} ${line.quantity}개가 서류 품목으로 변환되지 않습니다.`, date: docDate, reference: refOf(order) });
-      else if (!docSaleLines(product, stockUnits(line, product), id => items.find(item => item.id === id)).length) out.push({ id: `doc-fallback:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'warning', title: '서류용 품목명이 없어 상품명으로 대체됨', detail: `${line.name}은 판매일지에 포함됐지만 품목의 서류용 품목명이 비어 상품명을 대신 사용했습니다.`, date: docDate, reference: refOf(order) });
+      else if (!docSaleLines(product, stockUnits(line, product, unitInputs), id => items.find(item => item.id === id), unitInputs).length) out.push({ id: `doc-fallback:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'warning', title: '서류용 품목명이 없어 상품명으로 대체됨', detail: `${line.name}은 판매일지에 포함됐지만 품목의 서류용 품목명이 비어 상품명을 대신 사용했습니다.`, date: docDate, reference: refOf(order) });
       expanded.forEach((row, rowIndex) => {
         addSale(byKey, saleKey(order.partnerName || '', row.품목, row.spec), row.qty);
         const kg = docOilKg(row.spec, row.qty);

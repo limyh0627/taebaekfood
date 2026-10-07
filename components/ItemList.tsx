@@ -666,6 +666,12 @@ const ItemList: React.FC<ItemListProps> = ({
   const [flowDetail, setFlowDetail] = useState<{ type: '입고' | '반품'; id: string; lines: { itemId: string; quantity: number }[] } | null>(null);
   const [flowQuantities, setFlowQuantities] = useState<string[]>([]);
   const [flowSaving, setFlowSaving] = useState(false);
+  const flowVoucherLink = (linkedId: string) => {
+    const linked = issuedStatements.find(statement => statement.id === linkedId && companyOf(statement) === companyId);
+    return linked?.docNo
+      ? <button type="button" onClick={event => { event.stopPropagation(); onOpenVoucher?.(linked.docNo); }} className="text-indigo-600 underline">{linked.docNo}</button>
+      : <span title="연결 전표를 조회할 수 없습니다." className="text-slate-500">연결 전표 미확인</span>;
+  };
   const [reqNote, setReqNote] = useState<string>('');
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
@@ -1595,10 +1601,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
                       <td className="px-3 py-3 text-center text-xs font-bold">{(() => {
                         const linkedId = row.source.linkedStatementId;
-                        const linked = issuedStatements.find(statement => statement.id === linkedId);
-                        if (linkedId) return linked?.docNo
-                          ? <button type="button" onClick={event => { event.stopPropagation(); onOpenVoucher?.(linked.docNo); }} className="text-indigo-600 underline">{linked.docNo}</button>
-                          : <span title="연결 전표를 조회할 수 없습니다." className="text-slate-500">{linkedId}</span>;
+                        if (linkedId) return flowVoucherLink(linkedId);
                         if (!isAdmin || row.type === '반품') return <span className="text-slate-400">—</span>;
                         return <button type="button" onClick={event => {
                           event.stopPropagation();
@@ -1633,6 +1636,9 @@ const ItemList: React.FC<ItemListProps> = ({
         const issued = !!record.linkedStatementId;
         const canReceive = flowDetail.type === '입고' && canConfirmReceipt(record as PurchaseOrder);
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
+        const eventDates = po
+          ? [['생성', po.createdAt], ['발주확정', po.invoicedAt], ['실입고', po.receivedAt]]
+          : [['생성', record.createdAt], ['반품처리', (record as ReturnRequest).processedAt]];
         const deleteReason = !po ? '' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
           : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'
           : po.poType === 'oem' ? '외주 발주는 이 화면에서 삭제할 수 없습니다.'
@@ -1659,6 +1665,8 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>}
         >
           <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
+          <dl className="space-y-1 text-xs text-slate-500">{eventDates.map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{value ? `${dateOfLocal(value)}${value.includes('T') ? ` ${timeOfLocal(value)}` : ''}` : '미기록'}</dd></div>)}</dl>
+          {record.linkedStatementId && <div className="text-xs font-bold">연결 전표: {flowVoucherLink(record.linkedStatementId)}</div>}
           {issued && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
           {sourceChanged && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">품목이나 수량이 다른 곳에서 변경됐습니다. 상세창을 닫고 다시 열어주세요.</p>}
           <div className="space-y-2">{lines.map((line, index) => <div key={`${line.itemId}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">

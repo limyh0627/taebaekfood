@@ -270,10 +270,10 @@ export function boxQtyLabel(qty: number | string, perBox?: number, boxWord = 'BO
  * 이름이 '볶음참깨/1kg'으로 정리되면서 1kg으로 읽혔다 — 가공입고 kg·로스·가공비가
  * 한꺼번에 10~20배 작게 잡히던 자리다. 근거를 이름이 아니라 규격+단위로 옮긴다.
  */
-export function itemKg(item: Item): number {
+export function itemKg(item: Item, inputs?: OrderUnitInputs): number {
   if (item.packageKg) return item.packageKg;
   const perUnit = parsePackageKg(item.spec) ?? parsePackageKg(item.name) ?? 0;
-  const isBox = isBoxStockItem(item) || item.unit === '박스';
+  const isBox = isBoxStockItem(item, inputs) || item.unit === '박스';
   return perUnit * (isBox ? parseSpecCount(item.spec) : 1);
 }
 
