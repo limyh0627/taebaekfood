@@ -120,8 +120,65 @@ service cloud.firestore {
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
       return c in ['employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
-                   'chatRooms', 'chatMessages', 'notifications', 'notices'];
+                   'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines'];
     }
+
+    function productionParentAdvanced(parentId) {
+      let path = /databases/$(database)/documents/productionWorkDocuments/$(parentId);
+      let after = getAfter(path).data;
+      return canSee(after.companyId)
+        && after.revision == (exists(path) ? get(path).data.revision : 0) + 1;
+    }
+    match /productionWorkDocuments/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create, update: if createUpdateOk()
+        && request.resource.data.id == id
+        && request.resource.data.documentDate is string
+        && request.resource.data.documentDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && id == myCompany() + '__production-work__' + request.resource.data.documentDate
+        && request.resource.data.templateVersion == 1
+        && request.resource.data.revision is int
+        && request.resource.data.revision == (resource == null ? 1 : resource.data.revision + 1)
+        && request.resource.data.rowCount is int
+        && request.resource.data.rowCount >= 0 && request.resource.data.rowCount <= 200
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.createdBy is string
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string
+        && request.resource.data.specialNotes is string
+        && request.resource.data.preparedByName is string
+        && request.resource.data.reviewedByName is string
+        && request.resource.data.approvedByName is string
+        && (resource == null
+          ? request.resource.data.createdBy == request.auth.uid
+          : request.resource.data.createdBy == resource.data.createdBy
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.documentDate == resource.data.documentDate);
+      allow delete: if false;
+    }
+    match /productionWorkDocumentLines/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create, update: if createUpdateOk()
+        && request.resource.data.id == id
+        && request.resource.data.documentId is string
+        && id.matches('^' + request.resource.data.documentId + '__.*')
+        && (resource == null || resource.data.documentId == request.resource.data.documentId)
+        && productionParentAdvanced(request.resource.data.documentId)
+        && request.resource.data.documentRevision == getAfter(/databases/$(database)/documents/productionWorkDocuments/$(request.resource.data.documentId)).data.revision
+        && request.resource.data.batchKey is string && request.resource.data.batchKey.size() > 0
+        && request.resource.data.sortOrder is int && request.resource.data.sortOrder >= 0
+        && request.resource.data.sourceState in ['active', 'missing', 'reversed']
+        && request.resource.data.source is map
+        && request.resource.data.source.kind in ['production', 'raw-usage', 'manual']
+        && request.resource.data.manualFields is map
+        && request.resource.data.sourceSnapshot is map
+        && (request.resource.data.productionQty == null || (request.resource.data.productionQty is number && request.resource.data.productionQty >= 0))
+        && (request.resource.data.rawUsedKg == null || (request.resource.data.rawUsedKg is number && request.resource.data.rawUsedKg >= 0));
+      allow delete: if deleteOk() && productionParentAdvanced(resource.data.documentId);
+    }
+
 
     //  다른 문서를 읽어 견주는 자리가 셋 있다(오피스톡 방·메시지·알림).
     //  `get()`·`exists()` 는 규칙 한 번에 **10회까지**라 그 한도가 방 인원 제한의 까닭이다.

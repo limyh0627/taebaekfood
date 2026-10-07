@@ -1,3 +1,4 @@
+import ProductionWorkDocumentHost from '../production-documents/ui/ProductionWorkDocumentHost';
 import { defaultCashAccountId } from '../../shared/defaultCashAccount';
 import { appConfirm, appNotice as awaitNotice, appPrompt } from '../../shared/components/appDialog';
 import ConfirmModal from '../../shared/components/ConfirmModal';
@@ -445,7 +446,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
     await deleteItem('cashEntries', id);
   }, [appData.settlements]);
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '벤조피렌' | 'haccp'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업일지' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   /**
    * 생산판매기록부 이력을 볼 달 — **기록이 있는 마지막 달**로 연다.
@@ -461,6 +462,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
   const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
   const [sheetTitles, setSheetTitles] = useDocSheetTitles(companyId);
+  const [productionDocumentDate, setProductionDocumentDate] = useState(() => today());
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
@@ -3529,6 +3531,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={() => setDocTab('생산작업기록부')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >생산작업기록부</button>
+                        <button onClick={() => setDocTab('생산작업일지')} className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold ${docTab === '생산작업일지' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>생산작업일지</button>
                       </>)}
                     </div>
                     {/* 판매기록부 ↔ 원료수불부 대조 — 서류 기준일이 배송완료일 하나뿐이라,
@@ -4350,6 +4353,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   );
                 })()}
 
+
+                {docTab === '생산작업일지' && <div className="space-y-4">
+                  <label className="text-sm font-bold">작성일 <input aria-label="생산작업일지 작성일" type="date" value={productionDocumentDate} onChange={event => { if (event.target.value) setProductionDocumentDate(event.target.value); }} className="rounded-lg border p-2" /></label>
+                  <ProductionWorkDocumentHost companyId={companyId} date={productionDocumentDate} actorId={currentUser.id} />
+                </div>}
 
                 {docTab === '생산작업기록부' && (() => {
                   const displayVol = (vol: string) => {

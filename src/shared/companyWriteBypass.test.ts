@@ -31,6 +31,9 @@ const reviewedTransactionWriters = new Set([
   'src/shared/services/deleteIssuedStatementService.ts',
   // 회사별 작업순서 메타를 검증하며 workOrderItems 조회도 동일 회사로 한정한다.
   'src/shared/services/workOrderResetService.ts',
+  // 생산 문서와 모든 행의 회사·부모·revision을 검사하고 동일 transaction으로 교체한다.
+  // 실제 Auth SDK와 getAfter Rules에서 타회사/오래된 revision/독립 행 쓰기를 거부한다.
+  'src/shared/services/productionWorkDocumentService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

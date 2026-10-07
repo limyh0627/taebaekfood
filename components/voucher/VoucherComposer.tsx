@@ -1,4 +1,5 @@
-import { appConfirm, appPrompt } from '../../src/shared/components/appDialog';
+import { templateStatementType, templateStatementConflict, type TemplateStatementType } from '../../src/shared/templateStatementType';
+import { appConfirm, appPrompt, appNotice } from '../../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef } from 'react';
 import { today } from '../../src/shared/day';
 import { X, Plus, Save } from 'lucide-react';
@@ -200,6 +201,7 @@ export default function VoucherComposer({
   const [qpTemplateId, setQpTemplateId] = useState<string | null>(null);
   //  템플릿 편집의 면세 선택을 발행 폼까지 옮긴다. 직접작성은 옛 동작(세액 0원)을 유지한다.
   const [qpAccrTaxExempt, setQpAccrTaxExempt] = useState(true);
+  const [qpStatementType, setQpStatementType] = useState<TemplateStatementType>(initialDir === '줄돈' ? '매입' : initialDir === '받을돈' ? '매출' : '비용');
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
   // 방향으로 안 거른다 — 고른 템플릿이 방향을 정한다(템플릿 화면과 같은 목록이 보여야 한다)
   const qpTemplates = useMemo(
@@ -215,6 +217,7 @@ export default function VoucherComposer({
    */
   const pickTemplate = (t: CashTemplate) => {
     setQpTemplateId(t.id);    // 고른 것을 id로 붙든다 — 계정만으로는 같은 계정 템플릿이 섞인다
+    setQpStatementType(templateStatementType(t));
     setQpDir(t.dir);          // 방향은 템플릿이 정한다
     setQpMode(t.mode);
     //  자금 표는 이제 줄이 원천이다 — 템플릿 계정을 첫 줄에 넣는다. 안 넣으면 계정이 빈 채로 열린다.
@@ -230,7 +233,7 @@ export default function VoucherComposer({
      * 금액과 계정을 들고 있는 템플릿을 골라도 빈 양식이 떴다.
      */
     setQpAccrRows(templateAccrRows(t));
-    setQpAccrTaxExempt(t.partnerId && !isCashDir(t.dir) ? !!t.taxExempt : true);
+    setQpAccrTaxExempt(!isCashDir(t.dir) && templateStatementType(t) !== '비용' ? !!t.taxExempt : true);
     setQpShowSides(false);   // 템플릿이 차·대를 안다 — 손댈 일이 없다
     setQpLoanId(t.mode === '상환' ? t.loanId || '' : '');
     // 두 줄로 갈리는 갈래(보험·상환·급여·세금)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
@@ -472,18 +475,8 @@ export default function VoucherComposer({
           await saveCashEntry(e);
         };
 
-        /**
-         * 발생 — 돈이 안 움직인 전표. **거래처가 있으면 매입전표, 없으면 대체전표**로 끊는다.
-         *
-         *   거래처 있음   (차) 비용 / (대) 251 외상매입금   → 그 거래처 미지급금이 는다. 나중에 [지불]
-         *   거래처 없음   (차) 비용 / (대) 감가상각누계액 등  → 대체전표(type '비용'), 차·대를 직접 세운다
-         *
-         * 부가세 신고에 들어가려면 공급자가 있어야 하고, 미지급금을 걸려면 걸 상대가 있어야 한다 —
-         * 그래서 거래처 하나로 갈린다. 사용자는 거래처만 고르면 되고 어느 전표인지는 앱이 정한다.
-         */
-        // 갈래가 전표 종류를 정한다 — 거래처를 고르면 매입전표(미지급금이 선다),
-        // 안 고르면 순수 대체(차·대를 직접 세운다)
-        const accrType: '매출' | '매입' | '비용' = quickPayClientId ? '매입' : '비용';
+        const accrType = qpStatementType;
+        const accrConflict = templateStatementConflict({ dir: qpDir, statementType: accrType });
         const accrExempt = accrType === '비용' || qpAccrTaxExempt;
         const accrLines = qpAccrRows
           .filter(r => r.accountCode && parseMoneyInput(r.price) > 0)
@@ -508,7 +501,8 @@ export default function VoucherComposer({
         const accrBalanced = accrType !== '비용' || (accrDebit > 0 && accrDebit === accrCredit);
 
         const doAccrualSave = async () => {
-          if (!accrLines.length || !accrBalanced) return;   // 차·대가 안 맞으면 안 끊는다
+          if (accrConflict) { await appNotice(accrConflict); return; }
+          if (!accrLines.length || !accrBalanced || (accrType !== '비용' && !quickPayClientId)) return;   // 차·대가 안 맞으면 안 끊는다
           /*
            * **통장 줄이 끼어 있으면 자금전표다.**
            *
@@ -705,7 +699,7 @@ export default function VoucherComposer({
         const cashSplitOk = cashSplitLines.length > 0 && Math.abs(cashSplitSum - plainAmt) < 0.5;
 
         const canSave = qpDir === '회사이체' ? (advAmt > 0 && !!onAddForCompany)
-          : !isCashDir(qpDir) ? (accrLines.length > 0 && accrBalanced)   // 차·대가 맞아야 끊는다
+          : !isCashDir(qpDir) ? (!accrConflict && accrLines.length > 0 && accrBalanced && (accrType === '비용' || !!quickPayClientId))   // 차·대가 맞아야 끊는다
           : qpMode === '상환' ? (prin > 0 || intr > 0)
           : qpMode === '보험' ? insTotal > 0
           : qpMode === '세금' ? taxTotal > 0
@@ -738,7 +732,7 @@ export default function VoucherComposer({
                 <div className="flex gap-1 ml-auto flex-wrap justify-end">
                   {VOUCHER_DIRS.map(d => (
                     <button key={d} type="button"
-                      onClick={() => { setQpDir(d); setQpMode('일반'); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
+                      onClick={() => { setQpDir(d); setQpStatementType(d === '줄돈' ? '매입' : d === '받을돈' ? '매출' : '비용'); setQpMode('일반'); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
                       title={DIR_HINT[d]}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${qpDir === d
                         ? `${DIR_CHIP[d]} border-transparent shadow-sm`
@@ -854,7 +848,7 @@ export default function VoucherComposer({
                       안 고르면 대체전표(감가상각·퇴직충당). 어느 전표인지는 앱이 정한다. */}
                   <div className="relative">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
-                      거래처 <span className="normal-case text-slate-300">(고르면 미지급금이 섭니다 · 비우면 순수 대체)</span>
+                      거래처 <span className="normal-case text-slate-300">(매입·매출 전표에 필요)</span>
                     </label>
                     <input type="text" placeholder="업체명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
@@ -875,7 +869,27 @@ export default function VoucherComposer({
                     )}
                   </div>
 
-                  {quickPayClientId && (
+                  <div>
+                    <label htmlFor="voucher-statement-type" className="block text-xs font-bold text-slate-500 mb-1">전표종류</label>
+                    <select id="voucher-statement-type" value={qpStatementType}
+                      onChange={async e => {
+                        const next = e.target.value as TemplateStatementType;
+                        if (qpStatementType === '비용' && next !== '비용' && qpAccrRows.length > 1) {
+                          if (!await appConfirm('대체 분개를 매입·매출 품목으로 합치면 금액이 중복될 수 있습니다. 기존 행을 비우고 종류를 바꿀까요?')) return;
+                          setQpAccrRows([{ name: '', price: '', side: '차변' }]);
+                        }
+                        setQpStatementType(next);
+                      }}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold">
+                      <option value="매입">매입전표</option><option value="매출">매출전표</option><option value="비용">일반(대체)전표</option>
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">거래처를 선택해도 전표종류는 바뀌지 않습니다.</p>
+                    {qpTemplateId && !qpTemplates.find(t => t.id === qpTemplateId)?.statementType && (
+                      <p className="text-xs text-amber-600 mt-1">기존 템플릿의 발행 종류를 확인해 주세요.</p>
+                    )}
+                  </div>
+                  {accrConflict && <p role="alert" className="text-xs text-red-600">{accrConflict}</p>}
+                  {accrType !== '비용' && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2.5">
                       <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
                         <input type="checkbox" checked={qpAccrTaxExempt}
@@ -892,7 +906,7 @@ export default function VoucherComposer({
                       <input type="text" inputMode="numeric" placeholder="0"
                         value={formatMoneyInput(qpAccrRows[0]?.price ?? '')}
                         onChange={e => changeMoneyInput(e.currentTarget, price => setQpAccrRows(prev => {
-                          if (quickPayClientId) return prev.map((row, index) => index === 0 ? { ...row, price } : row);
+                          if (accrType !== '비용') return prev.map((row, index) => index === 0 ? { ...row, price } : row);
                           if (prev.length === 1) return [{ ...prev[0], price }, { name: '', price, side: '대변' }];
                           return prev.map(row => ({ ...row, price }));
                         }))}
@@ -905,7 +919,7 @@ export default function VoucherComposer({
                             — 품목은 차변, 미지급금은 대변. 3전표제에서 대체만 칸이 있는 이유다. */}
                         {/* 단추 하나를 눌러 차↔대를 뒤집는다 — 나란한 두 칸은 자리만 먹고,
                             안 눌린 쪽이 회색으로 남아 무엇이 골라졌는지 한눈에 안 읽힌다. */}
-                        {!quickPayClientId && qpShowSides && (
+                        {accrType === '비용' && qpShowSides && (
                           <button type="button" title="눌러서 차변·대변 바꾸기"
                             onClick={() => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, side: x.side === '차변' ? '대변' : '차변' } : x))}
                             className={`shrink-0 w-11 py-2 rounded-lg text-[11px] font-black transition-all ${
@@ -913,7 +927,7 @@ export default function VoucherComposer({
                             {r.side}
                           </button>
                         )}
-                        {!quickPayClientId && !qpShowSides && (
+                        {accrType === '비용' && !qpShowSides && (
                           <span className={`shrink-0 w-8 text-center text-[11px] font-black ${
                             r.side === '차변' ? 'text-slate-500' : 'text-amber-600'}`}>{r.side}</span>
                         )}
@@ -924,7 +938,7 @@ export default function VoucherComposer({
                           onChange={e => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
                           className="w-36 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-amber-300">
                           <option value="">계정 —</option>
-                          {(quickPayClientId ? expenseCodes : expCodes).map(ac => <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>)}
+                          {(accrType !== '비용' ? expenseCodes : expCodes).map(ac => <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>)}
                         </select>
                         <input value={formatMoneyInput(r.price)} placeholder="금액" inputMode="numeric"
                           onChange={e => changeMoneyInput(e.currentTarget, price => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, price } : x)))}
@@ -941,11 +955,11 @@ export default function VoucherComposer({
                         <Plus size={12} strokeWidth={3}/>행 추가
                       </button>
                       {/* 차·대가 맞아야 끊을 수 있다 — 안 맞는 전표는 시산표를 조용히 망가뜨린다 */}
-                      {!quickPayClientId && !qpShowSides && (
+                      {accrType === '비용' && !qpShowSides && (
                         <button type="button" onClick={() => setQpShowSides(true)}
                           className="text-[11px] font-black text-slate-300 hover:text-slate-500">차·대 고치기</button>
                       )}
-                      {!quickPayClientId && (accrDebit > 0 || accrCredit > 0) && (
+                      {accrType === '비용' && (accrDebit > 0 || accrCredit > 0) && (
                         <span className={`ml-auto text-[11px] font-black tabular-nums ${
                           accrBalanced ? 'text-emerald-600' : 'text-rose-500'}`}>
                           차 {fmt(accrDebit)} · 대 {fmt(accrCredit)}
@@ -956,8 +970,8 @@ export default function VoucherComposer({
                   </div>
 
                   <div className={`rounded-xl px-3 py-2.5 text-[11px] font-bold leading-snug ${qpDir === '대체' ? 'bg-slate-50 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>
-                    {quickPayClientId
-                      ? <>매입전표로 끊습니다 — <b>{selectedClientObj?.name}</b> 미지급금이 {fmt(accrTotal)}원 늘어납니다. 실제로 낼 때 거래처 화면에서 [지불]하세요.</>
+                    {accrType !== '비용'
+                      ? <>{accrType}전표로 끊습니다 — <b>{selectedClientObj?.name}</b> {accrType === '매출' ? '미수금' : '미지급금'}이 {fmt(accrTotal)}원 늘어납니다. 결제는 거래처 화면에서 별도로 처리합니다.</>
                       : <>대체전표로 끊습니다 — 차·대를 직접 세웁니다(감가상각비·퇴직급여충당금). 손익에는 잡히고 현금흐름에서는 순이익에 다시 가산됩니다.</>}
                   </div>
                 </>
@@ -1401,7 +1415,7 @@ export default function VoucherComposer({
                   onClick={async () => {
                     const cur = currentTemplate(qpTemplates);
                     const suggest = quickPayNote.trim()
-                      || (() => { const c = qpCashRows.find(r => r.accountCode)?.accountCode; return c ? codeName.get(c) ?? '' : ''; })()
+                      || (() => { const c = (isCashDir(qpDir) ? qpCashRows : qpAccrRows).find(r => r.accountCode)?.accountCode; return c ? codeName.get(c) ?? '' : ''; })()
                       || (cur && !(cur.builtin ?? '').startsWith('free') ? cur.label : '');
                     const name = await appPrompt({
                       title: '템플릿 이름',
@@ -1413,15 +1427,22 @@ export default function VoucherComposer({
                     const group = await appPrompt({ title: '묶음 이름', message: '비워두면 분류없음으로 저장합니다.', defaultValue: cur?.group || '' });
                     if (group === null) return;
                     if (qpMode === '상환' && qpLoanId && !matchingLoan(loans, companyId, qpLoanId, qpLoanCode)) { alert('연결할 대출 계약을 다시 선택해 주세요.'); return; }
+                    if (!isCashDir(qpDir) && accrConflict) { await appNotice(accrConflict); return; }
                     await onAddFixedCostTemplate({
-                      name: name.trim(), amount: qpMode === '상환' ? prin + intr : amt > 0 ? amt : 0, category: '기타',
+                      name: name.trim(), amount: !isCashDir(qpDir) && qpDir !== '회사이체'
+                        ? (qpStatementType !== '비용' || (qpAccrRows.length === 2 && accrLines.length === 2 && accrBalanced) ? accrTotal : 0)
+                        : qpMode === '상환' ? prin + intr : amt > 0 ? amt : 0, category: '기타',
                       active: false, kind: 'voucher', hidden: false,
                       group: group.trim() || '분류없음',
                       dir: qpDir, mode: qpMode,
+                      ...(!isCashDir(qpDir) && qpDir !== '회사이체' ? {
+                        statementType: qpStatementType,
+                        ...(qpStatementType === '비용' ? { transferLines: qpAccrRows.filter(r => r.accountCode).map(r => ({ accountCode: r.accountCode!, side: r.side, name: r.name })) } : {}),
+                      } : {}),
                       ...(qpMode === '상환' ? { principal: prin, interest: intr, loanCode: qpLoanCode, loanId: qpLoanId, autoIssue: false } : {}),
                       ...(() => { const c = qpCashRows.find(r => r.accountCode)?.accountCode; return c ? { accountCode: c } : {}; })(),
                       ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
-                      ...(quickPayClientId && !isCashDir(qpDir) ? { taxExempt: qpAccrTaxExempt } : {}),
+                      ...(!isCashDir(qpDir) && qpDir !== '회사이체' ? { taxExempt: qpStatementType === '비용' || qpAccrTaxExempt } : {}),
                       ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}),
                     } as any);
                     alert(`'${name.trim()}' 템플릿으로 저장했습니다.\n\n정기비용 화면에서 이름·거래처·금액을 고치거나 숨길 수 있습니다.`);

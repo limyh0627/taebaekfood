@@ -1,3 +1,4 @@
+import { templateStatementType, templateStatementConflict, canAutoStatement, type TemplateStatementType } from '../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
 import React, { useMemo, useState, useRef } from 'react';
 import { X, Check, BarChart2, FolderPlus, Pencil, Copy, Eye, EyeOff, Star } from 'lucide-react';
@@ -72,7 +73,7 @@ export default function VoucherTemplateManager({
   const [cloning, setCloning] = useState(false);
   const [form, setForm] = useState({
     name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', loanId: '', accountCode: '', partnerId: '', partnerName: '',
-    dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
+    dir: '출금' as VoucherDir, statementType: '비용' as TemplateStatementType, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
   const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
@@ -136,7 +137,7 @@ export default function VoucherTemplateManager({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
       splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '', loanId: t.loanId ?? '', accountCode: t.accountCode ?? '',
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
-      dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
+      dir: dirOf(t), statementType: templateStatementType(t), autoIssue: !!t.autoIssue && (isCashDir(dirOf(t)) || canAutoStatement(t)), issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
       itemName: t.itemName ?? '',
     });
     setPartnerQuery(''); setPartnerOpen(false);
@@ -237,7 +238,7 @@ export default function VoucherTemplateManager({
               onClick={() => runAction(async () => {
                 if (!detailTpl.autoIssue && detailTpl.mode === '상환' && detailTpl.loanId) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; }
                 const missing = missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code)));
-                if (!detailTpl.autoIssue && (!(detailTpl.amount > 0) || !detailTpl.accountCode || missing.length || (!isCashDir(dirOf(detailTpl)) && !detailTpl.partnerId))) {
+                if (!detailTpl.autoIssue && (!(detailTpl.amount > 0) || !detailTpl.accountCode || missing.length || (!isCashDir(dirOf(detailTpl)) && !canAutoStatement(detailTpl)))) {
                   await appNotice('계정·금액·거래처를 확인한 뒤 자동 발행을 켜 주세요.'); return;
                 }
                 await onUpdate?.(detailTpl.id, { autoIssue: !detailTpl.autoIssue });
@@ -426,12 +427,17 @@ export default function VoucherTemplateManager({
                   </button>
                 ))}
               </div>
-              {!isCashDir(form.dir) && (
-                <p className="text-[10px] font-bold text-slate-400 mt-1.5 leading-snug">
-                  {form.partnerId
-                    ? <>거래처가 있으니 <b className="text-amber-600">매입전표</b>로 끊습니다 — 미지급금이 이 거래처로 잡히고, 낼 때 [지불]합니다.</>
-                    : <>거래처가 없으니 <b>순수 대체</b>입니다 — 차·대를 직접 세워야 해서 <b className="text-amber-600">자동 발행은 못 켭니다</b>.</>}
-                </p>
+              {!isCashDir(form.dir) && form.dir !== '회사이체' && (
+                <div className="mt-3">
+                  <label htmlFor="template-statement-type" className="block text-xs font-bold text-slate-500 mb-1">전표종류</label>
+                  <select id="template-statement-type" value={form.statementType}
+                    onChange={e => setForm(f => ({ ...f, statementType: e.target.value as TemplateStatementType }))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold">
+                    <option value="매입">매입전표</option><option value="매출">매출전표</option><option value="비용">일반(대체)전표</option>
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">거래처를 변경해도 선택한 전표종류는 유지됩니다.</p>
+                  {!editTpl.statementType && <p className="text-xs text-amber-600 mt-1">기존 템플릿의 발행 종류입니다. 확인 후 저장해 주세요.</p>}
+                </div>
               )}
             </div>
 
@@ -497,7 +503,7 @@ export default function VoucherTemplateManager({
               {showJournal && (() => {
                 const preview = {
                   ...editTpl,
-                  label: form.name, dir: form.dir, mode: editTpl.mode,
+                  label: form.name, dir: form.dir, mode: editTpl.mode, statementType: form.statementType,
                   accountCode: form.accountCode || undefined, itemName: form.itemName || undefined,
                   transferLines: editTpl.transferLines,
                   loanCode: form.loanCode,
@@ -574,8 +580,10 @@ export default function VoucherTemplateManager({
                   if (form.autoIssue && amount <= 0) { await appNotice('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
                   const missingCodes = missingTemplateAccountCodes({ ...editTpl, accountCode: form.accountCode || undefined, loanCode: form.loanCode || undefined }, new Set(accountCodes.map(c => c.code)));
                   if (form.autoIssue && missingCodes.length) { await appNotice(`현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n계정을 먼저 확인해 주세요.`); return; }
-                  if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
-                    await appNotice('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
+                  const conflict = templateStatementConflict(form);
+                  if (conflict) { await appNotice(conflict); return; }
+                  if (form.autoIssue && !isCashDir(form.dir) && !canAutoStatement({ ...editTpl, ...form })) {
+                    await appNotice('자동 매입·매출은 거래처, 대체는 차변·대변 한 줄씩의 양식을 확인해 주세요.');
                     return;
                   }
                   const patch = {
@@ -588,6 +596,7 @@ export default function VoucherTemplateManager({
                     ...(form.accountCode ? { accountCode: form.accountCode } : {}),
                     ...splitPatch,
                     dir: form.dir,
+                    ...(!isCashDir(form.dir) && form.dir !== '회사이체' ? { statementType: form.statementType } : {}),
                     autoIssue: form.autoIssue,
                     issueDay: Number(form.issueDay) || 1,
                     taxExempt: form.taxExempt,
@@ -597,6 +606,7 @@ export default function VoucherTemplateManager({
                     // 그래야 내 것으로서 고치고 지울 수 있다.
                     await onCreate?.({
                       ...patch,
+                      ...(form.statementType === '비용' && editTpl.transferLines?.length ? { transferLines: editTpl.transferLines } : {}),
                       ...(form.accountCode ? { accountCode: form.accountCode } : {}),
                       mode: editTpl.mode,
                       kind: editTpl.kind ?? 'voucher',

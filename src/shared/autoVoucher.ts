@@ -1,3 +1,4 @@
+import { templateStatementType, templateStatementConflict, canAutoStatement, templateTransferItems } from './templateStatementType';
 
 import { stampFor } from './voucherStamp';
 import { lineAmount } from './lineAmount';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
@@ -57,11 +58,7 @@ export function canAutoIssue(t: FixedCostTemplate, ym: string): boolean {
   if (t.startYm && ym < t.startYm) return false;
   if (t.endYm && ym > t.endYm) return false;
   const d = dirOf(t);
-  // 비현금 갈래는 **거래처가 있어야 자동으로 낼 수 있다.**
-  //   거래처 있음 → 매입전표. 상대변이 251 외상매입금으로 자동이라 한 줄이면 된다.
-  //   거래처 없음 → 순수 대체. 차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐이라
-  //                 반쪽 전표가 된다 — 그건 손으로 끊는다.
-  if (!isCashDir(d) && !t.partnerId) return false;
+  if (!isCashDir(d) && !canAutoStatement(t)) return false;
   return true;
 }
 
@@ -117,8 +114,11 @@ export function buildStatementVoucher(
   ym: string,
   opts: { docNo: string; accountName?: string } = { docNo: '' },
 ): IssuedStatement {
+  const conflict = templateStatementConflict(t);
+  if (conflict) throw new Error(conflict);
+  const type = templateStatementType(t);
   const total = t.amount;
-  const exempt = !!t.taxExempt;
+  const exempt = type === '비용' || !!t.taxExempt;
   const { supply, tax } = lineAmount(1, total, exempt);
   const item: IssuedStatementItem = {
     // 품목명 → 계정과목 이름 → 템플릿 이름 순. 비워 두면 계정 이름이 그대로 들어간다.
@@ -129,14 +129,11 @@ export function buildStatementVoucher(
     accountCode: t.accountCode,
   };
   const date = issueDateOf(ym, t.issueDay);
-  const d = dirOf(t);
   return {
     id: autoVoucherId(t, ym),
     issuedAt: new Date(`${date}T09:00:00+09:00`).toISOString(),
     tradeDate: date,
-    // 거래처가 있으면 매입전표(미지급금이 선다), 없으면 순수 대체(차·대 직접).
-    // 받을돈은 매출전표 — 지금 화면에선 안 쓰지만 규칙은 남겨 둔다.
-    type: d === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
+    type,
     partnerId: t.partnerId ?? '',
     partnerName: t.partnerName ?? '',
     orderId: autoVoucherId(t, ym),      // 중복 체크에 쓰던 키 — 기존 정기비용과 같은 자리
@@ -144,6 +141,6 @@ export function buildStatementVoucher(
     totalSupply: supply,
     totalTax: tax,
     totalAmount: total,
-    items: [item],
+    items: type === '비용' && t.transferLines?.length ? templateTransferItems({ ...t, statementType: type }) : [item],
   } as IssuedStatement;
 }

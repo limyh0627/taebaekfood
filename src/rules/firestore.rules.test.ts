@@ -143,6 +143,60 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
   });
 
+  describe('생산작업일지 전용 회사·버전 경계', () => {
+    const id = 'taebaek__production-work__2026-09-22';
+    const header = (revision = 1) => ({
+      id, companyId: 'taebaek', documentDate: '2026-09-22', templateVersion: 1, revision,
+      rowCount: 1, createdAt: '2026-09-27T00:00:00Z', updatedAt: '2026-09-27T00:00:00Z',
+      createdBy: 'u-taebaek', updatedBy: 'u-taebaek', specialNotes: '',
+      preparedByName: '', reviewedByName: '', approvedByName: '',
+    });
+    const line = (suffix = 'a', revision = 1) => ({
+      id: id + '__' + suffix, documentId: id, companyId: 'taebaek', documentRevision: revision,
+      batchKey: 'batch', sortOrder: 0, sourceState: 'active', source: { kind: 'manual' },
+      manualFields: {}, sourceSnapshot: {}, productionQty: 1000, rawUsedKg: 276,
+    });
+    const seed = async () => {
+      const db = 태백직원();
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'productionWorkDocuments', id), header());
+      batch.set(doc(db, 'productionWorkDocumentLines', id + '__a'), line());
+      await assertSucceeds(batch.commit());
+    };
+    it('동회사 일반 직원이 헤더와 행을 함께 저장하고 타회사는 읽거나 쓸 수 없다', async () => {
+      await seed();
+      await assertSucceeds(getDocs(query(collection(태백직원(), 'productionWorkDocuments'), where('companyId', '==', 'taebaek'))));
+      await assertFails(getDoc(doc(풍회직원(), 'productionWorkDocuments', id)));
+      await assertFails(updateDoc(doc(풍회관리자(), 'productionWorkDocuments', id), { revision: 2 }));
+      await assertFails(setDoc(doc(익명(), 'productionWorkDocuments', id), header(2)));
+    });
+    it('헤더 버전 없이 행 수정·삭제하거나 오래된 버전으로 덮어쓰지 못한다', async () => {
+      await seed();
+      await assertFails(updateDoc(doc(태백직원(), 'productionWorkDocumentLines', id + '__a'), { productionQty: 2000 }));
+      await assertFails(deleteDoc(doc(태백직원(), 'productionWorkDocumentLines', id + '__a')));
+      await assertFails(setDoc(doc(태백직원(), 'productionWorkDocuments', id), header(1)));
+    });
+    it('행 교체를 원자 처리하고 실패한 교체는 기존 문서를 유지한다', async () => {
+      await seed();
+      const db = 태백직원();
+      const invalid = writeBatch(db);
+      invalid.set(doc(db, 'productionWorkDocuments', id), header(2));
+      invalid.delete(doc(db, 'productionWorkDocumentLines', id + '__a'));
+      invalid.set(doc(db, 'productionWorkDocumentLines', id + '__b'), { ...line('b', 2), companyId: 'punghoe' });
+      await assertFails(invalid.commit());
+      expect((await getDoc(doc(db, 'productionWorkDocuments', id))).data()?.revision).toBe(1);
+      expect((await getDoc(doc(db, 'productionWorkDocumentLines', id + '__a'))).exists()).toBe(true);
+      const valid = writeBatch(db);
+      valid.set(doc(db, 'productionWorkDocuments', id), header(2));
+      valid.delete(doc(db, 'productionWorkDocumentLines', id + '__a'));
+      valid.set(doc(db, 'productionWorkDocumentLines', id + '__b'), line('b', 2));
+      await assertSucceeds(valid.commit());
+      expect((await getDoc(doc(db, 'productionWorkDocumentLines', id + '__a'))).exists()).toBe(false);
+      expect((await getDoc(doc(db, 'productionWorkDocumentLines', id + '__b'))).data()?.documentRevision).toBe(2);
+    });
+  });
+
+
   describe('미로그인·익명은 아무것도 못 한다', () => {
     it('미로그인은 못 읽는다', async () => {
       await assertFails(getDoc(doc(미로그인(), 'orders', 'o-taebaek')));

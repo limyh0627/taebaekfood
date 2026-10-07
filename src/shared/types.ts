@@ -931,6 +931,7 @@ export interface FixedCostEntry {
 }
 
 export interface FixedCostTemplate {
+  statementType?: '매출' | '매입' | '비용';
   /**
    * 어느 회사 템플릿인가.
    *

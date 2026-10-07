@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { nextDocNo, issuedMs, rowStamp, timeOfLocal, stampFor, claimDocNo, releaseDocNo, resetDocNoClaims } from './voucherStamp';
 
 /**
@@ -64,6 +62,7 @@ describe('같은 시각이면 끊은 순서', () => {
   });
 });
 
+// 예약 발행의 날짜·번호·재시도는 functions/src/dailyAutoVoucher.emulator.test.ts에서 실제 transaction으로 검증한다.
 describe('원장 한 줄의 자리', () => {
   it('전표일 + 그날 시각으로 만든다', () => {
     const iso = new Date('2026-08-19T17:04:08').toISOString();
@@ -85,36 +84,6 @@ describe('원장 한 줄의 자리', () => {
   it('도장이 없으면 그날 맨 앞', () => {
     expect(timeOfLocal(undefined)).toBe('00:00:00');
     expect(rowStamp('2026-08-19')).toBe('2026-08-19T00:00:00');
-  });
-});
-
-/**
- * **스케줄러도 같은 규칙을 써야 한다.**
- *
- * `functions/` 는 별도 빌드라 앱 소스를 import 못 한다 — 그래서 `nextDocNo` 와
- * **같은 규칙이 손으로 한 벌 더** 들어가 있다. 한쪽만 고치면 조용히 갈린다.
- *
- * 실제로 갈려 있었다(2026-09-03 발견). 앱은 2026-08-21 에 `YYMMDD-NN` 으로 바꿨는데
- * functions 는 옛 방식(`그 달 전표 개수 + 1` → `2026-09-0001`)에 그대로 있었다.
- * 개수 기반이라 전표를 하나 지우면 지워진 번호를 다시 쓴다 —
- * `2026-08-0216` 이 두 전표에 붙어 있는 게 그 자국이다.
- */
-describe('스케줄러(functions)가 앱과 같은 번호 규칙을 쓰나', () => {
-  const SRC = readFileSync(resolve(__dirname, '../../functions/src/index.ts'), 'utf8');
-
-  it('**옛 방식(개수 + 1)이 남아 있지 않다**', () => {
-    expect(SRC).not.toContain('monthCount');
-    expect(SRC).not.toMatch(/docNo: `\$\{ym\}-/);
-  });
-
-  it('그날 쓰인 가장 큰 번호를 찾아 +1 한다 — 앱의 nextDocNo 와 같은 규칙', () => {
-    expect(SRC).toContain('dayHead');
-    expect(SRC).toContain('maxNo');
-    expect(SRC).toMatch(/docNo: `\$\{dayHead\}\$\{String\(maxNo \+ 1\)\.padStart\(\d, '0'\)\}`/);
-  });
-
-  it('그날 것만 본다 — 달 전체를 세면 옛 방식으로 되돌아간다', () => {
-    expect(SRC).toContain("where('tradeDate', '==', today)");
   });
 });
 

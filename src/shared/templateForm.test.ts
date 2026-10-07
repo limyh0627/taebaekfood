@@ -278,7 +278,7 @@ describe('거래처가 붙은 템플릿의 미리보기', () => {
     const ls = templateJournalLines(t({ accountCode: '819', partnerId: 'p1', amount: 1_268_550, taxExempt: true }));
     expect(ls.map(l => [l.side, l.code, l.amount])).toEqual([
       ['차변', '819', 1_268_550],
-      ['대변', '251', 1_268_550],
+      ['대변', '253', 1_268_550],
     ]);
     const s = 합(ls);
     expect(s.차).toBe(s.대);
@@ -289,7 +289,7 @@ describe('거래처가 붙은 템플릿의 미리보기', () => {
     expect(ls.map(l => [l.side, l.code, l.amount])).toEqual([
       ['차변', '819', 1_000_000],
       ['차변', '135', 100_000],
-      ['대변', '251', 1_100_000],
+      ['대변', '253', 1_100_000],
     ]);
     const s = 합(ls);
     expect(s.차).toBe(s.대);

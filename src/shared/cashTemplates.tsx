@@ -1,6 +1,7 @@
+import { templateStatementType, canAutoStatement, type TemplateStatementType } from './templateStatementType';
 import React, { useMemo, useState } from 'react';
 import type { AccountCode, FixedCostTemplate } from './types';
-import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
+import { payableCodeFor, AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { lineAmount } from './lineAmount';
 import { STANDARD_ACCOUNT } from './accountChart';
 import ModalShell from './components/ModalShell';
@@ -53,6 +54,7 @@ export const DIR_HINT: Record<VoucherDir, string> = {
 };
 
 export interface CashTemplate {
+  statementType?: TemplateStatementType;
   id: string;
   label: string;
   /** 돈이 언제 움직이냐 — 지금(출금·입금) · 나중에(줄돈·받을돈) · 안 움직임(대체) */
@@ -255,6 +257,7 @@ export function filterTemplates(
       partnerId: t.partnerId,
       partnerName: t.partnerName,
       taxExempt: t.taxExempt,
+      statementType: t.statementType,
       builtin: t.builtin,
       group: t.group,
       favorite: t.favorite,
@@ -291,11 +294,11 @@ export function templateAccrRows(
 ): { name: string; accountCode?: string; price: string; side: '차변' | '대변' }[] {
   if (isCashDir(t.dir) || t.dir === '회사이체') return [{ name: '', price: '', side: '차변' }];
   // 분개 양식이 있으면 **그대로 편다** — 계정도 차·대도 템플릿이 안다. 사용자는 금액만 넣는다.
-  if (t.transferLines?.length) {
+  if (t.transferLines?.length && (!t.statementType || t.statementType === '비용')) {
     return t.transferLines.map(l => ({
       name: l.name || t.itemName || t.label,
       accountCode: l.accountCode,
-      price: t.amount ? String(t.amount) : '',
+      price: t.amount && canAutoStatement({ ...t, statementType: '비용' }) ? String(t.amount) : '',
       side: l.side,
     }));
   }
@@ -525,10 +528,11 @@ export function templateJournalLines(
      * 예전엔 그걸 모르고 한 줄만 그려서, 멀쩡한 템플릿에 "차·대가 안 맞는다"고 붙었다.
      * 과세면 부가세 줄까지 선다 — 금액은 부가세 포함 총액으로 본다.
      */
-    if (t.partnerId && t.accountCode) {
+    if (templateStatementType(t) !== '비용' && t.partnerId && t.accountCode) {
       const { gross, supply, tax } = lineAmount(1, amt, t.taxExempt);
       const other = { code: t.accountCode, label: t.itemName ?? '' };
-      return t.dir === '받을돈'
+      const payable = payableCodeFor([t.accountCode]);
+      return templateStatementType(t) === '매출'
         ? [
             { side: '차변' as const, code: AR, label: '외상매출금', amount: gross },
             { side: '대변' as const, ...other, amount: supply },
@@ -537,7 +541,7 @@ export function templateJournalLines(
         : [
             { side: '차변' as const, ...other, amount: supply },
             ...(tax ? [{ side: '차변' as const, code: VAT_RECEIVABLE, label: '부가세대급금', amount: tax }] : []),
-            { side: '대변' as const, code: AP, label: '외상매입금', amount: gross },
+            { side: '대변' as const, code: payable, label: payable === AP ? '외상매입금' : '미지급금', amount: gross },
           ];
     }
     // 대체 — 양식이 있으면 그대로. 없으면 한 줄뿐이라 상대변을 사용자가 넣어야 한다.

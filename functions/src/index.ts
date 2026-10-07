@@ -2,6 +2,8 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
+import { valueInventory } from './shared/inventoryValuation';
+import { assertReleaseActive, releaseGateRef } from './releaseGate';
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -20,6 +22,17 @@ const REGION = 'asia-northeast3';
 export { extractOrder } from './extractOrder';
 export { employeeLogin } from './employeeLogin';
 export { editIssuedStatementCommand } from './editIssuedStatementCommand';
+export { issueNumberedVoucher } from './voucherIssue';
+export { issueTradeStatementCommand } from './tradeStatementIssue';
+export { issueOemFeeVoucherCommand } from './oemFeeVoucher';
+export { receiveOemFinishedGoodsCommand } from './oemReceiptCommand';
+export { recordPartnerPaymentCommand } from './partnerPaymentCommand';
+export { recordLoanMovementCommand } from './loanMovementCommand';
+export { mutateVoucherCommand } from './voucherMutationCommand';
+export { mutateManualSettlementCommand } from './manualSettlementCommand';
+export { processGeneralStockReturnCommand } from './processReturnCommand';
+export { savePayrollDraftCommand, issuePayrollVoucherCommand } from './payrollVoucher';
+import { issueScheduledVoucher } from './autoVoucherCommand';
 
 // 아이디 찾기: 이름 + 연락처가 일치하는 계정의 username 반환
 export const findUsername = onCall({ region: REGION }, async (request) => {
@@ -85,6 +98,9 @@ export const monthlyInventorySnapshot = onSchedule(
     nextDay.setDate(kst.getDate() + 1);
     const isLastDay = nextDay.getDate() === 1;
     if (!isLastDay) return;
+    const startingRelease = await releaseGateRef(db).get();
+    const releaseId = startingRelease.data()?.releaseId;
+    assertReleaseActive(startingRelease, releaseId);
 
     const year = kst.getFullYear();
     const month = kst.getMonth() + 1;
@@ -108,29 +124,24 @@ export const monthlyInventorySnapshot = onSchedule(
      *              BOM 롤업을 여기 또 옮겨 적으면 갈릴 자리만 하나 더 는다.
      */
     const itemsSnap = await db.collection('items').get();
-    const 회사별 = new Map<string, number>();
-    for (const doc of itemsSnap.docs) {
-      const data = doc.data();
-      const stock: number = Number(data.stock) || 0;
-      const cost: number = Number(data.cost) || 0;
-      if (!stock || !cost) continue;
-      //  회사가 안 붙은 옛 품목은 태백 것으로 본다(앱의 companyOf 와 같다)
-      const co: string = data.companyId ?? 'taebaek';
-      회사별.set(co, (회사별.get(co) ?? 0) + stock * cost);   // 음수도 그대로 더한다
-    }
-    //  회사를 안 쓰는 곳에서도 태백 스냅샷은 늘 서야 한다
-    if (!회사별.has('taebaek')) 회사별.set('taebaek', 0);
+    const 회사별 = valueInventory(itemsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id })), yearMonth);
 
-    for (const [co, value] of 회사별) {
+    for (const { companyId: co, value } of 회사별) {
       //  문서 id 규칙은 앱의 invSnapDocId 와 같다 — 태백은 옛 문서 이름을 그대로 쓴다
       const id = co === 'taebaek' ? `inv-snap-${yearMonth}` : `inv-snap-${co}-${yearMonth}`;
       const ref = db.collection('inventorySnapshots').doc(id);
-      if ((await ref.get()).exists) {
+      const created = await db.runTransaction(async tx => {
+        const releaseSnap = await tx.get(releaseGateRef(db));
+        assertReleaseActive(releaseSnap, releaseId);
+        if ((await tx.get(ref)).exists) return false;
+        tx.create(ref, { id, yearMonth, value, companyId: co, recordedAt: new Date().toISOString() });
+        return true;
+      });
+      if (!created) {
         console.log(`Snapshot ${id} already exists, skipping.`);
         continue;
       }
-      await ref.set({ id, yearMonth, value: Math.round(value), companyId: co, recordedAt: new Date().toISOString() });
-      console.log(`Inventory snapshot saved: ${id} = ${Math.round(value)}원`);
+      console.log(`Inventory snapshot saved: ${id} = ${value}원`);
     }
   }
 );
@@ -145,118 +156,38 @@ export const monthlyInventorySnapshot = onSchedule(
 // **금액이 정해진 것만** 나간다(amount > 0). 매달 다른 전기세를 자동으로 만들면
 // 틀린 숫자가 장부에 남는다 — 그런 건 템플릿만 두고 손으로 발행한다.
 //
-// 규칙은 앱과 같아야 해서 src/shared/autoVoucher.ts와 같은 판정을 여기 옮겨 적었다.
-// (functions는 별도 빌드라 앱 소스를 import 못 한다. 고칠 땐 양쪽을 같이 고쳐야 한다.)
+// 발행조건·금액·세액·초안은 autoVoucherDraft 계약 시험으로 앱과 대조하고,
+// 번호와 저장은 앱 발행과 같은 issueVoucher transaction을 쓴다.
 // ─────────────────────────────────────────────────────────────────────────
 export const dailyAutoVoucher = onSchedule(
   { schedule: '0 22 * * *', timeZone: 'UTC', region: REGION },
   async () => {
+    const releaseSnap = await releaseGateRef(db).get();
+    const releaseId = releaseSnap.data()?.releaseId;
+    assertReleaseActive(releaseSnap, releaseId);
     const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const y = kst.getUTCFullYear();
     const m = kst.getUTCMonth() + 1;
     const d = kst.getUTCDate();
     const ym = `${y}-${String(m).padStart(2, '0')}`;
     const today = `${ym}-${String(d).padStart(2, '0')}`;
-    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
-
     const tplSnap = await db.collection('fixedCostTemplates').get();
-    let created = 0;
-
+    let processed = 0;
     for (const doc of tplSnap.docs) {
-      const t = doc.data() as Record<string, any>;
-      // 옛 템플릿은 태백 자료로 이관됐고 새 템플릿은 반드시 회사를 가진다. 서버가 만든
-      // 전표도 같은 회사 경계를 가져야 강화된 규칙 뒤 클라이언트에서 다시 읽을 수 있다.
-      const companyId = t.companyId === 'punghoe' ? 'punghoe' : 'taebaek';
-      const id = doc.id;
-      if (!t.autoIssue || !t.accountCode) continue;
-      if (!(Number(t.amount) > 0)) continue;
-      if (t.startYm && ym < t.startYm) continue;
-      if (t.endYm && ym > t.endYm) continue;
-
-      const day = Math.min(Math.max(Number(t.issueDay ?? 1), 1), lastDay);
-      if (`${ym}-${String(day).padStart(2, '0')}` !== today) continue;
-
-      // 갈래 하나로 정한다 — 출금·입금은 자금전표, 줄돈·받을돈·대체는 전표
-      const dir: string = t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
-      const isCash = dir === '출금' || dir === '입금';
-      // 비현금 갈래는 거래처가 있어야 자동으로 낼 수 있다 —
-      // 거래처가 있으면 매입전표(상대변 251이 자동), 없으면 차·대를 직접 세워야 해서 손으로만.
-      if (!isCash && !t.partnerId) {
-        console.warn(`[autoVoucher] ${t.name}: 거래처 없는 대체는 자동 발행 안 함`);
-        continue;
+      const template: Parameters<typeof issueScheduledVoucher>[1] = { ...doc.data(), id: doc.id };
+      try {
+        const outcome = await issueScheduledVoucher(db, template, ym, today, releaseId);
+        if ('skip' in outcome) {
+          if (template.autoIssue && outcome.skip !== '발행일 아님') console.warn(`[autoVoucher] ${doc.id}: ${outcome.skip}`);
+          continue;
+        }
+        processed++;
+        console.log(`[autoVoucher] ${today} ${doc.id}: ${outcome.result.docNo}`);
+      } catch (error) {
+        console.error(`[autoVoucher] ${today} ${doc.id}: 발행 실패`, error);
       }
-
-      const key = `AUTO-${id}-${ym}`;
-      const amount = Number(t.amount);
-
-      if (!isCash) {
-        const ref = db.collection('issuedStatements').doc(key);
-        if ((await ref.get()).exists) continue;
-        const exempt = !!t.taxExempt;
-        const supply = exempt ? amount : Math.round(amount / 1.1);
-        const tax = exempt ? 0 : amount - supply;
-        /*
-         * 문서번호 — **그날(YYMMDD) 쓰인 가장 큰 번호 + 1.**  `260901-001`
-         *
-         * 앱은 2026-08-21(커밋 1a421f5)에 이 규칙으로 바꿨는데 **여기만 안 바꿨다.**
-         * 그래서 스케줄러가 만든 정기 전표만 옛 형식(`2026-09-0001`)으로 나온다.
-         * 옛 방식은 '그 달 전표 개수 + 1'이라 —
-         *   · 전표를 하나 지우면 개수가 줄어 **지워진 번호를 다시 쓴다.**
-         *   · 실제로 `2026-08-0216` 이 두 전표에 붙어 있다.
-         *
-         * 위 주석대로 functions 는 앱 소스를 import 못 한다.
-         * `shared/voucherStamp.ts` 의 `nextDocNo` 와 **같은 규칙을 손으로 옮겨 둔 것**이다.
-         * 한쪽을 고치면 반드시 다른 쪽도 고쳐야 한다.
-         */
-        const dayHead = `${today.slice(2).replace(/-/g, '')}-`;
-        const daySnap = await db.collection('issuedStatements').where('tradeDate', '==', today).get();
-        let maxNo = 0;
-        daySnap.forEach(doc => {
-          const no = String(doc.data().docNo ?? '');
-          if (!no.startsWith(dayHead)) return;
-          const tail = no.slice(dayHead.length);
-          if (/^[0-9]+$/.test(tail)) maxNo = Math.max(maxNo, Number(tail));
-        });
-        await ref.set({
-          id: key,
-          companyId,
-          issuedAt: new Date().toISOString(),
-          tradeDate: today,
-          type: dir === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
-          partnerId: t.partnerId,
-          partnerName: t.partnerName ?? '',
-          orderId: key,
-          docNo: `${dayHead}${String(maxNo + 1).padStart(3, '0')}`,
-          totalSupply: supply,
-          totalTax: tax,
-          totalAmount: amount,
-          items: [{
-            name: t.name, spec: '', qty: 1, price: amount,
-            supply, tax, total: amount,
-            isTaxExempt: exempt,
-            accountCode: t.accountCode,
-          }],
-        });
-      } else {
-        const ref = db.collection('cashEntries').doc(key);
-        if ((await ref.get()).exists) continue;
-        await ref.set({
-          id: key,
-          companyId,
-          date: today,
-          cashAccountId: '',
-          dir,
-          amount,
-          accountCode: t.accountCode,
-          ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
-          note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
-          createdAt: new Date().toISOString(),
-        });
-      }
-      created++;
-      console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${dir})`);
     }
-    console.log(`[autoVoucher] ${today} — ${created}건 발행`);
+    console.log(`[autoVoucher] ${today} — ${processed}건 처리`);
   }
 );
 
