@@ -2910,6 +2910,13 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - 백업/근거/검증: outputs/gimbapdam-unlock-20261007/{before,evidence,verification}.json. scripts/fix-gimbapdam-inventory-lock-20261007.mts --undo는 이후 주문 변경이 없을 때만 복원. dry 기본, 재적용은 주문 원본 대조로 차단.
 - 최초 적용은 저장 문서 id와 조사용 id의 중복 비교로 쓰기 전에 중단. 비교 수정 후 적용 및 별도 재조회 검증 완료. Hosting 변경 없음.
 
+## 2026-10-07 — 대출·급여 원자 명령 양사 전환
+
+- 사용자 직접 승인: 첫 적용월 “둘 다 2026년 10월부터”, 전환 “양사 모두 활성화”. 검증 코드9c7872f7 기준 서버 대출·급여 명령 두 개·Rules·양앱 Hosting 배포 종료0. 실제 서버 소스57/57 일치·변경 Function 정확2개, Rules SHA와 화면 파일 일치 확인.
+- 최신 원본·버전 백업 후 회사별 조건부 transaction으로 appMeta의 loanMovementCutover_taebaek/punghoe에 companyId/enabled/legacyWritersBlocked/auditPassed를 설정하고 payrollIssueCutover_taebaek/punghoe를 companyId/firstYearMonth=2026-10으로 생성했다. 정확4문서이며 금융·카운터 쓰기0이다.
+- 별도 재조회에서 네 gate가 적용 영수증과 일치하고 계약·연결현금·급여대장·과거 급여전표·직원·계좌·계정·release·감사 operation의 읽은 값과 버전 모두 보존됨을 확인했다. 원금·과거 금액 정정과 신규 급여 발행은 하지 않았다. 태백10/7 급여 표시 출금의 귀속월은 미확정으로 보존하며 구형8·9월 대장을 자동 이관하지 않는다.
+- 비공개 원본·승인·적용·검증은 work/todo022-{loan,payroll}-cutover-final-*.json, *-approval-*.json, *-apply-*.json, *-after-*.json, todo022-cutover-independent-verification.json. GitHub에 원본 백업을 올리지 않는다. undo는 별도 승인과 적용 뒤 문서·감사 집합/버전 불변 조건을 요구한다.
+
 ## 2026-10-07 — 생산 로트 정합성·출고 원복 실패 정정
 
 - 사용자 승인: 생산 시 숫자 재고에 대응하는 로트 생성, 기존 완제품·수량 로트 정합성 정정, 해피유통 탈피 주문의 잠금 해제 및 출고 재고·로트 복원, 수정 배포·GitHub 푸시.
