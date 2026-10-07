@@ -113,16 +113,19 @@ const CompanyCategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {},
     const next = !(r?.hidden);
     const n = usage[`type:${key}`] ?? 0;
     if (next && n > 0 && !await appConfirm(`"${taxo.labelOf(key)}"에 품목이 ${n}개 있습니다.\n숨기면 등록 화면·필터에서 안 보이지만 품목과 재고는 그대로입니다.\n숨길까요?`)) return;
+    if (!loadingRequest.current.active) return;
     setBusy(true);
     try {
       if (r && !r.id.startsWith('tmp-')) {
         await updateItem(COL, r.id, { hidden: next });
+        if (!loadingRequest.current.active) return;
         setRows(rs => rs.map(x => x.id === r.id ? { ...x, hidden: next } : x));
       } else {
         const id = await addItem(COL, { kind: 'type', key, label: taxo.labelOf(key), order: CATEGORY_KEYS.indexOf(key as never), hidden: next, companyId });
+        if (!loadingRequest.current.active) return;
         setRows(rs => [...rs, { id: String(id), kind: 'type', key, label: taxo.labelOf(key), hidden: next } as TaxonomyRow]);
       }
-    } finally { setBusy(false); }
+    } finally { if (loadingRequest.current.active) setBusy(false); }
   };
   const resetTypeName = async (key: string) => {
     const r = typeRow(key);
@@ -161,9 +164,10 @@ const CompanyCategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {},
       ? `"${r.label}"을(를) 쓰는 품목이 ${n}개 있습니다.\n분류만 지우고 품목은 그대로 둡니다 — 그 품목들은 이 값 없이 남습니다.\n지울까요?`
       : `"${r.label}"을(를) 지울까요?`;
     if (!await appConfirm(msg)) return;
+    if (!loadingRequest.current.active) return;
     setBusy(true);
-    try { await deleteItem(COL, r.id); setRows(rs => rs.filter(x => x.id !== r.id)); }
-    finally { setBusy(false); }
+    try { await deleteItem(COL, r.id); if (!loadingRequest.current.active) return; setRows(rs => rs.filter(x => x.id !== r.id)); }
+    finally { if (loadingRequest.current.active) setBusy(false); }
   };
   const moveRow = async (r: TaxonomyRow, dir: -1 | 1, kind: 'subtype' | 'category') => {
     const cur = kind === 'subtype' ? subRows : catRows;

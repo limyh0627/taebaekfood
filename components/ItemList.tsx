@@ -890,7 +890,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
   //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
   const commitStockEdit = async (product: Item, val: number, addStockUnits = 0, targetLotId?: string, options?: { minStock?: number; operationId?: string; inputs?: OrderUnitInputs }): Promise<boolean> => {
-    const inputs = options?.inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+    const inputs = options?.inputs ?? orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
     if (isNaN(val) || val < 0) return false;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
@@ -967,7 +967,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   //  예전엔 옛 `unpackTo` 필드만 봤는데 BOM으로 옮기면서 그 필드가 전부 지워져
   //  (박스 품목 137건 중 보유 0건) 버튼이 한 번도 안 떴다.
   const unpackBox = async (product: Item) => {
-    const inputs = { bom: getBomIndex(), pack: getPackIndex() };
+    const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
     const uc = unpackComponent(product, inputs);
     if (!uc) return;                                   // 박스 품목이 아니면 아무것도 안 한다
     const target = items.find(i => i.id === uc.itemId);
@@ -3775,7 +3775,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       {editable && (
                         <button onClick={async () => {
                             if (!product) return;
-                            const inputs = { bom: getBomIndex(), pack: getPackIndex() };
+                            const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
                             // 재고 뷰에서는 '재고분만' 0으로 — 작업완료분은 주문에 물려 있으니 남긴다.
                             // 전체 뷰에서는 현재고를 통째로 0으로 만들어 작업완료분까지 날아간다 → 미리 경고.
                             //   (실제로 이 버튼으로 작업완료 900개가 통째로 지워진 사고가 있었음)
