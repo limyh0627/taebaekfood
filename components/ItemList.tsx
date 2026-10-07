@@ -3923,5 +3923,5 @@ const ItemListContent: React.FC<ItemListProps> = ({
   );
 };
 
-const ItemList: React.FC<ItemListProps> = props => <ItemListContent key={props.companyId ?? 'taebaek'} {...props} />;
+const ItemList: React.FC<ItemListProps> = props => <ItemListContent key={companyOf(props)} {...props} />;
 export default ItemList;

@@ -22,6 +22,6 @@ describe('용역과 재고 화면의 경계', () => {
     expect(list).toContain('taxo.types.filter(t => isPhysicalInventoryItem({ type: t.key }))');
     expect(list).toContain('result = inventoryItems.filter(p => !p.archived);');
     expect(valuation).toContain('companyOf(p) === companyId && isPhysicalInventoryItem(p)');
-    expect(app).toContain('allItems.filter(p => isPhysicalInventoryItem(p)');
+    expect(app).toContain("onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, companyId");
   });
 });

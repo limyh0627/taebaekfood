@@ -12,6 +12,13 @@ const 줄 = (over: Partial<OrderItem> = {}): OrderItem =>
   ({ itemId: 'p1', name: '참기름 골드', quantity: 5, price: 0, ...over } as OrderItem);
 
 describe('출고할 때 빠지는 양', () => {
+  it('숫자 재고가 충분해도 실제 추적 로트가 부족하면 확인창에 부족량을 준다', () => {
+    const product = 품목({ stock: 46, lots: [{ id: 'l', qtyRemaining: 3, status: 'active' }] as any });
+    expect(shipDeductions({ items: [줄({ quantity: 5 }), 줄({ quantity: 2 })] }, [product])).toEqual([
+      expect.objectContaining({ before: 46, after: 39, qty: 7, lotBefore: 3, lotAfter: -4 }),
+    ]);
+    expect(shipDeductions({ items: [줄()] }, [품목()])[0]?.lotBefore).toBeUndefined();
+  });
   it('보통 완제품은 재고 단위로 뺀다', () => {
     expect(shipQtyOfLine(줄({ quantity: 5 }), 품목())).toBe(5);
   });

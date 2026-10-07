@@ -20,7 +20,7 @@ describe('재고 목록 표시 규칙', () => {
 
   it('입고와 반품은 한 목록에서 유형·상태로 걸러 보고 상태 버튼은 확인창을 거친다', () => {
     expect(src).toContain("type FlowTypeFilter = '전체' | '입고' | '반품'");
-    expect(src).toContain("type FlowStatusFilter = '전체' | '예정' | '대기' | '완료'");
+    expect(src).toContain("type FlowStatusFilter = '전체' | '예정' | '대기' | '이력'");
     expect(src).toContain('발주를 입고대기로 옮길까요?');
     expect(src).toContain('품목을 입고 완료 처리할까요?');
     expect(src).toContain('requestTransition(row)');

@@ -374,6 +374,7 @@ export interface OrderInventorySnapshot {
   bomLines: { parentItemId: string; childItemId: string; quantity: number }[];
   rawConsumedLots?: Order['rawConsumedLots'];
   productConsumedLots?: Order['productConsumedLots'];
+  productProducedLots?: { itemId: string; lotId: string; qty: number }[];
   rawLedgerIds?: string[];
 }
 

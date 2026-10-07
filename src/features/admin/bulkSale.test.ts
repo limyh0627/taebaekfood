@@ -9,7 +9,7 @@ import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble'
  * 건너뛰었다. "연결된 품목이면 다 뜬다"로 바꾸면서 길이 열렸고, 안 막으면
  * **팔아도 재고·로트·원장이 하나도 안 움직인다.**
  */
-const dbx = vi.hoisted(() => ({ stock: new Map<string, number>(), orders: new Map<string, any>(), ledger: new Map<string, any>() }));
+const dbx = vi.hoisted(() => ({ lots: new Map<string, any[]>(), stock: new Map<string, number>(), orders: new Map<string, any>(), ledger: new Map<string, any>() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (ref: any, data: any) => { dbx.ledger.set(ref.id, data); },
@@ -18,8 +18,13 @@ vi.mock('firebase/firestore', () => ({
     ? { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }),
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }),
-    update: (ref: any, data: any) => { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); },
+    get: async (ref: any) => ref.col === 'orders'
+      ? { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }
+      : { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) ?? [] }) },
+    update: (ref: any, data: any) => {
+      if (ref.col === 'orders') Object.assign(dbx.orders.get(ref.id), data);
+      else { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); if (data.lots !== undefined) dbx.lots.set(ref.id, data.lots); }
+    },
   }),
 }));
 const { createOrderStockEngine } = await import('./orderStockEngine');
@@ -43,8 +48,8 @@ const 주문 = (qty: number): Order => ({
 } as unknown as Order);
 
 function harness(items: Item[], order: Order) {
-  for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
-  dbx.orders.set(order.id, { ...order });
+  for (const i of items) { dbx.stock.set(i.id, i.stock ?? 0); dbx.lots.set(i.id, [...(i.lots ?? [])]); }
+  dbx.orders.set(order.id, order);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
@@ -62,7 +67,7 @@ function harness(items: Item[], order: Order) {
   return { engine, lotKg };
 }
 
-beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
+beforeEach(() => { dbx.lots.clear(); dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
 
 /** 부자재(비닐 등)도 팔 수 있다 — 완제품이 아니라고 재고가 안 빠지면 안 된다. */
 const 비닐 = (): Item => ({ id: 'vinyl', name: '1KG-볶음참깨', type: 'submaterial', unit: '개', stock: 500 } as unknown as Item);

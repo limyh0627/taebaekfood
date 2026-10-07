@@ -2166,7 +2166,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         갈때 음수재고 나오는 경우는 막아야겠다 출고완료버튼 못 누르게 막아두고").
         전에는 경고만 하고 눌러 지나갈 수 있었는데, 한 번 음수가 되면 그 품목 재고는
         실사를 하기 전까지 아무도 못 믿는 숫자가 된다. */
-    const 모자란것 = 빠질것.filter(row => row.after < 0);
+    const 모자란것 = 빠질것.filter(row => row.after < 0 || (row.lotAfter !== undefined && row.lotAfter < 0));
     setConfirmModal({
       title: '출고완료', tone: 'sky', icon: Truck,
       message: 빠질것.length ? '재고가 차감됩니다. 출고완료로 전환할까요?' : '출고완료로 전환할까요?',
@@ -2181,10 +2181,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
           <div className="divide-y divide-slate-100">
             {빠질것.map(row => {
-              const 모자람 = row.after < 0;
+              const 모자람 = row.after < 0 || (row.lotAfter !== undefined && row.lotAfter < 0);
               return (
                 <div key={row.itemId} className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 px-3 py-1.5 text-[11px] ${모자람 ? 'bg-rose-50' : ''}`}>
-                  <span className="min-w-0 truncate font-bold text-slate-700" title={row.name}>{row.name}</span>
+                  <span className="min-w-0 truncate font-bold text-slate-700" title={row.name}>{row.name}{row.lotBefore !== undefined && <span className={`block text-[10px] ${row.lotAfter! < 0 ? 'text-rose-600' : 'text-slate-500'}`}>로트 {수(row.lotBefore)}{row.unit} · 출고 후 {수(row.lotAfter!)}{row.unit}</span>}</span>
                   <span className="whitespace-nowrap text-right font-black tabular-nums text-slate-500">−{수(row.qty)}{row.unit}</span>
                   <span className={`whitespace-nowrap text-right font-black tabular-nums ${모자람 ? 'text-rose-600' : 'text-slate-800'}`}>{수(row.after)}{row.unit}</span>
                 </div>
@@ -2200,7 +2200,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       //  설명 쪽에 섞으면 표에 묻혀 왜 단추가 회색인지 모른다.
       footerNote: 모자란것.length ? (
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-600">
-          재고가 모자라 출고할 수 없습니다 — {모자란것.map(row => row.name).join(', ')}
+          재고 또는 로트가 모자라 출고할 수 없습니다 — {모자란것.map(row => row.name).join(', ')}
           <span className="mt-0.5 block font-medium text-rose-500">재고를 채우거나 주문 수량을 고친 뒤 다시 눌러 주세요.</span>
         </p>
       ) : undefined,

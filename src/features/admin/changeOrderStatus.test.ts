@@ -22,21 +22,31 @@ const dbx = vi.hoisted(() => ({
   조정: 0,
   /** getDoc 을 느리게 — 겹쳐 들어오는 호출을 만들려면 안에서 시간이 흘러야 한다 */
   느린읽기: false,
+  txWrites: [] as any[],
+  audits: new Map<string, any>(),
+  lots: new Map<string, any[]>(),
 }));
 vi.mock('firebase/firestore', () => ({
-  doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
+  doc: (_db: unknown, col?: string, id?: string) => ({ col, id, path: `${col}/${id}` }),
   setDoc: async () => {},
   deleteDoc: async () => {},
   getDoc: async (ref: any) => {
     if (dbx.느린읽기) await new Promise(r => setTimeout(r, 10));
     if (ref.col === 'items') {
-      return { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) };
+      return { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) };
     }
     return { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) };
   },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => (dbx.조정++, fn)({
-    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }),
-    update: (ref: any, data: any) => { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); },
+    get: async (ref: any) => ref.col === 'items' ? ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) })
+      : ref.col === 'orders' ? ({ exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) })
+        : ({ exists: () => dbx.audits.has(ref.id), data: () => dbx.audits.get(ref.id) }),
+    set: (ref: any, data: any) => dbx.audits.set(ref.id, data),
+    update: (ref: any, data: any) => {
+      if (ref.col === 'orders') { Object.assign(dbx.orders.get(ref.id) ?? {}, data); dbx.txWrites.push(data); }
+      else if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock);
+      if (ref.col === 'items' && data.lots !== undefined) dbx.lots.set(ref.id, data.lots);
+    },
   }),
 }));
 
@@ -57,7 +67,7 @@ const 주문 = (over: Partial<Order> = {}): Order =>
 function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => []) {
   setBomIndex(buildBomIndex(items, []));
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
-  dbx.orders.set(order.id, { ...order });
+  dbx.orders.set(order.id, order);
   const 알림: any[] = [];
   const 상태이력: any[] = [];
   const 주문쓰기: any[] = [];
@@ -71,7 +81,7 @@ function harness(items: Item[], order: Order, formula: () => { raw: string; rati
       if (col === 'orders') {
         주문쓰기.push(data);
         Object.assign(order, data);
-        dbx.orders.set(id, { ...(dbx.orders.get(id) ?? {}), ...data });
+        dbx.orders.set(id, order);
       }
       return undefined;
     },
@@ -82,11 +92,11 @@ function harness(items: Item[], order: Order, formula: () => { raw: string; rati
     },
   });
   //  문을 지난 횟수 = 상태를 쓴 횟수. 막힌 호출은 아무것도 안 쓰고 돌아간다.
-  const 상태쓴수 = (st: OrderStatus) => 주문쓰기.filter(w => w.status === st).length;
+  const 상태쓴수 = (st: OrderStatus) => [...주문쓰기, ...dbx.txWrites].filter(w => w.status === st).length;
   return { engine, 알림, 상태이력, 주문쓰기, 조정: () => dbx.조정, 생산기록: () => 생산기록, 상태쓴수 };
 }
 
-beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.조정 = 0; dbx.느린읽기 = false; });
+beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.audits.clear(); dbx.lots.clear(); dbx.조정 = 0; dbx.느린읽기 = false; dbx.txWrites.length = 0; });
 
 describe('①② 같은 주문이 겹쳐 들어오면 한 번만 통과시킨다', () => {
   it('**끝나기 전에 또 들어온 호출은 그냥 돌려보낸다** — 수입들기름 3배가 이렇게 났다', async () => {
@@ -254,14 +264,29 @@ describe('상태 변경 감사 이력', () => {
         shipment: { capturedAt: '2026-09-16T02:00:00.000Z', stockDeltas: [{ itemId: 'p1', delta: -10 }], bomLines: [], productConsumedLots: [] },
       },
     } as never);
-    const { engine, 주문쓰기 } = harness([상품()], order);
+    const { engine } = harness([{ ...상품(), stock: 0 }], order);
 
     await engine.changeOrderStatus('o1', OrderStatus.DISPATCHED, undefined, { approvedBy: '테스트 관리자' });
 
-    expect(dbx.stock.get('p1')).toBe(110);
-    expect(주문쓰기.at(-1)).toMatchObject({ status: OrderStatus.DISPATCHED, shippedOut: false });
+    expect(dbx.stock.get('p1')).toBe(10);
+    expect(order).toMatchObject({ status: OrderStatus.DISPATCHED, shippedOut: false, inventoryOperation: null });
     expect(order.producedAt).toBe('2026-09-16T01:00:00.000Z');
   });
+});
+
+it('출고 로트 검증 전에 멈춘 실패는 잠금을 남기지 않고 재시도할 수 있다', async () => {
+  const order = 주문({ status: OrderStatus.DISPATCHED, producedAt: '2026-09-01', producedUnits: [] } as never);
+  const { engine } = harness([상품()], order);
+  dbx.lots.set('p1', [{ id: 'l', status: 'active', qtyRemaining: 1, unitKg: 1 }]);
+  await expect(engine.changeOrderStatus('o1', OrderStatus.SHIPPED)).rejects.toThrow('로트 재고가 부족');
+  expect(order.inventoryOperation).toBeNull();
+  expect(order.status).toBe(OrderStatus.DISPATCHED);
+  expect(dbx.stock.get('p1')).toBe(100);
+  expect(dbx.lots.get('p1')?.[0].qtyRemaining).toBe(1);
+  dbx.lots.set('p1', [{ id: 'l', status: 'active', qtyRemaining: 10, unitKg: 1 }]);
+  await engine.changeOrderStatus('o1', OrderStatus.SHIPPED);
+  expect(order.status).toBe(OrderStatus.SHIPPED);
+  expect(dbx.stock.get('p1')).toBe(90);
 });
 
 describe('자체 생산 완제품의 원료 근거', () => {

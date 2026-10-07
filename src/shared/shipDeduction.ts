@@ -48,6 +48,8 @@ export interface ShipDeductionRow {
   before: number;
   /** 빼고 난 재고 — 음수면 모자란 것이다 */
   after: number;
+  lotBefore?: number;
+  lotAfter?: number;
 }
 
 /**
@@ -69,9 +71,15 @@ export function shipDeductions(
     if (있던것) {
       있던것.qty = Math.round((있던것.qty + qty) * 1000) / 1000;
       있던것.after = Math.round((있던것.before - 있던것.qty) * 1000) / 1000;
+      if (있던것.lotBefore !== undefined) 있던것.lotAfter = Math.round((있던것.lotBefore - 있던것.qty) * 1000) / 1000;
       continue;
     }
     const before = Number(product.stock ?? 0);
+    const tracked = product.lots?.some(lot => lot.qtyRemaining != null);
+    const lotBefore = tracked ? Math.round(Math.max(0, Math.min(
+      (product.lots ?? []).reduce((sum, lot) => sum + (lot.status === 'active' ? Math.max(0, Number(lot.qtyRemaining ?? 0)) : 0), 0),
+      (product.lots ?? []).reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0),
+    )) * 1000) / 1000 : undefined;
     모음.set(product.id, {
       itemId: product.id,
       name: product.name,
@@ -80,6 +88,7 @@ export function shipDeductions(
       qty: Math.round(qty * 1000) / 1000,
       before,
       after: Math.round((before - qty) * 1000) / 1000,
+      ...(lotBefore !== undefined ? { lotBefore, lotAfter: Math.round((lotBefore - qty) * 1000) / 1000 } : {}),
     });
   }
   return [...모음.values()];

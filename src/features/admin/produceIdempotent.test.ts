@@ -17,7 +17,7 @@ import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble'
 
 // ── 가짜 Firestore ────────────────────────────────────────────────────────────
 const dbx = vi.hoisted(() => ({
-  stock: new Map<string, number>(),   // items.stock — 트랜잭션이 읽고 쓴다
+  lots: new Map<string, any[]>(), stock: new Map<string, number>(),   // items.stock — 트랜잭션이 읽고 쓴다
   orders: new Map<string, any>(),     // orders — getDoc이 읽는다(화면 상태가 아니라 DB)
   ledger: new Map<string, any>(),     // rawMaterialLedger — id가 같으면 덮어써진다(진짜와 같게)
 }));
@@ -29,8 +29,13 @@ vi.mock('firebase/firestore', () => ({
     ? { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id) }) }),
-    update: (ref: any, data: any) => { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); },
+    get: async (ref: any) => ref.col === 'orders'
+      ? { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }
+      : { exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) ?? [] }) },
+    update: (ref: any, data: any) => {
+      if (ref.col === 'orders') Object.assign(dbx.orders.get(ref.id), data);
+      else { if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock); if (data.lots !== undefined) dbx.lots.set(ref.id, data.lots); }
+    },
   }),
 }));
 
@@ -54,8 +59,8 @@ const 주문 = (qty: number): Order => ({
 
 /** 엔진 한 벌. items·order는 앱의 리렌더를 흉내내 그 자리에서 고쳐진다. */
 function harness(items: Item[], order: Order, runnerOverride?: any) {
-  for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
-  dbx.orders.set(order.id, { ...order });
+  for (const i of items) { dbx.stock.set(i.id, i.stock ?? 0); dbx.lots.set(i.id, [...(i.lots ?? [])]); }
+  dbx.orders.set(order.id, order);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
@@ -78,7 +83,7 @@ function harness(items: Item[], order: Order, runnerOverride?: any) {
   return { engine, lotKg, lots: lotState };
 }
 
-beforeEach(() => { dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
+beforeEach(() => { dbx.lots.clear(); dbx.stock.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
 
 const 원장줄 = () => [...dbx.ledger.values()].filter(e => e.material === '생들기름');
 
@@ -131,6 +136,10 @@ describe('같은 주문을 두 번 생산 처리해도 원료는 한 번만 빠�
     const 마지막차감 = 원장줄().filter(x => x.kind === 'consume').at(-1);
     expect(마지막차감?.used).toBe(249.48);
     expect(dbx.orders.get(order.id)?.rawInventoryAttempt).toBe(2);
+    expect(dbx.stock.get('bottle')).toBe(900);
+    expect(dbx.lots.get('bottle')?.reduce((sum, lot) => sum + Number(lot.qtyRemaining ?? 0), 0)).toBe(900);
+    expect(dbx.orders.get(order.id)?.inventorySnapshots.production.stockDeltas).toContainEqual({ itemId: 'bottle', delta: 900 });
+    expect(dbx.orders.get(order.id)?.inventorySnapshots.production.productProducedLots).toHaveLength(1);
   });
 
   it('세 번을 눌러도 한 번과 같다', async () => {

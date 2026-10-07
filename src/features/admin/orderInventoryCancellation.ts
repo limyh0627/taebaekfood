@@ -5,6 +5,7 @@ import { cancellationRawCommands } from './orderRawInventory';
 import { OrderStatus, companyOf, type Order, type OrderInventorySnapshot, type Item } from '../../shared/types';
 import { liveItemInventoryReservations } from './orderItemStock';
 import { restoreLotsByQty } from '../../shared/lotUtils';
+import { reverseProductionProductLots } from './orderProductLots';
 
 export type CancellationAction = 'cancel-shipment' | 'delete';
 export class CancellationBlocked extends Error {
@@ -77,7 +78,7 @@ export function planOrderCancellation(order: Order, action: CancellationAction) 
     rawOriginals.set(trace.operationId!, trace.rawItemId!);
   }
   const lotTraces = action === 'cancel-shipment'
-    ? order.inventorySnapshots?.shipment?.productConsumedLots ?? order.productConsumedLots ?? [] : [];
+    ? order.inventorySnapshots?.shipment?.productConsumedLots ?? order.productConsumedLots ?? [] : snapshots.flatMap(snapshot => snapshot.productConsumedLots ?? []);
   return { recordOnly: false, deltas, rawOriginals, lotTraces, snapshots };
 }
 
@@ -95,9 +96,15 @@ export function prepareCancelledItem(order: Order, item: Item, delta: number,
   const reservations = action === 'cancel-shipment' && delta > 0
     ? [...others, { orderId: order.id, operationId: order.inventoryOperation?.id ?? 'shipment-cancel', qty: delta, state: 'allocated' as const, createdAt: new Date().toISOString() }] : others;
   const patch: Record<string, unknown> = { ...(delta !== 0 ? { stock: next } : {}), inventoryReservations: reservations };
-  if (action === 'delete' && delta < 0 && (item.lots?.length ?? 0) > 0) block('PRODUCTION_LOT_EVIDENCE_MISSING', [item.id]);
+  if (action === 'delete' && delta < 0 && (item.lots?.length ?? 0) > 0) {
+    const snapshots = order.itemInventory ? Object.values(order.itemInventory).filter(row => row.applied).map(row => row.production)
+      : [order.inventorySnapshots?.production];
+    const produced = snapshots.flatMap(snapshot => snapshot?.productProducedLots ?? []).filter(row => row.itemId === item.id);
+    if (Math.abs(produced.reduce((sum, row) => sum + row.qty, 0) + delta) > 0.000001) block('PRODUCTION_LOT_EVIDENCE_MISSING', [item.id]);
+    patch.lots = reverseProductionProductLots(produced)[0]?.apply(item.lots ?? []).lots;
+  }
   const takes = traces.filter(trace => trace.itemId === item.id);
-  if (action === 'cancel-shipment') {
+  if (action === 'cancel-shipment' || takes.length > 0) {
     if (delta > 0 && (item.lots?.length ?? 0) > 0 && Math.abs(takes.reduce((sum, trace) => sum + trace.qty, 0) - delta) > 0.000001) block('SHIPMENT_LOT_EVIDENCE_MISMATCH', [item.id]);
     for (const trace of takes) if (!trace.lotId || trace.qty <= 0 || !Number.isFinite(trace.qty)
       || !item.lots?.some(lot => lot.id === trace.lotId)) block('SHIPMENT_LOT_EVIDENCE_MISSING', [item.id]);
@@ -284,7 +291,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       };
       buffer.set(auditRef, auditData);
       if (ticket.action === 'delete') writes.set(orderRef.path, { ref: orderRef, method: 'delete' });
-      else buffer.update(orderRef, { status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [],
+      else buffer.update(orderRef, { status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [], shipmentConfirmedBy: null, shipmentConfirmedAt: null,
         inventorySnapshots: { ...order.inventorySnapshots, shipment: { ...order.inventorySnapshots!.shipment!, stockDeltas: [], productConsumedLots: [] } }, inventoryOperation: null });
       const bytes = new TextEncoder().encode(JSON.stringify([...writes.values()].map(write => ({ path: write.ref.path, data: write.data })))).byteLength;
       const oversizedDocument = [...writes.values()].some(write => write.data && new TextEncoder().encode(JSON.stringify(write.data)).byteLength > 512 * 1024);

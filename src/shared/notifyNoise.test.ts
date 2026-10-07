@@ -42,8 +42,8 @@ describe('재고량은 알림으로 안 보낸다', () => {
   });
 
   it('부족한 출고는 오류로 거절하고 호출자에게 돌려준다', () => {
-    expect(품목재고경계).toContain('throw new Error(`${row.item!.name} 재고가 부족합니다.');
-    expect(엔진).toMatch(/await applyItemStockDeltas\(deltas, productLotMutations, reservationContext\)[\s\S]*?catch \(error\) \{[\s\S]*?throw error;/);
+    expect(품목재고경계).toContain('throw new OrderInventoryPreconditionError(`${row.item!.name} 재고가 부족합니다.');
+    expect(엔진).toMatch(/await applyItemStockDeltas\(deltas, combineProductLotMutations\(productLotMutations\), reservationContext[\s\S]*?catch \(error\) \{[\s\S]*?throw error;/);
   });
 
   it('어긋남 알림은 그대로 살아 있다 — 이건 사고 신호다', () => {

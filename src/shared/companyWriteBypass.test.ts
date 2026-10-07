@@ -27,6 +27,10 @@ const reviewedTransactionWriters = new Set([
   'src/features/admin/oemReceiptInventory.ts',
   // 가공비 전표와 OEM 카드 링크를 같은 회사 검증 후 한 트랜잭션에 넣는다.
   'src/features/admin/oemFeeStatement.ts',
+  // 전표·연결 문서·사용자 claim의 회사 대조 후 거래처 정산 메타를 함께 쓴다.
+  'src/shared/services/deleteIssuedStatementService.ts',
+  // 회사별 작업순서 메타를 검증하며 workOrderItems 조회도 동일 회사로 한정한다.
+  'src/shared/services/workOrderResetService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

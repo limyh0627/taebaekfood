@@ -63,6 +63,8 @@ export function aggregateOrderLineInventory(
     bomLines,
     rawConsumedLots,
     rawLedgerIds: [...new Set(active.flatMap(state => state.production.rawLedgerIds ?? []))],
+    productProducedLots: active.flatMap(state => state.production.productProducedLots ?? []),
+    productConsumedLots: active.flatMap(state => state.production.productConsumedLots ?? []),
   };
   return {
     producedAt: active.map(state => state.completedAt || state.production.capturedAt).sort()[0],

@@ -2,7 +2,7 @@ import { doc, runTransaction, type Firestore } from 'firebase/firestore';
 import { bomOf, type BomIndex } from '../../shared/bomIndex';
 import { pruneDepletedLots } from '../../shared/lotUtils';
 import type { Item, ItemInventoryReservation, Order } from '../../shared/types';
-import type { OrderProductLotMutation } from './orderProductLots';
+import { OrderInventoryPreconditionError, type OrderProductLotMutation } from './orderProductLots';
 
 export interface OrderItemStockDeps {
   db: Firestore;
@@ -153,7 +153,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         const otherQty = (activeByItem.get(itemId) ?? []).reduce((sum, row) => sum + Number(row.qty), 0);
         if (qty > 0 && stock3(currentStock - otherQty - qty) < 0) {
           const item = allItems.find(candidate => candidate.id === itemId);
-          throw new Error(`${item?.name ?? itemId} 재고가 부족합니다. 현재 ${currentStock}, 다른 주문 예약 ${stock3(otherQty)}, 이번 주문 ${qty}`);
+          throw new OrderInventoryPreconditionError(`${item?.name ?? itemId} 재고가 부족합니다. 현재 ${currentStock}, 다른 주문 예약 ${stock3(otherQty)}, 이번 주문 ${qty}`);
         }
         if (qty > 0) quantities.set(itemId, qty);
       });
@@ -221,7 +221,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     deltas: ReadonlyMap<string, number>,
     lotMutations: readonly OrderProductLotMutation[] = [],
     reservation?: OrderStockReservation,
-    orderMutation?: { orderId: string; patch: Record<string, unknown> },
+    orderMutation?: { orderId: string; patch: Record<string, unknown> | ((consumedLots: NonNullable<Order['productConsumedLots']>) => Record<string, unknown>) },
   ): Promise<NonNullable<Order['productConsumedLots']>> => {
     const lotMutationByItem = new Map<string, OrderProductLotMutation>();
     for (const mutation of lotMutations) {
@@ -242,7 +242,12 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         lotMutation: lotMutationByItem.get(itemId),
         item: allItems.find(item => item.id === itemId),
       }));
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {
+      if (orderMutation) await runTransaction(db, async tx => {
+        tx.update(doc(db, 'orders', orderMutation.orderId), stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch));
+      });
+      return [];
+    }
 
     const missingCatalog = rows.filter(row => !row.item).map(row => row.itemId);
     if (missingCatalog.length > 0) {
@@ -261,12 +266,12 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       const updates = rows.map((row, index) => {
         const data = snapshots[index]!.data() ?? {};
         const before = Number(data.stock ?? 0);
-        const lotResult = row.lotMutation?.apply(Array.isArray(data.lots) ? data.lots : []);
+        const lotResult = row.lotMutation?.apply(Array.isArray(data.lots) ? data.lots : [], before);
         const patch: { stock?: number; lots?: unknown[]; inventoryReservations?: ItemInventoryReservation[] } = {};
         if (row.delta !== 0) {
           patch.stock = stock3(before + row.delta);
           if (row.delta < 0 && patch.stock < 0) {
-            throw new Error(`${row.item!.name} 재고가 부족합니다. 현재 ${before}, 차감 ${stock3(-row.delta)}`);
+            throw new OrderInventoryPreconditionError(`${row.item!.name} 재고가 부족합니다. 현재 ${before}, 차감 ${stock3(-row.delta)}`);
           }
         }
         if (lotResult) {
@@ -276,7 +281,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
             Number(lot.qtyRemaining ?? 0) < 0 &&
             Number(lot.qtyRemaining ?? 0) < (beforeLots.get(lot.id) ?? 0));
           if (worsened) {
-            throw new Error(`${row.item!.name} 로트 재고가 부족합니다: ${worsened.lotNo ?? worsened.id}`);
+            throw new OrderInventoryPreconditionError(`${row.item!.name} 로트 재고가 부족합니다: ${worsened.lotNo ?? worsened.id}`);
           }
         }
         if (lotResult) patch.lots = stripUndefined(pruneDepletedLots(lotResult.lots));
@@ -311,7 +316,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       }
       // 품목별 완료에서는 재고 숫자와 그 근거인 주문 줄 스냅샷이 한 transaction이어야 한다.
       // 둘 사이에서 브라우저가 닫히면 재시도 때 같은 BOM을 또 뺄 수 있다.
-      if (orderMutation) tx.update(doc(db, 'orders', orderMutation.orderId), orderMutation.patch);
+      if (orderMutation) tx.update(doc(db, 'orders', orderMutation.orderId), stripUndefined(typeof orderMutation.patch === 'function'
+        ? orderMutation.patch(updates.flatMap(row => row.consumedLots)) : orderMutation.patch));
       return updates.map(({ itemId, delta, before, after, consumedLots }) => ({ itemId, delta, before, after, consumedLots }));
     });
 

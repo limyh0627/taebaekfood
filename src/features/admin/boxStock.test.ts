@@ -21,21 +21,22 @@ const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
  * 재고는 **DB에서 읽어 더한다**(트랜잭션) — 화면 상태에 더해 덮어쓰면 앞선 쓰기가 날아간다.
  * 그래서 여기 가짜 DB도 진짜처럼 자기가 들고 있는 값을 읽어 준다.
  */
-const store = vi.hoisted(() => ({ stock: new Map<string, number>(), orders: new Map<string, any>() }));
+const store = vi.hoisted(() => ({ stock: new Map<string, number>(), orders: new Map<string, any>(), lots: new Map<string, any[]>() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
   getDoc: async (ref: any) => ref.col === 'items'
-    ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id) }) }
+    ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
     : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ref.col === 'items' ? ({
-      exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id) }),
+      exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }),
     }) : ({ exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) }),
     update: (ref: any, data: any) => {
       if (ref.col === 'items' && data.stock !== undefined) store.stock.set(ref.id, data.stock);
-      if (ref.col === 'orders') store.orders.set(ref.id, { ...(store.orders.get(ref.id) ?? {}), ...data });
+      if (ref.col === 'items' && data.lots !== undefined) store.lots.set(ref.id, data.lots);
+      if (ref.col === 'orders') Object.assign(store.orders.get(ref.id) ?? {}, data);
     },
   }),
 }));
@@ -83,7 +84,9 @@ function harness(
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
   store.orders.clear();
-  store.orders.set(order.id, { ...order });
+  store.orders.set(order.id, order);
+  store.lots.clear();
+  for (const i of items) store.lots.set(i.id, [...(i.lots ?? [])]);
   for (const i of items) store.stock.set(i.id, i.stock ?? 0);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const rawLedger = new Map<string, Record<string, any>>();
@@ -115,7 +118,7 @@ function harness(
       if (col === 'orders') {
         주문쓰기.push({ id, data });
         Object.assign(order, data);
-        store.orders.set(id, { ...(store.orders.get(id) ?? {}), ...data });
+        store.orders.set(id, order);
       }
       return undefined;
     },
@@ -374,6 +377,8 @@ describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
     expect(stockOf('bottle')).toBe(90);
     expect(stockOf('ready')).toBe(20);
     expect(stockOf('oil')).toBe(10);
+    expect(store.lots.get('oil')?.reduce((sum, lot) => sum + lot.qtyRemaining, 0)).toBe(10);
+    expect(savedOrder().itemInventory?.['line-a']?.production.productProducedLots).toHaveLength(1);
     expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: true, itemId: 'oil' });
     expect(savedOrder().itemInventory?.['line-b']).toBeUndefined();
     expect(savedOrder().status).toBe(OrderStatus.PROCESSING);
@@ -384,6 +389,7 @@ describe('품목 체크 한 줄마다 BOM을 반영한다', () => {
     expect(stockOf('bottle')).toBe(100);
     expect(stockOf('ready')).toBe(30);
     expect(stockOf('oil')).toBe(0);
+    expect(store.lots.get('oil')?.reduce((sum, lot) => sum + lot.qtyRemaining, 0)).toBe(0);
     expect(savedOrder().itemInventory?.['line-a']).toMatchObject({ applied: false, attempt: 1 });
     expect(savedOrder().producedAt).toBe('');
   });

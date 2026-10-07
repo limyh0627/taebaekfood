@@ -20,6 +20,7 @@ const dbx = vi.hoisted(() => ({
   reservations: new Map<string, any[]>(),
   orders: new Map<string, any>(),
   ledger: new Map<string, any>(),
+  lots: new Map<string, any[]>(),
 }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
@@ -28,15 +29,17 @@ vi.mock('firebase/firestore', () => ({
   //  items도 읽는다 — 재고 판정이 DB를 보게 됐으므로 진짜와 같게 흉내낸다.
   getDoc: async (ref: any) => (ref.col === 'items'
     ? { exists: () => dbx.stock.has(ref.id), data: () => ({
-        stock: dbx.stock.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
+        stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
       }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }),
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
     get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({
-      stock: dbx.stock.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
+      stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
     }) }),
     update: (ref: any, data: any) => {
+      if (ref.col === 'orders') { Object.assign(dbx.orders.get(ref.id) ?? {}, data); return; }
       if (data.stock !== undefined) dbx.stock.set(ref.id, data.stock);
+      if (data.lots !== undefined) dbx.lots.set(ref.id, data.lots);
       if (data.inventoryReservations !== undefined) dbx.reservations.set(ref.id, data.inventoryReservations);
     },
   }),
@@ -60,7 +63,8 @@ const 주문 = (id: string, qty: number): Order => ({
 
 function harness(items: Item[], orders: Order[]) {
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
-  for (const o of orders) dbx.orders.set(o.id, { ...o });
+  for (const i of items) dbx.lots.set(i.id, [...(i.lots ?? [])]);
+  for (const o of orders) dbx.orders.set(o.id, o);
   const lotState = new Map<string, any[]>(items.map(i => [i.id, [...((i as any).lots ?? [])]]));
   const runRawJob = rawInventoryJobTestDouble({ items, lots: lotState, stock: dbx.stock, ledger: dbx.ledger });
   const engine = createOrderStockEngine({
@@ -85,9 +89,29 @@ function harness(items: Item[], orders: Order[]) {
   return { engine, lotKg };
 }
 
-beforeEach(() => { dbx.stock.clear(); dbx.reservations.clear(); dbx.orders.clear(); dbx.ledger.clear(); });
+beforeEach(() => { dbx.stock.clear(); dbx.reservations.clear(); dbx.orders.clear(); dbx.ledger.clear(); dbx.lots.clear(); });
 
 describe('앞 주문이 깎은 재고를 뒤 주문이 다시 쓰지 못한다', () => {
+  it('자체 생산 로트는 숫자 증가와 함께 생기고 즉시 출고할 수 있다', async () => {
+    const a = 주문('신규생산', 5);
+    const { engine } = harness([낱개(0), 벌크()], [a]);
+    await engine.reconcileOrderStock(a, OrderStatus.DISPATCHED);
+    expect(dbx.stock.get('loose')).toBe(5);
+    expect(dbx.lots.get('loose')?.reduce((sum, lot) => sum + lot.qtyRemaining, 0)).toBe(5);
+    expect(a.inventorySnapshots?.production?.productProducedLots).toHaveLength(1);
+    await engine.reconcileOrderStock(a, OrderStatus.SHIPPED);
+    expect(dbx.stock.get('loose')).toBe(0);
+    expect(dbx.lots.get('loose')?.reduce((sum, lot) => sum + lot.qtyRemaining, 0)).toBe(0);
+    expect(a.productConsumedLots?.reduce((sum, trace) => sum + trace.qty, 0)).toBe(5);
+  });
+  it('생산 로트를 만드는 첫 작업은 기존 숫자 재고를 이월로 보존한다', async () => {
+    const a = 주문('재고와생산', 5);
+    const { engine } = harness([낱개(3), 벌크()], [a]);
+    await engine.reconcileOrderStock(a, OrderStatus.DISPATCHED);
+    expect(dbx.lots.get('loose')?.map(lot => [lot.supplierName, lot.qtyRemaining])).toEqual([['이월', 3], ['자체 생산', 2]]);
+    await engine.reconcileOrderStock(a, OrderStatus.SHIPPED);
+    expect(dbx.stock.get('loose')).toBe(0);
+  });
   it('낱개 30개로 5개 + 30개를 내보내도 재고는 음수가 안 된다', async () => {
     const items = [낱개(30), 벌크()];
     const a = 주문('훈장골', 5), b = 주문('현대유통', 30);

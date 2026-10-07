@@ -2902,3 +2902,12 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - 생산 완료 job3/원장5는 실패 이전. 출고 snapshot/소진내역 없음, 실패 감사 stockAdjustments0. 주문 및 관련 문서를 transaction에서 원본 대조한 뒤 적용. 주문 DISPATCHED·생산 증거·품목 stock/lot/예약 보존, 재고쓰기0.
 - 백업/근거/검증: outputs/gimbapdam-unlock-20261007/{before,evidence,verification}.json. scripts/fix-gimbapdam-inventory-lock-20261007.mts --undo는 이후 주문 변경이 없을 때만 복원. dry 기본, 재적용은 주문 원본 대조로 차단.
 - 최초 적용은 저장 문서 id와 조사용 id의 중복 비교로 쓰기 전에 중단. 비교 수정 후 적용 및 별도 재조회 검증 완료. Hosting 변경 없음.
+
+## 2026-10-07 — 생산 로트 정합성·출고 원복 실패 정정
+
+- 사용자 승인: 생산 시 숫자 재고에 대응하는 로트 생성, 기존 완제품·수량 로트 정합성 정정, 해피유통 탈피 주문의 잠금 해제 및 출고 재고·로트 복원, 수정 배포·GitHub 푸시.
+- `fix-production-lot-stock-20261007.mts`: 태백 8품목 lots·stocktakeAnchors만 현재 숫자 재고 기준으로 정정. 숫자 stock 변경0. 이월/정정이며 과거 생산 또는 실측으로 표시하지 않는다. dry/apply 종료0 및 전체 품목 재조회 검증. 양사 수량 관리 대상 후속 읽기 재검사 불일치0.
+- `fix-daenong-inventory-lock-20261007.mts`: 대농 ORD-261005-003의 실패 전 품목 문서 버전·예약·출고 기록을 대조하고 inventoryOperation 한 필드만 해제. 출고 취소·재고 복원은 실행하지 않았다.
+- `fix-happy-inventory-lock-20261007.mts`: 해피유통 탈피 ORD-261002-006도 같은 문서 버전 증거로 실패 잠금 한 필드만 해제.
+- `fix-happy-shipment-cancel-20261007.mts`: 공용 planOrderCancellation·prepareCancelledItem을 사용해 위 해피유통 주문의 출고 기록36박스를 숫자 재고0→36과 원래 로트0→36에 한 transaction으로 복원. 주문 SHIPPED→DISPATCHED·shippedOut false·잠금 null 및 완료 감사 함께 저장. dry/apply0·재조회 일치. 다른 해피유통 주문의 원료/부자재 부족 잠금은 수정하지 않았다.
+- 원본·검증·undo 자료는 로컬 `outputs/production-lot-stock-20261007/`, `outputs/daenong-unlock-20261007/`, `outputs/happy-unlock-20261007/`, `outputs/happy-shipment-cancel-20261007/`. GitHub에는 백업을 올리지 않는다. 각 스크립트 --undo는 현재 문서가 정정 직후와 같을 때만 원복하며 이후 정상 거래가 있으면 차단한다.
