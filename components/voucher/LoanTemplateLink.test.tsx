@@ -36,7 +36,7 @@ describe('계약 상환 연결', () => {
     state.loans.push({ ...loan, id: 'foreign', companyId: 'punghoe' }, { ...loan, id: 'long', accountCode: '293' });
     const u = userEvent.setup(); const { save } = view(); await pick(u);
     expect(screen.getByLabelText('대출 건 연결')).toHaveValue('l1');
-    expect(within(screen.getByLabelText('대출 건 연결')).getAllByRole('option').map(o => (o as HTMLOptionElement).value)).toEqual(['', 'l1']);
+    expect(within(screen.getByLabelText('대출 건 연결')).getAllByRole('option').map(o => (o as HTMLOptionElement).value)).toEqual(['', 'l1', 'long']);
     await u.click(screen.getByRole('button', { name: '저장' }));
     const entry = save.mock.calls[0][0];
     expect(entry.loanId).toBe('l1'); expect(entry.companyId).toBe('taebaek');
@@ -116,4 +116,24 @@ describe('계약 상환 연결', () => {
     await u.type(screen.getByPlaceholderText('이름·거래처·계정 검색'), '없음'); expect(screen.queryByRole('button', { name: /농협 상환/ })).toBeNull();
     expect(screen.getByRole('dialog')).toHaveClass('h-[80dvh]');
   });
+});
+
+it('상환 작성에서 같은 회사 장기 대출을 선택하면 원금 계정도 동기화한다', async () => {
+  state.loans = [loan, { ...loan, id: 'long', name: '중진공', accountCode: '293' }, { ...loan, id: 'foreign', companyId: 'punghoe', name: '다른 회사' }];
+  const u = userEvent.setup(); const { save } = view(); await pick(u);
+  await u.selectOptions(screen.getByLabelText('대출 건 연결'), 'long');
+  await u.click(screen.getByRole('button', { name: '저장' }));
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ loanId: 'long', lines: [expect.objectContaining({ accountCode: '293', amount: 1000 }), expect.objectContaining({ amount: 100 })] }));
+});
+it('풍회 템플릿의 단기 계정에서도 등록된 중진공 장기 대출을 연결한다', async () => {
+  state.loans = [{ ...loan, id: 'ph-long', companyId: 'punghoe', name: '풍회 중진공', accountCode: '293' }, loan];
+  const u = userEvent.setup(); const update = vi.fn();
+  render(<VoucherTemplateManager companyId="punghoe" templates={[template({ companyId: 'punghoe', loanId: '' })]} accountCodes={accounts} onUpdate={update} />);
+  await u.click(screen.getByRole('button', { name: '계약 상환 상세보기' }));
+  await u.click(screen.getByTitle('이름·묶음·금액·발행 방식 수정'));
+  const select = screen.getByLabelText('대출 건 연결');
+  expect(within(select).queryByRole('option', { name: /운전자금/ })).toBeNull();
+  await u.selectOptions(select, 'ph-long');
+  await u.click(screen.getByRole('button', { name: '저장' }));
+  expect(update).toHaveBeenCalledWith('t1', expect.objectContaining({ loanId: 'ph-long', loanCode: '293' }));
 });

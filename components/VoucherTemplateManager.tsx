@@ -438,13 +438,13 @@ export default function VoucherTemplateManager({
             {editTpl.mode === '상환' && <div>
               <label className="block text-xs font-bold text-slate-500">대출 건 연결</label>
               <select aria-label="대출 건 연결" value={form.loanId}
-                onChange={e => setForm(f => ({ ...f, loanId: e.target.value }))}
+                onChange={e => { const loan = loans.find(row => row.id === e.target.value && row.companyId === companyId); setForm(f => ({ ...f, loanId: e.target.value, ...(loan ? { loanCode: loan.accountCode } : {}) })); }}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm">
                 <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
                 {form.loanId && !matchingLoan(loans, companyId, form.loanId, form.loanCode) && (
                   <option value={form.loanId}>기존 연결 확인 필요 · 다시 선택</option>
                 )}
-                {loans.filter(loan => loan.companyId === companyId && loan.accountCode === form.loanCode).map(loan => (
+                {loans.filter(loan => loan.companyId === companyId).map(loan => (
                   <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>
                 ))}
               </select>

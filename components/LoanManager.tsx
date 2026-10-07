@@ -54,6 +54,8 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   const [editingLoan, setEditingLoan] = useState<LoanContract | null>(null);
   const [editDate, setEditDate] = useState('');
   const [editBalance, setEditBalance] = useState('');
+  const [editOpening, setEditOpening] = useState('');
+  const [editBasis, setEditBasis] = useState<'current' | 'opening'>('current');
   useEffect(() => { setAmountErrors({}); }, [showNew, action, editingLoan]);
   const changeLoanAmount = (input: HTMLInputElement, key: string, previous: string, setValue: (value: string) => void) => {
     // 부호·소수점을 지워 다른 금액으로 만들지 않고 입력 전체를 거절한다.
@@ -84,21 +86,29 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   const availableAccounts = cashAccounts.filter(a => a.active && a.type === '통장');
 
   let editPrincipal: number | undefined;
+  let editTarget = Number(editBalance);
   let editError = '';
   if (editingLoan) {
-    try { editPrincipal = loanOpeningPrincipalForBalance(editingLoan, cashEntries, editDate, parseMoneyInput(editBalance)); }
-    catch (error) { editError = error instanceof Error ? error.message : String(error); }
+    if (editBasis === 'opening') {
+      editTarget = loanBalance({ ...editingLoan, openingDate: editDate, openingPrincipal: Number(editOpening) }, cashEntries);
+    }
+    try {
+      if ((editBasis === 'opening' ? editOpening : editBalance) === '') throw new Error('원금 잔액을 입력하세요.');
+      editPrincipal = loanOpeningPrincipalForBalance(editingLoan, cashEntries, editDate, editTarget);
+    } catch (error) { editError = error instanceof Error ? error.message : String(error); }
   }
+  const editOpeningValue = editBasis === 'opening' ? editOpening : editPrincipal === undefined ? '' : String(editPrincipal);
+  const editBalanceValue = editBasis === 'current' ? editBalance : editOpening === '' ? '' : String(editTarget);
   const saveOpeningEdit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!editingLoan || busy || amountErrors.editBalance || editPrincipal === undefined) return;
+    if (!editingLoan || busy || amountErrors.editBalance || amountErrors.editOpening || editPrincipal === undefined) return;
     const original = editingLoan;
     const stillSelected = () => activeSelection.current.companyId === companyId && activeSelection.current.selectedId === original.id;
     setBusy(true);
     try {
-      if (!await appConfirm({ title: '대출 시작일·잔액 수정', message: `${editingLoan.name}의 시작일을 ${editDate}, 현재 원금 잔액을 ${won(parseMoneyInput(editBalance))}으로 수정할까요?`, confirmText: '저장' })) return;
+      if (!await appConfirm({ title: '대출 시작일·잔액 수정', message: `${editingLoan.name}의 시작일을 ${editDate}, 시작일 원금을 ${won(editPrincipal)}, 현재 원금 잔액을 ${won(editTarget)}으로 수정할까요?`, confirmText: '저장' })) return;
       if (!stillSelected()) return;
-      await updateLoanOpening(companyId, original, editDate, parseMoneyInput(editBalance));
+      await updateLoanOpening(companyId, original, editDate, editTarget);
       if (!stillSelected()) return;
       await refresh();
       if (stillSelected()) setEditingLoan(null);
@@ -189,22 +199,26 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
       </form>
     </ModalShell>}
     {selected && <ModalShell title={selected.name} subtitle={`${selected.lenderName} · ${selected.accountCode === '260' ? '단기차입금' : '장기차입금'}`} onClose={() => setSelectedId('')}>
-      <div className="space-y-4"><div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">현재 원금 잔액</p><p className="text-2xl font-black text-slate-900">{won(loanBalance(selected, cashEntries))}</p><p className="mt-1 text-xs text-slate-400">시작 {selected.openingDate} · {won(selected.openingPrincipal)}{selected.maturityDate ? ` · 만기 ${selected.maturityDate}` : ''}</p></div>
+      <div className="space-y-4"><div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">현재 원금 잔액</p><p className="text-2xl font-black text-slate-900">{won(loanBalance(selected, cashEntries))}</p><p className="mt-1 text-xs text-slate-400">시작일: {selected.openingDate} · 시작일 원금 잔액: {won(selected.openingPrincipal)}{selected.maturityDate ? ` · 만기 ${selected.maturityDate}` : ''}</p></div>
         <button className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-700" onClick={() => {
-          setEditDate(selected.openingDate); setEditBalance(String(loanBalance(selected, cashEntries))); setEditingLoan(selected);
-        }}>시작일·현재 잔액 수정</button>
+          setEditDate(selected.openingDate); setEditBalance(String(loanBalance(selected, cashEntries))); setEditOpening(String(selected.openingPrincipal)); setEditBasis('current'); setEditingLoan(selected);
+        }}>시작일·원금 수정</button>
         <div className="flex gap-2"><button className="flex-1 rounded-xl border border-indigo-200 px-3 py-2.5 text-sm font-bold text-indigo-700" onClick={() => { setDate(today()); setCashAccountId(defaultCashAccountId(availableAccounts, companyId)); setAction('차입'); }}>차입 기록</button><button className="flex-1 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white" onClick={() => { setDate(today()); setCashAccountId(defaultCashAccountId(availableAccounts, companyId)); setAction('상환'); }}>원금·이자 상환</button></div>
         <div><h3 className="mb-2 text-sm font-bold text-slate-700">거래 내역</h3>{rows.length === 0 ? <p className="py-4 text-center text-sm text-slate-400">연결된 전표가 없습니다.</p> : <div className="divide-y divide-slate-100 border-y border-slate-100">{[...rows].reverse().map(row => <div key={row.entry.id} className="flex items-center justify-between gap-2 py-3 text-sm"><div><p className="font-semibold text-slate-800">{row.entry.date} · {row.entry.note || row.entry.docNo || '자금전표'}</p><p className="text-xs text-slate-400">{row.entry.docNo || row.entry.id}</p></div><span className={row.principalDelta >= 0 ? 'font-bold text-indigo-600' : 'font-bold text-slate-700'}>{row.principalDelta > 0 ? '+' : ''}{won(row.principalDelta)}</span></div>)}</div>}</div>
       </div>
     </ModalShell>}
     {editingLoan && <ModalShell title={`${editingLoan.name} 시작일·잔액 수정`} subtitle="연결 거래를 반영해 시작 원금을 함께 맞춥니다" onClose={() => { if (!busy) setEditingLoan(null); }} layer={1100}>
       <form onSubmit={e => void saveOpeningEdit(e)} className="space-y-4">
-        <div><label htmlFor="loan-edit-date" className={label}>시작일</label><input id="loan-edit-date" type="date" className={field} value={editDate} disabled={busy} onChange={e => setEditDate(e.target.value)} required /></div>
-        <div><label htmlFor="loan-edit-balance" className={label}>현재 원금 잔액</label><input id="loan-edit-balance" type="text" inputMode="numeric" className={field} value={formatMoneyInput(editBalance)} disabled={busy} onChange={e => changeLoanAmount(e.currentTarget, 'editBalance', editBalance, setEditBalance)} aria-invalid={!!amountErrors.editBalance} required />
+        <div><label htmlFor="loan-edit-date" className={label}>시작일</label><input id="loan-edit-date" type="date" className={field} value={editDate} disabled={busy} onChange={e => { setEditBalance(String(editTarget)); setEditBasis('current'); setEditDate(e.target.value); setAmountErrors(current => ({ ...current, editOpening: '' })); }} required /></div>
+        <div><label htmlFor="loan-edit-opening" className={label}>시작일 원금 잔액</label><input id="loan-edit-opening" type="text" inputMode="numeric" className={field} value={formatMoneyInput(editOpeningValue)} disabled={busy} onChange={e => changeLoanAmount(e.currentTarget, 'editOpening', editOpeningValue, value => { setEditOpening(value); setEditBasis('opening'); setAmountErrors(current => ({ ...current, editBalance: '' })); })} aria-invalid={!!amountErrors.editOpening} required />
+          {amountErrors.editOpening && <p role="alert" className="mt-1 text-xs text-rose-600">{amountErrors.editOpening}</p>}
+        </div>
+        <div><label htmlFor="loan-edit-balance" className={label}>현재 원금 잔액</label><input id="loan-edit-balance" type="text" inputMode="numeric" className={field} value={editBalanceValue.startsWith('-') ? `-${formatMoneyInput(editBalanceValue.slice(1))}` : formatMoneyInput(editBalanceValue)} disabled={busy} onChange={e => changeLoanAmount(e.currentTarget, 'editBalance', editBalanceValue, value => { setEditBalance(value); setEditBasis('current'); setAmountErrors(current => ({ ...current, editOpening: '' })); })} aria-invalid={!!amountErrors.editBalance} required />
           {amountErrors.editBalance && <p role="alert" className="mt-1 text-xs text-rose-600">{amountErrors.editBalance}</p>}
         </div>
+        <p className="text-xs text-slate-500">시작일 원금과 현재 원금은 연결 거래를 반영해 함께 계산됩니다. 시작일만 바꾸면 현재 잔액을 유지하도록 시작 원금을 다시 계산합니다.</p>
         {editPrincipal !== undefined ? <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">시작 원금 미리보기: <strong>{won(editPrincipal)}</strong></p> : <p role="alert" className="text-sm text-rose-600">{editError}</p>}
-        <button disabled={busy || !!amountErrors.editBalance || editPrincipal === undefined} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? '저장 중…' : '수정 저장'}</button>
+        <button disabled={busy || !!amountErrors.editBalance || !!amountErrors.editOpening || editPrincipal === undefined} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? '저장 중…' : '수정 저장'}</button>
       </form>
     </ModalShell>}
     {selected && action && <ModalShell title={`${selected.name} ${action}`} subtitle="이 화면에서 발행한 전표는 해당 대출에 자동 연결됩니다" onClose={() => setAction(null)} layer={1100}>

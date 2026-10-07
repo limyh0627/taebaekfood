@@ -1243,11 +1243,11 @@ export default function VoucherComposer({
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 건 연결</label>
-                    <select aria-label="대출 건 연결" value={qpLoanId} onChange={e => { setQpLoanId(e.target.value); const loan = loans.find(row => row.id === e.target.value); if (loan?.partnerId) setQuickPayClientId(loan.partnerId); }}
+                    <select aria-label="대출 건 연결" value={qpLoanId} onChange={e => { setQpLoanId(e.target.value); const loan = loans.find(row => row.id === e.target.value && row.companyId === companyId); if (loan) setQpLoanCode(loan.accountCode); if (loan?.partnerId) setQuickPayClientId(loan.partnerId); }}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold">
                       <option value="">선택 안 함 — 대출별 잔액에 미반영</option>
                       {qpLoanId && !matchingLoan(loans, companyId, qpLoanId, qpLoanCode) && <option value={qpLoanId}>기존 연결 확인 필요 · 다시 선택</option>}
-                      {loans.filter(loan => loan.companyId === companyId && loan.accountCode === qpLoanCode).map(loan => <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>)}
+                      {loans.filter(loan => loan.companyId === companyId).map(loan => <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>)}
                     </select>
                     <p className="mt-1 text-xs text-slate-500">계약이 없으면 대출 관리에서 계약을 먼저 등록하세요.</p>
                   </div>

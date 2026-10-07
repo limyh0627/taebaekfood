@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import LoanManager from './LoanManager';
 import type { CashEntry } from '../src/shared/types';
@@ -21,7 +22,7 @@ beforeEach(() => { calls.fetch.mockReset().mockResolvedValue([loan]); calls.upda
 async function openEditor(cashEntries = entries) {
   const view = render(<LoanManager companyId="taebaek" cashEntries={cashEntries} cashAccounts={[]} partners={[]} onAddCashEntry={vi.fn()} />);
   fireEvent.click(await screen.findByRole('button', { name: /운전자금/ }));
-  fireEvent.click(screen.getByRole('button', { name: '시작일·현재 잔액 수정' }));
+  fireEvent.click(screen.getByRole('button', { name: '시작일·원금 수정' }));
   return { date: screen.getByLabelText('시작일'), balance: screen.getByLabelText('현재 원금 잔액'), rerender: view.rerender };
 }
 
@@ -88,11 +89,65 @@ it.each(['성공', '실패'])('이전 회사 저장의 늦은 %s는 새 회사 �
   calls.fetch.mockResolvedValue([otherLoan]);
   rerender(<LoanManager companyId="punghoe" cashEntries={[]} cashAccounts={[]} partners={[]} onAddCashEntry={vi.fn()} />);
   fireEvent.click(await screen.findByRole('button', { name: /풍회 대출/ }));
-  fireEvent.click(screen.getByRole('button', { name: '시작일·현재 잔액 수정' }));
+  fireEvent.click(screen.getByRole('button', { name: '시작일·원금 수정' }));
   await act(async () => { if (outcome === '성공') resolve(); else reject(new Error('태백 저장 실패')); });
   expect(screen.getByLabelText('시작일')).toHaveValue('2025-01-01');
   expect(screen.getByLabelText('현재 원금 잔액')).toHaveValue('30,000');
   expect(screen.getByRole('button', { name: '수정 저장' })).toBeEnabled();
   expect(calls.fetch).toHaveBeenCalledTimes(2);
   expect(calls.notice).not.toHaveBeenCalled();
+});
+
+
+it('시작 원금 직접 수정은 연결 원금만 반영해 현재잔액을 바꾸고 기존 API로 저장한다', async () => {
+  const { balance } = await openEditor();
+  const opening = screen.getByLabelText('시작일 원금 잔액');
+  expect(opening).toHaveValue('10,000');
+  fireEvent.change(opening, { target: { value: '20000' } });
+  expect(balance).toHaveValue('24,000');
+  fireEvent.change(balance, { target: { value: '30000' } });
+  expect(opening).toHaveValue('26,000');
+  fireEvent.click(screen.getByRole('button', { name: '수정 저장' }));
+  await waitFor(() => expect(calls.update).toHaveBeenCalledWith('taebaek', loan, loan.openingDate, 30_000));
+});
+
+
+it.each(['-1', '100.5', '9007199254740992'])('시작 원금의 잘못된 입력 %s는 저장을 막고 현재잔액을 보존한다', async value => {
+  const { balance } = await openEditor();
+  fireEvent.change(screen.getByLabelText('시작일 원금 잔액'), { target: { value } });
+  if (value !== '9007199254740992') expect(balance).toHaveValue('14,000');
+  expect(screen.getByRole('button', { name: '수정 저장' })).toBeDisabled();
+  expect(calls.update).not.toHaveBeenCalled();
+});
+
+it('시작일 변경은 현재 잔액을 유지하고 직접 입력 0원도 기존 거래로 현재액을 계산한다', async () => {
+  const { date, balance } = await openEditor();
+  fireEvent.change(screen.getByLabelText('시작일 원금 잔액'), { target: { value: '20000' } });
+  expect(balance).toHaveValue('24,000');
+  fireEvent.change(date, { target: { value: '2026-09-02' } });
+  expect(balance).toHaveValue('24,000');
+  expect(screen.getByLabelText('시작일 원금 잔액')).toHaveValue('25,000');
+  fireEvent.change(screen.getByLabelText('시작일 원금 잔액'), { target: { value: '500' } });
+  expect(balance).toHaveValue('-500');
+  expect(screen.getByRole('button', { name: '수정 저장' })).toBeDisabled();
+  fireEvent.change(balance, { target: { value: '24000' } });
+  fireEvent.change(date, { target: { value: '2026-09-01' } });
+  fireEvent.change(screen.getByLabelText('시작일 원금 잔액'), { target: { value: '0' } });
+  expect(balance).toHaveValue('4,000');
+  fireEvent.click(screen.getByRole('button', { name: '수정 저장' }));
+  await waitFor(() => expect(calls.update).toHaveBeenCalledWith('taebaek', loan, '2026-09-01', 4000));
+});
+
+
+it('상환 거래가 있어도 시작 원금을 비우고 한 자리씩 다시 입력할 수 있다', async () => {
+  const user = userEvent.setup();
+  const repayments: CashEntry[] = [{ ...entries[1], amount: 2000, lines: [{ accountCode: '293', amount: 2000 }] }];
+  const { balance } = await openEditor(repayments);
+  const opening = screen.getByLabelText('시작일 원금 잔액');
+  await user.clear(opening);
+  expect(opening).toHaveValue(''); expect(screen.getByRole('button', { name: '수정 저장' })).toBeDisabled();
+  await user.type(opening, '12000');
+  expect(opening).toHaveValue('12,000'); expect(balance).toHaveValue('10,000');
+  fireEvent.click(screen.getByRole('button', { name: '수정 저장' }));
+  await waitFor(() => expect(calls.update).toHaveBeenCalledWith('taebaek', loan, loan.openingDate, 10000));
 });
