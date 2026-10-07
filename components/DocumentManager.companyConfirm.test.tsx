@@ -41,3 +41,25 @@ it.each(['메모','대분류','중분류'] as const)('현재 회사 문서함 %s
 it.each(['메모','대분류','중분류'] as const)('현재 회사 문서함 %s 확인 취소는 저장하지 않는다',async action=>{
  const request=pending();dialog.appConfirm.mockReturnValue(request.promise);dialog.appPrompt.mockReturnValue(request.promise);await open(action);await act(async()=>request.resolve(action==='메모'?null:false));expect(service.updateItem).not.toHaveBeenCalled();expect(service.deleteItem).not.toHaveBeenCalled();
 });
+async function openAdd(action:'대분류'|'중분류') {
+ const cat={id:'cat-A',companyId:'taebaek',name:'자료',order:0,createdAt:'2026-10-01'};
+ service.fetchCollection.mockResolvedValue([cat]);service.subscribeToCollection.mockImplementation((collection:string,callback:(rows:unknown[])=>void)=>{callback(collection==='fileCabinetCategories'?[cat]:[]);return ()=>{};});
+ const view=render(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);
+ fireEvent.click(await screen.findByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'}));return view;
+}
+it.each(['대분류','중분류'] as const)('문서함 %s 추가의 늦은 완료가 새 회사 초안을 비우거나 폼을 닫지 않는다',async action=>{
+ const save=pending();service.addItem.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
+ fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'A 추가'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});expect(service.addItem).toHaveBeenCalledOnce();
+ view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'B 초안'}});await act(async()=>save.resolve('saved-A'));
+ expect(screen.getByPlaceholderText(placeholder)).toHaveValue('B 초안');
+});
+it.each(['대분류','중분류'] as const)('현재 회사 문서함 %s 추가는 정상 완료 후 입력창을 닫는다',async action=>{
+ const save=pending();service.addItem.mockReturnValue(save.promise);await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';
+ fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:' 새 분류 '}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});
+ expect(service.addItem).toHaveBeenCalledWith(action==='대분류'?'fileCabinetCategories':'fileCabinetSubCategories',expect.objectContaining({name:'새 분류',companyId:'taebaek',...(action==='중분류'?{category:'자료'}:{})}));
+ await act(async()=>save.resolve('saved'));expect(screen.queryByPlaceholderText(placeholder)).not.toBeInTheDocument();expect(screen.getByRole('button',{name:action==='대분류'?'대분류 추가':'중분류 추가'})).toBeInTheDocument();
+});
+it.each(['대분류','중분류'] as const)('문서함 %s 추가는 A→B→A 복귀 후에도 이전 완료로 초안을 지우지 않는다',async action=>{
+ const save=pending();service.addItem.mockReturnValue(save.promise);const view=await openAdd(action);const placeholder=action==='대분류'?'대분류명':'중분류명';fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'옛 요청'}});fireEvent.keyDown(screen.getByPlaceholderText(placeholder),{key:'Enter'});
+ view.rerender(<DocumentManager currentUser={{id:'B',name:'풍회',companyId:'punghoe'}} />);view.rerender(<DocumentManager currentUser={{id:'A',name:'태백',companyId:'taebaek'}} />);fireEvent.change(screen.getByPlaceholderText(placeholder),{target:{value:'새 세션 초안'}});await act(async()=>save.resolve('saved'));expect(screen.getByPlaceholderText(placeholder)).toHaveValue('새 세션 초안');
+});

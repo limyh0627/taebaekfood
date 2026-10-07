@@ -418,7 +418,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const PackLine = ({ product, stock }: { product: Item; stock: number }) => {
     //  **환산표에 있는 품목만** 그린다. 박스 SKU 는 재고가 이미 박스라 환산할 게 없다 —
     //  `unitsPerBoxOf` 를 쓰면 재고 3박스가 '(20개입)0B+3개'로 나온다.
-    const txt = packBreakdown(stock, packUnitsOf(product.id));
+    const txt = packBreakdown(stock, orderUnitInputs ? orderUnitInputs.pack.of(product.id) : packUnitsOf(product.id));
     if (!txt) return null;
     return <span className="block text-[9px] font-bold text-slate-400 leading-tight mt-0.5">환산: {txt}</span>;
   };
@@ -1196,7 +1196,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     const inList = new Set(filteredProducts.map(p => p.id));
     const looseOrOrphan: Item[] = [];
     for (const p of filteredProducts) {
-      const uc = unpackComponent(p);
+      const uc = unpackComponent(p, orderUnitInputs);
       if (uc && inList.has(uc.itemId)) {
         if (!boxByParent.has(uc.itemId)) boxByParent.set(uc.itemId, []);
         boxByParent.get(uc.itemId)!.push(p);
@@ -1211,7 +1211,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       for (const b of boxes) rows.push({ p: b, isChild: true, parentId: p.id, boxCount: 0 });
     }
     return rows;
-  }, [filteredProducts, topTab]);
+  }, [filteredProducts, topTab, orderUnitInputs]);
   const visibleRows = useMemo(
     () => groupedRows.filter(r => !(r.isChild && r.parentId && collapsedParents.has(r.parentId))),
     [groupedRows, collapsedParents],
@@ -2106,12 +2106,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       <td className="border-r border-slate-300 px-3 py-3">
                         <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                           <div className="hidden">
-                          {unpackComponent(product) ? (
+                          {unpackComponent(product, orderUnitInputs) ? (
                             <button
                               onClick={e => { e.stopPropagation(); unpackBox(product); }}
                               disabled={(product.stock ?? 0) < 1}
                               className="shrink-0 text-[9px] font-black text-amber-600 hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
-                              title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product)!.itemId)?.name ?? '낱개'} +${unpackComponent(product)!.count}개`}
+                              title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product, orderUnitInputs)!.itemId)?.name ?? '낱개'} +${unpackComponent(product, orderUnitInputs)!.count}개`}
                             >개봉</button>
                           ) : (() => {
                             const r = unpackPlan(product, 1);
@@ -2262,7 +2262,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           const partnerNames = normCat(product.type) === '완제품' ? salesNames : inboundNames;
           const canPurchase = purchasableIds.has(product.id) || inboundNames.length > 0;
           const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
-          const directUnpack = unpackComponent(product);
+          const directUnpack = unpackComponent(product, orderUnitInputs);
           const plannedUnpack = unpackPlan(product, 1);
           return (
             <ModalShell
@@ -2908,7 +2908,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const listedItems = pool.filter(p =>
           (!vessel || matchVessel(p, vessel)) && (!showGrade || !makeGrade || matchGrade(p, makeGrade)));
         // 낱개 밑에 박스 묶어서 표시 (수량과 무관한 고정 정렬이라 입력 중에도 안 움직임)
-        const listed = groupLooseBoxRows(listedItems);
+        const listed = groupLooseBoxRows(listedItems, orderUnitInputs);
 
         const commit = async () => {
           if (picked.length === 0 || makeBusy || !unpackMounted.current) return;
@@ -3521,7 +3521,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
             // 분류로 묶는다 — 필터와 같은 stockGroupOf를 쓴다.
             // 박스는 자기 분류가 아니라 **낱개(부모)의 분류**를 따라간다(짝이 떨어지면 안 된다).
             let lastGroup = '기타';
-            const rows: GridRow[] = groupLooseBoxRows(baseClosingItems).map(({ p, isChild }) => {
+            const rows: GridRow[] = groupLooseBoxRows(baseClosingItems, orderUnitInputs).map(({ p, isChild }) => {
               if (!isChild) lastGroup = stockGroupOf(p);
               return { itemId: p.id, label: splitNameVolume(p).base, spec: p.spec, editable: true, isChild, group: lastGroup };
             });

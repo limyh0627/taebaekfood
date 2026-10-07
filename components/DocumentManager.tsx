@@ -247,10 +247,12 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleAddCategory = async () => {
+    const scope = confirmationScope.current.token;
     const name = newCatName.trim();
     if (!name) return;
     if (categories.some(c => c.name === name)) { alert('이미 있는 대분류입니다.'); return; }
     await addItem('fileCabinetCategories', { name, order: categories.length, createdAt: new Date().toISOString(), companyId });
+    if (confirmationScope.current.token !== scope) return;
     setNewCatName(''); setAddingCat(false); selectCat(name);
   };
 
@@ -264,11 +266,13 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   };
 
   const handleAddSub = async () => {
+    const scope = confirmationScope.current.token;
     const name = newSubName.trim();
     if (!name) return;
     if (!activeCat) { alert('먼저 대분류를 선택하세요.'); return; }
     if (subsOfActive.some(s => s.name === name)) { alert('이미 있는 중분류입니다.'); return; }
     await addItem('fileCabinetSubCategories', { category: activeCat, name, order: subsOfActive.length, createdAt: new Date().toISOString(), companyId });
+    if (confirmationScope.current.token !== scope) return;
     setNewSubName(''); setAddingSub(false); setActiveSub(name);
   };
 
