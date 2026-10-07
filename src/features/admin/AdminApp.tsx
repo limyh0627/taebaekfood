@@ -91,6 +91,7 @@ import {
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PurchaseOrder, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
 import { updatePendingFlowQuantity } from '../../shared/services/pendingFlowQuantityService';
+import { resetDailyWorkOrder } from '../../shared/services/workOrderResetService';
 import { issueRecurringVouchers } from './recurringVoucherIssue';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
@@ -216,7 +217,7 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, doc, deleteField, onSnapshot, query, where, runTransaction, type Transaction } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteField, onSnapshot, query, where } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
@@ -920,31 +921,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 되풀이했다. 날짜 도장을 트랜잭션에서 먼저 찍고, 찍은 기기만 지운다.
    * 지우다 실패하면 도장을 되돌려 다음 기기가 이어받는다.
    */
-  useEffect(() => {
-    const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
-    // 회사 분리 뒤에도 한 문서를 같이 쓰면 한 회사의 날짜 도장이 다른 회사 초기화를 막는다.
-    // 보안 규칙도 회사 업무문서에는 companyId를 요구하므로 회사별 잠금으로 둔다.
-    const resetRef = doc(db, 'appMeta', `workOrderReset_${companyId}`);
-    (async () => {
-      try {
-        const 내차례 = await runTransaction(db, async (tx: Transaction) => {
-          const snap = await tx.get(resetRef);
-          if ((snap.exists() ? snap.data().date : null) === today) return false;
-          tx.set(resetRef, { date: today, companyId });
-          return true;
-        });
-        if (!내차례) return;
-        const snap = await getDocs(query(collection(db, 'workOrderItems'), where('companyId', '==', companyId)));
-        await Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
-      } catch (e) {
-        //  못 지웠으면 도장을 물러 다음 기기가 이어받게 한다. 조용히 넘기면 어제 것이 하루 남는다.
-        console.error('[작업순서 초기화] 실패 — 도장을 되돌린다:', e);
-        try {
-          await runTransaction(db, async tx => tx.set(resetRef, { date: '', companyId }));
-        } catch { /* 되돌리기까지 실패하면 다음 날 풀린다 */ }
-      }
-    })();
-  }, [companyId]);
+  useEffect(() => { void resetDailyWorkOrder(companyId); }, [companyId]);
 
   /**
    * **앱을 열 때 이 폰의 푸시 표를 받아 둔다.**
@@ -1732,7 +1709,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const handleFinishConfirmedOrder = async (id: string) => {
     try {
-      await executeEmployeeCommand({ kind: 'receive', poId: id, actorName: currentUser?.name, items: allItems });
+      await executeEmployeeCommand({ kind: 'receive', poId: id, actorName: currentUser?.name, items: allItems, orderUnitInputs: appData.orderUnitInputs });
       setLedgerReloadKey(k => k + 1);
       return true;
     } catch (err) {

@@ -1,3 +1,5 @@
+import { buildBomIndex } from '../bomIndex';
+import { buildPackIndex } from '../packIndex';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { executeEmployeeCommand } from './employeeCommand';
@@ -44,5 +46,13 @@ it('입고확정은 검증된 원자 입고 명령에 위임한다', async () =>
   mocks.receive.mockResolvedValue(false);
   expect(await executeEmployeeCommand({ kind: 'receive', poId: 'po', actorName: '직원', items: [] })).toBe(false);
   expect(mocks.receive).toHaveBeenCalledWith('po', '직원', []);
+  expect(mocks.add).not.toHaveBeenCalled();
+});
+
+it('입고확정은 화면의 회사별 계산 입력을 변경 없이 원자 명령에 전달한다', async () => {
+  const orderUnitInputs = { bom: buildBomIndex([], []), pack: buildPackIndex() };
+  mocks.receive.mockRejectedValue(new Error('입고 실패'));
+  await expect(executeEmployeeCommand({ kind: 'receive', poId: 'po', actorName: '관리자', items: [], orderUnitInputs })).rejects.toThrow('입고 실패');
+  expect(mocks.receive).toHaveBeenCalledWith('po', '관리자', [], orderUnitInputs);
   expect(mocks.add).not.toHaveBeenCalled();
 });

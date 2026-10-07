@@ -309,12 +309,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
   const [linkCategory, setLinkCategory] = useState('product');
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false); // 분류 관리(품목관리로 이동)
   // 분류 체계 — 타입 탭 이름·순서·숨김, 부자재 칩 정렬이 전부 이걸 본다. 저장본이 없으면 기본값.
-  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  const [taxonomyState, setTaxonomyState] = useState<{ companyId: CompanyId; rows: TaxonomyRow[] } | null>(null);
   useEffect(() => {
+    let cancelled = false;
     fetchCollection<TaxonomyRow>('itemTaxonomy', [where('companyId', '==', companyId)])
-      .then(setTaxonomyRows).catch(() => {});
+      .then(rows => { if (!cancelled) setTaxonomyState({ companyId, rows }); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [categoryManagerOpen, companyId]);
-  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+  const taxo = useMemo(() => buildTaxonomy(taxonomyState?.companyId === companyId ? taxonomyState.rows : []), [taxonomyState, companyId]);
   //  분류 관리에서 그 타입이 사라지거나 순서가 바뀌면 빈 탭이 골라져 있을 수 있다 — 첫 타입으로 되돌린다.
   useEffect(() => {
     if (taxo.types.length && !taxo.types.some(t => t.key === linkCategory)) setLinkCategory(taxo.types[0].key);

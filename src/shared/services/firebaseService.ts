@@ -32,7 +32,9 @@ import { requireActiveReleaseId } from '../releaseGate';
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
 import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock, isPhysicalInventoryItem } from '../itemTaxonomy';
-import { itemKg } from '../orderUnits';
+import { itemKg, type OrderUnitInputs } from '../orderUnits';
+import { getBomIndex } from '../bomIndex';
+import { getPackIndex } from '../packIndex';
 import { anchorLotsByQty } from '../lotAnchor';
 import { DENSITY, baseRawName, parsePackageKg } from '../../constants/formula';
 import { receiptToKg } from '../lotUtils';
@@ -911,16 +913,19 @@ export async function receiveUnitStock(receipt: ItemReceipt): Promise<boolean> {
 }
 
 /** 발주 상태와 품목·원료 입고를 한 트랜잭션에서 확정한다. */
-export async function confirmUnitPurchaseOrderReceipt(poId: string, addedBy?: string, allItems: Item[] = []): Promise<boolean> {
+export async function confirmUnitPurchaseOrderReceipt(poId: string, addedBy?: string, allItems: Item[] = [], inputs?: OrderUnitInputs): Promise<boolean> {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   await authReady;
   if (!auth.currentUser) throw new Error('로그인이 만료되었습니다.');
   const claim = (await auth.currentUser.getIdTokenResult()).claims.companyId as CompanyId;
   if (!claim) throw new Error('회사 권한이 없습니다.');
-  return confirmUnitPurchaseOrderReceiptWithDb(db, claim, poId, addedBy, allItems);
+  return confirmUnitPurchaseOrderReceiptWithDb(db, claim, poId, addedBy, allItems, fixedInputs);
 }
 
 /** 에뮬레이터에서 같은 트랜잭션을 실제 보안 규칙으로 검증한다. */
-export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, claim: CompanyId, poId: string, addedBy?: string, allItems: Item[] = []): Promise<boolean> {
+export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, claim: CompanyId, poId: string, addedBy?: string, allItems: Item[] = [], inputs?: OrderUnitInputs): Promise<boolean> {
+  // 조회 대기나 트랜잭션 재시도 중 다른 회사의 전역 색인을 읽지 않는다.
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   const now = new Date().toISOString();
   const date = today();
   const poRef = doc(store, 'purchaseOrders', poId);
@@ -959,7 +964,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
         if (!target) throw new Error(`원료 로트 홀더가 없습니다: ${item.name}`);
         const unit = String(item.unit ?? line.unit ?? '').toLowerCase();
         const packaged = unit !== 'kg' && unit !== 'l';
-        const packageKg = packaged ? itemKg(item) || parsePackageKg(item.name) : undefined;
+        const packageKg = packaged ? itemKg(item, fixedInputs) || parsePackageKg(item.name) : undefined;
         if (packaged && (!packageKg || !Number.isFinite(packageKg) || packageKg <= 0))
           throw new Error(`원료 포장 단위의 kg 환산값이 없습니다: ${item.name}`);
         const density = DENSITY[target.baseName] ?? item.density ?? 1;
@@ -982,7 +987,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
       const stock = Number(item.stock ?? 0);
       if (!Number.isFinite(stock) || stock < 0) throw new Error(`현재 재고를 확인해 주세요: ${item.name}`);
       if (!unitStock) return { item, stock, lots: item.lots ?? [], line };
-      const unitKg = itemKg(item) || 0;
+      const unitKg = itemKg(item, fixedInputs) || 0;
       const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
         { id: `carry:${refs[i].receipt.id}`, receivedDate: date, createdAt: now });
       if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error(`재고와 로트 잔량이 다릅니다: ${item.name}`);
