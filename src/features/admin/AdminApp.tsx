@@ -90,7 +90,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PurchaseOrder, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
-import { pendingFlowQuantityPatch } from './pendingFlowQuantity';
+import { updatePendingFlowQuantity } from '../../shared/services/pendingFlowQuantityService';
 import { issueRecurringVouchers } from './recurringVoucherIssue';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
@@ -514,14 +514,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
     if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory' && currentView !== 'item-ledger' && currentView !== 'lot-management') return;
+    let cancelled = false;
     const to = today();
     // 전체 이력이 필요한 화면이라 회사 범위만 서버에서 제한하고 날짜는 클라이언트에서 거른다.
     // companyId+date 복합 인덱스 배포 여부 때문에 원장이 통째로 비는 일을 피한다.
     fetchCollection<import('../../shared/types').RawMaterialEntry>(
       'rawMaterialLedger', [where('companyId', '==', companyId)],
     )
-      .then(rows => setExtraRawMaterialLedger(rows.filter(row => row.date >= '2020-01-01' && row.date <= to)))
-      .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); });
+      .then(rows => { if (!cancelled) setExtraRawMaterialLedger(rows.filter(row => row.date >= '2020-01-01' && row.date <= to)); })
+      .catch(e => { if (!cancelled) console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); });
+    return () => { cancelled = true; };
   }, [docTab, currentView, ledgerReloadKey, companyId]);
   const integrityKey = `${companyId}:${ledgerReloadKey}`;
   useEffect(() => {
@@ -1603,7 +1605,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
     const order = cur;
     if (!order || order.producedAt) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
-    const rows = buildStockUseRows(order, allItems);
+    const rows = buildStockUseRows(order, allItems, appData.orderUnitInputs);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
     setStockUseAsk({ mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
   };
@@ -1895,7 +1897,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
 
     const lineRows = applying
-      ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems)
+      ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
       : [];
     const startSave = () => {
       if (lineRows.length === 0) { void save(); return; }
@@ -2664,14 +2666,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({ id: r.id, quantity: r.quantity }))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onUpdateConfirmedQty={(id: string, qty: number) => updateItem('purchaseOrders', id, { quantity: qty })}
-              onUpdatePendingFlowQty={async (type, id, updates) => {
-                const ref = doc(db, type === '입고' ? 'purchaseOrders' : 'returnRequests', id);
-                await runTransaction(db, async tx => {
-                  const snap = await tx.get(ref);
-                  if (!snap.exists()) throw new Error('대상 기록을 찾을 수 없습니다.');
-                  tx.update(ref, pendingFlowQuantityPatch(type, snap.data() as PurchaseOrder | ReturnRequest, updates, companyId));
-                });
-              }}
+              onUpdatePendingFlowQty={(type, id, updates) => updatePendingFlowQuantity(companyId, type, id, updates)}
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteItem={requestCatalogItemDelete}

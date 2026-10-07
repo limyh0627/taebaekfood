@@ -1,5 +1,5 @@
 import type { Item, Order } from '../../shared/types';
-import { stockUnits, unpackComponent } from '../../shared/orderUnits';
+import { stockUnits, unpackComponent, type OrderUnitInputs } from '../../shared/orderUnits';
 import { isGoodsItem } from './orderStockEngine';
 import { unreservedItemStock } from './orderItemStock';
 import { holdsUnitStock } from '../../shared/itemTaxonomy';
@@ -31,14 +31,14 @@ export interface StockUseRow {
   };
 }
 
-export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[]): StockUseRow[] {
+export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[], inputs?: OrderUnitInputs): StockUseRow[] {
   const rows: StockUseRow[] = [];
   order.items.forEach((item, idx) => {
     const product = allItems.find(p => p.id === item.itemId);
     if (!product || !holdsUnitStock(product)) return;
     if (isGoodsItem(product)) return;              // 생산을 안 하는 품목 — 물을 게 없다
 
-    const uc = unpackComponent(product);
+    const uc = unpackComponent(product, inputs);
     const loose = uc ? allItems.find(p => p.id === uc.itemId) : undefined;
     const stock = unreservedItemStock(product);
     const looseStock = loose ? unreservedItemStock(loose) : 0;
@@ -48,7 +48,7 @@ export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[])
       itemId: product.id,
       name: product.name,
       unitLabel: uc ? '박스' : (product.unit || '개'),
-      ordered: stockUnits(item, product),
+      ordered: stockUnits(item, product, inputs),
       stock,
       ...(uc && loose && looseStock > 0
         ? { loose: { itemId: loose.id, name: loose.name, count: uc.count, stock: looseStock, unitLabel: loose.unit || '개' } }
