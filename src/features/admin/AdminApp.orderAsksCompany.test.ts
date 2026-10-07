@@ -1,9 +1,15 @@
 /** @vitest-environment jsdom */
 import React, { useRef, useEffect } from 'react';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
+import { planOrderItemToggle } from '../../shared/orderCompletion';
+import { ensureOrderLineIds } from '../../shared/orderLineInventory';
+import { isGoodsItem } from '../../shared/itemTaxonomy';
+import { stockUnits, unpackComponent } from '../../shared/orderUnits';
+import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
+import { buildStockUseRows } from './stockUseRows';
 import { OrderStatus } from '../../shared/types';
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
 const file = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -150,4 +156,55 @@ it('실제 hook 선언과 회사 조건을 React 재렌더·unmount에서 실행
  expect(second).not.toBe(first);expect(third).not.toBe(first);
  const h=harness(observed);const waiting=h.request('A',OrderStatus.SHIPPED);view.unmount();expect(observed.current.token).not.toBe(third);h.pending.resolve({order:h.order});await waiting;
  expect(h.writer).not.toHaveBeenCalled();expect(h.getAsk()).toBeNull();
+});
+
+function goodsHarness(stock:number) {
+ let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='handleToggleItemChecked')expression=node.initializer;ts.forEachChild(node,find);};find(file);if(!expression)throw new Error('실제 품목 함수 없음');
+ let ask:any=null;const token={};const scope={current:{token}};const refs={current:{goods:null as any}};const writer=vi.fn(async()=>{});
+ const item={id:'goods',name:'사입품',type:'goods',stock,minStock:0,image:'',unit:'개'};
+ const order={id:'A',partnerName:'태백 주문',status:OrderStatus.PENDING,items:[{itemId:item.id,name:item.name,quantity:2,lineId:'line'}]};
+ const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;refs.current.goods=ask;};
+ const deps={OrderStatus,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
+ const code=ts.transpileModule(`const toggle=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const toggle=new Function(...Object.keys(deps),`${code};return toggle;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
+ return{toggle,scope,refs,writer,set,get:()=>ask};
+}
+function actualGoods(prop:'onConfirm'|'onCancel',deps:Record<string,unknown>) {
+ let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{
+ if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(file)==='ConfirmModal') {
+  const title=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='title') as ts.JsxAttribute|undefined;
+  if(title?.initializer?.getText(file).includes('goodsStockAsk.title')) {const attr=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)===prop) as ts.JsxAttribute;expression=(attr.initializer as ts.JsxExpression).expression;}
+ }ts.forEachChild(node,find);};find(file);if(!expression)throw new Error('상품 실제 callback 없음');
+ const code=ts.transpileModule(`const callback=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ return new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps)) as ()=>unknown;
+}
+it.each([1,3])('실제 상품 재고 %i 확인창의 이전 확인·취소는 새 회사 창을 지우지 않는다',async stock=>{
+ for(const prop of ['onConfirm','onCancel'] as const) {
+  const h=goodsHarness(stock);await h.toggle('A',0);const old=h.get();expect(old.title).toBe(stock<2?'재고부족':'작업완료');
+  const callback=actualGoods(prop,{goodsStockAsk:old,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});
+  h.scope.current={token:{}};const next={scope:h.scope.current.token,title:'풍회 새창'};h.set(next);await callback();expect(h.get()).toBe(next);expect(h.writer).not.toHaveBeenCalled();
+ }
+});
+
+it('상품 확인창은 회사 전환 즉시 감추고 같은 회사 새창도 이전 callback으로 지우지 않는다',async()=>{
+ let condition:ts.Expression|undefined;
+ const find=(node:ts.Node)=>{if(ts.isBinaryExpression(node)&&ts.isParenthesizedExpression(node.right)&&ts.isJsxSelfClosingElement(node.right.expression)) {
+  const title=node.right.expression.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='title') as ts.JsxAttribute|undefined;
+  if(title?.initializer?.getText(file).includes('goodsStockAsk.title'))condition=node.left;
+ }ts.forEachChild(node,find);};find(file);if(!condition)throw new Error('실제 상품 렌더 조건 없음');
+ const visible=new Function('goodsStockAsk','orderAskScope',`return ${condition.getText(file)};`);
+ for(const prop of ['onConfirm','onCancel'] as const) {
+  const h=goodsHarness(3);await h.toggle('A',0);const old=h.get();expect(visible(old,h.scope)).toBe(true);
+  const callback=actualGoods(prop,{goodsStockAsk:old,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});
+  const next={scope:h.scope.current.token,title:'같은 회사 새창'};h.set(next);await callback();expect(h.get()).toBe(next);expect(h.writer).not.toHaveBeenCalled();
+  h.scope.current={token:{}};expect(visible(old,h.scope)).toBe(false);
+ }
+});
+it.each([1,3])('현재 상품 재고 %i 확인은 해당 창만 닫고 정상 저장하며 취소는 저장하지 않는다',async stock=>{
+ for(const prop of ['onConfirm','onCancel'] as const) {
+  const h=goodsHarness(stock);await h.toggle('A',0);const ask=h.get();expect(ask.scope).toBe(h.scope.current.token);
+  expect(ask.message).toContain('사입품');expect(ask.subMessage).toContain(stock<2?'음수가 됩니다':'출고할 때 빠집니다');
+  const callback=actualGoods(prop,{goodsStockAsk:ask,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});await callback();expect(h.get()).toBeNull();
+  if(prop==='onConfirm')await waitFor(()=>expect(h.writer).toHaveBeenCalledOnce());else expect(h.writer).not.toHaveBeenCalled();
+ }
 });

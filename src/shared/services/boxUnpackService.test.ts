@@ -1,15 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildBomIndex, getBomIndex, setBomIndex } from '../bomIndex';
+import { buildPackIndex } from '../packIndex';
+import type { Item } from '../types';
 
 type Ref = { path: string };
 const store = new Map<string, Record<string, unknown>>();
 let writes = 0;
+let readWait: Promise<void> | undefined;
 vi.mock('../firebase', () => ({ db: {} }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, ...parts: string[]): Ref => ({ path: parts.join('/') }),
   runTransaction: async (_db: unknown, callback: (tx: unknown) => Promise<unknown>) => {
     const pending: Array<{ path: string; data: Record<string, unknown> }> = [];
     const tx = {
-      get: async (ref: Ref) => ({ exists: () => store.has(ref.path), data: () => store.get(ref.path) }),
+      get: async (ref: Ref) => { await readWait; return { id: ref.path.split('/').at(-1), exists: () => store.has(ref.path), data: () => store.get(ref.path) }; },
       update: (ref: Ref, patch: Record<string, unknown>) => pending.push({ path: ref.path, data: { ...store.get(ref.path), ...patch } }),
       set: (ref: Ref, data: Record<string, unknown>) => pending.push({ path: ref.path, data }),
     };
@@ -22,14 +26,39 @@ const { unpackBoxStock } = await import('./boxUnpackService');
 const request = { boxItemId: 'box', unitItemId: 'unit', count: 10, operationId: 'open-1' };
 const lot = { id: 'source', supplierName: '푸미푸드', lotNo: 'B-1', receivedDate: '2026-10-01',
   qtyIn: 2, qtyRemaining: 2, unitKg: 10, kgIn: 20, kgRemaining: 20, status: 'active' };
+const originalBom = getBomIndex();
+const nestedItems = ['box', 'unit', 'loose'].map(id => ({ id, name: id, type: 'product', unit: '개',
+  spec: id === 'unit' ? '1kg * 20' : '1kg', stock: 0, minStock: 0, image: '' } as Item));
+const nestedInputs = { bom: buildBomIndex(nestedItems, [{ parent_id: 'box', child_id: 'unit', quantity: 10 },
+  { parent_id: 'unit', child_id: 'loose', quantity: 20 }]), pack: buildPackIndex() };
+const otherBom = buildBomIndex(nestedItems, []);
+afterEach(() => setBomIndex(originalBom));
 
 beforeEach(() => {
-  store.clear(); writes = 0;
+  store.clear(); writes = 0; readWait = undefined;
   store.set('items/box', { companyId: 'taebaek', name: '볶음참깨 박스', stock: 2, lots: [{ ...lot }] });
   store.set('items/unit', { companyId: 'taebaek', name: '볶음참깨 낱개', spec: '1kg', stock: 0, lots: [] });
 });
 
 describe('박스 개봉', () => {
+  it('명시 입력으로 중첩 박스 kg를 보존하고 다른 전역 BOM은 그대로 둔다', async () => {
+    store.set('items/unit', { ...store.get('items/unit'), spec: '1kg * 20', unit: '개' });
+    setBomIndex(otherBom);
+    expect((await unpackBoxStock(request, nestedInputs)).ok).toBe(true);
+    expect((store.get('items/unit')?.lots as typeof lot[])[0]).toMatchObject({ qtyRemaining: 10, unitKg: 20, kgRemaining: 200 });
+    expect(getBomIndex()).toBe(otherBom);
+  });
+  it('조회 대기 중 전역 BOM이 바뀌어도 시작한 중첩 박스 kg를 보존한다', async () => {
+    store.set('items/unit', { ...store.get('items/unit'), spec: '1kg * 20', unit: '개' });
+    setBomIndex(nestedInputs.bom);
+    let release!: () => void;
+    readWait = new Promise<void>(resolve => { release = resolve; });
+    const pending = unpackBoxStock(request);
+    setBomIndex(otherBom);
+    release();
+    expect((await pending).ok).toBe(true);
+    expect((store.get('items/unit')?.lots as typeof lot[])[0]).toMatchObject({ qtyRemaining: 10, unitKg: 20, kgRemaining: 200 });
+  });
   it('박스와 낱개 재고·로트·이동 근거를 한 거래로 저장하고 재시도는 중복 차감하지 않는다', async () => {
     expect((await unpackBoxStock(request)).ok).toBe(true);
     expect(store.get('items/box')?.stock).toBe(1);

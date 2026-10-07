@@ -1314,7 +1314,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * `shipOrder`). 모자라면 그때 음수가 된다 — 그래서 완료를 찍는 지금 알린다.
    */
   const [goodsStockAsk, setGoodsStockAsk] = useState<{
-    title: string; tone: AlertTone; message: string; subMessage: string; confirmText: string; onConfirm: () => void;
+    scope: object; title: string; tone: AlertTone; message: string; subMessage: string; confirmText: string; onConfirm: () => void;
   } | null>(null);
 
   /**
@@ -1352,8 +1352,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     scope: object; mode: 'line'; orderId: string; partnerName: string; rows: StockUseRow[];
     onConfirm: (plan: StockUsePlan) => Promise<void>;
   } | null>(null);
-  const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null }>({ rollback: null, stock: null });
-  orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk };
+  const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null; goods: object | null }>({ rollback: null, stock: null, goods: null });
+  orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk, goods: goodsStockAsk };
   const [catalogDeleteAsk, setCatalogDeleteAsk] = useState<{
     itemId: string;
     itemName: string;
@@ -1930,20 +1930,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
       setGoodsStockAsk(모자란양 > 0 ? {
         //  **분홍**(2026-09-15 사장님: "이 경우는 색 분홍색으로 해줘"). 노랑은 '재고를 다 쓴다'는
         //  알림에도 쓰고 있어, 재고가 모자라 음수가 될 이 경고와 한 색이면 갈리지 않았다.
-        title: '재고부족', tone: 'pink',
+        scope: askScope, title: '재고부족', tone: 'pink',
         message: `재고가 부족합니다 — “${완료품목.name}”`,
         subMessage: `재고 ${재고}${단위} · 주문 ${주문량}${단위}\n`
           + `이 주문 몫으로 ${주문량}${단위}를 잡으면, 출고할 때 재고가 ${출고뒤}${단위} 로 음수가 됩니다.\n`
           + `사 오거나 맡긴 물건이라 생산으로 채워지지 않습니다.${잡힘글}`,
         confirmText: '그래도 완료',
-        onConfirm: () => { setGoodsStockAsk(null); void save(); },
+        onConfirm: () => { void save(); },
       } : {
-        title: '작업완료', tone: 'emerald',
+        scope: askScope, title: '작업완료', tone: 'emerald',
         message: `“${완료품목.name}” ${주문량}${단위}를 이 주문 몫으로 잡습니다.`,
         subMessage: `재고에서는 출고할 때 빠집니다 — 지금 ${재고}${단위} → 출고 뒤 ${출고뒤}${단위}.\n`
           + `사 오거나 맡긴 물건이라 생산하지 않습니다.${잡힘글}`,
         confirmText: '완료',
-        onConfirm: () => { setGoodsStockAsk(null); void save(); },
+        onConfirm: () => { void save(); },
       });
       return;
     }
@@ -5344,14 +5344,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
           }}
         />
       )}
-      {goodsStockAsk && (
+      {goodsStockAsk && goodsStockAsk.scope === orderAskScope.current.token && (
         <ConfirmModal
           title={goodsStockAsk.title} tone={goodsStockAsk.tone} icon={Package}
           message={goodsStockAsk.message}
           subMessage={goodsStockAsk.subMessage}
           confirmText={goodsStockAsk.confirmText}
-          onConfirm={goodsStockAsk.onConfirm}
-          onCancel={() => setGoodsStockAsk(null)}
+          onConfirm={() => {
+            const ask = goodsStockAsk;
+            if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.goods !== ask) return;
+            setGoodsStockAsk(current => current === ask ? null : current);
+            ask.onConfirm();
+          }}
+          onCancel={() => {
+            const ask = goodsStockAsk;
+            if (ask.scope !== orderAskScope.current.token || orderAskCurrent.current.goods !== ask) return;
+            setGoodsStockAsk(current => current === ask ? null : current);
+          }}
         />
       )}
       {appNotice && (

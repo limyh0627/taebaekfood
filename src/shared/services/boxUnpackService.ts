@@ -2,14 +2,17 @@ import { doc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { companyOf, type RawMaterialLot } from '../types';
 import { deductLotsByQty, lotQtyRemaining, pruneDepletedLots } from '../lotUtils';
-import { itemKg } from '../orderUnits';
+import { itemKg, type OrderUnitInputs } from '../orderUnits';
+import { getBomIndex } from '../bomIndex';
+import { getPackIndex } from '../packIndex';
 
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 /** 박스 한 개를 낱개로 옮긴다. 두 재고와 로트, 이동 근거는 함께 확정된다. */
 export async function unpackBoxStock(params: {
   boxItemId: string; unitItemId: string; count: number; operationId: string;
-}): Promise<{ ok: boolean; message: string }> {
+}, inputs?: OrderUnitInputs): Promise<{ ok: boolean; message: string }> {
+  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
   const { boxItemId, unitItemId, count, operationId } = params;
   if (!boxItemId || !unitItemId || boxItemId === unitItemId || !Number.isSafeInteger(count) || count < 1 || !operationId) {
     return { ok: false, message: '개봉할 박스와 낱개 품목, 수량을 확인하세요.' };
@@ -40,7 +43,7 @@ export async function unpackBoxStock(params: {
       }
       const taken = deductLotsByQty(boxLots, 1);
       if (taken.shortageQty > 0) throw new Error('개봉할 박스 로트가 없습니다.');
-      const unitWeight = itemKg(unit as Parameters<typeof itemKg>[0]);
+      const unitWeight = itemKg({ ...unit, id: unitSnap.id } as Parameters<typeof itemKg>[0], fixedInputs);
       const addedLots: RawMaterialLot[] = taken.distribution.map((source, index) => ({
         id: `lot-${operationId}-${index}`, material: String(unit.name ?? box.name ?? ''),
         supplierName: source.supplierName, lotNo: source.lotNo,
