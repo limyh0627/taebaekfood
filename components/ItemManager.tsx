@@ -384,7 +384,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
       if (!pcByProduct[key]) pcByProduct[key] = [];
       pcByProduct[key].push(pc);
     }
-    const subMap = Object.fromEntries(items.map(p => [p.id, p.name]));
 
     /**
      * 중복 판정 = **이름 + BOM**. 구성이 다르면 다른 물건이다.
@@ -417,7 +416,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
           product: p,
           pcs: pcByProduct[p.id] || [],
           directClients: partnersOfItem(partnerItems, p.id),
-          subMap,
         }));
         return { key, name: key.split('||')[0], subs: bomOf(prods[0].id), items };
       });
@@ -1425,7 +1423,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
 
                   {isExpanded && (
                     <div className="mt-3 space-y-2">
-                      {group.items.map(({ product, pcs, directClients, subMap }) => {
+                      {group.items.map(({ product, pcs, directClients }) => {
                         return (
                         <div key={product.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -1436,21 +1434,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                             <div className="space-y-1">
                               {pcs.map(pc => {
                                 const cname = partners.find(c => c.id === pc.partnerId)?.name || pc.partnerId;
-                                const boxName = pc.boxTypeId ? (subMap[pc.boxTypeId] || pc.boxTypeId) : null;
-                                const tapeName = pc.tapeTypeId ? (subMap[pc.tapeTypeId] || pc.tapeTypeId) : null;
                                 return (
                                   <div key={pc.id} className="flex flex-wrap items-center gap-3 text-[11px]">
                                     <span className="font-bold text-slate-700 min-w-[80px]">{cname}</span>
-                                    <span className="text-slate-400">{boxName ? `박스: ${boxName}` : '박스 없음'}</span>
-                                    <span className="text-slate-400">{tapeName ? `테이프: ${tapeName}` : '테이프 없음'}</span>
-                                    {pc.qtyPerBox && <span className="text-slate-400">{pc.qtyPerBox}개/박스</span>}
                                   </div>
                                 );
                               })}
                             </div>
                           ) : (
                             <div className="text-[11px] text-slate-400">
-                              거래처: {directClients.map(id => partners.find(c => c.id === id)?.name || id).join(', ') || '없음'} — 포장 설정 없음
+                              거래처: {directClients.map(id => partners.find(c => c.id === id)?.name || id).join(', ') || '없음'}
                             </div>
                           )}
                         </div>

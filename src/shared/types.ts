@@ -136,16 +136,6 @@ export interface PartnerItem {
    */
   shipToIds?: string[];
   isSmartStore?: boolean;      // 스마트스토어 채널 여부
-  // @deprecated → shipping_rule 컬렉션으로 이관 예정 (별도 정리)
-  boxTypeId?: string;
-  qtyPerBox?: number;
-  qty_per_box?: number;
-  tapeTypeId?: string;
-  displaySize?: string;
-  packageType?: string;
-  containerTypeId?: string;
-  labelId?: string;
-  weightInKg?: number;
 }
 
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────

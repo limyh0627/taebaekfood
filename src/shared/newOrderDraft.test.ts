@@ -11,7 +11,7 @@ const box = { id: 'box', name: '참기름', type: 'product', unit: '박스' } as
 beforeEach(() => setBomIndex(buildBomIndex([loose, box], [{ parent_id: 'box', child_id: 'loose', quantity: 20 }])));
 const base = {
   partner, items: [loose, box], pallets: [], orderDate: '2026-10-06', deliveryDate: '2026-10-08',
-  partnerItems: [{ id: 'price', itemId: 'loose', partnerId: 'partner', Direction: 'out', price: 1000, qtyPerBox: 99, boxTypeId: 'old-box' }] as PartnerItem[],
+  partnerItems: [{ id: 'price', itemId: 'loose', partnerId: 'partner', Direction: 'out', price: 1000, qtyPerBox: 99, boxTypeId: 'old-box' }] as unknown as PartnerItem[],
 };
 
 describe('직접 입력과 추출의 공통 주문 생성', () => {

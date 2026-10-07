@@ -83,6 +83,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   // ── 발행 탭 편집 상태 ──
   const [editedItems, setEditedItems] = useState<MergedItem[]>([]);
+  const editSession = useRef({ key: '', source: '', dirty: false });
+  const [sourceChanged, setSourceChanged] = useState(false);
 
   // ── 조회 탭 상태 ──
   const [histClientId, setHistClientId] = useState('');
@@ -148,14 +150,31 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allMonths]);
 
-  // 선택 전표가 바뀌면 편집 초기화
+  // 선택 범위가 바뀌면 새 세션, 같은 원본 변경은 수동 편집 여부에 따라 처리한다.
+  const editSessionKey = JSON.stringify([companyId, selectedMonth, taxClientId, taxStmtIds]);
+  const sourceFingerprint = JSON.stringify(selectedStmts);
   useEffect(() => {
-    setEditedItems(mergedFromStmts.map(i => ({ ...i })));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxStmtIds.join(',')]);
+    if (editSession.current.key !== editSessionKey) {
+      editSession.current = { key: editSessionKey, source: sourceFingerprint, dirty: false };
+      setEditedItems(mergedFromStmts.map(item => ({ ...item })));
+      setSourceChanged(false);
+    } else if (editSession.current.source !== sourceFingerprint) {
+      if (editSession.current.dirty) setSourceChanged(true);
+      else {
+        editSession.current.source = sourceFingerprint;
+        setEditedItems(mergedFromStmts.map(item => ({ ...item })));
+        setSourceChanged(false);
+      }
+    } else setSourceChanged(false);
+  }, [editSessionKey, sourceFingerprint, mergedFromStmts]);
+  const resetEditedItems = () => {
+    editSession.current = { key: editSessionKey, source: sourceFingerprint, dirty: false };
+    setEditedItems(mergedFromStmts.map(item => ({ ...item })));
+    setSourceChanged(false);
+  };
 
   const [taxScope, setTaxScope] = useState<'all' | 'taxable' | 'exempt'>('all');
-  const allItems2 = editedItems.length > 0 ? editedItems : mergedFromStmts;
+  const allItems2 = editedItems;
   /**
    * **과세분·면세분은 서류가 따로 나간다** — 세금계산서 / 계산서.
    * 위 두 상자를 눌러 어느 쪽을 찍을지 고른다. 고른 쪽만 미리보기·인쇄·PDF·발행에 담긴다.
@@ -174,6 +193,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const grandTotal = taxSupply + taxAmt + exemptSup;
 
   const updateEditedItem = (idx: number, field: keyof MergedItem, raw: string | number) => {
+    editSession.current.dirty = true;
     setEditedItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
       const next = { ...item, [field]: typeof raw === 'number' ? raw : (isNaN(Number(raw)) ? raw : Number(raw)) };
@@ -213,7 +233,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
    * '발행됨'을 보기 때문에, 안 찍으면 영영 미발행으로 남는다.
    */
   const handleTaxIssue = async () => {
-    if (selectedStmts.length === 0 || !onApplyTaxIssue) return;
+    if (sourceChanged || selectedStmts.length === 0 || !onApplyTaxIssue) return;
     const at = new Date().toISOString();
     taxIssueOperationRef.current ??= `tax-${Date.now()}`;
     try {
@@ -233,7 +253,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   const handleTaxPdf = async () => {
-    if (!taxPrintRef.current || selectedStmts.length === 0) return;
+    if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
     const html2canvas = (await import('html2canvas')).default;
     const jsPDF = (await import('jspdf')).default;
     const canvas = await html2canvas(taxPrintRef.current, { scale: 2, useCORS: true });
@@ -246,7 +266,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   const handleTaxPrint = () => {
-    if (!taxPrintRef.current || selectedStmts.length === 0) return;
+    if (sourceChanged || !taxPrintRef.current || selectedStmts.length === 0) return;
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
@@ -510,15 +530,15 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{taxStmtIds.length}건</span>
                     </div>
                     <div className="flex gap-1.5">
-                      <button onClick={handleTaxIssue}
+                      <button disabled={sourceChanged} onClick={handleTaxIssue}
                         className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[11px] font-black hover:bg-emerald-700">
                         <Check size={11}/>{taxScope === 'taxable' ? '과세분 발행' : taxScope === 'exempt' ? '면세분 발행' : '발행'}
                       </button>
-                      <button onClick={handleTaxPdf}
+                      <button disabled={sourceChanged} onClick={handleTaxPdf}
                         className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[11px] font-black hover:bg-blue-700">
                         <Download size={11}/>PDF
                       </button>
-                      <button onClick={handleTaxPrint}
+                      <button disabled={sourceChanged} onClick={handleTaxPrint}
                         className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-[11px] font-black hover:bg-slate-700">
                         <Printer size={11}/>인쇄
                       </button>
@@ -551,11 +571,12 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       <span className="text-lg font-black text-emerald-700">{fmt(grandTotal)}원</span>
                     </div>
                   </div>
+                  {sourceChanged && <p role="alert" className="px-4 py-2 text-sm text-amber-700">원본 전표가 변경되었습니다. 편집 내용을 확인하고 초기화하면 최신 원본으로 다시 시작합니다.</p>}
                   {/* 품목 편집 테이블 */}
                   <div className="px-4 py-3 border-b border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Edit2 size={11}/>품목 직접 편집</span>
-                      <button onClick={() => setEditedItems(mergedFromStmts.map(i => ({...i})))}
+                      <button onClick={resetEditedItems}
                         className="text-[10px] text-slate-400 hover:text-slate-600 underline">초기화</button>
                     </div>
                     <div className="overflow-x-auto">
@@ -587,7 +608,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                               <td className="px-2 py-1 text-xs text-right text-slate-500">{item.isTaxExempt ? '면세' : fmt(item.tax)}</td>
                               <td className="px-2 py-1 text-xs text-right font-black text-slate-700">{fmt(item.total)}</td>
                               <td className="px-1 py-1 whitespace-nowrap">
-                                <button onClick={() => setEditedItems(prev => prev.filter((_, i) => i !== idx))}
+                                <button onClick={() => { editSession.current.dirty = true; setEditedItems(prev => prev.filter((_, i) => i !== idx)); }}
                                   className="p-1 text-slate-300 hover:text-rose-400 transition-colors"><Trash2 size={11}/></button>
                               </td>
                             </tr>

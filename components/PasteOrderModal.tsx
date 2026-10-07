@@ -589,17 +589,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                       </div>
                     </div>
                     {matched && (() => {
-                      const pc = partnerOut.find(p => p.itemId === matched.id && p.partnerId === selectedClient?.id);
-                      const pcSubs: { id: string; name: string }[] = [];
-                      if (pc?.boxTypeId) { const b = items.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
-                      if (pc?.tapeTypeId) { const t = items.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }
-                      const pcSubIds = new Set(pcSubs.map(s => s.id));
-                      //  포장 부자재는 BOM에서 읽는다 — 근거는 자식 품목의 category(용기·마개·라벨…).
-                      const legacySubs = bomOf(matched.id)
-                        .filter(l => !pcSubIds.has(l.childId)
-                          && ['마개', '테이프', '박스', '용기', '라벨', '비닐', '케이스'].includes(String(l.child?.category ?? '')))
+                      // 포장 부자재는 현재 BOM에서만 읽는다.
+                      const subs = bomOf(matched.id)
+                        .filter(l => ['마개', '테이프', '박스', '용기', '라벨', '비닐', '케이스'].includes(String(l.child?.category ?? '')))
                         .map(l => l.child!.name);
-                      const subs = [...pcSubs.map(s => s.name), ...legacySubs];
                       return (
                         <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2">
                           <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />

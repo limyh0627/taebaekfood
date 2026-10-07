@@ -350,17 +350,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       if (product.type !== 'product' || !selectedPartner) continue;
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
 
-      const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedPartner.id);
-      const boxSize = pc?.qtyPerBox || item.unitsPerBox || unitsPerBoxOf(product) || 1;
-      const boxesNeeded = Math.ceil(actualQty / boxSize);
-
-      if (pc?.boxTypeId) {
-        const sub = submaterials.find(sm => sm.id === pc.boxTypeId);
-        if (sub) {
-          if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-          usage[sub.id].needed += boxesNeeded;
-        }
-      }
       // 재고 1단위 기준 수량 — 박스 품목은 박스 개수(입력이 박스면 qty가 곧 박스 수)
       const unpack = unpackComponent(product);
       const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
@@ -373,7 +362,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
-  }, [selectedItems, selectedPartner, products, partnerOut, submaterials]);
+  }, [selectedItems, selectedPartner, products, submaterials]);
 
   // 박스 설정 — 품목이 들고 있는 것만 본다(거래처별 포장설정은 폐기).
   const getPartnerBoxConfigs = (itemId: string, _partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {

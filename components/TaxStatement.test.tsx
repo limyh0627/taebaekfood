@@ -172,3 +172,38 @@ describe('세금계산서 거래처 정보', () => {
     expectNoOtherPartnerValues(document, 거래처B값);
   });
 });
+
+describe('세금계산서 원본과 편집 세션', () => {
+  const original = () => 전표('source-one', 거래처A.id, 'SOURCE-01');
+  const updated = () => { const s = original(); return {...s, totalSupply:12_000,totalTax:1_200,totalAmount:13_200,items:s.items.map(i=>({...i,supply:12_000,tax:1_200,total:13_200}))}; };
+  const props = (statements:IssuedStatement[],onApplyTaxIssue=vi.fn().mockResolvedValue([])) => ({issuedStatements:statements,partners:[거래처A],companyInfo:회사,onApplyTaxIssue});
+  const select = () => { fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/})); };
+  it('편집 전 동일 ID 원본 갱신은 최신 금액을 보여 준다',()=>{
+    const view=render(<TaxStatement {...props([original()])}/>);select();expect(screen.getByDisplayValue('10000')).toBeInTheDocument();view.rerender(<TaxStatement {...props([updated()])}/>);expect(screen.getByDisplayValue('12000')).toBeInTheDocument();
+  });
+  it('편집 중 동일 ID 원본 변경은 초안을 보존하고 초기화 전 발행·PDF·인쇄를 막는다',()=>{
+    const issue=vi.fn().mockResolvedValue([]);const view=render(<TaxStatement {...props([original()],issue)}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([updated()],issue)}/>);
+    expect(screen.getByDisplayValue('9000')).toBeInTheDocument();expect(screen.getByText(/원본 전표가 변경/)).toBeInTheDocument();for(const name of ['발행','PDF','인쇄'])expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name})).toBeDisabled();fireEvent.click(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'}));expect(issue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'초기화'}));expect(screen.getByDisplayValue('12000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();for(const name of ['발행','PDF','인쇄'])expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name})).toBeEnabled();
+  });
+  it('마지막 편집 행 삭제는 빈 초안으로 유지한다',()=>{
+    render(<TaxStatement {...props([original()])}/>);select();const input=screen.getByDisplayValue('참기름');const row=input.closest('tr')!;fireEvent.click(within(row).getByRole('button'));expect(screen.queryByDisplayValue('참기름')).not.toBeInTheDocument();
+  });
+  it('선택을 해제하고 다시 선택하면 최신 원본으로 새 편집 세션을 시작한다',()=>{
+    const view=render(<TaxStatement {...props([original()])}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([updated()])}/>);fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));expect(screen.getByDisplayValue('12000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();
+  });
+  it('월이 바뀌면 이전 초안을 종료하고 돌아올 때 원본으로 시작한다',()=>{
+    const previousMonth='2026-01';const older={...original(),id:'old-one',docNo:'OLD-01',tradeDate:previousMonth+'-09'};render(<TaxStatement {...props([original(),older])}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});fireEvent.change(screen.getByRole('combobox'),{target:{value:previousMonth}});fireEvent.change(screen.getByRole('combobox'),{target:{value:이번달}});select();expect(screen.getByDisplayValue('10000')).toBeInTheDocument();expect(screen.queryByDisplayValue('9000')).not.toBeInTheDocument();
+  });
+  it('거래처가 바뀌면 같은 금액의 이전 초안도 종료한다',()=>{
+    const otherPartner={...거래처B,name:'다른 거래처'};const other=전표('other-one',otherPartner.id,'OTHER-01');render(<TaxStatement {...props([original(),other])} partners={[거래처A,otherPartner]}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});fireEvent.click(screen.getByRole('button',{name:/다른 거래처/}));fireEvent.click(screen.getByRole('button',{name:/OTHER-01/}));expect(screen.getByDisplayValue('10000')).toBeInTheDocument();expect(screen.queryByDisplayValue('9000')).not.toBeInTheDocument();
+  });
+  it('품목 금액이 같아도 원본 전표 정보가 바뀌면 편집 중 출력을 막는다',()=>{
+    const view=render(<TaxStatement {...props([original()])}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([{...original(),partnerName:'변경된 공급받는자'}])}/>);expect(screen.getByText(/원본 전표가 변경/)).toBeInTheDocument();expect(screen.getByRole('button',{name:'PDF'})).toBeDisabled();
+  });
+
+  it('원본이 편집 시작 당시 값으로 돌아오면 초안을 보존하며 출력 차단을 해제한다',()=>{
+    const view=render(<TaxStatement {...props([original()])}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([updated()])}/>);expect(screen.getByRole('button',{name:'PDF'})).toBeDisabled();view.rerender(<TaxStatement {...props([original()])}/>);expect(screen.getByDisplayValue('9000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'PDF'})).toBeEnabled();
+  });
+
+});
