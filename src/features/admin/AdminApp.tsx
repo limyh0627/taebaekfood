@@ -3247,7 +3247,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (!isSalesJournalProduct(product)) return [];
                 // 화면·저장·일일점검이 같은 공용 변환을 쓴다. 품목명이 비면 이름으로 대체하고,
                 // 박스·선물세트는 실제 완제품 줄로 푼다.
-                return journalSaleLines(product, item.quantity, { name: item.name, displaySize: item.displaySize }, id => allItems.find(p => p.id === id)).map(row => ({
+                return journalSaleLines(product, item, id => allItems.find(p => p.id === id)).map(row => ({
                   상호: partnerName, 품목: row.품목, 용량: row.spec, 수량: row.qty,
                   소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx,
                 }));

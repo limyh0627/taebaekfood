@@ -161,11 +161,23 @@ describe('docSaleLines — 박스는 낱개로, 선물세트는 든 것 각각�
 
   it('생산판매일지는 서류용 품목명이 비어도 상품명과 주문 규격으로 줄을 보존한다', () => {
     const unmapped = { id: 'p-unmapped', name: '직접 상품명', type: 'product', spec: '' } as any;
-    expect(journalSaleLines(unmapped, 3, { name: '주문 상품명', displaySize: '1kg' }, find)).toEqual([
+    expect(journalSaleLines(unmapped, { quantity: 3, name: '주문 상품명', displaySize: '1kg' }, find)).toEqual([
       { 품목: '직접 상품명', spec: '1kg', qty: 3 },
     ]);
-    expect(journalSaleLines(undefined, 2, { name: '삭제된 상품', displaySize: '350ml' }, find)).toEqual([
+    expect(journalSaleLines(undefined, { quantity: 2, name: '삭제된 상품', displaySize: '350ml' }, find)).toEqual([
       { 품목: '삭제된 상품', spec: '350ml', qty: 2 },
+    ]);
+  });
+
+  it('이미 낱개로 환산된 박스 주문은 개입수를 한 번만 곱한다', () => {
+    expect(journalSaleLines(box, { quantity: 100, boxQuantity: 5, name: box.name }, find)).toEqual([
+      { 품목: '시골향참기름1', spec: '350ml', qty: 100 },
+    ]);
+    expect(journalSaleLines(box, { quantity: 5, name: box.name }, find)).toEqual([
+      { 품목: '시골향참기름1', spec: '350ml', qty: 100 },
+    ]);
+    expect(journalSaleLines(loose, { quantity: 100, name: loose.name }, find)).toEqual([
+      { 품목: '시골향참기름1', spec: '350ml', qty: 100 },
     ]);
   });
 

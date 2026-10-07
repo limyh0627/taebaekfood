@@ -7,6 +7,7 @@ import { Item, Partner, PurchaseOrder, type CompanyId } from '../src/shared/type
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
+import { reconcileOemBatch } from '../src/features/admin/oemReconciliation';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
@@ -90,7 +91,7 @@ export default function OemManager({
           onClose={onClose} onSubmit={(v) => run(() => onReceive({ po: receiveTarget, ...v }))} />
       )}
       {feeTarget && (
-        <FeeModal po={feeTarget} busy={busy}
+        <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy}
           onClose={onClose} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
       )}
     </>
@@ -312,7 +313,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-1 text-xs">
           <div className="flex justify-between"><span className="text-slate-400 font-bold">받은 완제품</span><span className="font-black tabular-nums">{fmt(receivedKg)} kg</span></div>
-          <div className="flex justify-between"><span className="text-slate-400 font-bold">로스 (수율손실)</span><span className="font-black tabular-nums text-rose-600">{fmt(loss)} kg</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">송출·입고 차이 (추정, 손실 미확정)</span><span className="font-black tabular-nums text-rose-600">{fmt(loss)} kg</span></div>
           <div className="flex justify-between border-t border-slate-200 pt-1 mt-1">
             <span className="text-slate-400 font-bold">가공비 (예상)</span>
             <span className="font-black tabular-nums">{fmt(money.total)}원</span>
@@ -335,8 +336,8 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
 }
 
 // ── 가공비 전표 발행 (사용자 확인) ───────────────────────────────────────────
-function FeeModal({ po, busy, onClose, onSubmit }: {
-  po: PurchaseOrder; busy: boolean;
+function FeeModal({ po, items, companyId, busy, onClose, onSubmit }: {
+  po: PurchaseOrder; items: Item[]; companyId: CompanyId; busy: boolean;
   onClose: () => void;
   onSubmit: (v: { unitPricePerKg: number; date: string }) => void;
 }) {
@@ -344,6 +345,7 @@ function FeeModal({ po, busy, onClose, onSubmit }: {
   const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
   const kg = po.oemReceivedKg ?? 0;
   const money = processingFee(kg, Number(fee) || 0);
+  const reconciliation = reconcileOemBatch(po, items, companyId);
 
   return (
     <ModalShell title="가공비 전표 발행" onClose={onClose} bodyClassName="space-y-4">
@@ -354,8 +356,11 @@ function FeeModal({ po, busy, onClose, onSubmit }: {
         <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-1 text-xs">
           <div className="flex justify-between"><span className="text-slate-400 font-bold">외주공장</span><span className="font-black">{po.partnerName}</span></div>
           <div className="flex justify-between"><span className="text-slate-400 font-bold">보낸 원료</span><span className="font-black tabular-nums">{fmt(sentKg(po.oemSent))} kg</span></div>
-          <div className="flex justify-between"><span className="text-slate-400 font-bold">받은 완제품</span><span className="font-black tabular-nums">{fmt(kg)} kg</span></div>
-          <div className="flex justify-between"><span className="text-slate-400 font-bold">로스</span><span className="font-black tabular-nums text-rose-600">{fmt(batchLoss(po.oemSent, kg))} kg</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">총회수 중량 (저장값)</span><span className="font-black tabular-nums">{po.oemReceivedKg === undefined ? '자료 없음' : `${fmt(po.oemReceivedKg)} kg`}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">제품 중량 (현재 품목 기준 환산)</span><span className="font-black tabular-nums">{reconciliation?.unallocatedProductKg === undefined ? '자료 없음' : `${fmt(reconciliation.unallocatedProductKg)} kg`}</span></div>
+          {reconciliation?.materials.map(material => <div key={material.material} className="flex justify-between"><span className="text-slate-400 font-bold">{material.material} 벌크 회수</span><span className="font-black tabular-nums">{material.returnedBulkKg === undefined ? '자료 없음' : `${fmt(material.returnedBulkKg)} kg`}</span></div>)}
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">산술 차이 · 손실 미확정</span><span className="font-black tabular-nums text-rose-600">{reconciliation?.unresolvedBatchKg === undefined ? '미확정' : `${fmt(reconciliation.unresolvedBatchKg)} kg`}</span></div>
+          {reconciliation?.issues.map(issue => <p key={issue} className="text-amber-700">{issue}</p>)}
         </div>
 
         <div className="flex items-end gap-3">

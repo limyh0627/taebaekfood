@@ -565,8 +565,6 @@ export interface Item {
   //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
   품목?: string;
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
-  /** @deprecated spec 사용 */
-  용량?: string;
   isSmartStore?: boolean;
   smartStorePrice?: number;
   //  구성(BOM)은 품목에 안 붙는다 — item_bom이 유일 원천이다(shared/bomIndex).

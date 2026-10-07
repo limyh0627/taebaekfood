@@ -88,8 +88,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   //    이게 없으면 기초재고가 0이라 첫 달 재고조정이 통째로 매입에서 빠져 매출원가가 망가진다. ──
   const [openingDoc, setOpeningDoc] = useState<{ id: string; date: string; amounts: Record<string, number> } | null>(null);
   useEffect(() => {
+    let cancelled = false;
+    setOpeningDoc(null);
     fetchWhere<{ id: string; date: string; amounts: Record<string, number> }>('openingBalances', 'companyId', companyId)
-      .then(rows => setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null)).catch(() => {});
+      .then(rows => { if (!cancelled) setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null); }).catch(() => {});
+    return () => { cancelled = true; };
   }, [companyId]);
   const opening: OpeningBalance | null = useMemo(() => {
     if (!openingDoc) return null;

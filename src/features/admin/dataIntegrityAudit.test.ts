@@ -6,6 +6,7 @@ import type {
   OrderRawInventoryTrace, ProductionSalesLog, PurchaseOrder, RawMaterialEntry,
 } from '../../shared/types';
 import { operationDocId } from '../../shared/rawInventoryCore';
+import { buildBomIndex, setBomIndex } from '../../shared/bomIndex';
 import { auditDataIntegrity, expectedProductionDeltas, isStaleInventoryProcessing, PROCESSING_STALE_MS, type IntegrityAuditInput } from './dataIntegrityAudit';
 
 const productItem = (over: Partial<Item> = {}): Item => ({
@@ -528,6 +529,26 @@ describe('auditDataIntegrity — 주문·판매일지·서류수불부 대조', 
       items: [journalItem], orders: [deliveredOrder()], productionSalesLogs: [matchingLog()],
     })).map(issue => issue.id);
     expect(ids.filter(id => id.startsWith('sales-log-'))).toEqual([]);
+  });
+
+  it('5박스의 이미 환산된 100개를 2000개로 다시 곱하지 않고 과거 과다 일지는 잡는다', () => {
+    const box = productItem({ id: 'box-20', name: '20개입 박스', spec: '' });
+    const items = [box, journalItem];
+    const itemBoms = [{ id: 'box-bom', parent_id: box.id, child_id: journalItem.id, quantity: 20 }];
+    setBomIndex(buildBomIndex(items, itemBoms));
+    try {
+      const order = { ...deliveredOrder(), items: [{
+        lineId: 'box-line', itemId: box.id, name: box.name, quantity: 100, boxQuantity: 5,
+        price: 1000, checked: false,
+      }] } as Order;
+      const check = (quantity: number) => auditDataIntegrity(input({
+        items, itemBoms, orders: [order], productionSalesLogs: [matchingLog(quantity)],
+      })).filter(issue => issue.id.startsWith('sales-log-qty:'));
+      expect(check(100)).toEqual([]);
+      expect(check(2000)).toHaveLength(1);
+    } finally {
+      setBomIndex(buildBomIndex([], []));
+    }
   });
 
   it('판매 kg가 서류 원료 배합비로 내려가지 않으면 잡는다', () => {

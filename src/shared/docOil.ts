@@ -1,7 +1,7 @@
 import { PRODUCT_FORMULA } from '../constants/formula';
-import { unpackComponent, 묶음갈래of } from './orderUnits';
+import { stockUnits, unpackComponent, 묶음갈래of } from './orderUnits';
 import { bomOf } from './bomIndex';
-import type { Item } from './types';
+import type { Item, OrderItem } from './types';
 import { dateOfLocal } from './day';
 
 /**
@@ -252,17 +252,18 @@ export const docSaleLines = (
  */
 export const journalSaleLines = (
   product: Item | undefined,
-  quantity: number,
-  fallback: { name?: string; displaySize?: string },
+  orderItem: Pick<OrderItem, 'quantity' | 'boxQuantity' | 'isBoxUnit' | 'name' | 'displaySize'>,
   findItem: (id: string) => Item | undefined,
 ): { 품목: string; spec: string; qty: number }[] => {
+  // 주문 quantity는 이미 낱개로 환산돼 있을 수 있다. 박스 수로 정규화한 뒤 BOM을 한 번 푼다.
+  const quantity = stockUnits(orderItem, product);
   const unpacked = docUnpack(product, quantity, findItem);
   const rows = unpacked.length ? unpacked : [{ item: product, qty: quantity }];
   return rows.map(row => {
     const base = row.item ?? product;
     return {
-      품목: docPumok(base?.품목) || base?.name || fallback.name || '',
-      spec: docSpec(base?.spec) || base?.용량 || fallback.displaySize || '',
+      품목: docPumok(base?.품목) || base?.name || orderItem.name || '',
+      spec: docSpec(base?.spec) || orderItem.displaySize || '',
       qty: row.qty,
     };
   }).filter(row => row.품목);

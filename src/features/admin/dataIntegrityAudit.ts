@@ -494,9 +494,8 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
           else if ((child.type === 'product' || child.type === '완제품') && !docSaleLines(child, Number(bom.quantity) || 1, id => items.find(item => item.id === id)).length) out.push({ id: `doc-set-child-no-doc:${order.id}:${line.lineId || index}:${bom.child_id}`, area: '전표·서류', severity: 'error', title: '선물세트 구성품의 서류 품목 누락', detail: `${line.name} 구성품 ${child.name}은 서류용 품목으로 변환되지 않아 판매일지에서 빠집니다.`, date: docDate, reference: refOf(order) });
         }
       }
-      // 생산판매일지 화면은 주문의 표시 수량을 docUnpack에 넘긴다. stockUnits를 먼저 적용하면
-      // 박스가 낱개로 바뀐 뒤 docUnpack에서 다시 풀려 개입수가 두 번 곱해진다.
-      const expanded = journalSaleLines(product, line.quantity, { name: line.name, displaySize: line.displaySize }, id => items.find(item => item.id === id));
+      // 화면과 같은 주문 단위 정규화를 사용해 이미 환산된 낱개 수량을 다시 곱하지 않는다.
+      const expanded = journalSaleLines(product, line, id => items.find(item => item.id === id));
       if (!expanded.length) out.push({ id: `doc-empty:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'error', title: '서류용 품목이 없어 판매 줄이 누락됨', detail: `${line.name} ${line.quantity}개가 서류 품목으로 변환되지 않습니다.`, date: docDate, reference: refOf(order) });
       else if (!docSaleLines(product, stockUnits(line, product), id => items.find(item => item.id === id)).length) out.push({ id: `doc-fallback:${order.id}:${line.lineId || index}`, area: '전표·서류', severity: 'warning', title: '서류용 품목명이 없어 상품명으로 대체됨', detail: `${line.name}은 판매일지에 포함됐지만 품목의 서류용 품목명이 비어 상품명을 대신 사용했습니다.`, date: docDate, reference: refOf(order) });
       expanded.forEach((row, rowIndex) => {
