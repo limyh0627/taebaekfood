@@ -1,3 +1,6 @@
+import { savePayrollDraft, issuePayrollVoucher } from '../src/shared/services/payrollCommands';
+import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
+import type { CashAccount } from '../src/shared/types';
 
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
@@ -42,6 +45,7 @@ import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear a
 interface HRManagerProps {
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
   companyId?: CompanyId;
+  cashAccounts?: CashAccount[];
   employees: Employee[];
   leaveRequests: LeaveRequest[];
   onUpdateEmployee: (_emp: Employee) => void;
@@ -52,23 +56,11 @@ interface HRManagerProps {
   onDeleteLeaveRequest: (_id: string) => void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<void> | void;
-  // ── 급여대장 ── 대장 자체는 이 화면이 직접 읽고 쓴다(payrolls). 전표만 밖에 맡긴다.
-  /** 대장 합계로 자금기록 한 건을 만들고 그 id를 돌려준다 — **그날 통장에서 바로 나갈 때** */
-  onCreatePayrollEntry?: (_p: {
-    date: string; gross: number; deduct: number; net: number; note: string;
-  }) => Promise<string | undefined>;
-  /**
-   * 발생 전표 — 급여를 **그 달 비용으로 세우고 지급은 나중에** 한다.
-   *   (차) 515 급여 지급계   (대) 254 예수금 공제계 + 263 미지급급여 실지급계
-   * 돈이 안 움직이니 대체전표다. 실제로 줄 때는 263을 터는 출금 한 줄이면 된다.
-   */
-  onCreatePayrollAccrual?: (_p: {
-    date: string; gross: number; deduct: number; net: number; note: string;
-  }) => Promise<string | undefined>;
+
 }
 
 const HRManager: React.FC<HRManagerProps> = ({
-  companyId = TAEBAEK,
+  companyId = TAEBAEK, cashAccounts = [],
   employees: allEmployees,
   leaveRequests,
   onUpdateEmployee,
@@ -77,8 +69,6 @@ const HRManager: React.FC<HRManagerProps> = ({
   onUpdateLeaveStatus,
   onUpdateLeave,
   onAddLeaveRequests,
-  onCreatePayrollEntry,
-  onCreatePayrollAccrual,
 }) => {
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
@@ -116,10 +106,22 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [payYm, setPayYm] = useState(thisYm);
   const [payDate, setPayDate] = useState(() => `${thisYm}-25`);
   const [payLines, setPayLines] = useState<PayrollLine[]>([]);
+  const [paySource, setPaySource] = useState({ companyId, yearMonth: payYm, expectedRevision: 0 });
+  const [payBank, setPayBank] = useState('');
+  React.useEffect(() => {
+    const banks = cashAccounts.filter(a => companyOf(a) === companyId && a.active && a.type === '통장');
+    setPayBank(current => banks.some(a => a.id === current) ? current : defaultCashAccountId(banks, companyId));
+  }, [cashAccounts, companyId]);
+  const payBusy = React.useRef<object | null>(null);
+  const payScope = React.useRef({ companyId, yearMonth: payYm, token: {} });
+  if (payScope.current.companyId !== companyId || payScope.current.yearMonth !== payYm) { payScope.current = { companyId, yearMonth: payYm, token: {} }; payBusy.current = null; }
+  React.useEffect(() => () => { payScope.current.token = {}; }, []);
+
   const [paySaving, setPaySaving] = useState(false);
+  React.useEffect(() => setPaySaving(false), [companyId, payYm]);
   const [payMsg, setPayMsg] = useState('');
   const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
-  const [payrolls, setPayrolls] = useState<Payroll[]>([]);
+  const [payrolls, setPayrolls] = useState<Array<Payroll & { revision?: number; issueOperationId?: string; issueExpectedRevision?: number }>>([]);
   React.useEffect(() => {
     // 권한 규칙은 목록을 걸러 주지 않는다. 서버 질의에 회사 조건이 없으면 관리자도 구독이 거부된다.
     setPayrolls([]);
@@ -134,6 +136,8 @@ const HRManager: React.FC<HRManagerProps> = ({
   React.useEffect(() => {
     if (activeTab !== 'payroll') return;
     const doc = payrolls.find(p => p.id === payDocId);
+    setPaySource({ companyId, yearMonth: payYm, expectedRevision: doc?.revision ?? 0 });
+    setPayBank(defaultCashAccountId(cashAccounts.filter(a => a.type === '통장'), companyId));
     if (doc) { setPayLines(doc.lines ?? []); setPayDate(doc.payDate || `${payYm}-25`); }
     else {
       setPayLines(employees.filter(e => e.status === 'working' && e.id !== 'admin').map(e => ({
@@ -142,7 +146,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       setPayDate(`${payYm}-25`);
     }
     setPayMsg('');
-  }, [payYm, payDocId, activeTab, payrolls, employees]);
+  }, [payYm, payDocId, activeTab, payrolls, employees, companyId]);
 
   const setCell = (i: number, field: keyof PayrollLine, v: string) => {
     const n = Math.round(parseFloat(v.replace(/[^\d.-]/g, '')) || 0);
@@ -163,74 +167,31 @@ const HRManager: React.FC<HRManagerProps> = ({
   };
   const payTotals = payrollTotals(payLines);
 
-  const savePayroll = async () => {
-    if (paySaving) return;
-    setPaySaving(true);
+  const runPayroll = async (mode?: 'cash' | 'accrual') => {
+    if (payBusy.current || paySaving) return;
+    if (paySource.companyId !== companyId || paySource.yearMonth !== payYm) { setPayMsg('현재 회사와 월의 급여대장을 다시 확인하세요'); return; }
+    if (mode && payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
+    const scope = payScope.current.token;
+    const input = { yearMonth: paySource.yearMonth, payDate, lines: payLines.filter(l => payrollGross(l) > 0), expectedRevision: paySource.expectedRevision };
+    payBusy.current = scope; setPaySaving(true);
     try {
-      await setDocument('payrolls', payDocId, {
-        id: payDocId, companyId, yearMonth: payYm, payDate,
-        lines: payLines.filter(l => payrollGross(l) > 0),
-        ...(savedPayroll?.cashEntryId ? { cashEntryId: savedPayroll.cashEntryId } : {}),
-        createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      setPayMsg('저장했습니다');
-    } finally { setPaySaving(false); }
-  };
-
-  /** 전표 생성 — 대장 합계로 자금기록 한 건.
-   *  (차) 급여 지급계  (대) 예수금 공제계 + 보통예금 실지급계
-   *  공제는 음수 줄로 넣어 통장에서 나간 돈이 실지급계와 맞는다. */
-  const makePayrollEntry = async () => {
-    if (!onCreatePayrollEntry || paySaving) return;
-    if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
-    if (savedPayroll?.cashEntryId && !await appConfirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
-    setPaySaving(true);
-    try {
-      await savePayroll();
-      const id = await onCreatePayrollEntry({
-        date: payDate, gross: payTotals.gross, deduct: payTotals.deduct, net: payTotals.net,
-        note: `${payYm} 급여`,
-      });
-      if (id) {
-        await setDocument('payrolls', payDocId, {
-          id: payDocId, companyId, yearMonth: payYm, payDate,
-          lines: payLines.filter(l => payrollGross(l) > 0), cashEntryId: id,
-          createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+      if (mode) {
+        const result = await issuePayrollVoucher(companyId, input, mode, mode === 'cash' ? payBank : undefined);
+        if (payScope.current.token === scope) setPayMsg(`${result.docNo} 전표를 확인했습니다`);
+      } else {
+        const result = await savePayrollDraft(companyId, input);
+        if (payScope.current.token === scope) { setPaySource(source => ({ ...source, expectedRevision: result.revision })); setPayMsg('저장했습니다'); }
       }
-      setPayMsg('전표를 만들었습니다 — 전표내역에서 확인하세요');
-    } finally { setPaySaving(false); }
+    } catch (error) {
+      if (payScope.current.token === scope) setPayMsg(error instanceof Error ? error.message : '급여 저장에 실패했습니다');
+    } finally {
+      if (payBusy.current === scope) payBusy.current = null;
+      if (payScope.current.token === scope) setPaySaving(false);
+    }
   };
-
-  /**
-   * 발생 전표 — 대장 합계로 대체전표 한 건. 통장은 안 건드린다.
-   * 지급일이 사람마다 달라도 발생은 **그 달 말일 한 번**이다. 그래야 그 달 인건비가 온전히 잡힌다.
-   */
-  const makePayrollAccrual = async () => {
-    if (!onCreatePayrollAccrual || paySaving) return;
-    if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
-    if (savedPayroll?.cashEntryId && !await appConfirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
-    setPaySaving(true);
-    try {
-      await savePayroll();
-      const [y, m] = payYm.split('-').map(Number);
-      const last = new Date(y, m, 0).getDate();          // 그 달 말일
-      const id = await onCreatePayrollAccrual({
-        date: `${payYm}-${String(last).padStart(2, '0')}`,
-        gross: payTotals.gross, deduct: payTotals.deduct, net: payTotals.net,
-        note: `${payYm} 급여 발생`,
-      });
-      if (id) await setDocument('payrolls', payDocId, {
-        id: payDocId, companyId, yearMonth: payYm, payDate,
-        lines: payLines.filter(l => payrollGross(l) > 0), cashEntryId: id,
-        createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      setPayMsg('발생 전표를 만들었습니다 — 줄 때는 263 미지급급여를 터는 출금으로 끊으세요');
-    } finally { setPaySaving(false); }
-  };
+  const savePayroll = () => runPayroll();
+  const makePayrollEntry = () => runPayroll('cash');
+  const makePayrollAccrual = () => runPayroll('accrual');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -710,6 +671,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                 <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-black text-slate-700 outline-none focus:ring-2 focus:ring-violet-300" />
               </label>
+              <label>지급 계좌<select aria-label="급여 지급 계좌" value={payBank} onChange={e => setPayBank(e.target.value)}>
+                {cashAccounts.filter(a => companyOf(a) === companyId && a.active && a.type === '통장').map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select></label>
               <button onClick={copyPrevMonth}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600 transition-all">
                 <Copy size={13} />지난달 복사
@@ -726,12 +690,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                 {/* 두 갈래 — **언제 비용으로 잡느냐**가 다르다.
                     발생: 그 달 비용으로 세우고 지급은 나중에(대체전표). 급여를 다음 달에 주면 이쪽.
                     지급: 그날 통장에서 바로 나감(자금전표). 그날 바로 주면 이쪽. */}
-                <button onClick={makePayrollAccrual} disabled={paySaving || !onCreatePayrollAccrual}
+                <button onClick={makePayrollAccrual} disabled={paySaving}
                   title="그 달 말일에 비용으로 세운다 — 통장은 안 움직인다"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-all">
                   <FileText size={13} />발생 전표
                 </button>
-                <button onClick={makePayrollEntry} disabled={paySaving || !onCreatePayrollEntry}
+                <button onClick={makePayrollEntry} disabled={paySaving || !payBank}
                   title="지급일에 통장에서 바로 나간다 — 그날 바로 줄 때만"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-600 disabled:opacity-40 transition-all">
                   <Wallet size={13} />지급 전표

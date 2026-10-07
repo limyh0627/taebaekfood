@@ -38,6 +38,7 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
   activeSelection.current = { companyId, selectedId };
   const [action, setAction] = useState<'차입' | '상환' | null>(null);
   const [busy, setBusy] = useState(false);
+  const movementSaving = useRef(false);
   const [name, setName] = useState('');
   const [lenderName, setLenderName] = useState('');
   const [partnerId, setPartnerId] = useState('');
@@ -78,7 +79,8 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
       if (seq === refreshSeq.current) await appNotice(`대출 목록을 불러오지 못했습니다. ${String(error)}`, '조회 실패');
     } finally { if (seq === refreshSeq.current) setLoading(false); }
   };
-  useEffect(() => { setLoans([]); setSelectedId(''); setEditingLoan(null); void refresh(); return () => { refreshSeq.current++; }; }, [companyId]);
+  useEffect(() => { setLoans([]); setSelectedId(''); setEditingLoan(null); void refresh(); return () => { refreshSeq.current++; activeSelection.current = { companyId, selectedId: '' }; }; }, [companyId]);
+  useEffect(() => { setBusy(false); setAction(null); setPrincipal(''); setInterest('0'); setNote(''); }, [selectedId]);
 
   const companyLoans = loans.filter(loan => loan.companyId === companyId);
   const selected = companyLoans.find(loan => loan.id === selectedId);
@@ -163,14 +165,18 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
           base: { companyId, loanId: selected.id, date, createdAt: stampFor(date), cashAccountId,
             partnerId: selected.partnerId, partnerName: selected.lenderName, createdBy: currentUserName },
         });
-    if (!entry) return;
-    if (!await appConfirm({ title: `${action} 전표 확인`, message: `${selected.name} · ${date}\n원금 ${won(p)}${i ? ` / 이자 ${won(i)}` : ''}\n${action === '상환' ? '출금' : '입금'} 전표를 발행하고 이 대출에 연결할까요?`, confirmText: '전표 발행' })) return;
-    setBusy(true);
+    if (!entry || movementSaving.current) return;
+    movementSaving.current = true;
+    const stillSelected = () => activeSelection.current.companyId === companyId && activeSelection.current.selectedId === selected.id;
     try {
+      if (!await appConfirm({ title: `${action} 전표 확인`, message: `${selected.name} · ${date}\n원금 ${won(p)}${i ? ` / 이자 ${won(i)}` : ''}\n${action === '상환' ? '출금' : '입금'} 전표를 발행하고 이 대출에 연결할까요?`, confirmText: '전표 발행' })) return;
+      if (!stillSelected()) return;
+      setBusy(true);
       await onAddCashEntry(entry);
+      if (!stillSelected()) return;
       setAction(null); setPrincipal(''); setInterest('0'); setNote('');
-    } catch (error) { await appNotice(`전표를 저장하지 못했습니다. ${String(error)}`, '저장 실패'); }
-    finally { setBusy(false); }
+    } catch (error) { if (stillSelected()) await appNotice(`전표를 저장하지 못했습니다. ${String(error)}`, '저장 실패'); }
+    finally { movementSaving.current = false; if (stillSelected()) setBusy(false); }
   };
 
   return <div className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">

@@ -227,6 +227,7 @@ import { buysFrom } from '../../shared/partnerRole';
 import { COL } from '../../shared/collections';
 import { docName, findByDocName } from '../../shared/docName';
 import { issueNumberedCashEntry, issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
+import { recordLoanCashEntry } from '../../shared/services/recordLoanCashEntry';
 import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
 import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
@@ -2109,13 +2110,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 넣는 자리가 여럿이라 각자 번호를 매기면 같은 번호가 두 번 나온다. 그래서 문을 하나로 둔다.
    */
   const addCashEntry = async (e: Partial<CashEntry> & { date: string }, co: CompanyId = companyId) => {
-    const pool = [
-      ...allIssuedStatements.filter(x => companyOf(x) === co),
-      ...appData.cashEntries.filter(x => companyOf(x) === co),
-    ];
     //  **담당자를 찍는다**(2026-09-15 사장님: "전표일자 다음에 담당자") — 자금이 들어오는 문이
     //  여기 하나라, 어느 화면에서 만들든 사람이 남는다. 이미 적힌 것은 안 덮는다.
-    return addItem('cashEntries', { ...e, ...(e.dir === '입금' || e.dir === '출금' ? { cashAccountId: e.cashAccountId || defaultCashAccountId(appData.cashAccounts, co) } : {}), companyId: co, createdBy: e.createdBy ?? currentUser?.name, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
+    const entry = { ...e, ...(e.dir === '입금' || e.dir === '출금' ? { cashAccountId: e.cashAccountId || defaultCashAccountId(appData.cashAccounts, co) } : {}), companyId: co, createdBy: e.createdBy ?? currentUser?.name } as CashEntry;
+    // 대출은 원금·현금·번호를 전용 명령에서 함께 확정한다.
+    if (entry.loanId) return recordLoanCashEntry(co, entry);
+    return issueNumberedCashEntry(entry);
   };
 
   const generateRecurringCosts = (ym: string, onlyId?: string): Promise<number> => issueRecurringVouchers({
@@ -3076,6 +3076,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'hr' && (
             <HRManager
               companyId={companyId}
+              cashAccounts={companyCashAccounts}
               employees={employees}
               leaveRequests={leaveRequests}
               onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
@@ -3088,47 +3089,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
               onAddLeaveRequests={async (reqs) => {
                 for (const r of reqs) await addItem('leaveRequests', r);
-              }}
-              /* 급여대장 → 자금기록 한 건. 공제는 음수 줄이라 통장에서 나간 돈은 실지급액이다.
-                 (차) 515 급여 지급계  (대) 254 예수금 공제계 + 103 보통예금 실지급계 */
-              onCreatePayrollEntry={async ({ date, gross, deduct, net, note }) => {
-                const salaryCode = appData.accountCodes.find(c => c.name === '급여')?.code ?? STANDARD_ACCOUNT.SALARY;
-                const withholdCode = appData.accountCodes.find(c => c.name === '예수금')?.code ?? STANDARD_ACCOUNT.WITHHOLDING;
-                const id = `cash-${Date.now()}`;
-                await addCashEntry({
-                  id, date, dir: '출금', amount: net,
-                  cashAccountId: defaultCashAccountId(companyCashAccounts, companyId),
-                  ...(deduct > 0
-                    ? { lines: [
-                        { accountCode: salaryCode, amount: gross, note: '총급여' },
-                        //  공제는 통장과 같은 편(출금인데 대변) — 부호가 아니라 side 로 적는다
-                        { accountCode: withholdCode, amount: deduct, side: '대변' as const, note: '원천공제' },
-                      ] }
-                    : { accountCode: salaryCode }),
-                  note, createdAt: new Date().toISOString(),
-                });
-                return id;
-              }}
-              /* 발생 전표 — 급여를 **그 달 비용으로 세우고 지급은 나중에** 한다.
-                 (차) 515 급여 / (대) 254 예수금 + 263 미지급급여. 돈이 안 움직이니 대체전표다.
-                 지급일이 사람마다 달라도 발생은 그 달 말일 한 번이라, 그 달 인건비가 온전히 잡힌다. */
-              onCreatePayrollAccrual={async ({ date, gross, deduct, net, note }) => {
-                const code = (name: string, fallback: string) =>
-                  appData.accountCodes.find(c => c.name === name)?.code ?? fallback;
-                const id = `stmt-payroll-${date.slice(0, 7)}-${companyId}`;
-                await addItem('issuedStatements', {
-                  id, companyId, createdBy: currentUser?.name, issuedAt: stampFor(date), tradeDate: date, type: '비용',
-                  partnerId: '', partnerName: '급여', orderId: '',
-                  docNo: claimDocNo(date, issuedStatements, '급여'),
-                  totalSupply: gross, totalTax: 0, totalAmount: gross,
-                  // 차·대를 명시한다 — 대체전표는 짐작하지 않는다
-                  items: [
-                    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: code('급여', STANDARD_ACCOUNT.SALARY), side: '차변' as const },
-                    ...(deduct > 0 ? [{ name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: code('예수금', STANDARD_ACCOUNT.WITHHOLDING), side: '대변' as const }] : []),
-                    { name: '미지급비용', spec: '', qty: 1, price: net, supply: net, tax: 0, total: net, isTaxExempt: true, accountCode: code('미지급비용', STANDARD_ACCOUNT.ACCRUED_EXPENSE), side: '대변' as const },
-                  ],
-                });
-                return id;
               }}
             />
           )}
@@ -4827,7 +4787,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'loan-management' && (
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-                <LoanManager companyId={companyId} cashEntries={companyCashEntries} cashAccounts={companyCashAccounts}
+                <LoanManager key={companyId} companyId={companyId} cashEntries={companyCashEntries} cashAccounts={companyCashAccounts}
                   partners={partners} currentUserName={currentUser?.name} onAddCashEntry={addCashEntry} />
               </React.Suspense>
             </div>

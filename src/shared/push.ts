@@ -1,7 +1,6 @@
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { arrayUnion, arrayRemove, deleteField, doc, updateDoc, FieldPath } from 'firebase/firestore';
-import { app, db } from './firebase';
-import { COL } from './collections';
+import { app } from './firebase';
+import { updateOwnPushToken } from './services/pushTokenService';
 import { currentDeviceLabel } from './deviceLabel';
 
 /**
@@ -89,10 +88,8 @@ export async function registerPush(employeeId: string): Promise<PushResult> {
      *  `fcmTokens`(글자 배열)는 **그대로 둔다** — 보내는 쪽(functions)과 죽은 표 지우기가
      *  그 모양에 기대고 있어 한꺼번에 못 바꾼다. 옆에 딸림표(`fcmDevices`)를 둘 뿐이다.
      *  표 이름에는 `:` 이 들어가므로 점으로 끊기지 않게 `FieldPath` 로 적는다. */
-    const ref = doc(db, COL.employees, employeeId);
     //  같은 표를 또 담아도 arrayUnion 이 한 번만 넣는다
-    await updateDoc(ref, { fcmTokens: arrayUnion(token) });
-    await updateDoc(ref, new FieldPath('fcmDevices', token), {
+    await updateOwnPushToken(employeeId, token, {
       name: currentDeviceLabel(), at: new Date().toISOString(),
     });
     return { ok: true, token };
@@ -117,9 +114,7 @@ export async function unregisterPush(employeeId: string, token?: string): Promis
       ? await getToken(getMessaging(app), { vapidKey: VAPID! }).catch(() => undefined)
       : undefined);
     if (!t) return;
-    const ref = doc(db, COL.employees, employeeId);
-    await updateDoc(ref, { fcmTokens: arrayRemove(t) });
     //  딸림표도 같이 지운다 — 표가 없는데 기기만 남으면 목록이 거짓말을 한다
-    await updateDoc(ref, new FieldPath('fcmDevices', t), deleteField());
+    await updateOwnPushToken(employeeId, t);
   } catch { /* 지우기 실패는 조용히 넘긴다 — 로그아웃을 막을 일이 아니다 */ }
 }

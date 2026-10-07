@@ -150,4 +150,38 @@ describe('급여대장 공통 번호 원자 발행', () => {
     await expect(issuePayrollVoucher(db, 'taebaek', { ...input, mode: 'cash' })).rejects.toThrow('사원');
     expect(rows.get(counter)?.last).toBe(4);
   });
-});
+  it('새 지급은 명시 메인 통장을 쓰고 같은 계좌로만 재시도한다', async () => {
+    const { db, rows } = base();
+    rows.set('cashAccounts/cashacct-temp-main', { companyId: 'taebaek', type: '통장', active: true });
+    const request = { ...input, mode: 'cash' as const, cashAccountId: 'cashacct-temp-main' };
+    const first = await issuePayrollVoucher(db, 'taebaek', request);
+    expect(rows.get(`cashEntries/${first.id}`)?.cashAccountId).toBe('cashacct-temp-main');
+    expect(rows.get('payrolls/pay-2026-10')?.issueCashAccountId).toBe('cashacct-temp-main');
+    expect(await issuePayrollVoucher(db, 'taebaek', request)).toEqual(first);
+    await expect(issuePayrollVoucher(db, 'taebaek', { ...request, cashAccountId: 'bank' })).rejects.toThrow('다른 급여');
+    expect(rows.get(counter)?.last).toBe(5);
+  });
+  it('타회사·비활성·카드 지급 계좌는 발행 전에 거절한다', async () => {
+    for (const bank of [
+      { companyId: 'punghoe', type: '통장', active: true },
+      { companyId: 'taebaek', type: '통장', active: false },
+      { companyId: 'taebaek', type: '카드', active: true },
+    ]) {
+      const { db, rows } = base(); rows.set('cashAccounts/invalid', bank);
+      await expect(issuePayrollVoucher(db, 'taebaek', { ...input, mode: 'cash', cashAccountId: 'invalid' })).rejects.toThrow('계좌');
+      expect(rows.get(counter)?.last).toBe(4);
+      expect(rows.has('payrolls/pay-2026-10')).toBe(false);
+      expect(rows.has('cashEntries/payroll-taebaek-2026-10-base')).toBe(false);
+    }
+  });
+
+  it.each(['taebaek', 'punghoe'])('%s의 명시 통장을 다른 회사와 분리하여 사용한다', async company => {
+    const fixture = base();
+    const initial = Object.fromEntries([...fixture.rows].map(([key, value]) => [key.replace(/_taebaek/g, `_${company}`), { ...value, ...(value.companyId ? { companyId: company } : {}) }]));
+    initial['appMeta/releaseCutover'] = { ...initial['appMeta/releaseCutover'], voucherNotBefore: { [company]: '2026-10-03' } };
+    initial['cashAccounts/main'] = { companyId: company, type: '통장', active: true };
+    initial['cashAccounts/foreign'] = { companyId: company === 'taebaek' ? 'punghoe' : 'taebaek', type: '통장', active: true };
+    const { db, rows } = fakeDb(initial);
+    const result = await issuePayrollVoucher(db, company, { ...input, mode: 'cash', cashAccountId: 'main' });
+    expect(rows.get(`cashEntries/${result.id}`)).toMatchObject({ companyId: company, cashAccountId: 'main' });
+  });});

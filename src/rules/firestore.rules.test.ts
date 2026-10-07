@@ -648,6 +648,74 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
   });
 
+  describe('대출 전용 저장 전환', () => {
+    for (const companyId of ['taebaek', 'punghoe']) {
+      const own = () => companyId === 'taebaek' ? 관리자() : 풍회관리자();
+      for (const state of ['absent', 'disabled', 'active']) {
+        it(`${companyId} ${state}: 활성 대출 현금만 직접 쓰기를 막는다`, async () => {
+          await env.withSecurityRulesDisabled(async ctx => {
+            const store = ctx.firestore();
+            if (state !== 'absent') await setDoc(doc(store, 'appMeta', `loanMovementCutover_${companyId}`), { companyId, enabled: state === 'active' });
+            await setDoc(doc(store, 'cashEntries', 'loan-existing'), { companyId, loanId: 'loan-a', amount: 100 });
+            await setDoc(doc(store, 'cashEntries', 'general-existing'), { companyId, amount: 100 });
+          });
+          const db = own();
+          const check = state === 'active' ? assertFails : assertSucceeds;
+          await check(setDoc(doc(db, 'cashEntries', 'loan-new'), { companyId, loanId: 'loan-a', amount: 100 }));
+          await check(updateDoc(doc(db, 'cashEntries', 'loan-existing'), { amount: 200 }));
+          await check(updateDoc(doc(db, 'cashEntries', 'loan-existing'), { loanId: '' }));
+          await check(updateDoc(doc(db, 'cashEntries', 'general-existing'), { loanId: 'loan-a' }));
+          await check(deleteDoc(doc(db, 'cashEntries', 'loan-existing')));
+          await assertSucceeds(setDoc(doc(db, 'cashEntries', 'general-new'), { companyId, amount: 100 }));
+          await assertSucceeds(updateDoc(doc(db, 'cashEntries', 'general-new'), { amount: 200 }));
+          await assertSucceeds(deleteDoc(doc(db, 'cashEntries', 'general-new')));
+          await assertSucceeds(setDoc(doc(db, 'loanContracts', 'opening-contract'), { companyId, openingPrincipal: 100 }));
+          await assertSucceeds(updateDoc(doc(db, 'loanContracts', 'opening-contract'), { movementRevision: 1, principalBalance: 200 }));
+          await assertFails(setDoc(doc(db, 'cashEntries', 'foreign-cash'), { companyId: companyId === 'taebaek' ? 'punghoe' : 'taebaek', loanId: 'loan-a' }));
+        });
+      }
+      it(`${companyId}: 관리자가 전환 설정을 생성·변조·삭제하지 못한다`, async () => {
+        const gate = doc(own(), 'appMeta', `loanMovementCutover_${companyId}`);
+        await assertSucceeds(getDoc(gate));
+        await assertFails(setDoc(gate, { companyId, enabled: true }));
+        await env.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(), 'appMeta', `loanMovementCutover_${companyId}`), { companyId, enabled: true }));
+        await assertFails(updateDoc(gate, { enabled: false }));
+        await assertFails(deleteDoc(gate));
+      });
+    }
+  });
+
+  describe('급여 원자 발행 전환', () => {
+    for (const companyId of ['taebaek', 'punghoe']) {
+      const own = () => companyId === 'taebaek' ? 관리자() : 풍회관리자();
+      for (const state of ['absent', 'active']) {
+        it(`${companyId} ${state}: 전환 후에는 급여대장 직접 쓰기만 거절한다`, async () => {
+          await env.withSecurityRulesDisabled(async ctx => {
+            const store = ctx.firestore();
+            if (state === 'active') await setDoc(doc(store, 'appMeta', `payrollIssueCutover_${companyId}`), { companyId, firstYearMonth: '2026-10' });
+            await setDoc(doc(store, 'payrolls', 'legacy-payroll'), { companyId, yearMonth: '2026-09', lines: [] });
+          });
+          const db = own();
+          const check = state === 'active' ? assertFails : assertSucceeds;
+          await assertSucceeds(getDoc(doc(db, 'payrolls', 'legacy-payroll')));
+          await check(setDoc(doc(db, 'payrolls', 'new-payroll'), { companyId, yearMonth: '2026-10', lines: [] }));
+          await check(updateDoc(doc(db, 'payrolls', 'legacy-payroll'), { note: '직접 변경' }));
+          await check(deleteDoc(doc(db, 'payrolls', 'legacy-payroll')));
+          await assertSucceeds(setDoc(doc(db, 'cashEntries', 'general-cash'), { companyId, amount: 100 }));
+        });
+      }
+      it(`${companyId}: 급여 전환 설정은 관리자도 직접 생성·변조·삭제하지 못한다`, async () => {
+        const gate = doc(own(), 'appMeta', `payrollIssueCutover_${companyId}`);
+        await assertSucceeds(getDoc(gate));
+        await assertFails(setDoc(gate, { companyId, firstYearMonth: '2026-10' }));
+        await env.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(), 'appMeta', `payrollIssueCutover_${companyId}`), { companyId, firstYearMonth: '2026-10' }));
+        await assertFails(updateDoc(gate, { firstYearMonth: '2026-07' }));
+        await assertFails(deleteDoc(gate));
+        await assertFails(getDoc(doc(companyId === 'taebaek' ? 풍회관리자() : 관리자(), 'appMeta', `payrollIssueCutover_${companyId}`)));
+      });
+    }
+  });
+
   describe('지우기', () => {
     it('**남의 회사 것을 못 지운다**', async () => {
       await assertFails(deleteDoc(doc(태백직원(), 'orders', 'o-punghoe')));

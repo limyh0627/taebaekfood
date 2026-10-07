@@ -42,12 +42,22 @@ export async function recordLoanMovement(db: admin.firestore.Firestore, companyI
   const counter = db.collection('appMeta').doc(voucherSequenceKey(companyId, input.tradeDate));
   const cutover = db.collection('appMeta').doc(`loanMovementCutover_${companyId}`);
   const releaseGate = releaseGateRef(db);
-  return db.runTransaction(async tx => {
+  const outcome = await db.runTransaction(async tx => {
     const [operationSnap, cashSnap, otherSnap, contractSnap, accountSnap, counterSnap, cutoverSnap, movementRows, releaseSnap] = await Promise.all([
       tx.get(operation), tx.get(cash), tx.get(other), tx.get(contract), tx.get(account), tx.get(counter), tx.get(cutover),
       tx.get(db.collection('cashEntries').where('loanId', '==', input.loanId)),
       tx.get(releaseGate),
     ]);
+    const prior = operationSnap.data();
+    if (operationSnap.exists && prior?.status === 'rejected') {
+      if (prior.companyId !== companyId || prior.requestHash !== requestHash || prior.loanId !== input.loanId
+        || cashSnap.exists || otherSnap.exists
+        || !['invalid-argument', 'failed-precondition'].includes(prior.failureCode)
+        || typeof prior.failureMessage !== 'string') fail('기존 거절 작업과 요청·금융문서가 다릅니다.');
+      return { status: 'rejected' as const, failureCode: prior.failureCode as 'invalid-argument' | 'failed-precondition', failureMessage: prior.failureMessage as string };
+    }
+    let writesStarted = false;
+    try {
     assertReleaseActive(releaseSnap, input.releaseId);
     assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate);
     if (operationSnap.exists) {
@@ -95,6 +105,7 @@ export async function recordLoanMovement(db: admin.firestore.Firestore, companyI
       cashAccountId: input.cashAccountId, dir: plan.dir, amount: plan.amount,
       accountCode: plan.accountCode ?? null, lines: plan.lines ?? null, note: input.note?.trim() || `${loanData.name ?? '대출'} ${input.action}` };
     const createdAt = new Date().toISOString();
+    writesStarted = true;
     writeVoucherCounter(tx, counterSnap, sequence, next);
     tx.update(contract, { movementRevision: revision + 1, principalBalance: plan.balanceAfter });
     tx.create(cash, { ...business, ...(business.accountCode ? { accountCode: business.accountCode } : {}),
@@ -105,7 +116,22 @@ export async function recordLoanMovement(db: admin.firestore.Firestore, companyI
       entryHash: hash(business), balanceBefore: plan.balanceBefore, balanceAfter: plan.balanceAfter,
       principalDelta: plan.principalDelta, cashEntryId: input.operationId, docNo, createdAt, createdBy: actorId });
     return { status: 'applied' as const, id: input.operationId, docNo, balanceAfter: plan.balanceAfter };
+    } catch (error) {
+      if (!operationSnap.exists && !cashSnap.exists && !otherSnap.exists && !writesStarted
+        && error instanceof HttpsError && ['invalid-argument', 'failed-precondition'].includes(error.code)) {
+        const failureCode = error.code as 'invalid-argument' | 'failed-precondition';
+        tx.create(operation, { companyId, loanId: input.loanId, requestHash, status: 'rejected',
+          failureCode, failureMessage: error.message, createdAt: new Date().toISOString(), createdBy: actorId });
+        return { status: 'rejected' as const, failureCode, failureMessage: error.message };
+      }
+      throw error;
+    }
   });
+  if (outcome.status === 'rejected') throw new HttpsError(outcome.failureCode, outcome.failureMessage, {
+    loanMovementFailure: { version: 2, companyId, loanId: input.loanId, operationId: input.operationId,
+      operationRejected: true, financialWrites: false },
+  });
+  return outcome;
 }
 
 export const recordLoanMovementCommand = onCall({ region: 'asia-northeast3' }, async request => {

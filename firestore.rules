@@ -326,11 +326,34 @@ service cloud.firestore {
     }
 
     // 전환 문서는 회사 없는 서버 공통 설정이라 관리자 단건 조회만 예외로 연다.
-    function isReleaseCutoverPath() {
-      return request.path == /databases/$(database)/documents/appMeta/releaseCutover;
+    function isProtectedCutoverPath() {
+      return request.path == /databases/$(database)/documents/appMeta/releaseCutover
+        || request.path == /databases/$(database)/documents/appMeta/loanMovementCutover_taebaek
+        || request.path == /databases/$(database)/documents/appMeta/loanMovementCutover_punghoe
+        || request.path == /databases/$(database)/documents/appMeta/payrollIssueCutover_taebaek
+        || request.path == /databases/$(database)/documents/appMeta/payrollIssueCutover_punghoe;
     }
     match /appMeta/releaseCutover {
       allow get: if isAdmin() && myCompany() in ['taebaek', 'punghoe'];
+    }
+    match /appMeta/{id} {
+      allow get: if isAdmin() && id in ['loanMovementCutover_' + myCompany(), 'payrollIssueCutover_' + myCompany()];
+    }
+    function loanCashWriteAllowed(c) {
+      let gate = /databases/$(database)/documents/appMeta/$(('loanMovementCutover_' + myCompany()));
+      return c != 'cashEntries'
+        || !exists(gate)
+        || get(gate).data.companyId != myCompany()
+        || get(gate).data.enabled != true
+        || ((resource == null || resource.data.get('loanId', '') == '')
+            && (request.resource == null || request.resource.data.get('loanId', '') == ''));
+    }
+    function payrollWriteAllowed(c) {
+      let gate = /databases/$(database)/documents/appMeta/$(('payrollIssueCutover_' + myCompany()));
+      return c != 'payrolls'
+        || !exists(gate)
+        || get(gate).data.companyId != myCompany()
+        || !(get(gate).data.firstYearMonth is string);
     }
 
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
@@ -338,20 +361,24 @@ service cloud.firestore {
     //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
     //  안 붙이면 저장하는 족족 여기서 막힌다(그게 의도다. 조용히 새는 것보다 낫다).
     match /{collection}/{document=**} {
-      allow get: if !hasOwnRule(collection) && !isReleaseCutoverPath()
+      allow get: if !hasOwnRule(collection) && !isProtectedCutoverPath()
                  && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                  && getOk();
       // 목록 요청에는 개별 문서 경로가 없어 전환 설정만 제외할 수 없다. 앱은 메타 단건 조회만 쓴다.
       allow list: if !hasOwnRule(collection) && collection != 'appMeta'
                   && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                   && readOk();
-      allow create, update: if !hasOwnRule(collection) && !isReleaseCutoverPath()
+      allow create, update: if !hasOwnRule(collection) && !isProtectedCutoverPath()
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
-                            && inventoryQuantityOk(collection);
-      allow delete: if !hasOwnRule(collection) && !isReleaseCutoverPath()
+                            && inventoryQuantityOk(collection)
+                            && loanCashWriteAllowed(collection)
+                            && payrollWriteAllowed(collection);
+      allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
-                    && deleteOk();
+                    && deleteOk()
+                    && loanCashWriteAllowed(collection)
+                    && payrollWriteAllowed(collection);
     }
   }
 }

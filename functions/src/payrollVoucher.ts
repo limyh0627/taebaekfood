@@ -10,7 +10,7 @@ type Line = { employeeId: string; employeeName: string; base: number; overtime?:
   incomeTax?: number; localTax?: number; pension?: number; health?: number; employment?: number; otherDeduct?: number;
   department?: string; position?: string; note?: string };
 type Input = { yearMonth: string; payDate: string; lines: Line[]; expectedRevision: number;
-  mode: Mode; releaseId: string };
+  mode: Mode; releaseId: string; cashAccountId?: string };
 type DraftInput = Omit<Input, 'mode' | 'releaseId'>;
 const REGION = 'asia-northeast3';
 const fields = ['base', 'overtime', 'allowance', 'incomeTax', 'localTax', 'pension', 'health', 'employment', 'otherDeduct'] as const;
@@ -109,6 +109,7 @@ export async function savePayrollDraft(db: admin.firestore.Firestore, companyId:
 export async function issuePayrollVoucher(db: admin.firestore.Firestore, companyId: string, input: Input) {
   if (input?.mode !== 'cash' && input?.mode !== 'accrual') throw new HttpsError('invalid-argument', '급여 전표 종류가 잘못되었습니다.');
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)) throw new HttpsError('invalid-argument', '배포 전환 ID가 필요합니다.');
+  if (input.cashAccountId !== undefined && (input.mode !== 'cash' || typeof input.cashAccountId !== 'string' || !input.cashAccountId || input.cashAccountId.includes('/'))) throw new HttpsError('invalid-argument', '급여 지급 계좌가 잘못되었습니다.');
   const { id, lines, totals } = checked(companyId, input);
   if (input.mode === 'cash' && totals.net <= 0) throw new HttpsError('invalid-argument', '실지급액이 0원입니다.');
   const date = input.mode === 'accrual' ? (() => {
@@ -117,7 +118,7 @@ export async function issuePayrollVoucher(db: admin.firestore.Firestore, company
   })() : input.payDate;
   const opId = operationId(companyId, input.yearMonth);
   const requestHash = hash({ mode: input.mode, yearMonth: input.yearMonth, payDate: input.payDate, lines,
-    expectedRevision: input.expectedRevision });
+    expectedRevision: input.expectedRevision, ...(input.cashAccountId !== undefined ? { cashAccountId: input.cashAccountId } : {}) });
   const payroll = db.collection('payrolls').doc(id);
   const cash = db.collection('cashEntries').doc(opId);
   const stmt = db.collection('issuedStatements').doc(opId);
@@ -178,7 +179,7 @@ export async function issuePayrollVoucher(db: admin.firestore.Firestore, company
     const bank = input.mode === 'cash' ? banksSnap.docs.map(snap => {
       const data = snap.data();
       return { id: snap.id, active: data.active as boolean, type: data.type as string };
-    }).filter(row => row.active && row.type === '통장').sort((a, b) => a.id.localeCompare(b.id))[0] : undefined;
+    }).filter(row => row.active && row.type === '통장').sort((a, b) => a.id.localeCompare(b.id)).find(row => input.cashAccountId === undefined || row.id === input.cashAccountId) : undefined;
     if (input.mode === 'cash' && !bank) throw new HttpsError('failed-precondition', '활성 급여 지급 계좌가 없습니다.');
     const state = await readVoucherCounter(db, tx, counterSnap, releaseSnap, companyId, date, '급여');
     if (!state || state.companyId !== companyId || state.tradeDate !== date || state.prefix !== '급여'
@@ -215,7 +216,7 @@ export async function issuePayrollVoucher(db: admin.firestore.Firestore, company
       payrollDraftVersion: 1, revision: input.expectedRevision + 1,
       cashEntryId: opId, issueOperationId: opId,
       issueKind: kind, issueDocNo: docNo, issueVoucherHash: hash(voucherContent(kind, voucher)),
-      issueExpectedRevision: input.expectedRevision, createdAt: old?.createdAt ?? now, updatedAt: now };
+      issueExpectedRevision: input.expectedRevision, ...(input.cashAccountId !== undefined ? { issueCashAccountId: input.cashAccountId } : {}), createdAt: old?.createdAt ?? now, updatedAt: now };
     if (paySnap.exists) tx.update(payroll, nextPayroll); else tx.create(payroll, nextPayroll);
     writeVoucherCounter(tx, counterSnap, state, next);
     return { id: opId, docNo, kind: nextPayroll.issueKind };
