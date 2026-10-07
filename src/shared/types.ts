@@ -407,17 +407,6 @@ export interface OrderItemEdit {
   changes: string[];
 }
 
-export interface BoxConfig {
-  boxType: string;     // 박스 종류 표시명 (예: "2번박스", "3번박스")
-  unitsPerBox: number; // 박스당 낱개 수 (예: 12, 10)
-  boxSubId?: string;   // 박스 품목 ID
-}
-
-export interface ClientBoxConfig {
-  partnerId: string;
-  configs: BoxConfig[]; // 거래처당 여러 박스 설정 가능
-}
-
 export interface SubmaterialComponent {
   id: string;
   name: string;
@@ -463,8 +452,6 @@ export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
   'box': 'submaterial',
   'label': 'submaterial',
 };
-
-export type ProductStage = 'WIP' | 'FINISHED';
 
 /**
  * 주문이 생산량을 계산하는 동안 잠시 선점한 품목 재고.
@@ -513,7 +500,6 @@ export interface Item {
   type: InventoryCategory | string;   // 타입 — product/goods/wip/raw/submaterial (선물세트·배송은 subtype)
   category?: ItemSubtype | string;    // 카테고리 — 참기름·들기름·라벨·용기·박스·마개·테이프·향미유…
   subtype?: string;                   // 서브타입 — 낱개·배송·선물세트·벌크. 부자재는 비어 있다.
-  itemType?: ProductStage;       // @deprecated → type: 'wip'|'product' 사용
   cost?: number;                 // 원가 (제조/매입원가) — **kg당**. 기름도 마찬가지(2026-08-14~)
   /**
    * 원가를 어디서 가져오나.
@@ -573,12 +559,10 @@ export interface Item {
   /** Storage object path for a photo uploaded through item editor (legacy image URLs may have no path). */
   imagePath?: string;
   oil?: string;
-  partnerId?: string;   // @deprecated — partnerIds 사용
   partnerIds?: string[];
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
   //  boxSize 는 걷어냈다(2026-09-02) — 개입수의 근거는 **BOM 아니면 item_pack** 둘뿐이다.
   //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
-  partnerBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
   /** @deprecated spec 사용 */

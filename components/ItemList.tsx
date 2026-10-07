@@ -1024,6 +1024,13 @@ const ItemList: React.FC<ItemListProps> = ({
   const PAGE_SIZE = 24;
 
   const productMap = useMemo(() => new Map(items.map(p => [p.id, p])), [items]);
+  const canConfirmReceipt = (po: PurchaseOrder): boolean => po.status === 'invoiced' && po.poType !== 'oem' && poLines(po).length > 0 &&
+    poLines(po).every(line => {
+      const item = productMap.get(line.itemId);
+      return !!item && (canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
+        (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item) > 0 || !!parsePackageKg(item.name))))
+        && Number.isFinite(line.quantity) && line.quantity > 0;
+    });
   const inboundPartnerMap = useMemo(() => new Map(inboundPartners.map(s => [s.id, s])), [inboundPartners]);
 
   const categoryCounts = useMemo(() => {
@@ -1528,7 +1535,7 @@ const ItemList: React.FC<ItemListProps> = ({
         const currentPage = Math.min(flowPage, pageCount);
         const visible = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
         const requestTransition = (row: FlowRow) => {
-          if (row.status === '완료') return;
+          if (flowSaving || row.status === '완료' || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))) return;
           if (row.type === '입고' && row.status === '예정') {
             setConfirmModal({
               title: '입고대기 전환',
@@ -1601,7 +1608,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           onRequestPurchaseInvoice(partnerId, partnerName, lines.map(line => ({ itemId: line.itemId, name: line.name || productMap.get(line.itemId)?.name || '', spec: productMap.get(line.itemId)?.spec || '', qty: line.quantity, price: 0 })), [po.id]);
                         }} className="font-bold text-rose-600 underline">발행하기</button>;
                       })()}</td>
-                      <td className="px-3 py-3 text-center">{row.status !== '완료' && <button type="button" onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
+                      <td className="px-3 py-3 text-center">{row.status !== '완료' && <button type="button" disabled={flowSaving || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))} onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
                     </tr>
                   ))}
                   {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
@@ -1622,13 +1629,7 @@ const ItemList: React.FC<ItemListProps> = ({
         const sourceChanged = flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
         const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending';
         const issued = !!record.linkedStatementId;
-        const canConfirmReceipt = flowDetail.type === '입고' && pending && lines.length > 0 &&
-          lines.every(line => {
-            const item = productMap.get(line.itemId);
-            return !!item && (canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
-              (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item) > 0 || !!parsePackageKg(item.name))))
-              && Number.isFinite(line.quantity) && line.quantity > 0;
-          });
+        const canReceive = flowDetail.type === '입고' && canConfirmReceipt(record as PurchaseOrder);
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
         const deleteReason = !po ? '' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
           : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'
@@ -1647,7 +1648,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 finally { setFlowSaving(false); }
               }} className="min-w-20 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">삭제</button>}
               <button type="button" disabled={flowSaving} onClick={() => setFlowDetail(null)} className="min-w-20 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-600 disabled:opacity-40">닫기</button>
-              {po && pending && <button type="button" disabled={flowSaving || sourceChanged || !canConfirmReceipt} onClick={async () => {
+              {po && pending && <button type="button" disabled={flowSaving || sourceChanged || !canReceive} onClick={async () => {
                 setFlowSaving(true);
                 try { if (await onFinishConfirmedOrder(po.id) !== false) setFlowDetail(null); }
                 finally { setFlowSaving(false); }
@@ -1674,7 +1675,7 @@ const ItemList: React.FC<ItemListProps> = ({
             } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
             finally { setFlowSaving(false); }
           }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
-          {flowDetail.type === '입고' && pending && !canConfirmReceipt && <p className="text-xs font-bold text-amber-700">품목이나 원료 로트 연결을 확인한 뒤 입고확정해 주세요.</p>}
+          {flowDetail.type === '입고' && pending && !canReceive && <p className="text-xs font-bold text-amber-700">품목이나 원료 로트 연결을 확인한 뒤 입고확정해 주세요.</p>}
         </ModalShell>;
       })()}
 

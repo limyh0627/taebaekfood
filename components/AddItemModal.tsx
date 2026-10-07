@@ -111,7 +111,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
     unpackable: initialData?.unpackable ?? false,
     //  원가 출처 — 안 정했으면 롤업이 기본이다(구성·원료식에서 계산).
     costSource: (initialData?.costSource ?? 'rollup') as 'rollup' | 'manual',
-    partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
+    partnerIds: initialData?.partnerIds ?? [],
     inPartnerIds: partnerIn
       .filter(pi => pi.itemId === initialData?.id)
       .map(pi => (pi.partnerId))
