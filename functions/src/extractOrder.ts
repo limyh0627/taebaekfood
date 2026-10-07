@@ -1,3 +1,4 @@
+import { kstDateOf } from './shared/calculation';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 
@@ -92,7 +93,7 @@ export const extractOrder = onCall(
     const 거래처목록 = (Array.isArray(partners) ? partners : []).slice(0, 품목한도);
     //  **지난 주문은 없어도 된다** — 처음 거래하는 곳이면 빈 목록이 온다. 그때는 그 대목을 아예 뺀다.
     const 지난주문 = (Array.isArray(history) ? history : []).slice(0, 기록한도);
-    const 오늘 = /^\d{4}-\d{2}-\d{2}$/.test(String(today ?? '')) ? String(today) : new Date().toISOString().slice(0, 10);
+    const 오늘 = /^\d{4}-\d{2}-\d{2}$/.test(String(today ?? '')) ? String(today) : kstDateOf(new Date());
 
     const 본문 = [
       지침(오늘),

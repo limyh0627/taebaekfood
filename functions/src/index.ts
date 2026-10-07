@@ -3,6 +3,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 import { valueInventory } from './shared/inventoryValuation';
+import { kstDateOf } from './shared/calculation';
 import { assertReleaseActive, releaseGateRef } from './releaseGate';
 
 admin.initializeApp();
@@ -91,20 +92,15 @@ export const monthlyInventorySnapshot = onSchedule(
   },
   async () => {
     const now = new Date();
-    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-
-    // 오늘이 해당 월의 마지막 날인지 확인
-    const nextDay = new Date(kst);
-    nextDay.setDate(kst.getDate() + 1);
-    const isLastDay = nextDay.getDate() === 1;
-    if (!isLastDay) return;
+    const date = kstDateOf(now);
+    const nextDay = new Date(date + 'T00:00:00Z');
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    if (nextDay.getUTCDate() !== 1) return;
     const startingRelease = await releaseGateRef(db).get();
     const releaseId = startingRelease.data()?.releaseId;
     assertReleaseActive(startingRelease, releaseId);
 
-    const year = kst.getFullYear();
-    const month = kst.getMonth() + 1;
-    const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+    const yearMonth = date.slice(0, 7);
 
     //  이미 있는지는 **회사마다 따로** 본다(아래 루프).
     //  전에는 태백 문서 하나만 보고 통째로 빠져나가서, 태백이 있으면 풍회는 영영 안 생겼다.
@@ -165,12 +161,8 @@ export const dailyAutoVoucher = onSchedule(
     const releaseSnap = await releaseGateRef(db).get();
     const releaseId = releaseSnap.data()?.releaseId;
     assertReleaseActive(releaseSnap, releaseId);
-    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const y = kst.getUTCFullYear();
-    const m = kst.getUTCMonth() + 1;
-    const d = kst.getUTCDate();
-    const ym = `${y}-${String(m).padStart(2, '0')}`;
-    const today = `${ym}-${String(d).padStart(2, '0')}`;
+    const today = kstDateOf(new Date());
+    const ym = today.slice(0, 7);
     const tplSnap = await db.collection('fixedCostTemplates').get();
     let processed = 0;
     for (const doc of tplSnap.docs) {

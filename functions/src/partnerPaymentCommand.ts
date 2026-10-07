@@ -5,7 +5,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 import { partnerQuarantined } from './partnerCutover';
-import { claimsAfterReturns, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement,
+import { PartnerPaymentValidationError, claimsAfterReturns, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement,
   type ReturnApplication } from './partnerPaymentPlan';
 
 type Row = Record<string, any>;
@@ -102,7 +102,7 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
   const account = db.collection('cashAccounts').doc(input.cashAccountId);
   const partner = db.collection('partners').doc(input.partnerId);
   const releaseGate = releaseGateRef(db);
-  return db.runTransaction(async tx => {
+  const outcome = await db.runTransaction(async tx => {
     const [operationSnap, entrySnap, otherSnap, normalCounterSnap, catchUpCounterSnap, cutoverSnap, stateSnap, accountSnap, partnerSnap,
       statementRows, cashRows, settlementRows, returnRows, releaseSnap] = await Promise.all([
       tx.get(operation), tx.get(entry), tx.get(other), tx.get(counter), tx.get(catchUpCounter), tx.get(cutover), tx.get(state), tx.get(account), tx.get(partner),
@@ -112,6 +112,17 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
       tx.get(db.collection('returnApplications').where('partnerId', '==', input.partnerId)),
       tx.get(releaseGate),
     ]);
+    const prior = operationSnap.data();
+    const ownedSettlements = settlementRows.docs.filter(doc => doc.data().operationId === input.operationId);
+    if (operationSnap.exists && prior?.status === 'rejected') {
+      if (prior.companyId !== companyId || prior.partnerId !== input.partnerId || prior.requestHash !== requestHash
+        || entrySnap.exists || otherSnap.exists || ownedSettlements.length
+        || !['invalid-argument', 'failed-precondition'].includes(prior.failureCode)
+        || typeof prior.failureMessage !== 'string') conflict('기존 거절 작업과 요청·금융문서가 다릅니다.');
+      return { status: 'rejected' as const, failureCode: prior.failureCode as 'invalid-argument' | 'failed-precondition', failureMessage: prior.failureMessage as string };
+    }
+    let writesStarted = false;
+    try {
     assertReleaseActive(releaseSnap, input.releaseId);
     const mode = assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate, true);
     const effectivePrefix = mode === 'catchUp' ? '추가' : '';
@@ -166,6 +177,7 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     const business = { companyId, partnerId: input.partnerId, date: input.tradeDate,
       cashAccountId: input.cashAccountId, dir: input.direction, amount: input.amount,
       lines: plan.lines, note: input.note?.trim() ?? '' };
+    writesStarted = true;
     writeVoucherCounter(tx, counterSnap, sequence, next);
     tx.create(entry, { ...business, partnerName: partnerSnap.data()?.name ?? '',
       docNo, createdAt, createdBy: actorId,
@@ -180,7 +192,23 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     if (stateSnap.exists) tx.update(state, { revision: revision + 1 });
     else tx.create(state, { companyId, partnerId: input.partnerId, revision: 1 });
     return { status: 'applied' as const, id: input.operationId, docNo };
+    } catch (error) {
+      if (error instanceof PartnerPaymentValidationError) error = new HttpsError('failed-precondition', error.message);
+      if (!operationSnap.exists && !entrySnap.exists && !otherSnap.exists && !ownedSettlements.length
+        && !writesStarted && error instanceof HttpsError
+        && (error.code === 'invalid-argument' || error.code === 'failed-precondition')) {
+        tx.create(operation, { companyId, partnerId: input.partnerId, requestHash, status: 'rejected',
+          failureCode: error.code, failureMessage: error.message, createdAt: new Date().toISOString(), createdBy: actorId });
+        return { status: 'rejected' as const, failureCode: error.code, failureMessage: error.message };
+      }
+      throw error;
+    }
   });
+  if (outcome.status === 'rejected') throw new HttpsError(outcome.failureCode, outcome.failureMessage, {
+    partnerPaymentFailure: { version: 1, companyId, partnerId: input.partnerId, operationId: input.operationId,
+      operationRejected: true, financialWrites: false },
+  });
+  return outcome;
 }
 
 export const recordPartnerPaymentCommand = onCall({ region: 'asia-northeast3' }, async request => {

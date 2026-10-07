@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 
 vi.mock('firebase-functions/v2/https', () => ({
   HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
@@ -56,6 +57,21 @@ const input = { operationId: 'pay-1', tradeDate: date, partnerId: 'p1', directio
   amount: 100, cashAccountId: 'bank', pin: true, allocations: [{ statementId: 's1', amount: 100 }],
   expectedRevision: 0, releaseId: 'test-release' };
 
+function auditOnly(rows: Map<string, Row>, initial: Record<string, Row>, request: typeof input, message: string) {
+  const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
+  const requestHash = createHash('sha256').update(JSON.stringify(canonical({ ...request, note: '' }))).digest('hex');
+  const operationKey = `partnerPaymentOperations/${request.operationId}`;
+  expect([...rows.keys()].sort()).toEqual([...Object.keys(initial), operationKey].sort());
+  for (const [key, original] of Object.entries(initial)) expect(rows.get(key)).toEqual(original);
+  expect(rows.get(operationKey)).toMatchObject({ companyId: 'taebaek', partnerId: request.partnerId, requestHash,
+    status: 'rejected', failureCode: 'failed-precondition', failureMessage: expect.stringContaining(message), createdBy: 'admin' });
+  expect(rows.get(operationKey)?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  expect(rows.has(`cashEntries/${request.operationId}`)).toBe(false);
+  expect(rows.has(`issuedStatements/${request.operationId}`)).toBe(false);
+  expect([...rows.keys()].some(key => key.startsWith(`settlements/st-${request.operationId}-`))).toBe(false);
+  expect(rows.has(`appMeta/partnerPaymentState_taebaek_${request.partnerId}`)).toBe(false);
+}
 describe('partner payment transaction', () => {
   it('uses the same catch-up number pool and rejects a missing additional counter', async () => {
     const extraDate = '2026-09-30';
@@ -73,7 +89,7 @@ describe('partner payment transaction', () => {
     const { [additional]: _missing, ...noAdditional } = catchUp;
     const missing = fakeDb(noAdditional);
     await expect(recordPartnerPayment(missing.db, 'taebaek', 'admin', extraInput)).rejects.toThrow('카운터');
-    expect(missing.rows.size).toBe(Object.keys(noAdditional).length);
+    auditOnly(missing.rows, noAdditional, extraInput, '카운터');
   });
   it('issues a 10/02 payment only in the explicit payment catch-up window', async () => {
     const extraDate = '2026-10-02';
@@ -91,15 +107,15 @@ describe('partner payment transaction', () => {
     await expect(recordPartnerPayment(closed.db, 'taebaek', 'admin', { ...input, tradeDate: extraDate }))
       .rejects.toThrow('전환일');
   });
-  it('fails closed before any write without cutover or counter', async () => {
+  it('rejects with audit only before financial writes without cutover or counter', async () => {
     const { ['appMeta/partnerPaymentCutover_taebaek']: _cutover, ...withoutCutover } = source;
     const first = fakeDb(withoutCutover);
     await expect(recordPartnerPayment(first.db, 'taebaek', 'admin', input)).rejects.toThrow('전환');
-    expect(first.rows.size).toBe(Object.keys(withoutCutover).length);
+    auditOnly(first.rows, withoutCutover, input, '전환');
     const { [counter]: _counter, ...withoutCounter } = source;
     const second = fakeDb(withoutCounter);
     await expect(recordPartnerPayment(second.db, 'taebaek', 'admin', input)).rejects.toThrow('카운터');
-    expect(second.rows.size).toBe(Object.keys(withoutCounter).length);
+    auditOnly(second.rows, withoutCounter, input, '카운터');
   });
 
   it('commits number, cash, settlement, operation and revision together, then reuses the result', async () => {

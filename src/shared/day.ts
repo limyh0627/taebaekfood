@@ -1,3 +1,4 @@
+export { kstDateOf } from '../../functions/src/shared/calculation';
 /**
  * **달력 날짜 셈 — 'YYYY-MM-DD' 문자열만 다룬다.**
  *

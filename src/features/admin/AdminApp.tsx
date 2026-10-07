@@ -26,7 +26,7 @@ import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeni
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { today } from '../../shared/day';
+import { today, addMonths, endOfMonth } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
@@ -565,8 +565,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const ym = docTab === '생산작업기록부' ? productionWorkMonth : docYearMonth;
     const [y, m] = ym.split('-').map(Number);
     if (!y || !m) return;
-    const start = new Date(y, m - 2, 1).toISOString().slice(0, 10);   // 전월 1일 (생성일 버퍼)
-    const end = new Date(y, m, 0).toISOString().slice(0, 10);         // 당월 말일
+    const start = `${addMonths(`${y}-${String(m).padStart(2, '0')}`, -1)}-01`; // 전월 1일 (생성일 버퍼)
+    const end = endOfMonth(`${y}-${String(m).padStart(2, '0')}`);               // 당월 말일
     loadHistoricalOrders(start, end);
   }, [docTab, productionWorkMonth, docYearMonth]);
 

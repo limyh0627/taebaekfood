@@ -5,13 +5,13 @@ import { initializeApp as initializeClientApp, deleteApp as deleteClientApp, typ
 import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
 vi.mock('firebase-functions/v2/https', () => ({
-  HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
+  HttpsError: class extends Error { constructor(public code: string, message: string, public details?: unknown) { super(message); } },
   onCall: (_options: unknown, handler: unknown) => handler,
 }));
 
 import { recordPartnerPayment, recordPartnerPaymentCommand } from './partnerPaymentCommand';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
 const runId = `pay-${randomUUID()}`;
 const projectId = 'demo-taebaekfood-local';
 const date = '2026-10-03';
@@ -62,9 +62,13 @@ async function seed(label: string, amount = 100, options: { cutover?: boolean; c
   return statementId;
 }
 const issue = (input: Parameters<typeof recordPartnerPayment>[3]) => recordPartnerPayment(db, 'taebaek', actorId, input);
-async function noWrites(input: Parameters<typeof recordPartnerPayment>[3], counterLast: number | null) {
+async function noWrites(input: Parameters<typeof recordPartnerPayment>[3], counterLast: number | null, rejected = true) {
   expect((await ref('cashEntries', input.operationId).get()).exists).toBe(false);
-  expect((await ref('partnerPaymentOperations', input.operationId).get()).exists).toBe(false);
+  const operation = await ref('partnerPaymentOperations', input.operationId).get();
+  expect(operation.exists).toBe(rejected);
+  if (rejected) expect(operation.data()).toMatchObject({ companyId: 'taebaek', partnerId: input.partnerId, status: 'rejected', createdBy: actorId });
+  expect((await ref('issuedStatements', input.operationId).get()).exists).toBe(false);
+  expect((await db.collection('settlements').where('operationId', '==', input.operationId).get()).empty).toBe(true);
   expect((await ref('appMeta', `partnerPaymentState_taebaek_${input.partnerId}`).get()).exists).toBe(false);
   expect((await ref('appMeta', counterId).get()).data()?.last ?? null).toBe(counterLast);
 }
@@ -116,7 +120,7 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     await admin.auth(app).setCustomUserClaims(uid, { companyId: 'taebaek', isAdmin: true });
     clientApp = initializeClientApp({ apiKey: 'demo-key', projectId }, `${runId}-client`);
     const auth = getAuth(clientApp);
-    connectAuthEmulator(auth, 'http://127.0.0.1:9198', { disableWarnings: true });
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const token = await credential.user.getIdToken(true);
     const decoded = await admin.auth(app).verifyIdToken(token);
@@ -129,21 +133,24 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
 
   it('fails closed on unprepared cutover, absent counter and stale revision', async () => {
     const statementId = await seed('gates', 100);
-    const input = request('gates', statementId);
+    let input = request('gates-release', statementId);
     await ref('appMeta', 'releaseCutover').update({ status: 'paused' });
     await expect(issue(input)).rejects.toThrow('활성화');
     await noWrites(input, 0);
     await ref('appMeta', 'releaseCutover').update({ status: 'active' });
     await ref('appMeta', 'partnerPaymentCutover_taebaek').delete();
+    input = request('gates-cutover', statementId);
     await expect(issue(input)).rejects.toThrow('전환');
     await noWrites(input, 0);
     await put('appMeta', 'partnerPaymentCutover_taebaek',
       { companyId: 'taebaek', enabled: true, legacyWritersBlocked: true, auditPassed: true });
     await ref('appMeta', counterId).delete();
+    input = request('gates-counter', statementId);
     await expect(issue(input)).rejects.toThrow('카운터');
     await noWrites(input, null);
     await put('appMeta', counterId, { companyId: 'taebaek', tradeDate: date, prefix: '', last: 0 });
-    await expect(issue({ ...input, expectedRevision: 1 })).rejects.toThrow('변경');
+    input = request('gates-revision', statementId, 100, 1);
+    await expect(issue(input)).rejects.toThrow('변경');
     await noWrites(input, 0);
   }, 25_000);
 
@@ -196,7 +203,8 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
       date, dir: '출금', amount: 100, accountCode: '251' });
     await put('settlements', `${runId}-malformed-settlement`, { companyId: 'taebaek',
       cashEntryId: `${runId}-legacy-cash`, statementId, amount: 100 });
-    await expect(issue(input)).rejects.toThrow('방향·계정');
-    await noWrites(input, 0);
+    const malformed = request('malformed-ledger', statementId);
+    await expect(issue(malformed)).rejects.toThrow('방향·계정');
+    await noWrites(malformed, 0);
   }, 25_000);
 });
