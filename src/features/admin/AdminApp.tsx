@@ -87,7 +87,7 @@ import {
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PurchaseOrder, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement, OrderItemEdit } from '../../shared/types';
 import { pendingFlowQuantityPatch } from './pendingFlowQuantity';
-import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
+import { issueRecurringVouchers } from './recurringVoucherIssue';
 import PageHeader from '../../shared/components/PageHeader';
 import OrderCreationModalHeader from '../../shared/components/OrderCreationModalHeader';
 import LargeModalShell from '../../shared/components/LargeModalShell';
@@ -2136,31 +2136,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return addItem('cashEntries', { ...e, companyId: co, createdBy: e.createdBy ?? currentUser?.name, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
   };
 
-  const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
-    const tpls = companyTemplates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId));
-    const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
-      ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
-    let created = 0;
-    // 이번 실행에서 만든 번호도 같이 센다 — 한 번에 여러 건을 만들면 목록이 아직 안 따라온다
-    const made: { docNo?: string }[] = [];
-    for (const t of tpls) {
-      const key = autoVoucherId(t, ym);
-      const legacyKey = `RC-${t.id}-${ym}`;
-      if (appData.cashEntries.some(e => e.id === key || e.id === legacyKey)) continue;
-      if (issuedStatements.some(s => s.id === key || (s as any).orderId === key || (s as any).orderId === legacyKey)) continue;
-      const accountName = appData.accountCodes.find(c => c.code === t.accountCode)?.name;
-      if (isCashDir(dirOf(t))) {
-        await addCashEntry(buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
-      } else {
-        const v = buildStatementVoucher(t, ym, { docNo: '', accountName });
-        const docNo = claimDocNo(v.tradeDate, [...issuedStatements, ...made]);
-        made.push({ docNo });
-        await addItem('issuedStatements', { ...v, docNo, createdBy: currentUser?.name } as any);
-      }
-      created++;
-    }
-    return created;
-  };
+  const generateRecurringCosts = (ym: string, onlyId?: string): Promise<number> => issueRecurringVouchers({
+    ym, onlyId, companyId, createdBy: currentUser?.name, templates: companyTemplates,
+    cashEntries: companyCashEntries, issuedStatements, cashAccounts: companyCashAccounts,
+    accountCodes: appData.accountCodes,
+  });
 
   /** 문서함에서 '서류관리 › 생산판매기록부'를 펴 놓았나 */
   //  '전체'(중분류 미선택)도 친다 — 서류관리 밑엔 이 하나뿐이라, 대분류만 눌러도 서류가 떠야 한다.
@@ -3959,6 +3939,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 {docTab === '벤조피렌' && (
                   <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
                     <BenzopyreneLog
+                      companyId={companyId}
                       currentUserName={currentUser?.name}
                       isAdmin={isAdmin}
                     />

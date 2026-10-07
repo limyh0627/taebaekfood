@@ -53,7 +53,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
       p.type === 'product' &&
       isLinkedToPartner(partnerItems, selectedClient.id, p.id)
     );
-  }, [items, selectedClient]);
+  }, [items, selectedClient, partnerItems]);
 
   const updateCart = (itemId: string, delta: number) => {
     setCart(prev => {

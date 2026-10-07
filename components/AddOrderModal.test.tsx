@@ -46,6 +46,52 @@ const order = (
   source: '일반',
 });
 
+describe('선택한 거래처의 실시간 원본 갱신', () => {
+  const partner = { ...partners[0], shipTos: [{ id: 's1', name: '기본 배송지' }, { id: 's2', name: '선택 배송지' }] } as Partner;
+  const props = { items, orders: [], palletStocks: [], partnerItems, onClose: vi.fn() };
+
+  it('같은 ID의 배송지가 교체되면 최신 목록과 기본 배송지를 표시한다', () => {
+    const view = render(<AddOrderModal {...props} partners={[partner]} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /가을식품/ }));
+    const updated = { ...partner, shipTos: [{ id: 's3', name: '새 배송지' }] };
+    view.rerender(<AddOrderModal {...props} partners={[updated]} onSave={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '새 배송지' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '기본 배송지' })).not.toBeInTheDocument();
+  });
+
+  it('원본 갱신 중 유효한 배송지와 수량·비고를 보존하고 최신 거래처·단가로 저장한다', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const view = render(<AddOrderModal {...props} partners={[partner]} onSave={save} />);
+    fireEvent.click(screen.getByRole('button', { name: /가을식품/ }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 배송지' }));
+    fireEvent.change(screen.getAllByPlaceholderText('0')[0], { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('주문 비고'), { target: { value: '작성한 비고' } });
+    const updated = { ...partner, name: '갱신 거래처', email: 'new@example.test',
+      shipTos: [{ id: 's3', name: '추가 배송지' }, ...partner.shipTos!] };
+    const updatedLinks = partnerItems.map(link => ({ ...link, price: 2200 }));
+    view.rerender(<AddOrderModal {...props} partners={[updated]} partnerItems={updatedLinks} onSave={save} />);
+    expect(screen.getByRole('button', { name: '선택 배송지' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByPlaceholderText('0')[0]).toHaveValue('2');
+    expect(screen.getByLabelText('주문 비고')).toHaveValue('작성한 비고');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '주문 생성 완료' })));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: partner.id, partnerName: '갱신 거래처', email: 'new@example.test', shipToId: 's2',
+      note: '작성한 비고', totalAmount: 4400,
+      items: [expect.objectContaining({ itemId: 'oil', quantity: 2, price: 2200 })],
+    }));
+  });
+
+  it('선택 배송지가 삭제되면 기본값으로 돌아가고 거래처가 삭제되면 저장을 막는다', () => {
+    const view = render(<AddOrderModal {...props} partners={[partner]} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /가을식품/ }));
+    fireEvent.click(screen.getByRole('button', { name: '선택 배송지' }));
+    view.rerender(<AddOrderModal {...props} partners={[{ ...partner, shipTos: [partner.shipTos![0]] }]} onSave={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '기본 배송지' })).toHaveAttribute('aria-pressed', 'true');
+    view.rerender(<AddOrderModal {...props} partners={[]} onSave={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '주문 생성 완료' })).toBeDisabled();
+  });
+});
+
 describe('옛 박스 설정과 포장 환산표 충돌', () => {
   it('주문 입력에는 포장 환산표의 개입수를 표시한다', () => {
     setPackIndex(buildPackIndex([{ item_id: 'f6', units_per_box: 12 }]));

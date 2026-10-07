@@ -94,7 +94,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
       observer?.disconnect();
     };
   }, [searchTerm]);
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
+  // 거래처 원본이 갱신돼도 옛 배송지로 주문하지 않도록 선택 키만 보관한다.
+  const selectedPartner = partners.find(partner => partner.id === selectedPartnerId) ?? null;
   /**
    * **어디로 보내나**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고 토글로 세 개 중에
    * 하나 고르게 하면 안되나? 디폴트는 포천이고").
@@ -103,7 +105,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
    * 이 값이 바뀌면 **품목 목록이 따라 바뀐다** — 특정 배송지에만 나가는 품목이 있다.
    */
   const [shipToId, setShipToId] = useState<string | undefined>(undefined);
-  React.useEffect(() => { setShipToId(defaultShipToId(selectedPartner ?? undefined)); }, [selectedPartner?.id]);
+  React.useEffect(() => {
+    setShipToId(current => activeShipTos(selectedPartner ?? undefined).some(shipTo => shipTo.id === current)
+      ? current : defaultShipToId(selectedPartner ?? undefined));
+  }, [selectedPartner]);
   const [selectedItems, setSelectedItems] = useState<{ itemId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('전체');
@@ -150,7 +155,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   };
 
   const selectPartner = (partner: Partner) => {
-    setSelectedPartner(partner);
+    setSelectedPartnerId(partner.id);
+    setShipToId(defaultShipToId(partner));
     setSource(partner.type as OrderSource);
     const 기본 = defaultShipMethod(partner.type);
     setShipMethod(기본);
@@ -160,7 +166,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   };
 
   const changePartner = () => {
-    setSelectedPartner(null);
+    setSelectedPartnerId(null);
     setSelectedItems([]);
     setPallets([]);
     setShowPallets(false);

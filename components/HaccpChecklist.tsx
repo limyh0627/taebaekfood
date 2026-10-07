@@ -1,10 +1,10 @@
-﻿import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { today } from '../src/shared/day';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
-import { collection, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
-import { addItem, setDocument, updateItem } from '../src/shared/services/firebaseService';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { addItem, setDocument, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import { haccpTemplateDocId } from '../src/shared/haccpTemplateId';
 import type { CompanyId } from '../src/shared/types';
 const HaccpCompanyContext = createContext<CompanyId>('taebaek');
@@ -506,9 +506,9 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_temp'), orderBy('date', 'desc'));
-    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord))));
-  }, []);
+    const q = query(collection(db, 'haccp_temp'), where('companyId', '==', companyId));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord)).filter(row => typeof row.date === 'string').sort((a, b) => b.date.localeCompare(a.date))));
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'temp_zones')), snap => {
@@ -517,7 +517,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
         if (Array.isArray(data) && data.length > 0) setTemplateZones(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   const todayRecord = records.find(r => r.date === today);
   const isReadOnly = selected ? selected.date !== today : false;
@@ -556,7 +556,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
         setSelected({ ...data, id });
       } else {
         const upd = { rows: selected.rows, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
-        await updateDoc(doc(db, 'haccp_temp', selected.id), upd as any);
+        await updateItem('haccp_temp', selected.id, upd as any);
         setSelected(prev => prev ? { ...prev, ...upd } : prev);
       }
     } finally { setSaving(false); }
@@ -567,14 +567,14 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
     setConfirming(true);
     try {
       const upd = { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() };
-      await updateDoc(doc(db, 'haccp_temp', selected.id), upd);
+      await updateItem('haccp_temp', selected.id, upd);
       setSelected(prev => prev ? { ...prev, ...upd } : prev);
     } finally { setConfirming(false); }
   };
 
   const handleDelete = async (id: string) => {
     if (!await appConfirm('이 기록을 삭제하시겠습니까?')) return;
-    await deleteDoc(doc(db, 'haccp_temp', id));
+    await deleteItem('haccp_temp', id);
     if (selected?.id === id) setSelected(null);
   };
 
@@ -1057,6 +1057,7 @@ interface IncomingRecord {
 const defaultIncomingRow = (): IncomingRow => ({ date: '', inboundPartner: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '' as '', packaging: '' as '', label: '' as '', certAvail: '' as '', result: '' as '', corrective: '', inspector: '' });
 
 const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
   const [records, setRecords] = useState<IncomingRecord[]>([]);
@@ -1066,9 +1067,9 @@ const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_incoming'), orderBy('month', 'desc'));
-    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as IncomingRecord))));
-  }, []);
+    const q = query(collection(db, 'haccp_incoming'), where('companyId', '==', companyId));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as IncomingRecord)).filter(row => typeof row.month === 'string').sort((a, b) => b.month.localeCompare(a.month))));
+  }, [companyId]);
 
   const currentRecord = records.find(r => r.month === month);
   const isReadOnly = month < currentMonth && !isAdmin;
@@ -1338,6 +1339,7 @@ const defaultAreaRows = (): AreaCleanRow[] =>
   CLEAN_AREAS.map(a => ({ date: '', area: a, result: '' as '', sanitized: '' as '', sanitizer: '', cleaner: '', note: '' }));
 
 const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const companyId = useHaccpCompany();
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
   const [records, setRecords] = useState<CleaningRecord[]>([]);
@@ -1349,9 +1351,9 @@ const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
   const areaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_cleaning'), orderBy('month', 'desc'));
-    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CleaningRecord))));
-  }, []);
+    const q = query(collection(db, 'haccp_cleaning'), where('companyId', '==', companyId));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CleaningRecord)).filter(row => typeof row.month === 'string').sort((a, b) => b.month.localeCompare(a.month))));
+  }, [companyId]);
 
   const currentRecord = records.find(r => r.month === month);
   const isReadOnly = month < currentMonth && !isAdmin;
@@ -1383,7 +1385,7 @@ const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
       if (!currentRecord?.id) {
         await addItem('haccp_cleaning', { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
       } else {
-        await updateDoc(doc(db, 'haccp_cleaning', currentRecord.id), { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+        await updateItem('haccp_cleaning', currentRecord.id, { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
       }
     } finally { setSaving(false); }
   };
@@ -1392,7 +1394,7 @@ const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
     if (!canConfirm || !currentRecord?.id) return;
     setConfirming(true);
     try {
-      await updateDoc(doc(db, 'haccp_cleaning', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+      await updateItem('haccp_cleaning', currentRecord.id, { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
     } finally { setConfirming(false); }
   };
 
@@ -1836,11 +1838,11 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const today = todayStr();
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_sanitation'), orderBy('checkDate', 'desc'));
+    const q = query(collection(db, 'haccp_sanitation'), where('companyId', '==', companyId));
     return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)));
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as SanitationRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
     });
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'sanitation')), snap => {
@@ -1849,7 +1851,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   // ── 월별 심사자료 PDF 다운로드 (관리자) ──────────────────────────────
   const bulkRef = useRef<HTMLDivElement>(null);
@@ -1987,7 +1989,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
           updatedAt: now,
           revisionCount: newRev,
         };
-        await updateDoc(doc(db, 'haccp_sanitation', selected.id), update as any);
+        await updateItem('haccp_sanitation', selected.id, update as any);
         setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
     } finally {
@@ -2010,7 +2012,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
-      await updateDoc(doc(db, 'haccp_sanitation', selected.id), update);
+      await updateItem('haccp_sanitation', selected.id, update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
@@ -2023,7 +2025,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
 
   const handleDelete = async (id: string) => {
     if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteDoc(doc(db, 'haccp_sanitation', id));
+    await deleteItem('haccp_sanitation', id);
     if (selected?.id === id) setSelected(null);
   };
 
@@ -2511,11 +2513,11 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   const today = todayStr();
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_personal_hygiene'), orderBy('checkDate', 'desc'));
+    const q = query(collection(db, 'haccp_personal_hygiene'), where('companyId', '==', companyId));
     return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PersonalHygieneRecord)));
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PersonalHygieneRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
     });
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'personal_hygiene')), snap => {
@@ -2524,7 +2526,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
         if (Array.isArray(data) && data.length > 0) setTemplateCols(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   const todayRecord = records.find(r => r.checkDate === today);
 
@@ -2590,7 +2592,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
         setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
-        await updateDoc(doc(db, 'haccp_personal_hygiene', selected.id), update as any);
+        await updateItem('haccp_personal_hygiene', selected.id, update as any);
         setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
     } finally { setSaving(false); }
@@ -2604,14 +2606,14 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
-      await updateDoc(doc(db, 'haccp_personal_hygiene', selected.id), update);
+      await updateItem('haccp_personal_hygiene', selected.id, update);
       setSelected(prev => prev ? { ...prev, ...update } : prev);
     } finally { setConfirming(false); }
   };
 
   const handleDelete = async (id: string) => {
     if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteDoc(doc(db, 'haccp_personal_hygiene', id));
+    await deleteItem('haccp_personal_hygiene', id);
     if (selected?.id === id) setSelected(null);
   };
 
@@ -2869,7 +2871,7 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
       }
       setCols([...PERSONAL_HYGIENE_COLS]);
     });
-  }, []);
+  }, [companyId]);
 
   const handleSave = async () => {
     const valid = cols.filter(c => c.trim());
@@ -2996,7 +2998,7 @@ export const TempZoneTemplateEditor: React.FC = () => {
       }
       setZones([...STORAGE_ZONES]);
     });
-  }, []);
+  }, [companyId]);
 
   const handleSave = async () => {
     const valid = zones.filter(z => z.name.trim());
@@ -3132,7 +3134,7 @@ export const SanitationTemplateEditor: React.FC = () => {
       }
       setItems([...SANITATION_ITEMS]);
     });
-  }, []);
+  }, [companyId]);
 
   const handleSave = async () => {
     const validItems = items.filter(it => it.item.trim());
@@ -3269,7 +3271,7 @@ export const SanitationTemplateEditor: React.FC = () => {
 
 // 직원용 위생점검 탭 뷰 (작업장 위생 + 개인위생)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
+const StaffChecklistForCompany: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
   const [activeTab, setActiveTab] = useState<'sanitation' | 'personal' | 'temp' | 'weekly-sanitation' | 'closing'>('sanitation');
   const STAFF_TABS = [
     { id: 'sanitation' as const,        label: '작업장 위생점검표',    desc: 'HACCP-PRP-001 · 작업장 위생 점검 (1일 2회)',   icon: <ShieldAlert size={13} />,   color: 'emerald' },
@@ -3294,7 +3296,7 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
       const data = snap.exists() ? snap.data().order : null;
       if (Array.isArray(data)) setTabOrder(data);
     });
-  }, []);
+  }, [companyId]);
 
   // 저장된 순서 우선, 저장에 없는(새로 생긴) 탭은 기본 순서로 뒤에 붙임
   const tabById = new Map(STAFF_TABS.map(t => [t.id as string, t]));
@@ -3447,7 +3449,7 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
       }
       setItems([...defaultItems]);
     });
-  }, [cycle]);
+  }, [companyId, templateKey, defaultItems]);
 
   const handleSave = async () => {
     const validItems = items.filter(it => it.item.trim());
@@ -3555,11 +3557,11 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   const cycleName = cycle === 'weekly' ? '주간' : '월간';
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_periodic_sanitation'), orderBy('period', 'desc'));
+    const q = query(collection(db, 'haccp_periodic_sanitation'), where('companyId', '==', companyId));
     return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PeriodRecord)));
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PeriodRecord)).filter(row => typeof row.period === 'string').sort((a, b) => b.period.localeCompare(a.period)));
     });
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'weekly_sanitation')), snap => {
@@ -3568,7 +3570,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
         if (Array.isArray(data) && data.length > 0) setWeekItems(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'monthly_sanitation')), snap => {
@@ -3577,7 +3579,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
         if (Array.isArray(data) && data.length > 0) setMonthItems(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   const currentRecord = records.find(r => r.cycle === cycle && r.period === period);
 
@@ -3647,7 +3649,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
         setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
-        await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update as any);
+        await updateItem('haccp_periodic_sanitation', selected.id, update as any);
         setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
     } finally { setSaving(false); }
@@ -3661,7 +3663,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
-      await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update);
+      await updateItem('haccp_periodic_sanitation', selected.id, update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
@@ -3672,7 +3674,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
 
   const handleDelete = async (id: string) => {
     if (!await appConfirm('이 점검표를 삭제하시겠습니까?')) return;
-    await deleteDoc(doc(db, 'haccp_periodic_sanitation', id));
+    await deleteItem('haccp_periodic_sanitation', id);
     if (selected?.id === id) setSelected(null);
   };
 
@@ -4007,7 +4009,7 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
       }
       setItems([...CLOSING_ITEMS_DEFAULT]);
     });
-  }, []);
+  }, [companyId]);
 
   const handleSave = async () => {
     const validItems = items.filter(it => it.item.trim());
@@ -4103,11 +4105,11 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_closing_checklist'), orderBy('checkDate', 'desc'));
+    const q = query(collection(db, 'haccp_closing_checklist'), where('companyId', '==', companyId));
     return onSnapshot(q, snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClosingRecord)));
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClosingRecord)).filter(row => typeof row.checkDate === 'string').sort((a, b) => b.checkDate.localeCompare(a.checkDate)));
     });
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     return onSnapshot(doc(db, 'haccp_templates', haccpTemplateDocId(companyId, 'closing_checklist')), snap => {
@@ -4116,7 +4118,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
         if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
       }
     });
-  }, []);
+  }, [companyId]);
 
   // 날짜가 바뀌면 해당 날짜 기록으로 자동 초기화
   useEffect(() => {
@@ -4175,7 +4177,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
         setSelected({ ...data, id });
       } else {
         const update = { ...selected, updatedBy: userName, updatedAt: now };
-        await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update as any);
+        await updateItem('haccp_closing_checklist', selected.id, update as any);
         setSelected(prev => prev ? { ...prev, ...update } : prev);
       }
     } finally { setSaving(false); }
@@ -4189,7 +4191,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
     const userName = currentUser?.name ?? '관리자';
     try {
       const update = { confirmedBy: userName, confirmedAt: now };
-      await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update);
+      await updateItem('haccp_closing_checklist', selected.id, update);
       const confirmed = { ...selected, ...update };
       setSelected(confirmed);
       if (await appConfirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
@@ -4200,7 +4202,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
 
   const handleDelete = async (id: string) => {
     if (!await appConfirm('이 체크리스트를 삭제하시겠습니까?')) return;
-    await deleteDoc(doc(db, 'haccp_closing_checklist', id));
+    await deleteItem('haccp_closing_checklist', id);
     if (selected?.id === id) setSelected(null);
   };
 
@@ -4456,7 +4458,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
   { id: 'personal',          label: '개인위생점검표',          icon: <User size={14} />,           desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)' },
 ];
 
-const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
+const HaccpChecklistForCompany: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; companyId: CompanyId }> = ({ currentUser, isAdmin, companyId }) => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
   // 탭 순서: 관리자가 드래그로 변경 → Firestore에 저장돼 모든 기기에서 동일하게 표시
@@ -4467,7 +4469,7 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
       const data = snap.exists() ? snap.data().order : null;
       if (Array.isArray(data)) setTabOrder(data);
     });
-  }, []);
+  }, [companyId]);
 
   // 저장된 순서 우선, 저장에 없는(새로 생긴) 탭은 기본 순서로 뒤에 붙임
   const tabById = new Map(TABS.map(t => [t.id as string, t]));
@@ -4578,4 +4580,9 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
   );
 };
 
+// 회사가 바뀌면 이전 회사의 초안·템플릿·구독을 함께 비운다.
+export const StaffChecklistView = (props: React.ComponentProps<typeof StaffChecklistForCompany>) =>
+  <StaffChecklistForCompany key={props.companyId} {...props} />;
+const HaccpChecklist = (props: React.ComponentProps<typeof HaccpChecklistForCompany>) =>
+  <HaccpChecklistForCompany key={props.companyId} {...props} />;
 export default HaccpChecklist;

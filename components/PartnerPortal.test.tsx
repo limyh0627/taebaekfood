@@ -4,6 +4,21 @@ import { expect, it, vi } from 'vitest';
 import PartnerPortal from './PartnerPortal';
 import type { Item, Partner, PartnerItem } from '../types';
 
+it('품목 원본이 같아도 거래처 연결의 추가·삭제를 주문 목록에 반영한다', () => {
+  const items = [{ id: 'p1', name: '연결 검수 품목', type: 'product', unit: '개' }] as Item[];
+  const partners = [{ id: 'c1', name: '검수거래처', type: '일반' }] as Partner[];
+  const props = { items, partners, onOrderSubmit: vi.fn(), onExit: vi.fn() };
+  const links = [{ id: 'pi1', itemId: 'p1', partnerId: 'c1', Direction: 'out', price: 1000 }] as PartnerItem[];
+  const view = render(<PartnerPortal {...props} partnerItems={[]} />);
+  fireEvent.change(screen.getByPlaceholderText('거래처 코드 (ID)'), { target: { value: 'c1' } });
+  fireEvent.click(screen.getByRole('button', { name: '입장하기' }));
+  expect(screen.queryByText('연결 검수 품목')).not.toBeInTheDocument();
+  view.rerender(<PartnerPortal {...props} partnerItems={links} />);
+  expect(screen.getByText('연결 검수 품목')).toBeInTheDocument();
+  view.rerender(<PartnerPortal {...props} partnerItems={[]} />);
+  expect(screen.queryByText('연결 검수 품목')).not.toBeInTheDocument();
+});
+
 it('주문 저장이 실패하면 성공 화면으로 넘어가지 않고 다시 저장할 수 있다', async () => {
   const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
   const onOrderSubmit = vi.fn().mockRejectedValueOnce(new Error('권한 거부')).mockResolvedValueOnce('order-1');

@@ -1162,7 +1162,7 @@ const ItemList: React.FC<ItemListProps> = ({
         || splitNameVolume(a).base.localeCompare(splitNameVolume(b).base, 'ko')
         || (a.spec ?? '').localeCompare(b.spec ?? '', 'ko', { numeric: true });
     });
-  }, [inventoryItems, activeTab, catSel, supSel, specSel, gradeSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
+  }, [inventoryItems, activeTab, catSel, supSel, specSel, gradeSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, partnerItems, psMap, taxo, topTab, stockOnly, zeroStockOnly]);
 
   // 완제품 탭: 박스 품목을 그 낱개 밑으로 묶는다 (unpackComponent 기준). row = { p, isChild, parentId?, boxCount }
   type GroupRow = { p: Item; isChild: boolean; parentId?: string; boxCount: number };
