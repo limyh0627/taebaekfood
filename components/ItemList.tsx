@@ -6,7 +6,7 @@ import { today, dateOfLocal, timeOfLocal } from '../src/shared/day';
 import { canConfirmPurchaseOrderReceiptItem, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { rawLotTarget } from '../src/shared/rawReceipt';
-import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
+import { bomOf, getBomIndex, packingSubmaterials } from '../src/shared/bomIndex';
 import {
   Package,
   Edit,
@@ -48,7 +48,7 @@ import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, itemKg, packBreakdown, 
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
-import { packUnitsOf } from '../src/shared/packIndex';
+import { getPackIndex, packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -369,6 +369,11 @@ const ItemListContent: React.FC<ItemListProps> = ({
   onOemReceive,
   onOemIssueFee,
 }) => {
+  const unpackMounted = useRef(true);
+  useEffect(() => {
+    unpackMounted.current = true;
+    return () => { unpackMounted.current = false; };
+  }, []);
   const inventoryItems = useMemo(() => items.filter(isPhysicalInventoryItem), [items]);
   const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material)?.lots ?? [], [items]);
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
@@ -959,15 +964,18 @@ const ItemListContent: React.FC<ItemListProps> = ({
   //  예전엔 옛 `unpackTo` 필드만 봤는데 BOM으로 옮기면서 그 필드가 전부 지워져
   //  (박스 품목 137건 중 보유 0건) 버튼이 한 번도 안 떴다.
   const unpackBox = async (product: Item) => {
-    const uc = unpackComponent(product);
+    const inputs = { bom: getBomIndex(), pack: getPackIndex() };
+    const uc = unpackComponent(product, inputs);
     if (!uc) return;                                   // 박스 품목이 아니면 아무것도 안 한다
     const target = items.find(i => i.id === uc.itemId);
     if (!target) { alert('개봉 대상 낱개 품목을 찾을 수 없습니다.'); return; }
     const boxStock = product.stock ?? 0;
     if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
     if (!await appConfirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
+    if (!unpackMounted.current) return;
     const result = await unpackBoxStock({ boxItemId: product.id, unitItemId: target.id,
-      count: uc.count, operationId: `box-unpack-${product.id}-${crypto.randomUUID()}` });
+      count: uc.count, operationId: `box-unpack-${product.id}-${crypto.randomUUID()}` }, inputs);
+    if (!unpackMounted.current) return;
     if (!result.ok) { alert(result.message); return; }
     setToast({ message: `${product.name} −1박스 → ${target.name} +${uc.count}개` });
   };

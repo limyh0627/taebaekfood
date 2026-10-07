@@ -1355,12 +1355,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const orderAskCurrent = useRef<{ rollback: object | null; stock: object | null; goods: object | null }>({ rollback: null, stock: null, goods: null });
   orderAskCurrent.current = { rollback: rollbackAsk, stock: stockUseAsk, goods: goodsStockAsk };
   const [catalogDeleteAsk, setCatalogDeleteAsk] = useState<{
+    scope: object;
     itemId: string;
     itemName: string;
     bomIds: string[];
     partnerItemIds: string[];
     subMessage: string;
   } | null>(null);
+  const catalogDeleteCurrent = useRef<typeof catalogDeleteAsk>(null);
+  catalogDeleteCurrent.current = catalogDeleteAsk;
+  const catalogDeleteRequest = useRef<object | null>(null);
+  const catalogDeleteBusy = useRef<object | null>(null);
   const [appNotice, setAppNotice] = useState<{
     title?: string;
     tone?: AlertTone;
@@ -1375,10 +1380,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   );
 
   const requestCatalogItemDelete = async (itemId: string) => {
+    const askScope = orderAskScope.current.token;
+    const request = {};
+    catalogDeleteRequest.current = request;
     const item = allItems.find(candidate => candidate.id === itemId);
     if (!item) return;
     try {
       const blockers = await loadCatalogDeleteBlockers(itemId);
+      if (orderAskScope.current.token !== askScope || catalogDeleteRequest.current !== request) return;
       if (blockers.length > 0) {
         setAppNotice({
           message: '진행 중 주문이 있어 품목을 삭제할 수 없습니다',
@@ -1387,8 +1396,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         return;
       }
       const plan = planCatalogItemDelete(itemId, allItems, itemBoms, partnerItems);
-      setCatalogDeleteAsk({ itemId, itemName: item.name, ...plan });
+      setCatalogDeleteAsk({ scope: askScope, itemId, itemName: item.name, ...plan });
     } catch (error) {
+      if (orderAskScope.current.token !== askScope || catalogDeleteRequest.current !== request) return;
       console.error('품목 삭제 전 주문 확인 실패', error);
       setAppNotice({
         message: '품목 삭제 전 주문을 확인하지 못했습니다',
@@ -1399,12 +1409,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const confirmCatalogItemDelete = async () => {
     const ask = catalogDeleteAsk;
-    if (!ask) return;
+    if (!ask || ask.scope !== orderAskScope.current.token || catalogDeleteCurrent.current !== ask || catalogDeleteBusy.current === ask) return;
+    catalogDeleteBusy.current = ask;
+    const isCurrent = () => ask.scope === orderAskScope.current.token && catalogDeleteCurrent.current === ask;
     try {
       // 확인창이 열린 뒤 주문이 생길 수도 있으므로 실제 삭제 직전에 다시 읽는다.
       const blockers = await loadCatalogDeleteBlockers(ask.itemId);
+      if (!isCurrent()) return;
       if (blockers.length > 0) {
-        setCatalogDeleteAsk(null);
+        setCatalogDeleteAsk(current => current === ask ? null : current);
         setAppNotice({
           message: '진행 중 주문이 생겨 품목을 삭제하지 않았습니다',
           subMessage: catalogItemDeleteBlockMessage(ask.itemName, blockers),
@@ -1418,12 +1431,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
         ...ask.bomIds.map(id => ({ kind: 'delete' as const, collection: COL.itemBom, id })),
         ...ask.partnerItemIds.map(id => ({ kind: 'delete' as const, collection: COL.partnerItem, id })),
       ]);
-      setCatalogDeleteAsk(null);
+      if (!isCurrent()) return;
+      setCatalogDeleteAsk(current => current === ask ? null : current);
       refreshStaticData();
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('품목과 BOM 연결 삭제 실패', error);
       const reason = error instanceof Error ? error.message : String(error);
       alert(`품목을 삭제하지 못했습니다.\n사유: ${reason}`);
+    } finally {
+      if (catalogDeleteBusy.current === ask) catalogDeleteBusy.current = null;
     }
   };
 
@@ -5304,14 +5321,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
 
       {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
-      {catalogDeleteAsk && (
+      {catalogDeleteAsk && catalogDeleteAsk.scope === orderAskScope.current.token && (
         <ConfirmModal
           title="품목 삭제" tone="rose" icon={Trash2}
           message={`“${catalogDeleteAsk.itemName}” 품목을 삭제할까요?`}
           subMessage={catalogDeleteAsk.subMessage}
           confirmText="삭제하기"
           onConfirm={() => { void confirmCatalogItemDelete(); }}
-          onCancel={() => setCatalogDeleteAsk(null)}
+          onCancel={() => {
+            if (catalogDeleteAsk.scope !== orderAskScope.current.token || catalogDeleteCurrent.current !== catalogDeleteAsk) return;
+            catalogDeleteRequest.current = null;
+            setCatalogDeleteAsk(current => current === catalogDeleteAsk ? null : current);
+          }}
         />
       )}
       {/*  임가공·완사입 품목 완료 — 재고를 쓰는지, 모자라 음수가 되는지 알린다 */}

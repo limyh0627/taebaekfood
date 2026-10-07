@@ -4,6 +4,7 @@ import { render, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { expect, it, vi } from 'vitest';
+import { planCatalogItemDelete, catalogItemDeleteBlockMessage } from './catalogItemDelete';
 import { planOrderItemToggle } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { isGoodsItem } from '../../shared/itemTaxonomy';
@@ -207,4 +208,64 @@ it.each([1,3])('현재 상품 재고 %i 확인은 해당 창만 닫고 정상 �
   const callback=actualGoods(prop,{goodsStockAsk:ask,orderAskScope:h.scope,orderAskCurrent:h.refs,setGoodsStockAsk:h.set});await callback();expect(h.get()).toBeNull();
   if(prop==='onConfirm')await waitFor(()=>expect(h.writer).toHaveBeenCalledOnce());else expect(h.writer).not.toHaveBeenCalled();
  }
+});
+
+function actualNamed(name:string,deps:Record<string,unknown>) {
+ let expression:ts.Expression|undefined;const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)===name)expression=node.initializer;ts.forEachChild(node,find);};find(file);if(!expression)throw new Error(`실제 함수 없음: ${name}`);
+ const code=ts.transpileModule(`const callback=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ return new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
+}
+function catalogHarness() {
+ const scope={current:{token:{}}};const current={current:null as any};let ask:any=null;
+ const load=deferred();const writer=vi.fn(async(_writes:unknown[])=>{});const notice=vi.fn();const refresh=vi.fn();const alert=vi.fn();
+ const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;current.current=ask;};
+ const deps={orderAskScope:scope,catalogDeleteCurrent:current,catalogDeleteRequest:{current:null},catalogDeleteBusy:{current:null},allItems:[{id:'item',name:'삭제품목',type:'product'}],itemBoms:[],partnerItems:[],planCatalogItemDelete,catalogItemDeleteBlockMessage,
+ loadCatalogDeleteBlockers:()=>load.promise,setCatalogDeleteAsk:set,setAppNotice:notice,commitCompanyWrites:writer,refreshStaticData:refresh,alert,console:{error:vi.fn()},COL:{items:'items',itemBom:'itemBoms',partnerItem:'partnerItems'}};
+ return {scope,current,load,writer,notice,refresh,alert,set,get:()=>ask,deps};
+}
+it.each(['완료','거절'])('품목 삭제 실제 준비의 늦은 %s는 다른 회사 확인창과 안내를 덮지 않는다',async outcome=>{
+ const h=catalogHarness();const request=actualNamed('requestCatalogItemDelete',h.deps);const waiting=request('item');h.scope.current={token:{}};const next={scope:h.scope.current.token,itemId:'B'};h.set(next);
+ if(outcome==='완료')h.load.resolve([]);else h.load.reject(new Error('조회 거절'));await waiting;
+ expect(h.get()).toBe(next);expect(h.notice).not.toHaveBeenCalled();expect(h.writer).not.toHaveBeenCalled();
+});
+it('같은 회사에서 뒤에 시작한 품목 삭제 요청만 확인창을 연다',async()=>{
+ const h=catalogHarness();const first=deferred();const second=deferred();let n=0;
+ h.deps.loadCatalogDeleteBlockers=()=> (++n===1?first:second).promise;
+ const request=actualNamed('requestCatalogItemDelete',h.deps);const a=request('item');const b=request('item');second.resolve([]);await b;const newer=h.get();first.resolve([]);await a;expect(h.get()).toBe(newer);
+});
+it.each(['회사 전환','새 확인창'])('삭제 직전 주문 조회 중 %s이면 batch를 실행하지 않는다',async boundary=>{
+ const h=catalogHarness();const ask={scope:h.scope.current.token,itemId:'item',itemName:'삭제품목',bomIds:[],partnerItemIds:[]};h.set(ask);
+ const waiting=actualNamed('confirmCatalogItemDelete',{...h.deps,catalogDeleteAsk:ask})();
+ if(boundary==='회사 전환')h.scope.current={token:{}};const next={...ask,scope:h.scope.current.token,itemId:'B'};h.set(next);h.load.resolve([]);await waiting;
+ expect(h.writer).not.toHaveBeenCalled();expect(h.get()).toBe(next);expect(h.refresh).not.toHaveBeenCalled();
+});
+it.each(['성공','실패'])('삭제 batch의 늦은 %s가 새 회사 화면을 닫거나 갱신하지 않는다',async outcome=>{
+ const h=catalogHarness();const commit=deferred();h.writer.mockImplementation(()=>commit.promise as Promise<void>);
+ const ask={scope:h.scope.current.token,itemId:'item',bomIds:[],partnerItemIds:[]};h.set(ask);h.load.resolve([]);
+ const waiting=actualNamed('confirmCatalogItemDelete',{...h.deps,catalogDeleteAsk:ask})();await waitFor(()=>expect(h.writer).toHaveBeenCalledOnce());
+ h.scope.current={token:{}};const next={...ask,scope:h.scope.current.token,itemId:'B'};h.set(next);
+ if(outcome==='성공')commit.resolve(undefined);else commit.reject(new Error('삭제 실패'));await waiting;
+ expect(h.get()).toBe(next);expect(h.refresh).not.toHaveBeenCalled();expect(h.alert).not.toHaveBeenCalled();
+});
+it('현재 품목 삭제는 즉시 중복 확인을 막고 연결을 한 batch로 삭제한다',async()=>{
+ const h=catalogHarness();const ask={scope:h.scope.current.token,itemId:'item',bomIds:['bom'],partnerItemIds:['partner']};h.set(ask);
+ const confirm=actualNamed('confirmCatalogItemDelete',{...h.deps,catalogDeleteAsk:ask});const first=confirm();await confirm();h.load.resolve([]);await first;
+ expect(h.writer).toHaveBeenCalledOnce();expect(h.writer.mock.calls[0][0]).toEqual([{kind:'delete',collection:'items',id:'item'},{kind:'delete',collection:'itemBoms',id:'bom'},{kind:'delete',collection:'partnerItems',id:'partner'}]);expect(h.get()).toBeNull();expect(h.refresh).toHaveBeenCalledOnce();
+});
+it('현재 삭제 실패는 확인창을 보존하고 재시도를 허용한다',async()=>{
+ const h=catalogHarness();h.writer.mockRejectedValue(new Error('거절'));const ask={scope:h.scope.current.token,itemId:'item',bomIds:[],partnerItemIds:[]};h.set(ask);h.load.resolve([]);
+ const confirm=actualNamed('confirmCatalogItemDelete',{...h.deps,catalogDeleteAsk:ask});await confirm();expect(h.get()).toBe(ask);expect(h.alert).toHaveBeenCalledOnce();await confirm();expect(h.writer).toHaveBeenCalledTimes(2);
+});
+it('품목 삭제 확인창은 회사 전환 시 숨고 이전 취소가 새 확인창을 지우지 않는다',()=>{
+ let condition:ts.Expression|undefined;let cancel:ts.Expression|undefined;
+ const find=(node:ts.Node)=>{if(ts.isBinaryExpression(node)&&ts.isParenthesizedExpression(node.right)&&ts.isJsxSelfClosingElement(node.right.expression)){
+ const jsx=node.right.expression;const title=jsx.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='title') as ts.JsxAttribute|undefined;
+ if(title?.initializer?.getText(file)==='"품목 삭제"'){condition=node.left;const attr=jsx.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='onCancel') as ts.JsxAttribute;cancel=(attr.initializer as ts.JsxExpression).expression;}
+ }ts.forEachChild(node,find);};find(file);if(!condition||!cancel)throw new Error('실제 품목 삭제 모달 없음');
+ const h=catalogHarness();const ask={scope:h.scope.current.token,itemId:'item'};h.set(ask);
+ const visible=new Function('catalogDeleteAsk','orderAskScope',`return ${condition.getText(file)};`);expect(visible(ask,h.scope)).toBe(true);
+ const code=ts.transpileModule(`const callback=${cancel.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const deps={...h.deps,catalogDeleteAsk:ask};const callback=new Function(...Object.keys(deps),`${code};return callback;`)(...Object.values(deps));
+ const next={...ask,itemId:'next'};h.set(next);callback();expect(h.get()).toBe(next);
+ h.scope.current={token:{}};expect(visible(ask,h.scope)).toBe(false);callback();expect(h.get()).toBe(next);
 });
