@@ -2,12 +2,13 @@ import { prepareOrderInventoryCancellation, executeOrderInventoryCancellation, r
 import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem, isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { goodsShipQty, shipQtyOfLine } from '../../shared/shipDeduction';
-import { bomOf } from '../../shared/bomIndex';
+import { bomOf, getBomIndex } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit, OrderItemInventoryState } from '../../shared/types';
 import { toKg, baseRawName, unitToKg } from '../../constants/formula';
 import { runRawInventoryJob } from '../../shared/services/rawInventoryJob';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf, type OrderUnitInputs } from '../../shared/orderUnits';
+import { getPackIndex } from '../../shared/packIndex';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
@@ -56,6 +57,7 @@ export interface PreparedOrderStatusChange {
  * AdminApp에서 매 렌더 시점의 데이터·쓰기 함수를 주입해 생성한다(순수 로직 + 의존성 주입).
  */
 export interface OrderStockEngineDeps {
+  orderUnitInputs?: OrderUnitInputs;
   /**
    * **지금 이 일을 하는 사람** — 자동으로 찍히는 원료 원장 줄에 `addedBy` 로 남는다.
    *
@@ -72,7 +74,7 @@ export interface OrderStockEngineDeps {
   orders: Order[];
   db: Firestore;
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
-  createProductionRecordsForOrder: (order: Order) => Promise<void>;
+  createProductionRecordsForOrder: (order: Order, inputs?: OrderUnitInputs) => Promise<void>;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
@@ -102,7 +104,10 @@ export const hasProductComponent = (
 //  이 이름으로 끌어다 쓰는 자리가 여럿이라 내보내기는 그대로 둔다.
 export { isGoodsItem };
 
-export function createOrderStockEngine(deps: OrderStockEngineDeps) {
+function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderUnitInputs) {
+  const bomOf = (id: string | undefined) => id ? inputs.bom.of(id) : [];
+  const hasProductComponent = (product: Pick<Item, 'id'> | undefined) =>
+    bomOf(product?.id).some(line => line.child?.type === 'product' || line.child?.type === '완제품');
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, updateItem, addItem,
     claimOrderOperation, runRawInventoryJob: runRawJob = runRawInventoryJob } = deps;
@@ -116,7 +121,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     orderStockReservationCleanup,
     releaseOrderStockReservation,
     applyItemStockDeltas,
-  } = createOrderItemStockOperations({ db, allItems });
+  } = createOrderItemStockOperations({ db, allItems, bomIndex: inputs.bom });
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
   const 작성자 = actorName ? { addedBy: actorName } : {};
 
@@ -126,7 +131,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const deltaRows = (m: Map<string, number>) => [...m]
     .filter(([, delta]) => delta !== 0)
     .map(([itemId, delta]) => ({ itemId, delta: Math.round(delta * 1000) / 1000 }));
-  const bomSnapshotOf = (order: Order): OrderInventorySnapshot['bomLines'] => orderStockTouchedIds(order).flatMap(parentItemId =>
+  const bomSnapshotOf = (order: Order): OrderInventorySnapshot['bomLines'] => orderStockTouchedIds(order, inputs.bom).flatMap(parentItemId =>
     bomOf(parentItemId).map(line => ({ parentItemId, childItemId: line.childId, quantity: line.qty }))
   );
 
@@ -284,7 +289,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
        */
       if (isBulkItem(product)) {
         const raw = baseRawName(product.name);
-        const usedKg = unitToKg(stockUnits(item, product), raw);
+        const usedKg = unitToKg(stockUnits(item, product, inputs), raw);
         if (usedKg > 0) {
           rawUsage[raw] = Math.round(((rawUsage[raw] ?? 0) + usedKg) * 1000) / 1000;
           //  **재고는 따로 안 뺀다** — 로트를 깎으면 `mutateRawMaterialLots` 가 stock 을
@@ -296,12 +301,12 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       //  **캔 같은 개수 반제품도 여기 든다**(2026-09-16) — 판정은 `holdsUnitStock` 한 곳.
       //  `type === 'product'` 로만 보다가 캔을 반제품으로 옮기면 생산이 조용히 멈춘다.
       if (!holdsUnitStock(product)) continue;
-      const units = stockUnits(item, product);   // 박스 품목이면 박스 개수
+      const units = stockUnits(item, product, inputs);   // 박스 품목이면 박스 개수
 
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
-        for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)))))
+        for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)), inputs)))
           rawUsageLedgerOnly[raw] = (rawUsageLedgerOnly[raw] ?? 0) + kg;
         continue;
       }
@@ -316,7 +321,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (toProduce <= 0) continue;
 
       // 박스 품목이면 낱개 재고 사용량도 사용자가 정한 만큼으로 묶는다.
-      const looseId = unpackComponent(product)?.itemId;
+      const looseId = unpackComponent(product, inputs)?.itemId;
       const stockCap = looseId && choice?.loose !== undefined
         ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
 
@@ -378,7 +383,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const consumedLots = await applyOrderRawUsage(
       freshOrder, production.rawUsage, attempt, production.rawUsageLedgerOnly,
     );
-    await createProductionRecordsForOrder(freshOrder);
+    await createProductionRecordsForOrder(freshOrder, inputs);
     return { consumedLots, ...production, attempt, alreadyProduced: false };
   };
 
@@ -392,7 +397,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       ? order.producedUnits
       : order.items.map(item => {
           const p = allItems.find(x => x.id === item.itemId);
-          return { itemId: item.itemId, qty: p ? stockUnits(item, p) : 0 };
+          return { itemId: item.itemId, qty: p ? stockUnits(item, p, inputs) : 0 };
         });
     for (const { itemId, qty } of produced) {
       const product = allItems.find(p => p.id === itemId);
@@ -427,7 +432,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      addDelta(deltas, product.id, -shipQtyOfLine(item, product));
+      addDelta(deltas, product.id, -shipQtyOfLine(item, product, inputs));
     }
   };
 
@@ -436,7 +441,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      addDelta(deltas, product.id, shipQtyOfLine(item, product));
+      addDelta(deltas, product.id, shipQtyOfLine(item, product, inputs));
     }
   };
 
@@ -449,9 +454,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
 
   /** 출고 수량 — shipOrder와 같은 규칙이어야 로트와 재고가 안 갈린다. */
   const shipQtyOf = (item: OrderItem, product: Item) =>
-    isGoodsItem(product) ? goodsShipQty(item, product)
+    isGoodsItem(product) ? goodsShipQty(item, product, inputs)
       //  캔 같은 개수 반제품도 출고 때 빠진다 — 안 그러면 팔아도 재고가 그대로 남는다.
-      : holdsUnitStock(product) ? stockUnits(item, product) : 0;
+      : holdsUnitStock(product) ? stockUnits(item, product, inputs) : 0;
 
   const { deductProductLotsForOrder, restoreProductLotsForOrder } = createOrderProductLotOperations({
     allItems,
@@ -703,7 +708,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         : [];
       const inventoryOrder = { ...operationOrder, items: pendingApplyRows.length > 0 ? pendingApplyRows.map(row => row.item) : [after] };
       const extraItemIds = [
-        ...orderStockTouchedIds({ items: nextItems.filter(item => item.checked) }),
+        ...orderStockTouchedIds({ items: nextItems.filter(item => item.checked) }, inputs.bom),
         ...Object.values(currentStates).flatMap(state => state.production.stockDeltas.map(row => row.itemId)),
         ...(operationOrder.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
       ];
@@ -744,7 +749,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
             single, production.rawUsage, attempt, production.rawUsageLedgerOnly, rowLineId,
           );
           failureStage = 'production-record';
-          await createProductionRecordsForOrder(single);
+          await createProductionRecordsForOrder(single, inputs);
           const rowDeltas = new Map<string, number>();
           for (const [itemId, value] of deltas) addDelta(rowDeltas, itemId, value - (rowBefore.get(itemId) ?? 0));
           const snapshot: OrderInventorySnapshot = {
@@ -832,7 +837,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const prepareOrderStatusChange = async (id: string, status: OrderStatus): Promise<PreparedOrderStatusChange | undefined> => {
     const order = await getFreshOrder(id, true);
     if (!order) return undefined;
-    return { order, plan: buildRollbackPlan(order, allItems, order.status, status) };
+    return { order, plan: buildRollbackPlan(order, allItems, order.status, status, inputs) };
   };
 
   const changeOrderStatus = async (id: string, status: OrderStatus, plan?: StockUsePlan, context: OrderStatusChangeContext = {}) => {
@@ -866,7 +871,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
       if (context.approvedPlan) {
-        const latestPlan = buildRollbackPlan(live, allItems, live.status, status);
+        const latestPlan = buildRollbackPlan(live, allItems, live.status, status, inputs);
         const approvedRows = JSON.stringify(context.approvedPlan.adjustments);
         const latestRows = JSON.stringify(latestPlan.adjustments);
         if (live.status !== context.approvedFromStatus || context.approvedPlan.legacyEvidenceWarning !== latestPlan.legacyEvidenceWarning || approvedRows !== latestRows) {
@@ -926,4 +931,19 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const readOrderCancellation = (ticket: CancellationTicket) => readOrderCancellationReceipt(db, ticket);
   return { changeOrderStatus, changeOrderItemCompletion, reconcileOrderStock, prepareOrderStatusChange,
     prepareOrderCancellation, executeOrderCancellation, readOrderCancellation };
+}
+
+/** 작업별 입력을 고정해 await 중 회사 전환과 중첩 작업의 색인 교체를 분리한다. */
+export function createOrderStockEngine(deps: OrderStockEngineDeps) {
+  const start = () => createScopedOrderStockEngine(deps, deps.orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() });
+  type Engine = ReturnType<typeof createScopedOrderStockEngine>;
+  return {
+    changeOrderStatus: (...args: Parameters<Engine['changeOrderStatus']>) => start().changeOrderStatus(...args),
+    changeOrderItemCompletion: (...args: Parameters<Engine['changeOrderItemCompletion']>) => start().changeOrderItemCompletion(...args),
+    reconcileOrderStock: (...args: Parameters<Engine['reconcileOrderStock']>) => start().reconcileOrderStock(...args),
+    prepareOrderStatusChange: (...args: Parameters<Engine['prepareOrderStatusChange']>) => start().prepareOrderStatusChange(...args),
+    prepareOrderCancellation: (...args: Parameters<Engine['prepareOrderCancellation']>) => start().prepareOrderCancellation(...args),
+    executeOrderCancellation: (...args: Parameters<Engine['executeOrderCancellation']>) => start().executeOrderCancellation(...args),
+    readOrderCancellation: (...args: Parameters<Engine['readOrderCancellation']>) => start().readOrderCancellation(...args),
+  };
 }

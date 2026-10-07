@@ -1,5 +1,5 @@
 import { doc, runTransaction, type Firestore } from 'firebase/firestore';
-import { bomOf } from '../../shared/bomIndex';
+import { bomOf, type BomIndex } from '../../shared/bomIndex';
 import { pruneDepletedLots } from '../../shared/lotUtils';
 import type { Item, ItemInventoryReservation, Order } from '../../shared/types';
 import type { OrderProductLotMutation } from './orderProductLots';
@@ -7,6 +7,7 @@ import type { OrderProductLotMutation } from './orderProductLots';
 export interface OrderItemStockDeps {
   db: Firestore;
   allItems: Item[];
+  bomIndex?: BomIndex;
 }
 
 const stock3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -67,12 +68,12 @@ export const reservedByOrders = (
 ): string[] => [...new Set(liveItemInventoryReservations(item.inventoryReservations, nowMs).map(r => r.orderId))];
 
 /** 주문 라인과 재귀 BOM이 건드릴 모든 품목 ID를 한 번만 모은다. */
-export function orderStockTouchedIds(order: Pick<Order, 'items'>): string[] {
+export function orderStockTouchedIds(order: Pick<Order, 'items'>, bomIndex?: BomIndex): string[] {
   const seen = new Set<string>();
   const walk = (itemId: string, depth: number) => {
     if (depth > 5 || seen.has(itemId)) return;
     seen.add(itemId);
-    for (const line of bomOf(itemId)) walk(line.childId, depth + 1);
+    for (const line of (bomIndex ? bomIndex.of(itemId) : bomOf(itemId))) walk(line.childId, depth + 1);
   };
   for (const row of order.items) walk(row.itemId, 0);
   return [...seen];
@@ -88,7 +89,7 @@ export function orderStockTouchedIds(order: Pick<Order, 'items'>): string[] {
  * 주문 재고가 반쪽만 움직이므로, 모든 문서를 먼저 읽고 한 transaction에서 함께 갱신한다.
  */
 export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
-  const { db, allItems } = deps;
+  const { db, allItems, bomIndex } = deps;
 
   /**
    * 생산량을 정하기 전에 가용 재고를 주문 작업 ID로 선점한다.
@@ -105,7 +106,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     extraItemIds: readonly string[] = [],
     options: { preserveOwnAllocation?: boolean } = {},
   ): Promise<OrderStockReservation> => {
-    const ids = [...new Set([...orderStockTouchedIds(order), ...extraItemIds])];
+    const ids = [...new Set([...orderStockTouchedIds(order, bomIndex), ...extraItemIds])];
     const now = new Date();
     const nowMs = now.getTime();
     const createdAt = now.toISOString();
@@ -189,7 +190,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
   ): OrderStockReservation => ({
     operationId: '',
     orderId: order.id,
-    itemIds: [...new Set([...orderStockTouchedIds(order), ...extraItemIds])],
+    itemIds: [...new Set([...orderStockTouchedIds(order, bomIndex), ...extraItemIds])],
     quantities: new Map(),
     stockSnapshot: new Map(),
     previousReservations: new Map(),

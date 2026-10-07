@@ -3,7 +3,7 @@ import { dateOfLocal, today } from '../../shared/day';
 import type { AppNotification, Item, Order, OrderRawInventoryTrace, Partner } from '../../shared/types';
 import { companyOf } from '../../shared/types';
 import { baseRawName, toKg } from '../../constants/formula';
-import { isBoxStockItem, unpackQty } from '../../shared/orderUnits';
+import { isBoxStockItem, unpackQty, type OrderUnitInputs } from '../../shared/orderUnits';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { operationDocId } from '../../shared/rawInventoryCore';
 import { lotMixSettingOf } from '../../shared/lotUtils';
@@ -30,8 +30,9 @@ export function oemLedgerKg(
   product: Pick<Item, 'id' | 'spec'>,
   units: number,
   formula: readonly { raw: string; ratio: number }[],
+  inputs?: OrderUnitInputs,
 ): RawUsageKg {
-  const eachQty = unpackQty(units, product, isBoxStockItem(product));
+  const eachQty = unpackQty(units, product, isBoxStockItem(product, inputs), inputs);
   const out: RawUsageKg = {};
   for (const row of formula) {
     const kg = toKg(product.spec || '', row.raw, eachQty) * row.ratio;

@@ -28,7 +28,7 @@ interface ReceivingReturnsManagerProps {
   onLinkInbound?: (itemId: string, partnerId: string) => void | Promise<void>;
 }
 
-const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
+const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   companyId,
   items,
   partnerItems,
@@ -671,5 +671,10 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
     </div>
   );
 };
+
+// 회사가 바뀌면 거래처·수량·메모 등 이전 회사의 반품 초안을 함께 비운다.
+const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = props => (
+  <CompanyReceivingReturnsManager key={props.companyId} {...props} />
+);
 
 export default ReceivingReturnsManager;

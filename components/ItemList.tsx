@@ -2,7 +2,7 @@
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
-import { today, dateOfLocal } from '../src/shared/day';
+import { today, dateOfLocal, timeOfLocal } from '../src/shared/day';
 import { canConfirmPurchaseOrderReceiptItem, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { rawLotTarget } from '../src/shared/rawReceipt';
@@ -1504,7 +1504,7 @@ const ItemList: React.FC<ItemListProps> = ({
             status,
             date,
             partnerName: po.partnerName || '거래처 미지정',
-            itemSummary: lines.map(line => line.name || productMap.get(line.itemId)?.name || '품목 미지정').join(', '),
+            itemSummary: (lines[0]?.name || productMap.get(lines[0]?.itemId)?.name || '품목 미지정') + (lines.length > 1 ? ` 외 ${lines.length - 1}개` : ''),
             quantitySummary: lines.length === 1
               ? `${lines[0].quantity.toLocaleString()} ${lines[0].unit || productMap.get(lines[0].itemId)?.unit || ''}`.trim()
               : `${lines.length}개 품목`,
@@ -1513,17 +1513,19 @@ const ItemList: React.FC<ItemListProps> = ({
         };
         const rows: FlowRow[] = [
           ...orderRequests.map(po => purchaseRow(po, '예정', po.createdAt)),
-          ...confirmedOrders.map(po => purchaseRow(po, '대기', po.createdAt)),
-          ...receivedOrders.map(po => purchaseRow(po, '완료', po.receivedAt || po.createdAt)),
+          ...confirmedOrders.map(po => purchaseRow(po, '대기', po.invoicedAt || '')),
+          ...receivedOrders.map(po => purchaseRow(po, '완료', po.receivedAt || '')),
           ...returnRequests.map(request => ({
             key: `반품-${request.id}`,
             id: request.id,
             type: '반품' as const,
             status: request.status === 'processed' ? '완료' as const : '대기' as const,
-            date: request.processedAt || request.createdAt,
+            date: request.status === 'processed' ? request.processedAt || '' : request.createdAt,
             partnerName: request.partnerName || '거래처 미지정',
-            itemSummary: request.items.map(item => item.name).join(', '),
-            quantitySummary: `${request.items.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()}개`,
+            itemSummary: (request.items[0]?.name || '품목 미지정') + (request.items.length > 1 ? ` 외 ${request.items.length - 1}개` : ''),
+            quantitySummary: request.items.length === 1
+              ? `${request.items[0].quantity.toLocaleString()} ${productMap.get(request.items[0].itemId)?.unit || ''}`.trim()
+              : `${request.items.length}개 품목`,
             source: request,
           })),
         ]
@@ -1585,7 +1587,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 <tbody>
                   {visible.map(row => (
                     <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
-                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500">{dateOfLocal(row.date)}</td>
+                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
                       <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{row.status}</span></td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>

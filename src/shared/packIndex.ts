@@ -50,6 +50,9 @@ export function buildPackIndex(rows: PackRow[] = []): PackIndex {
 
 let current: PackIndex = EMPTY;
 
+/** 비동기 작업 시작 시 읽기 입력을 고정한다. */
+export const getPackIndex = (): PackIndex => current;
+
 export function setPackIndex(next: PackIndex): void {
   current = next;
 }

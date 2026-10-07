@@ -1,7 +1,7 @@
 import type { Item, Order, OrderStatus } from '../../shared/types';
 import { bomOf } from '../../shared/bomIndex';
 import { isBulkItem } from '../../shared/itemTaxonomy';
-import { stockUnits } from '../../shared/orderUnits';
+import { stockUnits, type OrderUnitInputs } from '../../shared/orderUnits';
 
 /**
  * **되돌리면 무엇이 되돌아오는가** — 작업완료·출고에서 대기중·작업중으로 보낼 때 보여줄 문구.
@@ -29,6 +29,7 @@ export function buildRollbackPlan(
   allItems: Item[],
   from: OrderStatus | string,
   to: OrderStatus | string,
+  inputs?: OrderUnitInputs,
 ): RollbackPlan {
   const nameOf = (id: string) => {
     const p = allItems.find(i => i.id === id);
@@ -63,7 +64,7 @@ export function buildRollbackPlan(
       for (const row of order.items) {
         const item = allItems.find(candidate => candidate.id === row.itemId);
         if (!item || isBulkItem(item)) continue;
-        adjustments.push({ itemId: item.id, name: nameOf(item.id), unit: unitOf(item.id), delta: stockUnits(row, item), reason: '출고 취소' });
+        adjustments.push({ itemId: item.id, name: nameOf(item.id), unit: unitOf(item.id), delta: stockUnits(row, item, inputs), reason: '출고 취소' });
       }
     }
     const rows = order.items
@@ -80,7 +81,7 @@ export function buildRollbackPlan(
       const addLegacyBom = (itemId: string, qty: number, depth = 0) => {
         if (depth > 4 || qty <= 0) return;
         adjustments.push({ itemId, name: nameOf(itemId), unit: unitOf(itemId), delta: -qty, reason: '생산 취소' });
-        for (const line of bomOf(itemId)) {
+        for (const line of (inputs ? inputs.bom.of(itemId) : bomOf(itemId))) {
           const child = allItems.find(candidate => candidate.id === line.childId);
           if (!child || isBulkItem(child)) continue;
           adjustments.push({ itemId: child.id, name: nameOf(child.id), unit: unitOf(child.id), delta: qty * line.qty, reason: '생산 취소' });
@@ -90,7 +91,7 @@ export function buildRollbackPlan(
         ? order.producedUnits
         : order.items.map(row => {
             const item = allItems.find(candidate => candidate.id === row.itemId);
-            return { itemId: row.itemId, qty: item ? stockUnits(row, item) : 0 };
+            return { itemId: row.itemId, qty: item ? stockUnits(row, item, inputs) : 0 };
           });
       legacyProduced.forEach(row => addLegacyBom(row.itemId, Number(row.qty)));
       for (const row of order.autoBuilt ?? []) addLegacyBom(row.itemId, Number(row.qty));

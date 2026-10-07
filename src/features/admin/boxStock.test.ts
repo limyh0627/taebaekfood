@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 import { buildStockUseRows, resolveStockUse, toStockUsePlan } from './stockUseRows';
 import { rawInventoryJobTestDouble } from '../../test/rawInventoryJobTestDouble';
+import type { OrderUnitInputs } from '../../shared/orderUnits';
 
 /**
  * 박스/낱개 재고 차감 — **이미 있는 재고를 먼저 쓰고 부족분만 생산한다.**
@@ -41,7 +42,9 @@ vi.mock('firebase/firestore', () => ({
 
 // 엔진은 firebase/firestore를 모듈 최상단에서 읽으므로 mock 뒤에 가져온다.
 const { setBomIndex, buildBomIndex } = await import('../../shared/bomIndex');
+const { setPackIndex, buildPackIndex } = await import('../../shared/packIndex');
 const { createOrderStockEngine } = await import('./orderStockEngine');
+const { resolveOrderItem } = await import('../../shared/statementLines');
 
 const mk = (o: Partial<Item> & { id: string }) =>
   ({ name: o.id, unit: '개', stock: 0, spec: '', minStock: 0, price: 0, image: '', ...o }) as unknown as Item;
@@ -71,8 +74,10 @@ function harness(
   items: Item[], order: Order,
   buildFormula: (key: string) => { raw: string; ratio: number }[] = () => [],
   claimOrderOperation?: () => Promise<Order>,
+  orderUnitInputs?: OrderUnitInputs,
 ) {
   const rawUsed: Record<string, number> = {};
+  const productionLines: Array<{ itemId?: string; qty: number }> = [];
   const 주문쓰기: Array<{ id: string; data: unknown }> = [];
   setBomIndex(buildBomIndex(items, BOMS));
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
@@ -87,8 +92,14 @@ function harness(
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
     buildFormula,
-    createProductionRecordsForOrder: async () => {},
+    createProductionRecordsForOrder: async (productionOrder, inputs) => {
+      for (const row of productionOrder.items) {
+        const resolved = resolveOrderItem(row, items, inputs);
+        productionLines.push({ itemId: resolved.product?.id, qty: resolved.qty });
+      }
+    },
     ...(claimOrderOperation ? { claimOrderOperation } : {}),
+    ...(orderUnitInputs ? { orderUnitInputs } : {}),
     runRawInventoryJob: async input => {
       const result = await runRawJob(input);
       for (const r of result.results) {
@@ -118,7 +129,7 @@ function harness(
     return it.stock;
   };
   const savedOrder = () => store.orders.get(order.id) as Order;
-  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger, savedOrder, 주문쓰기 };
+  return { engine, stockOf, rawUsed, ledger: ledger.entries, rawLedger, savedOrder, 주문쓰기, productionLines };
 }
 
 const 주문 = (boxes: number): Order => ({
@@ -128,11 +139,84 @@ const 주문 = (boxes: number): Order => ({
 
 beforeEach(() => {
   ledger.entries.length = 0;
+  setPackIndex(buildPackIndex([]));
   // BOM 색인은 모듈 전역이다. 앞 시험이 다른 품목의 색인을 심어도 다음 시험까지 새면 안 된다.
   setBomIndex(buildBomIndex([벌크(), 낱개(0), 박스10(0), 박스20(0)], BOMS));
 });
 
 describe('박스 재고가 있으면 그걸 먼저 쓴다', () => {
+  it('이전 회사의 콜백을 전환 뒤 시작해도 명시한 회사 입력을 사용한다', async () => {
+    const items = [벌크(), 낱개(0), 박스10(0)];
+    const order = 주문(3);
+    order.items = order.items.map(row => ({ ...row, checked: true }));
+    const inputs = { bom: buildBomIndex(items, BOMS), pack: buildPackIndex([]) };
+    const { engine, savedOrder, productionLines } = harness(items, order, () => [], undefined, inputs);
+    setBomIndex(buildBomIndex([mk({ id: 'other-company-product', type: 'product' })], []));
+    setPackIndex(buildPackIndex([{ item_id: 'other-company-product', units_per_box: 20 }]));
+    await engine.changeOrderStatus(order.id, OrderStatus.SHIPPED);
+    expect(savedOrder().producedUnits).toEqual([{ itemId: 'box10', qty: 3 }]);
+    expect(savedOrder().autoBuilt).toEqual([{ itemId: 'loose', qty: 30 }]);
+    expect(productionLines).toEqual([{ itemId: 'loose', qty: 30 }]);
+  });
+  it('주문 처리 중 회사가 바뀌어도 시작한 회사의 박스 BOM으로 계산한다', async () => {
+    const items = [벌크(), 낱개(0), 박스10(0)];
+    const order = 주문(3);
+    order.items = order.items.map(row => ({ ...row, checked: true }));
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const claimed = new Promise<void>(resolve => { entered = resolve; });
+    const { engine, stockOf, savedOrder, productionLines } = harness(items, order, () => [], async () => {
+      entered();
+      await waiting;
+      return { ...order };
+    });
+    const processing = engine.changeOrderStatus(order.id, OrderStatus.SHIPPED);
+    await claimed;
+    // 실제 회사 전환은 useAppData가 서로 다른 회사 품목으로 전역 색인을 교체한다.
+    setBomIndex(buildBomIndex([mk({ id: 'other-company-product', type: 'product' })], []));
+    release();
+    await processing;
+    expect(stockOf('box10')).toBe(0);
+    expect(savedOrder().producedUnits).toEqual([{ itemId: 'box10', qty: 3 }]);
+    expect(savedOrder().autoBuilt).toEqual([{ itemId: 'loose', qty: 30 }]);
+    expect(productionLines).toEqual([{ itemId: 'loose', qty: 30 }]);
+    expect(savedOrder().inventorySnapshots?.production?.bomLines).toContainEqual({
+      parentItemId: 'box10', childItemId: 'loose', quantity: 10,
+    });
+  });
+  it('겹치는 두 회사 주문은 각각 시작한 포장 개입수로 출고한다', async () => {
+    const first = mk({ id: 'first-goods', type: 'goods', stock: 100 });
+    const second = mk({ id: 'second-goods', type: 'goods', stock: 100 });
+    const makeOrder = (id: string, item: Item): Order => ({
+      id, partnerName: '테스트', status: OrderStatus.PENDING,
+      items: [{ itemId: item.id, name: item.name, quantity: 24, boxQuantity: 2, isBoxUnit: true, checked: true }],
+    } as Order);
+    const firstOrder = makeOrder('first-order', first);
+    const secondOrder = makeOrder('second-order', second);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const claimed = new Promise<void>(resolve => { entered = resolve; });
+    const firstRun = harness([first], firstOrder, () => [], async () => {
+      entered();
+      await waiting;
+      return { ...firstOrder };
+    });
+    setPackIndex(buildPackIndex([{ item_id: first.id, units_per_box: 12 }]));
+    const processing = firstRun.engine.changeOrderStatus(firstOrder.id, OrderStatus.SHIPPED);
+    await claimed;
+    const secondRun = harness([second], secondOrder);
+    // 가짜 DB에도 실제와 같이 두 회사 문서가 함께 존재한다.
+    store.stock.set(first.id, 100);
+    store.orders.set(firstOrder.id, { ...firstOrder });
+    setPackIndex(buildPackIndex([{ item_id: second.id, units_per_box: 20 }]));
+    await secondRun.engine.changeOrderStatus(secondOrder.id, OrderStatus.SHIPPED);
+    release();
+    await processing;
+    expect(firstRun.stockOf(first.id)).toBe(76);
+    expect(secondRun.stockOf(second.id)).toBe(60);
+  });
   it('박스 32 · 1박스 주문 → 박스 31, 낱개 그대로, 원료 안 나감', async () => {
     const items = [벌크(), 낱개(2), 박스10(32)];
     const order = 주문(1);

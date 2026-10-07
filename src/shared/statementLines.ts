@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem, PartnerItem, StatementLineKind } from './types';
 import { lineAmount } from './lineAmount';
-import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf } from './orderUnits';
+import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
 import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
@@ -149,11 +149,11 @@ export interface ResolvedOrderItem {
  * 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
  * 같은 이름의 박스·낱개가 있으므로 이름으로 대신 찾지 않고 `unknownItem` 을 단다.
  */
-export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): ResolvedOrderItem {
+export function resolveOrderItem(item: OrderItem, allItems: readonly Item[], inputs?: OrderUnitInputs): ResolvedOrderItem {
   let product = item.itemId ? allItems.find(p => p.id === item.itemId) : undefined;
   const unknownItem = !product;
 
-  const uc = unpackComponent(product);
+  const uc = unpackComponent(product, inputs);
   let qty = item.quantity;
   let perBox = 1;
   if (uc) {
@@ -169,7 +169,7 @@ export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): Re
   } else if (item.isBoxUnit && item.boxQuantity) {
     // 향미유처럼 재고는 낱개지만 주문은 박스로 받는 품목. 복사 주문의 옛 줄은
     // quantity에도 박스 수가 들어가 있으므로 환산표를 읽어 전표에서 낱개로 바로잡는다.
-    const pack = item.unitsPerBox ?? unitsPerBoxOf(product);
+    const pack = item.unitsPerBox ?? unitsPerBoxOf(product, inputs);
     if (pack > 1) {
       qty = item.boxQuantity * pack;
       perBox = pack;

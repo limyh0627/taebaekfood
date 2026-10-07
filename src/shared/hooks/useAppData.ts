@@ -12,6 +12,7 @@ import {
   CashAccount, CashEntry, Settlement, CompanyId, OrderStatus, companyOf,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
+import type { OrderUnitInputs } from '../orderUnits';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
 import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
 import { where } from 'firebase/firestore';
@@ -44,6 +45,7 @@ export interface WorkOrderItem {
 }
 
 export interface AppData {
+  orderUnitInputs?: OrderUnitInputs;
   // 주문
   orders: Order[];
   purchaseOrders: PurchaseOrder[];
@@ -428,6 +430,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   }, [enabled, companyId, isAdmin, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
     ...scopedData,
+    orderUnitInputs: { bom: bomIndex, pack: packIndex },
     orders: visibleOrders, setPartnerItems, rawMaterialLedger, companyInfo: enabled && companyInfo?.companyId === companyId ? companyInfo.value : null,
     isDataLoading, refreshStaticData, historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, setOrdersMonths,
   };

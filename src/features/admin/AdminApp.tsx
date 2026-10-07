@@ -189,7 +189,7 @@ import { recordReceipt } from '../../shared/receipt';
 import { buildPaymentEntry } from '../../shared/payment';
 import { nextOrderNo, nextPoNo, cardNoLabel } from '../../shared/cardNo';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
+import { stockUnits, unpackComponent, unitsPerBoxOf, type OrderUnitInputs } from '../../shared/orderUnits';
 import { boxSpecUpdates } from '../../shared/boxSpec';
 import {
   addItem,
@@ -1272,7 +1272,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
   // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
-  const createProductionRecordsForOrder = async (order: Order) => {
+  const createProductionRecordsForOrder = async (order: Order, inputs?: OrderUnitInputs) => {
     const finishedItems = order.items.filter(item => {
       const p = allItems.find(pr => pr.id === item.itemId);
       return p && p.type === 'product';
@@ -1282,7 +1282,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!원래) continue;
       //  박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
       //  푸는 셈은 [statementLines](../../shared/statementLines.ts) 와 **같은 함수**다.
-      const 푼것 = resolveOrderItem(item, allItems);
+      const 푼것 = resolveOrderItem(item, allItems, inputs);
       const product = 푼것.product ?? 원래;
       const qty = 푼것.qty;
       const record: ProductionRecord = {
@@ -1350,6 +1350,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, updateItem, addItem,
+    orderUnitInputs: appData.orderUnitInputs,
     claimOrderOperation: claimOrderInventoryOperation,
   });
 

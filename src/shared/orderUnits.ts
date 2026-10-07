@@ -1,10 +1,12 @@
 import type { Item, OrderItem } from './types';
-import { bomOf, bomParentsOf } from './bomIndex';
-import { packUnitsOf } from './packIndex';
+import { bomOf, bomParentsOf, type BomIndex } from './bomIndex';
+import { packUnitsOf, type PackIndex } from './packIndex';
 import { parseSpecCount, parsePackageKg } from '../constants/formula';
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
 type BoxLike = Pick<Item, 'id'>;
+
+export interface OrderUnitInputs { bom: BomIndex; pack: PackIndex }
 
 /**
  * 박스 품목의 낱개 구성 — **BOM에서 읽는다.**
@@ -42,15 +44,15 @@ export function 묶음갈래of(완제품구성: readonly { qty: number }[]): 묶
   return null;
 }
 
-export function unpackComponent(product: BoxLike | undefined): { itemId: string; count: number } | null {
-  const comps = bomOf(product?.id).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
+export function unpackComponent(product: BoxLike | undefined, inputs?: OrderUnitInputs): { itemId: string; count: number } | null {
+  const comps = (inputs ? (product ? inputs.bom.of(product.id) : []) : bomOf(product?.id)).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
   if (묶음갈래of(comps) === '박스') return { itemId: comps[0].childId, count: comps[0].qty };
   return null;
 }
 
 /** 재고 단위가 박스인 품목인가 (BOM에 낱개 구성품이 물려 있는 것) */
-export function isBoxStockItem(product: BoxLike | undefined): boolean {
-  return unpackComponent(product) !== null;
+export function isBoxStockItem(product: BoxLike | undefined, inputs?: OrderUnitInputs): boolean {
+  return unpackComponent(product, inputs) !== null;
 }
 
 /**
@@ -106,8 +108,9 @@ export function boxSiblings<T extends Pick<Item, 'id' | 'archived'>>(
 export function stockUnits(
   item: Pick<OrderItem, 'quantity' | 'isBoxUnit' | 'boxQuantity'>,
   product: BoxLike | undefined,
+  inputs?: OrderUnitInputs,
 ): number {
-  if (!isBoxStockItem(product)) return item.quantity;
+  if (!isBoxStockItem(product, inputs)) return item.quantity;
   /*
    * **박스 품목이면 `isBoxUnit` 은 안 본다**(2026-09-09 사장님:
    * "박스 품목으로 주문 들어오면 isBoxUnit 이 true 일 필요는 없는거야?").
@@ -179,11 +182,11 @@ export function orderItemQuantityLabel(
  * 규격 글자는 **한 품목도 안 쓰고 있었고**(131개가 전부 BOM 도 갖고 있었다),
  * `boxSize`와 '향미유 12'는 goods 아홉 품목뿐이었다.
  */
-export function unitsPerBoxOf(product: BoxLike | undefined): number {
+export function unitsPerBoxOf(product: BoxLike | undefined, inputs?: OrderUnitInputs): number {
   if (!product) return 0;
-  const packed = unpackComponent(product);
+  const packed = unpackComponent(product, inputs);
   if (packed) return packed.count;
-  return packUnitsOf(product.id);
+  return inputs ? inputs.pack.of(product.id) : packUnitsOf(product.id);
 }
 
 /**
@@ -214,10 +217,10 @@ export function stocktakeStoredQuantity(
  * 전부 12개입이고 박스로 담긴 주문이 아직 없어서 안 틀렸을 뿐, 쓰는 날 바로 틀린다.
  * 재고를 더하는 자리가 틀리면 재고가 통째로 어긋난다.
  */
-export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>[0], isBox?: boolean): number {
+export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>[0], isBox?: boolean, inputs?: OrderUnitInputs): number {
   const n = Number(qty) || 0;
   if (!isBox) return n;
-  const per = unitsPerBoxOf(product);
+  const per = unitsPerBoxOf(product, inputs);
   return per > 1 ? n * per : n;
 }
 

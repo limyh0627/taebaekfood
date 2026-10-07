@@ -91,6 +91,9 @@ export function buildBomIndex(
  */
 let current: BomIndex = EMPTY;
 
+/** 비동기 작업 시작 시 읽기 입력을 고정한다. */
+export const getBomIndex = (): BomIndex => current;
+
 export function setBomIndex(next: BomIndex): void {
   current = next;
 }

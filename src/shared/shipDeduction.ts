@@ -1,6 +1,6 @@
 import type { Item, OrderItem } from './types';
 import { isBulkItem, isGoodsItem } from './itemTaxonomy';
-import { boxCountOf, isBoxStockItem, stockUnits, unitsPerBoxOf } from './orderUnits';
+import { boxCountOf, isBoxStockItem, stockUnits, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
 
 /**
  * **출고하면 재고에서 얼마가 빠지나** — 셈은 여기 하나다.
@@ -24,18 +24,18 @@ import { boxCountOf, isBoxStockItem, stockUnits, unitsPerBoxOf } from './orderUn
  * — BOM 아니면 포장 환산표. 예전엔 `|| 12` 로 물러섰는데, 박스 품목 140개 중
  * 102개가 12개입이 아니라 **출고 차감이 그만큼 어긋날 자리**였다.
  */
-export const goodsShipQty = (item: OrderItem, product: Item): number => {
-  if (isBoxStockItem(product)) return stockUnits(item, product);
-  const uPerBox = item.unitsPerBox || unitsPerBoxOf(product) || 1;
+export const goodsShipQty = (item: OrderItem, product: Item, inputs?: OrderUnitInputs): number => {
+  if (isBoxStockItem(product, inputs)) return stockUnits(item, product, inputs);
+  const uPerBox = item.unitsPerBox || unitsPerBoxOf(product, inputs) || 1;
   //  **몇 박스인가는 `boxCountOf` 만 답한다** — 여기서 또 따지면 재고와 전표가 갈린다
   //  (`boxCount.test.ts` 가 막는다). 여기서 내는 값은 박스 수가 아니라 **낱개 수**다.
   return item.isBoxUnit && item.boxQuantity ? boxCountOf(item) * uPerBox : item.quantity;
 };
 
 /** 이 줄이 출고에서 재고에 낼 몫. **0 이면 안 뺀다**(벌크·모르는 품목). */
-export const shipQtyOfLine = (item: OrderItem, product: Item | undefined): number => {
+export const shipQtyOfLine = (item: OrderItem, product: Item | undefined, inputs?: OrderUnitInputs): number => {
   if (!product || isBulkItem(product)) return 0;
-  return isGoodsItem(product) ? goodsShipQty(item, product) : stockUnits(item, product);
+  return isGoodsItem(product) ? goodsShipQty(item, product, inputs) : stockUnits(item, product, inputs);
 };
 
 export interface ShipDeductionRow {
