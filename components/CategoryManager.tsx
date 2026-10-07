@@ -1,5 +1,5 @@
 import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { where } from 'firebase/firestore';
 import { Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw, Eye, EyeOff, Boxes } from 'lucide-react';
 import { fetchCollection, addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
@@ -19,7 +19,7 @@ interface Props {
   companyId: CompanyId;
 }
 
-const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, companyId }) => {
+const CompanyCategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, companyId }) => {
   const [rows, setRows] = useState<TaxonomyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -27,16 +27,23 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
   const [addSub, setAddSub] = useState('');
   const [addCat, setAddCat] = useState('');
   const [loadError, setLoadError] = useState('');
+  const loadingRequest = useRef({ active: false, generation: 0 });
 
   const load = async () => {
+    if (!loadingRequest.current.active) return;
+    const generation = ++loadingRequest.current.generation;
+    const isCurrent = () => loadingRequest.current.active && loadingRequest.current.generation === generation;
     setLoading(true);
     setLoadError('');
     try {
       const got = await fetchCollection<TaxonomyRow>(COL, [where('companyId', '==', companyId)]);
+      if (!isCurrent()) return;
       if (got.length === 0) {
         const seeded: TaxonomyRow[] = [];
         for (const r of defaultTaxonomyRows()) {
+          if (!isCurrent()) return;
           const id = await addItem(COL, { ...r, companyId });
+          if (!isCurrent()) return;
           seeded.push({ ...r, id: String(id), companyId } as TaxonomyRow);
         }
         setRows(seeded);
@@ -44,13 +51,18 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
         setRows(got);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[분류관리 조회 실패]', error);
       setLoadError('분류를 불러오지 못했습니다. 다시 시도해 주세요.');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, [companyId]);
+  useEffect(() => {
+    loadingRequest.current.active = true;
+    void load();
+    return () => { loadingRequest.current.active = false; loadingRequest.current.generation++; };
+  }, [companyId]);
 
   const taxo = useMemo(() => buildTaxonomy(rows), [rows]);
   const typeRow = (key: string) => rows.find(r => (r.kind === 'type' || (r.kind === 'category' && r.key && !r.parent)) && r.key === key);
@@ -290,4 +302,5 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {}, compan
   );
 };
 
+const CategoryManager: React.FC<Props> = props => <CompanyCategoryManager key={props.companyId} {...props} />;
 export default CategoryManager;

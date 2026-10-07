@@ -12,6 +12,7 @@ import { createLoanWithOpening, fetchWhere } from '../src/shared/services/fireba
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import ModalShell from '../src/shared/components/ModalShell';
 import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
+import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 
 interface Props {
   companyId: CompanyId;
@@ -161,7 +162,7 @@ export default function LoanManager({ companyId, cashEntries, cashAccounts, part
     </ModalShell>}
     {selected && <ModalShell title={selected.name} subtitle={`${selected.lenderName} · ${selected.accountCode === '260' ? '단기차입금' : '장기차입금'}`} onClose={() => setSelectedId('')}>
       <div className="space-y-4"><div className="rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-500">현재 원금 잔액</p><p className="text-2xl font-black text-slate-900">{won(loanBalance(selected, cashEntries))}</p><p className="mt-1 text-xs text-slate-400">시작 {selected.openingDate} · {won(selected.openingPrincipal)}{selected.maturityDate ? ` · 만기 ${selected.maturityDate}` : ''}</p></div>
-        <div className="flex gap-2"><button className="flex-1 rounded-xl border border-indigo-200 px-3 py-2.5 text-sm font-bold text-indigo-700" onClick={() => { setDate(today()); setCashAccountId(availableAccounts[0]?.id ?? ''); setAction('차입'); }}>차입 기록</button><button className="flex-1 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white" onClick={() => { setDate(today()); setCashAccountId(availableAccounts[0]?.id ?? ''); setAction('상환'); }}>원금·이자 상환</button></div>
+        <div className="flex gap-2"><button className="flex-1 rounded-xl border border-indigo-200 px-3 py-2.5 text-sm font-bold text-indigo-700" onClick={() => { setDate(today()); setCashAccountId(defaultCashAccountId(availableAccounts, companyId)); setAction('차입'); }}>차입 기록</button><button className="flex-1 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white" onClick={() => { setDate(today()); setCashAccountId(defaultCashAccountId(availableAccounts, companyId)); setAction('상환'); }}>원금·이자 상환</button></div>
         <div><h3 className="mb-2 text-sm font-bold text-slate-700">거래 내역</h3>{rows.length === 0 ? <p className="py-4 text-center text-sm text-slate-400">연결된 전표가 없습니다.</p> : <div className="divide-y divide-slate-100 border-y border-slate-100">{[...rows].reverse().map(row => <div key={row.entry.id} className="flex items-center justify-between gap-2 py-3 text-sm"><div><p className="font-semibold text-slate-800">{row.entry.date} · {row.entry.note || row.entry.docNo || '자금전표'}</p><p className="text-xs text-slate-400">{row.entry.docNo || row.entry.id}</p></div><span className={row.principalDelta >= 0 ? 'font-bold text-indigo-600' : 'font-bold text-slate-700'}>{row.principalDelta > 0 ? '+' : ''}{won(row.principalDelta)}</span></div>)}</div>}</div>
       </div>
     </ModalShell>}

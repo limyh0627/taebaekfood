@@ -15,6 +15,7 @@ import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
 import { STANDARD_ACCOUNT } from '../src/shared/accountChart';
 import ModalShell from '../src/shared/components/ModalShell';
 import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
+import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 
 interface Props {
   companyId: CompanyId;
@@ -367,7 +368,7 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   onAdd: Props['onAddCashEntry'];
 }) {
   const [mode, setMode] = useState<'일반' | '상환' | '급여' | '보험' | '세금'>('일반');
-  const [cashAccountId, setCashAccountId] = useState(account.id);
+  const [cashAccountId, setCashAccountId] = useState(() => defaultCashAccountId(accounts, companyId));
   const [date, setDate] = useState(today());
   const [dir, setDir] = useState<'입금' | '출금'>('출금');
   const [amount, setAmount] = useState('');

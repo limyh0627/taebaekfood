@@ -27,8 +27,6 @@
     "deploy:functions": "cd functions && npm run build && cd .. && npx firebase deploy --only functions"
   },
   "dependencies": {
-    "@google/genai": "^1.41.0",
-    "@google/generative-ai": "^0.24.1",
     "@types/qrcode": "^1.5.6",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",

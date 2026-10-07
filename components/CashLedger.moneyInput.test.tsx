@@ -8,6 +8,19 @@ import type { CashAccount } from '../src/shared/types';
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: async () => true, appNotice: async () => {} }));
 
 describe('자금전표 금액 입력', () => {
+  it('다른 계좌를 보고 있어도 신규 입출금은 이름이 바뀐 메인계좌를 기본 선택한다', async () => {
+    const user = userEvent.setup();
+    const accounts = [
+      { id: 'first', companyId: 'taebaek', name: '다른 통장', type: '통장', active: true },
+      { id: 'cashacct-temp-main', companyId: 'taebaek', name: '농협은행 351-0526-3164-13', type: '통장', active: true },
+    ] as CashAccount[];
+    render(<CashLedger companyId="taebaek" cashAccounts={accounts} cashEntries={[]}
+      accountCodes={[]} partners={[]} issuedStatements={[]} settlements={[]}
+      onAddCashAccount={vi.fn()} onUpdateCashAccount={vi.fn()} onAddCashEntry={vi.fn()}
+      onDeleteCashEntry={vi.fn()} onAddSettlement={vi.fn()} onDeleteSettlement={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: '일반전표' }));
+    expect(screen.getByDisplayValue('농협은행 351-0526-3164-13')).toHaveValue('cashacct-temp-main');
+  });
   it('계좌 기초잔액은 쉼표로 보이지만 숫자로 저장한다', async () => {
     const user = userEvent.setup();
     const onAdd = vi.fn();

@@ -25,6 +25,19 @@ const view = (onAddCashEntry = vi.fn()) => render(<LoanManager companyId="taebae
 beforeEach(() => { mocks.loans = []; mocks.createLoanWithOpening.mockReset(); });
 
 describe('대출 금액 입력', () => {
+  it.each(['차입 기록', '원금·이자 상환'])('%s 신규 입력은 이름이 바뀐 메인계좌를 우선한다', async action => {
+    mocks.loans = [{ id: 'loan1', companyId: 'taebaek', name: '운전자금', lenderName: '농협',
+      accountCode: '293', openingDate: '2026-01-01', openingPrincipal: 1_000_000 }];
+    const accounts = [
+      { id: 'foreign', companyId: 'punghoe', name: '타회사 계좌', type: '통장', active: true },
+      { ...account, companyId: 'taebaek' },
+      { ...account, id: 'cashacct-temp-main', companyId: 'taebaek', name: '농협은행 351-0526-3164-13' },
+    ] as CashAccount[];
+    render(<LoanManager companyId="taebaek" cashEntries={[]} cashAccounts={accounts} partners={[]} onAddCashEntry={vi.fn()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /운전자금/ }));
+    await userEvent.click(screen.getByRole('button', { name: action }));
+    expect(screen.getByDisplayValue('농협은행 351-0526-3164-13')).toHaveValue('cashacct-temp-main');
+  });
   it.each(['1000.5', '-1000'])('시작 원금의 잘못된 붙여넣기 %s를 거절하고 저장을 막는다', async value => {
     const user = userEvent.setup();
     view();

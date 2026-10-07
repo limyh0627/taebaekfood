@@ -1,3 +1,4 @@
+import { defaultCashAccountId } from '../../shared/defaultCashAccount';
 import { appConfirm, appNotice as awaitNotice, appPrompt } from '../../shared/components/appDialog';
 import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
@@ -2133,7 +2134,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     ];
     //  **담당자를 찍는다**(2026-09-15 사장님: "전표일자 다음에 담당자") — 자금이 들어오는 문이
     //  여기 하나라, 어느 화면에서 만들든 사람이 남는다. 이미 적힌 것은 안 덮는다.
-    return addItem('cashEntries', { ...e, companyId: co, createdBy: e.createdBy ?? currentUser?.name, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
+    return addItem('cashEntries', { ...e, ...(e.dir === '입금' || e.dir === '출금' ? { cashAccountId: e.cashAccountId || defaultCashAccountId(appData.cashAccounts, co) } : {}), companyId: co, createdBy: e.createdBy ?? currentUser?.name, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
   };
 
   const generateRecurringCosts = (ym: string, onlyId?: string): Promise<number> => issueRecurringVouchers({
@@ -3119,7 +3120,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const id = `cash-${Date.now()}`;
                 await addCashEntry({
                   id, date, dir: '출금', amount: net,
-                  cashAccountId: appData.cashAccounts?.find(a => a.type === '통장')?.id ?? '',
+                  cashAccountId: defaultCashAccountId(companyCashAccounts, companyId),
                   ...(deduct > 0
                     ? { lines: [
                         { accountCode: salaryCode, amount: gross, note: '총급여' },

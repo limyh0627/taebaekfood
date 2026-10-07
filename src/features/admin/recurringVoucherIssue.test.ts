@@ -17,9 +17,9 @@ const input = (templates = [template()]): Parameters<typeof issueRecurringVouche
   ym: '2026-02', companyId: 'punghoe', createdBy: '담당자', templates,
   cashEntries: [], issuedStatements: [], accountCodes: [{ code: '510', name: '임차료' }],
   cashAccounts: [
-    { id: 'inactive', active: false, type: '통장' },
-    { id: 'card', active: true, type: '카드' },
-    { id: 'bank', active: true, type: '통장' },
+    { id: 'inactive', active: false, type: '통장', companyId: 'punghoe' },
+    { id: 'card', active: true, type: '카드', companyId: 'punghoe' },
+    { id: 'bank', active: true, type: '통장', companyId: 'punghoe' },
   ],
 });
 
@@ -76,7 +76,7 @@ describe('정기 전표 서버 발행', () => {
   });
 
   it('통장이 없으면 활성 카드, 계좌가 없으면 기존 빈 계좌값을 유지한다', async () => {
-    await issueRecurringVouchers({ ...input(), cashAccounts: [{ id: 'card', active: true, type: '카드' }] });
+    await issueRecurringVouchers({ ...input(), cashAccounts: [{ id: 'card', active: true, type: '카드', companyId: 'punghoe' }] });
     expect(issueNumberedCashEntry).toHaveBeenLastCalledWith(expect.objectContaining({ cashAccountId: 'card' }));
     await issueRecurringVouchers({ ...input(), cashAccounts: [] });
     expect(issueNumberedCashEntry).toHaveBeenLastCalledWith(expect.objectContaining({ cashAccountId: '' }));
@@ -119,4 +119,12 @@ describe('정기 전표 서버 발행', () => {
     expect(body).toContain('cashAccounts: companyCashAccounts');
     expect(body).not.toMatch(/addItem|addCashEntry|claimDocNo/);
   });
+});
+
+it('태백 정기 입출금도 첫 계좌 대신 같은 ID의 농협 메인 계좌를 기본으로 쓴다', async () => {
+ await issueRecurringVouchers({ ...input(), companyId: 'taebaek', cashAccounts: [
+  {id:'other',type:'통장',active:true,companyId:'taebaek'},
+  {id:'cashacct-temp-main',type:'통장',active:true,companyId:'taebaek'},
+ ] });
+ expect(issueNumberedCashEntry).toHaveBeenCalledWith(expect.objectContaining({cashAccountId:'cashacct-temp-main',companyId:'taebaek'}));
 });

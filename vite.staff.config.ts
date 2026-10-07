@@ -35,7 +35,6 @@ export default defineConfig({
           'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
           'vendor-pdf': ['jspdf', 'html2canvas'],
           'vendor-excel': ['exceljs'],
-          'vendor-ai': ['@google/generative-ai'],
           'vendor-qr': ['jsqr', 'qrcode'],
         },
       },

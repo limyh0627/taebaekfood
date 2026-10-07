@@ -1,3 +1,4 @@
+import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 
 import { appConfirm, appPrompt } from '../src/shared/components/appDialog';
 import { useDeleteConfirmation } from '../src/shared/components/useDeleteConfirmation';
@@ -479,10 +480,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [showQuickPay, setShowQuickPay] = useState(false);
   const openCashModal = (_dir: '입금' | '출금') => {
     setShowQuickPay(true);
-    setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
+    setQuickPayAccountId(prev => activeCashAccounts.some(account => account.id === prev && companyOf(account) === companyId) ? prev : defaultCashAccountId(activeCashAccounts, companyId));
   };
 
-  const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
+  const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active && companyOf(a) === companyId), [cashAccounts, companyId]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
 
   /**
@@ -593,7 +594,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const first = allocations[0]?.stmt;
     if (!first?.partnerId || total <= 0) throw new Error('거래처와 수금·지불 금액을 확인해 주세요.');
     if (allocations.some(row => row.stmt.partnerId !== first.partnerId)) throw new Error('서로 다른 거래처를 한 번에 수금할 수 없습니다.');
-    const cashAccountId = opts.cashAccountId || '';
+    const cashAccountId = opts.cashAccountId || defaultCashAccountId(activeCashAccounts, companyId);
     if (!cashAccountId || !cashAccounts.some(account => account.id === cashAccountId && account.active)) throw new Error('입출금 계좌를 선택해 주세요.');
     return recordPartnerPayment(companyId, {
       tradeDate: opts.date, partnerId: first.partnerId, direction: settlementDirectionOf(first),
@@ -605,7 +606,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const openPayModal = (stmt: IssuedStatement) => {
     setCashModal({ kind: '수금지불', stmt });
-    setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
+    setPayAccountId(prev => activeCashAccounts.some(account => account.id === prev && companyOf(account) === companyId) ? prev : defaultCashAccountId(activeCashAccounts, companyId));
   };
   const openEditCash = (entry: CashEntry) => setCashModal({ kind: '수정', entry });
 
@@ -1507,7 +1508,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
         if (amt > 0) {
           await recordPayment([{ stmt, amount: amt }], {
-            date: tradeDate, method: '계좌이체', cashAccountId: activeCashAccounts[0]?.id ?? '', pin: true,
+            date: tradeDate, method: '계좌이체', cashAccountId: defaultCashAccountId(activeCashAccounts, companyId), pin: true,
           });
         }
       }

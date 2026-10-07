@@ -1,3 +1,4 @@
+import { defaultCashAccountId } from '../../shared/defaultCashAccount';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import type { AccountCode, CashAccount, CashEntry, CompanyId, FixedCostTemplate, IssuedStatement } from '../../shared/types';
 import { statementBlockReason } from '../../shared/statementGuard';
@@ -11,12 +12,11 @@ export async function issueRecurringVouchers(input: {
   templates: FixedCostTemplate[];
   cashEntries: Pick<CashEntry, 'id'>[];
   issuedStatements: Pick<IssuedStatement, 'id' | 'orderId'>[];
-  cashAccounts: Pick<CashAccount, 'id' | 'active' | 'type'>[];
+  cashAccounts: Pick<CashAccount, 'id' | 'active' | 'type' | 'companyId'>[];
   accountCodes: Pick<AccountCode, 'code' | 'name'>[];
 }): Promise<number> {
   const { ym, onlyId, companyId, createdBy, templates, cashEntries, issuedStatements, cashAccounts, accountCodes } = input;
-  const defaultAcctId = cashAccounts.find(a => a.active && a.type !== '카드')?.id
-    ?? cashAccounts.find(a => a.active)?.id ?? '';
+  const defaultAcctId = defaultCashAccountId(cashAccounts, companyId);
   let created = 0;
   for (const t of templates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId))) {
     const key = autoVoucherId(t, ym);
