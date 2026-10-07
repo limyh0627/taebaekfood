@@ -2051,10 +2051,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
   const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
   const renameSheet = async (cat: string) => {
+    const askScope = orderAskScope.current.token;
     const next = await appPrompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
-    if (next == null) return;
+    if (next == null || orderAskScope.current.token !== askScope) return;
     const title = next.trim();
     await setDocument('docSheetTitles', cat, { title });
+    if (orderAskScope.current.token !== askScope) return;
     setSheetTitles(prev => ({ ...prev, [cat]: title }));
   };
 
@@ -2656,6 +2658,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <>
             {currentView === 'inventory' && <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />}
             <ItemList
+              orderUnitInputs={appData.orderUnitInputs}
               mode={currentView === 'lot-management' ? 'lots' : 'inventory'}
               companyId={companyId}
               items={companyItems}

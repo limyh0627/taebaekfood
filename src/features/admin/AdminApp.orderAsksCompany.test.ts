@@ -302,3 +302,29 @@ it('품목 추가 확인 중 종료된 화면은 저장하지 않으며 늦은 �
 it('현재 회사 변경 기록 실패는 기존 오류 기록을 유지한다',async()=>{
  const h=itemsEditHarness();h.add.mockRejectedValue(new Error('기록 실패'));const waiting=h.run('A',[h.original,h.added]);h.confirm.resolve(true);await waiting;await Promise.resolve();expect(h.log).toHaveBeenCalledOnce();
 });
+it('시트 제목 입력 중 회사가 바뀌면 이전 입력을 저장하지 않는다',async()=>{
+ const scope={current:{token:{}}};const prompt=deferred();const write=vi.fn(async()=>{});const set=vi.fn();
+ const run=actualNamed('renameSheet',{orderAskScope:scope,appPrompt:()=>prompt.promise,sheetTitleOf:()=> '기존 제목',setDocument:write,setSheetTitles:set});
+ const waiting=run('참기름');scope.current={token:{}};prompt.resolve('이전 회사 제목');await waiting;expect(write).not.toHaveBeenCalled();expect(set).not.toHaveBeenCalled();
+});
+it('시트 제목 저장 중 회사가 바뀌면 새 회사 제목을 덮지 않는다',async()=>{
+ const scope={current:{token:{}}};const save=deferred();const write=vi.fn(()=>save.promise);const set=vi.fn();
+ const run=actualNamed('renameSheet',{orderAskScope:scope,appPrompt:async()=> '이전 제목',sheetTitleOf:()=> '기존 제목',setDocument:write,setSheetTitles:set});
+ const waiting=run('참기름');await waitFor(()=>expect(write).toHaveBeenCalledOnce());scope.current={token:{}};save.resolve(undefined);await waiting;expect(set).not.toHaveBeenCalled();
+});
+it.each(['  새 제목  ','',null])('현재 회사 시트 제목 입력 %s는 기존 저장·취소 계약을 유지한다',async input=>{
+ const scope={current:{token:{}}};const write=vi.fn(async()=>{});let titles={다른시트:'유지'};const set=vi.fn((fn:(prev:Record<string,string>)=>Record<string,string>)=>{titles=fn(titles) as typeof titles;});
+ const run=actualNamed('renameSheet',{orderAskScope:scope,appPrompt:async()=>input,sheetTitleOf:()=> '기존 제목',setDocument:write,setSheetTitles:set});await run('참기름');
+ if(input===null){expect(write).not.toHaveBeenCalled();expect(set).not.toHaveBeenCalled();}else{expect(write).toHaveBeenCalledWith('docSheetTitles','참기름',{title:input.trim()});expect(titles).toEqual({다른시트:'유지',참기름:input.trim()});}
+});
+it('시트 제목 저장 실패는 제목을 변경하지 않고 기존 오류를 전달한다',async()=>{
+ const scope={current:{token:{}}};const save=deferred();const set=vi.fn();const write=vi.fn(()=>save.promise);
+ const run=actualNamed('renameSheet',{orderAskScope:scope,appPrompt:async()=> '제목',sheetTitleOf:()=> '기존 제목',setDocument:write,setSheetTitles:set});const waiting=run('참기름');const rejected=expect(waiting).rejects.toThrow('저장 실패');await waitFor(()=>expect(write).toHaveBeenCalledOnce());scope.current={token:{}};save.reject(new Error('저장 실패'));await rejected;expect(set).not.toHaveBeenCalled();
+});
+it('품목 화면은 동일 렌더의 명시 단위 입력을 전달한다',()=>{
+ const expressions:ts.Expression[]=[];const find=(node:ts.Node)=>{if((ts.isJsxOpeningElement(node)||ts.isJsxSelfClosingElement(node))&&node.tagName.getText(file)==='ItemList'){
+ const prop=node.attributes.properties.find(p=>ts.isJsxAttribute(p)&&p.name.getText(file)==='orderUnitInputs') as ts.JsxAttribute|undefined;
+ expect(prop).toBeDefined();const expression=prop?.initializer&&ts.isJsxExpression(prop.initializer)?prop.initializer.expression:undefined;if(expression)expressions.push(expression);
+ }ts.forEachChild(node,find);};find(file);expect(expressions).toHaveLength(1);
+ const context={bom:{company:'A'},pack:{company:'A'}};const resolve=new Function('appData',`return ${expressions[0].getText(file)};`);expect(resolve({orderUnitInputs:context})).toBe(context);
+});

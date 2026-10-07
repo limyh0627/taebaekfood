@@ -8,12 +8,14 @@ import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
 import { reconcileOemBatch } from '../src/features/admin/oemReconciliation';
+import type { OrderUnitInputs } from '../src/shared/orderUnits';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
  * 여기서는 발주/가공입고/가공비전표 모달만 띄운다. 열림 상태는 ItemList가 제어.
  */
 interface Props {
+  orderUnitInputs?: OrderUnitInputs;
   companyId: CompanyId;
   items: Item[];
   partners: Partner[];
@@ -33,7 +35,7 @@ type IssueInput = Parameters<Props['onIssue']>[0];
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export default function OemManager({
-  companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee,
+  companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -87,11 +89,11 @@ export default function OemManager({
           }} />
       )}
       {receiveTarget && (
-        <ReceiveModal po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy}
+        <ReceiveModal po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs}
           onClose={onClose} onSubmit={(v) => run(() => onReceive({ po: receiveTarget, ...v }))} />
       )}
       {feeTarget && (
-        <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy}
+        <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy} orderUnitInputs={orderUnitInputs}
           onClose={onClose} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
       )}
     </>
@@ -207,7 +209,8 @@ function IssueModal({ partners, rawItems, rawStockKg, issueDrafts, pendingIssue,
 }
 
 // ── 가공입고 (완제품 받기) ───────────────────────────────────────────────────
-function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
+function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit, orderUnitInputs }: {
+  orderUnitInputs?: OrderUnitInputs;
   po: PurchaseOrder; oemItems: Item[]; bulkItems: Item[]; busy: boolean;
   onClose: () => void;
   onSubmit: (v: { returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => void;
@@ -225,7 +228,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
   const bulk = bulkRows.filter(b => b.material && Number(b.kg) > 0).map(b => ({ material: b.material, kg: Number(b.kg) }));
   const packedKg = returns.reduce((a, r) => {
     const it = oemItems.find(i => i.id === r.itemId);
-    return a + (it ? itemKg(it) * r.qty : 0);
+    return a + (it ? itemKg(it, orderUnitInputs) * r.qty : 0);
   }, 0);
   const bulkKg = bulk.reduce((a, b) => a + b.kg, 0);
   const receivedKg = packedKg + bulkKg;
@@ -261,7 +264,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
           )}
           {rows.map((r, i) => {
             const it = oemItems.find(x => x.id === r.itemId);
-            const kg = it ? itemKg(it) * (Number(r.qty) || 0) : 0;
+            const kg = it ? itemKg(it, orderUnitInputs) * (Number(r.qty) || 0) : 0;
             return (
               <div key={i} className="flex items-center gap-1.5">
                 <select value={r.itemId} onChange={e => setRows(p => p.map((x, j) => j === i ? { ...x, itemId: e.target.value } : x))}
@@ -336,7 +339,8 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
 }
 
 // ── 가공비 전표 발행 (사용자 확인) ───────────────────────────────────────────
-function FeeModal({ po, items, companyId, busy, onClose, onSubmit }: {
+function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderUnitInputs }: {
+  orderUnitInputs?: OrderUnitInputs;
   po: PurchaseOrder; items: Item[]; companyId: CompanyId; busy: boolean;
   onClose: () => void;
   onSubmit: (v: { unitPricePerKg: number; date: string }) => void;
@@ -345,7 +349,7 @@ function FeeModal({ po, items, companyId, busy, onClose, onSubmit }: {
   const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
   const kg = po.oemReceivedKg ?? 0;
   const money = processingFee(kg, Number(fee) || 0);
-  const reconciliation = reconcileOemBatch(po, items, companyId);
+  const reconciliation = reconcileOemBatch(po, items, companyId, orderUnitInputs);
 
   return (
     <ModalShell title="가공비 전표 발행" onClose={onClose} bodyClassName="space-y-4">

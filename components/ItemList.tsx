@@ -187,6 +187,7 @@ interface StockClosing { id: string; date: string; closedBy: string; createdAt: 
  */
 
 interface ItemListProps {
+  orderUnitInputs?: OrderUnitInputs;
   mode?: 'inventory' | 'lots';
   companyId: import('../src/shared/types').CompanyId;
   items: Item[];
@@ -320,6 +321,7 @@ const displayStockOf = (p: any): number => {
 };
 
 const ItemListContent: React.FC<ItemListProps> = ({
+  orderUnitInputs,
   mode = 'inventory',
   companyId,
   items,
@@ -1701,6 +1703,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
       {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
         <OemManager
+          orderUnitInputs={orderUnitInputs}
           companyId={companyId}
           items={items}
           partners={partners.filter(partner => companyOf(partner) === companyId) as any}

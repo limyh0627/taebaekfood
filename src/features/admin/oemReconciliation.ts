@@ -1,8 +1,8 @@
 import { companyOf, type CompanyId, type Item, type PurchaseOrder } from '../../shared/types';
-import { itemKg } from '../../shared/orderUnits';
+import { itemKg, type OrderUnitInputs } from '../../shared/orderUnits';
 
 /** 조회용 대조. 차이는 실측 손실이 아니며 원료별 소비량을 추정하지 않는다. */
-export function reconcileOemBatch(po: PurchaseOrder, items: readonly Item[], companyId: CompanyId) {
+export function reconcileOemBatch(po: PurchaseOrder, items: readonly Item[], companyId: CompanyId, inputs?: OrderUnitInputs) {
   if (po.poType !== 'oem' || companyOf(po) !== companyId) return undefined;
 
   const issues: string[] = [];
@@ -16,7 +16,7 @@ export function reconcileOemBatch(po: PurchaseOrder, items: readonly Item[], com
   if (po.status === 'received' && !po.items?.length && !po.oemReceivedBulk?.length) issues.push('회수 세부 기록 없음');
   const products = (po.status === 'received' ? po.items ?? [] : []).map(row => {
     const item = items.find(candidate => candidate.id === row.itemId && companyOf(candidate) === companyId);
-    const unitKg = item ? itemKg(item) : 0;
+    const unitKg = item ? itemKg(item, inputs) : 0;
     const name = row.name || item?.name || row.itemId;
     if (!item || !Number.isFinite(unitKg) || unitKg <= 0) issues.push(`제품 단위 환산 불명: ${name} (${row.itemId})`);
     return { itemId: row.itemId, name, quantity: row.quantity, unit: row.unit, kg: unitKg > 0 ? row.quantity * unitKg : undefined };

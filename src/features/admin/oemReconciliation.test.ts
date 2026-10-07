@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import {buildBomIndex,getBomIndex,setBomIndex} from '../../shared/bomIndex';
+import {buildPackIndex} from '../../shared/packIndex';
 import type { Item, PurchaseOrder } from '../../shared/types';
 import { reconcileOemBatch } from './oemReconciliation';
 
@@ -7,6 +9,18 @@ const po = (patch: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
   poType: 'oem', status: 'received', oemSent: [{ material: '참깨', kg: 100 }], ...patch,
 });
 const product = { id: 'item', companyId: 'taebaek', name: '볶음참깨', spec: '1kg', unit: '개' } as Item;
+const originalBom=getBomIndex();
+afterEach(()=>setBomIndex(originalBom));
+it('명시 회사 입력은 다른 전역 BOM과 독립적이고 생략하면 기존 전역 동작을 유지한다',()=>{
+ const products=[{...product,spec:'1kg * 20',type:'product'}, {...product,id:'loose',type:'product'}] as Item[];
+ const inputs={bom:buildBomIndex(products,[{parent_id:'item',child_id:'loose',quantity:20}]),pack:buildPackIndex()};
+ const other=buildBomIndex(products,[]);setBomIndex(other);
+ const batch=po({items:[{itemId:'item',name:'볶음참깨',quantity:1,unit:'개'}],oemReceiptOperationId:'receipt',oemReceivedKg:20});
+ expect(reconcileOemBatch(batch,products,'taebaek',inputs)?.products[0].kg).toBe(20);
+ expect(reconcileOemBatch(batch,products,'taebaek')?.products[0].kg).toBe(1);
+ expect(reconcileOemBatch(batch,products,'punghoe',inputs)).toBeUndefined();
+ expect(getBomIndex()).toBe(other);
+});
 
 describe('reconcileOemBatch', () => {
   it('제품·벌크 회수와 미해결 차이를 분리하고 손실을 확정하지 않는다', () => {
