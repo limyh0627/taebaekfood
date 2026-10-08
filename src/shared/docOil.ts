@@ -74,7 +74,7 @@ export const rawDocTabLabel = (material: string): string => ({
  * (예전엔 엑셀 8종 / 화면 10종으로 갈려 가득찬순참기름 등이 엑셀에서 빠졌다)
  */
 export const DOC_SHEET_GROUPS: { brand: string; cats: string[] }[] = [
-  { brand: '시골향', cats: ['시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4', '시골향들기름1', '시골향들기름2'] },
+  { brand: '시골향', cats: ['시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4', '시골향들기름1', '시골향들기름2', '시골향들기름3'] },
   { brand: '하남댁', cats: ['하남댁참기름', '하남댁들기름', '하남댁맑음들기름'] },
   { brand: '해달', cats: ['해달참기름', '해달들기름'] },
   { brand: '가득찬', cats: ['가득찬순참기름'] },
@@ -92,6 +92,7 @@ export const DEFAULT_SHEET_TITLE: Record<string, string> = {
   시골향참기름4: '시골향참기름④',
   시골향들기름1: '시골향들기름①',
   시골향들기름2: '시골향들기름②',
+  시골향들기름3: '시골향들기름③',
   하남댁참기름: '하남댁참기름',
   하남댁들기름: '하남댁들기름',
   하남댁맑음들기름: '하남댁 맑은 들기름',
@@ -140,6 +141,20 @@ export const DOC_RECALC_RAWS = new Set(
 /** 품목명 → 서류 집계용 품목명 */
 export const docPumok = (품목?: string | null): string =>
   (품목 && DOC_PUMOK_MERGE[품목]) || 품목 || '';
+
+/**
+ * 그 서류 날짜에 이 품목이 **어느 서류 품목이었나** → 서류 집계용 품목명.
+ *
+ * 서류는 지난 주문을 지금 품목 설정으로 다시 센다. 품목을 바꾼 뒤에도 지난 서류가 안 바뀌게
+ * `품목이력`(그 날짜 전까지의 품목)을 본다. 날짜가 없으면 지금 품목이다.
+ * 이력이 여럿이면 그 날짜 **뒤에 끝나는 것 중 가장 이른 것**이 그때의 품목이다.
+ */
+export const docPumokAt = (item: Pick<Item, '품목' | '품목이력'> | undefined, at?: string): string => {
+  const 그때 = at
+    ? (item?.품목이력 ?? []).filter(h => at < h.until).sort((a, b) => a.until.localeCompare(b.until))[0]
+    : undefined;
+  return docPumok(그때 ? 그때.품목 : item?.품목);
+};
 
 /**
  * 판매 1줄 → 서류상 기름 kg.
@@ -235,15 +250,19 @@ const 푸는중 = (
   return [{ item: product, qty: quantity }];
 };
 
-/** 위를 거친 뒤 기름 집계에 쓸 형태로. 서류용 품목이 없는 줄은 뺀다(잡을 근거가 없다). */
+/**
+ * 위를 거친 뒤 기름 집계에 쓸 형태로. 서류용 품목이 없는 줄은 뺀다(잡을 근거가 없다).
+ * `at` = 서류 날짜(docDateOf). 주면 그날의 품목(`docPumokAt`)으로 적는다.
+ */
 export const docSaleLines = (
   product: Item | undefined,
   quantity: number,
   findItem: (id: string) => Item | undefined,
   inputs?: OrderUnitInputs,
+  at?: string,
 ): { 품목: string; spec: string; qty: number }[] =>
   docUnpack(product, quantity, findItem, inputs)
-    .map(u => ({ 품목: docPumok(u.item.품목), spec: u.item.spec ?? '', qty: u.qty }))
+    .map(u => ({ 품목: docPumokAt(u.item, at), spec: u.item.spec ?? '', qty: u.qty }))
     .filter(l => l.품목);
 
 /**
@@ -258,6 +277,8 @@ export const journalSaleLines = (
   orderItem: Pick<OrderItem, 'quantity' | 'boxQuantity' | 'isBoxUnit' | 'name' | 'displaySize'>,
   findItem: (id: string) => Item | undefined,
   inputs?: OrderUnitInputs,
+  /** 서류 날짜 — 주면 그날의 품목(`docPumokAt`)으로 적는다. */
+  at?: string,
 ): { 품목: string; spec: string; qty: number }[] => {
   // 주문 quantity는 이미 낱개로 환산돼 있을 수 있다. 박스 수로 정규화한 뒤 BOM을 한 번 푼다.
   const quantity = stockUnits(orderItem, product, inputs);
@@ -266,7 +287,7 @@ export const journalSaleLines = (
   return rows.map(row => {
     const base = row.item ?? product;
     return {
-      품목: docPumok(base?.품목) || base?.name || orderItem.name || '',
+      품목: docPumokAt(base, at) || base?.name || orderItem.name || '',
       spec: docSpec(base?.spec) || orderItem.displaySize || '',
       qty: row.qty,
     };

@@ -556,6 +556,14 @@ export interface Item {
   //  boxSize 는 걷어냈다(2026-09-02) — 개입수의 근거는 **BOM 아니면 item_pack** 둘뿐이다.
   //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
   품목?: string;
+  /**
+   * **예전 서류 품목** — `until` 날짜(그날은 빠진다) 전 서류에는 이 품목으로 적는다.
+   *
+   * 원료수불부·생산작업기록부는 지난 주문을 **지금 품목**으로 다시 셈한다. 그래서 `품목`만
+   * 바꾸면 이미 찍은 지난달 서류까지 따라 바뀐다. 2026-10-08 사장님: 들기름2 → 3 교체는
+   * "오늘 이후만". 읽는 곳은 `docPumokAt` 한 곳이다.
+   */
+  품목이력?: { 품목: string; until: string }[];
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
   isSmartStore?: boolean;
   smartStorePrice?: number;

@@ -541,6 +541,15 @@ describe('auditDataIntegrity — 주문·판매일지·서류수불부 대조', 
     expect(ids.filter(id => id.startsWith('sales-log-'))).toEqual([]);
   });
 
+  //  2026-10-08 들기름2 → 3 교체("오늘 이후만"): 바꾸기 전에 저장한 일지는 예전 품목으로 적혀 있다.
+  it('품목을 바꾼 뒤에도 바꾸기 전 날짜의 일지는 예전 품목으로 대조해 오류가 없다', () => {
+    const 바뀐 = { ...journalItem, 품목: '시골향들기름3', 품목이력: [{ 품목: formulaItem, until: '2026-09-17' }] } as Item;
+    const ids = auditDataIntegrity(input({
+      items: [바뀐], orders: [deliveredOrder()], productionSalesLogs: [matchingLog()],
+    })).map(issue => issue.id);
+    expect(ids.filter(id => id.startsWith('sales-log-'))).toEqual([]);
+  });
+
   it('5박스의 이미 환산된 100개를 2000개로 다시 곱하지 않고 과거 과다 일지는 잡는다', () => {
     const box = productItem({ id: 'box-20', name: '20개입 박스', spec: '' });
     const items = [box, journalItem];
