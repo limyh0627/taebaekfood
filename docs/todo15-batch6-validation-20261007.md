@@ -101,3 +101,19 @@
 root가 독립 검수 P1/P2 없음과 source 반납을 확인했다. 최종 앱 타입 20941 exit0, 양앱 빌드 97009 exit0으로 현재 관리자·직원 bundle이 완성됐다. 서버 선택 16개 활성 배포 및 실제 runtime53개·compiled13개 비교는 완료했고, 호출 소비자가 없는 옛 mutate callable 1개 삭제도 완료했다. Git staged 파일은 root 통합 기준 239개다. 이 수는 TODO 완료 건수나 시험 건수가 아니다. 이 기록 시점에 Hosting 완료와 최종 Git 푸시는 아직 확정 전이고 금융 전환 gate apply는 0이다.
 
 별도 이미 확정된 통합 증거는 회사이체 UI/wrapper 순수22 및 실제 Auth SDK3, 삭제 canonical SDK6, 현금·일괄 매칭 SDK11이다. 옛 mutate producer5파일 제거 뒤 남은 RETURN 순수13개 통과도 보존한다. 이전 음수 검증 문서의 status 미존재·adapter 미완 설명은 당시의 역사이며 현재 통합 상태와 구분한다. 이전 실행·변이 재실행을 신규 고유시험으로 합산하지 않는다.
+
+
+## 2026-10-08 코드 릴리즈 완료, 운영 활성화 결과 대기
+
+코드 커밋 d2d8dc601ae93c44efbc8705fa5cdbdeb208091b는 정확 239파일이며 GitHub 푸시가 완료되어 원격과 앞/뒤 0/0이다. 관리자·직원 Hosting 58829 exit0, 실제 배포 23파일 SHA 검증 32257에서 모두 일치했다. 서버 선택 16개 배포 24882 exit0, runtime53/53 및 compiled13개 모듈의 각 함수 ZIP 비교 모두 일치했다. ZIP SHA는 2ed9a2ceaed3517c7119f772faf31b80e0634962a98aa80bd318cc57db875b4c다. 실행 모듈이 아닌 canonical 시험 파일은 runtime ZIP 비교에서 제외하고 Git에 보존했다. 옛 mutate callable 삭제 88784 exit0, 선택16개 ACTIVE 및 옛 함수 부재를 확인했다.
+
+운영 설정 최초 적용은 금융 원문 버전 변경을 발견해 쓰기 전에 거절됐다(운영 쓰기0). 승인된 정확3건만 fresh v3 dry로 재검증했다. 대상은 태백·풍회 반품 및 풍회 정산이고 기존 blocked 범위 태백2/풍회0을 유지했다. v3 적용 11910은 이 기록 시점에 진행 중이며 최종 성공·사후 검증을 아직 주장하지 않는다. 계획 해시는 aaa4a85e2523f7d2535667680f2cfbdff04a441a8dc7d4b9c1132f032e396efa다. 보험료 고아 재연결 승인은 별도로 보류 상태다.
+
+원본15개 중 완료 집계는 기존7/15를 유지한다. 이번 239파일·부분 기능 배포를 추가 TODO 전체 완료 수로 확대하지 않는다. 노션 쓰기0, Figma 나머지 보드 정리 보류를 유지한다.
+
+
+## 운영 활성화 최종 완료
+
+승인된 정확3건(태백·풍회 반품, 풍회 정산)의 v3 적용 11910 exit0 결과는 changedGates:3, verified:true, financialWrites:0이다. root 독립 재조회 b83cdd exit0의 work/batch6-activation-independent-verification-20261008.json에서 정확3건의 설정 일치·enabled:true를 확인했다. fresh v3 대비 financialVersionChanges:0이고 감사 버전 해시 a08c8a8e9750ac23771a50c313ae49a63358d85061ebddd0240ef8e458c8abe4도 불변이다. 최초 적용의 사전 버전 거절과 fresh v3 재실행 이력은 보존한다.
+
+보험료 고아 재연결은 별도 보류·apply0이다. 삭제된 거래처 참조의 태백 blocked2와 기타 회사이체 held 설정을 유지했다. 금융 전표·금액·재고를 생성하거나 정정하지 않았다. 원본 전체 완료 집계는 7/15에서 바꾸지 않는다.
