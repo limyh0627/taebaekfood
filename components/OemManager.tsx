@@ -8,7 +8,7 @@ import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
 import { reconcileOemBatch } from '../src/features/admin/oemReconciliation';
-import type { OrderUnitInputs } from '../src/shared/orderUnits';
+import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
@@ -270,7 +270,7 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit, orderU
                 <select value={r.itemId} onChange={e => setRows(p => p.map((x, j) => j === i ? { ...x, itemId: e.target.value } : x))}
                   className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300">
                   <option value="">— 품목 —</option>
-                  {oemItems.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  {oemItems.map(x => <option key={x.id} value={x.id}>{[x.name, x.spec, isBoxStockItem(x, orderUnitInputs) ? '박스' : x.unit].filter(Boolean).join(' · ')}</option>)}
                 </select>
                 <input inputMode="numeric" value={r.qty} placeholder="수량"
                   onChange={e => setRows(p => p.map((x, j) => j === i ? { ...x, qty: e.target.value.replace(/[^\d]/g, '') } : x))}
