@@ -67,3 +67,16 @@ it('타회사 품목으로 현재 제품 중량을 환산하지 않는다', () =
   expect(screen.getByText('제품 중량 (현재 품목 기준 환산)').parentElement?.textContent).toContain('자료 없음');
   expect(screen.getByText('제품 단위 환산 불명: product (product)')).toBeTruthy();
 });
+
+it('외주 발주가 현재 진행 중이면 이전 미완료 안내와 구분한다', async () => {
+ sessionStorage.setItem('oem-issue-pending:taebaek',JSON.stringify({jobId:'pending',oemPartnerId:'fumi',partnerName:'푸미푸드',date:'2026-10-08',sent:[{material:'참깨',kg:100}]}));
+ let finish!: () => void;
+ const onIssue=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ render(<OemManager companyId="taebaek" items={[]} partners={[]} rawStockKg={()=>100} issueDrafts={[]}
+ issueOpen receiveTarget={null} feeTarget={null} onClose={vi.fn()} onIssue={onIssue} onReceive={vi.fn()} onIssueFee={vi.fn()} />);
+ fireEvent.click(screen.getByRole('button',{name:'재개'}));
+ expect(screen.getByText('외주 발주 처리 중입니다. 완료될 때까지 기다려 주세요.')).toBeInTheDocument();
+ expect(screen.queryByText('완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.')).toBeNull();
+ await act(async()=>{finish();});
+ expect(sessionStorage.getItem('oem-issue-pending:taebaek')).toBeNull();
+});

@@ -246,6 +246,7 @@ interface ItemListProps {
   rawStockKg?: (material: string) => number;
   onOemIssue?: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
   onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
+  onOemCancel?: (po: PurchaseOrder) => Promise<unknown>;
   onOemIssueFee?: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
@@ -371,6 +372,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   onOemIssue,
   onOemReceive,
   onOemIssueFee,
+  onOemCancel,
 }) => {
   const unpackMounted = useRef(true);
   useEffect(() => {
@@ -677,6 +679,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [flowDetail, setFlowDetail] = useState<{ type: '입고' | '반품'; id: string; lines: { itemId: string; quantity: number }[] } | null>(null);
   const [flowQuantities, setFlowQuantities] = useState<string[]>([]);
   const [flowSaving, setFlowSaving] = useState(false);
+  const oemCancelBusy = useRef(false);
+  const oemCancelScope = useRef({ companyId, detail: flowDetail });
+  oemCancelScope.current = { companyId, detail: flowDetail };
   const flowVoucherLink = (linkedId: string) => {
     const linked = issuedStatements.find(statement => statement.id === linkedId && companyOf(statement) === companyId);
     return linked?.docNo
@@ -1047,6 +1052,23 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const PAGE_SIZE = 24;
 
   const productMap = useMemo(() => new Map(items.map(p => [p.id, p])), [items]);
+  const oemControlsReady = !!(oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg);
+  const oemSummary = (po: PurchaseOrder) => {
+    const sent = po.oemSent ?? [];
+    const products = po.items ?? [];
+    const bulk = po.oemReceivedBulk ?? [];
+    const received = [
+      ...products.map(line => `입고 제품 ${line.quantity.toLocaleString()} ${line.unit || productMap.get(line.itemId)?.unit || ''}`.trim()),
+      ...bulk.map(row => `벌크 ${row.material} ${row.kg.toLocaleString()} kg`),
+      ...(po.oemReceivedKg !== undefined ? [`총회수 ${po.oemReceivedKg.toLocaleString()} kg`] : []),
+    ];
+    return {
+      itemSummary: [`송부 원료: ${sent.map(row => row.material).join(', ') || '미기록'}`,
+        ...(products.length ? [`입고 제품: ${products.map(line => line.name || productMap.get(line.itemId)?.name || line.itemId).join(', ')}`] : []),
+        ...(bulk.length ? [`입고 벌크: ${bulk.map(row => row.material).join(', ')}`] : [])].join(' · '),
+      quantitySummary: `송부 ${sent.length ? sent.reduce((sum, row) => sum + row.kg, 0).toLocaleString() + ' kg' : '미기록'} · ${received.join(' · ') || '입고 미기록'}`,
+    };
+  };
   const canConfirmReceipt = (po: PurchaseOrder): boolean => po.status === 'invoiced' && po.poType !== 'oem' && poLines(po).length > 0 &&
     poLines(po).every(line => {
       const item = productMap.get(line.itemId);
@@ -1532,13 +1554,14 @@ const ItemListContent: React.FC<ItemListProps> = ({
             key: `입고-${status}-${po.id}`,
             id: po.id,
             type: '입고',
-            status,
-            date,
+            status: po.oemCancelledAt ? '완료' : status,
+            date: po.oemCancelledAt || date,
             partnerName: po.partnerName || '거래처 미지정',
             itemSummary: (lines[0]?.name || productMap.get(lines[0]?.itemId)?.name || '품목 미지정') + (lines.length > 1 ? ` 외 ${lines.length - 1}개` : ''),
             quantitySummary: lines.length === 1
               ? `${lines[0].quantity.toLocaleString()} ${lines[0].unit || productMap.get(lines[0].itemId)?.unit || ''}`.trim()
               : `${lines.length}개 품목`,
+            ...(po.poType === 'oem' ? oemSummary(po) : {}),
             source: po,
           };
         };
@@ -1620,7 +1643,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
                       <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
-                      <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{row.status}</span></td>
+                      <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{row.type === '입고' && (row.source as PurchaseOrder).oemCancelledAt ? '취소' : row.status}</span></td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
                       <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
@@ -1628,6 +1651,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         const linkedId = row.source.linkedStatementId;
                         if (linkedId) return flowVoucherLink(linkedId);
                         if (!isAdmin || row.type === '반품') return <span className="text-slate-400">—</span>;
+                        if ((row.source as PurchaseOrder).oemCancelledAt) return <span className="text-slate-400">취소</span>;
+                        if ((row.source as PurchaseOrder).poType === 'oem') return (row.source as PurchaseOrder).status === 'received'
+                          ? <button type="button" disabled={!oemControlsReady} onClick={event => { event.stopPropagation(); if (companyOf(row.source) === companyId) setOemFeeTarget(row.source as PurchaseOrder); }} className="font-bold text-violet-600 underline disabled:opacity-40">가공비 발행</button>
+                          : <span className="text-slate-400">가공입고 후 발행</span>;
                         return <button type="button" onClick={event => {
                           event.stopPropagation();
                           const po = row.source as PurchaseOrder;
@@ -1638,7 +1665,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                           onRequestPurchaseInvoice(partnerId, partnerName, lines.map(line => ({ itemId: line.itemId, name: line.name || productMap.get(line.itemId)?.name || '', spec: productMap.get(line.itemId)?.spec || '', qty: line.quantity, price: 0 })), [po.id]);
                         }} className="font-bold text-rose-600 underline">발행하기</button>;
                       })()}</td>
-                      <td className="px-3 py-3 text-center">{row.status !== '완료' && <button type="button" disabled={flowSaving || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))} onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
+                      <td className="px-3 py-3 text-center">{row.type === '입고' && (row.source as PurchaseOrder).poType === 'oem' ? (!(row.source as PurchaseOrder).oemCancelledAt && (row.source as PurchaseOrder).status === 'invoiced' && <button type="button" disabled={!oemControlsReady} onClick={event => { event.stopPropagation(); if (companyOf(row.source) === companyId) setOemReceiveTarget(row.source as PurchaseOrder); }} className="rounded-lg border border-violet-200 px-2 py-1 text-xs font-bold text-violet-600 disabled:opacity-40">가공입고</button>) : row.status !== '완료' && <button type="button" disabled={flowSaving || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))} onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
                     </tr>
                   ))}
                   {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
@@ -1671,9 +1698,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
           : sourceChanged ? '내용이 변경됐습니다. 상세창을 다시 열어주세요.' : '';
         return <ModalShell title={`${flowDetail.type} 상세`} onClose={() => setFlowDetail(null)} className="md:max-w-lg" bodyClassName="space-y-4" footer={
           <div className="space-y-2">
-            {po && deleteReason && <p className="text-xs font-bold text-slate-500">{deleteReason}</p>}
+            {po && po.poType !== 'oem' && deleteReason && <p className="text-xs font-bold text-slate-500">{deleteReason}</p>}
+            {po?.poType === 'oem' && <p className="text-xs font-bold text-slate-500">{po.oemCancelledAt ? '취소된 외주 발주입니다. 보낸 원료를 재고로 복원하고 기록을 남겼습니다.' : po.status === 'invoiced' ? '취소하면 보낸 원료를 재고로 복원하고 발주 기록을 남깁니다.' : '입고된 외주 발주는 삭제하지 않습니다. 반환이 필요하면 입고 기록을 먼저 확인해 주세요.'}</p>}
             <div className="flex flex-wrap gap-2">
-              {po && <button type="button" disabled={flowSaving || !!deleteReason} onClick={async () => {
+              {po && po.poType !== 'oem' && <button type="button" disabled={flowSaving || !!deleteReason} onClick={async () => {
                 if (!await appConfirm('이 발주 기록을 삭제할까요? 입고 기록이나 연결 전표가 있으면 삭제되지 않습니다.')) return;
                 setFlowSaving(true);
                 try { await onRemoveConfirmedOrder(po.id); setFlowDetail(null); }
@@ -1681,7 +1709,23 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 finally { setFlowSaving(false); }
               }} className="min-w-20 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">삭제</button>}
               <button type="button" disabled={flowSaving} onClick={() => setFlowDetail(null)} className="min-w-20 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-600 disabled:opacity-40">닫기</button>
-              {po && pending && <button type="button" disabled={flowSaving || sourceChanged || !canReceive} onClick={async () => {
+              {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'invoiced' && isAdmin && onOemCancel && <button type="button" disabled={flowSaving} onClick={async () => {
+                if (oemCancelBusy.current) return;
+                oemCancelBusy.current = true;
+                const detail = flowDetail;
+                const active = () => unpackMounted.current && oemCancelScope.current.companyId === companyId && oemCancelScope.current.detail === detail;
+                setFlowSaving(true);
+                try {
+                  if (!await appConfirm('외주 발주를 취소하고 보낸 원료를 재고로 돌려놓을까요? 발주 기록은 취소 이력으로 남습니다.')) return;
+                  if (!active()) return;
+                  await onOemCancel(po);
+                  if (active()) setFlowDetail(current => current === detail ? null : current);
+                } catch (error) { if (active()) alert(`외주 발주를 취소하지 못했습니다. 같은 발주에서 다시 시도하세요: ${error instanceof Error ? error.message : String(error)}`); }
+                finally { oemCancelBusy.current = false; if (active()) setFlowSaving(false); }
+              }} className="rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">외주 발주 취소</button>}
+              {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'invoiced' && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemReceiveTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">가공입고</button>}
+              {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'received' && !po.linkedStatementId && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemFeeTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">가공비 발행</button>}
+              {po && po.poType !== 'oem' && pending && <button type="button" disabled={flowSaving || sourceChanged || !canReceive} onClick={async () => {
                 setFlowSaving(true);
                 try { if (await onFinishConfirmedOrder(po.id) !== false) setFlowDetail(null); }
                 finally { setFlowSaving(false); }
@@ -1692,14 +1736,15 @@ const ItemListContent: React.FC<ItemListProps> = ({
           <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
           <dl className="space-y-1 text-xs text-slate-500">{eventDates.map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{value ? `${dateOfLocal(value)}${value.includes('T') ? ` ${timeOfLocal(value)}` : ''}` : '미기록'}</dd></div>)}</dl>
           {record.linkedStatementId && <div className="text-xs font-bold">연결 전표: {flowVoucherLink(record.linkedStatementId)}</div>}
-          {issued && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
+          {issued && po?.poType !== 'oem' && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">전표가 이미 발행된 건입니다. 여기서 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.</p>}
           {sourceChanged && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">품목이나 수량이 다른 곳에서 변경됐습니다. 상세창을 닫고 다시 열어주세요.</p>}
-          <div className="space-y-2">{lines.map((line, index) => <div key={`${line.itemId}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+          {po?.poType === 'oem' && <div className="rounded-lg bg-violet-50 p-3 text-xs text-violet-800"><p>{oemSummary(po).itemSummary}</p><p>{oemSummary(po).quantitySummary}</p><p className="mt-1">송부 원료는 받은 수량이 아닙니다. 입고 기록이 없으면 수량을 추정하지 않습니다.</p></div>}
+          <div className="space-y-2">{(po?.poType === 'oem' ? [] : lines).map((line, index) => <div key={`${line.itemId}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
             <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700">{line.name || productMap.get(line.itemId)?.name || '품목 미지정'}</span>
-            {pending && !sourceChanged ? <input type="number" min="0.001" step="0.001" value={flowQuantities[index] ?? String(line.quantity)} onChange={event => setFlowQuantities(values => values.map((value, i) => i === index ? event.target.value : value))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold" aria-label={`${line.name || '품목'} 수량`} />
+            {pending && po?.poType !== 'oem' && !sourceChanged ? <input type="number" min="0.001" step="0.001" value={flowQuantities[index] ?? String(line.quantity)} onChange={event => setFlowQuantities(values => values.map((value, i) => i === index ? event.target.value : value))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold" aria-label={`${line.name || '품목'} 수량`} />
               : <span className="text-sm font-black tabular-nums">{line.quantity.toLocaleString()}</span>}
           </div>)}</div>
-          {pending && <button type="button" disabled={flowSaving || sourceChanged || !onUpdatePendingFlowQty} onClick={async () => {
+          {pending && po?.poType !== 'oem' && <button type="button" disabled={flowSaving || sourceChanged || !onUpdatePendingFlowQty} onClick={async () => {
             const quantities = flowQuantities.map(Number);
             if (quantities.length !== lines.length || quantities.some(qty => !Number.isFinite(qty) || qty <= 0 || Math.abs(Math.round(qty * 1000) - qty * 1000) > 1e-6)) { alert('수량은 0보다 큰 숫자로 소수 셋째 자리까지 입력해주세요.'); return; }
             if (issued) alert('이미 전표가 발행됐습니다. 이 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.');
@@ -1724,8 +1769,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
           rawStockKg={rawStockKg}
           issueDrafts={oemIssueDrafts}
           issueOpen={oemIssueOpen}
-          receiveTarget={oemReceiveTarget}
-          feeTarget={oemFeeTarget}
+          receiveTarget={!oemReceiveTarget?.oemCancelledAt && oemReceiveTarget && companyOf(oemReceiveTarget) === companyId ? oemReceiveTarget : null}
+          feeTarget={!oemFeeTarget?.oemCancelledAt && oemFeeTarget && companyOf(oemFeeTarget) === companyId ? oemFeeTarget : null}
           onClose={closeOem}
           onIssue={onOemIssue}
           onReceive={onOemReceive}

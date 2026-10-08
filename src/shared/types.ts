@@ -1197,6 +1197,8 @@ export interface PurchaseOrder {
   oemSentAt?: string;                             // 외주 출고 시각
   /** OEM 발주 초안은 일반 발주예정에 섞지 않고 같은 작업번호로 재개한다. */
   oemIssueStatus?: 'processing' | 'failed' | 'complete';
+  oemCancelledAt?: string;
+  oemCancelOperationId?: string;
   oemIssueFingerprint?: string;
   oemIssueDate?: string;
   oemIssuedBy?: string;

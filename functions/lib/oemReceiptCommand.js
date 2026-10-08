@@ -69,6 +69,8 @@ async function receiveOemFinishedGoods(db, companyId, input) {
         if (!poSnap.exists)
             fail('OEM 배치가 없습니다.');
         const po = poSnap.data();
+        if (po.oemCancelledAt || po.oemCancelOperationId)
+            fail('취소된 OEM 발주는 입고할 수 없습니다.');
         if (ownCompany(po) !== companyId || po.poType !== 'oem')
             fail('다른 회사이거나 OEM 배치가 아닙니다.');
         const partnerId = (_b = po.oemPartnerId) !== null && _b !== void 0 ? _b : po.partnerId;

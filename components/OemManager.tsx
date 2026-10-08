@@ -121,7 +121,7 @@ function IssueModal({ partners, rawItems, rawStockKg, issueDrafts, pendingIssue,
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
         {(issueDrafts.length > 0 || pendingIssue) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
-            <p className="text-xs font-bold text-amber-900">완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.</p>
+            <p className="text-xs font-bold text-amber-900">{busy ? '외주 발주 처리 중입니다. 완료될 때까지 기다려 주세요.' : '완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.'}</p>
             {pendingIssue && !issueDrafts.some(draft => draft.id === pendingIssue.jobId) && (
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate text-slate-700">{pendingIssue.partnerName} · {pendingIssue.date} · 원료 {pendingIssue.sent.length}종</span>

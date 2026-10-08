@@ -1,3 +1,4 @@
+import { cancelOemIssue } from '../../shared/services/oemCancelService';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { processReturn } from './returnCommands';
 import { mutateManualSettlement } from './manualSettlementCommands';
@@ -2833,6 +2834,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onOemIssue={async (v) => {
                 try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); setLedgerReloadKey(k => k + 1); }
                 catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); throw e; }
+              }}
+              onOemCancel={async (po) => {
+                await cancelOemIssue(db, companyId, po.id);
+                setLedgerReloadKey(k => k + 1);
               }}
               onOemReceive={async (v) => {
                 try {

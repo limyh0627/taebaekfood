@@ -73,6 +73,7 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
     if (!dateOk(lotCutoverDate) || input.date < lotCutoverDate) fail('OEM_LOT_DATE_BEFORE_CUTOVER');
     if (!poSnap.exists) fail('OEM 배치가 없습니다.');
     const po = poSnap.data()!;
+    if (po.oemCancelledAt || po.oemCancelOperationId) fail('취소된 OEM 발주는 입고할 수 없습니다.');
     if (ownCompany(po) !== companyId || po.poType !== 'oem') fail('다른 회사이거나 OEM 배치가 아닙니다.');
     const partnerId = po.oemPartnerId ?? po.partnerId;
     if (!idOk(partnerId)) fail('OEM 거래처가 없습니다.');

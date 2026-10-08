@@ -52,7 +52,7 @@ export function processingFee(receivedKg: number, unitPricePerKg: number, taxabl
 
 /** OEM 배치의 현재 외주 잔량(kg) — status가 sent면 보낸 전량, received면 0. 열린 배치 합이 외주재고. */
 export function outstandingKg(po: PurchaseOrder): number {
-  if (po.poType !== 'oem') return 0;
+  if (po.poType !== 'oem' || po.oemCancelledAt || po.oemCancelOperationId) return 0;
   return po.status === 'received' ? 0 : sentKg(po.oemSent);
 }
 
@@ -60,7 +60,7 @@ export function outstandingKg(po: PurchaseOrder): number {
 export function subcontractStockByMaterial(purchaseOrders: PurchaseOrder[]): Record<string, number> {
   const acc: Record<string, number> = {};
   for (const po of purchaseOrders) {
-    if (po.poType !== 'oem' || po.status === 'received') continue;
+    if (po.poType !== 'oem' || po.status === 'received' || po.oemCancelledAt || po.oemCancelOperationId) continue;
     for (const s of po.oemSent ?? []) acc[s.material] = (acc[s.material] ?? 0) + (s.kg || 0);
   }
   return acc;

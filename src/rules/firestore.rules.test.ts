@@ -50,6 +50,23 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  describe('OEM 취소 가공비 부재 단건 조회', () => {
+    it('양사 관리자만 없는 OEM 가공비 요청을 단건 조회한다', async () => {
+      for (const db of [관리자(), 풍회관리자()]) await assertSucceeds(getDoc(doc(db, 'adjustmentRequests', 'OEMFEE-cancel-missing')));
+      for (const db of [태백직원(), 풍회직원(), 미로그인()]) await assertFails(getDoc(doc(db, 'adjustmentRequests', 'OEMFEE-cancel-missing')));
+      await assertFails(getDoc(doc(관리자(), 'adjustmentRequests', 'ordinary-cancel-missing')));
+    });
+    it('기존 가공비의 회사 경계와 회사 조건 없는 목록 거절은 유지한다', async () => {
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'adjustmentRequests', 'OEMFEE-cancel-existing'), { companyId: 'taebaek', status: 'pending', requestedBy: 'e1' });
+      });
+      await assertSucceeds(getDoc(doc(관리자(), 'adjustmentRequests', 'OEMFEE-cancel-existing')));
+      await assertSucceeds(getDoc(doc(태백직원(), 'adjustmentRequests', 'OEMFEE-cancel-existing')));
+      await assertFails(getDoc(doc(풍회관리자(), 'adjustmentRequests', 'OEMFEE-cancel-existing')));
+      await assertFails(getDocs(collection(관리자(), 'adjustmentRequests')));
+      await assertSucceeds(getDocs(query(collection(관리자(), 'adjustmentRequests'), where('companyId', '==', 'taebaek'))));
+    });
+  });
   describe('서버 공통 전환 설정 단건 조회', () => {
     const gate = (db: any) => doc(db, 'appMeta', 'releaseCutover');
     beforeEach(async () => {

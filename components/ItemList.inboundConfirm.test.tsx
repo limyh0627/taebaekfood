@@ -48,9 +48,11 @@ it('회사 전환 후 이전 회사 상세를 표시하지 않고 현재 회사 
 });
 it('OEM 입고는 목록과 상세 모두 일반 입고확정으로 진행하지 않는다', () => {
   const issue = view([{ ...order, poType: 'oem' }]);
-  expect(screen.getByRole('button', { name: '입고확정' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: '입고확정' })).toBeNull();
+  expect(screen.getByRole('button', { name: '가공입고' })).toBeDisabled();
   fireEvent.click(screen.getByText('검수 거래처').closest('tr')!);
-  expect(screen.getAllByRole('button', { name: '입고확정' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+  expect(screen.queryByRole('button', { name: '입고확정' })).toBeNull();
+  expect(screen.getAllByRole('button', { name: '가공입고' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
   expect(issue).not.toHaveBeenCalled();
 });
 it('목록 입고확정 진행 중 반복 요청을 막고 실패 후 대기 행을 보존한다', async () => {

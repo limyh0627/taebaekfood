@@ -7,6 +7,13 @@ const oemPo = (over: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
   poType: 'oem', oemSent: [{ material: '참깨', kg: 1000 }], createdAt: '', ...over,
 });
 
+it('취소된 송부 원문은 보존해도 외주 잔량에 다시 합산하지 않는다', () => {
+  const cancelled = oemPo({ status: 'invoiced', oemCancelledAt: '2026-10-08T03:00:00Z', oemCancelOperationId: 'oem-cancel:po1' });
+  expect(outstandingKg(cancelled)).toBe(0);
+  expect(subcontractStockByMaterial([cancelled, oemPo({ id: 'live', status: 'invoiced' })])).toEqual({ 참깨: 1000 });
+  expect(cancelled.oemSent).toEqual([{ material: '참깨', kg: 1000 }]);
+});
+
 describe('sentKg', () => {
   it('여러 원료를 합산한다', () => {
     expect(sentKg([{ material: '참깨', kg: 1000 }, { material: '검정깨', kg: 200 }])).toBe(1200);

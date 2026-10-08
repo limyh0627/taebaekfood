@@ -89,6 +89,7 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
       const fingerprint = oemIssueFingerprint(input);
       if (snap.exists()) {
         const previous = { id: snap.id, ...snap.data() } as OemIssueDraft;
+        if (previous.oemCancelledAt || previous.oemCancelOperationId) throw new Error('취소된 OEM 발주는 재개할 수 없습니다.');
         if (companyOf(previous) !== input.companyId || previous.poType !== 'oem' || previous.oemIssueFingerprint !== fingerprint) {
           throw new Error('같은 OEM 작업번호의 회사나 내용이 다릅니다.');
         }
@@ -130,6 +131,7 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new Error('OEM 발주 초안이 사라졌습니다.');
       const current = snap.data() as OemIssueDraft;
+      if (current.oemCancelledAt || current.oemCancelOperationId) throw new Error('취소된 OEM 발주는 확정할 수 없습니다.');
       if (companyOf(current) !== draft.companyId || current.oemIssueFingerprint !== draft.oemIssueFingerprint) {
         throw new Error('OEM 발주 초안의 회사나 내용이 바뀌었습니다.');
       }
