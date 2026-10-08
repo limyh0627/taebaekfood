@@ -2,7 +2,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import TradeStatement from './TradeStatement';
+import TradeStatement, { VoucherDateChip } from './TradeStatement';
 import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { OrderStatus, type Order } from '../src/shared/types';
@@ -21,6 +21,7 @@ vi.mock('./voucher/VoucherComposer', () => ({ default: () => null }));
 vi.mock('../src/shared/components/appDialog', () => ({
   appConfirm: vi.fn(async () => true),
   appPrompt: vi.fn(async () => null),
+  appNotice: vi.fn(async () => {}),
 }));
 
 const item = { id: 'loose', name: '같은 이름', spec: '300ml', type: 'product' } as Item;
@@ -318,4 +319,66 @@ describe('자금 전표 수정 저장 순서', () => {
     expect(updateCash).toHaveBeenCalledTimes(1);
     expect(dialog).toBeInTheDocument();
   });
+});
+
+
+describe('전표 날짜 명시 확정', () => {
+  it('달력 월 탐색 change와 blur는 확인이나 저장을 하지 않는다', () => {
+    const apply = vi.fn(); render(<VoucherDateChip value="2026-10-06" onApply={apply} />);
+    const input = screen.getByLabelText('전표일자');
+    fireEvent.change(input, {target:{value:'2026-09-06'}}); fireEvent.blur(input);
+    expect(apply).not.toHaveBeenCalled(); expect(appConfirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'취소'}));
+    expect(input).toHaveValue('2026-10-06'); expect(apply).not.toHaveBeenCalled();
+  });
+  it('적용을 눌러야 확정 경로를 호출하고 완료 전 중복 적용을 막는다', async () => {
+    const pending = deferred(), apply = vi.fn(() => pending.promise);
+    render(<VoucherDateChip value="2026-10-06" onApply={apply} />);
+    fireEvent.change(screen.getByLabelText('전표일자'),{target:{value:'2026-09-15'}});
+    fireEvent.click(screen.getByRole('button',{name:'날짜 적용'}));
+    expect(apply).toHaveBeenCalledExactlyOnceWith('2026-09-15');
+    expect(screen.getByRole('button',{name:'날짜 적용'})).toBeDisabled();
+    await act(async()=>pending.resolve());
+    expect(screen.queryByRole('button',{name:'날짜 적용'})).not.toBeInTheDocument();
+  });
+});
+
+it('실제 전표 날짜셀은 월 탐색을 저장하지 않고 적용 뒤 기존 월변경 확인과 writer를 실행한다', async () => {
+  const update = vi.fn(async (_id: string, _patch: Partial<IssuedStatement>) => {});
+  const stmt = {id:'date-statement',docNo:'261006-01',partnerId:partner.id,partnerName:partner.name,
+    tradeDate:'2026-10-06',issuedAt:'2026-10-06T00:00:00Z',type:'매입',totalSupply:100,totalTax:0,totalAmount:100,
+    items:[{itemId:item.id,name:item.name,qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]} as IssuedStatement;
+  setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[stmt],onUpdateIssuedStatement:update});
+  const input = (await screen.findAllByLabelText('전표일자'))[0];
+  fireEvent.change(input,{target:{value:'2026-09-06'}});fireEvent.blur(input);
+  expect(appConfirm).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'날짜 적용'}));
+  await waitFor(()=>expect(update).toHaveBeenCalled());
+  expect(appConfirm).toHaveBeenCalledWith(expect.stringContaining('부가세 신고 달과 월 마감'));
+  expect(update.mock.calls[0][0]).toBe(stmt.id);
+});
+
+it('날짜 저장 실패는 초안을 보존하고 외부 날짜 갱신은 초안을 초기화한다', async () => {
+  const apply = vi.fn(async () => {throw new Error('저장 실패');});
+  const view=render(<VoucherDateChip value="2026-10-06" onApply={apply} />);
+  const input=screen.getByLabelText('전표일자');
+  fireEvent.change(input,{target:{value:'2026-09-06'}});
+  fireEvent.click(screen.getByRole('button',{name:'날짜 적용'}));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'날짜 적용'})).not.toBeDisabled());
+  expect(input).toHaveValue('2026-09-06');expect(apply).toHaveBeenCalledOnce();
+  view.rerender(<VoucherDateChip value="2026-10-10" onApply={apply} />);
+  expect(input).toHaveValue('2026-10-10');
+  expect(screen.queryByRole('button',{name:'날짜 적용'})).not.toBeInTheDocument();
+});
+
+it('저장 대기 중 갱신된 외부 날짜를 늦은 완료가 이전 날짜로 되돌리지 않는다', async () => {
+  const pending=deferred(),apply=vi.fn(()=>pending.promise);
+  const view=render(<VoucherDateChip value="2026-10-06" onApply={apply} />);
+  fireEvent.change(screen.getByLabelText('전표일자'),{target:{value:'2026-09-06'}});
+  fireEvent.click(screen.getByRole('button',{name:'날짜 적용'}));
+  view.rerender(<VoucherDateChip value="2026-09-06" onApply={apply} />);
+  await act(async()=>pending.resolve());
+  expect(screen.getByLabelText('전표일자')).toHaveValue('2026-09-06');
+  expect(screen.queryByRole('button',{name:'날짜 적용'})).not.toBeInTheDocument();
+  expect(apply).toHaveBeenCalledOnce();
 });

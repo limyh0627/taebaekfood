@@ -13,6 +13,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.issueTradeStatementCommand = void 0;
 exports.issueTradeStatement = issueTradeStatement;
+const purchaseCost_1 = require("./shared/purchaseCost");
 const deleteIssuedStatementCommand_1 = require("./deleteIssuedStatementCommand");
 const newScopeCounter_1 = require("./newScopeCounter");
 const admin = require("firebase-admin");
@@ -23,9 +24,7 @@ const releaseGate_1 = require("./releaseGate");
 const bad = (message) => { throw new https_1.HttpsError('invalid-argument', message); };
 const conflict = (message) => { throw new https_1.HttpsError('failed-precondition', message); };
 const finite = (n) => typeof n === 'number' && Number.isFinite(n);
-const purchaseCost = (line) => line.qty > 0
-    ? Math.round(line.supply / line.qty)
-    : line.price > 0 ? (line.isTaxExempt ? Math.round(line.price) : Math.round(line.price / 1.1)) : null;
+const purchaseCost = (line) => (0, purchaseCost_1.costFromPurchaseLine)(line, 'supply-first');
 const oldCompany = (row) => { var _a; return (_a = row.companyId) !== null && _a !== void 0 ? _a : 'taebaek'; };
 const canonical = (value) => Array.isArray(value) ? value.map(canonical)
     : value && typeof value === 'object'

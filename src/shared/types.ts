@@ -1001,8 +1001,6 @@ export interface FixedCostTemplate {
   /** 즐겨찾기 — 템플릿 목록 맨 위에 따로 모인다. */
   favorite?: boolean;
 
-  /** @deprecated dir이 대신한다('분리' = dir '줄돈'). 옛 데이터 읽기용으로만 남긴다. */
-  postMode?: '합침' | '분리';
   /** 자동 발행 — 켜면 스케줄러가 매달 만든다. 금액이 정해진 것만 켤 수 있다. */
   autoIssue?: boolean;
   /** 발행일 1~31. 31은 그 달 말일로 친다. */

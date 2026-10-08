@@ -181,6 +181,28 @@ const AXIS_CLS: Record<string, string> = {
   '자금흐름': 'bg-indigo-600 text-white border-indigo-600',
 };
 
+/** 달력 탐색은 초안만 바꾸고 명시적인 적용으로 날짜를 확정한다. */
+export function VoucherDateChip({ value, onApply }: { value: string; onApply: (date: string) => Promise<unknown> | unknown }) {
+  const [draft, setDraft] = useState(value);
+  const currentValue = useRef(value);
+  currentValue.current = value;
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setDraft(value), [value]);
+  return <span className="inline-flex items-center gap-1">
+    <DateChipButton label="전표일자" value={draft} text={draft} disabled={saving} onChange={setDraft} />
+    {draft !== value && <>
+      <button type="button" className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[10px] font-bold text-indigo-700 disabled:opacity-50" disabled={saving} onClick={async () => {
+        if (saving) return;
+        setSaving(true);
+        try { await onApply(draft); setDraft(currentValue.current); }
+        catch (error) { void appNotice(`날짜를 저장하지 못했습니다: ${(error as Error).message}`); }
+        finally { setSaving(false); }
+      }}>날짜 적용</button>
+      <button type="button" className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1 text-[10px] font-bold text-slate-600 disabled:opacity-50" disabled={saving} onClick={() => setDraft(value)}>취소</button>
+    </>}
+  </span>;
+}
+
 const statementSettleStatus = (s: IssuedStatement, balance: number) => Number.isFinite(balance) ? settleStatus(s, balance) : { state: 'none' as const, label: '반품 연결 확인 중' };
 const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 /** 인쇄 HTML에 사람이 친 글을 그대로 끼울 때 — <, & 가 태그로 새는 걸 막는다. */
@@ -493,7 +515,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const 전표일자칸 = (
     날짜: string,
-    바꾸기: (다음: string) => void,
+    바꾸기: (다음: string) => unknown,
     고칠수있나: boolean,
     찍힌시각?: string,
   ) => {
@@ -503,11 +525,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!고칠수있나) return <span className="font-mono text-slate-500">{날}{시각줄}</span>;
     return (
       <span className="inline-block">
-        <DateChipButton
-          label="전표일자"
+        <VoucherDateChip
           value={날}
-          text={날}
-          onChange={async 다음 => {
+          onApply={async 다음 => {
             if (!다음 || 다음 === 날) return;
             /*  **언제나 묻는다**(2026-09-15 사장님: "날짜 바꾸면 알람띄워서 확정 받고 바꿔").
                 처음엔 달이 바뀔 때만 물었는데, 달력은 손이 스치기만 해도 날이 바뀐다 —
@@ -518,7 +538,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               + (달바뀜 ? '\n\n달이 바뀌어 부가세 신고 달과 월 마감이 함께 달라집니다.' : '')
               + '\n\n바꿀까요?';
             if (!await appConfirm(물음)) return;
-            바꾸기(다음);
+            await 바꾸기(다음);
           }}
         />
         {시각줄}

@@ -4,7 +4,6 @@ export type TemplateStatementType = '매출' | '매입' | '비용';
 interface TemplateSource {
   statementType?: TemplateStatementType;
   dir?: string;
-  postMode?: string;
   partnerId?: string;
   transferLines?: { accountCode: string; side: '차변' | '대변'; name?: string }[];
 }
@@ -35,7 +34,7 @@ export function templateTransferItems(t: TemplateSource & { amount: number; name
 /** 줄돈·받을돈은 채무·채권 종류와 충돌하면 사용자가 바로잡아야 한다. */
 export function templateStatementConflict(t: TemplateSource): string | undefined {
   if (!t.statementType) return;
-  const dir = t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
+  const dir = t.dir ?? '출금';
   if (dir === '줄돈' && t.statementType !== '매입') return '줄돈은 매입전표를 선택해 주세요.';
   if (dir === '받을돈' && t.statementType !== '매출') return '받을돈은 매출전표를 선택해 주세요.';
 }

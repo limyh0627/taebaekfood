@@ -5,7 +5,7 @@ exports.recurringDate = recurringDate;
 exports.recurringType = recurringType;
 exports.recurringTransferItems = recurringTransferItems;
 exports.recurringStatement = recurringStatement;
-const recurringDir = (t) => { var _a; return (_a = t.dir) !== null && _a !== void 0 ? _a : (t.postMode === '분리' ? '줄돈' : '출금'); };
+const recurringDir = (t) => { var _a; return (_a = t.dir) !== null && _a !== void 0 ? _a : '출금'; };
 exports.recurringDir = recurringDir;
 const recurringId = (id, ym) => `AUTO-${id}-${ym}`;
 exports.recurringId = recurringId;

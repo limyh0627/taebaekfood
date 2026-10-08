@@ -30,9 +30,9 @@ describe('scheduled voucher contract', () => {
     expect(draft.document).toMatchObject({ type: '매출', totalSupply: expected.totalSupply, totalTax: 0,
       totalAmount: expected.totalAmount });
   });
-  it('matches legacy split mode and cash voucher amount and ID', () => {
+  it('ignores retired split mode and matches cash voucher amount and ID', () => {
     const legacy = { ...base, dir: undefined, postMode: '분리' };
-    expect(autoVoucherDraft(legacy, '2026-09', day).draft?.kind).toBe('issuedStatements');
+    expect(autoVoucherDraft(legacy, '2026-09', day).draft?.kind).toBe('cashEntries');
     const cash = { ...base, dir: '출금' };
     const draft = autoVoucherDraft(cash, '2026-09', day).draft!;
     const expected = buildCashVoucher(cash as FixedCostTemplate, '2026-09');

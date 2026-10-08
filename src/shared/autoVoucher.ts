@@ -34,7 +34,7 @@ export function autoVoucherId(t: FixedCostTemplate, ym: string): string {
   return recurringId(t.id, ym);
 }
 
-/** 옛 postMode를 새 dir로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈'이다. */
+/** 템플릿의 명시 방향을 사용하며 방향이 없으면 출금으로 읽는다. */
 export function dirOf(t: FixedCostTemplate): NonNullable<FixedCostTemplate['dir']> {
   return recurringDir({ ...t, dir: t.dir || undefined }) as NonNullable<FixedCostTemplate['dir']>;
 }

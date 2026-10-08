@@ -2925,3 +2925,10 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 - `fix-happy-inventory-lock-20261007.mts`: 해피유통 탈피 ORD-261002-006도 같은 문서 버전 증거로 실패 잠금 한 필드만 해제.
 - `fix-happy-shipment-cancel-20261007.mts`: 공용 planOrderCancellation·prepareCancelledItem을 사용해 위 해피유통 주문의 출고 기록36박스를 숫자 재고0→36과 원래 로트0→36에 한 transaction으로 복원. 주문 SHIPPED→DISPATCHED·shippedOut false·잠금 null 및 완료 감사 함께 저장. dry/apply0·재조회 일치. 다른 해피유통 주문의 원료/부자재 부족 잠금은 수정하지 않았다.
 - 원본·검증·undo 자료는 로컬 `outputs/production-lot-stock-20261007/`, `outputs/daenong-unlock-20261007/`, `outputs/happy-unlock-20261007/`, `outputs/happy-shipment-cancel-20261007/`. GitHub에는 백업을 올리지 않는다. 각 스크립트 --undo는 현재 문서가 정정 직후와 같을 때만 원복하며 이후 정상 거래가 있으면 차단한다.
+
+## 2026-10-08 — 풍회 메인 농협 번호·기초·월말 확정잔액 정정
+
+- 사용자 직접 승인: 풍회 메인 농협317-0019-3165-91, 2026-07-31기초70,000원, 8/31확정21,821원, 9/30확정15원. 기존 계좌 ID와 연결 전표를 유지했다.
+- 원본 typed backup·나노초 버전·계획 hash와 연결 현금29건을 대조한 transaction으로 계좌1개의 name/openingBalance/confirmedBalances 3필드만 변경했다. 기초일7/31 및 다른 계좌 필드는 보존하고 월말 값을 실제 입출금 전표로 생성하지 않았다.
+- 총괄 apply ac50f4 exit0·verifiedtrue. 독립 읽기60073 exit0에서 전체 계좌 원문+승인 patch 일치, 현금29건 hash/버전 불변, 기초전표 부재, 실제 공용 buildAccountLedger 세 날짜70,000/21,821/15원 일치 확인. 금융전표·카운터·기초전표 생성0.
+- private work/correct-punghoe-main-bank-20261008.mts, punghoe-main-bank-correction-backup-20261008.json 및 적용·독립 검증 파일에 보존한다. 원본 백업은 GitHub에 올리지 않는다. undo는 적용3필드와 연결 현금 버전이 그대로일 때만 원래3필드로 복원한다. 제품 묶음7 배포와 별개이며 TODO 전체 완료 수는 변경하지 않는다.

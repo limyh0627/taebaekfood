@@ -79,3 +79,11 @@
 ## 2026-10-07 미참조 초기 팔레트 후속 정리 — 아직 미배포
 
 총괄 소유 `src/config/company.ts`에서 제품 참조가 없는 INITIAL_PALLETS와 해당 PalletStock import를 제거하고, `components/PalletManager.tsx`의 거래 삭제 설명을 실제 남은 거래기록 기반 잔량 계산에 맞게 고쳤다. 동작·운영 팔레트8문서·inUse 필드·편집 snapshot 전달은 변경하지 않았다. 이 문서 갱신 시점에 후속 두 파일은 미배포 후보이며 기존 포장9필드 또는 Item4필드 배포 완료와 합산하지 않는다.
+
+## 2026-10-08 postMode 후속 코드 제거 후보 검증 — 배포 전
+
+원본039의 dir 이관·앱/Functions 동치 조건을 읽기 전용으로 대조했다. 최신 감사에서 정기 템플릿 태백62·풍회39 모두 dir가 있고 postMode는 0이다. 신규 제품 writer는 명시 dir를 저장하며 postMode 쓰기는 없다. 총괄이 제품 7파일에서 postMode 선언·호환 읽기를 제거하는 범위를 소유한다. 운영 DB 변경은 필요하지 않으며 이번 기록 시점에는 코드 시험·배포 결과를 아직 확정하지 않는다.
+
+실제 101개 템플릿의 원문을 메모리에서만 사용하여 기존 방향 t.dir ?? (postMode 분리이면 줄돈, 아니면 출금)과 새 t.dir ?? 출금을 비교했다. 2026년 12개월 총1212개 표본에서 실제 앱 자금/전표 투영·자동 발행 조건 및 서버 autoVoucherDraft의 변경 전후 해시 차이 모두0, 방향 차이0이다. ID·이름·금액·분개 원문은 저장하지 않았다. 근거는 private work/todo039-postmode-equivalence-20261008.cts/json, 2026-10-08 02:08:38 UTC, exit0이다. 최초 ESM 로더 오류는 조회 전 종료로 구분하고 CTS 실행 완료만 근거로 사용한다.
+
+partnerIds는 SMARTSTORE 호환 reader가 있고 태백188/풍회2 문서에 존재한다. lotsAreTotal 태백1, inUse 태백8, noncash 양사 각2는 잔존하여 유지한다. 구형 InventoryCategory도 실제 소비자가 남아 있다. batch6의 INITIAL_PALLETS 제거는 이미 배포된 과거 범위이며 재작업하지 않는다. 이 후속은 원본039 전체 완료가 아니고 원본15개 완료 집계7/15를 변경하지 않는다.

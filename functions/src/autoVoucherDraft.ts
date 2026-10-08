@@ -5,7 +5,7 @@ type Template = {
   name?: string; itemName?: string; amount?: number; accountCode?: string;
   issueDay?: number; startYm?: string; endYm?: string;
   statementType?: '매출' | '매입' | '비용';
-  dir?: string; postMode?: string; mode?: string; loanId?: string;
+  dir?: string; mode?: string; loanId?: string;
   principal?: number; interest?: number; transferLines?: unknown[];
   partnerId?: string; partnerName?: string; taxExempt?: boolean;
 };

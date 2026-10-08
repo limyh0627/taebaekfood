@@ -47,6 +47,8 @@ export async function issueNumberedStatement(statement: IssuedStatement): Promis
 
 /** 일반 입출금 전표도 운영의 서버 소유 번호·장부 경계를 통과한다. */
 export async function issueNumberedCashEntry(entry: CashEntry): Promise<{ id: string; docNo: string }> {
+  let submit!: () => Promise<{ data: { id: string; docNo: string } }>;
+  try {
   await authReady;
   const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
   if (gate?.status !== 'active' || typeof gate.releaseId !== 'string') {
@@ -54,11 +56,20 @@ export async function issueNumberedCashEntry(entry: CashEntry): Promise<{ id: st
   }
   const scoped = await companyScopedWriteData('cashEntries', entry as unknown as Record<string, unknown>);
   const call = httpsCallable<unknown, { id: string; docNo: string }>(functions, 'issueNumberedVoucher');
-  const result = await call({
+  const request = {
     kind: 'cashEntries', operationId: entry.id, tradeDate: entry.date, prefix: '',
     document: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId,
-  });
-  return result.data;
+  };
+  submit = () => call(request);
+  } catch (error) {
+    // callable을 아직 보내지 않은 실패만 입력 수정 가능한 쓰기0 증거로 전달한다.
+    if (entry.companyId === 'taebaek' || entry.companyId === 'punghoe')
+      throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), {
+        details: { operationStatus: 'rejected', version: 1, financialWrites: false,
+          companyId: entry.companyId, operationId: entry.id } });
+    throw error;
+  }
+  return (await submit()).data;
 }
 
 type PartnerPaymentInput = {

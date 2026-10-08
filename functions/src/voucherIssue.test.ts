@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('firebase-functions/v2/https', () => ({
-  HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
+  HttpsError: class extends Error { constructor(public code: string, message: string, public details?: unknown) { super(message); } },
   onCall: (_options: unknown, handler: unknown) => handler,
 }));
 vi.mock('firebase-admin', () => ({ firestore: () => ({}) }));
@@ -56,6 +56,70 @@ const statement = (id: string) => ({ kind: 'issuedStatements' as const, operatio
   releaseId, document: { tradeDate: date, totalSupply: 100, totalTax: 0, totalAmount: 100 } });
 
 describe('shared voucher sequence', () => {
+  it.each(['108', '251', '253'])('accepts selected %s without inventing a partner or allocation', async accountCode => {
+    const { db, rows } = seeded();
+    rows.set(`accountCodes/${accountCode}`, { companyId: 'taebaek', code: accountCode });
+    rows.set('cashAccounts/bank', { companyId: 'taebaek', active: true });
+    await issueVoucher(db, 'taebaek', { ...cash(`no-partner-${accountCode}`),
+      document: { date, amount: 100, dir: '출금', cashAccountId: 'bank', accountCode } });
+    expect(rows.get(`cashEntries/no-partner-${accountCode}`)?.partnerId).toBeUndefined();
+    expect([...rows.keys()].some(key => key.includes('partnerPaymentState_') || key.startsWith('settlements/'))).toBe(false);
+  });
+  it.each(['missing-code', 'foreign-code', 'foreign-bank', 'missing-bank', 'inactive-bank', 'foreign-partner', 'bad-state', 'overflow-state', 'overflow-partner', 'unbalanced', 'fraction', 'adjustment', 'held-partner'])('rejects invalid protected creation %s without counter or cash writes', async invalid => {
+    const { db, rows } = seeded();
+    rows.set('accountCodes/251', { companyId: 'taebaek', code: '251' });
+    rows.set('cashAccounts/bank', { companyId: 'taebaek', active: true });
+    rows.set('partners/p1', { companyId: 'taebaek' });
+    const document: Row = { date, amount: 100, dir: '출금', cashAccountId: 'bank', accountCode: '251', partnerId: 'p1' };
+    if (invalid === 'missing-code') rows.delete('accountCodes/251');
+    if (invalid === 'foreign-code') rows.set('accountCodes/251', { companyId: 'punghoe', code: '251' });
+    if (invalid === 'foreign-bank') rows.set('cashAccounts/bank', { companyId: 'punghoe', active: true });
+    if (invalid === 'missing-bank') rows.delete('cashAccounts/bank');
+    if (invalid === 'inactive-bank') rows.set('cashAccounts/bank', { companyId: 'taebaek', active: false });
+    if (invalid === 'foreign-partner') rows.set('partners/p1', { companyId: 'punghoe' });
+    if (invalid === 'bad-state') rows.set('appMeta/partnerPaymentState_taebaek_p1', { companyId: 'taebaek', partnerId: 'p1', revision: -1 });
+    if (invalid === 'overflow-state') rows.set('appMeta/partnerPaymentState_taebaek_p1', { companyId: 'taebaek', partnerId: 'p1', revision: Number.MAX_SAFE_INTEGER });
+    if (invalid === 'overflow-partner') rows.set('partners/p1', { companyId: 'taebaek', revision: Number.MAX_SAFE_INTEGER });
+    if (invalid === 'unbalanced') document.lines = [{ accountCode: '251', amount: 99 }];
+    if (invalid === 'fraction') document.amount = 100.5;
+    if (invalid === 'adjustment') document.balanceAdjustment = { before: 0, target: 100, delta: 100, reason: '조정' };
+    if (invalid === 'held-partner') rows.set('appMeta/partnerPaymentCutover_taebaek', { companyId: 'taebaek', auditScope: 'unblocked-partners', blockedPartnerIds: ['p1'] });
+    await expect(issueVoucher(db, 'taebaek', { ...cash(`invalid-${invalid}`), document })).rejects.toMatchObject({
+      details: { operationStatus: 'rejected', version: 1, financialWrites: false, companyId: 'taebaek', operationId: `invalid-${invalid}` } });
+    expect(rows.get(counter)?.last).toBe(9);
+    expect(rows.has(`cashEntries/invalid-${invalid}`)).toBe(false);
+    expect(rows.get('appMeta/partnerPaymentState_taebaek_p1')?.revision).toBe(invalid === 'bad-state' ? -1 : invalid === 'overflow-state' ? Number.MAX_SAFE_INTEGER : undefined);
+  });
+  it('commit response failure never becomes a no-financial-write proof', async () => {
+    const { db, rows } = seeded();
+    rows.set('accountCodes/251', { companyId: 'taebaek', code: '251' });
+    rows.set('cashAccounts/bank', { companyId: 'taebaek', active: true });
+    const runTransaction = db.runTransaction.bind(db);
+    db.runTransaction = async (callback: unknown) => { await runTransaction(callback); throw new Error('commit response lost'); };
+    const request = { ...cash('unknown-commit'), document: { date, dir: '출금', amount: 100, accountCode: '251', cashAccountId: 'bank' } };
+    const error = await issueVoucher(db, 'taebaek', request).catch(error => error);
+    expect(error.message).toBe('commit response lost'); expect(error.details).toBeUndefined();
+    expect(rows.has('cashEntries/unknown-commit')).toBe(true);
+  });
+  it('preserves selected protected mixed lines without automatic settlement and increments partner state once', async () => {
+    const { db, rows } = seeded();
+    for (const code of ['251', '253', '811']) rows.set(`accountCodes/${code}`, { companyId: 'taebaek', code });
+    rows.set('cashAccounts/bank', { companyId: 'taebaek', active: true, type: '통장' });
+    rows.set('partners/p1', { companyId: 'taebaek', name: '선택 거래처' });
+    const document = { date, dir: '출금', amount: 100, cashAccountId: 'bank', partnerId: 'p1',
+      lines: [{ accountCode: '251', amount: 60, side: '차변' },
+        { accountCode: '253', amount: 60, side: '차변' }, { accountCode: '811', amount: 20, side: '대변' }] };
+    const input = { ...cash('selected-mixed'), document };
+    await expect(issueVoucher(db, 'taebaek', input)).resolves.toMatchObject({ docNo: '261030-010' });
+    expect(rows.get('cashEntries/selected-mixed')).toMatchObject(document);
+    expect(rows.get('appMeta/partnerPaymentState_taebaek_p1')).toMatchObject({ revision: 1 });
+    expect(rows.get('partners/p1')?.revision).toBe(1);
+    expect([...rows.keys()].some(key => key.startsWith('settlements/'))).toBe(false);
+    await issueVoucher(db, 'taebaek', input);
+    expect(rows.get(counter)?.last).toBe(10);
+    expect(rows.get('appMeta/partnerPaymentState_taebaek_p1')?.revision).toBe(1);
+    expect(rows.get('partners/p1')?.revision).toBe(1);
+  });
   it('uses separate shared additional counters for each day from 9/30 to cutover', async () => {
     const { db, rows } = seeded();
     rows.set('appMeta/releaseCutover', { status: 'active', releaseId,
@@ -114,9 +178,8 @@ describe('shared voucher sequence', () => {
   it('blocks generic cash with partner settlement, loan or return meaning before any write', async () => {
     const { db, rows } = seeded();
     const blocked = [
-      { accountCode: '108', partnerId: 'p1' },
-      { lines: [{ accountCode: '251', amount: 100 }] },
-      { lines: [{ accountCode: '253', amount: 100 }] },
+      { payrollId: 'pay-2026-10' },
+      { transferOperationId: 'transfer-1' },
       { accountCode: '260' },
       { lines: [{ accountCode: '293', amount: 100 }] },
       { loanId: 'loan-1', accountCode: '811' },

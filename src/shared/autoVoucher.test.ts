@@ -47,8 +47,9 @@ describe('자동 발행 대상 판정', () => {
   it('거래처 없는 대체는 자동으로 안 낸다 — 계정이 하나뿐이라 차·대가 안 맞는다', () => {
     expect(canAutoIssue(tpl({ dir: '대체' }), '2026-08')).toBe(false);
   });
-  it('옛 postMode 분리는 줄돈으로 읽는다', () => {
-    expect(dirOf(tpl({ dir: undefined, postMode: '분리' }))).toBe('줄돈');
+  it('방향이 없는 템플릿은 출금이며 폐기 필드로 채무를 추정하지 않는다', () => {
+    const retired = { ...tpl({ dir: undefined }), postMode: '분리' };
+    expect(dirOf(retired)).toBe('출금');
     expect(dirOf(tpl({ dir: undefined }))).toBe('출금');
   });
 });

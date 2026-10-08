@@ -78,15 +78,7 @@ export const costOfPurchase = (price: number, exempt?: boolean): number =>
  *
  * `supply` 나 `qty` 가 없는 옛 줄만 단가에서 되돌린다.
  */
-export function costFromPurchaseLine(line: {
-  qty?: number; supply?: number; price?: number; isTaxExempt?: boolean;
-}): number | null {
-  const qty = Number(line.qty ?? 0);
-  const supply = Number(line.supply ?? NaN);
-  if (qty > 0 && Number.isFinite(supply)) return Math.round(supply / qty);
-  const price = Number(line.price ?? 0);
-  return price > 0 ? costOfPurchase(price, line.isTaxExempt) : null;
-}
+export { costFromPurchaseLine } from '../../functions/src/shared/purchaseCost';
 
 /**
  * @param qty      수량. 반품이면 음수다.

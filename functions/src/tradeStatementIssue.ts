@@ -1,3 +1,4 @@
+import { costFromPurchaseLine } from './shared/purchaseCost';
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
@@ -21,9 +22,7 @@ type Input = {
 const bad = (message: string): never => { throw new HttpsError('invalid-argument', message); };
 const conflict = (message: string): never => { throw new HttpsError('failed-precondition', message); };
 const finite = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
-const purchaseCost = (line: Row) => line.qty > 0
-  ? Math.round(line.supply / line.qty)
-  : line.price > 0 ? (line.isTaxExempt ? Math.round(line.price) : Math.round(line.price / 1.1)) : null;
+const purchaseCost = (line: Row) => costFromPurchaseLine(line, 'supply-first');
 const oldCompany = (row: Row) => row.companyId ?? 'taebaek';
 const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
   : value && typeof value === 'object'

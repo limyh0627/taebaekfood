@@ -18,6 +18,8 @@ import ModalShell from '../src/shared/components/ModalShell';
 import { changeMoneyInput, formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 import { cashOpeningBalanceForCurrent } from '../src/shared/cashOpening';
+import { projectCashLines } from '../functions/src/shared/cashLineProjection';
+import { auth, authReady } from '../src/shared/firebase';
 
 interface Props {
   companyId: CompanyId;
@@ -379,6 +381,32 @@ export function MatchModal({ entry, statements, settlements, cashEntries, onClos
 }
 
 // ── 입출금 기록 모달 ──────────────────────────────────────────────────────────
+type EntryAttempt = { companyId: CompanyId; userId: string; entries: CashEntry[] };
+function readEntryAttempt(key: string, companyId: CompanyId, userId: string): { attempt: EntryAttempt | null; error: string } {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return { attempt: null, error: '' };
+    const value = JSON.parse(stored) as EntryAttempt;
+    const fields = ['id', 'companyId', 'dir', 'amount', 'accountCode', 'lines', 'note', 'date', 'cashAccountId', 'createdAt', 'createdBy', 'partnerId', 'partnerName'];
+    if (!value || value.companyId !== companyId || value.userId !== userId || !Array.isArray(value.entries)
+      || value.entries.length < 1 || value.entries.length > 2 || new Set(value.entries.map(entry => entry?.id)).size !== value.entries.length)
+      throw new Error('invalid pending');
+    for (const entry of value.entries) {
+      if (!entry || Object.keys(entry).some(field => !fields.includes(field))
+        || typeof entry.id !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(entry.id)
+        || entry.companyId !== undefined && entry.companyId !== companyId || !isCalendarDay(entry.date)
+        || typeof entry.cashAccountId !== 'string' || !entry.cashAccountId || entry.cashAccountId.includes('/')
+        || ['note', 'partnerId', 'partnerName', 'createdAt', 'createdBy'].some(field => (entry as any)[field] !== undefined && typeof (entry as any)[field] !== 'string'))
+        throw new Error('invalid pending');
+      if (entry.partnerId?.includes('/') || entry.lines !== undefined && (!Array.isArray(entry.lines) || entry.lines.length > 100
+        || entry.lines.some(line => !line || Object.keys(line).some(field => !['accountCode', 'amount', 'side', 'note'].includes(field))
+          || line.amount === 0 || line.note !== undefined && typeof line.note !== 'string')))
+        throw new Error('invalid pending');
+      projectCashLines(entry, true);
+    }
+    return { attempt: value, error: '' };
+  } catch { return { attempt: null, error: '저장된 발행 요청 확인이 필요합니다. 중복 발행을 막기 위해 새 저장을 중단했습니다.' }; }
+}
 function EntryModal({ companyId, account, accounts, accountCodes, partners, currentUser, fixedCostTemplates = [], onClose, onAdd }: {
   companyId: CompanyId;
   account: CashAccount;
@@ -400,6 +428,17 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   const [note, setNote] = useState('');
   const [savingEntry, setSavingEntry] = useState(false);
   const saveLock = useRef(false);
+  const userId = auth.currentUser?.uid ?? '';
+  const pendingKey = `cash-entry-issue:${companyId}:${userId}`;
+  const restored = useMemo(() => readEntryAttempt(pendingKey, companyId, userId), [pendingKey, companyId, userId]);
+  const saveAttempt = useRef<EntryAttempt | null>(restored.attempt);
+  const attemptScope = useRef({ key: pendingKey, active: true });
+  if (attemptScope.current.key !== pendingKey) {
+    attemptScope.current = { key: pendingKey, active: true };
+    saveAttempt.current = restored.attempt;
+  }
+  useEffect(() => { const scope = attemptScope.current; scope.active = true; return () => { scope.active = false; }; }, [pendingKey]);
+  const [entryError, setEntryError] = useState('');
   // 대출 상환 전용
   const [loanCode, setLoanCode] = useState('260');   // 260 단기 / 293 장기
   const [loanId, setLoanId] = useState('');
@@ -492,7 +531,7 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
    * 여기서 new Date()를 쓰면 지난 날짜로 끊어도 '지금 시각'이 박혀서, 그날 안의 자리가
    * 끊은 시각에 따라 멋대로 잡힌다(오전에 끊으면 그날 앞, 저녁에 끊으면 뒤).
    */
-  const base = () => ({ date, cashAccountId, createdAt: stampFor(date), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
+  const base = () => ({ companyId, date, cashAccountId, createdAt: stampFor(date), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
 
   /**
    * 저장하면 생길 자금전표. 아래 분개 미리보기가 이걸 그대로 분개한다 —
@@ -552,13 +591,11 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
   };
 
   const save = async () => {
-    if (!canSave || saveLock.current) return;
-    const entries = buildEntries();
-    if (entries.some(entry => [entry.accountCode, ...(entry.lines ?? []).map(line => line.accountCode)]
-      .some(code => [AR, AP, OTHER_PAYABLE].includes(String(code))))) {
-      alert('거래처 수금·지불은 거래명세서 또는 거래처원장에서 처리해 주세요.');
-      return;
-    }
+    if ((!canSave && !saveAttempt.current) || saveLock.current || restored.error) return;
+    const previous = saveAttempt.current;
+    const entries = previous?.entries ?? buildEntries();
+    // 대출은 전용 서비스가 실제 operation과 pending을 소유한다. generic 원문 대기를 겹치지 않는다.
+    const generic = !entries.some(entry => entry.loanId);
     if (entries.some(entry => [entry.accountCode, ...(entry.lines ?? []).map(line => line.accountCode)]
       .some(code => ['260', '293'].includes(String(code))))) {
       alert('대출 차입·상환은 대출 관리에서 처리해 주세요.');
@@ -566,19 +603,59 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
     }
     saveLock.current = true;
     setSavingEntry(true);
+    const scope = attemptScope.current;
+    let completed = 0;
+    let attemptText: string | undefined;
     try {
-      for (const entry of entries) await onAdd(entry as CashEntry);
+      await authReady;
+      if (!userId || auth.currentUser?.uid !== userId || auth.currentUser.isAnonymous)
+        throw new Error('로그인 상태를 확인한 뒤 다시 저장해주세요.');
+      if (!previous) for (const entry of entries) {
+        if (!isCalendarDay(entry.date) || !accounts.some(account => account.id === entry.cashAccountId && companyOf(account) === companyId && account.active)
+          || entry.partnerId && !partners.some(partner => partner.id === entry.partnerId && companyOf(partner) === companyId))
+          throw new Error('현재 회사의 계좌·거래처·날짜를 확인해주세요.');
+        const projection = projectCashLines(entry, true);
+        if (projection.parts.some(line => !accountCodes.some(code => code.code === line.accountCode))) throw new Error('계정과목을 확인해주세요.');
+      }
+      const attempt = previous ?? { companyId, userId, entries };
+      if (generic) {
+        attemptText = JSON.stringify(attempt);
+        const stored = localStorage.getItem(pendingKey);
+        if (stored !== null && stored !== attemptText)
+          throw new Error('다른 창의 발행 요청이 대기 중입니다. 창을 다시 열어 해당 원문을 확인해주세요.');
+        localStorage.setItem(pendingKey, attemptText);
+        saveAttempt.current = attempt;
+      }
+      for (const entry of entries) {
+        if (!scope.active || attemptScope.current !== scope || generic && saveAttempt.current !== attempt || auth.currentUser?.uid !== attempt.userId) return;
+        await onAdd(entry);
+        completed++;
+        if (!scope.active || attemptScope.current !== scope || generic && saveAttempt.current !== attempt || auth.currentUser?.uid !== attempt.userId) return;
+      }
+      if (generic && localStorage.getItem(pendingKey) === attemptText) localStorage.removeItem(pendingKey);
+      saveAttempt.current = null;
       onClose();
     } catch (error) {
+      if (!scope.active || attemptScope.current !== scope) return;
+      const proof = (error as { details?: Record<string, unknown> })?.details;
+      if (generic && !previous && completed === 0 && proof?.operationStatus === 'rejected' && proof.version === 1
+        && proof.financialWrites === false && proof.companyId === companyId && proof.operationId === entries[0]?.id) {
+        if (localStorage.getItem(pendingKey) === attemptText) localStorage.removeItem(pendingKey);
+        saveAttempt.current = null;
+      }
+      setEntryError(error instanceof Error ? error.message : String(error));
       alert(`자금전표 저장에 실패했습니다. 입력은 유지됩니다.\n${error instanceof Error ? error.message : String(error)}`);
     } finally {
       saveLock.current = false;
-      setSavingEntry(false);
+      if (scope.active && attemptScope.current === scope) setSavingEntry(false);
     }
   };
 
   return (
     <ModalShell title="일반전표 발행" onClose={onClose} bodyClassName="!p-0">
+        {(restored.error || entryError) && <p role="alert" className="px-5 py-2 text-sm text-rose-600">{restored.error || entryError}</p>}
+        {saveAttempt.current && <p className="px-5 py-2 text-sm text-amber-700">이전 요청의 결과를 확인할 때까지 입력을 유지합니다. 동일 요청으로 재시도합니다: {saveAttempt.current.entries.map(entry => `${entry.date} ${entry.accountCode ?? '복수 분개'} ${entry.amount.toLocaleString()}원`).join(' / ')}</p>}
+        <fieldset disabled={savingEntry || !!saveAttempt.current || !!restored.error} className="contents">
         {/* 방향은 제목 줄에 둔다 — 아래 목록이 통째로 바뀌므로 목록 위에 있어야 한다 */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 shrink-0">
           {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
@@ -849,14 +926,14 @@ function EntryModal({ companyId, account, accounts, accountCodes, partners, curr
           );
         })()}
 
-        <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200">취소</button>
-          <button onClick={save} disabled={!canSave || savingEntry}
-            className="flex-[2] py-3 rounded-xl bg-slate-800 text-white text-sm font-black hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed">
-            {savingEntry ? '저장 중…' : '저장'}
-          </button>
         </div>
-
+        </fieldset>
+        <div className="flex gap-2 px-5 py-4">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200">취소</button>
+          <button onClick={save} disabled={(!canSave && !saveAttempt.current) || savingEntry || !!restored.error}
+            className="flex-[2] py-3 rounded-xl bg-slate-800 text-white text-sm font-black hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed">
+            {savingEntry ? '저장 중…' : saveAttempt.current ? '동일 요청 재시도' : '저장'}
+          </button>
         </div>
 
         {pickerOpen && (

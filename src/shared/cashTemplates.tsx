@@ -242,8 +242,7 @@ export function filterTemplates(
   saved: FixedCostTemplate[] = [],
 ): CashTemplate[] {
   const have = new Set(accountCodes.map(c => c.code));
-  // 옛 postMode '분리'는 채무를 세우는 것이니 '줄돈'으로 읽는다
-  const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
+  const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? '출금';
   const fromDb = saved
     .filter(t => t.kind === 'voucher' && !t.hidden)
     .map((t): CashTemplate => ({

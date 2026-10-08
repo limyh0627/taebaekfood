@@ -15,6 +15,8 @@ exports.issueNumberedVoucher = exports.voucherSequenceKey = exports.formatVouche
 exports.issueVoucher = issueVoucher;
 const deleteIssuedStatementCommand_1 = require("./deleteIssuedStatementCommand");
 const cashMutationReceipt_1 = require("./cashMutationReceipt");
+const cashLineProjection_1 = require("./shared/cashLineProjection");
+const partnerCutover_1 = require("./partnerCutover");
 const voucherNumber_1 = require("./shared/voucherNumber");
 var voucherNumber_2 = require("./shared/voucherNumber");
 Object.defineProperty(exports, "formatVoucherNo", { enumerable: true, get: function () { return voucherNumber_2.formatVoucherNo; } });
@@ -62,11 +64,11 @@ async function issueVoucher(db, companyId, input) {
         throw new https_1.HttpsError('invalid-argument', '자금전표 금액은 0보다 큰 유한한 수여야 합니다.');
     }
     if (kind === 'cashEntries') {
-        const protectedCodes = new Set(['108', '251', '253', '260', '293']);
+        const protectedCodes = new Set(['260', '293']);
         const lines = Array.isArray(document.lines) ? document.lines : [];
         const codes = [document.accountCode, ...lines.map(line => (line && typeof line === 'object' ? line.accountCode : undefined))];
         if (codes.some(code => protectedCodes.has(String(code)))
-            || ['loanId', 'returnRequestId', 'returnOperationId', 'partnerPaymentOperationId', 'settlementId',
+            || ['loanId', 'payrollId', 'payrollRequestHash', 'transferOperationId', 'interCompanyTransferId', 'transferId', 'returnRequestId', 'returnOperationId', 'partnerPaymentOperationId', 'settlementId',
                 'settlements', 'allocations', 'paymentId', 'reverse'].some(field => field in document)) {
             throw new https_1.HttpsError('failed-precondition', '거래처 지급·대출·반품 연결은 해당 서버 원자 명령에서 처리해야 합니다.');
         }
@@ -91,7 +93,7 @@ async function issueVoucher(db, companyId, input) {
     const catchUpCounter = db.collection('appMeta').doc((0, exports.voucherSequenceKey)(companyId, tradeDate, '추가'));
     const releaseGate = (0, releaseGate_1.releaseGateRef)(db);
     return db.runTransaction(async (tx) => {
-        var _a, _b;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1;
         const [existing, otherKind, normalSequence, catchUpSequence, releaseSnap] = await Promise.all([
             tx.get(target), tx.get(other), tx.get(counter), tx.get(catchUpCounter), tx.get(releaseGate),
         ]);
@@ -124,17 +126,81 @@ async function issueVoucher(db, companyId, input) {
             }
             return { id: operationId, docNo: data.docNo };
         }
-        const state = await (0, newScopeCounter_1.readVoucherCounter)(db, tx, sequence, releaseSnap, companyId, tradeDate, effectivePrefix);
-        if (state.companyId !== companyId || state.tradeDate !== tradeDate || state.prefix !== effectivePrefix || !Number.isSafeInteger(state.last) || state.last < 0) {
-            throw new https_1.HttpsError('failed-precondition', '전표 번호 카운터가 손상되었습니다.');
+        // 선택 분개 신규 기록은 자동 배분하지 않는다. 거래처 원본 변경은 정산과 같은 TX 경계에 참여한다.
+        const protectedCash = kind === 'cashEntries' && [document.accountCode,
+            ...(Array.isArray(document.lines) ? document.lines.map(line => line === null || line === void 0 ? void 0 : line.accountCode) : [])]
+            .some(code => ['108', '251', '253'].includes(String(code)));
+        let partnerState;
+        let cashPartner;
+        let financialWrites = false;
+        try {
+            if (protectedCash) {
+                if ('balanceAdjustment' in document)
+                    throw new https_1.HttpsError('invalid-argument', '잔액 조정에는 계정 분개를 연결할 수 없습니다.');
+                let projection;
+                try {
+                    projection = (0, cashLineProjection_1.projectCashLines)(document, true);
+                }
+                catch (error) {
+                    throw new https_1.HttpsError('invalid-argument', error instanceof Error ? error.message : '분개가 잘못되었습니다.');
+                }
+                if (typeof document.cashAccountId !== 'string' || !document.cashAccountId || document.cashAccountId.includes('/'))
+                    throw new https_1.HttpsError('invalid-argument', '회사 계좌가 필요합니다.');
+                if (document.partnerId !== undefined && (typeof document.partnerId !== 'string' || document.partnerId.includes('/')))
+                    throw new https_1.HttpsError('invalid-argument', '거래처 입력이 잘못되었습니다.');
+                const [codes, account, partner, state, cutover] = await Promise.all([
+                    tx.get(db.collection('accountCodes').where('companyId', '==', companyId)),
+                    tx.get(db.collection('cashAccounts').doc(document.cashAccountId)),
+                    document.partnerId ? tx.get(db.collection('partners').doc(document.partnerId)) : undefined,
+                    document.partnerId ? tx.get(db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${document.partnerId}`)) : undefined,
+                    document.partnerId ? tx.get(db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`)) : undefined,
+                ]);
+                if (projection.parts.some(line => !codes.docs.some(code => code.data().code === line.accountCode)))
+                    throw new https_1.HttpsError('failed-precondition', '현재 회사 계정과목을 확인해주세요.');
+                if (!account.exists || ((_d = (_c = account.data()) === null || _c === void 0 ? void 0 : _c.companyId) !== null && _d !== void 0 ? _d : 'taebaek') !== companyId || ((_e = account.data()) === null || _e === void 0 ? void 0 : _e.active) !== true)
+                    throw new https_1.HttpsError('failed-precondition', '현재 회사의 활성 계좌가 아닙니다.');
+                if (partner && (!partner.exists || ((_g = (_f = partner.data()) === null || _f === void 0 ? void 0 : _f.companyId) !== null && _g !== void 0 ? _g : 'taebaek') !== companyId))
+                    throw new https_1.HttpsError('failed-precondition', '현재 회사 거래처가 아닙니다.');
+                if ((cutover === null || cutover === void 0 ? void 0 : cutover.exists) && (((_h = cutover.data()) === null || _h === void 0 ? void 0 : _h.companyId) !== companyId || (0, partnerCutover_1.partnerQuarantined)(cutover.data(), document.partnerId)))
+                    throw new https_1.HttpsError('failed-precondition', '이 거래처는 과거 정산 내역 확인 후 처리할 수 있습니다.');
+                if (partner && (!Number.isSafeInteger((_k = (_j = partner.data()) === null || _j === void 0 ? void 0 : _j.revision) !== null && _k !== void 0 ? _k : 0) || ((_m = (_l = partner.data()) === null || _l === void 0 ? void 0 : _l.revision) !== null && _m !== void 0 ? _m : 0) < 0
+                    || !Number.isSafeInteger(((_p = (_o = partner.data()) === null || _o === void 0 ? void 0 : _o.revision) !== null && _p !== void 0 ? _p : 0) + 1)))
+                    throw new https_1.HttpsError('failed-precondition', '거래처 원본 revision이 잘못되었습니다.');
+                if (state && (!Number.isSafeInteger((_r = (_q = state.data()) === null || _q === void 0 ? void 0 : _q.revision) !== null && _r !== void 0 ? _r : 0) || ((_t = (_s = state.data()) === null || _s === void 0 ? void 0 : _s.revision) !== null && _t !== void 0 ? _t : 0) < 0
+                    || !Number.isSafeInteger(((_v = (_u = state.data()) === null || _u === void 0 ? void 0 : _u.revision) !== null && _v !== void 0 ? _v : 0) + 1)
+                    || state.exists && (((_w = state.data()) === null || _w === void 0 ? void 0 : _w.companyId) !== companyId || ((_x = state.data()) === null || _x === void 0 ? void 0 : _x.partnerId) !== document.partnerId)))
+                    throw new https_1.HttpsError('failed-precondition', '거래처 revision이 잘못되었습니다.');
+                partnerState = state;
+                cashPartner = partner;
+            }
+            const state = await (0, newScopeCounter_1.readVoucherCounter)(db, tx, sequence, releaseSnap, companyId, tradeDate, effectivePrefix);
+            if (state.companyId !== companyId || state.tradeDate !== tradeDate || state.prefix !== effectivePrefix || !Number.isSafeInteger(state.last) || state.last < 0) {
+                throw new https_1.HttpsError('failed-precondition', '전표 번호 카운터가 손상되었습니다.');
+            }
+            const next = state.last + 1;
+            if (!Number.isSafeInteger(next))
+                throw new https_1.HttpsError('resource-exhausted', '전표 번호 범위를 초과했습니다.');
+            const docNo = (0, voucherNumber_1.formatVoucherNo)(tradeDate, next, effectivePrefix);
+            financialWrites = true;
+            (0, newScopeCounter_1.writeVoucherCounter)(tx, sequence, state, next);
+            tx.create(target, Object.assign(Object.assign({}, payload), { docNo, issueOperationId: operationId, issuePrefix: effectivePrefix, issuePayloadHash }));
+            if (partnerState) {
+                const value = { companyId, partnerId: document.partnerId, revision: ((_z = (_y = partnerState.data()) === null || _y === void 0 ? void 0 : _y.revision) !== null && _z !== void 0 ? _z : 0) + 1 };
+                if (partnerState.exists)
+                    tx.update(partnerState.ref, value);
+                else
+                    tx.create(partnerState.ref, value);
+            }
+            if (cashPartner)
+                tx.update(cashPartner.ref, { revision: ((_1 = (_0 = cashPartner.data()) === null || _0 === void 0 ? void 0 : _0.revision) !== null && _1 !== void 0 ? _1 : 0) + 1 });
+            return { id: operationId, docNo };
         }
-        const next = state.last + 1;
-        if (!Number.isSafeInteger(next))
-            throw new https_1.HttpsError('resource-exhausted', '전표 번호 범위를 초과했습니다.');
-        const docNo = (0, voucherNumber_1.formatVoucherNo)(tradeDate, next, effectivePrefix);
-        (0, newScopeCounter_1.writeVoucherCounter)(tx, sequence, state, next);
-        tx.create(target, Object.assign(Object.assign({}, payload), { docNo, issueOperationId: operationId, issuePrefix: effectivePrefix, issuePayloadHash }));
-        return { id: operationId, docNo };
+        catch (error) {
+            if (protectedCash && !financialWrites && error instanceof https_1.HttpsError)
+                throw new https_1.HttpsError(error.code, error.message, { operationStatus: 'rejected', version: 1,
+                    financialWrites: false, companyId, operationId });
+            throw error;
+        }
     });
 }
 exports.issueNumberedVoucher = (0, https_1.onCall)({ region: REGION }, async (request) => {

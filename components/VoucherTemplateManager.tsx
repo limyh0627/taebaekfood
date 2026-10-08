@@ -75,8 +75,7 @@ export default function VoucherTemplateManager({
     name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', loanId: '', accountCode: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, statementType: '비용' as TemplateStatementType, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
-  /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
-  const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
+  const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? '출금';
   // 거래처는 이름만 적으면 소용없다 — id가 붙어야 미지급금이 그 거래처로 잡힌다
   const [partnerQuery, setPartnerQuery] = useState('');
   const [partnerOpen, setPartnerOpen] = useState(false);
