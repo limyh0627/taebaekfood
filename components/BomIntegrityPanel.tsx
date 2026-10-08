@@ -1,25 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
-import { bomOf } from '../src/shared/bomIndex';
-import { Item } from '../types';
-import { PRODUCT_FORMULA, baseRawName } from '../src/constants/formula';
+import { type BomIndex } from '../src/shared/bomIndex';
+import { Item, ItemFormula } from '../types';
+import { baseRawName } from '../src/constants/formula';
 import { ShieldAlert, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { buildFormula } from '../src/features/admin/bom';
 import { docName } from '../src/shared/docName';
 
-interface FormulaRow { parent_key: string; child_name: string; ratio: number; yield_rate?: number }
-interface Props { items: Item[]; itemFormulas?: FormulaRow[] }
+interface Props { items: Item[]; itemFormulas?: ItemFormula[]; bomIndex: BomIndex }
 
 /**
  * BOM·재고 정합성 점검 — 출고 시 "조용히 안 빠지는" 케이스를 화면에 노출한다.
  * (이름/ID 참조가 끊기거나 원료 홀더 category가 맞지 않으면 차감이 조용히 누락되어 재고·수불부가 어긋남)
  */
-const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
+const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [], bomIndex }) => {
   const [open, setOpen] = useState(false);
 
   const r = useMemo(() => {
-    const byId = new Map(items.map(i => [i.id, i]));
-    const formByKey: Record<string, FormulaRow[]> = {};
-    itemFormulas.forEach(f => { (formByKey[f.parent_key] = formByKey[f.parent_key] || []).push(f); });
     // 원료 홀더 = raw, 또는 wip 벌크 반제품(볶음참깨류·들깨가루). unit='개' 캔/포장 SKU·phantom은 제외(엔진과 동일 판별).
     const isHolder = (it: Item) => !it.phantom && isBulkItem(it);
     const holderByRaw: Record<string, Item> = {};
@@ -28,7 +25,8 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     }
     // phantom 반제품(무재고) — 배합식 전개 대상이므로 홀더가 없어도 정상(끊긴참조/orphan 오탐 방지).
     const phantomNames = new Set(items.filter(i => i.phantom).map(i => baseRawName(i.name)));
-    const prods = items.filter(i => i.type === 'product');
+    const prods = items.filter(i => i.type === 'product' && !i.archived);
+    const label = (p: Item) => [p.name, p.spec].filter(Boolean).join(' · ');
 
     const brokenSub: { product: string; id: string; name?: string }[] = [];
     const missingRaw: { product: string; raw: string }[] = [];
@@ -38,30 +36,34 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     // 조립품 = BOM에 완제품 구성품이 든 것(박스·선물세트). 원료는 그 구성품에서 나가므로
     // 자기 원료식이 없는 게 정상 → 원료식 검사 대상에서 뺀다.
     const isAssembly = (p: Item) =>
-      bomOf(p.id).some(l => l.child?.type === 'product');
+      bomIndex.of(p.id).some(l => l.child?.type === 'product');
 
     for (const p of prods) {
       if (isAssembly(p)) continue;   // 박스·선물세트 등 조립품은 원료식 안 가짐(정상)
-      const key = docName(p);
-      const rows = formByKey[key]
-        ? formByKey[key].map(f => ({ raw: f.child_name }))
-        : (PRODUCT_FORMULA[key]?.map(x => ({ raw: x.raw })) ?? null);
-      if (!rows) noBom.push(p.name);
+      // 실제 생산과 같은 우선순위: 벌크 구성 → phantom 전개 → 품목 서류명 원료식.
+      const bulk = bomIndex.of(p.id).filter(line => isBulkItem(line.child));
+      const rows = bulk.length > 0
+        ? bulk.flatMap(line => !line.child || !Number.isFinite(line.qty) || line.qty <= 0 ? [] : line.child.phantom
+          ? buildFormula(line.child.name, itemFormulas, items).filter(row => row.ratio > 0)
+          : [{ raw: baseRawName(line.child.name), ratio: line.qty }])
+        : buildFormula(docName(p), itemFormulas, items).filter(row => row.ratio > 0);
+      if (rows.length === 0) noBom.push(label(p));
       else for (const { raw } of rows) {
-        if (!holderByRaw[raw] && !phantomNames.has(raw)) missingRaw.push({ product: p.name, raw });
+        if (!holderByRaw[raw]) missingRaw.push({ product: label(p), raw });
       }
-      const subs = bomOf(p.id);
-      if (subs.length === 0) noSub.push(p.name);
+      const subs = bomIndex.of(p.id);
+      if (subs.length === 0) noSub.push(label(p));
       //  자식 품목을 못 찾는 줄 = 지워진 품목을 가리키는 BOM. 원가·차감에서 조용히 빠진다.
-      else for (const l of subs) if (!l.child) brokenSub.push({ product: p.name, id: l.childId, name: l.childId });
+      else for (const l of subs) if (!l.child) brokenSub.push({ product: label(p), id: l.childId, name: l.childId });
     }
-    const prodKeys = new Set(prods.map(docName));
+    const prodKeys = new Set(items.filter(i => i.type === 'product').map(docName));
+    const wipKeys = new Set(items.filter(i => i.type === 'wip').map(i => baseRawName(i.name)));
     // orphan = 완제품도 원료홀더(반제품 수율 BOM의 부모)도 phantom 반제품도 아닌 parent_key
-    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k) && !holderByRaw[k] && !phantomNames.has(k));
+    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k) && !wipKeys.has(k) && !holderByRaw[k] && !phantomNames.has(k));
 
     const total = brokenSub.length + missingRaw.length + noBom.length + orphan.length;
     return { brokenSub, missingRaw, noBom, noSub, orphan, total };
-  }, [items, itemFormulas]);
+  }, [items, itemFormulas, bomIndex]);
 
   const clean = r.total === 0;
 
@@ -87,10 +89,10 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
 
       {open && !clean && (
         <div className="px-4 pb-4 space-y-2">
-          <p className="text-[11px] text-slate-400">출고해도 <b>조용히 재고에서 안 빠지는</b> 항목들이에요. 고치면 재고·수불부 어긋남이 사라져요.</p>
+          <p className="text-[11px] text-slate-400">생산 원료 구성과 원가 계산에 쓰는 참조를 점검합니다. 누락된 구성과 연결되지 않은 품목·원료식을 확인해 주세요.</p>
 
           {r.brokenSub.length > 0 && (
-            <Section tone="bg-rose-50 text-rose-600" title={`🔴 부자재 끊긴 참조 ${r.brokenSub.length}건 — 이 부자재가 출고 시 차감 안 됨`}>
+            <Section tone="bg-rose-50 text-rose-600" title={`🔴 부자재 끊긴 참조 ${r.brokenSub.length}건 — 구성 품목 확인 필요`}>
               {r.brokenSub.slice(0, 80).map((b, i) => (
                 <div key={i} className="truncate"><b className="text-slate-700">{b.product}</b> → <span className="text-rose-500 font-bold">{b.name || '(이름없음)'}</span>{!b.name && <span className="font-mono text-slate-400"> {b.id}</span>}</div>
               ))}

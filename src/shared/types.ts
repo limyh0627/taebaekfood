@@ -617,7 +617,7 @@ export interface Post {
   date: string;
   tag: '공지' | '긴급' | '매뉴얼' | '업무';
   pinned?: boolean;
-  blocks?: ({ type: 'text'; text: string } | { type: 'image'; url: string; path: string; caption: string })[];
+  blocks?: ({ type: 'text'; text: string; format?: 'paragraph' | 'heading' | 'subheading' | 'list'; bold?: boolean; link?: string } | { type: 'image'; url: string; path: string; caption: string })[];
 }
 
 export interface FileItem {

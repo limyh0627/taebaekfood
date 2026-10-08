@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { auth } from '../src/shared/firebase';
 import { today } from '../src/shared/day';
 import {
   BellRing,
@@ -25,43 +26,135 @@ interface NoticeBoardProps {
   onDeletePost?: (id: string) => unknown | Promise<unknown>;
 }
 
+type NoticeBlocks = NonNullable<Post['blocks']>;
+const safeLink = (value?: string) => {
+  try { const url = new URL(value || ''); return ['http:', 'https:'].includes(url.protocol) ? url.href : undefined; }
+  catch { return undefined; }
+};
+function readPending(value: string, companyId?: CompanyId): {post:Post;editing:boolean} {
+ const saved=JSON.parse(value);
+ const p=saved?.post;
+ if(!p || typeof saved.editing!=='boolean' || typeof p.id!=='string' || !p.id || p.id.includes('/') || !['title','content','author','date'].every(key=>typeof p[key]==='string') || !['공지','긴급','매뉴얼','업무'].includes(p.tag) || typeof p.pinned!=='boolean' || !Array.isArray(p.blocks)) throw new Error('저장 요청 형식이 다릅니다.');
+ for(const b of p.blocks) {
+   if(b?.type==='text') {
+     if(typeof b.text!=='string' || (b.bold!==undefined&&typeof b.bold!=='boolean') || (b.format!==undefined&&!['paragraph','heading','subheading','list'].includes(b.format)) || (b.link!==undefined&&(typeof b.link!=='string'||(b.link.trim()&&!safeLink(b.link))))) throw new Error('글 형식이 다릅니다.');
+   } else if(b?.type==='image') {
+     if(typeof b.caption!=='string'||typeof b.path!=='string'||!b.path.startsWith(`companies/${companyId}/notices/${p.id}/`)||typeof b.url!=='string'||!safeLink(b.url)) throw new Error('사진 소유 정보가 다릅니다.');
+   } else throw new Error('단락 형식이 다릅니다.');
+ }
+ return saved;
+}
+function NoticeContent({blocks,content}: {blocks?: Post['blocks'];content:string}) {
+ return <div className="space-y-5 whitespace-pre-wrap break-words leading-8 text-slate-700">{blocks?.length ? blocks.map((block,index)=>{
+   if(block.type==='image') return <figure key={block.path}><img src={block.url} alt={block.caption || '공지 사진'} className="max-h-[640px] mx-auto rounded-xl"/><figcaption className="mt-2 text-center text-sm text-slate-500">{block.caption}</figcaption></figure>;
+   const href=safeLink(block.link);
+   const text=href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">{block.text}</a> : block.text;
+   const body=block.bold ? <strong>{text}</strong> : text;
+   return block.format==='heading' ? <h2 key={index} className="text-2xl font-bold">{body}</h2> : block.format==='subheading' ? <h3 key={index} className="text-xl font-bold">{body}</h3> : block.format==='list' ? <ul key={index} className="list-disc pl-6">{block.text.split('\n').filter(Boolean).map((line,i)=><li key={i}>{href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">{block.bold ? <strong>{line}</strong> : line}</a> : block.bold ? <strong>{line}</strong> : line}</li>)}</ul> : <p key={index}>{body}</p>;
+ }) : content}</div>;
+}
+
 const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, onUpdatePost, onDeletePost }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', content: '', author: '', tag: '공지' as '공지' | '긴급' | '매뉴얼' | '업무' });
   const [blocks, setBlocks] = useState<NonNullable<Post['blocks']>>([]);
+  const [editing, setEditing] = useState<Post | null>(null);
+  const [newImages, setNewImages] = useState<NoticeBlocks>([]);
+  const [preview, setPreview] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const userId=auth.currentUser?.uid;
+  const scope = useRef({companyId,userId});
+  if(scope.current.companyId!==companyId || scope.current.userId!==userId) scope.current={companyId,userId};
+  const pendingKey = `notice-save-pending:${companyId || ''}:${userId || ''}`;
+  const [pendingCorrupt,setPendingCorrupt]=useState(false);
+  const [pending, setPending] = useState<Post | null>(null);
+  const pendingRef = useRef<Post | null>(null);
   const [draftId, setDraftId] = useState(() => `notice-${crypto.randomUUID()}`);
+  const resetDraft = () => {
+    pendingRef.current=null; setPending(null);
+    setBlocks([]); setNewImages([]); setEditing(null); setPreview(false); setPinned(false);
+    setForm({title:'',content:'',author:'',tag:'공지'}); setDraftId(`notice-${crypto.randomUUID()}`); setShowForm(false);
+  };
+  useEffect(()=>{
+    resetDraft();setSelectedPost(null);busyRef.current=false;setBusy(false);setPendingCorrupt(false);
+    try {
+      const raw=sessionStorage.getItem(pendingKey);
+      if(raw){
+        const saved=readPending(raw,companyId);const post=saved.post;
+        pendingRef.current=post;setPending(post);setEditing(saved.editing?post:null);setDraftId(post.id);
+        setForm({title:post.title,content:'',author:post.author,tag:post.tag});setBlocks(post.blocks||[]);setPinned(!!post.pinned);setShowForm(true);
+      }
+    } catch {setPendingCorrupt(true);void appNotice('저장된 공지 요청을 확인할 수 없습니다. 기존 요청을 확인한 뒤 다시 작성해 주세요.');}
+  },[companyId,userId]);
+  useEffect(()=>()=>{scope.current={companyId:undefined,userId:undefined};},[]);
+  const openEdit = (post: Post) => {
+    setEditing(post); setDraftId(post.id); setForm({title:post.title,content:'',author:post.author,tag:post.tag});
+    setBlocks(post.blocks?.length ? post.blocks.map(block=>({...block})) : [{type:'text',text:post.content}]); setPinned(!!post.pinned); setNewImages([]); setPreview(false); setSelectedPost(null); setShowForm(true);
+  };
+  const bodyBlocks: NoticeBlocks = [...(form.content.trim() ? [{type:'text',text:form.content} as const] : []), ...blocks];
   const closeDraft = async () => {
-    if (busy) return;
-    try { await deleteNoticeImages(blocks); setBlocks([]); setShowForm(false); }
-    catch (error) { await appNotice(String(error)); }
+    if (busyRef.current) return;
+    if (pendingRef.current) { await appNotice('저장 완료를 확인하지 못했습니다. 작성 내용을 유지한 채 같은 공지를 다시 저장해 주세요.'); return; }
+    const token=scope.current; busyRef.current=true;setBusy(true);
+    try { await deleteNoticeImages(newImages, companyId, draftId); if(scope.current===token && auth.currentUser?.uid===token.userId) resetDraft(); }
+    catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(String(error)); }
+    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
   };
   const uploadPhotos = async (files: File[]) => {
-    if (!companyId || busy) return;
-    setBusy(true);
+    if (!companyId || busyRef.current || pendingRef.current) return;
+    const token=scope.current;busyRef.current=true;setBusy(true);
     try {
       // Retain each successful upload even if a later image fails, so cancel can clean it up.
       for (const file of files) {
+        if((scope.current!==token || auth.currentUser?.uid!==token.userId)) return;
         const image = await uploadNoticeImage(companyId, draftId, file);
+        if((scope.current!==token || auth.currentUser?.uid!==token.userId)) { await deleteNoticeImages([image],companyId,draftId); return; }
         setBlocks(previous => [...previous, image]);
+        setNewImages(previous => [...previous, image]);
       }
-    } catch (error) { await appNotice(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    } catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(error instanceof Error ? error.message : String(error)); }
+    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
+  };
+  const removeBlock = async (index:number) => {
+    if(busyRef.current||pendingRef.current) return;
+    const token=scope.current,block=blocks[index];busyRef.current=true;setBusy(true);
+    try {
+      if(block.type==='image' && newImages.some(image=>image.type==='image'&&image.path===block.path)) {
+        await deleteNoticeImages([block],companyId,draftId);
+        if(scope.current!==token || auth.currentUser?.uid!==token.userId) return;
+        setNewImages(previous=>previous.filter(image=>image.type!=='image'||image.path!==block.path));
+      }
+      if(scope.current===token && auth.currentUser?.uid===token.userId) setBlocks(previous=>previous.filter((_,i)=>i!==index));
+    } catch(error) {if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(String(error));}
+    finally {if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);}}
   };
   const savePost = async () => {
-    if (!onAddPost || busy || !form.title.trim() || (!form.content.trim() && blocks.length === 0)) return;
-    setBusy(true);
+    if (!(editing ? onUpdatePost : onAddPost) || pendingCorrupt || busyRef.current || !form.title.trim() || !bodyBlocks.some(b=>b.type==='image'||b.text.trim())) return;
+    if (blocks.some(b=>b.type==='text' && b.link?.trim() && !safeLink(b.link))) { await appNotice('링크는 http 또는 https 주소로 입력해 주세요.'); return; }
+    if(!userId) {await appNotice('로그인 상태를 확인한 뒤 다시 저장해 주세요.');return;}
+    const token=scope.current;busyRef.current=true;setBusy(true);
     try {
-      const body: NonNullable<Post['blocks']> = [...(form.content.trim() ? [{ type: 'text' as const, text: form.content }] : []), ...blocks];
-      await onAddPost({ id: draftId, ...form, author: form.author || '관리자', date: today(), pinned,
-        content: body.map(b => b.type === 'text' ? b.text : b.caption).join('\n'), blocks: body });
-      setBlocks([]); setPinned(false); setDraftId(`notice-${crypto.randomUUID()}`);
-      setForm({ title: '', content: '', author: '', tag: '공지' }); setShowForm(false);
-    } catch (error) { await appNotice(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+      const body=bodyBlocks.filter(b=>b.type==='image'||b.text.trim());
+      const post:Post=pendingRef.current || {id:draftId,...form,author:form.author||'관리자',date:editing?.date||today(),pinned,content:body.map(b=>b.type==='text'?b.text:b.caption).join('\n'),blocks:body};
+      const encoded=JSON.stringify({post,editing:!!editing});
+      const existing=sessionStorage.getItem(pendingKey);
+      if(existing && existing!==encoded) throw new Error('다른 저장 요청이 남아 있습니다. 기존 공지를 먼저 확인해 주세요.');
+      sessionStorage.setItem(pendingKey,encoded);
+      pendingRef.current=post;setPending(post);
+      if(editing) await onUpdatePost!(editing.id,post); else await onAddPost!(post);
+      if((scope.current!==token || auth.currentUser?.uid!==token.userId)) return;
+      const retained=new Set(body.filter(b=>b.type==='image').map(b=>b.path));
+      const removed=editing?.blocks?.filter(b=>b.type==='image'&&!retained.has(b.path));
+      try { if(sessionStorage.getItem(pendingKey)===encoded) sessionStorage.removeItem(pendingKey); }
+      catch { await appNotice('공지는 저장됐지만 저장 요청 정리는 완료되지 않았습니다.'); }
+      resetDraft();
+      try { await deleteNoticeImages(removed,companyId,draftId); } catch { await appNotice('공지는 저장됐지만 사용하지 않는 사진 정리는 완료되지 않았습니다.'); }
+    } catch(error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(error instanceof Error ? error.message : String(error)); }
+    finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
   };
 
   const filteredPosts = posts.filter(post => 
@@ -87,7 +180,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
           </div>
           {onAddPost && (
             <button
-              onClick={() => setShowForm(true)}
+              disabled={busy || pendingCorrupt} onClick={() => {setBlocks([{type:'text',text:''}]);setShowForm(true);}}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap"
             >
               <Plus size={15} /> 공지 추가
@@ -127,13 +220,14 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
       </div>
 
       {/* 공지 작성 모달 */}
-      {showForm && onAddPost && (
-        <ModalShell title="공지 작성" onClose={() => { void closeDraft(); }}>
+      {showForm && (editing ? onUpdatePost : onAddPost) && (
+        <ModalShell title={editing ? "공지 수정" : "공지 작성"} className="!max-w-5xl" onClose={() => { void closeDraft(); }} subtitle="글과 사진을 원하는 순서로 배치해 주세요.">
           <div className="space-y-5">
-            <div className="space-y-4">
+            <fieldset disabled={busy || !!pending || pendingCorrupt} className="space-y-4 min-w-0">
               <input
                 type="text"
                 placeholder="제목"
+                autoFocus
                 value={form.title}
                 onChange={e => setForm({ ...form, title: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
@@ -145,17 +239,18 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                 <button type="button" disabled={busy} onClick={() => setBlocks([...blocks, { type: 'text', text: '' }])} className="border rounded-xl px-3 py-2 text-sm">글 단락 추가</button>
                 <label className="text-sm"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} /> 상단 고정</label>
               </div>
-              {blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
-                {block.type === 'text' ? <textarea aria-label={`글 단락 ${index + 1}`} rows={4} value={block.text} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full border rounded-lg p-3" /> : <>
+              <button type="button" onClick={()=>setPreview(!preview)} className="rounded-lg border px-3 py-2 text-sm font-bold">{preview ? '편집으로 돌아가기' : '미리보기'}</button>
+              {preview ? <article aria-label="공지 미리보기" className="mx-auto max-w-3xl bg-white p-6 md:p-10 shadow-sm"><h1 className="mb-8 text-3xl font-bold">{form.title || '제목'}</h1><NoticeContent blocks={bodyBlocks} content=""/></article> : <div className="mx-auto max-w-3xl space-y-4 bg-white p-4 md:p-8 shadow-sm">{blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
+                {block.type === 'text' ? <><div className="flex flex-wrap gap-2"><select aria-label={`단락 ${index+1} 형식`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={block.format||'paragraph'} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,format:e.target.value as typeof block.format}:b))}><option value="paragraph">본문</option><option value="heading">제목</option><option value="subheading">소제목</option><option value="list">목록</option></select><label><input type="checkbox" checked={!!block.bold} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,bold:e.target.checked}:b))}/> 굵게</label><input aria-label={`단락 ${index+1} 링크`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="링크 주소 (선택)" value={block.link||''} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,link:e.target.value}:b))}/></div><textarea aria-label={`글 단락 ${index + 1}`} rows={4} value={block.text} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full min-h-40 resize-y border-0 border-b border-slate-100 p-3 text-base leading-8 outline-none focus:border-indigo-300" /></> : <>
                   <img src={block.url} alt={block.caption || '첨부 사진'} className="max-h-80 mx-auto rounded-lg" />
                   <input aria-label={`사진 설명 ${index + 1}`} placeholder="사진 설명" value={block.caption} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, caption: e.target.value } : b))} className="w-full border rounded-lg p-2" />
                 </>}
                 <div className="flex gap-3 text-sm">
                   <button disabled={busy || index === 0} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>위로</button>
                   <button disabled={busy || index === blocks.length - 1} onClick={() => setBlocks(previous => { const next = [...previous]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })}>아래로</button>
-                  <button disabled={busy} className="text-rose-600" onClick={async () => { setBusy(true); try { await deleteNoticeImages([block]); setBlocks(previous => previous.filter((_, i) => i !== index)); } catch (error) { await appNotice(String(error)); } finally { setBusy(false); } }}>삭제</button>
+                  <button disabled={busy} className="text-rose-600" onClick={()=>{void removeBlock(index);}}>삭제</button>
                 </div>
-              </div>)}
+              </div>)}</div>}
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
@@ -172,14 +267,9 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                   {(['공지', '긴급', '매뉴얼', '업무'] as const).map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <textarea
-                placeholder="내용"
-                rows={6}
-                value={form.content}
-                onChange={e => setForm({ ...form, content: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-              />
-            </div>
+
+            </fieldset>
+            {pending && !busy && <p className="text-sm text-amber-700">저장 완료를 확인하지 못했습니다. 아래 버튼으로 같은 내용의 저장을 다시 확인하세요.</p>}
             <div className="flex gap-3 pt-2">
               <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
               <button
@@ -187,7 +277,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                 onClick={() => { void savePost(); }}
                 className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
               >
-                {busy ? '처리 중…' : '등록'}
+                {busy ? '처리 중…' : pending ? '같은 내용 다시 저장' : editing ? '수정 저장' : '등록'}
               </button>
             </div>
           </div>
@@ -212,18 +302,17 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                 </div>
               </div>
               <div className="text-slate-600 leading-relaxed whitespace-pre-wrap font-medium min-h-[200px]">
-                {selectedPost.blocks?.length ? selectedPost.blocks.map((block, i) => block.type === 'text'
-                  ? <p key={i} className="mb-5">{block.text}</p>
-                  : <figure key={block.path} className="my-5"><img src={block.url} alt={block.caption || '공지 사진'} className="w-full rounded-xl" /><figcaption className="text-center text-sm mt-2">{block.caption}</figcaption></figure>) : selectedPost.content}
+                <NoticeContent blocks={selectedPost.blocks} content={selectedPost.content}/>
               </div>
               <div className="pt-6 border-t border-slate-50 flex justify-end">
+                {onUpdatePost && <button disabled={busy} className="mr-4 text-sm font-bold text-indigo-600" onClick={()=>openEdit(selectedPost)}>공지 수정</button>}
                 {onUpdatePost && <button disabled={busy} className="mr-4 text-sm font-bold" onClick={async () => {
                   setBusy(true); try { await onUpdatePost(selectedPost.id, { pinned: !selectedPost.pinned }); setSelectedPost({ ...selectedPost, pinned: !selectedPost.pinned }); }
                   catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
                 }}>{selectedPost.pinned ? '상단 고정 해제' : '상단 고정'}</button>}
                 {onDeletePost && <button disabled={busy} className="mr-4 text-sm font-bold text-rose-600" onClick={async () => {
                   if (!await appConfirm('이 공지를 삭제할까요?')) return;
-                  setBusy(true); try { await onDeletePost(selectedPost.id); setSelectedPost(null); await deleteNoticeImages(selectedPost.blocks); }
+                  setBusy(true); try { await onDeletePost(selectedPost.id); setSelectedPost(null); await deleteNoticeImages(selectedPost.blocks,companyId,selectedPost.id); }
                   catch (error) { await appNotice(String(error)); } finally { setBusy(false); }
                 }}>공지 삭제</button>}
                 <button 

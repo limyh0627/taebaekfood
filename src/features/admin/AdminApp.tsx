@@ -2268,6 +2268,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
+                      <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />
                       {/* 관리자뷰 '서류 관리'는 없앴다(2026-09-01) — 안에 있던 넷이 다 나갔다.
                           벤조피렌·원료수불부·생산작업기록부는 직원뷰로, 생산판매기록부는 문서함으로.
                           생산작업기록부2는 삭제. 빈 탭줄만 남을 자리라 문을 닫는다.
@@ -2628,7 +2629,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {(currentView === 'inventory' || currentView === 'lot-management') && (
             <>
-            {currentView === 'inventory' && <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />}
+            {currentView === 'inventory' && <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} bomIndex={appData.orderUnitInputs!.bom} />}
             <ItemList
               orderUnitInputs={appData.orderUnitInputs}
               mode={currentView === 'lot-management' ? 'lots' : 'inventory'}
