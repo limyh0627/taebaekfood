@@ -41,3 +41,14 @@ describe('직접 입력과 추출의 공통 주문 생성', () => {
     expect(draft).toMatchObject({ totalAmount: 3000, note: '전달사항', noteImportant: true });
   });
 });
+
+ it('재고 만들기는 거래처 필터를 판매상대로 저장하지 않고 금액 없이 생산수량을 보존한다', () => {
+ const draft = buildNewOrderDraft({ ...base, partner: undefined, purpose: 'stock-production', lines: [{ itemId: 'loose', quantity: 5, isBoxUnit: false }] });
+ expect(draft).toMatchObject({ purpose: 'stock-production', partnerName: '재고 만들기', totalAmount: 0 });
+ expect(draft.partnerId).toBeUndefined();
+ expect(draft.items[0]).toMatchObject({ quantity: 5, price: 0 });
+ });
+
+it.each(['goods', 'raw'])('재고 만들기 draft는 생산할 수 없는 %s 품목을 발행하지 않는다', type => {
+ expect(() => buildNewOrderDraft({ ...base, partner: undefined, purpose: 'stock-production', items: [{...loose,type} as Item], lines: [{itemId:'loose',quantity:5,isBoxUnit:false}] })).toThrow('직접 생산 가능한');
+});

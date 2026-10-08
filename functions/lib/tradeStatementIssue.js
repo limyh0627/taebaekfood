@@ -203,6 +203,9 @@ async function issueTradeStatement(db, companyId, actorId, input) {
             .filter(snap => snap.id !== raw.id && oldCompany(snap.data()) === companyId)
             .flatMap(snap => { var _a; return String((_a = snap.data().orderId) !== null && _a !== void 0 ? _a : '').split(/[\s,]+/).filter(Boolean); }));
         orders.forEach((snap, i) => {
+            var _a;
+            if (raw.type === '매출' && ((_a = snap.data()) === null || _a === void 0 ? void 0 : _a.purpose) === 'stock-production')
+                conflict(`생산용 주문 ${orderIds[i]}은 매출 전표에 연결할 수 없습니다.`);
             if (!snap.exists || oldCompany(snap.data()) !== companyId
                 || snap.data().partnerId !== raw.partnerId || snap.data().linkedStatementId
                 || linkedOrderIds.has(orderIds[i]))

@@ -175,6 +175,8 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       .filter(snap => snap.id !== raw.id && oldCompany(snap.data()) === companyId)
       .flatMap(snap => String(snap.data().orderId ?? '').split(/[\s,]+/).filter(Boolean)));
     orders.forEach((snap, i) => {
+      if (raw.type === '매출' && snap.data()?.purpose === 'stock-production')
+        conflict(`생산용 주문 ${orderIds[i]}은 매출 전표에 연결할 수 없습니다.`);
       if (!snap.exists || oldCompany(snap.data()!) !== companyId
         || snap.data()!.partnerId !== raw.partnerId || snap.data()!.linkedStatementId
         || linkedOrderIds.has(orderIds[i])) conflict(`주문 ${orderIds[i]}에 이미 연결된 전표가 있습니다.`);

@@ -2,18 +2,15 @@ import { purchaseReturnRequest, salesReturnRequest } from '../src/features/admin
 import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
 import type { CompanyId } from '../src/shared/types';
 import { where } from 'firebase/firestore';
-import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef } from 'react';
-import { RotateCcw, History, Truck, X, ChevronDown, Loader2 } from 'lucide-react';
+import { RotateCcw, Truck, X, Loader2 } from 'lucide-react';
 import { subscribeToCollection } from '../src/shared/services/firebaseService';
-import { Item, Order, IssuedStatement, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
+import { Item, Order, IssuedStatement, Partner, PartnerItem, ReturnRequest } from '../src/shared/types';
 import PageHeader from './PageHeader';
-import { dateOfLocal, monthStart, today } from '../src/shared/day';
-import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
 
-type ReturnTab = '받기' | '보내기' | '이력';
+type ReturnTab = '받기' | '보내기';
 
 interface ReceivingReturnsManagerProps {
   companyId: CompanyId;
@@ -38,8 +35,6 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   orders,
   issuedStatements = [],
   currentUser,
-  isAdmin,
-  onProcessReturn,
 }) => {
   // ── Tab state ──
   const [returnTab, setReturnTab] = useState<ReturnTab>('받기');
@@ -67,9 +62,6 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [returnItemSearch, setReturnItemSearch] = useState('');
   const [returnNote, setReturnNote] = useState('');
   const [returnSaving, setReturnSaving] = useState(false);
-  const [returnFrom, setReturnFrom] = useState(monthStart);
-  const [returnTo, setReturnTo] = useState(today);
-  const [returnQuick, setReturnQuick] = useState<DateRangeQuick>('당월');
 
   // ── 매입 반품 (보내기) state ──
   const [purchaseSourceId, setPurchaseSourceId] = useState('');
@@ -81,7 +73,6 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [prItemSearch, setPrItemSearch] = useState('');
   const [prNote, setPrNote] = useState('');
   const [prSaving, setPrSaving] = useState(false);
-  const [processingId, setProcessingId] = useState<string | null>(null);
 
   // ══════════════════════════════════════════
   // Camera helpers
@@ -96,7 +87,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   // ══════════════════════════════════════════
 
   const inboundPartners = partners.filter(c =>
-    buysFrom(c)
+    c.companyId === companyId && buysFrom(c)
   );
 
   // 거래처별 연결 품목
@@ -152,9 +143,16 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
     setReturnItemSearch('');
   };
 
+  const partnerProducts = (partnerId: string, direction: 'in' | 'out', sourceId: string) => items.filter(item =>
+    item.companyId === companyId && ((partnerItems ?? []).some(link => link.partnerId === partnerId && link.itemId === item.id && link.Direction === direction) ||
+      issuedStatements.some(statement => statement.companyId === companyId && statement.partnerId === partnerId && statement.type === (direction === 'in' ? '매입' : '매출') && (!sourceId || statement.id === sourceId) && statement.items.some(line => line.itemId === item.id)))
+  );
+  const returnProducts = partnerProducts(returnClientId, 'out', salesSourceId);
+  const purchaseProducts = partnerProducts(prSupplierId, 'in', purchaseSourceId);
+
   const addReturnItem = (itemId: string) => {
     if (returnItems.some(i => i.itemId === itemId)) return;
-    const p = sellableProducts.find(x => x.id === itemId);
+    const p = returnProducts.find(x => x.id === itemId);
     if (!p) return;
     setReturnItems(prev => [...prev, { itemId: p.id, name: p.name, qty: '', unit: p.unit }]);
   };
@@ -178,7 +176,6 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
       setReturnClientSearch('');
       setReturnItems([]);
       setReturnNote('');
-      setReturnTab('이력');
     } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
       setReturnSaving(false);
     }
@@ -203,30 +200,12 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
       setPrSupplierSearch('');
       setPrItems([]);
       setPrNote('');
-      setReturnTab('이력');
     } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
       setPrSaving(false);
     }
   };
 
-  const handleProcessReturn = async (req: ReturnRequest) => {
-    if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n역분개·재고·비현금 상계를 함께 확정합니다.`)) return;
-    if (!mounted.current) return;
-    setProcessingId(req.id);
-    try {
-      await onProcessReturn(req);
-    } catch (error) { if (mounted.current) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
-    finally {
-      if (mounted.current) setProcessingId(null);
-    }
-  };
-
-  // ── Derived ──
   const pendingReturnCount = returnRequests.filter(r => r.status === 'pending' && r.returnType !== '매입').length;
-  const filteredReturnHistory = returnRequests
-    .filter(r => (!returnFrom || dateOfLocal(r.createdAt) >= returnFrom) && (!returnTo || dateOfLocal(r.createdAt) <= returnTo))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // ══════════════════════════════════════════
   // Render
@@ -250,7 +229,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
               className={`px-4 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-1.5 ${returnTab === '받기' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <RotateCcw size={13} />
-              받은 반품
+              반품받기
               {pendingReturnCount > 0 && (
                 <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
                   {pendingReturnCount}
@@ -262,14 +241,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
               className={`px-4 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-1.5 ${returnTab === '보내기' ? 'bg-white text-orange-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Truck size={13} />
-              보낸 반품
-            </button>
-            <button
-              onClick={() => setReturnTab('이력')}
-              className={`px-4 py-2 rounded-lg text-sm font-black transition-all flex items-center gap-1.5 ${returnTab === '이력' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <History size={13} />
-              이력
+              반품하기
             </button>
           </div>
 
@@ -291,7 +263,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   {showReturnClientDropdown && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
                       {partners
-                        .filter(sellsTo)
+                        .filter(c => c.companyId === companyId && sellsTo(c))
                         .filter(c => !returnClientSearch || c.name.toLowerCase().includes(returnClientSearch.toLowerCase()))
                         .map(c => (
                           <button
@@ -369,7 +341,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                     />
                     {returnItemSearch && (
                       <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto">
-                        {sellableProducts
+                        {returnProducts
                           .filter(p => !returnItems.some(i => i.itemId === p.id))
                           .filter(p => p.name.toLowerCase().includes(returnItemSearch.toLowerCase()))
                           .map(p => (
@@ -381,7 +353,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                               {p.name}
                             </button>
                           ))}
-                        {sellableProducts.filter(p => !returnItems.some(i => i.itemId === p.id) && p.name.toLowerCase().includes(returnItemSearch.toLowerCase())).length === 0 && (
+                        {returnProducts.filter(p => !returnItems.some(i => i.itemId === p.id) && p.name.toLowerCase().includes(returnItemSearch.toLowerCase())).length === 0 && (
                           <p className="px-3 py-3 text-xs text-slate-400 text-center">검색 결과 없음</p>
                         )}
                       </div>
@@ -511,7 +483,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                     />
                     {prItemSearch && (
                       <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto">
-                        {items
+                        {purchaseProducts
                           .filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase()))
                           .map(s => (
                             <button
@@ -522,7 +494,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                               {s.name}
                             </button>
                           ))}
-                        {items.filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase())).length === 0 && (
+                        {purchaseProducts.filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase())).length === 0 && (
                           <p className="px-3 py-3 text-xs text-slate-400 text-center">검색 결과 없음</p>
                         )}
                       </div>
@@ -554,137 +526,11 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
             </div>
           )}
 
-          {/* ── 반품 이력 ── */}
-          {returnTab === '이력' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">기간</label>
-                <DateRangeFilter from={returnFrom} to={returnTo} quick={returnQuick} label="반품 조회"
-                  onChange={(from, to, quick) => { setReturnFrom(from); setReturnTo(to); setReturnQuick(quick); }} />
-                <span className="text-xs text-slate-400">{filteredReturnHistory.length}건</span>
-              </div>
-
-              {filteredReturnHistory.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">
-                  <RotateCcw size={32} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">해당 기간의 반품 이력이 없습니다</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredReturnHistory.map(req => (
-                    <div key={req.id}>
-                      <div className="flex items-center gap-2 mb-1.5 px-1">
-                        {req.returnType === '매입' ? (
-                          <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
-                            <Truck size={10} /> 보낸 반품
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                            <RotateCcw size={10} /> 받은 반품
-                          </span>
-                        )}
-                      </div>
-                      <ReturnCard
-                        req={req}
-                        isAdmin={isAdmin}
-                        isProcessing={processingId === req.id}
-                        onProcess={() => handleProcessReturn(req)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
       {/* ── 전표 발행 모달 ── */}
 
-    </div>
-  );
-};
-
-// ── 반품 이력 카드 ──────────────────────────────────────────────────────────────
-
-interface ReturnCardProps {
-  req: ReturnRequest;
-  isAdmin: boolean;
-  isProcessing: boolean;
-  onProcess: () => void;
-}
-
-const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onProcess }) => {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div
-        className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={() => setExpanded(p => !p)}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-black text-slate-800 text-sm">{req.partnerName}</p>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${req.status === 'processed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              {req.status === 'processed' ? '처리완료' : '처리대기'}
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {dateOfLocal(req.createdAt)} · {req.items.length}개 품목 · ₩{req.totalAmount.toLocaleString()}
-            {req.createdBy && <span> · 접수: {req.createdBy}</span>}
-          </p>
-        </div>
-
-        {req.status === 'pending' && isAdmin && (
-          <button
-            onClick={e => { e.stopPropagation(); onProcess(); }}
-            disabled={isProcessing}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0"
-          >
-            {isProcessing ? '처리 중...' : '처리'}
-          </button>
-        )}
-
-        <ChevronDown
-          size={16}
-          className={`text-slate-400 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-        />
-      </div>
-
-      {expanded && (
-        <div className="border-t border-slate-100 px-4 pb-4 pt-3 space-y-2.5">
-          {req.orderId && <p className="text-xs text-slate-400">원주문 ID: {req.orderId}</p>}
-          {req.linkedStatementId && <p className="text-xs text-emerald-600">연결 전표: {req.linkedStatementId}</p>}
-
-          <div className="space-y-1.5">
-            {req.items.map((item, i) => (
-              <div key={i} className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <span className="font-semibold text-slate-700">{item.name}</span>
-                  <span className="text-slate-400">{item.quantity}개 × ₩{item.price.toLocaleString()}</span>
-                  <span className="text-slate-400">· {item.reason}</span>
-                </div>
-                <span className={`ml-2 shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black ${item.isResellable ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                  {item.isResellable ? '재판매' : '폐기'}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {req.note && (
-            <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              비고: {req.note}
-            </p>
-          )}
-          {req.processedAt && (
-            <p className="text-xs text-slate-400">
-              처리일시: {req.processedAt.slice(0, 16).replace('T', ' ')}
-              {req.processedBy && ` (${req.processedBy})`}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 };

@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import { planPartnerPayment, type PaymentPlan } from '../../functions/src/partnerPaymentPlan';
+import { settlementDirectionOf, settlementTypeOf, isAccruedPayableStatement } from '../../src/features/admin/voucherMerge';
+import { defaultCashAccountId } from '../../src/shared/defaultCashAccount';
 /**
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CashEntryModal, { type CashModalMode } from './CashEntryModal';
 import type { IssuedStatement, CashEntry, AccountCode, Partner } from '../../src/shared/types';
@@ -315,4 +320,37 @@ describe('자금 전표 수정 — 이미 난 것을 고친다', () => {
     await u.clear(입력칸('금액'));
     expect(screen.getByRole('button', { name: /저장/ })).toBeDisabled();
   });
+});
+
+it('매입 지불1500·이 전표부터 갚음은 실제 저장 callback에서 출금2511000+선급133500으로 전달하며 선수254는 만들지 않는다', async () => {
+  const text = readFileSync('components/TradeStatement.tsx', 'utf8');
+  const tree = ts.createSourceFile('TradeStatement.tsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declarations: string[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isVariableStatement(node) && node.declarationList.declarations.some(d => ts.isIdentifier(d.name) && ['recordPayment', 'savePayment'].includes(d.name.text))) declarations.push(node.getText(tree));
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  expect(declarations).toHaveLength(2);
+  const submit = vi.fn(async (_company: string, request: any) => planPartnerPayment({ ...request,
+    companyId: 'taebaek', claims: [{ id: 'st1', companyId: 'taebaek', partnerId: 'p1', tradeDate: '2026-08-28', amount: 1000, accountCode: '251' }], cashEntries: [], settlements: [],
+  }));
+  const env = { companyId: 'taebaek', activeCashAccounts: [{ id: 'bank1', active: true, companyId: 'taebaek' }], cashAccounts: [{ id: 'bank1', active: true }],
+    defaultCashAccountId, recordPartnerPayment: submit, settlementDirectionOf, settlementTypeOf, isAccruedPayableStatement,
+    paySaving: { current: false }, payAccountId: 'bank1', cashEntries: [], onIssueCashEntry: undefined, setCashModal: vi.fn(), alert: vi.fn(), 저장실패문구: (e: Error) => e.message };
+  const code = ts.transpileModule(declarations.join('\n') + '\nreturn savePayment;', { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const save = new Function(...Object.keys(env), code)(...Object.values(env));
+  const stmt = 매출전표({ type: '매입', totalSupply: 1000, totalAmount: 1000, items: [{ accountCode: '251', side: '대변', supply: 1000, total: 1000 }] } as never);
+  띄우기({ kind: '수금지불', stmt }, { onSettle: save, partnerBalances: new Map([['p1', { payable: 1000, receivable: 0 }]]) });
+  expect(screen.getByText('지불 처리')).toBeInTheDocument();
+  await userEvent.clear(입력칸('금액'));
+  await userEvent.type(입력칸('금액'), '1500');
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  expect(screen.getByText(/초과분은 선급금/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: '계속 진행' }));
+  await waitFor(() => expect(submit).toHaveBeenCalledOnce());
+  expect(submit.mock.calls[0][1]).toMatchObject({ direction: '출금', amount: 1500, pin: true, allocations: [{ statementId: 'st1', amount: 1500 }] });
+  const plan = await submit.mock.results[0].value;
+  expect(plan.lines).toEqual([{ accountCode: '251', amount: 1000 }, { accountCode: '133', amount: 500 }]);
+  expect(plan.lines.some((line: PaymentPlan['lines'][number]) => line.accountCode === '254')).toBe(false);
 });

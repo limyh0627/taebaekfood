@@ -16,7 +16,7 @@ const props = (companyId: CompanyId) => ({
   companyId,
   items: [{ id: `${companyId}-item`, name: `${companyId} 품목`, type: 'product', unit: '개', companyId }] as Item[],
   partners: [{ id: `${companyId}-partner`, name: `${companyId} 거래처`, partnerType: '매출+매입처', companyId }] as Partner[],
-  partnerItems: [{ id: `${companyId}-partner-item`, itemId: `${companyId}-item`, partnerId: `${companyId}-partner`, Direction: 'out' }] satisfies PartnerItem[],
+  partnerItems: [{ id: `${companyId}-partner-item`, itemId: `${companyId}-item`, partnerId: `${companyId}-partner`, Direction: 'out' }, { id: `${companyId}-purchase-link`, itemId: `${companyId}-item`, partnerId: `${companyId}-partner`, Direction: 'in' }] satisfies PartnerItem[],
   orders: [], currentUser: { id: 'user', name: '담당자' }, isAdmin: true, onProcessReturn: vi.fn(),
 });
 function selectPartner(placeholder: string) {
@@ -44,7 +44,7 @@ describe('반품 회사 전환 초안', () => {
 
   it('보내기 거래처와 품목 수량 초안도 회사 전환 시 초기화된다', () => {
     const view = render(<ReceivingReturnsManager {...props('taebaek')} />);
-    fireEvent.click(screen.getByRole('button', { name: /^보낸 반품$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^반품하기$/ }));
     selectPartner('공급처 검색...');
     fireEvent.change(screen.getByPlaceholderText('+ 품목 검색하여 추가...'), { target: { value: 'taebaek' } });
     fireEvent.mouseDown(screen.getByRole('button', { name: 'taebaek 품목' }));
@@ -53,7 +53,7 @@ describe('반품 회사 전환 초안', () => {
     view.rerender(<ReceivingReturnsManager {...props('taebaek')} />);
     expect((screen.getByPlaceholderText('0') as HTMLInputElement).value).toBe('4');
     view.rerender(<ReceivingReturnsManager {...props('punghoe')} />);
-    fireEvent.click(screen.getByRole('button', { name: /^보낸 반품$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^반품하기$/ }));
     expect((screen.getByPlaceholderText('공급처 검색...') as HTMLInputElement).value).toBe('');
     expect(screen.queryByText('taebaek 품목')).toBeNull();
     expect((screen.getByPlaceholderText('반품 사유, 메모 (선택)') as HTMLTextAreaElement).value).toBe('');
@@ -67,12 +67,12 @@ describe('반품 회사 전환 초안', () => {
     view.rerender(<ReceivingReturnsManager {...props('punghoe')} />);
     expect(old.stop).toHaveBeenCalledTimes(1);
     expect(mock.listeners[1].clauses).toEqual([{ field: 'companyId', op: '==', value: 'punghoe' }]);
-    fireEvent.click(screen.getByRole('button', { name: /^이력$/ }));
+    expect(screen.queryByRole('button', { name: /^이력$/ })).toBeNull();
     act(() => mock.listeners[1].callback([{ id: 'new', partnerName: '현재 회사 반품', items: [], totalAmount: 0, status: 'pending', createdAt: new Date().toISOString() } as unknown as ReturnRequest]));
-    expect(screen.getByText('현재 회사 반품')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /반품받기/ }).textContent).toContain('1');
     act(() => old.callback([{ id: 'old', partnerName: '옛 회사 반품', items: [], totalAmount: 0, status: 'pending', createdAt: new Date().toISOString() } as unknown as ReturnRequest]));
     expect(screen.queryByText('옛 회사 반품')).toBeNull();
-    expect(screen.getByText('현재 회사 반품')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /반품받기/ }).textContent).toContain('1');
     expect(mock.command).not.toHaveBeenCalled();
   });
 });

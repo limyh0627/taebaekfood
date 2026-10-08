@@ -39,11 +39,11 @@ describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 �
     if (adminAuth) { await adminAuth.deleteUser(prefix); await expect(adminAuth.getUser(prefix)).rejects.toMatchObject({ code: 'auth/user-not-found' }); }
     if (app) await deleteApp(app); if (adminApp) await deleteAdminApp(adminApp);
   }, 90_000);
-  async function seed(suffix: string) {
-    const product = { id: prefix + '-' + suffix + '-product', companyId: 'taebaek', name: '합성 완제품', type: 'product', unit: '개', spec: '1kg', stock: 0, lots: [] } as unknown as Item;
+  async function seed(suffix: string, stockProduction = false) {
+    const product = { id: prefix + '-' + suffix + '-product', companyId: 'taebaek', name: '합성 완제품', type: 'product', unit: '개', spec: '1kg', stock: stockProduction ? 10 : 0, lots: stockProduction ? [{ id: prefix + '-existing', material: '합성 완제품', supplierName: '합성', qtyIn: 10, qtyRemaining: 10, unitKg: 1, kgIn: 10, kgRemaining: 10, receivedDate: '2026-01-01', status: 'active', createdAt: '2026-01-01T00:00:00.000Z' }] : [] } as unknown as Item;
     const ready = { ...product, id: prefix + '-' + suffix + '-ready', name: '합성 구성 완제품', stock: 20,
       lots: [{ id: prefix + '-component-lot', material: '합성 구성 완제품', supplierName: '합성', qtyIn: 20, qtyRemaining: 20, unitKg: 1, kgIn: 20, kgRemaining: 20, receivedDate: '2026-01-01', status: 'active' as const, createdAt: '2026-01-01T00:00:00.000Z' }] };
-    const order = { id: prefix + '-' + suffix, companyId: 'taebaek', partnerName: '합성 거래처', status: OrderStatus.PENDING,
+    const order = { id: prefix + '-' + suffix, companyId: 'taebaek', ...(stockProduction ? { purpose: 'stock-production' as const } : {}), partnerName: '합성 거래처', status: OrderStatus.PENDING,
       items: [{ lineId: 'line-a', itemId: product.id, name: product.name, quantity: 5, checked: false }] } as Order;
     for (const [collection, data] of [['items', product], ['items', ready], ['orders', order]] as const) {
       paths.add(collection + '/' + data.id); const { id, ...body } = data; await adminDb.doc(collection + '/' + id).create(body);
@@ -92,4 +92,21 @@ describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 �
     expect(after.inventoryReservations).toEqual(original.inventoryReservations);
     expect((await read('orders/' + order.id)).inventoryOperation).toBeNull();
   }, 60_000);
+  it('재고 만들기는 기존10개가 있어도5개를 추가생산하고 예약없이 판매가용하며 취소는 원래10개로 복원한다', async () => {
+    const { product, ready, order, engine } = await seed('stock-only', true);
+    await engine.changeOrderItemCompletion(order.id, 0, order.items.map(row => ({ ...row, checked: true })), OrderStatus.DISPATCHED);
+    const made = await read('items/' + product.id);
+    expect(made.stock).toBe(15);
+    expect(made.lots.reduce((sum: number, lot: any) => sum + lot.qtyRemaining, 0)).toBe(15);
+    expect(Object.values(made.inventoryReservations ?? {}).some((row: any) => row.orderId === order.id)).toBe(false);
+    expect((await read('items/' + ready.id)).stock).toBe(15);
+    await engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED);
+    expect((await read('items/' + product.id)).stock).toBe(15);
+    await expect(engine.changeOrderStatus(order.id, OrderStatus.SHIPPED)).rejects.toThrow('출고하지 않습니다');
+    const saved = await read('orders/' + order.id);
+    await engine.changeOrderItemCompletion(order.id, 0, saved.items.map((row: any) => ({ ...row, checked: false })), OrderStatus.PENDING);
+    expect((await read('items/' + product.id)).stock).toBe(10);
+    expect((await read('items/' + ready.id)).stock).toBe(20);
+  }, 60_000);
+
 });

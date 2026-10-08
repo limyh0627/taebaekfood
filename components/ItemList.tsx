@@ -1,3 +1,4 @@
+import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
@@ -208,7 +209,7 @@ interface ItemListProps {
   onConfirmRequest: (id: string) => void;
   onConfirmRequests: (ids: string[]) => void;
   //  수량은 **언제나 재고 단위**다. boxQuantity 는 '몇 박스라고 말했는지'(표시용).
-  onBulkAddConfirmedOrders: (items: { id: string, quantity: number, boxQuantity?: number }[]) => void;
+  onBulkAddConfirmedOrders: (items: { id: string, quantity: number, boxQuantity?: number, partnerId?: string }[]) => void;
   onConfirmAllRequests: () => Promise<void>;
   onFinishConfirmedOrder: (id: string) => Promise<boolean | void> | void;
   onUpdateConfirmedQty: (id: string, qty: number) => void;
@@ -384,7 +385,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     const beforeShipment = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED]);
     for (const order of orders ?? []) {
       // 주문 전체 상태가 아니라 **품목 줄의 작업완료**를 본다. 한 주문 안에서도 완료된 품목만 예약한다.
-      if (!beforeShipment.has(order.status)) continue;
+      if (isStockProduction(order) || !beforeShipment.has(order.status)) continue;
       for (const line of order.items ?? []) {
         if (!line.checked) continue;
         const product = items.find(candidate => candidate.id === line.itemId);
@@ -604,6 +605,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [inboundSubTab] = useState<InboundSubTab>('입고');
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
   const [showReturnOverlay, setShowReturnOverlay] = useState(false);
+  const [showReceiptPicker, setShowReceiptPicker] = useState(false);
+  const [receiptPartnerId, setReceiptPartnerId] = useState('');
+  const [receiptSearch, setReceiptSearch] = useState('');
   // 임가공(OEM) 모달 — 목록은 입고대기·입고이력에 녹아 있고 여기선 모달만 연다
   const [oemIssueOpen, setOemIssueOpen] = useState(false);
   const [oemReceiveTarget, setOemReceiveTarget] = useState<PurchaseOrder | null>(null);
@@ -820,7 +824,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const clearFilters = () => { setActiveSubtype('전체'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
-  const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
+  const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean; partnerId?: string }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -834,9 +838,11 @@ const ItemListContent: React.FC<ItemListProps> = ({
   );
 
   const closingEditCancelled = useRef(false); // 재고 현황 모달 편집 취소(ESC) 여부
+  const supplierIds = (itemId: string) => [...new Set(partnerItems.filter(link => link.Direction === 'in' && link.itemId === itemId && inboundPartners.some(partner => partner.id === link.partnerId)).map(link => link.partnerId))];
+  const updateCartPartner = (id: string, partnerId: string) => setCart(rows => rows.map(row => row.id === id ? { ...row, partnerId } : row));
   const addToCart = (itemId: string, defaultQty: number, isBox?: boolean) => {
     if (!cart.some(c => c.id === itemId)) {
-      setCart(prev => [...prev, { id: itemId, qty: defaultQty, isBox: isBox ?? false }]);
+      setCart(prev => [...prev, { id: itemId, qty: defaultQty, isBox: isBox ?? false, partnerId: supplierIds(itemId)[0] }]);
     }
   };
   const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
@@ -854,7 +860,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     await onBulkAddConfirmedOrders(cart.map(c => {
       const per = unitsPerBoxOf(items.find(p => p.id === c.id));
       const box = c.isBox && per > 1;
-      return { id: c.id, quantity: box ? c.qty * per : c.qty, ...(box ? { boxQuantity: c.qty } : {}) };
+      return { id: c.id, partnerId: c.partnerId, quantity: box ? c.qty * per : c.qty, ...(box ? { boxQuantity: c.qty } : {}) };
     }));
     setCart([]);
     setShowCartPanel(false);
@@ -1141,7 +1147,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         result = result.filter(p => matchGrade(p, gradeSel));
       }
       if (supSel.size > 0) {
-        result = result.filter(p => supSel.has(psMap.get(p.id) ?? ''));
+        result = result.filter(p => supplierIds(p.id).some(id => supSel.has(id)));
       }
       if (catSel.size > 0) {
         // 분류(=DB subtype) 우선 — 옛 데이터는 타입 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
@@ -1155,7 +1161,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       result = result.filter(p => {
         if (p.name.toLowerCase().includes(q)) return true;
         if ((p.spec ?? '').toLowerCase().includes(q)) return true;
-        const inboundPartnerName = inboundPartners.find(s => s.id === psMap.get(p.id))?.name || '';
+        const inboundPartnerName = supplierIds(p.id).map(id => inboundPartnerMap.get(id)?.name ?? '').join(' ');
         if (inboundPartnerName.toLowerCase().includes(q)) return true;
         //  연결은 partner_item 하나가 근거다(2026-09-06)
         const hasPartnerMatch = partnersOfItem(partnerItems, p.id).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
@@ -1280,6 +1286,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* 장바구니 FAB (fixed — 위치 무관하므로 헤더 뒤에 두어 space-y 마진 영향 제거) */}
       {activeTab === 'master' && (
         <button
+          aria-label="담은 발주 품목 보기"
           onClick={() => setShowCartPanel(true)}
           className="fixed bottom-6 right-4 z-30 flex items-center justify-center w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full shadow-xl transition-all"
         >
@@ -1337,8 +1344,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
         )}
 
         {/* 입고처리/반품처리 버튼 행 (입고/반품 탭에서만) */}
-        {activeTab === 'inbound' && returnContent && (
+        {activeTab === 'inbound' && (
           <div className="flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setShowReceiptPicker(true)} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white">입고 처리</button>
             {returnContent && (
               <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
                 <RotateCcw size={13} /><span>반품 처리</span>
@@ -1491,6 +1499,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
       </div>
 
       {/* 입고처리 오버레이 */}
+
+      {showReceiptPicker && <ModalShell title="입고 처리" onClose={() => setShowReceiptPicker(false)} bodyClassName="space-y-3">
+        <label className="block text-sm font-bold">매입 거래처<select aria-label="입고 매입 거래처" value={receiptPartnerId} onChange={event => setReceiptPartnerId(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="">거래처 선택</option>{inboundPartners.map(partner => <option key={partner.id} value={partner.id}>{partner.name}</option>)}</select></label>
+        <input aria-label="입고 품목 검색" value={receiptSearch} onChange={event => setReceiptSearch(event.target.value)} placeholder="품목명·규격 검색" className="w-full rounded-lg border p-2" />
+        {!receiptPartnerId ? <p className="text-sm text-slate-500">매입 거래처를 먼저 선택해 주세요.</p> : <div className="max-h-80 space-y-2 overflow-y-auto">{confirmedOrders.filter(po => po.partnerId === receiptPartnerId && canConfirmReceipt(po)).filter(po => !receiptSearch || poLines(po).some(line => `${productMap.get(line.itemId)?.name ?? line.name} ${productMap.get(line.itemId)?.spec ?? ''}`.includes(receiptSearch))).map(po => <button type="button" key={po.id} onClick={() => { const lines = poLines(po); setFlowDetail({type:'입고',id:po.id,lines:lines.map(line => ({itemId:line.itemId,quantity:line.quantity}))}); setFlowQuantities(lines.map(line => String(line.quantity))); setShowReceiptPicker(false); }} className="block w-full rounded-lg border p-3 text-left"><strong className="text-sm">{poLines(po).map(line => productMap.get(line.itemId)?.name ?? line.name).join(', ')}</strong><span className="block text-xs text-slate-500">입고대기 품목 확인 후 입고확정</span></button>)}<p className="text-xs text-slate-500">전표가 연결된 입고대기 발주를 선택합니다. 발주 전체 품목이 함께 입고됩니다.</p></div>}
+      </ModalShell>}
 
       {/* 반품처리 오버레이 */}
       {showReturnOverlay && returnContent && (
@@ -2506,7 +2520,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       .map(item => {
                       const product = productMap.get(item.id);
                       if (!product) return null;
-                      const partnerName = inboundPartnerMap.get(psMap.get(product.id) ?? '')?.name;
+                      const partnerName = inboundPartnerMap.get(item.partnerId ?? psMap.get(product.id) ?? '')?.name;
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
@@ -2521,6 +2535,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                               )}
                             </div>
                           </div>
+                          {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="max-w-40 rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
                           {unitsPerBoxOf(product) > 0 && (
                             <button
                               onClick={() => updateCartIsBox(item.id, !item.isBox)}
@@ -2768,6 +2783,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {`${displayStockOf(product)}${product.unit}`}<PackLine product={product} stock={product.stock} /></p>
+                      {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="mt-1 w-full rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
                       {unitsPerBoxOf(product) > 0 && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
@@ -3260,7 +3276,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 cart.forEach(item => {
                   const product = items.find(p => p.id === item.id);
                   if (!product) return;
-                  const sid = psMap.get(product.id) || '__none__';
+                  const sid = item.partnerId || psMap.get(product.id) || '__none__';
                   const sname = inboundPartners.find(s => s.id === sid)?.name || '거래처 미지정';
                   if (!groups.has(sid)) groups.set(sid, { partnerId: sid, partnerName: sname, items: [] });
                   groups.get(sid)!.items.push({

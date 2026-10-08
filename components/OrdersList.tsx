@@ -1,3 +1,4 @@
+import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { appConfirm, appNotice, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
@@ -1130,7 +1131,7 @@ export const OrderCard = memo<OrderCardProps>(({
                    **체크가 굴려 주지 않는 단계**라 누를 자리가 있어야 한다. 그 자리를 여기 둔다 —
                    출고 방식(배송·직접수령·택배)은 어차피 "어떻게 나가나" 를 적는 칸이다.
                    무엇이 얼마나 빠지는지는 `shipDeductions` 가 셈한다(재고 엔진과 같은 함수). */}
-              {order.status === OrderStatus.SHIPPED && !readOnly ? (
+              {isStockProduction(order) ? <span className="text-xs font-bold text-indigo-600">재고 만들기 · 출고 없음</span> : order.status === OrderStatus.SHIPPED && !readOnly ? (
                 <button
                   type="button"
                   onClick={event => { event.stopPropagation(); onUpdateStatus(order.id, OrderStatus.DISPATCHED); }}

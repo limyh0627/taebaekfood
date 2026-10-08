@@ -1,3 +1,4 @@
+import { isStockProduction } from '../../shared/orderPurpose';
 import { processReturn } from './returnCommands';
 import { mutateManualSettlement } from './manualSettlementCommands';
 import { mutateCash, matchCashAllocations, resumeCashMutation, prepareTransferCash, type PayrollCashEdit, type TransferCashEdit } from './cashMutationCommands';
@@ -801,7 +802,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       p.type === '향미유' || p.type === '고춧가루' || (p.type as string) === 'goods' ||
       p.procureType === '완사입' || p.procureType === '임가공';
     for (const o of allOrders) {
-      if (!o.producedAt || o.shippedOut) continue;   // 작업완료 & 미출고만
+      if (isStockProduction(o) || !o.producedAt || o.shippedOut) continue;   // 작업완료 & 미출고만
       for (const it of o.items) {
         const product = allItems.find(p => p.id === it.itemId);
         if (!product || !holdsUnitStock(product) || isGoods(product)) continue;
@@ -869,6 +870,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [isOrderCreateChooserOpen, setIsOrderCreateChooserOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
+  const [orderCreateMode, setOrderCreateMode] = useState<'order' | 'stock'>('order');
   const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
   const [pasteOrderInitialText, setPasteOrderInitialText] = useState('');
   const [pasteOrderSourceMessageId, setPasteOrderSourceMessageId] = useState<string | null>(null);
@@ -1173,14 +1175,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 장바구니 확정 → 발주예정(pending) 생성
   // 주문카드처럼: 같은 거래처 품목은 묶어서 발주카드 1개(items[]), 제출할 때마다 새 카드 추가(append-only)
-  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, boxQuantity?: number }[]) => {
+  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, boxQuantity?: number, partnerId?: string }[]) => {
+    if (items.some(item => item.partnerId && (!partners.some(partner => partner.id === item.partnerId) || !partnerIn.some(link => link.itemId === item.id && link.partnerId === item.partnerId)))) throw new Error('선택한 매입 거래처 연결이 변경되었습니다. 다시 선택해 주세요.');
     const base = Date.now();
     const createdAt = new Date().toISOString();
     // 거래처별 묶음 (partnerId 없으면 품목별 개별 카드)
     const groups = new Map<string, { partnerId?: string; partnerName?: string; items: typeof items }>();
     items.forEach((item, idx) => {
       const ps = partnerIn.find(s => s.itemId === item.id || (s as any).itemId === item.id);
-      const partnerId = ps?.partnerId || (ps as any)?.partnerId;
+      const partnerId = item.partnerId || ps?.partnerId || (ps as any)?.partnerId;
       const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
       const key = partnerId || `__none_${idx}`;
       if (!groups.has(key)) groups.set(key, { partnerId, partnerName, items: [] });
@@ -1440,7 +1443,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {
             label: '재고 부족 확인',
             run: async () => {
-              try { await checkAndAlertShortage(draft.items, draft.partnerId); }
+              try { if (!isStockProduction(draft)) await checkAndAlertShortage(draft.items, draft.partnerId); }
               catch (error) { console.error(`[${label}] 재고 부족 확인 실패`, error); throw error; }
             },
           },
@@ -1449,7 +1452,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             run: async (identity) => {
               try {
                 await addItem('notifications', {
-                  type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`,
+                  type: 'new_order', title: isStockProduction(draft) ? '재고 만들기' : '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`,
                   readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id,
                   linkedId: identity.id,
                 } as Omit<AppNotification, 'id'>);
@@ -1577,7 +1580,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
     if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });
     const order = cur;
-    if (!order || order.producedAt) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
+    if (!order || order.producedAt || isStockProduction(order)) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });   // 이미 생산됨 — 물을 것 없다
     const rows = buildStockUseRows(order, allItems, appData.orderUnitInputs);
     if (rows.length === 0) return changeOrderStatus(id, status, undefined, { approvedBy: currentUser?.name, orderPatch });            // 쓸 재고가 없다 → 전량 생산
     setStockUseAsk({ scope: askScope, mode: 'status', orderId: id, partnerName: order.partnerName, rows, orderPatch });
@@ -1872,7 +1875,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return;
     }
 
-    const lineRows = applying
+    const lineRows = applying && !isStockProduction(order)
       ? buildStockUseRows({ items: [plan.items[itemIdx]!] }, allItems, appData.orderUnitInputs)
       : [];
     const startSave = () => {
@@ -2502,7 +2505,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'shipping' && (
             <DeliveryManager
               companyId={companyId}
-              orders={orders}
+              orders={orders.filter(order => !isStockProduction(order))}
               partners={partners}
               items={allItems}
               partnerItems={partnerItems}
@@ -2536,7 +2539,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   companyId={companyId}
                   calendarOnly
                   sortMode={sort}
-                  orders={orders}
+                  orders={orders.filter(order => !isStockProduction(order))}
                   partners={partners}
                   items={allItems}
                   partnerItems={partnerItems}
@@ -5118,7 +5121,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         <ModalShell title="주문 생성 방법" onClose={() => setIsOrderCreateChooserOpen(false)} className="max-w-md"
           footer={<button type="button" onClick={() => setIsOrderCreateChooserOpen(false)} className="ml-auto block rounded-lg px-4 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>}>
             <div className="grid gap-3">
-              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('stock'); setIsAddOrderOpen(true); }} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-indigo-50"><strong className="block text-sm">재고 만들기</strong><span className="text-xs text-slate-500">판매 주문 없이 필요한 수량을 추가 생산합니다.</span></button>
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('order'); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><Plus size={19} /></span>
                 <span className="min-w-0">
                   <strong className="block text-sm font-black text-slate-900 group-hover:text-indigo-700">직접 선택</strong>
@@ -5137,6 +5141,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {isAddOrderOpen && (
         <AddOrderModal
+          mode={orderCreateMode}
           items={allItems}
           orders={allOrders}
           partners={partners}

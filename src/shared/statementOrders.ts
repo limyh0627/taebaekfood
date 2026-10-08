@@ -1,3 +1,4 @@
+import { isStockProduction } from './orderPurpose';
 import { OrderStatus } from './types';
 import type { Order } from './types';
 import { dateOfLocal } from './day';
@@ -55,7 +56,7 @@ export interface PartnerOrdersInput {
 export function partnerOrders(input: PartnerOrdersInput): Order[] {
   const { orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo } = input;
 
-  let list = orders.filter(o => o.partnerId === partnerId).sort(늦은순);
+  let list = orders.filter(o => !isStockProduction(o) && o.partnerId === partnerId).sort(늦은순);
 
   if (onlyActive) {
     // 진행주문 = 미발행(배송완료·예전주문이어도 전표가 안 걸렸으면 표시) + 진행중 상태.
@@ -81,7 +82,7 @@ export function partnerOrders(input: PartnerOrdersInput): Order[] {
  */
 export function activeOrders(orders: readonly Order[], isVouchered: Vouchered): Order[] {
   return orders
-    .filter(o => o.partnerName !== '생산기록')   // 생산기록은 주문이 아니다
+    .filter(o => !isStockProduction(o) && o.partnerName !== '생산기록')   // 생산기록은 주문이 아니다
     .filter(o => isActive(o) || !isVoucherResolved(o, isVouchered))
     .sort((a, b) =>
       미발행먼저(o => isVoucherResolved(o, isVouchered))(a, b) ||
@@ -90,5 +91,5 @@ export function activeOrders(orders: readonly Order[], isVouchered: Vouchered): 
 
 /** 진행 주문이 있는 거래처 id — 목록에서 표를 다는 데 쓴다. */
 export function activePartnerIds(orders: readonly Order[]): Set<string> {
-  return new Set(orders.filter(isActive).map(o => o.partnerId ?? ''));
+  return new Set(orders.filter(o => !isStockProduction(o) && isActive(o)).map(o => o.partnerId ?? ''));
 }

@@ -42,6 +42,20 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
   beforeAll(async () => { app = admin.initializeApp({ projectId }, projectId); db = admin.firestore(app); });
   afterAll(async () => { await app?.delete(); });
 
+  it('최신 생산용 주문은 매출 연결을 거절하고 번호·원문을 바꾸지 않는다', async () => {
+    await seed('stock-production-order');
+    const ref=db.collection('orders').doc('stock-production-order');
+    await ref.update({purpose:'stock-production'});
+    const before=(await ref.get()).data();
+    const counter=db.collection('appMeta').doc('voucherNo_taebaek_'+date+'_general');
+    const originalCounter=(await counter.get()).data();
+    const request={...input('stock-sale'),statement:{...statement('stock-sale'),orderId:'stock-production-order'},orderIds:['stock-production-order']};
+    await expect(issue(request)).rejects.toThrow('생산용 주문');
+    expect((await ref.get()).data()).toEqual(before);
+    expect((await counter.get()).data()).toEqual(originalCounter);
+    expect((await db.collection('issuedStatements').doc('stock-sale').get()).exists).toBe(false);
+  });
+
   it('9/30 추가 번호를 일반 전표와 자금전표가 공유하고 재시도해도 기존 번호통은 그대로 둔다', async () => {
     await seed('catch-up-order');
     const extraDate = '2026-09-30';

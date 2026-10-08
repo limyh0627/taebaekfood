@@ -72,3 +72,15 @@ it('상세 입고확정 거절 시 상세와 기존 수량이 남는다', async 
   expect(screen.getByText('입고 상세')).toBeInTheDocument();
   expect(screen.getByLabelText('검수 품목 수량')).toHaveValue(2);
 });
+
+it('입고 처리에서 거래처와 품목을 선택하면 기존 원자 입고확정으로 연결한다', async () => {
+ const issue = view([{ ...order, partnerId: 'supplier' }]);
+ issue.rendered.rerender(<ItemList {...issue.props} inboundPartners={[{ id: 'supplier', name: '검수 거래처', type: '매입' } as any]} />);
+ fireEvent.click(screen.getByRole('button', { name: '입고 처리' }));
+ expect(screen.getByText('매입 거래처를 먼저 선택해 주세요.')).toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('입고 매입 거래처'), { target: { value: 'supplier' } });
+ fireEvent.click(screen.getByRole('button', { name: /검수 품목.*입고대기 품목 확인/ }));
+ fireEvent.click(screen.getAllByRole('button', { name: '입고확정' }).at(-1)!);
+ await act(async () => {});
+ expect(issue).toHaveBeenCalledExactlyOnceWith('po1');
+});

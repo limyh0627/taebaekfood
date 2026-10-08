@@ -137,3 +137,13 @@ describe('activePartnerIds', () => {
     expect([...s]).toEqual(['A']);
   });
 });
+
+describe('생산전용 주문의 판매 후보 격리', () => {
+  it.each([OrderStatus.PENDING,OrderStatus.PROCESSING,OrderStatus.DISPATCHED,OrderStatus.DELIVERED])('%s 생산용 주문은 모든 전표 후보에서 제외한다', status => {
+    const stock=주문({id:'stock',purpose:'stock-production',partnerId:'stock-partner',status});
+    const sale=주문({id:'sale',partnerId:'sale-partner'});
+    expect(activeOrders([stock,sale],아무것도안발행).map(o=>o.id)).toEqual(['sale']);
+    expect(partnerOrders({orders:[stock],partnerId:'stock-partner',isVouchered:아무것도안발행,onlyActive:false})).toEqual([]);
+    expect(activePartnerIds([stock,sale])).toEqual(new Set(['sale-partner']));
+  });
+});

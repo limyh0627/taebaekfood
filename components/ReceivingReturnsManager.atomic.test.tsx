@@ -18,7 +18,7 @@ const props = { companyId: 'taebaek' as const, items: [item], partners: [{ id: '
 afterEach(cleanup);
 beforeEach(() => { m.command.mockReset(); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
 function selectPurchase() {
-  fireEvent.click(screen.getByRole('button', { name: /^보낸 반품$/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^반품하기$/ }));
   fireEvent.focus(screen.getByPlaceholderText('공급처 검색...'));
   fireEvent.mouseDown(screen.getByRole('button', { name: '합성 거래처' }));
   fireEvent.change(screen.getByRole('combobox', { name: '원매입 전표' }), { target: { value: 'purchase' } });
@@ -54,4 +54,16 @@ describe('실제 반품 접수 원자 명령 입력', () => {
     await waitFor(() => expect(m.command).toHaveBeenCalledOnce());
     expect(m.command.mock.calls[0][0]).toMatchObject({ collection: 'returnRequests', data: { linkedStatementId: 'sale', returnType: '매출', totalAmount: 110 } });
   });
+  it('모달 이력을 없애고 매입처의 품목만 검색한다', () => {
+    render(<ReceivingReturnsManager {...props} items={[item, { ...item, id: 'unrelated', name: '다른 품목' }]} partnerItems={[{ id: 'link', partnerId: 'supplier', itemId: 'box', Direction: 'in' }]} />);
+    expect(screen.queryByRole('button', { name: /^이력$/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /반품받기/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^반품하기$/ }));
+    fireEvent.focus(screen.getByPlaceholderText('공급처 검색...'));
+    fireEvent.mouseDown(screen.getByRole('button', { name: '합성 거래처' }));
+    fireEvent.change(screen.getByPlaceholderText('+ 품목 검색하여 추가...'), { target: { value: '품목' } });
+    expect(screen.queryByRole('button', { name: '다른 품목' })).toBeNull();
+    expect(m.command).not.toHaveBeenCalled();
+  });
+
 });

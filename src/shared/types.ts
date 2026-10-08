@@ -256,6 +256,8 @@ export interface Order {
   createdAt: string;
   deliveryDate: string;
   email: string;
+  /** 판매·출고 없이 지정 수량을 추가 생산하는 작업. */
+  purpose?: 'stock-production';
   source: OrderSource;
   pallets?: OrderPallet[];
   region?: string;

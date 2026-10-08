@@ -1,3 +1,4 @@
+import { isGoodsItem } from '../src/shared/itemTaxonomy';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { today, addDays, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
@@ -24,6 +25,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 
 interface AddOrderModalProps {
+  mode?: 'order' | 'stock';
   items: Item[];
   orders: readonly Order[];
   partners: Partner[];
@@ -55,8 +57,10 @@ const decompound = (str: string): string =>
 const matchPartner = (name: string, query: string): boolean =>
   !!query.trim() && matchesSearch(name, query);
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onBack, onSave }) => {
-  const products = items;
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, orders, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onBack, onSave }) => {
+  const stockProduction = mode === 'stock';
+  const products = stockProduction ? items.filter(item => item.type === 'product' && !isGoodsItem(item)) : items;
+  const [stockPartnerIds, setStockPartnerIds] = useState<string[]>([]);
   const itemById = useMemo(() => new Map(items.map(item => [item.id, item])), [items]);
   const submaterials = _submaterials ?? items.filter(i => i.type !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -267,7 +271,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
     orderableForPartner(loose) || boxSiblings(loose, items).some(s => orderableForPartner(s.item));
 
   const catalogProducts = useMemo(() => {
-    if (!selectedPartner) return [];
+    if (!selectedPartner && !stockProduction) return [];
     return products
       .filter(p => {
         if (p.archived || p.type === 'service') return false;
@@ -279,8 +283,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
         const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedPartner, partnerOutIds, items, shipToId]);
-  const linkedProducts = useMemo(() => catalogProducts.filter(groupOrderable), [catalogProducts, selectedPartner, partnerOutIds, items]);
+  }, [products, selectedPartner, partnerOutIds, items, shipToId, stockProduction]);
+  const linkedProducts = useMemo(() => stockProduction ? catalogProducts.filter(item => stockPartnerIds.length === 0 || (partnerItems ?? []).some(link => stockPartnerIds.includes(link.partnerId) && (link.itemId === item.id || boxSiblings(item, items).some(box => box.item.id === link.itemId)))) : catalogProducts.filter(groupOrderable), [catalogProducts, selectedPartner, partnerOutIds, items, stockProduction, stockPartnerIds, partnerItems]);
   const usingCatalogFallback = !!selectedPartner && linkedProducts.length === 0;
   const displayProducts = usingCatalogFallback ? catalogProducts : linkedProducts;
 
@@ -315,7 +319,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   }, [categoryProducts]);
   const volumeMatchedProducts = volumeFilter ? categoryProducts.filter(p => splitNameVolume(p).vol === volumeFilter) : categoryProducts;
   const shownProducts = productSearch.trim()
-    ? volumeMatchedProducts.filter(product => matchesSearch(product.name, productSearch))
+    ? volumeMatchedProducts.filter(product => matchesSearch(`${product.name} ${product.spec ?? ''}`, productSearch))
     : volumeMatchedProducts;
 
   const shownGroups = [...new Set(shownProducts.map(p => p.type))].map(key => ({
@@ -523,11 +527,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
-    if (savingRef.current || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0) return;
+    if (savingRef.current || !orderDate || !deadline || (!stockProduction && !selectedPartner) || selectedItems.length === 0) return;
 
     const draft = buildNewOrderDraft({
-      partner: selectedPartner, items, partnerItems: partnerOut, lines: selectedItems,
-      orderDate, deliveryDate: deadline, shipToId,
+      partner: stockProduction ? undefined : selectedPartner!, purpose: stockProduction ? 'stock-production' : undefined, items, partnerItems: partnerOut, lines: selectedItems,
+      orderDate, deliveryDate: stockProduction ? orderDate : deadline, shipToId: stockProduction ? undefined : shipToId,
       source: (isDelivery && source === '일반') ? '택배' : source,
       shipMethod, note: orderNote, noteImportant, pallets,
     });
@@ -544,11 +548,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
   };
 
   return (
-    <ModalShell title="주문 등록 · 직접 선택" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
+    <ModalShell title={stockProduction ? '재고 만들기' : '주문 등록 · 직접 선택'} onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
         {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-4 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         <div ref={scrollBodyRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
-          <section className="space-y-3">
+          {!stockProduction && <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 text-slate-700"><CalendarDays size={16} /><h3 className="text-sm font-black">주문 일정</h3></div>
               <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
@@ -564,8 +568,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                 <input type="date" required min={orderDate} value={deadline} onChange={event => setDeadline(event.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
               </label>
             </div>
-          </section>
-          <section className="space-y-4">
+          </section>}
+          {!stockProduction && <section className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 text-slate-700"><User size={16} /><h3 className="text-sm font-black">거래처</h3></div>
               <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
@@ -716,9 +720,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
                 </div>
               </div>
             )}
-          </section>
+          </section>}
 
-          {selectedPartner && (
+          {stockProduction && <section className="space-y-2"><h3 className="text-sm font-black">거래처로 품목 찾기 · 매입/매출 연결 · 선택 사항</h3><input aria-label="품목 거래처 검색" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="거래처 검색" className="w-full rounded-lg border p-2" /><button type="button" onClick={() => setStockPartnerIds([])} className="text-xs text-slate-500">거래처 필터 전체 해제 ({stockPartnerIds.length}곳 선택)</button><div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">{partners.filter(partner => !searchTerm || matchesSearch(partner.name, searchTerm)).filter(partner => (partnerItems ?? []).some(link => link.partnerId === partner.id)).map(partner => <label key={partner.id} className="flex items-center gap-1 text-xs"><input type="checkbox" checked={stockPartnerIds.includes(partner.id)} onChange={event => setStockPartnerIds(ids => event.target.checked ? [...ids, partner.id] : ids.filter(id => id !== partner.id))} />{partner.name}</label>)}</div></section>}
+
+          {!stockProduction && selectedPartner && (
             <section aria-labelledby="active-client-orders-title" className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
               <div className="flex items-center gap-2 text-slate-400">
                 <ClipboardList size={16} />
@@ -763,7 +769,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
             </section>
           )}
 
-          {selectedPartner && (
+          {(stockProduction || selectedPartner) && (
             <section className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
               <div className="flex items-center justify-between">
                 <div className="flex flex-wrap items-center gap-2">
@@ -919,7 +925,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
             </section>
           )}
 
-          {selectedPartner && (
+          {(stockProduction || selectedPartner) && (
             <section className="space-y-2">
               <label htmlFor="new-order-note" className="text-sm font-black text-slate-700">주문 비고</label>
               <textarea id="new-order-note" value={orderNote} onChange={event => setOrderNote(clampNote(event.target.value))}
@@ -991,8 +997,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, orders, partners, 
           <ModalActionFooter
             onCancel={() => { if (!savingRef.current) onClose(); }}
             onPrimary={handleSubmit}
-            primaryLabel={isSaving ? '저장 중…' : '주문 생성 완료'}
-            primaryDisabled={isSaving || !orderDate || !deadline || !selectedPartner || selectedItems.length === 0}
+            primaryLabel={isSaving ? '저장 중…' : stockProduction ? '생산 작업 등록' : '주문 생성 완료'}
+            primaryDisabled={isSaving || !orderDate || !deadline || (!stockProduction && !selectedPartner) || selectedItems.length === 0}
           />
         </div>
     </ModalShell>

@@ -1,3 +1,4 @@
+import { isStockProduction } from '../../shared/orderPurpose';
 import { prepareOrderInventoryCancellation, executeOrderInventoryCancellation, readOrderCancellationReceipt, type CancellationTicket, type CancellationAction } from './orderInventoryCancellation';
 import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem, isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
@@ -316,7 +317,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       // 이 품목 자신의 재고로 충당할 몫. 앞선 라인이 이미 쓴 만큼(deltas)은 빠진 값으로 본다.
       const onHand = Math.max(0, stockOf(product) + (deltas.get(product.id) ?? 0));
       const choice = plan?.[idx];
-      const own = Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
+      const own = isStockProduction(order) ? 0 : Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
       const toProduce = Math.round((units - own) * 1000) / 1000;
       if (toProduce <= 0) continue;
 
@@ -483,14 +484,14 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   ) => {
     if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
-    const wantShipped = STATUS_WANT_SHIPPED.has(target);
+    const wantShipped = !isStockProduction(order) && STATUS_WANT_SHIPPED.has(target);
     const deltas = new Map<string, number>();
     const patch: Partial<Order> = {};
     let productLotMutations: OrderProductLotMutation[] = [];
     let shipmentStockDeltas: { itemId: string; delta: number }[] | undefined;
     const needsForwardProduction = wantProduced && !order.producedAt;
     const needsForwardShipment = wantShipped && !order.shippedOut;
-    const wantsAllocationUntilShipment = wantProduced && !wantShipped;
+    const wantsAllocationUntilShipment = !isStockProduction(order) && wantProduced && !wantShipped;
     const reservationExtraItemIds = [
       ...(order.inventorySnapshots?.production?.stockDeltas.map(row => row.itemId) ?? []),
       ...(order.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
@@ -745,7 +746,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
               const single = { ...operationOrder, items: [row.item] };
               planOrderProduction(single, preview, stockSnapshot, row.index === itemIndex ? plan : undefined);
               // 생산 순변화만 예약하면 이 줄이 쓸 기존 완제품이 보호되지 않는다.
-              shipOrder(single, preview);
+              if (!isStockProduction(operationOrder)) shipOrder(single, preview);
             }
           }
           return preview;
@@ -812,7 +813,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         states[lineId] = { ...previousState, applied: false, reversedAt: now };
       }
 
-      reservation.allocationQuantities = completedLineAllocation(operationOrder, nextItems, states);
+      reservation.allocationQuantities = isStockProduction(operationOrder) ? new Map() : completedLineAllocation(operationOrder, nextItems, states);
       const aggregate = aggregateOrderLineInventory(operationOrder, states);
       const orderPatch: Record<string, unknown> = {
         items: nextItems,
@@ -888,6 +889,9 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (live.status === status) {
         await updateItem('orders', id, { status });
         return;
+      }
+      if (isStockProduction(live) && [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(status)) {
+        throw new Error('재고 만들기는 출고하지 않습니다.');
       }
       const nextItems = context.orderPatch?.items ?? live.items;
       if (requiresCompleteItemsForStatusChange(live.status, status) && !hasCompleteOrderItems(nextItems)) {

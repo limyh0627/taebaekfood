@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import AddOrderModal from './AddOrderModal';
 import { OrderStatus, type Item, type Order, type Partner, type PartnerItem } from '../src/shared/types';
@@ -200,4 +200,27 @@ describe('신규 주문 창의 거래처 진행 주문', () => {
     expect(within(firstOrder).getByText('5병')).toBeInTheDocument();
     expect(within(firstOrder).getByText('2박스')).toBeInTheDocument();
   });
+});
+
+ describe('재고 만들기', () => {
+ it('일정과 거래처 필수 없이 품목을 골라 생산작업을 저장한다', async () => {
+ const save = vi.fn().mockResolvedValue(undefined);
+ render(<AddOrderModal mode="stock" items={items} partners={partners} partnerItems={partnerItems} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={save} />);
+ expect(screen.queryByText('주문 일정')).not.toBeInTheDocument();
+ fireEvent.change(screen.getAllByPlaceholderText('0')[0], { target: { value: '5' } });
+ fireEvent.click(screen.getByRole('button', { name: '생산 작업 등록' }));
+ await waitFor(() => expect(save).toHaveBeenCalledOnce());
+ expect(save.mock.calls[0][0]).toMatchObject({ purpose: 'stock-production', totalAmount: 0 });
+ expect(save.mock.calls[0][0].partnerId).toBeUndefined();
+ });
+ });
+
+it('생산 거래처 필터는 복수 ID로 품목만 거르고 판매상대를 지정하지 않는다', () => {
+ render(<AddOrderModal mode="stock" items={items} partners={partners} partnerItems={partnerItems} orders={[]} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
+ const choices = screen.getAllByRole('checkbox').filter(box => box.closest('label')?.textContent === '가을식품');
+ fireEvent.click(choices[0]);
+ expect(screen.getByText('거래처 필터 전체 해제 (1곳 선택)')).toBeInTheDocument();
+ expect(screen.queryByText('주문 일정')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button', { name: /거래처 필터 전체 해제/ }));
+ expect(choices[0]).not.toBeChecked();
 });

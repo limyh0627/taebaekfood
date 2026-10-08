@@ -1,3 +1,4 @@
+import { isStockProduction } from '../src/shared/orderPurpose';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import { loadPayrollCashEdit, prepareTransferCash, hasPendingCashMutation, type PayrollCashEdit, type TransferCashEdit, type PreparedTransferCashEdit } from '../src/features/admin/cashMutationCommands';
 import { payrollTotals } from '../src/shared/types';
@@ -232,7 +233,7 @@ function buildSupplierGroups<T extends { id: string }>(
 //  기간 빠른선택(금주·당월·당년)은 shared/day 에 있다 — 화면마다 '금주'가 다르면 안 된다
 
 const TradeStatement: React.FC<TradeStatementProps> = ({
-  orders, allItems, partners, partnerItems,
+  orders: suppliedOrders, allItems, partners, partnerItems,
   accountCodes = [],
   accountGroups = [],
   cashAccounts = [],
@@ -293,6 +294,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     noLinkIds, setNoLinkIds,
   } = useStatementItemEditor();
   // 미연결 품목의 과세 선택은 '연결할까요?' 답 전까지 전표 안에서만 보관한다.
+  // 생산용 주문은 전표 선택·직접 연결·복수 발행 모두의 매출 원천에서 제외한다.
+  const orders = useMemo(() => suppliedOrders.filter(order => !isStockProduction(order)), [suppliedOrders]);
   const [pickerTaxEdits, setPickerTaxEdits] = useState<Record<string, '과세' | '면세' | null>>({});
   // 연결 저장 직후 구독이 도착하기 전에도 같은 전표에서 다시 묻지 않는다.
   const [confirmedLinkIds, setConfirmedLinkIds] = useState<Set<string>>(() => new Set());
