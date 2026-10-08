@@ -1,3 +1,4 @@
+import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -62,6 +63,16 @@ export async function recordLoanMovement(db: admin.firestore.Firestore, companyI
     assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate);
     if (operationSnap.exists) {
       const prior = operationSnap.data()!, stored = cashSnap.data();
+      if (prior.companyId === companyId && prior.requestHash === requestHash && (!cashSnap.exists || (stored?.mutationRevision ?? 0) > 0)) {
+        const original = await readCashCreationMutation(db, tx, companyId, input.operationId, cashSnap, row => {
+          const business = { companyId: row.companyId, loanId: row.loanId, date: row.date,
+            cashAccountId: row.cashAccountId, dir: row.dir, amount: row.amount,
+            accountCode: row.accountCode ?? null, lines: row.lines ?? null, note: row.note };
+          return row.loanId === input.loanId && row.issueOperationId === input.operationId && row.issuePayloadHash === requestHash
+            && row.docNo === prior.docNo && hash(business) === prior.entryHash;
+        });
+        if (original) return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo, balanceAfter: prior.balanceAfter };
+      }
       const business = stored && { companyId: stored.companyId, loanId: stored.loanId, date: stored.date,
         cashAccountId: stored.cashAccountId, dir: stored.dir, amount: stored.amount,
         accountCode: stored.accountCode ?? null, lines: stored.lines ?? null, note: stored.note };

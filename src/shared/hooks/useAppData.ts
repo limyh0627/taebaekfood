@@ -1,3 +1,5 @@
+import { useReturnAllocationSources, type ReturnAllocationOperation } from './useReturnAllocationSources';
+import type { ReturnStockOperation } from '../returnStockMovement';
 import { COL } from '../collections';
 import type { ItemReceipt } from '../receipt';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -15,8 +17,8 @@ import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument
 import type { OrderUnitInputs } from '../orderUnits';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
 import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
-import { where } from 'firebase/firestore';
-import { authReady } from '../firebase';
+import { where, doc, getDoc } from 'firebase/firestore';
+import { auth, db, authReady } from '../firebase';
 import { dateOfLocal, kstDateRangeUtc } from '../day';
 import { companySettingDocId } from '../companySettings';
 
@@ -78,6 +80,10 @@ export interface AppData {
   /** 포장 환산표 — 박스로 주문할 수 있는 낱개 품목과 그 개입수 */
   itemPacks: PackRow[];
   returnRequests: ReturnRequest[];
+  returnOperations: ReturnStockOperation[];
+  returnAllocationOperations: ReturnAllocationOperation[];
+  returnAllocationsLoaded: boolean;
+  returnOperationsLoaded: boolean;
   itemReceipts: ItemReceipt[];
   companyInfo: CompanyInfo | null;
   accountGroups: AccountGroup[];
@@ -138,6 +144,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   //  포장 환산표 — 낱개로만 세는데 박스로 말하는 품목(향미유·고춧가루)의 개입수
   const [itemPacks, setItemPacks] = useState<PackRow[]>([]);
+  const [returnOperationState, setReturnOperationState] = useState<{ companyId: CompanyId; rows: ReturnStockOperation[] } | null>(null);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   //  사 온 기록 — 제품별원장이 '입고' 줄로 읽는다(2026-09-03부터)
   const [itemReceipts, setItemReceipts] = useState<ItemReceipt[]>([]);
@@ -223,6 +230,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   // 재무 구독은 업무 구독과 수명을 분리한다. 직원에게는 생성하지 않는다.
   useEffect(() => {
     if (!enabled || !isAdmin) return;
+    setReturnOperationState(null);
     let cancelled = false;
     let unsubscribes: (() => void)[] = [];
     const co = [where('companyId', '==', companyId)];
@@ -248,6 +256,9 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         }, co),
         // 자금 원장 — 전표와 같은 이유로 전체 로딩. 잔액은 첫 거래부터 누적해야 맞다.
         listen<CashAccount>(COL.cashAccounts, setCashAccounts, co),
+        subscribeToCollection<ReturnStockOperation>('returnOperations', rows => {
+          if (!cancelled) setReturnOperationState({ companyId, rows });
+        }, co, () => { if (!cancelled) setReturnOperationState(null); }),
         listen<CashEntry>(COL.cashEntries, setCashEntries, co),
         listen<Settlement>(COL.settlements, setSettlements, co),
         listen<InventorySnapshot>(COL.inventorySnapshots, setInventorySnapshots, co),
@@ -391,6 +402,18 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const packIndex = useMemo(() => buildPackIndex(enabled ? itemPacks.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, itemPacks]);
   setPackIndex(packIndex);
 
+  const loadedReturnOperations = enabled && isAdmin && returnOperationState?.companyId === companyId ? returnOperationState.rows : undefined;
+  const loadReturnSources = useCallback(async (ids: string[], company: CompanyId) => {
+    const rows = await Promise.all(ids.map(id => getDoc(doc(db, 'issuedStatements', id))));
+    return rows.filter(row => row.exists()).map(row => {
+      const statement = { ...row.data(), id: row.id } as IssuedStatement;
+      if (companyOf(statement) !== company) throw new Error('반품 원전표 회사가 맞지 않습니다.');
+      return statement;
+    });
+  }, []);
+  const currentReturnUid = useCallback(() => auth.currentUser?.uid, []);
+  const returnAllocationOperations = useReturnAllocationSources(companyId, enabled && isAdmin, loadedReturnOperations,
+    issuedStatements, loadReturnSources, auth.currentUser?.uid, currentReturnUid, staticRefreshKey);
   const scopedData = useMemo(() => {
     const visibleRows = <T extends object,>(rows: T[]): T[] => enabled ? rows.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : [];
     return {
@@ -413,6 +436,10 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       itemBoms: visibleRows(itemBoms),
       itemPacks: visibleRows(itemPacks),
       returnRequests: visibleRows(returnRequests),
+      returnOperations: enabled && isAdmin && returnOperationState?.companyId === companyId ? returnOperationState.rows : [],
+      returnOperationsLoaded: enabled && isAdmin && returnOperationState?.companyId === companyId,
+      returnAllocationOperations: returnAllocationOperations ?? [],
+      returnAllocationsLoaded: returnAllocationOperations !== undefined,
       itemReceipts: visibleRows(itemReceipts),
       issuedStatements: isAdmin ? visibleRows(issuedStatements) : [],
       accountGroups: isAdmin ? visibleRows(accountGroups) : [],
@@ -427,7 +454,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       productionSalesLogs: isAdmin ? visibleRows(productionSalesLogs) : [],
       pendingStatementEdits: isAdmin ? visibleRows(pendingStatementEdits) : [],
     };
-  }, [enabled, companyId, isAdmin, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
+  }, [enabled, companyId, isAdmin, returnOperationState, returnAllocationOperations, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
     ...scopedData,
     orderUnitInputs: { bom: bomIndex, pack: packIndex },

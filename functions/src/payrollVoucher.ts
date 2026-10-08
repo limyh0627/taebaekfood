@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
@@ -137,6 +138,15 @@ export async function issuePayrollVoucher(db: admin.firestore.Firestore, company
     assertVoucherDateAllowed(releaseSnap, companyId, date);
     const existing = cashSnap.exists ? cashSnap : stmtSnap.exists ? stmtSnap : null;
     if (cashSnap.exists && stmtSnap.exists) throw new HttpsError('failed-precondition', '급여 전표가 중복 저장되었습니다.');
+    if (input.mode === 'cash' && (!cashSnap.exists || (cashSnap.data()?.mutationRevision ?? 0) > 0)) {
+      const linked = paySnap.data();
+      const original = await readCashCreationMutation(db, tx, companyId, opId, cashSnap, row =>
+        !!linked && linked.issueOperationId === opId && linked.cashEntryId === opId && linked.issueKind === 'cashEntries'
+        && row.payrollRequestHash === requestHash && row.payrollId === id && row.companyId === companyId
+        && linked.issueDocNo === row.docNo
+        && (linked.issueOriginalVoucherHash ?? linked.issueVoucherHash) === hash(voucherContent('cashEntries', row)));
+      if (original) return { id: opId, docNo: original.docNo as string, kind: 'cashEntries' as const };
+    }
     if (existing) {
       const data = existing.data()!;
       if (data.payrollRequestHash !== requestHash || data.payrollId !== id || data.companyId !== companyId)
@@ -236,3 +246,6 @@ export const issuePayrollVoucherCommand = onCall({ region: REGION }, async reque
     throw new HttpsError('permission-denied', '관리자 회사 권한이 필요합니다.');
   return issuePayrollVoucher(admin.firestore(), companyId, request.data as Input);
 });
+
+export { checked as checkPayrollDraft, voucherContent as payrollVoucherContent, hash as payrollVoucherHash };
+export type { DraftInput as PayrollDraftInput };

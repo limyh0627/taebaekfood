@@ -1,3 +1,4 @@
+import { ReturnValidationError } from './returnValidationError';
 /** Pure source-linked reversal plan. A writer must commit these lines and stock effects together. */
 type Line = { itemId?: string; accountCode?: string; qty: number; supply: number; tax: number; total: number };
 type ReturnItem = { itemId: string; quantity: number; isResellable: boolean };
@@ -7,7 +8,7 @@ export type Source = { id: string; companyId?: string; type: '매출' | '매입'
   totalSupply: number; totalTax: number; totalAmount: number; items: Line[] };
 type JournalLine = { accountCode: string; side: '차변' | '대변'; amount: number };
 const money = (value: number) => Number.isSafeInteger(value) && value >= 0;
-const fail = (message: string): never => { throw new Error(message); };
+const fail = (message: string): never => { throw new ReturnValidationError(message); };
 const payableCode = (codes: string[]) => {
   if (codes.includes('251')) return '251';
   if (codes.includes('253')) return '253';
@@ -59,7 +60,7 @@ export function planReturnReversal(companyId: string, request: ReturnRow, source
   const stockEffects: { itemId: string; quantityDelta: number }[] = [];
   for (const item of request.items) {
     const original = byId.get(item.itemId);
-    if (!original) throw new Error('반품 수량이 원전표의 남은 수량을 넘습니다.');
+    if (!original) throw new ReturnValidationError('반품 수량이 원전표의 남은 수량을 넘습니다.');
     if (original.total <= 0) fail('반품 대상 품목의 원전표 금액이 없습니다.');
     if (item.quantity + (previouslyReturned.get(item.itemId) ?? 0) > original.qty)
       fail('반품 수량이 원전표의 남은 수량을 넘습니다.');
@@ -130,16 +131,4 @@ export function planStandaloneReturn(request: {
   if (journalLines.reduce((sum, row) => sum + (row.side === '차변' ? row.amount : -row.amount), 0) !== 0)
     fail('반품 전표 차변·대변이 맞지 않습니다.');
   return { amount, supply, tax, journalLines, stockEffects };
-}
-
-/** No server stock/lot adapter is wired yet; reject physical returns before any writer starts. */
-export function assertAtomicReturnStockSupport(
-  effects: { itemId: string; quantityDelta: number }[],
-  itemKinds: Record<string, 'raw' | 'unit' | 'general' | 'unknown'>,
-): void {
-  for (const effect of effects) {
-    if (!Number.isFinite(effect.quantityDelta) || effect.quantityDelta === 0) fail('반품 재고 수량이 잘못되었습니다.');
-    const kind = itemKinds[effect.itemId] ?? 'unknown';
-    fail(`반품 ${kind} 재고의 원자 처리가 아직 준비되지 않았습니다.`);
-  }
 }

@@ -22,5 +22,5 @@ it('자금원장의 같은 행을 연속 삭제해도 확인과 삭제는 한 �
   fireEvent.click(button); fireEvent.click(button);
   expect(appConfirm).toHaveBeenCalledOnce();
   await act(async () => resolve(true));
-  expect(remove).toHaveBeenCalledExactlyOnceWith('cash1');
+  expect(remove).toHaveBeenCalledExactlyOnceWith('cash1', expect.objectContaining({ id: 'cash1', amount: 100, cashAccountId: 'bank' }));
 });

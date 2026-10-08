@@ -27,7 +27,7 @@ import {
 import { auth, authReady, db, functions } from "../firebase";
 import { httpsCallable } from 'firebase/functions';
 import { today, isCalendarDay } from '../day';
-import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement } from "../types";
+import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement, PendingStatementEdit } from "../types";
 import { requireActiveReleaseId } from '../releaseGate';
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
@@ -79,12 +79,20 @@ export async function activeReleaseId(): Promise<string> {
   return requireActiveReleaseId((await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data());
 }
 
-export async function editIssuedStatementCommand(id: string, patch: Partial<IssuedStatement>, expectedRevision: number, operationId: string): Promise<void> {
+export async function editIssuedStatementCommand(id: string, patch: Partial<IssuedStatement>, expectedRevision: number, operationId: string, pendingEdit?: PendingStatementEdit): Promise<void> {
   await authReady;
   if (!auth.currentUser) throw new Error('로그인이 만료됐습니다. 다시 로그인해 주세요.');
   const releaseId = await activeReleaseId();
   const call = httpsCallable(functions, 'editIssuedStatementCommand');
-  await call({ statementId: id, patch: stripUndefined(patch), expectedRevision, operationId, releaseId });
+  let approval: { pendingEditRequestId: string; pendingEditRequestHash: string } | undefined;
+  if (pendingEdit) {
+    const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
+      : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([key,item]) => [key,canonical(item)])) : value;
+    const snapshot = Object.fromEntries(Object.entries(stripUndefined(pendingEdit)).filter(([key]) => key !== 'id'));
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(canonical(snapshot))));
+    approval = { pendingEditRequestId: pendingEdit.id, pendingEditRequestHash: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2,'0')).join('') };
+  }
+  await call({ statementId: id, patch: stripUndefined(patch), expectedRevision, operationId, releaseId, ...(approval ?? {}) });
 }
 
 export async function issueOemFeeVoucherCommand(input: { poId: string; perKg: number; statement: IssuedStatement }): Promise<string> {

@@ -1,7 +1,7 @@
 import type { Item, OrderItem } from './types';
 import { bomOf, bomParentsOf, type BomIndex } from './bomIndex';
 import { packUnitsOf, type PackIndex } from './packIndex';
-import { parseSpecCount, parsePackageKg } from '../constants/formula';
+import { unpackStockComponent, itemPackageKg, stockUnitKg } from '../../functions/src/shared/stockUnitMeasure';
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
 type BoxLike = Pick<Item, 'id'>;
@@ -45,9 +45,7 @@ export function 묶음갈래of(완제품구성: readonly { qty: number }[]): 묶
 }
 
 export function unpackComponent(product: BoxLike | undefined, inputs?: OrderUnitInputs): { itemId: string; count: number } | null {
-  const comps = (inputs ? (product ? inputs.bom.of(product.id) : []) : bomOf(product?.id)).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
-  if (묶음갈래of(comps) === '박스') return { itemId: comps[0].childId, count: comps[0].qty };
-  return null;
+  return unpackStockComponent(inputs ? (product ? inputs.bom.of(product.id) : []) : bomOf(product?.id));
 }
 
 /** 재고 단위가 박스인 품목인가 (BOM에 낱개 구성품이 물려 있는 것) */
@@ -271,10 +269,7 @@ export function boxQtyLabel(qty: number | string, perBox?: number, boxWord = 'BO
  * 한꺼번에 10~20배 작게 잡히던 자리다. 근거를 이름이 아니라 규격+단위로 옮긴다.
  */
 export function itemKg(item: Item, inputs?: OrderUnitInputs): number {
-  if (item.packageKg) return item.packageKg;
-  const perUnit = parsePackageKg(item.spec) ?? parsePackageKg(item.name) ?? 0;
-  const isBox = isBoxStockItem(item, inputs) || item.unit === '박스';
-  return perUnit * (isBox ? parseSpecCount(item.spec) : 1);
+  return itemPackageKg(item, isBoxStockItem(item, inputs));
 }
 
 /**
@@ -318,12 +313,7 @@ export function kgPerStockUnit(
   findItem: (id: string) => { spec?: string } | undefined,
   inputs?: OrderUnitInputs,
 ): number | undefined {
-  if (!product) return undefined;
-  const uc = unpackComponent(product, inputs);
-  if (!uc) return parsePackageKg(product.spec);
-  //  박스 규격(`1kg * 20`)에서 읽으면 1이 나온다 — 낱개 규격 × 개입수가 맞다
-  const looseKg = parsePackageKg(findItem(uc.itemId)?.spec);
-  return looseKg === undefined ? undefined : looseKg * uc.count;
+  return stockUnitKg(product, unpackComponent(product, inputs), findItem);
 }
 
 /** 재고 수량 → kg. 못 알면 undefined(0 으로 치지 않는다). */

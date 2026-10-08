@@ -102,8 +102,13 @@ service cloud.firestore {
     // ── 메뉴별 — 돈·인사·서류는 관리자만 ─────────────────────────
     //  사장님이 정한 관리자 전용 메뉴 그대로다: 전표·세금계산서·견적, 인사관리, 문서함,
     //  현금출납장·거래처원장·제품별원장, 재무제표, 분석 화면들.
+    function serverAuditCollection(c) {
+      return c in ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
+                   'loanMovementOperations', 'returnOperations', 'voucherMutationOperations',
+                   'companyTransferOperations', 'oemReceiptOperations'];
+    }
     function adminOnlyCollection(c) {
-      return c in [
+      return serverAuditCollection(c) || c in [
         'issuedStatements', 'pendingStatementEdits', 'settlements', 'quotations',
         'cashEntries', 'cashAccounts', 'cashFlowManual', 'loanContracts',
         'payrolls', 'fixedCosts', 'fixedCostTemplates', 'expensePresets',
@@ -119,8 +124,14 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return c in ['employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines'];
+    }
+
+    // 정산 명령·운영 보상 감사는 서버가 기록한다. 같은 회사 관리자만 읽을 수 있다.
+    match /{collection}/{id} {
+      allow get: if serverAuditCollection(collection) && isAdmin() && getOk();
+      allow list: if serverAuditCollection(collection) && isAdmin() && readOk();
     }
 
     function productionParentAdvanced(parentId) {

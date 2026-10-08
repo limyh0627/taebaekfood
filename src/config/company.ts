@@ -10,7 +10,7 @@
  * 이후에는 Firestore DB에 저장된 데이터를 사용하므로 이 파일은 참조되지 않습니다.
  */
 
-import { Post, PalletStock, Employee, Item, Partner, FileItem, AccountCode, AccountGroup } from '../../types';
+import { Post, Employee, Item, Partner, FileItem, AccountCode, AccountGroup } from '../../types';
 import { STANDARD_ACCOUNT, STANDARD_ACCOUNT_ADDITIONS } from '../shared/accountChart';
 
 // ── 공지사항 초기 데이터 ──────────────────────────────────────────────────────
@@ -57,12 +57,6 @@ export const INITIAL_BOARD_POSTS: Post[] = [
 export const INITIAL_FILES: FileItem[] = [
   { id: 'f1', name: '2024_상반기_제품_카탈로그.pdf', type: 'pdf', size: '5.4MB', date: '2024-03-20', uploader: '홍길동' },
   { id: 'f2', name: '자재_단가표_2024_03.xlsx', type: 'excel', size: '0.8MB', date: '2024-03-18', uploader: '김영희' },
-];
-
-// ── 파렛트 초기 데이터 ────────────────────────────────────────────────────────
-export const INITIAL_PALLETS: PalletStock[] = [
-  { id: 'pal1', name: '플라스틱 파렛트 (1100*1100)', total: 850, inUse: 310, damaged: 8 },
-  { id: 'pal2', name: '목재 파렛트 (유럽 규격)', total: 300, inUse: 85, damaged: 24 },
 ];
 
 // ── 직원 초기 데이터 ──────────────────────────────────────────────────────────

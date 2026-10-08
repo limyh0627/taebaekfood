@@ -1,11 +1,12 @@
+import { purchaseReturnRequest, salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
 import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
 import type { CompanyId } from '../src/shared/types';
 import { where } from 'firebase/firestore';
 import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RotateCcw, History, Truck, X, ChevronDown, Loader2 } from 'lucide-react';
 import { subscribeToCollection } from '../src/shared/services/firebaseService';
-import { Item, Order, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
+import { Item, Order, IssuedStatement, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { dateOfLocal, monthStart, today } from '../src/shared/day';
 import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/DateRangeFilter';
@@ -21,6 +22,7 @@ interface ReceivingReturnsManagerProps {
   partnerItems?: PartnerItem[];
   partners: Partner[];
   orders: Order[];
+  issuedStatements?: IssuedStatement[];
   currentUser: { id: string; name: string };
   isAdmin: boolean;
   onProcessReturn: (req: ReturnRequest) => Promise<void>;
@@ -34,6 +36,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   partnerItems,
   partners,
   orders,
+  issuedStatements = [],
   currentUser,
   isAdmin,
   onProcessReturn,
@@ -42,6 +45,8 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [returnTab, setReturnTab] = useState<ReturnTab>('받기');
 
   // ── Shared Firestore data ──
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
 
   //  반품 목록은 실시간 구독 — 다른 사람이 넣은 요청이 바로 떠야 한다
@@ -67,6 +72,8 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [returnQuick, setReturnQuick] = useState<DateRangeQuick>('당월');
 
   // ── 매입 반품 (보내기) state ──
+  const [purchaseSourceId, setPurchaseSourceId] = useState('');
+  const [salesSourceId, setSalesSourceId] = useState('');
   const [prSupplierId, setPrSupplierId] = useState('');
   const [prSupplierSearch, setPrSupplierSearch] = useState('');
   const [showPrSupplierDropdown, setShowPrSupplierDropdown] = useState(false);
@@ -138,6 +145,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   }, [returnClientId]);
 
   const handleSelectReturnClient = (id: string, name: string) => {
+    setSalesSourceId('');
     setReturnClientId(id);
     setReturnClientSearch(name);
     setShowReturnClientDropdown(false);
@@ -154,25 +162,14 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const handleReturnSubmit = async () => {
     const partner = partners.find(c => c.id === returnClientId);
     if (!partner) { alert('거래처를 선택해주세요.'); return; }
-    const items: ReturnItem[] = returnItems
-      .filter(i => Number(i.qty) > 0)
-      .map(i => ({
-        itemId: i.itemId,
-        name: i.name,
-        quantity: Number(i.qty),
-        price: 0,
-        reason: '기타' as ReturnReason,
-        isResellable: true,
-      }));
-    if (items.length === 0) { alert('반품 수량을 1개 이상 입력해주세요.'); return; }
+    let request: ReturnType<typeof salesReturnRequest>;
+    try { request = salesReturnRequest(companyId, returnClientId, issuedStatements.find(row => row.id === salesSourceId), returnItems, items); }
+    catch (error) { alert(error instanceof Error ? error.message : '반품 원전표를 확인해주세요.'); return; }
     setReturnSaving(true);
     try {
       await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: {
-        partnerId: returnClientId,
+        ...request,
         partnerName: partner.name,
-        items,
-        totalAmount: 0,
-        status: 'pending' as const,
         createdAt: new Date().toISOString(),
         createdBy: currentUser.name,
         ...(returnNote && { note: returnNote }),
@@ -182,7 +179,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
       setReturnItems([]);
       setReturnNote('');
       setReturnTab('이력');
-    } finally {
+    } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
       setReturnSaving(false);
     }
   };
@@ -190,26 +187,14 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const handlePurchaseReturnSubmit = async () => {
     const inboundPartner = partners.find(c => c.id === prSupplierId);
     if (!inboundPartner) { alert('거래처를 선택해주세요.'); return; }
-    const items: ReturnItem[] = prItems
-      .filter(i => Number(i.qty) > 0)
-      .map(i => ({
-        itemId: i.itemId,
-        name: i.name,
-        quantity: Number(i.qty),
-        price: 0,
-        reason: '기타' as ReturnReason,
-        isResellable: false,
-      }));
-    if (items.length === 0) { alert('반품 수량을 1개 이상 입력해주세요.'); return; }
+    let request: ReturnType<typeof purchaseReturnRequest>;
+    try { request = purchaseReturnRequest(companyId, prSupplierId, issuedStatements.find(row => row.id === purchaseSourceId), prItems, items); }
+    catch (error) { alert(error instanceof Error ? error.message : '반품 원전표를 확인해주세요.'); return; }
     setPrSaving(true);
     try {
       await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: {
-        partnerId: prSupplierId,
+        ...request,
         partnerName: inboundPartner.name,
-        items,
-        totalAmount: 0,
-        status: 'pending' as const,
-        returnType: '매입' as const,
         createdAt: new Date().toISOString(),
         createdBy: currentUser.name,
         ...(prNote && { note: prNote }),
@@ -219,19 +204,21 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
       setPrItems([]);
       setPrNote('');
       setReturnTab('이력');
-    } finally {
+    } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
       setPrSaving(false);
     }
   };
 
   const handleProcessReturn = async (req: ReturnRequest) => {
     if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
+    if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n역분개·재고·비현금 상계를 함께 확정합니다.`)) return;
+    if (!mounted.current) return;
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);
-    } finally {
-      setProcessingId(null);
+    } catch (error) { if (mounted.current) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
+    finally {
+      if (mounted.current) setProcessingId(null);
     }
   };
 
@@ -319,6 +306,21 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   )}
                 </div>
               </div>
+
+              {returnClientId && <div className="bg-white rounded-2xl p-4 space-y-2">
+                <label className="text-xs font-bold">원매출 전표
+                  <select aria-label="원매출 전표" value={salesSourceId} onChange={e => {
+                    setSalesSourceId(e.target.value);
+                    const original = issuedStatements.find(row => row.id === e.target.value && row.companyId === companyId && row.partnerId === returnClientId && row.type === '매출');
+                    setReturnItems((original?.items ?? []).map(row => ({ itemId: row.itemId ?? '', name: row.name, qty: '', unit: items.find(item => item.id === row.itemId)?.unit ?? '' })));
+                  }} className="block w-full border rounded-lg p-2 mt-1">
+                    <option value="">원매출 전표를 선택하세요</option>
+                    {issuedStatements.filter(row => row.companyId === companyId && row.partnerId === returnClientId && row.type === '매출' && row.totalAmount > 0)
+                      .map(row => <option key={row.id} value={row.id}>{row.tradeDate} · {row.docNo} · {row.totalAmount.toLocaleString()}원</option>)}
+                  </select>
+                </label>
+                <p className="text-xs text-slate-500">원전표 공급가·세액 비례로 계산하며, 품목에 맞춰 재고와 로트를 함께 처리합니다.</p>
+              </div>}
 
               {/* 품목 목록 */}
               {returnClientId && (
@@ -437,7 +439,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                         .map(c => (
                           <button
                             key={c.id}
-                            onMouseDown={() => { setPrSupplierId(c.id); setPrSupplierSearch(c.name); setShowPrSupplierDropdown(false); setPrItems([]); }}
+                            onMouseDown={() => { setPurchaseSourceId(''); setPrSupplierId(c.id); setPrSupplierSearch(c.name); setShowPrSupplierDropdown(false); setPrItems([]); }}
                             className={`w-full px-3 py-2.5 text-left text-sm hover:bg-orange-50 transition-colors ${prSupplierId === c.id ? 'bg-orange-50 font-bold text-orange-700' : 'text-slate-700'}`}
                           >
                             {c.name}
@@ -447,6 +449,21 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   )}
                 </div>
               </div>
+
+              {prSupplierId && <div className="bg-white rounded-2xl p-4 space-y-2">
+                <label className="text-xs font-bold">원매입 전표
+                  <select aria-label="원매입 전표" value={purchaseSourceId} onChange={e => {
+                    setPurchaseSourceId(e.target.value);
+                    const original = issuedStatements.find(row => row.id === e.target.value && row.companyId === companyId && row.partnerId === prSupplierId && row.type === '매입');
+                    setPrItems((original?.items ?? []).map(row => ({ itemId: row.itemId ?? '', name: row.name, qty: '', unit: items.find(item => item.id === row.itemId)?.unit ?? '' })));
+                  }} className="block w-full border rounded-lg p-2 mt-1">
+                    <option value="">원매입 전표를 선택하세요</option>
+                    {issuedStatements.filter(row => row.companyId === companyId && row.partnerId === prSupplierId && row.type === '매입' && row.totalAmount > 0)
+                      .map(row => <option key={row.id} value={row.id}>{row.tradeDate} · {row.docNo} · {row.totalAmount.toLocaleString()}원</option>)}
+                  </select>
+                </label>
+                <p className="text-xs text-slate-500">원전표 공급가·세액 비례로 계산하며, 품목에 맞춰 재고와 로트를 함께 처리합니다.</p>
+              </div>}
 
               {/* 품목 */}
               {prSupplierId && (

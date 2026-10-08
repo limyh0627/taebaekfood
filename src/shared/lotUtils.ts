@@ -1,9 +1,13 @@
+import { buildReceiveLot as buildReceiveLotPure } from '../../functions/src/shared/rawLot';
+import type { LotMixSetting } from '../../functions/src/shared/rawLot';
+export { nextLotNo, deductFromLots } from '../../functions/src/shared/rawLot';
+import { buildProductLot as buildProductLotPure, withCarryOverProductLot as withCarryOverProductLotPure, lotQtyRemaining } from '../../functions/src/shared/productLot';
+export { lotQtyRemaining, deductLotsByQty } from '../../functions/src/shared/productLot';
+export type { ProductLotTake } from '../../functions/src/shared/productLot';
+import type { ProductLotTake } from '../../functions/src/shared/productLot';
 import type { Item, RawMaterialLot } from './types';
 
-export interface LotMixSetting {
-  topPercent?: number;
-  ratios?: { lotId: string; percent: number }[];
-}
+export type { LotMixSetting } from '../../functions/src/shared/rawLot';
 
 /** 새 로트별 혼합비를 우선하고, 예전 상위 2개 설정도 계속 읽는다. */
 export function lotMixSettingOf(item: Pick<Item, 'mixEnabled' | 'mixTopPercent' | 'mixLotRatios'>): LotMixSetting | undefined {
@@ -15,7 +19,7 @@ export function lotMixSettingOf(item: Pick<Item, 'mixEnabled' | 'mixTopPercent' 
   return { topPercent: item.mixTopPercent ?? 50 };
 }
 import { today as todayStr } from './day';
-import { unitToKg } from '../constants/formula';
+export { receiptToKg } from '../../functions/src/shared/stockUnitMeasure';
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -44,17 +48,6 @@ export function withCarryOverLot(
   }];
 }
 
-/**
- * 자동 로트번호: 입고일(YYMMDD) + 같은 날 순번(2자리). 예) 2026-06-15 → "260615-01", "260615-02"…
- * 이월 번호는 일반 입고 번호와 접두사를 달리한다.
- */
-export function nextLotNo(lots: RawMaterialLot[], receivedDate: string): string {
-  const ymd = (receivedDate ?? '').replace(/-/g, '').slice(2); // 2026-06-15 → 260615
-  const n = (lots ?? []).filter(l => (l.lotNo ?? '').startsWith(ymd + '-')).length + 1;
-  return `${ymd}-${String(n).padStart(2, '0')}`;
-}
-
-/** 입고 1건 → 새 로트 1개 생성 (잔여 = 입고량) */
 export function buildReceiveLot(params: {
   material: string;
   supplierId?: string;
@@ -76,106 +69,12 @@ export function buildReceiveLot(params: {
   createdAt?: string;
 }): RawMaterialLot {
   const now = params.createdAt ?? new Date().toISOString();
-  return {
+  return buildReceiveLotPure({
+    ...params,
     id: params.id ?? `lot-${params.material}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    material: params.material,
-    supplierId: params.supplierId,
-    supplierName: params.supplierName,
-    packageType: params.packageType,
-    packageKg: params.packageKg,
-    qtyIn: params.qtyIn,
-    kgIn: round3(params.kgIn),
-    kgRemaining: round3(params.kgIn),
     receivedDate: params.receivedDate ?? todayStr(),
-    status: 'active',
-    poId: params.poId,
     createdAt: now,
-  };
-}
-
-/**
- * 로트 차감.
- * - 기본: 선입선출(FIFO) — 앞쪽 active 로트부터.
- * - 혼합(mix) 지정 시: 지정된 여러 active 로트에 비율대로 먼저 배분한다.
- *   예전 topPercent 설정도 상위 2개 비율로 계속 읽는다. 부족분은 FIFO로 이어서 차감한다.
- * 한 로트가 0이 되면 status='depleted'. 잔량이 부족하면 원본 로트 배열을 그대로 돌려준다.
- * 명령을 적용하는 쪽은 shortageKg > 0 을 반드시 거절해야 한다. 음수 이월을 새로 만들면
- * 같은 원료의 실제 재고와 로트가 함께 음수로 내려가던 사고를 되풀이한다.
- * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(부족량)
- */
-export function deductFromLots(
-  lots: RawMaterialLot[],
-  kgToUse: number,
-  mix?: LotMixSetting,
-): {
-  lots: RawMaterialLot[];
-  distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[];
-  shortageKg: number;
-} {
-  let remaining = round3(kgToUse);
-  // 직접 호출에서 NaN은 부족량 검사도 통과해 로트 잔량까지 NaN으로 번진다.
-  // 원자 명령의 검증과 별개로 FIFO 함수 입구에서도 유한한 양수만 받는다.
-  if (!Number.isFinite(kgToUse) || !Number.isFinite(remaining) || !(remaining > 0)) {
-    throw new RangeError('로트 사용량은 유한한 양수여야 한다');
-  }
-  const invalidLot = lots.find(lot => lot.status === 'active'
-    && !Number.isFinite(Number(lot.kgRemaining ?? 0)));
-  if (invalidLot) throw new RangeError(`활성 로트 ${invalidLot.id}의 잔량이 유한한 숫자가 아니다`);
-  const availableKg = round3(lots.reduce((sum, lot) =>
-    sum + (lot.status === 'active' ? Math.max(0, Number(lot.kgRemaining ?? 0)) : 0), 0));
-  if (!Number.isFinite(availableKg)) throw new RangeError('활성 로트의 잔량 합계가 유한한 숫자가 아니다');
-  const shortageKg = round3(Math.max(0, remaining - availableKg));
-  if (shortageKg > 0) return { lots, distribution: [], shortageKg };
-  const next = lots.map(l => ({ ...l }));
-  const dist: { idx: number; lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[] = [];
-  const activeIdx = next
-    .map((l, i) => ({ l, i }))
-    .filter(x => x.l.status === 'active' && (x.l.kgRemaining ?? 0) > 0)
-    .map(x => x.i);
-
-  const take = (idx: number, amount: number) => {
-    const l = next[idx];
-    const t = Math.min(l.kgRemaining, round3(amount), remaining);
-    if (t <= 0) return;
-    l.kgRemaining = round3(l.kgRemaining - t);
-    remaining = round3(remaining - t);
-    if (l.kgRemaining <= 0.0001) { l.kgRemaining = 0; l.status = 'depleted'; }
-    const ex = dist.find(d => d.idx === idx);
-    if (ex) ex.kg = round3(ex.kg + t);
-    else dist.push({ idx, lotId: l.id, supplierName: l.supplierName, lotNo: l.lotNo, receivedDate: l.receivedDate, kg: round3(t) });
-  };
-
-  // 혼합: 선택한 여러 로트에 비율 배분 우선. 합계가 100이 아니어도 정규화해 안전하게 처리한다.
-  if (mix && activeIdx.length >= 2 && remaining > 0) {
-    const configured = (mix.ratios ?? [])
-      .map(row => ({ idx: next.findIndex(lot => lot.id === row.lotId), percent: Math.max(0, Number(row.percent) || 0) }))
-      .filter(row => activeIdx.includes(row.idx) && row.percent > 0);
-    const targets = configured.length >= 2
-      ? configured
-      : [
-          { idx: activeIdx[0], percent: Math.max(0, Math.min(100, mix.topPercent ?? 50)) },
-          { idx: activeIdx[1], percent: 100 - Math.max(0, Math.min(100, mix.topPercent ?? 50)) },
-        ];
-    const percentTotal = targets.reduce((sum, row) => sum + row.percent, 0);
-    const total = round3(kgToUse);
-    targets.forEach((row, index) => {
-      const amount = index === targets.length - 1
-        ? round3(total - targets.slice(0, index).reduce((sum, prior) => sum + round3(total * prior.percent / percentTotal), 0))
-        : round3(total * row.percent / percentTotal);
-      take(row.idx, amount);
-    });
-  }
-  // 나머지(또는 비혼합): FIFO로 잔여 차감
-  for (const idx of activeIdx) {
-    if (remaining <= 0) break;
-    take(idx, remaining);
-  }
-
-  return {
-    lots: next,
-    distribution: dist.map(({ idx, ...d }) => d),
-    shortageKg: round3(Math.max(0, remaining)),
-  };
+  });
 }
 
 /**
@@ -209,21 +108,6 @@ export function settleCarryOver(lots: RawMaterialLot[]): RawMaterialLot[] {
  * 입고 품목 정보로부터 입고 kg을 환산한다.
  * - 단위가 kg이면 그대로, L이면 ×밀도, 그 외(개/캔/포대/자루)는 ×packageKg.
  */
-export function receiptToKg(params: {
-  quantity: number;
-  unit?: string;
-  density: number;
-  packageKg?: number;
-}): number {
-  const u = (params.unit ?? '').toLowerCase();
-  let kg: number;
-  if (u === 'kg') kg = params.quantity;
-  else if (u === 'l') kg = params.quantity * params.density;
-  else if (params.packageKg) kg = params.quantity * params.packageKg;
-  else kg = params.quantity;
-  return round3(kg);
-}
-
 /**
  * 오래된 소진(depleted) 로트 정리 — 로트 배열 무한 증가에 따른 문서 비대화 방지(#1).
  * active 로트는 항상 보존. depleted는 receivedDate가 retentionMonths 이전인 것만 제거.
@@ -251,120 +135,12 @@ export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6, a
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 완제품 입고 1건 → 로트 1개. 잔여 = 입고 개수. kg은 환산해 같이 들고 다닌다(수불부와 이어진다). */
-export function buildProductLot(params: {
-  material: string;          // 물질 축 — '볶음참깨'
-  itemId: string;            // 이 로트가 붙는 품목(박스 규격별로 다름)
-  supplierName: string;      // 만든 곳 — OEM이면 외주공장
-  supplierId?: string;
-  qtyIn: number;             // 입고 개수(박스 수)
-  unitKg: number;            // 1개당 kg
-  receivedDate?: string;
-  poId?: string;             // 만든 근거 — OEM 가공 배치
-  lotNo?: string;
-}): RawMaterialLot {
+export function buildProductLot(params: Parameters<typeof buildProductLotPure>[0]): RawMaterialLot {
   const now = new Date().toISOString();
-  const qty = Math.round(params.qtyIn * 1000) / 1000;
-  const kg = round3(qty * params.unitKg);
-  return {
-    id: `lot-${params.itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    material: params.material,
-    supplierId: params.supplierId,
-    supplierName: params.supplierName,
-    qtyIn: qty,
-    qtyRemaining: qty,
-    unitKg: params.unitKg,
-    kgIn: kg,
-    kgRemaining: kg,
-    receivedDate: params.receivedDate ?? todayStr(),
-    status: 'active',
-    poId: params.poId,
-    lotNo: params.lotNo,
-    createdAt: now,
-  };
+  return buildProductLotPure(params, { now, date: params.receivedDate ?? todayStr(), id: `lot-${params.itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` });
 }
-
-/**
- * 로트를 안 쓰던 완제품에 첫 로트를 얹을 때, 그때까지의 재고를 '이월' 로트로 보존한다.
- * 안 하면 로트 합계(0) < 재고(15박스)라 첫 출고부터 전부 미상으로 빠진다.
- * 이월분은 출처를 모르는 게 사실이므로 supplierName='이월'로 정직하게 남긴다.
- */
-export function withCarryOverProductLot(
-  lots: RawMaterialLot[],
-  currentQty: number,
-  material: string,
-  unitKg: number,
-  carryOver?: { id: string; createdAt: string; receivedDate: string },
-): RawMaterialLot[] {
-  if (lots.length > 0) return lots;
-  const qty = round3(currentQty);
-  if (!Number.isFinite(qty) || qty <= 0) return lots;
-  if (!Number.isFinite(unitKg) || unitKg < 0) throw new Error('이월 로트의 단위 중량을 확인해 주세요.');
-  return [{
-    id: carryOver?.id ?? `lot-carry-${material}-${Date.now()}`,
-    lotNo: `이월-${(carryOver?.receivedDate ?? todayStr()).replaceAll('-', '')}`,
-    material,
-    supplierName: '이월',
-    qtyIn: qty, qtyRemaining: qty, unitKg,
-    kgIn: round3(qty * unitKg), kgRemaining: round3(qty * unitKg),
-    receivedDate: carryOver?.receivedDate ?? todayStr(),
-    status: 'active',
-    createdAt: carryOver?.createdAt ?? new Date().toISOString(),
-  }];
-}
-
-/** 완제품 로트의 잔여 개수 합 */
-export function lotQtyRemaining(lots: RawMaterialLot[] | undefined): number {
-  return round3((lots ?? []).reduce((s, l) => s + (l.qtyRemaining ?? 0), 0));
-}
-
-export interface ProductLotTake {
-  lotId?: string;
-  lotNo?: string;
-  receivedDate?: string;
-  supplierName: string;
-  qty: number;
-}
-
-/**
- * 개수 기준 FIFO 차감 — 출고 때 앞쪽 로트부터 깐다. 혼합(mix)은 없다: 박스는 섞이지 않는다.
- *
- * 로트 잔량이 부족하면 원본을 유지하고 부족량을 돌려준다. 호출자는 부족량을 거절해야 한다.
- * 수량 재고는 남아도 로트가 모자랄 수 있으므로 이 함수에서 음수 이월을 만들지 않는다.
- */
-export function deductLotsByQty(
-  lots: RawMaterialLot[],
-  qtyToUse: number,
-): { lots: RawMaterialLot[]; distribution: ProductLotTake[]; shortageQty: number } {
-  if (!Number.isFinite(qtyToUse) || qtyToUse < 0) {
-    throw new Error(`로트 차감 수량은 0 이상의 유한한 숫자여야 합니다: ${qtyToUse}`);
-  }
-  if (lots.some(lot => lot.qtyRemaining != null && !Number.isFinite(lot.qtyRemaining))) {
-    throw new Error('로트 잔량이 올바르지 않습니다.');
-  }
-  let remaining = round3(qtyToUse);
-  const dist: ProductLotTake[] = [];
-  if (remaining <= 0) return { lots: lots.map(l => ({ ...l })), distribution: dist, shortageQty: 0 };
-  const usable = round3(lots.reduce((sum, lot) =>
-    sum + (lot.status === 'active' ? Math.max(0, Number(lot.qtyRemaining ?? 0)) : 0), 0));
-  const available = Math.max(0, Math.min(usable, lotQtyRemaining(lots)));
-  const shortageQty = round3(Math.max(0, remaining - available));
-  if (shortageQty > 0) return { lots, distribution: [], shortageQty };
-  const next = lots.map(l => ({ ...l }));
-
-  for (const l of next) {
-    if (remaining <= 0) break;
-    if (l.status !== 'active' || (l.qtyRemaining ?? 0) <= 0) continue;
-    const t = Math.min(l.qtyRemaining ?? 0, remaining);
-    if (t <= 0) continue;
-    l.qtyRemaining = round3((l.qtyRemaining ?? 0) - t);
-    l.kgRemaining = round3((l.qtyRemaining ?? 0) * (l.unitKg ?? 0));
-    remaining = round3(remaining - t);
-    if ((l.qtyRemaining ?? 0) <= 0.0001) { l.qtyRemaining = 0; l.kgRemaining = 0; l.status = 'depleted'; }
-    dist.push({ lotId: l.id, lotNo: l.lotNo, receivedDate: l.receivedDate, supplierName: l.supplierName, qty: round3(t) });
-  }
-
-  if (remaining > 0) return { lots, distribution: [], shortageQty: remaining };
-  return { lots: next, distribution: dist, shortageQty: 0 };
+export function withCarryOverProductLot(lots: RawMaterialLot[], currentQty: number, material: string, unitKg: number, carryOver?: { id:string;createdAt:string;receivedDate:string }): RawMaterialLot[] {
+  return withCarryOverProductLotPure(lots,currentQty,material,unitKg,carryOver,{now:carryOver?.createdAt ?? new Date().toISOString(),date:carryOver?.receivedDate ?? todayStr(),id:carryOver?.id ?? `lot-carry-${material}-${Date.now()}`});
 }
 
 /**

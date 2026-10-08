@@ -15,7 +15,7 @@ function fakeDb(initial: Record<string, Row>) {
   const db = {
     collection: (name: string) => ({
       doc: (id: string) => ({ key: `${name}/${id}` }),
-      where: (_field: string, _op: string, companyId: string) => ({ collection: name, companyId }),
+      where: (field: string, op: string, value: string) => ({ collection: name, field, op, value }),
     }),
     runTransaction: async (fn: (tx: any) => Promise<unknown>) => {
       const previous = queue;
@@ -25,9 +25,11 @@ function fakeDb(initial: Record<string, Row>) {
       const pending: Array<() => void> = [];
       try {
         const result = await fn({
-          get: async (ref: { key?: string; collection?: string; companyId?: string }) => ref.key
+          get: async (ref: { key?: string; collection?: string; field?: string; op?: string; value?: string }) => ref.key
             ? { ref, exists: rows.has(ref.key), data: () => rows.get(ref.key!) }
-            : { docs: [...rows.entries()].filter(([key, value]) => key.startsWith(`${ref.collection!}/`) && value.companyId === ref.companyId)
+            : { docs: [...rows.entries()].filter(([key, value]) => key.startsWith(`${ref.collection!}/`)
+                && (ref.op === 'array-contains' ? Array.isArray(value[ref.field!]) && value[ref.field!].includes(ref.value)
+                  : value[ref.field!] === ref.value))
               .map(([key, value]) => ({ id: key.slice(ref.collection!.length + 1), data: () => value })) },
           update: (ref: { key: string }, value: Row) => pending.push(() => rows.set(ref.key, { ...rows.get(ref.key), ...value })),
           create: (ref: { key: string }, value: Row) => pending.push(() => {

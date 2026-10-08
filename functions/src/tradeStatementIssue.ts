@@ -1,3 +1,4 @@
+import { readStatementDeletion } from './deleteIssuedStatementCommand';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -128,6 +129,11 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     const effectivePrefix = mode === 'catchUp' ? '추가' : '';
     const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
     if (otherKind.exists) conflict('작업 ID가 자금전표에 사용되었습니다.');
+    const deleted = await readStatementDeletion(db, tx, companyId, raw.id, existing, row =>
+      row.issueOperationId === operationId && (row.issuePrefix ?? '') === effectivePrefix
+      && row.issuePayloadHash === payloadHash && row.issueStatementHash === statementHash
+      && typeof row.docNo === 'string' && !!row.docNo && row.issueVoucherNo === row.docNo);
+    if (deleted) return { status: 'duplicate' as const, id: raw.id, docNo: deleted.docNo as string };
     if (existing.exists) {
       const saved = existing.data()!;
       if (saved.companyId !== companyId || saved.issueOperationId !== operationId

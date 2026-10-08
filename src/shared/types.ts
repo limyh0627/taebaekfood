@@ -1,3 +1,4 @@
+import type { CompanyId, RawMaterialLot } from '../../functions/src/shared/rawLot';
 /**
  * @shared-move  shared/types.ts
  * 앱 전체 공통 TypeScript 타입 정의
@@ -1220,7 +1221,7 @@ export const poLines = (po: PurchaseOrder): PurchaseOrderItem[] =>
  * 값을 안 단 옛 기록은 전부 태백으로 본다(TAEBAEK). 나중에 회사별 서브컬렉션으로
  * 완전히 분리할 때, 이 필드가 그대로 나누는 기준이 된다.
  */
-export type CompanyId = 'taebaek' | 'punghoe';
+export type { CompanyId } from '../../functions/src/shared/rawLot';
 export const TAEBAEK: CompanyId = 'taebaek';
 export const COMPANIES: { id: CompanyId; name: string; short: string }[] = [
   { id: 'taebaek', name: '태백푸드', short: '태백' },
@@ -1278,36 +1279,7 @@ export interface AppNotification {
  * 원료(raw) 품목 문서의 lots 배열에 저장하며, 배열 순서가 곧 선입선출 순서(앞=먼저 사용).
  * 잔여는 항상 kg(canonical)로 보관하고, 기름은 화면에서 L로 환산 표시.
  */
-export interface RawMaterialLot {
-  id: string;
-  supplierId?: string;        // 거래처 ID (이월 로트는 없음)
-  supplierName: string;       // 거래처명 (예: '풍회유통') 또는 '이월'
-  packageType?: string;       // '캔' | '포대' | '자루'
-  packageKg?: number;         // 포장 1개당 kg (16.5 등)
-  qtyIn?: number;             // 입고 시 포장 개수 (캔 68)
-  kgIn: number;               // 입고 kg (= packageKg × qtyIn, 자동계산)
-  kgRemaining: number;        // 잔여 kg (사용 시 차감)
-  receivedDate: string;       // 입고일 'YYYY-MM-DD'
-  lotNo?: string;             // 로트번호 (미래 확장)
-  status: 'active' | 'depleted';
-  poId?: string;              // 원본 입고 전표(purchaseOrders) 참조 — OEM 박스 로트는 가공 배치 id
-  createdAt: string;
-
-  // ── 물질 축 ──────────────────────────────────────────────────────────
-  /**
-   * 이 로트가 무슨 물질인가 — 벌크든 박스든 같은 값('볶음참깨').
-   *
-   * 로트는 **재고를 들고 있는 품목**에 붙는다(박스 재고는 박스 품목에 있으니 로트도 거기).
-   * 그래서 같은 볶음참깨가 벌크 홀더와 박스 품목 세 개에 흩어진다.
-   * 회수·역추적은 품목이 아니라 물질 단위로 물으므로, 이 키로 가로질러 모은다.
-   * (같은 배열에 몰아넣으면 재고가 두 번 잡히고 FIFO가 엉킨다 — 저장은 나누고 조회만 묶는다)
-   */
-  material?: string;
-  /** 잔여 **개수** — 박스·개로 세는 완제품 로트용. 벌크는 이 값이 없고 kgRemaining을 쓴다. */
-  qtyRemaining?: number;
-  /** 1개당 kg — 개수↔kg 환산(박스 1개 = 20kg). 완제품 로트만. */
-  unitKg?: number;
-}
+export type { RawMaterialLot } from '../../functions/src/shared/rawLot';
 
 /**
  * **실제 원장** 한 줄 (rawMaterialLedger 컬렉션) — 창고에서 실제로 일어난 원료 입출고.
@@ -1396,6 +1368,7 @@ export interface ReturnItem {
 
 export interface ReturnRequest {
   id: string;
+  companyId?: CompanyId;
   orderId?: string;
   partnerId: string;
   partnerName: string;

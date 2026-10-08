@@ -1,11 +1,13 @@
+import { readClaimsAfterReturns } from './returnClaimReader';
 import * as admin from 'firebase-admin';
+import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { assertInterCompanyAuthority } from './interCompanyAuthority';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { cashFromEntry, claimFromStatement } from './partnerPaymentCommand';
-import { planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement } from './partnerPaymentPlan';
+import { PartnerPaymentValidationError, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement } from './partnerPaymentPlan';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 
 type Row = Record<string, any>;
@@ -59,7 +61,7 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
   const fromCutover = db.collection('appMeta').doc(`companyTransferCutover_${input.from}`);
   const toCutover = db.collection('appMeta').doc(`companyTransferCutover_${input.to}`);
   const releaseGate = releaseGateRef(db);
-  return db.runTransaction(async tx => {
+  const result = await db.runTransaction(async tx => {
     const [operationSnap, outSnap, inSnap, otherOutSnap, otherInSnap, grantSnap, employeeSnap,
       fromAccountSnap, toAccountSnap, fromPartnerSnap, toPartnerSnap, fromCounterSnap, toCounterSnap,
       fromStateSnap, toStateSnap, fromCutoverSnap, toCutoverSnap, releaseSnap] = await Promise.all([
@@ -68,6 +70,17 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
       tx.get(fromPartner), tx.get(toPartner), tx.get(fromCounter), tx.get(toCounter),
       tx.get(fromState), tx.get(toState), tx.get(fromCutover), tx.get(toCutover), tx.get(releaseGate),
     ]);
+    const settlementRows = await tx.get(db.collection('settlements'));
+    if(operationSnap.data()?.status==='rejected'){
+      const prior=operationSnap.data()!;
+      if(prior.companyId!==input.from||prior.authUid!==authUid||prior.from!==input.from||prior.to!==input.to||prior.requestHash!==requestHash
+        ||hash(prior.command)!==hash(input)||outSnap.exists||inSnap.exists||otherOutSnap.exists||otherInSnap.exists
+        ||settlementRows.docs.some(doc=>doc.data().operationId===input.operationId)
+        ||!['invalid-argument','failed-precondition'].includes(prior.failureCode)||typeof prior.failureMessage!=='string')fail('기존 이체 거절 감사와 요청·출력이 다릅니다.');
+      return {status:'rejected' as const,failureCode:prior.failureCode as 'invalid-argument'|'failed-precondition',failureMessage:prior.failureMessage as string};
+    }
+    let writesStarted=false;
+    try{
     assertReleaseActive(releaseSnap, input.releaseId);
     assertVoucherDateAllowed(releaseSnap, input.from, input.tradeDate);
     assertVoucherDateAllowed(releaseSnap, input.to, input.tradeDate);
@@ -78,9 +91,22 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
     const employee = employeeSnap.data();
     if (!employeeSnap.exists || employee?.authUid !== authUid || employee?.companyId !== input.from
       || employee?.adminAccess !== true || employee?.status === 'out') fail('현재 직원 관리자 권한이 없습니다.');
-    const settlementRows = await tx.get(db.collection('settlements'));
     if (operationSnap.exists) {
       const prior = operationSnap.data()!, storedOut = outSnap.data(), storedIn = inSnap.data();
+      if (prior.authUid === authUid && prior.requestHash === requestHash && prior.grantRevision === grantRevision
+        && (!outSnap.exists || !inSnap.exists || (storedOut?.mutationRevision ?? 0) > 0 || (storedIn?.mutationRevision ?? 0) > 0)) {
+        const validates = (row: Row, company: string, direction: string, docNo: string, expectedHash: string) =>
+          row.companyId === company && row.dir === direction && row.transferOperationId === input.operationId
+          && row.issuePayloadHash === requestHash && row.docNo === docNo
+          && hash({ companyId: row.companyId, partnerId: row.partnerId, date: row.date, amount: row.amount,
+            note: row.note, cashAccountId: row.cashAccountId, dir: row.dir, lines: row.lines }) === expectedHash;
+        const originalOut = await readCashCreationMutation(db, tx, input.from, out.id, outSnap,
+          row => validates(row, input.from, '출금', prior.outDocNo, prior.outHash));
+        const originalIn = await readCashCreationMutation(db, tx, input.to, incoming.id, inSnap,
+          row => validates(row, input.to, '입금', prior.inDocNo, prior.inHash));
+        if (originalOut && originalIn) return { status: 'duplicate' as const, outDocNo: prior.outDocNo, inDocNo: prior.inDocNo };
+        fail('회사이체 양쪽 변경 감사 사슬을 확인해야 합니다.');
+      }
       const storedOutBusiness = storedOut && { companyId: storedOut.companyId, partnerId: storedOut.partnerId,
         date: storedOut.date, amount: storedOut.amount, note: storedOut.note,
         cashAccountId: storedOut.cashAccountId, dir: storedOut.dir, lines: storedOut.lines };
@@ -110,6 +136,7 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
     const toStatements = await tx.get(db.collection('issuedStatements').where('partnerId', '==', input.toPartnerId));
     const fromCash = await tx.get(db.collection('cashEntries').where('partnerId', '==', input.fromPartnerId));
     const toCash = await tx.get(db.collection('cashEntries').where('partnerId', '==', input.toPartnerId));
+    const returnRows = await Promise.all([input.fromPartnerId, input.toPartnerId].map(partnerId => tx.get(db.collection('returnApplications').where('partnerId', '==', partnerId))));
     const accountCodes = await tx.get(db.collection('accountCodes'));
     for (const [snap, company] of [[fromCutoverSnap, input.from], [toCutoverSnap, input.to]] as const) {
       const gate = snap.data();
@@ -140,8 +167,10 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
     if (currentRevisions.some(value => !Number.isSafeInteger(value))
       || currentRevisions[0] !== input.expectedFromRevision || currentRevisions[1] !== input.expectedToRevision)
       fail('양사 정산 상태가 변경되었습니다.');
-    const statements = [...fromStatements.docs, ...toStatements.docs]
-      .map(doc => claimFromStatement(doc.id, doc.data())).filter((row): row is Claim => row !== null);
+    const statementData = [...fromStatements.docs, ...toStatements.docs].map(doc => ({ ...doc.data(), id: doc.id }));
+    const statements = await readClaimsAfterReturns(db, tx, statementData.map(row => claimFromStatement(row.id, row)).filter((row): row is Claim => row !== null),
+      returnRows.flatMap(rows => rows.docs.map(doc => ({ ...doc.data(), id: doc.id }))).filter((row: any) =>
+        row.companyId === input.from && row.partnerId === input.fromPartnerId || row.companyId === input.to && row.partnerId === input.toPartnerId) as any, statementData);
     const cashEntries = [...fromCash.docs, ...toCash.docs]
       .map(doc => cashFromEntry(doc.id, doc.data())).filter((row): row is PaymentCash => row !== null);
     const settlements: PaymentSettlement[] = settlementRows.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentSettlement));
@@ -176,6 +205,7 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
       cashAccountId: input.fromAccountId, dir: '출금', lines: outLines };
     const inBusiness = { ...common, companyId: input.to, partnerId: input.toPartnerId,
       cashAccountId: input.toAccountId, dir: '입금', lines: inLines };
+    writesStarted=true;
     writeVoucherCounter(tx, fromCounterSnap, counterStates[0], nextNumbers[0]);
     writeVoucherCounter(tx, toCounterSnap, counterStates[1], nextNumbers[1]);
     tx.create(out, { ...outBusiness, id: out.id, partnerName: fromPartnerSnap.data()!.name,
@@ -196,13 +226,24 @@ export async function recordInterCompanyTransfer(db: admin.firestore.Firestore, 
       if (snap.exists) tx.update(ref, { revision: snap.data()!.revision + 1 });
       else tx.create(ref, { companyId: company, partnerId, revision: 1 });
     }
-    tx.create(operation, { authUid, from: input.from, to: input.to, requestHash, grantRevision,
+    tx.create(operation, { companyId:input.from,status:'applied',command:input,authUid, from: input.from, to: input.to, requestHash, grantRevision,
       outDocNo, inDocNo, outCashEntryId: out.id, inCashEntryId: incoming.id,
       outHash: hash(outBusiness), inHash: hash(inBusiness), offset: offsetOut, over,
       outApplications: outPlan.applications, inApplications: inPlan.applications,
       createdAt, createdBy: claims.employeeId });
     return { status: 'applied' as const, outDocNo, inDocNo };
+    }catch(error){
+      if (error instanceof PartnerPaymentValidationError) error = new HttpsError('failed-precondition', error.message);
+      if(operationSnap.exists||writesStarted||outSnap.exists||inSnap.exists||otherOutSnap.exists||otherInSnap.exists
+        ||settlementRows.docs.some(doc=>doc.data().operationId===input.operationId)||!(error instanceof HttpsError)
+        ||!['invalid-argument','failed-precondition'].includes(error.code))throw error;
+      tx.create(operation,{companyId:input.from,status:'rejected',authUid,from:input.from,to:input.to,command:input,requestHash,
+        createdBy:claims.employeeId,createdAt:new Date().toISOString(),failureCode:error.code,failureMessage:error.message});
+      return {status:'rejected' as const,failureCode:error.code as 'invalid-argument'|'failed-precondition',failureMessage:error.message};
+    }
   });
+  if(result.status==='rejected')throw new HttpsError(result.failureCode,result.failureMessage,{operationStatus:'rejected',operationId:input.operationId,companyId:input.from,requestHash});
+  return result;
 }
 
 export const recordInterCompanyTransferCommand = onCall({ region: 'asia-northeast3' }, async request => {

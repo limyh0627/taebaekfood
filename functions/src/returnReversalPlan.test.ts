@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertAtomicReturnStockSupport, planReturnReversal } from './returnReversalPlan';
+import { planReturnReversal } from './returnReversalPlan';
 
 const source = { id: 'sale-1', companyId: 'taebaek', type: '매출' as const, partnerId: 'partner-1',
   totalSupply: 100, totalTax: 10, totalAmount: 110,
@@ -56,10 +56,4 @@ describe('source-linked return reverse-journal plan', () => {
       .toThrow('대상 품목의 원전표 금액');
   });
 
-  it('rejects every physical stock class until a shared transaction adapter exists', () => {
-    const effects = [{ itemId: 'item-1', quantityDelta: 2 }];
-    for (const kind of ['raw', 'unit', 'general', 'unknown'] as const)
-      expect(() => assertAtomicReturnStockSupport(effects, { 'item-1': kind })).toThrow(`${kind} 재고`);
-    expect(() => assertAtomicReturnStockSupport([], {})).not.toThrow();
-  });
 });

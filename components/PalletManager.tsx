@@ -368,7 +368,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     }
   };
 
-  // 거래 삭제(정정) — 오입력된 수동 거래 제거. inUse 되돌림 + 로컬 캐시에서도 제거.
+  // 거래 삭제(정정) — 오입력된 수동 거래를 지우면 회수 대기는 남은 기록으로 다시 계산된다.
   // (주문 출고에서 파생된 행은 txId가 없어 삭제 버튼이 노출되지 않음)
   const deleteTransaction = async (txId: string) => {
     const tx = palletTransactions.find(t => t.id === txId);

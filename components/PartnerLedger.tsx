@@ -1,3 +1,4 @@
+import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
 import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement, companyOf } from '../src/shared/types';
@@ -12,6 +13,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 interface Props {
+  returnOperations?: readonly ReadonlyReturnOperation[];
   companyId: CompanyId;
   issuedStatements: IssuedStatement[];
   cashEntries: CashEntry[];
@@ -23,9 +25,9 @@ interface Props {
   onOpenVoucher?: (sourceId: string, docNo: string) => void;
 }
 
-const fmt = (n: number) => n.toLocaleString('ko-KR');
+const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 
-export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], onOpenVoucher }: Props) {
+export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], returnOperations, onOpenVoucher }: Props) {
   const issuedStatements = useMemo(() => allStatements.filter(s => companyOf(s) === companyId), [allStatements, companyId]);
   const cashEntries = useMemo(() => allCashEntries.filter(e => companyOf(e) === companyId), [allCashEntries, companyId]);
   //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
@@ -119,8 +121,8 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
    */
   const openByStmt = useMemo(() => {
     if (!selId) return new Map<string, number>();
-    return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements);
-  }, [selId, type, issuedStatements, cashEntries, settlements]);
+    return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements, undefined, returnOperations);
+  }, [selId, type, issuedStatements, cashEntries, settlements, returnOperations]);
 
   const allPartners = useMemo(() => {
     const names = new Map<string, string>();
@@ -399,6 +401,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                       {(() => {
                         //  전표 줄에만, 그리고 남은 게 있을 때만 단추를 단다
                         const 남은 = r.kind === '전표' && r.sourceId ? (openByStmt.get(r.sourceId) ?? 0) : 0;
+                        if (!Number.isFinite(남은)) return <span className="text-slate-500">반품 연결 확인 중</span>;
                         if (남은 <= 0) return <span className="text-slate-200">—</span>;
                         return (
                           <button type="button" onClick={() => openPay(남은, undefined, r.date)}

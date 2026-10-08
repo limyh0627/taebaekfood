@@ -1,3 +1,6 @@
+import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
+import { loadPayrollCashEdit, prepareTransferCash, hasPendingCashMutation, type PayrollCashEdit, type TransferCashEdit, type PreparedTransferCashEdit } from '../src/features/admin/cashMutationCommands';
+import { payrollTotals } from '../src/shared/types';
 import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
 
 import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
@@ -79,7 +82,7 @@ import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts, buildPartnerLedger } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeCashEntry } from '../src/shared/autoJournal';
 import { templateAccrRows } from '../src/shared/cashTemplates';
-import { buildCashEditPatch, cashEditAmount, cashEditPartner, cashPartnerChangeError, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
+import { buildCashEditPatch, cashEditPartner, cashPartnerChangeError, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
@@ -87,6 +90,7 @@ import { recordPartnerPayment } from '../src/features/statements/infrastructure/
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
+  returnOperations?: readonly ReadonlyReturnOperation[];
   orders: Order[];
   allItems: Item[];
   partners: Partner[];
@@ -99,10 +103,12 @@ interface TradeStatementProps {
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void | Promise<unknown>;
   onIssueCashEntry?: (entry: CashEntry) => Promise<unknown>;
-  onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void | Promise<void>;
+  onUpdateCashEntry?: (id: string, data: Partial<CashEntry>, original?: CashEntry, payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit) => void | Promise<void>;
+  onMatchCashAllocations?: (entry: CashEntry, allocations: { statementId: string; amount: number }[]) => Promise<unknown>;
+  onResumeCashMutation?: (id: string) => Promise<unknown>;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void | Promise<void>;
   onUpdateSettlement?: (id: string, data: Partial<Settlement>) => void | Promise<void>;
-  onDeleteCashEntry?: (id: string) => void;
+  onDeleteCashEntry?: (id: string, original?: CashEntry, transferEdit?: TransferCashEdit) => void | Promise<void>;
   onDeleteSettlement?: (id: string) => void;
   onAddCashAccount?: (a: Omit<CashAccount, 'id'> & { id: string }) => void;
   onUpdateCashAccount?: (id: string, data: Partial<CashAccount>) => void;
@@ -136,8 +142,6 @@ interface TradeStatementProps {
   }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
-  /** 회사를 지정해서 저장(대납 전용) — 지금 회사가 아닌 장부에 쓴다 */
-  onAddForCompany?: (companyId: CompanyId, payload: { cashEntry?: CashEntry; statement?: IssuedStatement }) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void | Promise<unknown>;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
@@ -177,7 +181,8 @@ const AXIS_CLS: Record<string, string> = {
   '자금흐름': 'bg-indigo-600 text-white border-indigo-600',
 };
 
-const fmt = (n: number) => n.toLocaleString('ko-KR');
+const statementSettleStatus = (s: IssuedStatement, balance: number) => Number.isFinite(balance) ? settleStatus(s, balance) : { state: 'none' as const, label: '반품 연결 확인 중' };
+const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 /** 인쇄 HTML에 사람이 친 글을 그대로 끼울 때 — <, & 가 태그로 새는 걸 막는다. */
 
 /**
@@ -211,18 +216,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   cashAccounts = [],
   cashEntries = [],
   settlements = [],
+  returnOperations,
   onAddCashEntry,
   onIssueCashEntry,
   onUpdateCashEntry,
-  onAddSettlement,
-  onUpdateSettlement,
+  onMatchCashAllocations,
+  onResumeCashMutation,
   onDeleteCashEntry,
-  onDeleteSettlement,
   onAddCashAccount,
   onUpdateCashAccount,
   fixedCostTemplates = [],
   companyId = 'taebaek',
-  onAddForCompany,
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
   voucherMode = 'full',
@@ -404,6 +408,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 붙는 것만 다르다. 창을 둘로 나누면 같은 것을 두 번 만들게 되고 한쪽만 고쳐진 채 갈린다.
    */
   const [cashModal, setCashModal] = useState<CashModalMode | null>(null);
+  const [cashModalSession, setCashModalSession] = useState(0);
+  const cashOpening = useRef<object | null>(null);
+  const [cashPayrollEdit, setCashPayrollEdit] = useState<PayrollCashEdit>();
+  const [cashTransferEdit, setCashTransferEdit] = useState<PreparedTransferCashEdit>();
+  const cashEditScope = useRef({ companyId, alive: true, token: {} });
+  if (cashEditScope.current.companyId !== companyId) cashEditScope.current = { companyId, alive: true, token: {} };
+  useEffect(() => { cashEditScope.current.alive = true; return () => { cashEditScope.current.alive = false; cashEditScope.current.token = {}; }; }, []);
   const [payAccountId, setPayAccountId] = useState('');
   const [quickPayAccountId, setQuickPayAccountId] = useState('');
 
@@ -420,67 +431,44 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **고친 자금 전표를 저장한다** — 폼은 창이 쥐고, 돈이 얽힌 뒷일은 여기서 푼다.
    * 판정 자체는 shared/cashEntryEdit이 쥔다(화면 조각이라 테스트가 안 닿던 자리였다).
    */
-  const saveEditCash = async (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[]) => {
-    if (!onUpdateCashEntry) return;
-    const amt = cashEditAmount(form, lines, entry.dir === '대체');
-    if (amt <= 0) return;
-    // 전표에 상계된 자금이면 상계액(settlement)도 같은 폭으로 옮겨야 미수/미지급 잔액이 안 틀어진다.
-    const linked = settlements.filter(s => s.cashEntryId === entry.id);
-    const delta = amt - entry.amount;
+  const saveEditCash = async (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[], payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit) => {
+    if (companyOf(entry) !== companyId) throw new Error('현재 회사의 자금 원문을 다시 확인해주세요.');
+    if (!onUpdateCashEntry) throw new Error('자금 전표 저장 경로가 연결되지 않았습니다.');
+    const scope = cashEditScope.current.token;
     let patch: Partial<CashEntry>;
-    try {
+    if (payrollEdit) {
+      const totals = payrollTotals(payrollEdit.lines);
+      const salary = accountCodes.find(code => code.name === '급여')?.code;
+      const withhold = accountCodes.find(code => code.name === '예수금')?.code;
+      if (!salary || totals.deduct > 0 && !withhold) throw new Error('급여·예수금 계정을 확인해주세요.');
+      patch = { date: form.date, dir: '출금', amount: totals.net, note: form.note, accountCode: '',
+        lines: [{ accountCode: salary, amount: totals.gross }, ...(totals.deduct ? [{ accountCode: withhold!, amount: -totals.deduct }] : [])] };
+    } else {
       const selected = form.partnerId === undefined ? undefined : cashEditPartner(form.partnerId, partners, companyId);
       patch = buildCashEditPatch(entry, form, lines, selected);
-    } catch (error) {
-      window.alert((error as Error).message);
-      return;
+      const linked = settlements.filter(row => row.cashEntryId === entry.id);
+      const partnerError = cashPartnerChangeError(entry, Object.hasOwn(patch, 'partnerId') ? patch.partnerId ?? '' : entry.partnerId ?? '', patch.amount ?? entry.amount, linked, mergedStatements);
+      if (partnerError) throw new Error(partnerError);
     }
-    const partnerError = cashPartnerChangeError(entry, Object.hasOwn(patch, 'partnerId') ? patch.partnerId ?? '' : entry.partnerId ?? '', amt, linked, mergedStatements);
-    if (partnerError) { window.alert(partnerError); return; }
-    if (linked.length && delta !== 0) {
-      if (linked.length > 1 || !onUpdateSettlement) {
-        window.alert('이 자금은 여러 전표에 나눠 상계돼 있어 금액을 여기서 못 고칩니다.\n수금/지불을 삭제한 뒤 다시 잡아주세요.');
-        return;
-      }
-      const next = linked[0].amount + delta;
-      if (next <= 0) {
-        window.alert(`상계된 금액(${linked[0].amount.toLocaleString()}원)보다 많이 줄일 수 없습니다.\n수금/지불을 삭제한 뒤 다시 입력해 주세요.`);
-        return;
+    // Cash, existing allocations and source ledgers are one server transaction.
+    await onUpdateCashEntry(entry.id, patch, entry, payrollEdit, transferEdit);
+    if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
+    const linked = settlements.filter(row => row.cashEntryId === entry.id);
+    if (!payrollEdit && !transferEdit && !(linked.length && (patch.amount ?? entry.amount) !== entry.amount)) {
+      try { await autoMatchCashToStatements({ ...entry, ...patch }, scope); }
+      catch (error) {
+        if (cashEditScope.current.alive && cashEditScope.current.token === scope)
+          window.alert(`자금 전표는 저장됐지만 자동 매칭을 마치지 못했습니다: ${(error as Error).message}`);
       }
     }
-    let settlementUpdated = false;
-    try {
-      if (linked.length && delta !== 0) {
-        await onUpdateSettlement!(linked[0].id, { amount: linked[0].amount + delta });
-        settlementUpdated = true;
-      }
-      // 저장 실패인데 먼저 autoMatch/닫기를 하면 다른 거래처에 상계가 붙는다.
-      await onUpdateCashEntry(entry.id, patch);
-    } catch (error) {
-      if (settlementUpdated) {
-        try {
-          await onUpdateSettlement!(linked[0].id, { amount: linked[0].amount });
-        } catch (rollbackError) {
-          window.alert(`자금 전표 저장에 실패했고 상계 금액도 되돌리지 못했습니다. 두 기록을 확인해 주세요. 저장: ${(error as Error).message}; 되돌리기: ${(rollbackError as Error).message}`);
-          return;
-        }
-      }
-      window.alert(`자금 전표를 저장하지 못했습니다: ${(error as Error).message}`);
-      return;
-    }
-    // 저장은 끝났다. 자동매칭만 실패하면 다시 저장하도록 남겨 두지 않는다.
-    try {
-      // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
-      if (!(linked.length && delta !== 0)) await autoMatchCashToStatements({ ...entry, ...patch });
-    } catch (error) {
-      window.alert(`자금 전표는 저장됐지만 자동 매칭을 마치지 못했습니다: ${(error as Error).message}`);
-    }
-    setCashModal(null);
+    if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
+    setCashModal(current => current?.kind === '수정' && current.entry === entry ? null : current);
   };
 
   //  일반전표 창 — 여는 것만 화면이 쥔다. 양식 안의 값은 전부 창 안의 일이다.
   const [showQuickPay, setShowQuickPay] = useState(false);
   const openCashModal = (_dir: '입금' | '출금') => {
+    cashOpening.current = null;
     setShowQuickPay(true);
     setQuickPayAccountId(prev => activeCashAccounts.some(account => account.id === prev && companyOf(account) === companyId) ? prev : defaultCashAccountId(activeCashAccounts, companyId));
   };
@@ -607,10 +595,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
+    cashOpening.current = null;
+    setCashModalSession(session => session + 1);
     setCashModal({ kind: '수금지불', stmt });
     setPayAccountId(prev => activeCashAccounts.some(account => account.id === prev && companyOf(account) === companyId) ? prev : defaultCashAccountId(activeCashAccounts, companyId));
   };
-  const openEditCash = (entry: CashEntry) => setCashModal({ kind: '수정', entry });
+  const openEditCash = async (entry: CashEntry) => {
+    const scope = cashEditScope.current.token;
+    const opening = {};
+    cashOpening.current = opening;
+    try {
+      const payroll = (entry as CashEntry & { payrollId?: string }).payrollId ? await loadPayrollCashEdit(companyId, entry) : undefined;
+      const transfer = (entry as CashEntry & { transferOperationId?: string }).transferOperationId ? await prepareTransferCash(companyId, entry) : undefined;
+      if (!cashEditScope.current.alive || cashEditScope.current.token !== scope || cashOpening.current !== opening) return;
+      setCashPayrollEdit(payroll);
+      setCashTransferEdit(transfer);
+      setCashModalSession(session => session + 1);
+      setCashModal({ kind: '수정', entry });
+    } catch (error) {
+      if (cashEditScope.current.alive && cashEditScope.current.token === scope && cashOpening.current === opening) window.alert((error as Error).message);
+    }
+  };
 
   /**
    * **한 번 누르면 한 건만.** 저장은 비동기라 state가 바뀌기 전에 또 눌리면 두 건이 들어간다.
@@ -650,6 +655,52 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //
   // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
   // 예전엔 이걸 settlement id로 알고 찾아서 늘 못 찾고 아무것도 안 지웠다 — 삭제가 안 되던 원인.
+  const updateCashDate = async (entry: CashEntry, date: string) => {
+    if (!onUpdateCashEntry) return;
+    const scope = cashEditScope.current.token;
+    try {
+      const payroll = (entry as CashEntry & { payrollId?: string }).payrollId ? await loadPayrollCashEdit(companyId, entry) : undefined;
+      const transfer = (entry as CashEntry & { transferOperationId?: string }).transferOperationId ? await prepareTransferCash(companyId, entry) : undefined;
+      if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
+      await onUpdateCashEntry(entry.id, { date }, entry, payroll ? { ...payroll, payDate: date } : undefined,
+        transfer ? { counterpartId: transfer.counterpart.id, expectedRevision: transfer.expectedRevision,
+          expectedCashHash: transfer.expectedCashHash, patch: { date } } : undefined);
+    } catch (error) {
+      if (cashEditScope.current.alive && cashEditScope.current.token === scope) window.alert(`자금 일자를 저장하지 못했습니다: ${(error as Error).message}`);
+    }
+  };
+  const deleteCashAtomic = async (entry: CashEntry) => {
+    if (!onDeleteCashEntry) throw new Error('자금 전표 삭제 경로가 연결되지 않았습니다.');
+    const scope = cashEditScope.current.token;
+    const transfer = (entry as CashEntry & { transferOperationId?: string }).transferOperationId ? await prepareTransferCash(companyId, entry) : undefined;
+    if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
+    await onDeleteCashEntry(entry.id, entry, transfer ? { counterpartId: transfer.counterpart.id,
+      expectedRevision: transfer.expectedRevision, expectedCashHash: transfer.expectedCashHash } : undefined);
+  };
+  const autoMatchCashToStatements = async (entry: CashEntry, scope: object) => {
+    if (!onMatchCashAllocations || !entry.partnerId) return;
+    const type = entry.accountCode === AR ? '매출' : entry.accountCode === AP ? '매입' : null;
+    if (!type) return;
+    let left = unmatchedCash(entry, settlements);
+    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries });
+    const amount = Math.min(left, targets.reduce((sum, target) => sum + target.open, 0));
+    if (amount <= 0 || !await appConfirm(`${entry.accountCode === AR ? '외상매출금' : '외상매입금'}으로 잡힌 ${fmt(left)}원을\n이 거래처의 미결제 전표에 오래된 순으로 ${fmt(amount)}원 매칭할까요?\n\n매칭해야 미수금/미지급금이 줄어듭니다.`)) return;
+    if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
+    const allocations = new Map<string, number>();
+    for (const settlement of settlements.filter(row => row.cashEntryId === entry.id)) {
+      const row = settlement as Settlement & Record<string, unknown>;
+      if (!row.id.startsWith('st-') && row.manual === true && !row.operationId && !row.returnOperationId && !row.transferOperationId
+        && !row.issueOperationId && row.serverOwned !== true)
+        allocations.set(row.statementId, (allocations.get(row.statementId) ?? 0) + row.amount);
+    }
+    for (const target of targets) {
+      const allocated = Math.min(left, target.open);
+      if (allocated <= 0) continue;
+      allocations.set(target.stmt.id, (allocations.get(target.stmt.id) ?? 0) + allocated);
+      left -= allocated;
+    }
+    await onMatchCashAllocations(entry, [...allocations].map(([statementId, amount]) => ({ statementId, amount })));
+  };
   const deletePayTimelineRow = async (paymentId: string, _src: IssuedStatement) => {
     // 자금기록 id로 바로 찾고, 못 찾으면 settlement id로도 한 번 더 본다(옛 행 대비)
     const ceId = cashEntries.some(c => c.id === paymentId)
@@ -657,41 +708,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       : settlements.find(s => s.id === paymentId)?.cashEntryId;
     if (!ceId) { alert('이 수금 기록을 찾지 못했습니다. 자금원장에서 지워 주세요.'); return; }
     await confirmDelete(`cash:${ceId}`, '이 수금/지불을 삭제할까요?', async () => {
-      settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
-      await onDeleteCashEntry?.(ceId);
+      const original = cashEntries.find(row => row.id === ceId);
+      if (!original) throw new Error('삭제할 자금 원문을 찾지 못했습니다.');
+      await deleteCashAtomic(original);
     });
   };
 
   /** 외상매출금(108)·외상매입금(251)으로 잡은 자금은 전표에 붙어야 미수/미지급이 줄어든다.
    *  계정만 바꾸면 분개만 맞고 잔액은 그대로이므로, 아직 안 붙은 금액을 그 거래처의
    *  미결제 전표에 오래된 순으로 매칭한다. 붙인 금액을 돌려준다. */
-  const autoMatchCashToStatements = async (entry: CashEntry): Promise<number> => {
-    if (!onAddSettlement || !entry.partnerId) return 0;
-    const type = entry.accountCode === AR ? '매출' : entry.accountCode === AP ? '매입' : null;
-    if (!type) return 0;
-    let left = unmatchedCash(entry, settlements);
-    if (left <= 0) return 0;
-    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries });
-    if (!targets.length) return 0;
-    const willMatch = Math.min(left, targets.reduce((a, t) => a + t.open, 0));
-    if (!await appConfirm(
-      `${entry.accountCode === AR ? '외상매출금' : '외상매입금'}으로 잡힌 ${fmt(left)}원을\n` +
-      `이 거래처의 미결제 전표에 오래된 순으로 ${fmt(willMatch)}원 매칭할까요?\n\n` +
-      `매칭해야 미수금/미지급금이 줄어듭니다.`)) return 0;
-    let used = 0;
-    for (const t of targets) {
-      if (left <= 0) break;
-      const amount = Math.min(left, t.open);
-      if (amount <= 0) continue;
-      await onAddSettlement({
-        id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        cashEntryId: entry.id, statementId: t.stmt.id, amount, createdAt: new Date().toISOString(),
-      });
-      left -= amount; used += amount;
-    }
-    return used;
-  };
-
   // 타임라인의 수금/지불 행 클릭 — 수금/지불은 결국 자금원장 한 줄이므로 그 뒤의
   // 자금 전표(cashEntry)를 연다.
   const openPayTimelineRow = (paymentId: string, _src: IssuedStatement) => {
@@ -915,7 +940,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const {
     mergedStatements, journalBySource, partnerBalances, partnerJournals,
     getBalance, canSettle, isVouchered, isFetchingHistory, forgetStatement,
-  } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo });
+  } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations });
 
   /**
    * **표 머리를 눌러 세운다**(2026-09-15 사장님: "업체명이랑 이런거 눌러서 정렬 거는거
@@ -929,7 +954,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 화면이 셈해 그리는 칸(수금/지불·증빙)은 그 글자로 세운다 — 표에 보이는 대로 서야 한다. */
   const 정렬글 = useCallback((row: TimelineRow, column: TimelineSortColumn): string | undefined => {
     if (row.kind !== 'stmt') return column === 'settle' || column === 'evidence' ? '\uffff' : undefined;
-    if (column === 'settle') return settleStatus(row.data, getBalance(row.data)).label;
+    if (column === 'settle') return statementSettleStatus(row.data, getBalance(row.data)).label;
     if (column === 'evidence') return evidenceChoices(row.data.type).length ? evidenceOf(row.data) : '\uffff';
     return undefined;
   }, [getBalance]);
@@ -2122,7 +2147,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     ? Math.max(0, unmatchedCash(row.entry, settlements)) : 0;
                   return <StatementCashTableRow key={`cash__${view.key}`} view={view} direction={row.dir}
                     shownAmount={shownAmount} partial={partial} unallocated={unallocated} classifications={classifications}
-                    dateCell={전표일자칸(row.date, 날짜 => onUpdateCashEntry?.(row.entry.id, { date: 날짜 }), !!onUpdateCashEntry, row.entry.createdAt)}
+                    dateCell={전표일자칸(row.date, 날짜 => updateCashDate(row.entry, 날짜), !!onUpdateCashEntry, row.entry.createdAt)}
                     journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
                     journalPreview={expandedJournal.has(view.key)
                       ? journalTr(`je__cash__${view.key}`, journalizeCashEntry(row.entry), { kind: rowKind(row), docNo: row.entry.docNo, date: row.date, headPartner: row.partnerName })
@@ -2131,7 +2156,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 if (row.kind === 'pay') {
                   const payEntry = row.entry;
                   return <StatementPaymentTableRow key={`pay__${view.key}`} view={view} statementType={row.stmtType}
-                    dateCell={전표일자칸(row.date, 날짜 => payEntry && onUpdateCashEntry?.(payEntry.id, { date: 날짜 }), !!payEntry && !!onUpdateCashEntry, payEntry?.createdAt)}
+                    dateCell={전표일자칸(row.date, 날짜 => payEntry && updateCashDate(payEntry, 날짜), !!payEntry && !!onUpdateCashEntry, payEntry?.createdAt)}
                     journalToggle={journalToggle(view.key)} onOpen={() => openPayTimelineRow(row.paymentId, row.src)}
                     journalPreview={expandedJournal.has(view.key) && payEntry
                       ? journalTr(`je__pay__${view.key}`, journalizeCashEntry(payEntry),
@@ -2141,7 +2166,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const stmt = row.data;
                 const portion = accountPortion(row);
                 const partial = portion != null && portion !== stmt.totalAmount;
-                const settle = settleStatus(stmt, getBalance(stmt));
+                const settle = statementSettleStatus(stmt, getBalance(stmt));
                 const choices = evidenceChoices(stmt.type);
                 return <StatementTradeTableRow key={view.key} statement={stmt} view={view}
                   shownAmount={partial ? portion! : view.amount} partial={partial} settle={settle} canSettle={canSettle(stmt)}
@@ -2163,7 +2188,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               if (row.kind === 'cash') {
                 return <StatementCashMobileRow key={`m-cash-${view.key}`} view={view} direction={row.dir}
                   journalToggle={journalToggle(view.key)} onOpen={onUpdateCashEntry ? () => openEditCash(row.entry) : undefined}
-                  onDelete={onDeleteCashEntry ? () => confirmDelete(`cash:${row.entry.id}`, '이 자금 전표를 삭제할까요?', () => onDeleteCashEntry(row.entry.id)) : undefined}
+                  onDelete={onDeleteCashEntry ? () => confirmDelete(`cash:${row.entry.id}`, '이 자금 전표를 삭제할까요?', () => deleteCashAtomic(row.entry)) : undefined}
                   journalPreview={expandedJournal.has(view.key)
                     ? <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70" onClick={event => event.stopPropagation()}>{renderJournal(journalizeCashEntry(row.entry), true)}</div>
                     : undefined}/>;
@@ -2247,9 +2272,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         * **자금 전표 창** — 수금·지불(전표에서 연 입출금)도, 이미 난 전표를 고치는 것도 하나다.
         * `key`로 열 때마다 새로 마운트한다 — 그래야 창이 폼을 되씻는 effect 없이 초기값만 읽는다.
         */}
-      {cashModal && (
+      {cashModal && companyOf(cashModal.kind === '수정' ? cashModal.entry : cashModal.stmt) === companyId && (
         <CashEntryModal
-          key={cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}
+          key={`${cashModal.kind}:${cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}:${cashModalSession}`}
           mode={cashModal}
           partners={partners.filter(partner => companyOf(partner) === companyId)}
           companyId={companyId}
@@ -2260,10 +2285,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           partnerBalances={partnerBalances}
           getBalance={getBalance}
           latestStatement={id => mergedStatements.find(s => s.id === id)}
-          onClose={() => setCashModal(null)}
+          onClose={() => { cashOpening.current = null; setCashModal(null); }}
           onSettle={savePayment}
+          payrollEdit={cashModal.kind === '수정' ? cashPayrollEdit : undefined}
+          transferEdit={cashModal.kind === '수정' ? cashTransferEdit : undefined}
           onSaveEdit={saveEditCash}
-          onDeleteEntry={onDeleteCashEntry}
+          hasPendingRequest={id => hasPendingCashMutation(companyId, id)}
+          onResumeEntry={onResumeCashMutation}
+          onDeleteEntry={onDeleteCashEntry ? async id => {
+            const original = cashModal.kind === '수정' ? cashModal.entry : cashEntries.find(row => row.id === id);
+            if (!original) throw new Error('삭제할 자금 원문을 찾지 못했습니다.');
+            await deleteCashAtomic(original);
+          } : undefined}
         />
       )}
 
@@ -2311,7 +2344,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           onIssueCashEntry={onIssueCashEntry}
           onAddIssuedStatement={onAddIssuedStatement}
           onAddFixedCostTemplate={onAddFixedCostTemplate}
-          onAddForCompany={onAddForCompany}
           recordPayment={recordPayment}
           renderJournal={renderJournal}
         />
@@ -2676,6 +2708,7 @@ ${names}
             {/* ── 이 전표의 수금/지불 ── */}
             {editingStmt && !isEditMode && (() => {
               const balance = getBalance(editingStmt);
+              if (!Number.isFinite(balance)) return <div className="p-3 text-sm text-slate-500">반품 연결 확인 중</div>;
               return <StatementSettlementSummary type={settlementTypeOf(editingStmt)} totalAmount={editingStmt.totalAmount}
                 balance={balance} formatAmount={fmt} overLabel={overLabelOf(settlementTypeOf(editingStmt))}
                 onSettle={()=>{setCreateMode(null);openPayModal(editingStmt);}}/>;

@@ -1,3 +1,7 @@
+import { readStatementDeletion } from './deleteIssuedStatementCommand';
+import { readCashCreationMutation } from './cashMutationReceipt';
+import { formatVoucherNo } from './shared/voucherNumber';
+export { formatVoucherNo } from './shared/voucherNumber';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -18,9 +22,7 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
-export function formatVoucherNo(date: string, sequence: number, prefix = ''): string {
-  return `${prefix}${date.slice(2).replace(/-/g, '')}-${String(sequence).padStart(3, '0')}`;
-}
+
 
 export const voucherSequenceKey = (companyId: string, date: string, prefix = '') =>
   `voucherNo_${companyId}_${date}_${prefix || 'general'}`;
@@ -81,6 +83,22 @@ export async function issueVoucher(db: admin.firestore.Firestore, companyId: str
     const effectivePrefix = mode === 'catchUp' ? '추가' : prefix;
     const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
     if (otherKind.exists) throw new HttpsError('already-exists', '작업 ID가 다른 종류의 전표에 사용되었습니다.');
+    if (kind === 'cashEntries' && (!existing.exists || (existing.data()?.mutationRevision ?? 0) > 0)) {
+      const original = await readCashCreationMutation(db, tx, companyId, operationId, existing, row => {
+        const { id: _id, docNo: _docNo, issueOperationId: _operation, issuePayloadHash: _hash, issuePrefix: _prefix,
+          createdAt: _createdAt, issuedAt: _issuedAt, createdBy: _createdBy, ...semantic } = row;
+        return row.companyId === companyId && row[field] === tradeDate && row.issueOperationId === operationId
+          && row.issuePrefix === effectivePrefix && row.issuePayloadHash === issuePayloadHash && typeof row.docNo === 'string'
+          && createHash('sha256').update(JSON.stringify(canonical(semantic))).digest('hex') === issuePayloadHash;
+      });
+      if (original) return { id: operationId, docNo: original.docNo as string };
+    }
+    if (kind === 'issuedStatements') {
+      const deleted = await readStatementDeletion(db, tx, companyId, operationId, existing, row =>
+        row[field] === tradeDate && row.issueOperationId === operationId && row.issuePrefix === effectivePrefix
+        && row.issuePayloadHash === issuePayloadHash && typeof row.docNo === 'string' && !!row.docNo);
+      if (deleted) return { id: operationId, docNo: deleted.docNo as string };
+    }
     if (existing.exists) {
       const data = existing.data()!;
       if (data.companyId !== companyId || data[field] !== tradeDate || data.issueOperationId !== operationId || data.issuePrefix !== effectivePrefix || data.issuePayloadHash !== issuePayloadHash || typeof data.docNo !== 'string') {

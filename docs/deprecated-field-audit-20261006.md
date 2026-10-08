@@ -16,7 +16,7 @@
 
 품목 546개, 템플릿 100개, 팔레트 8개를 읽었다. `CostManager`의 어디에서도 사용하지 않는 editTpl/editForm state와 postMode 초기값을 제거했다. UI 경로와 운영 데이터는 변경하지 않았다.
 
-제거 버전: 미정. 잔존값이 있거나 외부 구 writer를 확인하지 못한 필드의 선언·호환 읽기를 일괄 삭제하지 않는다. 후속 단계는 연결/잔량 동치 조사와 필요한 백업·dry-run이다.
+초기 조사 당시 제거 버전은 미정이었다. 아래 최신 배포 기록과 분리해 읽는다. 잔존값이 있거나 외부 구 writer를 확인하지 못한 필드의 선언·호환 읽기를 일괄 삭제하지 않는다. 후속 단계는 연결/잔량 동치 조사와 필요한 백업·dry-run이다.
 
 ## 거래처 연결 동치 조사
 
@@ -39,7 +39,7 @@
 | PartnerItem.tapeTypeId | 0 / 0 | PasteOrderModal 포장 표시·ItemManager 중복 대조; 제품 writer0 | BOM 표시 유지, 구형 거래처 표시 제거 |
 | PartnerItem.qty_per_box/containerTypeId/labelId/weightInKg/displaySize/packageType | 모두 0 / 0 | 타입 선언 외 제품 reader/writer0 | 선언 제거. 같은 이름의 Item·OrderItem·로트 필드는 현재 사용하므로 유지 |
 
-거래처 포장9필드 선언과 세 실제 reader를 한 후보로 정리한다. 원본 관계 단가·taxType·계정·shipToIds·Direction은 유지한다. 구형 필드를 기록할 수 있는 과거 스크립트의 비교 목록은 감사/복구용이므로 변경하지 않는다. 새 제품 포장 writer가 없고 세 reader의 정상 BOM 동치 및 구형 runtime 원복 변이 검출을 검증한 뒤 제거 버전을 실제 배포 commit으로 확정한다. 후보 생성은 DB 필드 삭제 또는 전체 TODO039 완료가 아니다.
+거래처 포장9필드 선언과 세 실제 reader는 commit `9dcdab82`에서 제거하고 관리자·직원 Hosting/SHA 및 GitHub 원격 일치 검증을 완료했다. 원본 관계 단가·taxType·계정·shipToIds·Direction은 유지한다. 구형 필드를 기록할 수 있는 과거 스크립트의 비교 목록은 감사/복구용이므로 변경하지 않는다. 새 제품 포장 writer가 없고 세 reader의 정상 BOM 동치 및 구형 runtime 원복 변이 검출을 검증했다. 이 코드 제거는 DB 필드 삭제 또는 전체 TODO039 완료가 아니다.
 
 ### 실제 미결·유지 경계
 
@@ -56,10 +56,10 @@
 
 | 필드 | 태백 / 풍회 존재 | 읽기·쓰기 및 대체 | 코드 제거 범위·버전 |
 | --- | --- | --- | --- |
-| Item.weightInKg | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo350ml 품목 fixture만 생성. 현재 kg 계산은 spec·BOM·로트 unitKg를 사용한다. | Item 선언과 demo fixture 키 제거 후보. 실제 배포 commit은 총괄 확정 후 기록 |
-| Item.netContent | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo fixture만 생성. 실제 내용량·규격 입력은 spec을 사용한다. | 선언과 demo fixture 키 제거 후보 |
-| Item.isRawMaterial | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo raw fixture와 감사 test의 false 초기값만 존재. 원료 판정은 type/rawMaterialName의 기존 계약을 유지한다. | 선언·demo fixture·감사 fixture 키 제거 후보 |
-| Item.variantStocks | 0 / 0 | 선언 외 제품·Functions·fixture reader/writer 0. 현재 품목·로트 stock 계산 불변. | 선언 제거 후보 |
+| Item.weightInKg | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo350ml 품목 fixture만 생성. 현재 kg 계산은 spec·BOM·로트 unitKg를 사용한다. | Item 선언과 demo fixture 키 제거. 실제 배포 commit `3e2f4ca4` |
+| Item.netContent | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo fixture만 생성. 실제 내용량·규격 입력은 spec을 사용한다. | 선언과 demo fixture 키 제거 (`3e2f4ca4`) |
+| Item.isRawMaterial | 0 / 0 | 제품·앱/배포 Functions reader/writer 0. demo raw fixture와 감사 test의 false 초기값만 존재. 원료 판정은 type/rawMaterialName의 기존 계약을 유지한다. | 선언·demo fixture·감사 fixture 키 제거 (`3e2f4ca4`) |
+| Item.variantStocks | 0 / 0 | 선언 외 제품·Functions·fixture reader/writer 0. 현재 품목·로트 stock 계산 불변. | 선언 제거 (`3e2f4ca4`) |
 
 운영 데이터 삭제·이관이나 새 계산 분기 추가 없이 정확 네 선언과 demo/test 키만 제거한다. `FixedCostTemplate.statementType`과 기존 `stock`·`spec`·`rawMaterialName`·BOM·로트 필드는 유지한다. 타입 선언만 복구하는 것은 runtime 계산을 바꾸지 않으므로 이번 변경을 runtime 변이로 검출했다고 주장하지 않는다. 기존 포장9필드의 runtime 원복 변이 검출은 앞선 배포 근거이며 이번 작업으로 재계수하지 않는다. 이번 경계는 최신 정적 사용처 0, fresh DB 존재 0, 전체 타입과 기존 환산·감사 회귀로 검증한다.
 
@@ -69,9 +69,13 @@
 
 - `Item.partnerIds`: 판매 관계 표시용 파생 prop과 DB의 SMARTSTORE 호환 표식이 같은 이름을 사용한다. 현재 실제 SMARTSTORE legacy reader가 있어 채널 표식의 확인된 이관 없이 제거할 수 없다. 과거 판매 배열과 현재 partner_item 관계 불일치를 자동 복원하지 않는다.
 - `Item.lotsAreTotal`: 제품 계산은 이미 무시하지만 태백 문서1개 잔존. 현재는 재도입 방지 never 선언이다. 문서 필드 삭제·백업·동치의 운영 결정 없이 전체 제거 완료로 기록하지 않는다.
-- `PalletStock.inUse`: DB8문서 잔존, 화면 잔량은 거래기록으로 계산한다. 미참조 INITIAL_PALLETS의 구형값과 편집 snapshot 전달이 남아 있다. 거래기록 잔량 대조·운영 필드 삭제 결정·백업이 별도 필요하다.
+- `PalletStock.inUse`: DB8문서 잔존, 화면 잔량은 거래기록으로 계산한다. 편집 snapshot 전달은 유지한다. 미참조 INITIAL_PALLETS의 구형값 제거는 아래 미배포 후속 후보와 구분한다. 거래기록 잔량 대조·운영 필드 삭제 결정·백업이 별도 필요하다.
 - `FixedCostTemplate.postMode`: DB존재0이나 앱/예약 Functions의 legacy 분리→줄돈 호환과 시험이 남아 있다. TODO016 명시종류 배포 완료가 이 호환 또는 모든 구형 writer의 종료를 자동 증명하지 않는다.
 - `AccountCode.noncash`: 양사 각각2문서 잔존. 현재 보고서 계산은 journal 기반이나 운영 값 삭제 결정은 없다.
 - deprecated `InventoryCategory` 분류는 실제 레거시 분류 소비자가 남아 있다. 단순 타입 일괄 축소는 하지 않는다.
 
 신규 운영 field 삭제나 데이터 이관은 승인되지 않았고 쓰기0이다. 운영 잔존 대상의 전환 없이 전체039를 완료로 바꾸지 않는다.
+
+## 2026-10-07 미참조 초기 팔레트 후속 정리 — 아직 미배포
+
+총괄 소유 `src/config/company.ts`에서 제품 참조가 없는 INITIAL_PALLETS와 해당 PalletStock import를 제거하고, `components/PalletManager.tsx`의 거래 삭제 설명을 실제 남은 거래기록 기반 잔량 계산에 맞게 고쳤다. 동작·운영 팔레트8문서·inUse 필드·편집 snapshot 전달은 변경하지 않았다. 이 문서 갱신 시점에 후속 두 파일은 미배포 후보이며 기존 포장9필드 또는 Item4필드 배포 완료와 합산하지 않는다.

@@ -1,26 +1,23 @@
 
-import { stampFor, claimDocNo } from '../src/shared/voucherStamp';﻿
-import React, { useMemo, useState } from 'react';
+import { appConfirm } from '../src/shared/components/appDialog';
+import React, { useMemo, useState, useRef } from 'react';
 import {
   Clock, AlertCircle, Package, ArrowRight,
   CalendarDays, User, ShoppingCart, AtSign,
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
-  X, Loader2, Check, Plus,
+  X, Check,
 } from 'lucide-react';
-import { LeaveRequest, LeaveStatus, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
-import { addItem, updateItem } from '../src/shared/services/firebaseService';
+import { LeaveRequest, LeaveStatus, AdjustmentRequest, Employee, ReturnRequest, IssuedStatement, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
-import { vatOn } from '../src/shared/lineAmount';
 import { adjTypeLabel, adjTypeClass } from '../src/shared/adjustmentStyle';
-import { sellsTo } from '../src/shared/partnerRole';
-import ModalShell from '../src/shared/components/ModalShell';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
   adjustmentRequests: AdjustmentRequest[];
   employees: Employee[];
   returnRequests?: ReturnRequest[];
+  onProcessReturn?: (request: ReturnRequest) => Promise<void>;
   receivedOrders?: PurchaseOrder[];
   partners?: Partner[];
   issuedStatements?: IssuedStatement[];
@@ -29,7 +26,7 @@ interface AdminChecklistProps {
   onDeleteAdjustmentRequest?: (_id: string) => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
   pendingStatementEdits?: PendingStatementEdit[];
-  onApproveStatementEdit?: (_edit: PendingStatementEdit) => void;
+  onApproveStatementEdit?: (_edit: PendingStatementEdit) => void | Promise<void>;
   onRejectStatementEdit?: (_id: string) => void;
   orderRequests?: PurchaseOrder[];
   items?: Item[];
@@ -38,14 +35,6 @@ interface AdminChecklistProps {
 }
 
 type TabType = 'leave' | 'adjustment' | 'ops';
-
-interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
-interface ReturnStatementDraft {
-  returnReq: ReturnRequest;
-  partnerId: string;
-  tradeDate: string;
-  items: StatementDraftItem[];
-}
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   '연차': '연차', '오전반차': '오전반차', '오후반차': '오후반차',
@@ -57,6 +46,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   adjustmentRequests,
   employees,
   returnRequests = [],
+  onProcessReturn,
   receivedOrders = [],
   partners = [],
   issuedStatements = [],
@@ -79,8 +69,21 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   // 기본: 전표 미발행만 — 발행 완료된 선입고는 숨겨 목록이 끝없이 길어지지 않게. '전체'로 토글 가능.
   const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('pending_voucher');
 
-  const [returnStmtDraft, setReturnStmtDraft] = useState<ReturnStatementDraft | null>(null);
-  const [returnStmtSaving, setReturnStmtSaving] = useState(false);
+  const approvingEditIds = useRef(new Set<string>());
+  const [approvingEdits, setApprovingEdits] = useState<Set<string>>(new Set());
+  const [editApprovalErrors, setEditApprovalErrors] = useState<Record<string,string>>({});
+  const approveStatementEdit = async (edit: PendingStatementEdit) => {
+    if (!onApproveStatementEdit || approvingEditIds.current.has(edit.id)) return;
+    approvingEditIds.current.add(edit.id);
+    setApprovingEdits(new Set(approvingEditIds.current));
+    setEditApprovalErrors(errors => ({...errors,[edit.id]:''}));
+    try { await onApproveStatementEdit(edit); }
+    catch (error) { setEditApprovalErrors(errors => ({...errors,[edit.id]:error instanceof Error ? error.message : '전표 수정 승인에 실패했습니다.'})); }
+    finally { approvingEditIds.current.delete(edit.id);setApprovingEdits(new Set(approvingEditIds.current)); }
+  };
+
+  const returnBusy = useRef(false);
+  const [processingReturnId, setProcessingReturnId] = useState<string | null>(null);
 
   const pendingLeaves = useMemo(() =>
     leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending')
@@ -154,62 +157,15 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   };
   const getEmployeeName = (empId: string) => employees.find(e => e.id === empId)?.name ?? empId;
 
-  const openReturnStmtModal = (req: ReturnRequest) => {
-    const matchedClient = partners.find(c => c.id === req.partnerId);
-    setReturnStmtDraft({
-      returnReq: req,
-      partnerId: matchedClient?.id ?? '',
-      tradeDate: dateOfLocal(req.createdAt),
-      items: (req.items as ReturnItem[]).map(item => ({
-        name: item.name,
-        qty: item.quantity.toString(),
-        price: '0',
-        unit: '',
-        isTaxExempt: false,
-      })),
-    });
-  };
-
-  const saveReturnStatement = async () => {
-    if (!returnStmtDraft) return;
-    const partner = partners.find(c => c.id === returnStmtDraft.partnerId);
-    if (!partner) { alert('거래처를 선택해주세요.'); return; }
-    const validItems = returnStmtDraft.items.filter(i => Number(i.qty) > 0);
-    if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
-    setReturnStmtSaving(true);
+  const processReturnRequest = async (request: ReturnRequest) => {
+    if (!onProcessReturn || returnBusy.current) return;
+    returnBusy.current = true;
+    setProcessingReturnId(request.id);
     try {
-      const stmtItems: IssuedStatementItem[] = validItems.map(i => {
-        const qty = Number(i.qty);
-        const price = Number(i.price);
-        const supply = qty * price;
-        const tax = vatOn(supply, i.isTaxExempt);
-        return { name: i.name, spec: i.unit, qty, price, supply, tax, total: supply + tax, isTaxExempt: i.isTaxExempt };
-      });
-      const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
-      const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
-      const docNo = claimDocNo(returnStmtDraft.tradeDate, issuedStatements, '반품');
-      const stmtId = await addItem('issuedStatements', {
-        issuedAt: stampFor(returnStmtDraft.tradeDate),
-        tradeDate: returnStmtDraft.tradeDate,
-        type: '매출' as const,
-        partnerId: partner.id,
-        partnerName: partner.name,
-        orderId: returnStmtDraft.returnReq.id,
-        docNo,
-        totalSupply,
-        totalTax,
-        totalAmount: totalSupply + totalTax,
-        items: stmtItems,
-      } as Omit<IssuedStatement, 'id'>);
-      await updateItem('returnRequests', returnStmtDraft.returnReq.id, {
-        status: 'processed',
-        processedAt: new Date().toISOString(),
-        linkedStatementId: stmtId,
-      });
-      setReturnStmtDraft(null);
-    } finally {
-      setReturnStmtSaving(false);
-    }
+      if (!await appConfirm('반품 역분개·재고·비현금 상계를 함께 확정하시겠습니까?')) return;
+      await onProcessReturn(request);
+    } catch (error) { alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
+    finally { returnBusy.current = false; setProcessingReturnId(null); }
   };
 
   // 선입고/발주 → 매입전표 발행: TradeStatement 작성 화면으로 라우팅.
@@ -510,9 +466,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center">
                         {req.status === 'pending' ? (
-                          <button onClick={() => openReturnStmtModal(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 반품 전표 발행</button>
+                          <button disabled={!onProcessReturn || !!processingReturnId} onClick={() => void processReturnRequest(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> {processingReturnId === req.id ? '처리 중...' : '반품 원자 처리'}</button>
                         ) : (
-                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
+                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 처리 이력</span>
                         )}
                       </div>
                     </td>
@@ -550,7 +506,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                         {!r.linkedStatementId ? (
                           <button onClick={() => issueStatementForPos([r], r.partnerId ?? '', r.partnerName ?? '')} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 매입전표 발행</button>
                         ) : (
-                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
+                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 처리 이력</span>
                         )}
                       </div>
                     </td>
@@ -594,8 +550,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{edit.proposedData.items?.length ?? 0}품목</span></td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => onApproveStatementEdit?.(edit)} className="flex items-center gap-1 px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><Check size={10} />승인</button>
-                        <button onClick={() => onRejectStatementEdit?.(edit.id)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><X size={10} />거절</button>
+                        <button disabled={approvingEdits.has(edit.id) || !onApproveStatementEdit} onClick={() => { void approveStatementEdit(edit); }} className="flex items-center gap-1 px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><Check size={10} />승인</button>
+                        <button disabled={approvingEdits.has(edit.id)} onClick={() => onRejectStatementEdit?.(edit.id)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><X size={10} />거절</button>
+                        {editApprovalErrors[edit.id] && <span role="alert" className="text-xs text-rose-600">{editApprovalErrors[edit.id]}</span>}
                       </div>
                     </td>
                   </tr>
@@ -655,113 +612,6 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       )}
 
       {/* 반품 전표 발행 모달 */}
-      {returnStmtDraft && (
-        <ModalShell
-          title={`반품 전표 발행 · ${returnStmtDraft.returnReq.partnerName} · ${dateOfLocal(returnStmtDraft.returnReq.createdAt)}`}
-          onClose={() => setReturnStmtDraft(null)}
-          footer={<button
-            onClick={saveReturnStatement}
-            disabled={returnStmtSaving || !returnStmtDraft.partnerId}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
-          >
-            {returnStmtSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-            {returnStmtSaving ? '발행 중...' : '반품 전표 발행'}
-          </button>}
-        >
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매출처) *</label>
-                <select
-                  value={returnStmtDraft.partnerId}
-                  onChange={e => setReturnStmtDraft(d => d ? { ...d, partnerId: e.target.value } : null)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-                >
-                  <option value="">거래처 선택</option>
-                  {partners
-                    .filter(sellsTo)
-                    .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래일자 *</label>
-                <input
-                  type="date"
-                  value={returnStmtDraft.tradeDate}
-                  onChange={e => setReturnStmtDraft(d => d ? { ...d, tradeDate: e.target.value } : null)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">품목</label>
-                  <button
-                    onClick={() => setReturnStmtDraft(d => d ? { ...d, items: [...d.items, { name: '', qty: '', price: '', unit: '', isTaxExempt: false }] } : null)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50"
-                  >
-                    <Plus size={11} /> 품목 추가
-                  </button>
-                </div>
-                <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <div className="col-span-4">품목명</div>
-                  <div className="col-span-2 text-center">수량</div>
-                  <div className="col-span-1 text-center">단위</div>
-                  <div className="col-span-3 text-center">단가(원)</div>
-                  <div className="col-span-1 text-center">세금</div>
-                  <div className="col-span-1" />
-                </div>
-                {returnStmtDraft.items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-xl p-2">
-                    <div className="col-span-4">
-                      <input value={item.name} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, name: e.target.value } : it) } : null)}
-                        placeholder="품목명" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-2">
-                      <input type="number" min={0} value={item.qty} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it) } : null)}
-                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-1">
-                      <input value={item.unit} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, unit: e.target.value } : it) } : null)}
-                        placeholder="개" className="w-full px-1 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-3">
-                      <input type="number" min={0} value={item.price} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, price: e.target.value } : it) } : null)}
-                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, isTaxExempt: !it.isTaxExempt } : it) } : null)}
-                        className={`px-1 py-1 rounded text-[10px] font-black transition-colors ${item.isTaxExempt ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
-                        {item.isTaxExempt ? '면세' : '과세'}
-                      </button>
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => setReturnStmtDraft(d => d ? { ...d, items: d.items.filter((_, i) => i !== idx) } : null)} className="p-1 text-slate-300 hover:text-rose-500">
-                        <X size={13} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {(() => {
-                const supply = returnStmtDraft.items.reduce((s, i) => s + Number(i.qty || 0) * Number(i.price || 0), 0);
-                const tax = returnStmtDraft.items.reduce((s, i) => {
-                  const amt = Number(i.qty || 0) * Number(i.price || 0);
-                  return s + vatOn(amt, i.isTaxExempt);
-                }, 0);
-                return (
-                  <div className="bg-rose-50 rounded-xl px-4 py-3 space-y-1">
-                    <div className="flex justify-between text-xs text-slate-500"><span>공급가액</span><span className="font-bold">{supply.toLocaleString()}원</span></div>
-                    <div className="flex justify-between text-xs text-slate-500"><span>세액</span><span className="font-bold">{tax.toLocaleString()}원</span></div>
-                    <div className="flex justify-between text-sm font-black text-slate-800 border-t border-rose-200 pt-1"><span>합계</span><span>{(supply + tax).toLocaleString()}원</span></div>
-                  </div>
-                );
-              })()}
-            </div>
-
-        </ModalShell>
-      )}
 
     </div>
   );

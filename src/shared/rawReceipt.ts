@@ -6,34 +6,17 @@
 import type { CompanyId, Item } from './types';
 import { companyOf } from './types';
 import { executeRawInventoryCommand } from './services/rawInventoryService';
-import { RM_LIST, DENSITY, baseRawName, parsePackageKg } from '../constants/formula';
+import { DENSITY, parsePackageKg } from '../constants/formula';
 import { itemKg } from './orderUnits';
 import { receiptToKg } from './lotUtils';
-import { rawHolderByName, rawLedgerKeys, isRawHolder } from './rawHolder';
+import { rawLedgerKeys } from './rawHolder';
+import { rawLotTarget } from '../../functions/src/shared/rawHolder';
+export { rawLotTarget } from '../../functions/src/shared/rawHolder';
 
 /**
  * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
  * 별도 raw 품목 우선, 없으면 입고품목 자체가 raw면 그것.
  */
-export function rawLotTarget(
-  allItems: Item[],
-  product: Item | undefined,
-  itemName: string,
-  /**
-   * 어느 회사 창고로 들어가나. 같은 원료를 두 회사가 각자 들고 있으면(깨분처럼)
-   * 이걸 안 넘길 때 **먼저 걸리는 쪽**으로 들어가 남의 회사 로트가 늘어난다.
-   * 안 넘기면 예전대로 이름만 보고 고른다.
-   */
-  companyId?: CompanyId,
-): { baseName: string; rawItem: Item } | null {
-  const baseName = product?.rawMaterialName || baseRawName(itemName);
-  if (!RM_LIST.includes(baseName)) return null;
-  //  홀더 고르기는 [rawHolder](./rawHolder.ts) 하나가 안다 — 회사를 넘기면 그 회사 것만 고른다.
-  //  예전엔 여기서 `?? holders[0]` 로 **남의 회사 홀더를 대신 집었다.**
-  const rawItem = rawHolderByName(allItems, baseName, companyId)
-               ?? (product && companyId == null && isRawHolder(product) ? product : undefined);
-  return rawItem ? { baseName, rawItem } : null;
-}
 
 /**
  * **같은 입고가 겹쳐 들어오는 것을 막는다.**

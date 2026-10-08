@@ -1,9 +1,10 @@
+import { readClaimsAfterReturns } from './returnClaimReader';
 import * as admin from 'firebase-admin';
 import { partnerQuarantined } from './partnerCutover';
 import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { cashFromEntry, claimFromStatement } from './partnerPaymentCommand';
-import { claimsAfterReturns, type Claim, type ReturnApplication } from './partnerPaymentPlan';
+import { type Claim, type ReturnApplication } from './partnerPaymentPlan';
 import { assertReleaseActive, releaseGateRef } from './releaseGate';
 
 type Allocation = { statementId: string; amount: number };
@@ -13,7 +14,7 @@ const invalid = (message: string): never => { throw new HttpsError('invalid-argu
 const conflict = (message: string): never => { throw new HttpsError('failed-precondition', message); };
 const owner = (row: Record<string, any>) => row.companyId ?? 'taebaek';
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
-const manual = (row: Record<string, any>) => row.manual === true && !row.operationId
+const manual = (row: Record<string, any>, id: string) => !id.startsWith('st-') && row.manual === true && !row.operationId
   && !row.returnOperationId && !row.transferOperationId && !row.issueOperationId
   && row.serverOwned !== true;
 
@@ -49,15 +50,15 @@ export async function replaceManualSettlementBatch(db: admin.firestore.Firestore
       tx.get(db.collection('returnApplications').where('partnerId', '==', input.partnerId)),
     ]);
     assertReleaseActive(releaseSnap, input.releaseId);
-    const old = settlementRows.docs.filter(doc => doc.data().cashEntryId === input.cashEntryId && manual(doc.data()));
+    const old = settlementRows.docs.filter(doc => doc.data().cashEntryId === input.cashEntryId && manual(doc.data(), doc.id));
     if (operationSnap.exists) {
       const previous = operationSnap.data()!;
-      const current = settlementRows.docs.filter(doc => doc.data().cashEntryId === input.cashEntryId);
+      const current = settlementRows.docs.filter(doc => doc.data().cashEntryId === input.cashEntryId && manual(doc.data(), doc.id));
       if (previous.companyId !== companyId || previous.partnerId !== input.partnerId
         || previous.cashEntryId !== input.cashEntryId || previous.requestHash !== requestHash
-        || current.length !== allocations.length || current.some(doc => !manual(doc.data())
+        || previous.createdBy !== actorId || current.length !== allocations.length || current.some(doc => !manual(doc.data(), doc.id)
           || owner(doc.data()) !== companyId || !allocations.some(row =>
-            row.statementId === doc.data().statementId && row.amount === doc.data().amount)))
+            doc.id === `manual-${input.operationId}-${row.statementId}` && row.statementId === doc.data().statementId && row.amount === doc.data().amount)))
         conflict('기존 수동 상계 작업과 현재 배분이 다릅니다.');
       return { status: 'duplicate' as const, revision: previous.revision };
     }
@@ -74,21 +75,16 @@ export async function replaceManualSettlementBatch(db: admin.firestore.Firestore
     if (owner(source) !== companyId || source.partnerId !== input.partnerId
       || !partnerSnap.exists || owner(partnerSnap.data()!) !== companyId)
       conflict('자금전표·거래처의 회사가 맞지 않습니다.');
-    if (source.issueOperationId || source.transferOperationId || source.loanMovementOperationId
+    if (source.transferOperationId || source.loanMovementOperationId
       || source.partnerPaymentOperationId || !['입금', '출금'].includes(source.dir) || !positive(source.amount))
       conflict('수동 정산할 수 없는 자금전표입니다.');
-    const lines = Array.isArray(source.lines) && source.lines.length ? source.lines
-      : source.accountCode ? [{ accountCode: source.accountCode, amount: source.amount }] : [];
-    if (!lines.length || lines.some((line: Record<string, unknown>) =>
-      typeof line.accountCode !== 'string' || !positive(line.amount))
-      || lines.reduce((sum: number, line: { amount: number }) => sum + line.amount, 0) !== source.amount)
-      conflict('자금전표 줄 총액이 원본 금액과 맞지 않습니다.');
     const cash = cashFromEntry(input.cashEntryId, source);
-    if (!cash) conflict('자금전표 정산 계정이 불명확합니다.');
-    const claims = claimsAfterReturns(statementRows.docs.filter(doc => owner(doc.data()) === companyId)
+    if (!cash || cash.parts.some(part => !Number.isSafeInteger(part.reduce)))
+      conflict('자금전표 정산 계정이 불명확합니다.');
+    const claims = await readClaimsAfterReturns(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
       .map(doc => claimFromStatement(doc.id, doc.data())).filter((row): row is Claim => row !== null),
     returnRows.docs.filter(doc => owner(doc.data()) === companyId)
-      .map(doc => ({ id: doc.id, ...doc.data() } as ReturnApplication)));
+      .map(doc => ({ id: doc.id, ...doc.data() } as ReturnApplication)), statementRows.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     const byClaim = new Map(claims.map(row => [row.id, row]));
     const claimUsed = new Map<string, number>();
     const cashUsed = new Map<string, number>();
@@ -100,6 +96,9 @@ export async function replaceManualSettlementBatch(db: admin.firestore.Firestore
       if (!claim) throw new HttpsError('failed-precondition', '기존 정산 연결이 불명확합니다.');
       if (owner(row) !== companyId || !positive(row.amount))
         conflict('기존 정산 연결이 불명확합니다.');
+      const linkedCash = await tx.get(db.collection('cashEntries').doc(row.cashEntryId));
+      if (!linkedCash.exists || owner(linkedCash.data()!) !== companyId || linkedCash.data()?.partnerId !== input.partnerId)
+        conflict('기존 정산 자금 원문이 불명확합니다.');
       claimUsed.set(claim.id, (claimUsed.get(claim.id) ?? 0) + row.amount);
       if (row.cashEntryId === input.cashEntryId)
         cashUsed.set(claim.accountCode, (cashUsed.get(claim.accountCode) ?? 0) + row.amount);
@@ -115,11 +114,12 @@ export async function replaceManualSettlementBatch(db: admin.firestore.Firestore
         conflict('원전표의 회사·거래처가 맞지 않습니다.');
       const eligible = cash!.parts.filter(part => part.accountCode === claim.accountCode)
         .reduce((sum, part) => sum + part.reduce, 0);
-      if (eligible <= 0) conflict('원전표와 자금전표의 방향·계정이 맞지 않습니다.');
+      if (!Number.isSafeInteger(eligible) || eligible <= 0 || eligible > source.amount) conflict('원전표와 자금전표의 방향·계정이 맞지 않습니다.');
       claimUsed.set(claim.id, (claimUsed.get(claim.id) ?? 0) + row.amount);
       cashUsed.set(claim.accountCode, (cashUsed.get(claim.accountCode) ?? 0) + row.amount);
     }
-    if ([...claimUsed].some(([id, used]) => !Number.isSafeInteger(used) || used > byClaim.get(id)!.amount)
+    const allocatedCash = [...cashUsed.values()].reduce((sum, value) => sum + value, 0);
+    if (!Number.isSafeInteger(allocatedCash) || allocatedCash > source.amount || [...claimUsed].some(([id, used]) => !Number.isSafeInteger(used) || used > byClaim.get(id)!.amount)
       || [...cashUsed].some(([code, used]) => !Number.isSafeInteger(used)
         || used > cash!.parts.filter(part => part.accountCode === code)
           .reduce((sum, part) => sum + part.reduce, 0)))

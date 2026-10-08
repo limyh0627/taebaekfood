@@ -1,3 +1,4 @@
+import { formatVoucherNo } from '../../functions/src/shared/voucherNumber';
 /**
  * 전표 시각 — 그날 안에서 **어디에 설 것인가**.
  *
@@ -155,5 +156,5 @@ export function nextDocNo(
   }
   //  세 자리로 찍는다(2026-09-03 사장님) — 하루 백 장을 넘겨도 자릿수가 안 흔들린다.
   //  읽을 때는 자릿수를 안 따지므로(숫자면 다 본다) 옛 두 자리 번호와 섞여도 순서가 맞는다.
-  return `${head}${String(max + 1).padStart(3, '0')}`;
+  return d.length === 10 ? formatVoucherNo(d, max + 1, prefix) : `${head}${String(max + 1).padStart(3, '0')}`;
 }

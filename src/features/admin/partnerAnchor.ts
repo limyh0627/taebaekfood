@@ -1,3 +1,4 @@
+import type { ReadonlyReturnOperation } from './cashLedger';
 import type { JournalEntry, CompanyId, IssuedStatement, CashEntry, Settlement } from '../../shared/types';
 import { allPartnerBalances, allocatePartnerCash, isReceivableStmt } from './cashLedger';
 import { addDays } from '../../shared/day';
@@ -65,6 +66,7 @@ export interface PartnerAnchor {
 
 /** 앵커를 만들 재료 — **모두 그 회사 것으로 걸러서** 넘긴다 */
 export interface AnchorInput {
+  returnOperations?: readonly ReadonlyReturnOperation[];
   journals: JournalEntry[];
   statements?: IssuedStatement[];
   cashEntries?: CashEntry[];
@@ -117,7 +119,8 @@ export function buildPartnerAnchor(companyId: CompanyId, year: string, input: An
     const i = key.lastIndexOf('|');
     const pid = key.slice(0, i);
     const type = key.slice(i + 1) as '매출' | '매입';
-    for (const [id, open] of allocatePartnerCash(pid, type, statements, cash, settlements)) {
+    for (const [id, open] of allocatePartnerCash(pid, type, statements, cash, settlements, undefined, input.returnOperations)) {
+      if (!Number.isFinite(open)) throw new Error('반품 원전표 확인이 끝난 뒤 이월잔액을 저장해 주세요.');
       //  **0이 아닌 것만** — 음수도 담는다. 반품·에누리 전표는 총액이 음수라 배분이 못 건드리는데
       //  (FIFO는 갚을 게 남은 줄만 깎는다) 잔액에서는 상계된다. 안 담으면 앵커 안에서
       //  '미결 합'과 '잔액'이 그만큼 갈린다 — 실제로 (인천)청정식품 −693,000이 그랬다.

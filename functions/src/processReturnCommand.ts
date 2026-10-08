@@ -1,3 +1,5 @@
+import { readClaimsAfterReturns } from './returnClaimReader';
+import { ReturnValidationError } from './returnValidationError';
 import * as admin from 'firebase-admin';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import { createHash } from 'crypto';
@@ -5,8 +7,13 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { planReturnReversal, type ReturnRow, type Source } from './returnReversalPlan';
 import { planGeneralReturnReceipt, planGeneralReturnIssue, type Item } from './returnGeneralStockPlan';
+import { planUnitReturnReceipt, planUnitReturnIssue } from './returnUnitStockPlan';
+import { unpackStockComponent, stockUnitKg } from './shared/stockUnitMeasure';
+import { prepareReturnRawStock, writeReturnRawStock } from './returnRawStockPlan';
+import type { RawInventoryState } from './shared/rawInventoryCore';
+import { returnStockKind } from './shared/returnStockKind';
 import { cashFromEntry, claimFromStatement } from './partnerPaymentCommand';
-import { claimsAfterReturns, openClaimBalances, type ReturnApplication } from './partnerPaymentPlan';
+import { openClaimBalances, PartnerPaymentValidationError, type ReturnApplication } from './partnerPaymentPlan';
 import { planReturnAllocation } from './returnAllocationPlan';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 import { partnerQuarantined } from './partnerCutover';
@@ -25,12 +32,12 @@ const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(
       .map(([k, v]) => [k, canonical(v)])) : value;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 
-/** 일반재고 반품. 매입 출고는 원장 연결 완료 전 별도 gate로 차단한다. */
+/** 반품 역분개·정산과 품목별 재고/로트를 한 거래로 저장한다. 회사별 전환 설정은 별도 확인한다. */
 export async function processGeneralStockReturn(
   db: admin.firestore.Firestore, companyId: string, actorId: string, input: Input,
 ) {
   if (!actorId || !input || typeof input !== 'object') bad('반품 요청이 잘못되었습니다.');
-  if (!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId) || !input.returnRequestId
+  if (!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId) || !/^[A-Za-z0-9_-]{1,150}$/.test(input.returnRequestId)
     || !/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)
     || !validDate(input.tradeDate) || !Number.isSafeInteger(input.expectedPartnerRevision)
     || input.expectedPartnerRevision < 0) bad('반품 작업 입력이 잘못되었습니다.');
@@ -43,8 +50,28 @@ export async function processGeneralStockReturn(
   const cutover = db.collection('appMeta').doc(`returnCutover_${companyId}`);
   const paymentCutover = db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`);
   const releaseGate = releaseGateRef(db);
-  return db.runTransaction(async tx => {
+  const outcome = await db.runTransaction(async tx => {
     const opSnap = await tx.get(operation);
+    const outputRows = await Promise.all([
+      tx.get(db.collection('issuedStatements').where('returnOperationId', '==', input.operationId)),
+      tx.get(db.collection('returnApplications').where('operationId', '==', input.operationId)),
+      tx.get(db.collection('itemReceipts').where('returnOperationId', '==', input.operationId)),
+      tx.get(db.collection('rawMaterialLedger').where('returnOperationId', '==', input.operationId)),
+    ]);
+    const journalOutput = await tx.get(journal), applicationOutput = await tx.get(appRef);
+    const outputsAbsent = !journalOutput.exists && !applicationOutput.exists && outputRows.every(rows => rows.empty);
+    if (opSnap.exists && opSnap.data()?.status === 'rejected') {
+      const prior = opSnap.data()!;
+      if (prior.companyId !== companyId || prior.createdBy !== actorId
+        || prior.operationId !== input.operationId || prior.returnRequestId !== input.returnRequestId
+        || prior.requestHash !== requestHash || hash(prior.command) !== requestHash
+        || !['invalid-argument', 'failed-precondition'].includes(prior.failureCode)
+        || typeof prior.failureMessage !== 'string' || !prior.failureMessage || !outputsAbsent)
+        fail('기존 반품 거절 감사와 요청이 다릅니다.');
+      return { status: 'rejected' as const, failureCode: prior.failureCode as 'invalid-argument' | 'failed-precondition', failureMessage: prior.failureMessage as string };
+    }
+    let writesStarted = false;
+    try {
     const requestSnap = await tx.get(returnRef);
     const journalSnap = await tx.get(journal);
     const appSnap = await tx.get(appRef);
@@ -73,6 +100,7 @@ export async function processGeneralStockReturn(
     const settlementRows = await tx.get(db.collection('settlements'));
     const priorApplications = await tx.get(db.collection('returnApplications').where('partnerId', '==', request.partnerId));
     const itemRows = await tx.get(db.collection('items'));
+    const bomRows = await tx.get(db.collection('item_bom'));
     const accountCodes = await tx.get(db.collection('accountCodes'));
     if (opSnap.exists) {
       const prior = opSnap.data()!, saved = journalSnap.data();
@@ -100,12 +128,24 @@ export async function processGeneralStockReturn(
           || receipt.data()?.quantity !== expected.quantity
           || hash(receipt.data()) !== expected.receiptHash) fail('기존 반품 입고와 요청이 다릅니다.');
       }
+      const rawMovements: Row[] = prior.rawMovements ?? [];
+      if (!Array.isArray(rawMovements) || (rawMovements.length && hash(rawMovements) !== prior.rawMovementsHash))
+        fail('기존 원료 반품 근거가 변경되었습니다.');
+      for (const expected of rawMovements) {
+        if (typeof expected.id !== 'string' || expected.id.includes('/')) fail('기존 원료 반품 ID가 잘못되었습니다.');
+        const movement = await tx.get(db.collection('rawMaterialLedger').doc(expected.id));
+        if (!movement.exists || movement.data()?.companyId !== companyId
+          || movement.data()?.returnOperationId !== input.operationId
+          || hash(movement.data()) !== expected.movementHash) fail('기존 원료 반품 이력이 변경되었습니다.');
+      }
       if (sourceSnap.data()?.type === '매입') {
-        if (!Array.isArray(prior.stockMovements) || prior.stockMovements.length !== request.items.length
+        const physicalRows = [...(prior.stockMovements ?? []), ...rawMovements.map(row => ({ ...row, itemId: row.requestItemId }))];
+        if (!Array.isArray(prior.stockMovements) || physicalRows.length !== request.items.length
           || hash(prior.stockMovements) !== prior.stockMovementsHash
-          || prior.stockMovements.some((row: Row, index: number) => row.companyId !== companyId
+          || new Set(physicalRows.map(row => row.itemId)).size !== request.items.length
+          || physicalRows.some((row: Row) => row.companyId !== companyId
             || row.partnerId !== request.partnerId || row.operationId !== input.operationId
-            || row.itemId !== request.items[index].itemId || row.quantityDelta !== -request.items[index].quantity
+            || row.quantityDelta !== -request.items.find((item: Row) => item.itemId === row.itemId)?.quantity
             || row.date !== input.tradeDate)) fail('기존 반품 출고 근거가 변경되었습니다.');
       }
       return { status: 'duplicate' as const, docNo: prior.docNo, journalId: journal.id };
@@ -136,7 +176,9 @@ export async function processGeneralStockReturn(
     const oldReturns = priorReturns.docs.map(doc => ({ ...doc.data(), id: doc.id } as ReturnRow));
     const plan = planReturnReversal(companyId,
       { ...request, id: requestSnap.id } as ReturnRow, { ...source, id: sourceSnap.id } as Source, oldReturns);
-    if (plan.stockEffects.length !== request.items.length
+    const stockItemCount = purchase ? request.items.length
+      : request.items.filter((item: Row) => item.isResellable).length;
+    if (plan.stockEffects.length !== stockItemCount
       || plan.stockEffects.some(effect => purchase ? effect.quantityDelta >= 0 : effect.quantityDelta <= 0))
       fail('일반 재고로 복귀하는 매출 반품만 지원합니다.');
     const sourceClaim = claimFromStatement(sourceSnap.id, source);
@@ -148,14 +190,15 @@ export async function processGeneralStockReturn(
       .map(doc => ({ id: doc.id, ...doc.data(), companyId: doc.data().companyId ?? 'taebaek' } as ReturnApplication));
     const claims = statementRows.docs.filter(doc => (doc.data().companyId ?? 'taebaek') === companyId)
       .map(doc => claimFromStatement(doc.id, doc.data())).filter((row): row is NonNullable<typeof row> => row !== null);
-    const reducedClaims = claimsAfterReturns(claims, existingApps);
+    const reducedClaims = await readClaimsAfterReturns(db, tx, claims, existingApps, statementRows.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     const claimById = new Map(claims.map(row => [row.id, row]));
     for (const claim of claims) {
       const priorReturned = existingApps.filter(row => row.statementId === claim.id)
         .reduce((sum, row) => sum + row.amount, 0);
       const pinnedCash = settlementRows.docs.filter(doc => doc.data().statementId === claim.id)
         .reduce((sum, doc) => sum + doc.data().amount, 0);
-      if (!Number.isSafeInteger(pinnedCash) || pinnedCash < 0 || pinnedCash + priorReturned > claim.amount)
+      if (!Number.isSafeInteger(pinnedCash) || pinnedCash < 0
+        || (claim.amount < 0 ? pinnedCash !== 0 || priorReturned !== 0 : pinnedCash + priorReturned > claim.amount))
         fail('기존 현금 정산과 반품 상계가 원청구액을 넘습니다.');
     }
     if (!claimById.has(sourceSnap.id)) fail('원전표 채권을 확인할 수 없습니다.');
@@ -181,7 +224,13 @@ export async function processGeneralStockReturn(
     if (extraAppSnaps.some(snap => snap.exists)) fail("반품 상계 ID가 이미 사용 중입니다.");
     const todayIso = new Date().toISOString();
     const itemDocs = new Map(itemRows.docs.map(doc => [doc.id, doc.data()]));
-    const prepared = plan.stockEffects.map(effect => {
+    const companyItems = itemRows.docs.filter(doc => (doc.data().companyId ?? 'taebaek') === companyId)
+      .map(doc => ({ ...doc.data(), id: doc.id } as any));
+    const prepared: (ReturnType<typeof planGeneralReturnReceipt> | ReturnType<typeof planGeneralReturnIssue>
+      | ReturnType<typeof planUnitReturnReceipt> | ReturnType<typeof planUnitReturnIssue>)[] = [];
+    const rawPrepared: NonNullable<Awaited<ReturnType<typeof prepareReturnRawStock>>>[] = [];
+    const rawVirtual = new Map<string, { state: RawInventoryState; itemData: Row }>();
+    for (const effect of plan.stockEffects) {
       const item = itemDocs.get(effect.itemId);
       if (!item) fail('반품 품목을 찾을 수 없습니다.');
       const base = String(item!.rawMaterialName || item!.name || '').split('/')[0].trim();
@@ -192,11 +241,29 @@ export async function processGeneralStockReturn(
       });
       const stockInput = { operationId: input.operationId, companyId, date: input.tradeDate,
         createdAt: todayIso, partnerId: request.partnerId, partnerName: partnerSnap.data()!.name,
-        item: { ...item, id: effect.itemId } as Item, quantityDelta: effect.quantityDelta, rawTargetExists };
-      return purchase ? planGeneralReturnIssue(stockInput) : planGeneralReturnReceipt(stockInput);
-    });
+        item: { ...item, id: effect.itemId, companyId: item!.companyId ?? 'taebaek' } as Item, quantityDelta: effect.quantityDelta, rawTargetExists };
+      if (returnStockKind(companyId as 'taebaek' | 'punghoe', { ...item, id: effect.itemId } as any, companyItems) === 'unit') {
+        const component = unpackStockComponent(bomRows.docs.filter(doc => doc.data().parent_id === effect.itemId)
+          .map(doc => ({ childId: doc.data().child_id, qty: typeof doc.data().quantity === 'number' ? doc.data().quantity : 1,
+            child: itemDocs.has(doc.data().child_id) && (itemDocs.get(doc.data().child_id)?.companyId ?? 'taebaek') === companyId
+              ? itemDocs.get(doc.data().child_id) : undefined })));
+        const unitKg = stockUnitKg(item!, component, id => itemDocs.get(id)) ?? 0;
+        prepared.push(purchase ? planUnitReturnIssue(stockInput, unitKg) : planUnitReturnReceipt(stockInput, unitKg));
+        continue;
+      }
+      const raw = await prepareReturnRawStock(db, tx, { ...stockInput, companyId: companyId as 'taebaek' | 'punghoe',
+        requestId: returnRef.id, item: { ...item, id: effect.itemId } as any,
+        allItems: companyItems,
+        bomLines: bomRows.docs.map(doc => doc.data() as { parent_id: string; child_id: string; quantity?: number }),
+      }, rawVirtual);
+      if (raw) rawPrepared.push(raw);
+      else prepared.push(purchase ? planGeneralReturnIssue(stockInput) : planGeneralReturnReceipt(stockInput));
+    }
     const receipts = prepared.filter((row): row is ReturnType<typeof planGeneralReturnReceipt> => 'receipt' in row);
-    const stockMovements = prepared.flatMap(row => 'movement' in row ? [row.movement] : []);
+    const stockMovements = JSON.parse(JSON.stringify(prepared.flatMap(row => 'movement' in row ? [row.movement] : []))) as Row[];
+    const rawMovements = rawPrepared.map(row => ({ id: row.movementRef.id, companyId, partnerId: request.partnerId,
+      operationId: input.operationId, date: input.tradeDate, requestItemId: row.requestItemId,
+      quantityDelta: row.quantityDelta, movementHash: hash(row.movement) }));
     const receiptSnaps = await Promise.all(receipts.map(row => tx.get(db.collection('itemReceipts').doc(row.receiptId))));
     if (receiptSnaps.some(snap => snap.exists)) fail('반품 입고 기록이 이미 있습니다.');
     const codes = new Set(accountCodes.docs.filter(doc => doc.data().companyId === companyId).map(doc => doc.data().code));
@@ -210,11 +277,14 @@ export async function processGeneralStockReturn(
         supply: line.amount, tax: 0, total: line.amount, isTaxExempt: true,
         accountCode: line.accountCode, side: line.side })),
     };
+    writesStarted = true;
     writeVoucherCounter(tx, counterSnap, sequence, sequence.last + 1);
     for (const row of prepared) {
-      tx.update(db.collection('items').doc(row.itemId), { stock: row.nextStock });
+      tx.update(db.collection('items').doc(row.itemId), { stock: row.nextStock,
+        ...('lots' in row ? { lots: JSON.parse(JSON.stringify(row.lots)) } : {}) });
       if ('receipt' in row) tx.create(db.collection('itemReceipts').doc(row.receiptId), row.receipt);
     }
+    for (const row of rawPrepared) writeReturnRawStock(tx, row);
     tx.create(journal, journalData);
     for (const row of applications) tx.create(db.collection('returnApplications').doc(row.id), {
       companyId, partnerId: request.partnerId, statementId: row.statementId,
@@ -230,12 +300,29 @@ export async function processGeneralStockReturn(
         applicationHash: hash({ companyId, partnerId: request.partnerId, statementId: row.statementId,
           returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso }) })),
       stockMovements, stockMovementsHash: hash(stockMovements),
+      rawMovements, rawMovementsHash: hash(rawMovements),
       receipts: receipts.map(row => ({ id: row.receiptId, itemId: row.itemId,
         quantity: row.receipt.quantity, fingerprint: row.receipt.returnReceiptFingerprint,
         receiptHash: hash(row.receipt) })),
       createdAt: todayIso, createdBy: actorId });
     return { status: 'applied' as const, docNo, journalId: journal.id };
+    } catch (error) {
+      const validation = error instanceof ReturnValidationError || error instanceof PartnerPaymentValidationError
+        ? new HttpsError('failed-precondition', error.message) : error;
+      if (writesStarted || opSnap.exists || !outputsAbsent || !(validation instanceof HttpsError)
+        || !['invalid-argument', 'failed-precondition'].includes(validation.code)) throw error;
+      const failureCode = validation.code as 'invalid-argument' | 'failed-precondition';
+      tx.create(operation, { status: 'rejected', companyId, operationId: input.operationId,
+        returnRequestId: input.returnRequestId, requestHash, command: input,
+        failureCode, failureMessage: validation.message, createdAt: new Date().toISOString(), createdBy: actorId });
+      return { status: 'rejected' as const, failureCode, failureMessage: validation.message };
+    }
   });
+  if (outcome.status === 'rejected') throw new HttpsError(outcome.failureCode, outcome.failureMessage, {
+    operationStatus: 'rejected', operationId: input.operationId, returnRequestId: input.returnRequestId,
+    companyId, requestHash,
+  });
+  return outcome;
 }
 
 export const processGeneralStockReturnCommand = onCall({ region: 'asia-northeast3' }, async request => {

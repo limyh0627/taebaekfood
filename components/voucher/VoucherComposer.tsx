@@ -1,6 +1,8 @@
 import { templateStatementType, templateStatementConflict, type TemplateStatementType } from '../../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../../src/shared/components/appDialog';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { prepareTransferOptions, saveInterCompanyTransfer, resumeInterCompanyTransfer, hasPendingTransfer, type TransferOptions } from '../../src/shared/services/interCompanyTransferService';
+import { defaultCashAccountId } from '../../src/shared/defaultCashAccount';
 import { today } from '../../src/shared/day';
 import { X, Plus, Save } from 'lucide-react';
 import type {
@@ -74,8 +76,6 @@ interface Props {
   onIssueCashEntry?: (_e: CashEntry) => Promise<unknown>;
   onAddIssuedStatement?: (_s: IssuedStatement) => void | Promise<unknown>;
   onAddFixedCostTemplate?: (_t: Omit<FixedCostTemplate, 'id'>) => void | Promise<void>;
-  /** 회사이체 — 받는 회사 장부에도 한 건 세운다 */
-  onAddForCompany?: (_co: CompanyId, _payload: { cashEntry?: CashEntry; statement?: IssuedStatement }) => void;
   /** 상계 — 전표에 붙이는 일은 밖이 한다 */
   recordPayment: (
     _allocations: { stmt: IssuedStatement; amount: number }[],
@@ -91,7 +91,7 @@ export default function VoucherComposer({
   companyId, initialDir, initialDate, partners, accountCodes, accountGroups, cashAccounts,
   fixedCostTemplates, cashEntries, statements: mergedStatements, partnerBalances, getBalance,
   cashAccountId: quickPayAccountId, onCashAccountId: setQuickPayAccountId,
-  onClose, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, onAddForCompany,
+  onClose, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate,
   recordPayment, renderJournal,
 }: Props) {
   const activeCashAccounts = cashAccounts;
@@ -159,6 +159,34 @@ export default function VoucherComposer({
   const [qpAdvAmount, setQpAdvAmount] = useState('');
   // 미지급을 넘는 몫의 성격 — 물건을 받을 것이면 선급금, 그냥 빌려준 것이면 대여금
   const [qpAdvOver, setQpAdvOver] = useState<OverKind>('선급금');
+  const [transferChoices,setTransferChoices]=useState<TransferOptions>();
+  const [transferFromPartner,setTransferFromPartner]=useState('');
+  const [transferToPartner,setTransferToPartner]=useState('');
+  const [transferToAccount,setTransferToAccount]=useState('');
+  const [transferLoad,setTransferLoad]=useState(0);
+  const [transferError,setTransferError]=useState('');
+  const [transferLoading,setTransferLoading]=useState(false);
+  const [transferSaving,setTransferSaving]=useState(false);
+  const transferScope=useRef({companyId,token:{},alive:true});
+  const transferLock=useRef<object|null>(null);
+  if(transferScope.current.companyId!==companyId)transferScope.current={companyId,token:{},alive:true};
+  useEffect(()=>{transferScope.current.alive=true;return()=>{transferScope.current.alive=false;transferScope.current.token={};};},[]);
+  useEffect(()=>{setQpAdvCompany(companyId==='taebaek'?'punghoe':'taebaek');setQpAdvAmount('');setTransferChoices(undefined);setTransferError('');setTransferSaving(false);transferLock.current=null;},[companyId]);
+  useEffect(()=>{
+    if(qpDir!=='회사이체'||qpAdvCompany===companyId)return;
+    let cancelled=false;const scope=transferScope.current.token;
+    setTransferLoading(true);setTransferChoices(undefined);
+    prepareTransferOptions(companyId,qpAdvCompany,quickPayDate).then(options=>{
+      if(cancelled||!transferScope.current.alive||transferScope.current.token!==scope)return;
+      setTransferChoices(options);
+      setTransferFromPartner(previous=>options.from.partners.some(row=>row.id===previous)?previous:options.from.partners[0]?.id??'');
+      setTransferToPartner(previous=>options.to.partners.some(row=>row.id===previous)?previous:options.to.partners[0]?.id??'');
+      setTransferToAccount(previous=>options.to.accounts.some(row=>row.id===previous)?previous:defaultCashAccountId(options.to.accounts,qpAdvCompany));
+      if(!options.from.accounts.some(row=>row.id===quickPayAccountId))setQuickPayAccountId(defaultCashAccountId(options.from.accounts,companyId));
+    }).catch(error=>{if(!cancelled&&transferScope.current.alive&&transferScope.current.token===scope)setTransferError(error instanceof Error?error.message:'회사이체 선택지를 불러오지 못했습니다.');})
+      .finally(()=>{if(!cancelled&&transferScope.current.alive&&transferScope.current.token===scope)setTransferLoading(false);});
+    return()=>{cancelled=true;};
+  },[companyId,qpAdvCompany,quickPayDate,qpDir,transferLoad]);
   //  기본은 **장기차입금**(293) — 사업자 대출은 대개 1년을 넘긴다.
   //  1년 안에 갚는 건만 단기차입금(260)이다. 템플릿에 박아 두면 그게 이긴다.
   const [qpLoanCode, setQpLoanCode] = useState('260');
@@ -569,33 +597,30 @@ export default function VoucherComposer({
          */
         const advAmt = parseMoneyInput(qpAdvAmount);
         // 상대 회사를 가리키는 거래처 — 채권·채무가 이 거래처로 잡혀야 잔액이 준다.
-        // 이름으로 찾는다(태백푸드 / 풍회유통). 없으면 상계를 못 하고 전액 선급금이 된다.
+        // 양사 권한을 확인한 서버가 반환한 실제 거래처만 선택한다.
         const advTargetName = COMPANIES.find(c => c.id === qpAdvCompany)?.name ?? '';
-        const advMyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
-        const advTargetPartner = partners.find(p => p.name === advTargetName);
-        const advMyPartner = partners.find(p => p.name === advMyName);
+        const transferReady = transferChoices?.from.companyId === companyId && transferChoices?.to.companyId === qpAdvCompany ? transferChoices : undefined;
+        const advTargetPartner = transferReady?.from.partners.find(p => p.id === transferFromPartner);
+        const advMyPartner = transferReady?.to.partners.find(p => p.id === transferToPartner);
         // 내가 상대에게 진 미지급 — 이만큼 먼저 턴다
         const advPayable = advTargetPartner
-          ? Math.max(0, partnerBalances.get(advTargetPartner.id)?.payable ?? 0)
+          ? advTargetPartner.available
           : 0;
         const advSplit = splitTransfer(advAmt, advPayable, qpAdvOver);
 
-        const doTransferSave = () => {
-          if (advAmt <= 0 || !onAddForCompany) return;
-          const t = buildTransfer({
-            from: companyId, to: qpAdvCompany,
-            date: quickPayDate, amount: advAmt,
-            payableToTarget: advPayable, overKind: qpAdvOver,
-            fromAccountId: quickPayAccountId,
-            fromPartnerId: advTargetPartner?.id, fromPartnerName: advTargetPartner?.name,
-            toPartnerId: advMyPartner?.id, toPartnerName: advMyPartner?.name,
-            note: quickPayNote.trim() || undefined,
-          });
-          onAddForCompany(companyId, { cashEntry: t.out });
-          onAddForCompany(qpAdvCompany, { cashEntry: t.in });
-          onClose();
+        const doTransferSave = async (resume=false) => {
+          if(transferLock.current)return;
+          if(!resume&&(!transferReady||!advTargetPartner||!advMyPartner||!transferReady.from.accounts.some(row=>row.id===quickPayAccountId)||!transferReady.to.accounts.some(row=>row.id===transferToAccount)||advAmt<=0))return;
+          const scope=transferScope.current.token,attempt={};transferLock.current=attempt;setTransferSaving(true);setTransferError('');
+          try{
+            if(resume)await resumeInterCompanyTransfer(companyId);
+            else await saveInterCompanyTransfer({from:companyId,to:qpAdvCompany,tradeDate:quickPayDate,amount:advAmt,overKind:qpAdvOver,
+              fromAccountId:quickPayAccountId,toAccountId:transferToAccount,fromPartnerId:advTargetPartner!.id,toPartnerId:advMyPartner!.id,
+              expectedFromRevision:advTargetPartner!.revision,expectedToRevision:advMyPartner!.revision,note:quickPayNote.trim()},transferReady!.releaseId);
+            if(transferScope.current.alive&&transferScope.current.token===scope)onClose();
+          }catch(error){if(transferScope.current.alive&&transferScope.current.token===scope){setTransferError(error instanceof Error?error.message:'회사이체를 저장하지 못했습니다.');if((error as {knownRejected?:boolean}).knownRejected)setTransferLoad(value=>value+1);}}
+          finally{if(transferLock.current===attempt)transferLock.current=null;if(transferScope.current.alive&&transferScope.current.token===scope)setTransferSaving(false);}
         };
-
         const salaryEntry = (): CashEntry => {
           const memo = quickPayNote.trim() || '급여';
           const lines = [
@@ -627,7 +652,7 @@ export default function VoucherComposer({
             const t = buildTransfer({
               from: companyId, to: qpAdvCompany, date: quickPayDate, amount: advAmt,
               payableToTarget: advPayable, overKind: qpAdvOver,
-              fromAccountId: quickPayAccountId,
+              fromAccountId: quickPayAccountId, toAccountId: transferToAccount,
               fromPartnerId: advTargetPartner?.id, fromPartnerName: advTargetPartner?.name,
               toPartnerId: advMyPartner?.id, toPartnerName: advMyPartner?.name,
               note: quickPayNote.trim() || undefined,
@@ -698,7 +723,7 @@ export default function VoucherComposer({
         const cashSplitSum = cashSplitLines.reduce((a, l) => a + l.amount * (l.side === normalSide ? 1 : -1), 0);
         const cashSplitOk = cashSplitLines.length > 0 && Math.abs(cashSplitSum - plainAmt) < 0.5;
 
-        const canSave = qpDir === '회사이체' ? (advAmt > 0 && !!onAddForCompany)
+        const canSave = qpDir === '회사이체' ? (advAmt > 0 && !!transferReady && !!advTargetPartner && !!advMyPartner && transferReady.from.accounts.some(row=>row.id===quickPayAccountId) && transferReady.to.accounts.some(row=>row.id===transferToAccount) && !transferLoading && !transferSaving)
           : !isCashDir(qpDir) ? (!accrConflict && accrLines.length > 0 && accrBalanced && (accrType === '비용' || !!quickPayClientId))   // 차·대가 맞아야 끊는다
           : qpMode === '상환' ? (prin > 0 || intr > 0)
           : qpMode === '보험' ? insTotal > 0
@@ -720,7 +745,8 @@ export default function VoucherComposer({
         };
 
         return (
-          <ModalShell title="일반전표 발행" onClose={onClose} bodyClassName="flex min-h-0 flex-col !p-0">
+          <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0">
+            <fieldset disabled={transferSaving} className="contents">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 shrink-0">
@@ -792,6 +818,32 @@ export default function VoucherComposer({
                       </select>
                     </div>
                   </div>
+                  {transferLoading && <p role="status" className="text-sm text-slate-500">양사 계좌·거래처를 확인하고 있습니다.</p>}
+                  {transferError && <p role="alert" className="text-sm text-rose-600">{transferError}</p>}
+                  <button type="button" onClick={()=>{setTransferError('');setTransferLoad(value=>value+1);}} className="text-xs text-indigo-600">계좌·거래처 다시 조회</button>
+                  {hasPendingTransfer(companyId) && <button type="button" onClick={()=>void doTransferSave(true)} className="text-xs text-indigo-600">이전 이체 저장 재시도</button>}
+                  {transferReady && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-xs font-bold">보내는 통장
+                      <select aria-label="보내는 통장" value={quickPayAccountId} onChange={event=>setQuickPayAccountId(event.target.value)} className="w-full border rounded-lg p-2">
+                        <option value="">계좌 선택</option>{transferReady.from.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-bold">받는 통장
+                      <select aria-label="받는 통장" value={transferToAccount} onChange={event=>setTransferToAccount(event.target.value)} className="w-full border rounded-lg p-2">
+                        <option value="">계좌 선택</option>{transferReady.to.accounts.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-bold">보낸 회사의 상대 거래처
+                      <select aria-label="보낸 회사의 상대 거래처" value={transferFromPartner} onChange={event=>setTransferFromPartner(event.target.value)} className="w-full border rounded-lg p-2">
+                        <option value="">거래처 선택</option>{transferReady.from.partners.map(partner=><option key={partner.id} value={partner.id}>{partner.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs font-bold">받은 회사의 상대 거래처
+                      <select aria-label="받은 회사의 상대 거래처" value={transferToPartner} onChange={event=>setTransferToPartner(event.target.value)} className="w-full border rounded-lg p-2">
+                        <option value="">거래처 선택</option>{transferReady.to.partners.map(partner=><option key={partner.id} value={partner.id}>{partner.name}</option>)}
+                      </select>
+                    </label>
+                  </div>}
                   <div>
                     <label htmlFor="qp-amount" className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
                       <div className="relative">
@@ -1470,6 +1522,7 @@ export default function VoucherComposer({
                 onClose={() => setQpPickerOpen(false)}
               />
             )}
+            </fieldset>
           </ModalShell>
         );
 }

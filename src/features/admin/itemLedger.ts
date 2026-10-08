@@ -1,3 +1,4 @@
+import { validReturnStockMovements, type ReturnStockOperation } from '../../shared/returnStockMovement';
 import { companyOf, type Item, type Order, type RawMaterialEntry } from '../../shared/types';
 import type { RawInventoryMovement } from '../../shared/rawInventoryCore';
 import type { UnpackLotMove } from '../../shared/unpackLots';
@@ -89,10 +90,20 @@ export function buildItemLedger(
   receipts: ItemReceipt[] = [],
   inventoryEntries: ItemInventoryEntry[] = [],
   inputs?: OrderUnitInputs,
+  returnOperations: ReturnStockOperation[] = [],
 ): ItemLedger {
   const rows: ItemLedgerRow[] = [];
   const item = allItems.find(i => i.id === itemId);
   const nameOf = (id: string) => allItems.find(i => i.id === id)?.name ?? id;
+  for (const operation of returnOperations) {
+    if (!item || operation.companyId !== companyOf(item)) continue;
+    for (const movement of validReturnStockMovements(operation) ?? []) {
+      if (movement.itemId !== itemId) continue;
+      rows.push({ date: movement.date, kind: '출고', qty: movement.quantityDelta,
+        partnerName: '', orderId: operation.journalId, note: '매입 반품', balance: 0, occurredAt: movement.createdAt });
+    }
+  }
+
 
   for (const o of orders) {
     const date = dayOf(o);

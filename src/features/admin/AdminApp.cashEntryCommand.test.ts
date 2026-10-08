@@ -53,3 +53,40 @@ it('대출은 일반 발행 대신 원금·현금 동시 저장 명령으로 보
   expect(issue).not.toHaveBeenCalled();
   expect(direct).not.toHaveBeenCalled();
 });
+
+function mutationCallback(name: string) {
+  let expression = '';
+  const walk = (node: ts.Node) => { if (ts.isVariableDeclaration(node) && node.name.getText(file) === name && node.initializer) expression = node.initializer.getText(file); ts.forEachChild(node, walk); };
+  walk(file);
+  const mutate = vi.fn().mockResolvedValue({ status: 'applied' }), prepare = vi.fn().mockResolvedValue({ counterpart: { id: 'other' }, expectedRevision: 4, expectedCashHash: 'other-hash' });
+  const direct = vi.fn();
+  const code = ts.transpile(`const callback = ${expression};`, { target: ts.ScriptTarget.ES2022 });
+  const run = new Function('useCallback', 'companyId', 'companyOf', 'mutateCash', 'prepareTransferCash', 'updateItem', 'deleteItem', `${code};return callback;`)((fn: any) => fn, 'taebaek', (row: any) => row.companyId ?? 'taebaek', mutate, prepare, direct, direct);
+  return { run, mutate, prepare, direct };
+}
+it('현금 수정은 UI 원문·급여·이체 입력을 그대로 기다려 보내고 최신 원문으로 바꾸지 않는다', async () => {
+  const { run, mutate, direct } = mutationCallback('updateCash');
+  const original = { id: 'cash', companyId: 'taebaek', amount: 100, mutationRevision: 3 };
+  const payroll = { expectedRevision: 2 }, transfer = { expectedRevision: 1 };
+  await run('cash', { amount: 120 }, original, payroll, transfer);
+  expect(mutate).toHaveBeenCalledWith('taebaek', original, 'edit', { amount: 120 }, payroll, transfer);
+  expect(direct).not.toHaveBeenCalled();
+  await expect(run('cash', {}, undefined)).rejects.toThrow();
+  await expect(run('cash', {}, { ...original, companyId: 'punghoe' })).rejects.toThrow();
+});
+it('현금 삭제는 원문과 승인받은 상대 회사 원문을 한 명령에 보내고 개별 연결을 지우지 않는다', async () => {
+  const { run, mutate, prepare, direct } = mutationCallback('deleteCashEntry');
+  const original = { id: 'cash', companyId: 'taebaek', transferOperationId: 'transfer' };
+  await run('cash', original);
+  expect(prepare).toHaveBeenCalledWith('taebaek', original);
+  expect(mutate).toHaveBeenCalledWith('taebaek', original, 'delete', undefined, undefined,
+    { counterpartId: 'other', expectedRevision: 4, expectedCashHash: 'other-hash' });
+  expect(direct).not.toHaveBeenCalled();
+  mutate.mockRejectedValue(new Error('서버 거절'));
+  await expect(run('cash', original)).rejects.toThrow('서버 거절');
+});
+it('실제 화면 연결은 배분·이전 요청 확인과 계좌원장 원문을 전달한다', () => {
+  expect(source).toContain('onMatchCashAllocations={(entry, allocations) => matchCashAllocations(companyId, entry, allocations)}');
+  expect(source).toContain('onResumeCashMutation={(id) => resumeCashMutation(companyId, id)}');
+  expect(readFileSync('components/CashLedger.tsx', 'utf8')).toContain('onDeleteCashEntry(entry.id, entry)');
+});

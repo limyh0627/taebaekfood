@@ -1,3 +1,6 @@
+import { processReturn } from './returnCommands';
+import { mutateManualSettlement } from './manualSettlementCommands';
+import { mutateCash, matchCashAllocations, resumeCashMutation, prepareTransferCash, type PayrollCashEdit, type TransferCashEdit } from './cashMutationCommands';
 import ProductionWorkDocumentHost from '../production-documents/ui/ProductionWorkDocumentHost';
 import { defaultCashAccountId } from '../../shared/defaultCashAccount';
 import { appConfirm, appNotice as awaitNotice, appPrompt } from '../../shared/components/appDialog';
@@ -28,7 +31,7 @@ import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeni
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { today, addMonths, endOfMonth } from '../../shared/day';
 import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
-import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
+import { statementEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
@@ -191,7 +194,6 @@ import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName,
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
-import { recordReceipt } from '../../shared/receipt';
 import { buildPaymentEntry } from '../../shared/payment';
 import { nextOrderNo, nextPoNo, cardNoLabel } from '../../shared/cardNo';
 import { bomQty } from '../../shared/bom';
@@ -357,11 +359,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
     [issuedStatements],
   );
 
-  /** 자금원장 한 줄 고치기 — 전표와 같은 규칙(날짜가 바뀌면 도장도 다시) */
+  /** 화면에서 읽은 원문과 특수 입력을 함께 서버 원자 명령으로 보낸다. */
   const updateCash = useCallback(
-    (id: string, data: Partial<CashEntry>) =>
-      updateItem('cashEntries', id, cashEditPatch(data, appData.cashEntries.find(e => e.id === id))),
-    [appData.cashEntries],
+    async (id: string, data: Partial<CashEntry>, original?: CashEntry, payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit) => {
+      if (!original || original.id !== id || companyOf(original) !== companyId)
+        throw new Error('화면에서 읽은 같은 회사의 자금 원문을 확인해 주세요.');
+      await mutateCash(companyId, original, 'edit', data, payrollEdit, transferEdit);
+    },
+    [companyId],
   );
 
   // partner_item 컬렉션 Direction 기준 분리
@@ -433,20 +438,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //  거래처원장에서 전표번호를 누르면 전표 화면이 그 번호로 조회창을 연다
   const [focusDocNo, setFocusDocNo] = useState('');
 
-  /**
-   * 자금줄을 지운다 — **매달린 지정매칭도 같이.**
-   *
-   * `settlements` 는 "이 수금은 이 전표를 갚은 것"이라는 연결 기록이라, 자금줄이 사라지면
-   * 가리킬 데가 없어진다. 예전엔 자금줄만 지워서 고아가 쌓였다(2026-09-03 에 11줄 3,897만원).
-   * 잔액은 살아 있는 자금줄만 보므로 멀쩡했지만, 매칭 창은 그 고아를 세서
-   * 같은 전표가 두 화면에서 다른 잔액으로 보였다.
-   */
-  const deleteCashEntry = useCallback(async (id: string) => {
-    for (const st of appData.settlements.filter(x => x.cashEntryId === id)) {
-      await deleteItem('settlements', st.id);
-    }
-    await deleteItem('cashEntries', id);
-  }, [appData.settlements]);
+  /** 연결 정산과 특수 원장도 같은 서버 거래에서 삭제한다. */
+  const deleteCashEntry = useCallback(async (id: string, original?: CashEntry, transferEdit?: TransferCashEdit) => {
+    if (!original || original.id !== id || companyOf(original) !== companyId)
+      throw new Error('화면에서 읽은 같은 회사의 자금 원문을 확인해 주세요.');
+    const counterpart = transferEdit ?? ((original as CashEntry & { transferOperationId?: string }).transferOperationId ? await prepareTransferCash(companyId, original) : undefined);
+    const transfer = counterpart && ('counterpart' in counterpart ? { counterpartId: counterpart.counterpart.id,
+      expectedRevision: counterpart.expectedRevision, expectedCashHash: counterpart.expectedCashHash } : counterpart);
+    await mutateCash(companyId, original, 'delete', undefined, undefined, transfer);
+  }, [companyId]);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업일지' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   /**
@@ -1249,47 +1249,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-  // 반품 처리: 재판매 가능 품목 재고 복귀 + 전표 미수금 차감
+  // 역분개·재고·비현금 상계·처리 상태는 서버의 한 거래로 확정한다.
   const handleProcessReturn = async (req: ReturnRequest) => {
-    for (const item of req.items) {
-      if (!item.isResellable) continue;
-      const product = allItems.find(p => p.id === item.itemId);
-      if (!product) continue;
-      //  반품 재입고도 같은 문을 지난다 — 원료면 로트+수불부, 아니면 재고+입고기록
-      const nowIso = new Date().toISOString();
-      await recordReceipt({
-        companyId, allItems, product, itemName: product.name,
-        quantity: item.quantity, unit: product.unit,
-        partnerId: req.partnerId, partnerName: req.partnerName || '반품',
-        dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name,
-      });
-    }
-    setLedgerReloadKey(k => k + 1);   // 반품 재입고로 쓴 원료수불부 반영
-
-    // 반품 차감도 자금원장에 적는다 — 전표에 매달던 옛 경로(payments[])는 걷어냈다.
-    // 방향은 전과 같다: 매출 반품이면 출금(=받은 돈을 되돌림)이라 그만큼 채권이 다시 산다.
-    if (req.linkedStatementId && req.totalAmount > 0) {
-      const stmt = issuedStatements.find(s => s.id === req.linkedStatementId);
-      if (stmt) {
-        //  셈은 shared/payment 하나다. 반품이라 방향을 뒤집는다(reverse).
-        await addCashEntry(buildPaymentEntry({
-          id: `cash-return-${req.id}-${Date.now()}`,
-          partnerId: stmt.partnerId ?? '',
-          partnerName: stmt.partnerName ?? '',
-          type: stmt.type === '매입' ? '매입' : '매출',
-          amount: req.totalAmount,
-          date: today(),
-          reverse: true,
-          note: `반품 처리 (${req.items.map(i => i.name).join(', ')})`,
-        }));
-      }
-    }
-
-    await updateItem('returnRequests', req.id, {
-      status: 'processed',
-      processedAt: new Date().toISOString(),
-      processedBy: currentUser.name,
-    });
+    if (!isAdmin || req.companyId !== companyId || orderAskScope.current.companyId !== companyId) throw new Error('관리자 회사 권한이 필요합니다.');
+    const scope = orderAskScope.current.token;
+    await processReturn(companyId, req);
+    if (orderAskScope.current.token === scope) setLedgerReloadKey(k => k + 1);
   };
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
@@ -2525,12 +2490,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               itemBoms={itemBoms}
               purchaseOrders={purchaseOrders}
               itemReceipts={itemReceipts}
+              returnOperations={appData.returnOperations}
               rawMaterialLedger={integritySnapshot?.ledger ?? []}
               rawInventories={integritySnapshot?.states ?? []}
               issuedStatements={issuedStatements}
               productionSalesLogs={mergedProductionSalesLogs}
               onRefresh={() => setLedgerReloadKey(key => key + 1)}
-              loading={!integritySnapshot || integritySnapshot.key !== integrityKey}
+              loading={!integritySnapshot || integritySnapshot.key !== integrityKey || !appData.returnOperationsLoaded}
             />
           )}
           {currentView === 'shipping' && (
@@ -2847,6 +2813,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
                     companyId={companyId}
+                    issuedStatements={issuedStatements}
                     items={allItems}
                     partnerItems={partnerItems}
                     partners={partners}
@@ -3098,6 +3065,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               adjustmentRequests={보이는확인사항}
               employees={employees}
               returnRequests={returnRequests}
+              onProcessReturn={handleProcessReturn}
               receivedOrders={보이는입고이력}
               partners={partners}
               issuedStatements={issuedStatements}
@@ -3143,9 +3111,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               pendingStatementEdits={pendingStatementEdits}
               onApproveStatementEdit={async (edit) => {
-                // 재고/PO는 수정 시점에 즉시 반영됨 → 승인은 매입전표(회계)만 정정
-                await updateItem('issuedStatements', edit.statementId, edit.proposedData);
-                await updateItem('pendingStatementEdits', edit.id, { status: 'approved' });
+                const original = issuedStatements.find(statement => statement.id === edit.statementId);
+                if (!original) throw new Error('원전표를 불러온 뒤 다시 승인해 주세요.');
+                await editIssuedStatementCommand(edit.statementId, edit.proposedData,
+                  Number((original as IssuedStatement & { mutationRevision?: number }).mutationRevision ?? 0),
+                  `approve-${edit.id}`, edit);
               }}
               onRejectStatementEdit={async (id) => {
                 await updateItem('pendingStatementEdits', id, { status: 'rejected' });
@@ -4486,6 +4456,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {(currentView === 'trade-statement' || showInboundInvoice) && (
             <TradeStatement
+              returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
               currentUserId={currentUser.id}
               composerOnly={currentView !== 'trade-statement'}
               onComposerClose={() => { setShowInboundInvoice(false); setPendingInvoice(null); }}
@@ -4501,7 +4472,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddCashEntry={(e) => addCashEntry(e)}
               onIssueCashEntry={(entry) => issueNumberedCashEntry({ ...entry, companyId, createdBy: entry.createdBy ?? currentUser?.name })}
               onUpdateCashEntry={updateCash}
-              onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
+              onMatchCashAllocations={(entry, allocations) => matchCashAllocations(companyId, entry, allocations)}
+              onResumeCashMutation={(id) => resumeCashMutation(companyId, id)}
+              onUpdateSettlement={async (id, data) => {
+                const row = appData.settlements.find(value => value.id === id);
+                const cash = row && appData.cashEntries.find(value => value.id === row.cashEntryId);
+                if (!row || !cash || !cash.partnerId || companyOf(cash) !== companyId)
+                  throw new Error('수정할 같은 회사의 정산·자금 내역을 확인해 주세요.');
+                await mutateManualSettlement(companyId, { action: 'update', partnerId: cash.partnerId,
+                  cashEntryId: row.cashEntryId, statementId: row.statementId, settlementId: row.id,
+                  amount: Number(data.amount), expectedAmount: row.amount });
+              }}
               onDeleteCashEntry={deleteCashEntry}
               onAddCashAccount={(a) => createCashAccountWithOpening(companyId, { ...a, companyId })}
               onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
@@ -4518,11 +4499,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               companyId={companyId}
-              onAddForCompany={(target, payload) => {
-                // 회사 간 이체 — 상대 회사 장부에도 써야 해서 회사를 지정해 저장한다
-                if (payload.cashEntry) addCashEntry(payload.cashEntry, target);
-                if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
-              }}
               onAddIssuedStatement={(stmt) => issueNumberedStatement({ ...stmt, companyId, createdBy: stmt.createdBy ?? currentUser?.name })}
               /*  **전표 한 장을 한 덩이로 저장한다**(설계 §2, 3단계).
                   전에는 화면이 넷을 차례로 저장했다 — 전표 본문 → 거래처 단가·품목 원가 →
@@ -4577,7 +4553,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   status: 'pending',
                 });
               }}
-              onDeleteIssuedStatement={(id) => deleteIssuedStatement(companyId, id)}
+              onDeleteIssuedStatement={async (id) => { await deleteIssuedStatement(companyId, id); refreshStaticData(); }}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
               confirmedOrders={invoicedPurchaseOrders}
@@ -4629,6 +4605,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
             <div className="h-full overflow-y-auto">
               <ProfitAnalysis
+                returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                   companyId={companyId}
                 issuedStatements={issuedStatements}
                 fixedCostTemplates={companyTemplates}
@@ -4660,6 +4637,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
+                  returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                   companyId={companyId}
                   initialTab="partners"
                   issuedStatements={issuedStatements}
@@ -4683,7 +4661,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <PageHeader title="제품별원장" subtitle="품목별 기초·입고·생산·사용·출고·실사 기록" />
               <div className="flex-1 min-h-0 p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={mergedRawMaterialLedger} orderUnitInputs={appData.orderUnitInputs} />
+              {!appData.returnOperationsLoaded ? <div className="p-4 text-slate-500">반품 원장을 확인하고 있습니다.</div> : <ItemLedger companyId={companyId} items={companyItems} orders={allOrders} receipts={appData.itemReceipts} rawEntries={mergedRawMaterialLedger} orderUnitInputs={appData.orderUnitInputs} returnOperations={appData.returnOperations} />}
                 </React.Suspense>
               </div>
             </div>
@@ -4703,6 +4681,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   {ledgerTab === 'partner' ? (
                     <PartnerLedger
+                      returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                       companyId={companyId}
                       issuedStatements={issuedStatements}
                       cashEntries={companyCashEntries}
@@ -4733,8 +4712,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     }}
                     onAddCashEntry={(e) => issueNumberedCashEntry({ ...e, companyId, createdBy: e.createdBy ?? currentUser?.name })}
                     onDeleteCashEntry={deleteCashEntry}
-                    onAddSettlement={(x) => addItem('settlements', x)}
-                    onDeleteSettlement={(id) => deleteItem('settlements', id)}
+                    onAddSettlement={(x) => {
+                      const cash = appData.cashEntries.find(value => value.id === x.cashEntryId);
+                      if (!cash?.partnerId || companyOf(cash) !== companyId)
+                        throw new Error('같은 회사의 자금 내역과 거래처를 확인해 주세요.');
+                      return mutateManualSettlement(companyId, { action: 'add', partnerId: cash.partnerId,
+                        cashEntryId: x.cashEntryId, statementId: x.statementId, amount: x.amount });
+                    }}
+                    onDeleteSettlement={(id) => {
+                      const row = appData.settlements.find(value => value.id === id);
+                      const cash = row && appData.cashEntries.find(value => value.id === row.cashEntryId);
+                      if (!row || !cash?.partnerId || companyOf(cash) !== companyId)
+                        throw new Error('삭제할 같은 회사의 정산·자금 내역을 확인해 주세요.');
+                      return mutateManualSettlement(companyId, { action: 'delete', partnerId: cash.partnerId,
+                        cashEntryId: row.cashEntryId, statementId: row.statementId, settlementId: row.id, amount: row.amount });
+                    }}
                   />
                   )}
                 </React.Suspense>
@@ -4745,6 +4737,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
+                  returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                   companyId={companyId}
                   initialTab="cash-flow"
                   issuedStatements={issuedStatements}

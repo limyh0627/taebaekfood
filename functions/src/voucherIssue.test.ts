@@ -18,6 +18,7 @@ function fakeDb(initial: Record<string, Row>) {
   const db = {
     collection: (name: string) => ({
       doc: (id: string) => ({ key: `${name}/${id}` }),
+      where: (field: string, op: string, value: unknown) => ({ collection: name, field, op, value }),
       get: async () => ({ docs: [...rows.entries()].filter(([key]) => key.startsWith(`${name}/`))
         .map(([key, value]) => ({ id: key.slice(name.length + 1), data: () => value })) }),
     }),
@@ -29,7 +30,10 @@ function fakeDb(initial: Record<string, Row>) {
       const pending: Array<() => void> = [];
       try {
         const result = await fn({
-          get: async (ref: { key: string }) => ({ ref, exists: rows.has(ref.key), data: () => rows.get(ref.key) }),
+          get: async (ref: any) => ref.key ? ({ ref, exists: rows.has(ref.key), data: () => rows.get(ref.key) })
+            : ({ docs: [...rows].filter(([key, row]) => key.startsWith(`${ref.collection}/`)
+              && (ref.op === 'array-contains' ? Array.isArray(row[ref.field]) && (row[ref.field] as unknown[]).includes(ref.value)
+                : row[ref.field] === ref.value)).map(([key, row]) => ({ id: key.split('/')[1], data: () => row })) }),
           update: (ref: { key: string }, value: Row) => pending.push(() => rows.set(ref.key, { ...rows.get(ref.key), ...value })),
           create: (ref: { key: string }, value: Row) => pending.push(() => rows.set(ref.key, value)),
         });
@@ -262,7 +266,8 @@ describe('shared voucher sequence', () => {
     db.runTransaction = async (fn: any) => {
       const writes: unknown[] = [];
       return fn({
-        get: async (ref: { key: string }) => ({ exists: rows.has(ref.key), data: () => rows.get(ref.key) }),
+        get: async (ref: { key?: string }) => ref.key
+          ? ({ exists: rows.has(ref.key), data: () => rows.get(ref.key!) }) : ({ docs: [] }),
         update: (...args: unknown[]) => writes.push(args),
         create: () => { throw new Error('write failed'); },
       });

@@ -1,12 +1,16 @@
+import {cloneElement} from 'react';
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import type { AccountCode, AccountGroup, CashAccount, Partner, IssuedStatement } from '../../src/shared/types';
 
+const transfer = vi.hoisted(()=>({prepare:vi.fn(),save:vi.fn(),resume:vi.fn()}));
+vi.mock('../../src/shared/services/interCompanyTransferService',()=>({prepareTransferOptions:transfer.prepare,saveInterCompanyTransfer:transfer.save,resumeInterCompanyTransfer:transfer.resume,hasPendingTransfer:()=>false}));
+beforeEach(()=>{transfer.prepare.mockReset().mockResolvedValue({from:{companyId:'taebaek',accounts:[{id:'bank1',name:'농협 주계좌',companyId:'taebaek',active:true,type:'통장'}],partners:[{id:'from-partner',name:'풍회유통',companyId:'taebaek',revision:0,available:0}]},to:{companyId:'punghoe',accounts:[{id:'actual-foreign-bank',name:'풍회 은행',companyId:'punghoe',active:true,type:'통장'}],partners:[{id:'actual-foreign-partner',name:'태백푸드',companyId:'punghoe',revision:0,available:0}]},releaseId:'test-release'});transfer.save.mockReset().mockResolvedValue({outDocNo:'out',inDocNo:'in'});});
 /**
  * **한 번 나간 돈의 성격이 둘 이상일 때 갈라 적는가.**
  *
@@ -41,8 +45,8 @@ const 템플릿 = (over: Record<string, unknown>) => ({
 } as never);
 
 function 띄우기(over: Partial<Parameters<typeof VoucherComposer>[0]> = {}) {
-  const onAddCashEntry = vi.fn(), onAddIssuedStatement = vi.fn(), onAddForCompany = vi.fn(), onClose = vi.fn(), recordPayment = vi.fn();
-  render(<VoucherComposer
+  const onAddCashEntry = vi.fn(), onAddIssuedStatement = vi.fn(), onClose = vi.fn(), recordPayment = vi.fn();
+  const element=<VoucherComposer
     companyId="taebaek"
     initialDir="출금"
     initialDate="2026-08-10"
@@ -60,12 +64,12 @@ function 띄우기(over: Partial<Parameters<typeof VoucherComposer>[0]> = {}) {
     onClose={onClose}
     onAddCashEntry={onAddCashEntry}
     onAddIssuedStatement={onAddIssuedStatement}
-    onAddForCompany={onAddForCompany}
     recordPayment={recordPayment}
     renderJournal={() => null}
     {...over}
-  />);
-  return { onAddCashEntry, onAddIssuedStatement, onAddForCompany, onClose, recordPayment };
+  />;
+  const view=render(element);
+  return { onAddCashEntry, onAddIssuedStatement, onClose, recordPayment,rerenderCompany:(companyId:'taebaek'|'punghoe')=>view.rerender(cloneElement(element,{companyId})) };
 }
 
 describe('거래처 템플릿 과세·면세 발행', () => {
@@ -216,19 +220,37 @@ describe('돈이 안 움직이는 갈래', () => {
 describe('회사 간 이체 — 두 장부에 한 건씩', () => {
   it('보내는 회사와 받는 회사 양쪽에 선다', async () => {
     const u = userEvent.setup();
-    const { onAddForCompany } = 띄우기();
+    const { onClose,onAddCashEntry } = 띄우기();
     await 갈래(u, '회사이체');
+    await waitFor(()=>expect(transfer.prepare).toHaveBeenCalled());
     await 채우기(u, '금액', '5000000');
     await 저장(u);
-    expect(onAddForCompany).toHaveBeenCalledTimes(2);
-    const [보내는, 받는] = onAddForCompany.mock.calls;
-    expect(보내는[0]).toBe('taebaek');
-    expect(받는[0]).toBe('punghoe');
-    expect(보내는[1].cashEntry.dir).toBe('출금');
-    expect(받는[1].cashEntry.dir).toBe('입금');
-    expect(보내는[1].cashEntry.amount).toBe(5_000_000);
-    expect(받는[1].cashEntry.amount).toBe(5_000_000);
+    await waitFor(()=>expect(transfer.save).toHaveBeenCalledTimes(1));
+    expect(transfer.save).toHaveBeenCalledWith(expect.objectContaining({from:'taebaek',to:'punghoe',amount:5000000,fromAccountId:'bank1',toAccountId:'actual-foreign-bank',fromPartnerId:'from-partner',toPartnerId:'actual-foreign-partner'}),'test-release');
+    expect(onAddCashEntry).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('회사이체 저장 결과와 입력 보존',()=>{
+ it('저장 완료 전에는 닫지 않고 한 명령만 보낸다',async()=>{
+  const u=userEvent.setup();let finish!:(value:unknown)=>void;transfer.save.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const {onClose}=띄우기();await 갈래(u,'회사이체');await screen.findByRole('combobox',{name:'받는 통장'});await 채우기(u,'금액','123');await 저장(u);expect(transfer.save).toHaveBeenCalledTimes(1);expect(onClose).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();await act(async()=>finish({outDocNo:'a',inDocNo:'b'}));expect(onClose).toHaveBeenCalledTimes(1);
+ });
+ it('거절되면 금액과 계좌를 보존하고 오류를 보여 준다',async()=>{
+  const u=userEvent.setup();transfer.save.mockRejectedValueOnce(new Error('이체 권한 확인 실패'));const {onClose}=띄우기();await 갈래(u,'회사이체');await screen.findByRole('combobox',{name:'받는 통장'});await 채우기(u,'금액','321');await 저장(u);expect(await screen.findByRole('alert')).toHaveTextContent('이체 권한 확인 실패');expect(screen.getByLabelText('금액')).toHaveValue('321');expect(screen.getByRole('combobox',{name:'받는 통장'})).toHaveValue('actual-foreign-bank');expect(onClose).not.toHaveBeenCalled();
+ });
+ it('양사 권한 조회 실패에 기존 직접 저장으로 우회하지 않는다',async()=>{
+  const u=userEvent.setup();transfer.prepare.mockRejectedValueOnce(new Error('양사 관리자 권한 없음'));const {onAddCashEntry,onClose}=띄우기();await 갈래(u,'회사이체');expect(await screen.findByRole('alert')).toHaveTextContent('양사 관리자 권한 없음');await 채우기(u,'금액','100');expect(screen.getByRole('button',{name:'저장'})).toBeDisabled();expect(transfer.save).not.toHaveBeenCalled();expect(onAddCashEntry).not.toHaveBeenCalled();expect(onClose).not.toHaveBeenCalled();
+ });
+});
+
+describe('회사이체 늦은 회사 응답 격리',()=>{
+ it('이전 회사의 준비 응답은 새 회사 선택지를 덮지 않는다',async()=>{
+  const u=userEvent.setup();let finish!:(v:unknown)=>void;transfer.prepare.mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const {rerenderCompany}=띄우기();await 갈래(u,'회사이체');await waitFor(()=>expect(transfer.prepare).toHaveBeenCalledTimes(1));transfer.prepare.mockResolvedValueOnce({from:{companyId:'punghoe',accounts:[{id:'b-own',name:'새 회사 통장',companyId:'punghoe',type:'통장',active:true}],partners:[{id:'b-partner',name:'태백푸드',available:0,revision:0}]},to:{companyId:'taebaek',accounts:[{id:'a-other',name:'태백 통장',companyId:'taebaek',type:'통장',active:true}],partners:[{id:'a-partner',name:'풍회유통',available:0,revision:0}]},releaseId:'release'});rerenderCompany('punghoe');await waitFor(()=>expect(screen.getByRole('combobox',{name:'받는 통장'})).toHaveValue('a-other'));await act(async()=>finish({from:{companyId:'taebaek',accounts:[],partners:[]},to:{companyId:'punghoe',accounts:[{id:'old-bank',name:'이전 통장'}],partners:[]},releaseId:'old'}));expect(screen.getByRole('combobox',{name:'받는 통장'})).toHaveValue('a-other');expect(screen.queryByText('이전 통장')).not.toBeInTheDocument();
+ });
+ it('이전 회사 저장 완료는 새 회사 창을 닫지 않는다',async()=>{
+  const u=userEvent.setup();let finish!:(v:unknown)=>void;transfer.save.mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const {onClose,rerenderCompany}=띄우기();await 갈래(u,'회사이체');await screen.findByRole('combobox',{name:'받는 통장'});await 채우기(u,'금액','100');await 저장(u);rerenderCompany('punghoe');await act(async()=>finish({outDocNo:'old',inDocNo:'old'}));expect(onClose).not.toHaveBeenCalled();expect(screen.getByLabelText('금액')).toHaveValue('');
+ });
 });
 
 describe('닫기', () => {

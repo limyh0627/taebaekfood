@@ -1,3 +1,4 @@
+import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { monthStart, today } from '../src/shared/day';
@@ -30,6 +31,7 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
 interface ProfitAnalysisProps {
+  returnOperations?: readonly ReadonlyReturnOperation[];
   issuedStatements: IssuedStatement[];
   fixedCostTemplates?: FixedCostTemplate[];
   onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
@@ -66,7 +68,7 @@ interface ProfitAnalysisProps {
   initialTab?: MainTab;
 }
 
-const fmt = (n: number) => n.toLocaleString('ko-KR');
+const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 const fmtM = (n: number) => {
   if (Math.abs(n) >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
   if (Math.abs(n) >= 10_000) return `${(n / 10_000).toFixed(0)}만`;
@@ -79,7 +81,7 @@ const EMPTY_CASH_FLOW_MANUAL: CashFlowManual[] = [];
 const INVENTORY_EXPENSE_CODE = '500';
 // (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], returnOperations, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -956,7 +958,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             .map(s => `${s.partnerId}|${s.type}`));
           for (const key of keys) {
             const [pid, type] = key.split('|');
-            for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements)) {
+            for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements, undefined, returnOperations)) {
               out.set(id, open);
             }
           }

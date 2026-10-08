@@ -9,6 +9,7 @@
  *   매출  (차) 외상매출금 [+현금]   (대) 매출계정들 + 부가세예수금
  *   매입  (차) 매입계정들 + 부가세대급금   (대) 외상매입금 [또는 현금]
  */
+import { projectCashLines } from '../../functions/src/shared/cashLineProjection';
 import type { IssuedStatement, JournalEntry, JournalLine, CashEntry } from './types';
 
 // 채권·채무·부가세·현금 계정코드 (setup-account-codes.mjs와 일치)
@@ -189,18 +190,8 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
    * 대변이었다. `dir`을 바꾸면 모든 줄이 조용히 뒤집힌다. 그래서 `side`로 옮긴다.
    * 아래 계산은 전부 **부호 있는 값**으로 돌므로, side를 부호로 한 번 바꿔 놓고 시작한다.
    */
-  const positiveSide = e.dir === '입금' ? '대변' : '차변';   // 부호가 양수인 쪽
-  const signed = (l: { amount: number; side?: '차변' | '대변' }): number =>
-    (l.side ? (l.side === positiveSide ? 1 : -1) * Math.abs(r(l.amount)) : r(l.amount));
-  const split = (e.lines ?? []).filter(l => l.accountCode && signed(l) !== 0);
-  if (!split.length && (!amt || !e.accountCode)) return null;
-  //  줄 적요(note)를 같이 들고 간다 — 전표 양식의 '적요' 칸이 이걸 쓴다.
-  //  차·대 판정에는 안 쓰이므로 금액은 그대로다. 없으면 전표 비고로 떨어진다.
-  const parts = split.length
-    ? split.map(l => ({ accountCode: l.accountCode, amount: signed(l), note: l.note }))
-    : [{ accountCode: e.accountCode!, amount: amt, note: e.note }];
-  // 통장 쪽은 반드시 줄 합계와 같아야 차·대가 맞는다(amount가 어긋나도 분개는 안 깨진다).
-  const total = sum(parts.map(p => p.amount));
+  const { parts, total } = projectCashLines(e);
+  if (!parts.length || (!e.lines?.some(line => line.accountCode && line.amount !== 0) && (!amt || !e.accountCode))) return null;
   if (!total && e.dir !== '대체') return null;
   const partner = e.partnerId ? { partnerId: e.partnerId } : {};
   // 대체(상계) — 돈이 안 움직였으니 **통장 줄을 세우지 않는다.**

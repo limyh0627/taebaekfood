@@ -1,3 +1,4 @@
+import { projectCashLines, cashLineReduction } from '../../../functions/src/shared/cashLineProjection';
 import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, JournalEntry, Settlement, companyOf } from '../../shared/types';
 import { rowStamp, issuedMs, timeOfLocal } from '../../shared/voucherStamp';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
@@ -9,29 +10,16 @@ import { STANDARD_ACCOUNT } from '../../shared/accountChart';
  * 통장 한 줄 한 줄에 그 시점의 잔액이 찍히듯, CashEntry를 시간순으로 굴려 잔액을 만든다.
  */
 
-/** 원장 한 줄 — 거래 + 그 시점 잔액 */
-export interface LedgerRow {
-  entry: CashEntry;
-  balance: number;   // 이 거래 직후 잔액
-  confirmedAccountBalance?: boolean; // 계좌에 보관된 확정값: 자금 전표가 아닌 읽기 기준점
-  adjustmentDelta?: number; // 잔액 조정의 실제 적용 차액(확정 기준점은 현재 거래에서 역산)
-}
-
-/** 특정 계좌의 원장. openingDate 이전 거래는 제외(기초잔액에 이미 포함된 것으로 본다). */
-export interface AccountLedger {
-  account: CashAccount;
-  opening: number;      // 이월(기초) 잔액 — 기간 시작 직전 잔액
-  rows: LedgerRow[];    // 기간 내 거래 (날짜 오름차순)
-  totalIn: number;      // 기간 입금 합계
-  totalOut: number;     // 기간 출금 합계
-  totalAdjustment: number; // 기간 잔액 조정 합계(입출금 실적과 구분)
-  closing: number;      // 기말 잔액 = opening + totalIn - totalOut + totalAdjustment
-}
+import { buildAccountLedger, signedAmount } from '../../../functions/src/shared/cashAccountLedger';
+import type { AccountLedger as SharedAccountLedger, LedgerRow as SharedLedgerRow } from '../../../functions/src/shared/cashAccountLedger';
+export { buildAccountLedger, signedAmount };
+export type LedgerRow = SharedLedgerRow<CashEntry>;
+export type AccountLedger = SharedAccountLedger<CashAccount, CashEntry>;
 
 /** 거래처 채권·채무 계정 — 이 둘만 거래처 잔액을 움직인다 */
 //  계정코드는 [autoJournal](../../shared/autoJournal.ts) 한 곳에서 온다 —
 //  손으로 옮겨 적으면 표준계정과목으로 옮길 때 한쪽만 고쳐진다(2026-09-05)
-import { journalizeStatement, AR, AP, OTHER_PAYABLE } from '../../shared/autoJournal';
+import { journalizeStatement, journalizeTransfer, AR, AP, OTHER_PAYABLE } from '../../shared/autoJournal';
 /*
  * **거래처 잔액은 251·253을 한 덩어리로 본다.**
  * 둘 다 그 거래처에 갚을 돈이다 — 재무상태표에서만 매입채무와 미지급금으로 갈린다.
@@ -39,72 +27,6 @@ import { journalizeStatement, AR, AP, OTHER_PAYABLE } from '../../shared/autoJou
  */
 const PAYABLES = [AP, OTHER_PAYABLE];
 const isPay = (c: string | undefined) => c === AP || c === OTHER_PAYABLE;
-
-/** 입금 +, 출금 −. 대체(상계)는 돈이 안 움직였으므로 0 — 통장 잔액을 건드리면 안 된다. */
-export function signedAmount(e: CashEntry): number {
-  if (e.dir === '대체') return 0;
-  return e.dir === '입금' ? e.amount : -e.amount;
-}
-
-/** 같은 날짜면 생성순(createdAt)으로 안정 정렬 — 통장 순서를 재현하기 위함 */
-function byDateThenCreated(a: CashEntry, b: CashEntry): number {
-  const d = (a.date || '').localeCompare(b.date || '');
-  if (d !== 0) return d;
-  // 확정 잔액은 해당 날짜의 모든 실제 거래 이후 적용한다.
-  const anchor = Number(a.balanceAdjustment?.confirmedBalance === true) - Number(b.balanceAdjustment?.confirmedBalance === true);
-  if (anchor !== 0) return anchor;
-  return (a.createdAt || '').localeCompare(b.createdAt || '') || a.id.localeCompare(b.id);
-}
-
-/**
- * 한 계좌의 원장을 [from, to] 기간으로 만든다.
- * opening = 기초잔액 + (openingDate ~ from 직전) 거래 누적. 그래서 기간을 좁혀도 잔액이 틀어지지 않는다.
- */
-export function buildAccountLedger(
-  account: CashAccount,
-  allEntries: CashEntry[],
-  from: string,
-  to: string,
-): AccountLedger {
-  const confirmations = new Map<string, NonNullable<CashAccount['confirmedBalances']>[number]>();
-  for (const confirmation of account.confirmedBalances ?? []) {
-    const previous = confirmations.get(confirmation.date);
-    if (!previous || confirmation.recordedAt >= previous.recordedAt) confirmations.set(confirmation.date, confirmation);
-  }
-  const confirmedEntries: CashEntry[] = [...confirmations.values()].map(confirmation => ({
-    id: `account-confirmed:${encodeURIComponent(account.id)}:${confirmation.date}`,
-    companyId: companyOf(account), cashAccountId: account.id, date: confirmation.date,
-    createdAt: confirmation.recordedAt, dir: '입금', amount: 0,
-    balanceAdjustment: { before: confirmation.balance, target: confirmation.balance, delta: 0,
-      reason: confirmation.reason, confirmedBalance: true },
-  }));
-  const confirmedIds = new Set(confirmedEntries.map(entry => entry.id));
-  const mine = [...allEntries, ...confirmedEntries]
-    .filter(e => e.cashAccountId === account.id && e.date >= account.openingDate)
-    .sort(byDateThenCreated);
-
-  let opening = account.openingBalance;
-  const rows: LedgerRow[] = [];
-  let totalIn = 0, totalOut = 0, totalAdjustment = 0;
-  let running = account.openingBalance;
-
-  for (const e of mine) {
-    const delta = e.balanceAdjustment?.confirmedBalance === true
-      ? e.balanceAdjustment.target - running : signedAmount(e);
-    running += delta;
-    if (from && e.date < from) {
-      opening = running;          // 기간 이전 → 이월잔액에만 반영
-      continue;
-    }
-    if (to && e.date > to) break; // 정렬돼 있으므로 이후는 볼 필요 없음 (to 비면 전체)
-    if (e.balanceAdjustment) totalAdjustment += delta;
-    else if (e.dir === '입금') totalIn += e.amount; else if (e.dir === '출금') totalOut += e.amount;
-    rows.push({ entry: e, balance: running, ...(e.balanceAdjustment ? { adjustmentDelta: delta } : {}),
-      ...(confirmedIds.has(e.id) ? { confirmedAccountBalance: true } : {}) });
-  }
-
-  return { account, opening, rows, totalIn, totalOut, totalAdjustment, closing: opening + totalIn - totalOut + totalAdjustment };
-}
 
 /** 전 계좌의 현재 잔액 합계 — "오늘 우리 돈이 얼마인가" */
 export function totalCashOnHand(accounts: CashAccount[], allEntries: CashEntry[], asOf: string): number {
@@ -512,7 +434,7 @@ export function partnerOpenBalance(
 ): number {
   const gross = statements
     .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
-    .reduce((a, s) => a + (s.totalAmount ?? 0), 0);
+    .reduce((a, s) => a + (returnClaimAmount(s, type) ?? s.totalAmount ?? 0), 0);
   return gross - partnerPaid(partnerId, type, cashEntries);
 }
 
@@ -543,7 +465,15 @@ export function partnerOpenBalance(
  * 이걸 빠뜨리면 기초를 갚은 수금이 새 전표를 오래된 순으로 갉아먹는다
  * (유통가교: 기초 1,755,000 수금에 08-25·08-28이 다 갚아진 걸로 잡혔다. 실제 미수 620,000).
  */
+function returnClaimAmount(s: IssuedStatement, type: '매출' | '매입'): number | undefined {
+  if (s.type !== '비용' || !(s as IssuedStatement & { returnOperationId?: string }).returnOperationId) return undefined;
+  const codes = type === '매출' ? [AR] : PAYABLES;
+  return (journalizeTransfer(s)?.lines ?? []).filter(line => codes.includes(String(line.accountCode)))
+    .reduce((sum, line) => sum + (type === '매출' ? (line.debit ?? 0) - (line.credit ?? 0) : (line.credit ?? 0) - (line.debit ?? 0)), 0);
+}
 export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
+  const returned = returnClaimAmount(s, type);
+  if (returned !== undefined) return returned !== 0;
   const wantCodes = type === '매출' ? [AR] : PAYABLES;
   for (const l of journalizeStatement(s)?.lines ?? []) {
     if (!wantCodes.includes(String(l.accountCode))) continue;
@@ -554,6 +484,8 @@ export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'):
   return (s.items ?? []).some(it => wantCodes.includes(String(it.accountCode)) && it.side === side);
 }
 
+export type ReadonlyReturnOperation = { id: string; companyId: string; journalId: string;
+  sourcePresence?: Readonly<Record<string, boolean>>; amount?: number; applications?: { id: string; statementId: string; amount: number }[] };
 export function allocatePartnerCash(
   partnerId: string,
   type: '매출' | '매입',
@@ -567,14 +499,42 @@ export function allocatePartnerCash(
    * 총액부터 다시 시작하면 그만큼 덜 갚은 것으로 보인다. 없으면 총액부터.
    */
   opening?: Map<string, number>,
+  returnOperations?: readonly ReadonlyReturnOperation[],
 ): Map<string, number> {
   //  기초이월 전표도 후보에 넣는다 — 안 넣으면 그걸 갚은 수금이 새 전표를 갉아먹는다(isReceivableStmt 주석 참조).
   const eligible = statements
     .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id.localeCompare(b.id));
-  const mine = eligible.filter(s => (opening?.get(s.id) ?? s.totalAmount ?? 0) > 0);
-  const returnCredit = -eligible.reduce((sum, s) => sum + Math.min(0, opening?.get(s.id) ?? s.totalAmount ?? 0), 0);
-  const left = new Map(mine.map(s => [s.id, opening?.get(s.id) ?? (s.totalAmount ?? 0)]));
+  const amountOf = (s: IssuedStatement) => opening?.get(s.id) ?? returnClaimAmount(s, type) ?? s.totalAmount ?? 0;
+  const mine = eligible.filter(s => amountOf(s) > 0);
+  let returnCredit = -eligible.filter(s => returnClaimAmount(s, type) === undefined)
+    .reduce((sum, s) => sum + Math.min(0, amountOf(s)), 0);
+  const left = new Map(mine.map(s => [s.id, amountOf(s)]));
+  const returned = eligible.filter(s => returnClaimAmount(s, type) !== undefined);
+  const pending = () => new Map(eligible.map(s => [s.id, Number.NaN]));
+  // A subscription not yet loaded cannot establish invoice allocations.
+  if (returned.length && returnOperations === undefined) return pending();
+  for (const journal of returned) {
+    const operationId = (journal as IssuedStatement & { returnOperationId?: string }).returnOperationId;
+    const operation = returnOperations?.find(row => row.id === operationId && row.companyId === companyOf(journal) && row.journalId === journal.id);
+    const applications = operation?.applications;
+    const amount = -returnClaimAmount(journal, type)!;
+    if (!operation || !applications || new Set(applications.map(row => row.id)).size !== applications.length
+      || applications.some(row => !Number.isSafeInteger(row.amount) || row.amount <= 0)
+      || applications.reduce((sum, row) => sum + row.amount, 0) !== amount || operation.amount !== amount) return pending();
+    for (const row of applications) {
+      const target = eligible.find(s => s.id === row.statementId);
+      if (!target) {
+        if (statements.some(s => s.id === row.statementId) || operation.sourcePresence?.[row.statementId] !== false) return pending();
+        returnCredit += row.amount;
+      } else {
+        const old = left.get(row.statementId);
+        if (old === undefined || row.amount > old) return pending();
+        left.set(row.statementId, old - row.amount);
+      }
+    }
+  }
+  for (const journal of returned) left.set(journal.id, 0);
   if (!mine.length) return left;
 
   const liveCash = new Set(cashEntries.map(e => e.id));
@@ -622,20 +582,12 @@ export interface PartnerCashPart {
  *
  * **상계(대체)가 까다롭다.** 줄 부호가 차·대를 뜻해서 108이 음수로 적힌다.
  * `amount > 0`으로 거르면 그 줄이 통째로 사라지고, 부호를 그대로 쓰면 채권이 늘어난 것처럼 읽힌다.
- * 상계는 108·251을 **동시에** 터는 것이라, 어느 쪽을 보든 줄어드는 방향이다.
+ * 실제 차대 방향을 읽는다. 108 대변·251/253 차변은 감소이고 반대는 증가다.
  */
 export function partnerCashParts(e: CashEntry): PartnerCashPart[] {
-  const isOffset = e.dir === '대체';
-  const parts = (e.lines ?? []).filter(l => l.accountCode && (isOffset ? l.amount !== 0 : l.amount > 0));
-  const list = parts.length
-    ? parts.map(l => ({ code: l.accountCode as string, amt: Math.abs(l.amount), note: l.note }))
-    : (e.accountCode ? [{ code: e.accountCode, amt: e.amount, note: undefined as string | undefined }] : []);
-  return list
-    .filter(x => x.code === AR || isPay(x.code))
-    .map(x => {
-      const inflow = isOffset || (x.code === AR ? e.dir === '입금' : e.dir === '출금');
-      return { code: x.code, reduce: (inflow ? 1 : -1) * x.amt, note: x.note };
-    });
+  return projectCashLines(e).parts
+    .filter(part => part.accountCode === AR || isPay(part.accountCode))
+    .map(part => ({ code: part.accountCode, reduce: cashLineReduction(e.dir, part.accountCode, part.amount), note: part.note }));
 }
 
 /** 그 거래처로 오간 채권·채무(108/251) 자금 합계. 반대 방향은 되돌림(음수). */

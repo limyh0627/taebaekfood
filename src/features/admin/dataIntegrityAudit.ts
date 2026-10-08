@@ -1,3 +1,4 @@
+import { validReturnStockMovements, type ReturnStockOperation } from '../../shared/returnStockMovement';
 import type { ItemReceipt } from '../../shared/receipt';
 import type {
   IssuedStatement, Item, ItemBom, Order, OrderInventorySnapshot,
@@ -35,6 +36,7 @@ export interface IntegrityAuditInput {
   rawInventories: RawInventoryState[];
   issuedStatements: IssuedStatement[];
   productionSalesLogs: ProductionSalesLog[];
+  returnOperations?: ReturnStockOperation[];
 }
 
 const refOf = (o: Order) => o.cardNo || o.id;
@@ -334,6 +336,22 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
 
   // ── 입고 기록 자체의 형식 검사 ────────────────────────────────────────
   const allReceipts = input.itemReceipts.filter(r => companyOf(r) === input.companyId);
+  for (const operation of input.returnOperations ?? []) {
+    if (operation.companyId !== input.companyId) continue;
+    const source = input.issuedStatements.find(row => row.id === operation.sourceStatementId);
+    const journal = input.issuedStatements.find(row => row.id === operation.journalId);
+    const movements = validReturnStockMovements(operation);
+    if (!inRange(movements?.[0]?.date ?? operation.createdAt?.slice(0, 10))) continue;
+    const problem = !movements || (source?.type === '매입' && !movements.length)
+      || (movements.length > 0 && (!source || companyOf(source) !== input.companyId || source.type !== '매입'
+        || !journal || companyOf(journal) !== input.companyId
+        || (journal as unknown as { returnOperationId?: string }).returnOperationId !== operation.id
+        || movements.some(row => !itemIds.has(row.itemId) || row.partnerId !== source.partnerId)
+        || allReceipts.some(row => (row as ItemReceipt & { returnOperationId?: string }).returnOperationId === operation.id)));
+    if (problem) out.push({ id: `return-stock:${operation.id}`, area: '입고·재고', severity: 'error',
+      title: '매입 반품 출고 근거 오류', detail: '반품 출고 수량·회사·품목·원전표·역분개 연결을 확인하세요.',
+      date: movements?.[0]?.date ?? operation.createdAt, reference: operation.journalId });
+  }
   const receiptsInRange = allReceipts.filter(r => inRange(r.date));
   for (const receipt of receiptsInRange) {
     if (!itemIds.has(receipt.itemId)) out.push({ id: `receipt-item:${receipt.id}`, area: '입고·재고', severity: 'error', title: '입고 기록의 품목이 없음', detail: `${receipt.itemName} 입고 기록이 삭제됐거나 다른 회사 품목을 가리킵니다.`, date: receipt.date, reference: receipt.poId || receipt.id });

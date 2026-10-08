@@ -1,5 +1,5 @@
 import { appConfirm } from '../../src/shared/components/appDialog';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
 import { companyOf, type IssuedStatement, type CashEntry, type AccountCode, type PaymentMethod, type Partner, type CompanyId } from '../../src/shared/types';
@@ -8,6 +8,9 @@ import { settlementTypeOf, isAccruedPayableStatement } from '../../src/features/
 import { formatMoneyInput, parseMoneyInput } from '../../src/shared/moneyInput';
 import ModalShell from '../../src/shared/components/ModalShell';
 import SearchableSelect from '../../src/shared/components/SearchableSelect';
+import PayrollLineEditor from '../hr/PayrollLineEditor';
+import { payrollTotals, type PayrollLine } from '../../src/shared/types';
+import type { PayrollCashEdit, TransferCashEdit, PreparedTransferCashEdit } from '../../src/features/admin/cashMutationCommands';
 
 /**
  * **자금 전표 하나를 세우거나 고치는 창.**
@@ -56,8 +59,12 @@ interface Props {
   latestStatement: (_id: string) => IssuedStatement | undefined;
   onClose: () => void;
   onSettle: (_stmt: IssuedStatement, _input: SettleInput) => void;
-  onSaveEdit: (_entry: CashEntry, _form: CashEditForm, _lines: CashEditLineDraft[]) => void | Promise<void>;
+  payrollEdit?: PayrollCashEdit;
+  transferEdit?: PreparedTransferCashEdit;
+  onSaveEdit: (_entry: CashEntry, _form: CashEditForm, _lines: CashEditLineDraft[], _payroll?: PayrollCashEdit, _transfer?: TransferCashEdit) => void | Promise<void>;
   onDeleteEntry?: (_id: string) => void | Promise<void>;
+  hasPendingRequest?: (_id: string) => boolean;
+  onResumeEntry?: (_id: string) => Promise<unknown>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -213,7 +220,15 @@ function SettleBody({
 
 // ── 이미 난 자금 전표 고치기 ─────────────────────────────────────────────────
 
-function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, onClose, onSaveEdit, onDeleteEntry }: Props & { entry: CashEntry }) {
+function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, onClose, onSaveEdit, onDeleteEntry, payrollEdit, transferEdit, hasPendingRequest, onResumeEntry }: Props & { entry: CashEntry }) {
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const [payrollLines, setPayrollLines] = useState(payrollEdit?.lines ?? []);
+  const payrollTotal = payrollTotals(payrollLines);
+  const [counterLines, setCounterLines] = useState<CashEditLineDraft[]>((transferEdit?.counterpart.lines ?? []).map(line => ({
+    accountCode: line.accountCode, amount: String(line.side === '대변' ? -Math.abs(line.amount) : line.side === '차변' ? Math.abs(line.amount) : line.amount), note: line.note ?? '',
+  })));
+  const [counterNote, setCounterNote] = useState(transferEdit?.counterpart.note ?? '');
   //  상계(대체)는 방향을 고를 수 있는 게 아니다 — 기본값만 출금으로 두고 저장 때 dir은 안 건드린다.
   const [form, setForm] = useState<CashEditForm>({
     amount: String(entry.amount), date: entry.date,
@@ -226,7 +241,8 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
    * 열었다 닫기만 해도 자금원장 금액과 분개(줄 합)가 따로 놀았다.
    */
   const [lines, setLines] = useState<CashEditLineDraft[]>(
-    (entry.lines ?? []).map(l => ({ accountCode: l.accountCode, amount: String(l.amount), note: l.note ?? '' })));
+    (entry.lines ?? []).map(l => ({ accountCode: l.accountCode,
+      amount: String(l.side === '대변' ? -Math.abs(l.amount) : l.side === '차변' ? Math.abs(l.amount) : l.amount), note: l.note ?? '' })));
   const [partnerId, setPartnerId] = useState(entry.partnerId ?? '');
   const [partnerTouched, setPartnerTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -246,8 +262,8 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
   const isOffset = entry.dir === '대체';
   const split = cashEditSplit(lines);
   const splitSum = split.reduce((a, l) => a + l.amount, 0);
-  const amt = cashEditAmount(form, lines, isOffset);
-  const locked = split.length > 0 && !isOffset;   // 쪼갠 전표의 금액은 줄 합이다
+  const amt = payrollEdit ? payrollTotal.net : cashEditAmount(form, lines, isOffset);
+  const locked = !!payrollEdit || split.length > 0 && !isOffset;   // 급여는 사원별 입력에서, 쪼갠 전표는 줄 합에서 계산한다.
 
   const codeOptions = [...accountCodes].sort(byCode).map(ac => (
     <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
@@ -255,6 +271,30 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
 
   return (
     <ModalShell title="자금 전표 수정" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="space-y-4">
+          {onResumeEntry && hasPendingRequest?.(entry.id) && <button disabled={saving} onClick={async () => {
+            if (savingRef.current) return;
+            savingRef.current = true; setSaving(true);
+            try { await onResumeEntry(entry.id); if (alive.current) onClose(); }
+            catch (error) { if (alive.current) window.alert(`이전 변경 결과를 확인하지 못했습니다: ${(error as Error).message}`); }
+            finally { savingRef.current = false; if (alive.current) setSaving(false); }
+          }} className="w-full rounded-xl border border-amber-300 p-3 text-xs font-bold">이전 변경 결과 확인</button>}
+          {payrollEdit && <div className="overflow-x-auto">
+            <p className="text-xs font-bold mb-2">{payrollEdit.yearMonth} 급여대장 · 사원별 금액과 공제를 함께 수정합니다.</p>
+            <PayrollLineEditor lines={payrollLines} onCell={(index, field: keyof PayrollLine, value) =>
+              setPayrollLines(rows => rows.map((row, i) => i === index
+                ? { ...row, [field]: Math.round(parseFloat(value.replace(/[^\d.-]/g, '')) || 0) } : row))} />
+          </div>}
+          {transferEdit && <div className="rounded-xl border p-3 space-y-2">
+            <p className="text-xs font-bold">상대 회사 전표 · {transferEdit.counterpart.partnerName} · {transferEdit.counterpart.docNo}</p>
+            <p className="text-xs">양쪽 금액과 일자는 함께 저장됩니다. 상대 회사의 분개도 입력해주세요.</p>
+            {counterLines.map((line, index) => <div key={index} className="flex gap-2">
+              <input aria-label={`상대 분개 ${index + 1} 계정`} value={line.accountCode} onChange={event => setCounterLines(rows => rows.map((row, i) => i === index ? { ...row, accountCode: event.target.value } : row))} />
+              <input aria-label={`상대 분개 ${index + 1} 금액`} inputMode="decimal" value={line.amount} onChange={event => setCounterLines(rows => rows.map((row, i) => i === index ? { ...row, amount: event.target.value } : row))} />
+              <button aria-label={`상대 분개 ${index + 1} 삭제`} onClick={() => setCounterLines(rows => rows.filter((_row, i) => i !== index))}><X size={13}/></button>
+            </div>)}
+            <button onClick={() => setCounterLines(rows => [...rows, { accountCode: '', amount: '', note: '' }])}>상대 분개 추가</button>
+            <input aria-label="상대 전표 비고" value={counterNote} onChange={event => setCounterNote(event.target.value)} />
+          </div>}
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">거래처</label>
             <SearchableSelect ariaLabel="거래처" value={partnerId} options={partnerOptions}
@@ -279,7 +319,7 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">구분</label>
             <div className="flex gap-1.5">
               {(['입금','출금'] as const).map(d => (
-                <button key={d} disabled={isOffset} onClick={() => setForm(p => ({ ...p, dir: d }))}
+                <button key={d} disabled={isOffset || !!payrollEdit} onClick={() => setForm(p => ({ ...p, dir: d }))}
                   className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${form.dir === d ? (d==='입금'?'bg-emerald-600 text-white border-emerald-600':'bg-rose-600 text-white border-rose-600') : 'bg-white text-slate-500 border-slate-200'}`}>{d}</button>
               ))}
             </div>
@@ -290,7 +330,7 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
             </label>
             {/* 쪼갠 전표의 금액은 줄 합이다 — 여기서 따로 고치면 자금원장과 분개가 갈라진다. */}
             <input type="text" inputMode="decimal"
-              value={locked ? String(splitSum) : form.amount} readOnly={locked}
+              value={payrollEdit ? String(payrollTotal.net) : locked ? String(splitSum) : form.amount} readOnly={locked}
               onChange={e => setForm(p => ({ ...p, amount: e.target.value.replace(/[^\d.]/g,'') }))}
               className={`w-full border rounded-xl px-3 py-2 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-blue-300 ${locked ? 'border-slate-100 bg-slate-50 text-slate-500' : 'border-slate-200'}`}/>
           </div>
@@ -299,7 +339,7 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
             <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
           </div>
-          <div>
+          {!payrollEdit && <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] font-black text-slate-400 uppercase">{lines.length > 0 ? '쪼갠 줄' : '계정과목'}</label>
               <button
@@ -344,7 +384,7 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
                 )}
               </div>
             )}
-          </div>
+          </div>}
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
             <input type="text" value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))}
@@ -358,9 +398,9 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
               if (savingRef.current) return;
               savingRef.current = true;
               setSaving(true);
-              try { if (await appConfirm('이 자금 전표를 삭제할까요?')) { await onDeleteEntry(entry.id); onClose(); } }
-              catch (error) { window.alert(`자금 전표를 삭제하지 못했습니다: ${(error as Error).message}`); }
-              finally { savingRef.current = false; setSaving(false); }
+              try { if (await appConfirm('이 자금 전표를 삭제할까요?') && alive.current) { await onDeleteEntry(entry.id); if (alive.current) onClose(); } }
+              catch (error) { if (alive.current) window.alert(`자금 전표를 삭제하지 못했습니다: ${(error as Error).message}`); }
+              finally { savingRef.current = false; if (alive.current) setSaving(false); }
             }}
               className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200 disabled:opacity-40"><Trash2 size={12}/>삭제</button>
           )}
@@ -369,8 +409,13 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
             if (savingRef.current) return;
             savingRef.current = true;
             setSaving(true);
-            try { await onSaveEdit(entry, { ...form, ...(partnerTouched ? { partnerId } : {}) }, lines); }
-            finally { savingRef.current = false; setSaving(false); }
+            try { await onSaveEdit(entry, { ...form, ...(partnerTouched ? { partnerId } : {}) }, lines,
+              payrollEdit ? { ...payrollEdit, payDate: form.date, lines: payrollLines } : undefined,
+              transferEdit ? { counterpartId: transferEdit.counterpart.id, expectedRevision: transferEdit.expectedRevision,
+                expectedCashHash: transferEdit.expectedCashHash, patch: { amount: amt, date: form.date, note: counterNote,
+                  lines: cashEditSplit(counterLines), accountCode: '' } } : undefined); }
+            catch (error) { if (alive.current) window.alert(`자금 전표를 저장하지 못했습니다: ${(error as Error).message}`); }
+            finally { savingRef.current = false; if (alive.current) setSaving(false); }
           }} disabled={amt <= 0 || saving}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
         </div>

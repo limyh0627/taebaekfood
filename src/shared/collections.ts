@@ -27,6 +27,7 @@ export const COL = {
   orders: 'orders',
   purchaseOrders: 'purchaseOrders',
   returnRequests: 'returnRequests',
+  returnOperations: 'returnOperations',
   adjustmentRequests: 'adjustmentRequests',
   workOrderItems: 'workOrderItems',
   orderStatusAudits: 'orderStatusAudits',

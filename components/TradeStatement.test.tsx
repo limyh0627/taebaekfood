@@ -255,6 +255,23 @@ describe('자금 전표 수정 저장 순서', () => {
     dir: '입금', amount: 5000, cashAccountId: 'bank', accountCode: '811',
     partnerId: partner.id, partnerName: partner.name, note: '수정 시험 자금',
   } as const;
+  it('편집 성공 후 승인된 FIFO 매칭을 한 번의 원자 배분 콜백으로 전달한다', async () => {
+    const source = cash;
+    const save = vi.fn(async () => {}), match = vi.fn(async () => {}), oldAdd = vi.fn();
+    const stmt = { id: 'fifo-statement', companyId: 'taebaek', partnerId: partner.id, partnerName: partner.name,
+      docNo: '260924-01', type: '매출', tradeDate: '2026-09-24', totalAmount: 10000 } as IssuedStatement;
+    setup(undefined, undefined, { pendingInvoice: null, cashEntries: [source], issuedStatements: [stmt],
+      onUpdateCashEntry: save, onMatchCashAllocations: match, onAddSettlement: oldAdd,
+      accountCodes: [{ id: 'ar', code: '108', name: '외상매출금' }] as React.ComponentProps<typeof TradeStatement>['accountCodes'] });
+    fireEvent.click(screen.getByRole('button', { name: 'ALL' }));
+    fireEvent.click(await screen.findByText('수정 시험 자금', { selector: 'td' }));
+    const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
+    fireEvent.change(within(dialog).getAllByRole('combobox').find(input => input.tagName === 'SELECT')!, { target: { value: '108' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(match).toHaveBeenCalledTimes(1));
+    expect(match).toHaveBeenCalledWith(expect.objectContaining({ id: source.id, amount: 5000 }), [{ statementId: stmt.id, amount: 5000 }]);
+    expect(oldAdd).not.toHaveBeenCalled();
+  });
 
   it('DB 저장 완료 전에는 수정창을 닫지 않고, 실패해도 열린 채로 남는다', async () => {
     const gate = deferred();
@@ -282,7 +299,7 @@ describe('자금 전표 수정 저장 순서', () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it('상계 금액을 고친 뒤 자금 저장이 실패하면 원래 상계 금액으로 되돌린다', async () => {
+  it('원자 현금 저장이 실패하면 별도 정산 쓰기 없이 원문과 수정창을 보존한다', async () => {
     const updateCash = vi.fn(async () => { throw new Error('자금 쓰기 실패'); });
     const updateSettlement = vi.fn(async (_id: string, _patch: Partial<Settlement>) => {});
     const settlement = { id: 'linked', cashEntryId: cash.id, statementId: 'stmt-linked', amount: 5000, createdAt: '' };
@@ -295,9 +312,9 @@ describe('자금 전표 수정 저장 순서', () => {
     const dialog = screen.getByRole('dialog', { name: '자금 전표 수정' });
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], { target: { value: '6000' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
-    await waitFor(() => expect(updateSettlement).toHaveBeenCalledTimes(2));
-    expect(updateSettlement.mock.calls[0]).toEqual(['linked', { amount: 6000 }]);
-    expect(updateSettlement.mock.calls[1]).toEqual(['linked', { amount: 5000 }]);
+    await waitFor(() => expect(updateCash).toHaveBeenCalledTimes(1));
+    expect(updateSettlement).not.toHaveBeenCalled();
+    expect(updateCash).toHaveBeenCalledWith(cash.id, expect.objectContaining({ amount: 6000 }), cash, undefined, undefined);
     expect(updateCash).toHaveBeenCalledTimes(1);
     expect(dialog).toBeInTheDocument();
   });

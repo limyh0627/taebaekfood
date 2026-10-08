@@ -1,7 +1,8 @@
 import { templateStatementType, templateStatementConflict, canAutoStatement, templateTransferItems } from './templateStatementType';
 
 import { stampFor } from './voucherStamp';
-import { lineAmount } from './lineAmount';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
+import { recurringDate, recurringDir, recurringId, recurringStatement } from '../../functions/src/shared/recurringVoucher';
+import type { FixedCostTemplate, CashEntry, IssuedStatement } from './types';
 import { STANDARD_ACCOUNT } from './accountChart';
 
 /**
@@ -20,10 +21,7 @@ import { STANDARD_ACCOUNT } from './accountChart';
 
 /** 그 달에 이 템플릿이 나가는 날. issueDay 31은 말일로 친다. */
 export function issueDateOf(ym: string, issueDay?: number): string {
-  const [y, m] = ym.split('-').map(Number);
-  const last = new Date(y, m, 0).getDate();          // 그 달 마지막 날
-  const day = Math.min(Math.max(issueDay ?? 1, 1), last);
-  return `${ym}-${String(day).padStart(2, '0')}`;
+  return recurringDate(ym, issueDay);
 }
 
 /** 오늘(YYYY-MM-DD)이 이 템플릿의 발행일인가 */
@@ -33,13 +31,12 @@ export function isIssueDay(today: string, t: FixedCostTemplate): boolean {
 
 /** 그 달 발행분의 고유 id — 중복 발행 방지 */
 export function autoVoucherId(t: FixedCostTemplate, ym: string): string {
-  return `AUTO-${t.id}-${ym}`;
+  return recurringId(t.id, ym);
 }
 
 /** 옛 postMode를 새 dir로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈'이다. */
 export function dirOf(t: FixedCostTemplate): NonNullable<FixedCostTemplate['dir']> {
-  if (t.dir) return t.dir;
-  return t.postMode === '분리' ? '줄돈' : '출금';
+  return recurringDir({ ...t, dir: t.dir || undefined }) as NonNullable<FixedCostTemplate['dir']>;
 }
 /** 돈이 지금 움직이는 갈래인가 — 아니면 전표(매입·매출·대체)로 끊는다 */
 export const isCashDir = (d: string) => d === '입금' || d === '출금';
@@ -117,30 +114,17 @@ export function buildStatementVoucher(
   const conflict = templateStatementConflict(t);
   if (conflict) throw new Error(conflict);
   const type = templateStatementType(t);
-  const total = t.amount;
-  const exempt = type === '비용' || !!t.taxExempt;
-  const { supply, tax } = lineAmount(1, total, exempt);
-  const item: IssuedStatementItem = {
-    // 품목명 → 계정과목 이름 → 템플릿 이름 순. 비워 두면 계정 이름이 그대로 들어간다.
-    name: t.itemName?.trim() || opts.accountName || t.name,
-    spec: '', qty: 1, price: total,
-    supply, tax, total,
-    isTaxExempt: exempt,
-    accountCode: t.accountCode,
-  };
+  if (type === '비용' && t.transferLines?.length) templateTransferItems({ ...t, statementType: type });
+  const projection = recurringStatement(t, opts.accountName, Math.round((Number(t.amount) || 0)));
   const date = issueDateOf(ym, t.issueDay);
   return {
     id: autoVoucherId(t, ym),
     issuedAt: new Date(`${date}T09:00:00+09:00`).toISOString(),
     tradeDate: date,
-    type,
     partnerId: t.partnerId ?? '',
     partnerName: t.partnerName ?? '',
     orderId: autoVoucherId(t, ym),      // 중복 체크에 쓰던 키 — 기존 정기비용과 같은 자리
     docNo: opts.docNo,
-    totalSupply: supply,
-    totalTax: tax,
-    totalAmount: total,
-    items: type === '비용' && t.transferLines?.length ? templateTransferItems({ ...t, statementType: type }) : [item],
+    ...projection,
   } as IssuedStatement;
 }

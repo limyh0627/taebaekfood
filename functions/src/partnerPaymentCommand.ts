@@ -1,3 +1,6 @@
+import { readClaimsAfterReturns } from './returnClaimReader';
+import { projectCashLines, cashLineReduction, CashLineProjectionError } from './shared/cashLineProjection';
+import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -5,7 +8,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 import { partnerQuarantined } from './partnerCutover';
-import { PartnerPaymentValidationError, claimsAfterReturns, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement,
+import { PartnerPaymentValidationError, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement,
   type ReturnApplication } from './partnerPaymentPlan';
 
 type Row = Record<string, any>;
@@ -69,15 +72,18 @@ export function claimFromStatement(id: string, row: Row): Claim | null {
 export function cashFromEntry(id: string, row: Row): PaymentCash | null {
   if (!row.partnerId) return null;
   if (!Number.isSafeInteger(row.amount) || row.amount <= 0 || !['입금', '출금', '대체'].includes(row.dir)) conflict('기존 자금전표가 잘못되었습니다.');
-  const lines: Row[] = Array.isArray(row.lines) && row.lines.length ? row.lines
-    : row.accountCode ? [{ accountCode: row.accountCode, amount: row.amount }] : [];
-  const parts = lines.filter(line => ['108', '251', '253'].includes(line.accountCode)
-    && (row.dir === '대체' ? line.amount !== 0 : line.amount > 0)).map(line => {
-    if (!Number.isSafeInteger(line.amount) || line.amount === 0) conflict('기존 자금전표 줄 금액이 잘못되었습니다.');
-    const reduce = row.dir === '대체' || (line.accountCode === '108' ? row.dir === '입금' : row.dir === '출금')
-      ? Math.abs(line.amount) : -Math.abs(line.amount);
-    return { accountCode: String(line.accountCode), reduce };
-  });
+  let projection: ReturnType<typeof projectCashLines>;
+  try { projection = projectCashLines(row as Parameters<typeof projectCashLines>[0], true); }
+  catch (error) { if (error instanceof CashLineProjectionError) conflict(error.message); throw error; }
+  const byCode = new Map<string, number>();
+  for (const line of projection.parts) {
+    if (!['108', '251', '253'].includes(line.accountCode)) continue;
+    const reduce = cashLineReduction(row.dir, line.accountCode, line.amount);
+    const sum = (byCode.get(line.accountCode) ?? 0) + reduce;
+    if (!Number.isSafeInteger(sum)) conflict('기존 자금전표 계정 합계가 잘못되었습니다.');
+    byCode.set(line.accountCode, sum);
+  }
+  const parts = [...byCode].filter(([, reduce]) => reduce !== 0).map(([accountCode, reduce]) => ({ accountCode, reduce }));
   return { id, companyId: owner(row), partnerId: row.partnerId, parts };
 }
 
@@ -130,6 +136,15 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     if (operationSnap.exists) {
       const prior = operationSnap.data()!;
       const currentEntry = entrySnap.data();
+      if (prior.companyId === companyId && prior.requestHash === requestHash && (!entrySnap.exists || (currentEntry?.mutationRevision ?? 0) > 0)) {
+        const original = await readCashCreationMutation(db, tx, companyId, input.operationId, entrySnap, row => {
+          const business = { companyId: row.companyId, partnerId: row.partnerId, date: row.date, cashAccountId: row.cashAccountId,
+            dir: row.dir, amount: row.amount, lines: row.lines, note: row.note };
+          return row.partnerId === input.partnerId && row.issueOperationId === input.operationId && row.issuePayloadHash === requestHash
+            && row.issuePrefix === effectivePrefix && row.docNo === prior.docNo && fingerprint(business) === prior.entryHash;
+        });
+        if (original) return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo };
+      }
       const currentHash = currentEntry && fingerprint({ companyId: currentEntry.companyId, partnerId: currentEntry.partnerId,
         date: currentEntry.date, cashAccountId: currentEntry.cashAccountId, dir: currentEntry.dir,
         amount: currentEntry.amount, lines: currentEntry.lines, note: currentEntry.note });
@@ -159,11 +174,11 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     if (!Number.isSafeInteger(revision) || revision !== input.expectedRevision) conflict('거래처 정산 상태가 변경되었습니다.');
     if (!accountSnap.exists || owner(accountSnap.data()!) !== companyId || accountSnap.data()?.active !== true) conflict('회사 계좌가 맞지 않습니다.');
     if (!partnerSnap.exists || owner(partnerSnap.data()!) !== companyId) conflict('거래처 회사가 맞지 않습니다.');
-    const statements = claimsAfterReturns(statementRows.docs.filter(doc => owner(doc.data()) === companyId)
+    const statements = await readClaimsAfterReturns(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
       .map(doc => claimFromStatement(doc.id, doc.data()))
       .filter((row): row is Claim => row !== null),
     returnRows.docs.filter(doc => owner(doc.data()) === companyId)
-      .map(doc => ({ id: doc.id, ...doc.data() } as ReturnApplication)));
+      .map(doc => ({ id: doc.id, ...doc.data() } as ReturnApplication)), statementRows.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     const cashEntries = cashRows.docs.filter(doc => owner(doc.data()) === companyId)
       .map(doc => cashFromEntry(doc.id, doc.data())).filter((row): row is PaymentCash => row !== null);
     const settlements: PaymentSettlement[] = settlementRows.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentSettlement));

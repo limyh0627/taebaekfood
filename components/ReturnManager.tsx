@@ -1,6 +1,7 @@
+import { salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
 import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
 import { appConfirm } from '../src/shared/components/appDialog';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   RotateCcw,
   Plus,
@@ -49,6 +50,9 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   isAdmin,
   onProcessReturn,
 }) => {
+  const scope = useRef({ companyId, token: {} });
+  if (scope.current.companyId !== companyId) scope.current = { companyId, token: {} };
+  useEffect(() => () => { scope.current = { companyId: scope.current.companyId, token: {} }; }, []);
   const [tab, setTab] = useState<Tab>('접수');
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
 
@@ -139,23 +143,27 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
       !!it.itemId && !!it.name && (it.quantity ?? 0) > 0
   );
 
-  const totalAmount = validItems.reduce((sum, it) => sum + it.quantity * it.price, 0);
+  let totalAmount = 0;
+  try {
+    totalAmount = salesReturnRequest(companyId, selectedClientId, issuedStatements.find(row => row.id === selectedStatementId),
+      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items).totalAmount;
+  } catch { /* 원전표와 수량이 유효해지면 원전표 기준 금액을 표시한다. */ }
 
   const handleSubmit = async () => {
     const selectedClient = partners.find(c => c.id === selectedClientId);
     if (!selectedClient) { alert('거래처를 선택해주세요.'); return; }
     if (validItems.length === 0) { alert('반품 품목을 1개 이상 입력해주세요.'); return; }
 
+    let request: ReturnType<typeof salesReturnRequest>;
+    try { request = salesReturnRequest(companyId, selectedClientId, issuedStatements.find(row => row.id === selectedStatementId),
+      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items); }
+    catch (error) { alert(error instanceof Error ? error.message : '반품 원전표를 확인해주세요.'); return; }
     setSaving(true);
     try {
       const req = {
-        partnerId: selectedClientId,
+        ...request,
+        items: request.items.map(row => ({ ...row, reason: validItems.find(item => item.itemId === row.itemId)?.reason ?? row.reason })),
         partnerName: selectedClient.name,
-        ...(selectedOrderId && { orderId: selectedOrderId }),
-        ...(selectedStatementId && { linkedStatementId: selectedStatementId }),
-        items: validItems,
-        totalAmount,
-        status: 'pending' as const,
         createdAt: new Date().toISOString(),
         ...(note && { note }),
       };
@@ -164,19 +172,22 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
       setReturnLineItems([]);
       setNote('');
       setTab('이력');
-    } finally {
+    } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
       setSaving(false);
     }
   };
 
   const handleProcess = async (req: ReturnRequest) => {
+    const token = scope.current.token;
     if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
     if (!await appConfirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
+    if (scope.current.token !== token) return;
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);
-    } finally {
-      setProcessingId(null);
+    } catch (error) { if (scope.current.token === token) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
+    finally {
+      if (scope.current.token === token) setProcessingId(null);
     }
   };
 

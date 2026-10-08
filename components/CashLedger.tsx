@@ -33,9 +33,9 @@ interface Props {
   onUpdateCashAccount: (id: string, data: Partial<CashAccount>) => void | Promise<unknown>;
   onCorrectCashAccount?: (original: CashAccount, name: string, date: string, targetCurrentBalance: number) => Promise<unknown>;
   onAddCashEntry: (e: Omit<CashEntry, 'id'> & { id: string }) => void | Promise<unknown>;
-  onDeleteCashEntry: (id: string) => void;
-  onAddSettlement: (s: Omit<Settlement, 'id'> & { id: string }) => void;
-  onDeleteSettlement: (id: string) => void;
+  onDeleteCashEntry: (id: string, original: CashEntry) => void | Promise<unknown>;
+  onAddSettlement: (s: Omit<Settlement, 'id'> & { id: string }) => void | Promise<unknown>;
+  onDeleteSettlement: (id: string) => void | Promise<unknown>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -205,7 +205,7 @@ export default function CashLedger({
                           className={`transition-all ${open > 0 ? 'text-indigo-400 hover:text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'}`}>
                           <Link2 size={13} />
                         </button>}
-                        {!confirmedAccountBalance && <button aria-label="거래 삭제" onClick={() => confirmDelete(entry.id, '이 거래를 삭제할까요?', () => onDeleteCashEntry(entry.id))}
+                        {!confirmedAccountBalance && <button aria-label="거래 삭제" onClick={() => confirmDelete(entry.id, '이 거래를 삭제할까요?', () => onDeleteCashEntry(entry.id, entry))}
                           className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all">
                           <Trash2 size={12} />
                         </button>}
@@ -241,7 +241,7 @@ export default function CashLedger({
           onAdd={onAddCashAccount} onUpdate={onUpdateCashAccount} onCorrect={onCorrectCashAccount} onAddEntry={onAddCashEntry} />
       )}
       {matchTarget && !matchTarget.balanceAdjustment && (
-        <MatchModal entry={matchTarget} statements={issuedStatements} settlements={settlements} cashEntries={cashEntries}
+        <MatchModal key={`${companyId}:${matchTarget.id}`} entry={matchTarget} statements={issuedStatements} settlements={settlements} cashEntries={cashEntries}
           onClose={() => setMatchTarget(null)} onAdd={onAddSettlement} onDelete={onDeleteSettlement} />
       )}
     </div>
@@ -250,7 +250,7 @@ export default function CashLedger({
 
 // ── 전표 매칭 모달 ────────────────────────────────────────────────────────────
 // 출금 → 매입전표 상계, 입금 → 매출전표 상계. 이체 1건을 전표 여러 건에 나눠 붙일 수 있다.
-function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAdd, onDelete }: {
+export function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAdd, onDelete }: {
   entry: CashEntry;
   statements: IssuedStatement[];
   settlements: Settlement[];
@@ -260,6 +260,22 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
   onAdd: Props['onAddSettlement'];
   onDelete: Props['onDeleteSettlement'];
 }) {
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const save = async (action: () => void | Promise<unknown>) => {
+    if (lock.current || !mounted.current) return;
+    lock.current = true; setBusy(true); setError('');
+    try { await action(); }
+    catch (failure) {
+      if (mounted.current) setError(failure instanceof Error ? failure.message : '매칭을 저장하지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      lock.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
   const stmtType = entry.dir === '출금' ? '매입' : '매출';
   const remaining = unmatchedCash(entry, settlements);
 
@@ -282,15 +298,17 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
   const attach = (statementId: string, open: number) => {
     const amount = Math.min(open, remaining);
     if (amount <= 0) return;
-    onAdd({
+    void save(() => onAdd({
       id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       cashEntryId: entry.id, statementId, amount,
       createdAt: new Date().toISOString(),
-    });
+    }));
   };
 
   return (
-    <ModalShell title="전표 매칭" onClose={onClose} bodyClassName="space-y-4">
+    <ModalShell title="전표 매칭" onClose={() => { if (!lock.current) onClose(); }} bodyClassName="space-y-4">
+        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+        {busy && <p role="status" className="text-sm text-slate-500">매칭 저장 중...</p>}
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center justify-between">
           <div className="min-w-0">
@@ -314,7 +332,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
                   <p className="text-[10px] text-slate-400">{stmt?.tradeDate ?? ''} · {stmt?.docNo ?? settlement.statementId}</p>
                 </div>
                 <p className="text-xs font-black text-indigo-600 tabular-nums shrink-0">{fmt(settlement.amount)}</p>
-                <button onClick={() => onDelete(settlement.id)} className="text-slate-300 hover:text-rose-500 shrink-0">
+                <button disabled={busy} aria-label={`${stmt?.docNo ?? settlement.statementId} 매칭 해제`} onClick={() => void save(() => onDelete(settlement.id))} className="text-slate-300 hover:text-rose-500 shrink-0">
                   <X size={13} />
                 </button>
               </div>
@@ -338,7 +356,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
             </p>
           )}
           {remaining > 0 && candidates.map(({ stmt, open }) => (
-            <button key={stmt.id} onClick={() => attach(stmt.id, open)}
+            <button key={stmt.id} disabled={busy} onClick={() => attach(stmt.id, open)}
               className="w-full flex items-center gap-3 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 rounded-xl px-4 py-2.5 text-left transition-all">
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-black text-slate-800 truncate">{stmt.partnerName}</p>

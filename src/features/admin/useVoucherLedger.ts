@@ -3,7 +3,7 @@ import type { IssuedStatement, CashEntry, Settlement, AccountCode, CompanyId, Jo
 import { openingDocId } from '../../shared/types';
 import { fetchDateRange, fetchByIds, fetchWhere } from '../../shared/services/firebaseService';
 import { buildJournals } from '../../shared/buildJournals';
-import { allocatePartnerCash } from './cashLedger';
+import { allocatePartnerCash, type ReadonlyReturnOperation } from './cashLedger';
 import { mergeStatements, voucheredOrderIds, canSettleStatement, isAccruedPayableStatement, accruedPayableBalance } from './voucherMerge';
 import {
   anchorBefore, readFrom, openStatementIds, allocationInputs, balancesWithAnchor,
@@ -30,6 +30,7 @@ import { where } from 'firebase/firestore';
  * 합칠 때는 props가 이긴다(가장 최신이다).
  */
 export interface VoucherLedgerInput {
+  returnOperations?: readonly ReadonlyReturnOperation[];
   companyId: CompanyId;
   /** 최근 7일 실시간 구독분 */
   issuedStatements: IssuedStatement[];
@@ -42,7 +43,7 @@ export interface VoucherLedgerInput {
 }
 
 export function useVoucherLedger({
-  companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo,
+  companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations,
 }: VoucherLedgerInput) {
   // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
   const [stateCompany, setStateCompany] = useState(companyId);
@@ -282,12 +283,12 @@ export function useVoucherLedger({
       .map(st => `${st.partnerId}|${st.type}`));
     for (const key of keys) {
       const [pid, type] = key.split('|');
-      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', alloc.statements, alloc.cashEntries, settlements, alloc.opening)) {
+      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', alloc.statements, alloc.cashEntries, settlements, alloc.opening, returnOperations)) {
         out.set(id, open);
       }
     }
     return out;
-  }, [anchor, mergedStatements, cashEntries, settlements]);
+  }, [anchor, mergedStatements, cashEntries, settlements, returnOperations]);
   //  배분에 없으면 총액으로 물러선다 — 채권·채무를 안 세우는 전표(감가상각·급여 등)가 그렇다
   const getBalance = useCallback(
     (s: IssuedStatement) => isAccruedPayableStatement(s)
