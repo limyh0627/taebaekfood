@@ -192,7 +192,7 @@ const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
 import { db, auth } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
@@ -689,7 +689,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
-    () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems), formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas) }).effective,
+    () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems), formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas) }),
     [allItems, itemBoms, itemFormulas],
   );
 

@@ -48,8 +48,6 @@ export function rawCostPerKg(name: string, byRawName: Map<string, Item>): number
 export interface CostFn {
   /** 이 품목의 원가 — costSource가 'manual'이면 손으로 넣은 값, 아니면 롤업. */
   (item: Item): number;
-  /** @deprecated 이제 본체와 같다(품목이 제 출처를 정한다). 옛 호출부 호환용. */
-  effective: (item: Item) => number;
   /**
    * **출처를 무시한 순수 롤업.** 'manual'로 못 박아 둔 품목도 계산값을 보여줘야 하는
    * 편집 화면(원가 토글)이 쓴다. 굴릴 게 없으면 저장값으로 떨어진다.
@@ -174,7 +172,6 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
   const rollup = (item: Item) => cost(item, new Set<string>());
   const fn = ((item: Item) =>
     (item.costSource === 'manual' && (item.cost ?? 0) > 0 ? item.cost! : rollup(item))) as CostFn;
-  fn.effective = fn;
   fn.rollup = rollup;
   return fn;
 }
