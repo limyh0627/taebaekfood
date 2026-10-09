@@ -1,3 +1,4 @@
+import { verifyAdvanceStatements, type ReadonlyAdvanceOperation } from '../partnerAdvanceAudit';
 import { useReturnAllocationSources, type ReturnAllocationOperation } from './useReturnAllocationSources';
 import type { ReturnStockOperation } from '../returnStockMovement';
 import { COL } from '../collections';
@@ -47,6 +48,7 @@ export interface WorkOrderItem {
 }
 
 export interface AppData {
+  advanceStatements?: readonly IssuedStatement[];
   orderUnitInputs?: OrderUnitInputs;
   // 주문
   orders: Order[];
@@ -157,6 +159,18 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
   const [cashEntries, setCashEntries] = useState<CashEntry[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [advanceOperationState,setAdvanceOperationState]=useState<{companyId:CompanyId;rows:ReadonlyAdvanceOperation[]}|null>(null);
+  const [verifiedAdvances,setVerifiedAdvances]=useState<{companyId:CompanyId;uid?:string;statements:IssuedStatement[];operations:ReadonlyAdvanceOperation[];rows:IssuedStatement[]}|null>(null);
+  useEffect(()=>{
+    let cancelled=false;
+    const uid=auth?.currentUser?.uid;
+    if(enabled&&isAdmin&&advanceOperationState?.companyId===companyId){
+      const parties=[...new Set(issuedStatements.filter(s=>companyOf(s)===companyId&&s.noncashApplication!==undefined).map(s=>s.partnerId))];
+      // 한 거래처의 미확인 감사가 다른 거래처의 정상 미결까지 막지 않는다.
+      Promise.all(parties.map(partnerId=>verifyAdvanceStatements(companyId,issuedStatements.filter(s=>s.partnerId===partnerId),advanceOperationState.rows).catch(()=>[]))).then(groups=>{if(!cancelled&&auth?.currentUser?.uid===uid)setVerifiedAdvances({companyId,uid,statements:issuedStatements,operations:advanceOperationState.rows,rows:groups.flat()});});
+    }
+    return()=>{cancelled=true;};
+  },[enabled,isAdmin,companyId,issuedStatements,advanceOperationState,auth?.currentUser?.uid]);
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
@@ -261,6 +275,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
         }, co, () => { if (!cancelled) setReturnOperationState(null); }),
         listen<CashEntry>(COL.cashEntries, setCashEntries, co),
         listen<Settlement>(COL.settlements, setSettlements, co),
+        subscribeToCollection<ReadonlyAdvanceOperation>(COL.partnerAdvanceOperations,rows=>{if(!cancelled)setAdvanceOperationState({companyId,rows});},co,()=>{if(!cancelled)setAdvanceOperationState(null);}),
         listen<InventorySnapshot>(COL.inventorySnapshots, setInventorySnapshots, co),
         listenRecent<ProductionSalesLog>(COL.productionSalesLogs, 'date', 7, setProductionSalesLogs, co),
         listenRecent<PendingStatementEdit>(COL.pendingStatementEdits, 'createdAt', 7, setPendingStatementEdits, co),
@@ -436,6 +451,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       itemBoms: visibleRows(itemBoms),
       itemPacks: visibleRows(itemPacks),
       returnRequests: visibleRows(returnRequests),
+      advanceStatements: enabled && isAdmin && verifiedAdvances?.companyId===companyId && verifiedAdvances.uid===auth?.currentUser?.uid && verifiedAdvances.statements===issuedStatements && verifiedAdvances.operations===advanceOperationState?.rows ? verifiedAdvances.rows : undefined,
       returnOperations: enabled && isAdmin && returnOperationState?.companyId === companyId ? returnOperationState.rows : [],
       returnOperationsLoaded: enabled && isAdmin && returnOperationState?.companyId === companyId,
       returnAllocationOperations: returnAllocationOperations ?? [],
@@ -454,7 +470,7 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
       productionSalesLogs: isAdmin ? visibleRows(productionSalesLogs) : [],
       pendingStatementEdits: isAdmin ? visibleRows(pendingStatementEdits) : [],
     };
-  }, [enabled, companyId, isAdmin, returnOperationState, returnAllocationOperations, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
+  }, [enabled, companyId, isAdmin, verifiedAdvances, advanceOperationState, returnOperationState, returnAllocationOperations, purchaseOrders, items, partnerItems, partners, employees, leaveRequests, pallets, palletTransactions, adjustmentRequests, noticePosts, chatRooms, chatMessages, sesameInputLedger, appNotifications, workOrderItems, itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts, issuedStatements, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots, cashAccounts, cashEntries, settlements, productionSalesLogs, pendingStatementEdits]);
   return {
     ...scopedData,
     orderUnitInputs: { bom: bomIndex, pack: packIndex },

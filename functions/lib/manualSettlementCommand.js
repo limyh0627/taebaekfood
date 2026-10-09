@@ -8,6 +8,7 @@ const crypto_1 = require("crypto");
 const https_1 = require("firebase-functions/v2/https");
 const partnerPaymentCommand_1 = require("./partnerPaymentCommand");
 const partnerPaymentPlan_1 = require("./partnerPaymentPlan");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const releaseGate_1 = require("./releaseGate");
 const bad = (message) => { throw new https_1.HttpsError('invalid-argument', message); };
 function fail(message) { throw new https_1.HttpsError('failed-precondition', message); }
@@ -44,12 +45,11 @@ async function mutateManualSettlement(db, companyId, actorId, input) {
     const stateRef = db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${input.partnerId}`);
     const cutoverRef = db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`);
     const outcome = await db.runTransaction(async (tx) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
-        const [operationSnap, settlementSnap, statementSnap, cashSnap, stateSnap, cutoverSnap, releaseSnap, settlementRows, returnRows, partnerSnap] = await Promise.all([
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+        const [operationSnap, settlementSnap, statementSnap, cashSnap, stateSnap, cutoverSnap, releaseSnap, settlementRows, partnerSnap] = await Promise.all([
             tx.get(operationRef), tx.get(settlementRef), tx.get(statementRef), tx.get(cashRef),
             tx.get(stateRef), tx.get(cutoverRef), tx.get((0, releaseGate_1.releaseGateRef)(db)),
             tx.get(db.collection('settlements')),
-            tx.get(db.collection('returnApplications').where('statementId', '==', input.statementId)),
             tx.get(db.collection('partners').doc(input.partnerId)),
         ]);
         const priorOperation = operationSnap.data();
@@ -104,11 +104,17 @@ async function mutateManualSettlement(db, companyId, actorId, input) {
             const cash = (0, partnerPaymentCommand_1.cashFromEntry)(input.cashEntryId, cashSnap.data());
             if (!claim || !cash)
                 fail('원전표·자금전표의 정산 계정을 확인할 수 없습니다.');
-            const returned = returnRows.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
-            const net = (0, partnerPaymentPlan_1.claimsAfterReturns)([claim], returned)[0].amount;
+            const [partnerStatements, partnerReturns] = await Promise.all([
+                tx.get(db.collection('issuedStatements').where('partnerId', '==', input.partnerId)),
+                tx.get(db.collection('returnApplications').where('partnerId', '==', input.partnerId)),
+            ]);
+            const statementData = partnerStatements.docs.filter(doc => owner(doc.data()) === companyId).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })));
+            const returned = partnerReturns.docs.filter(doc => owner(doc.data()) === companyId).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })));
+            const reduced = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, statementData.map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returned, statementData);
+            const net = (_g = reduced.find(row => row.id === input.statementId)) === null || _g === void 0 ? void 0 : _g.amount;
             const availableCash = cash.parts.filter(part => part.accountCode === claim.accountCode)
                 .reduce((sum, part) => sum + part.reduce, 0);
-            if (!Number.isSafeInteger(net) || net < 0 || !Number.isSafeInteger(availableCash)
+            if (!Number.isSafeInteger(net) || net === undefined || net < 0 || !Number.isSafeInteger(availableCash)
                 || availableCash <= 0 || availableCash > cashSource.amount)
                 fail('원전표 잔액 또는 자금전표 방향이 맞지 않습니다.');
             const prior = settlementSnap.data();
@@ -133,7 +139,7 @@ async function mutateManualSettlement(db, companyId, actorId, input) {
                     if (owner(row) !== companyId)
                         fail('원전표에 다른 회사 정산이 있습니다.');
                     const linked = await tx.get(db.collection('cashEntries').doc(row.cashEntryId));
-                    if (!linked.exists || owner(linked.data()) !== companyId || ((_g = linked.data()) === null || _g === void 0 ? void 0 : _g.partnerId) !== input.partnerId)
+                    if (!linked.exists || owner(linked.data()) !== companyId || ((_h = linked.data()) === null || _h === void 0 ? void 0 : _h.partnerId) !== input.partnerId)
                         fail('기존 원전표 정산 연결이 불명확합니다.');
                     settledClaim += row.amount;
                 }
@@ -144,7 +150,7 @@ async function mutateManualSettlement(db, companyId, actorId, input) {
                     const linkedClaim = linked.exists ? (0, partnerPaymentCommand_1.claimFromStatement)(linked.id, linked.data()) : null;
                     if (!linkedClaim || linkedClaim.partnerId !== input.partnerId || linkedClaim.companyId !== companyId)
                         fail('기존 자금 정산 연결이 불명확합니다.');
-                    settledByAccount.set(linkedClaim.accountCode, ((_h = settledByAccount.get(linkedClaim.accountCode)) !== null && _h !== void 0 ? _h : 0) + row.amount);
+                    settledByAccount.set(linkedClaim.accountCode, ((_j = settledByAccount.get(linkedClaim.accountCode)) !== null && _j !== void 0 ? _j : 0) + row.amount);
                     settledCashTotal += row.amount;
                 }
             }
@@ -153,7 +159,7 @@ async function mutateManualSettlement(db, companyId, actorId, input) {
                 if (!Number.isSafeInteger(used) || !Number.isSafeInteger(budget) || used > budget)
                     fail('기존 자금전표 계정별 정산 한도를 넘습니다.');
             }
-            const settledCash = (_j = settledByAccount.get(claim.accountCode)) !== null && _j !== void 0 ? _j : 0;
+            const settledCash = (_k = settledByAccount.get(claim.accountCode)) !== null && _k !== void 0 ? _k : 0;
             const nextAmount = input.action === 'delete' ? 0 : input.amount;
             if (!Number.isSafeInteger(settledClaim + nextAmount) || settledClaim + nextAmount > net
                 || !Number.isSafeInteger(settledCash + nextAmount) || settledCash + nextAmount > availableCash

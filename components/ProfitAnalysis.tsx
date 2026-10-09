@@ -14,7 +14,7 @@ import PeriodPicker from '../src/shared/ui/PeriodPicker';
 import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/ui/LedgerCard';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
-import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
+import { partnerBalanceFromJournals, partnerCarryOver, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { partnerMonthlySettlement } from '../src/features/admin/partnerMonthlySettlement';
 import { savePartnerMonthlyPdf } from '../src/features/admin/partnerMonthlyPdf';
 import { buildProfitPeriodProjection } from '../src/features/admin/profitPeriodProjection';
@@ -32,6 +32,7 @@ type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-
 
 interface ProfitAnalysisProps {
   returnOperations?: readonly ReadonlyReturnOperation[];
+  advanceStatements?: readonly IssuedStatement[];
   issuedStatements: IssuedStatement[];
   fixedCostTemplates?: FixedCostTemplate[];
   onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
@@ -81,7 +82,7 @@ const EMPTY_CASH_FLOW_MANUAL: CashFlowManual[] = [];
 const INVENTORY_EXPENSE_CODE = '500';
 // (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], returnOperations, companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = EMPTY_CASH_FLOW_MANUAL, onSaveCashFlowManual, cashEntries, onAddCashEntry, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -947,24 +948,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             paidByPartner.set(e.partnerId, cur);
           }
         }
-        /**
-         * 전표 한 장에 남은 금액 — 사람이 지정한 매칭 먼저, 나머지는 오래된 전표부터.
-         * 규칙은 cashLedger.allocatePartnerCash 한 곳에 있다(전표 화면도 같은 것을 쓴다).
-         */
-        const openByStmt = (() => {
-          const out = new Map<string, number>();
-          const keys = new Set(issuedStatements
-            .filter(s => s.type === '매출' || s.type === '매입')
-            .map(s => `${s.partnerId}|${s.type}`));
-          for (const key of keys) {
-            const [pid, type] = key.split('|');
-            for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements, undefined, returnOperations)) {
-              out.set(id, open);
-            }
-          }
-          return out;
-        })();
-        const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
         /** 거래처 잔액 — 미수(매출) / 미지급(매입) */
         const partnerLeft = (partnerId: string, type: '매출' | '매입') =>
           partnerBalanceFromJournals(partnerId, type, journalEntries);
@@ -1088,8 +1071,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           : [];
         const yearPurchaseTotal = yearPurchaseStmts.reduce((a, s) => a + s.totalAmount, 0);
         // 기간말 잔액 — 이월에 그 기간 발생·결제만 얹는다. 지난달을 보면 그달 말 잔액이 나온다.
-        const closingReceivable = carrySale + yearSalesTotal - yearCollected;
-        const closingPayable = carryBuy + yearPurchaseTotal - yearPaidOut;
+        const closingReceivable = carrySale + partnerBalanceFromJournals(selId, '매출', journalEntries.filter(e => e.date.startsWith(periodPrefix) && !openingStmtIds.has(String(e.sourceId ?? ''))));
+        const closingPayable = carryBuy + partnerBalanceFromJournals(selId, '매입', journalEntries.filter(e => e.date.startsWith(periodPrefix) && !openingStmtIds.has(String(e.sourceId ?? ''))));
         // 월별 수금 — 매출 막대 옆에 겹쳐 "팔린 것 대비 들어온 것"을 본다
         const monthCollected = Array.from({ length: 12 }, (_, i) => {
           const ym = `${statsYear}-${String(i + 1).padStart(2, '0')}`;
@@ -1415,7 +1398,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                               : t.kind === '수금' ? 'bg-emerald-50 text-emerald-700'
                               : 'bg-orange-50 text-orange-700';
                             const isCash = t.kind === '수금' || t.kind === '지불';
-                            const bal = t.stmt ? getBalance(t.stmt) : 0;
                             return (
                               <div key={t.id} className="px-5 py-2.5 flex items-center gap-3 hover:bg-slate-50/60 transition-colors">
                                 <span className="w-14 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">{t.date.slice(2)}</span>

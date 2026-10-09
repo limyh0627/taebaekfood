@@ -1,4 +1,7 @@
-import { readClaimsAfterReturns } from './returnClaimReader';
+import { readPartnerAdvanceSnapshot, advanceClaims } from './partnerAdvanceReader';
+import { activeAdvanceApplications } from './shared/partnerAdvance';
+import { readPartnerAdvanceWriteScope, prepareAdvanceCancellation, writePartnerAdvanceMutations } from './partnerAdvanceCommand';
+import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import * as admin from 'firebase-admin';
 import { cashMutationHash, cashOriginalHash } from './cashMutationReceipt';
 export { cashMutationHash, cashOriginalHash } from './cashMutationReceipt';
@@ -147,10 +150,33 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
       affected.add(statement.partnerId);
     }
     const stateRows = await Promise.all([...affected].map(async id => ({ id, snap: await tx.get(db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${id}`)) })));
+    // 원천을 바꾸기 전에 활성 적용을 같은 거래에서 취소하여 대상 미결을 복원한다.
+    const sourceApplications = current.partnerId
+      ? activeAdvanceApplications(allStatements as any, companyId as 'taebaek' | 'punghoe', current.partnerId)
+        .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation =>
+          allocation.source.collection === 'cashEntries' && allocation.source.id === input.cashEntryId)) : [];
+    const advanceSnapshot = sourceApplications.length
+      ? await readPartnerAdvanceSnapshot(db, tx, companyId as 'taebaek' | 'punghoe', current.partnerId) : null;
+    const cancelDate = [kstDateOf(now), ...sourceApplications.map(row => row.tradeDate)].sort().at(-1)!;
+    const advanceScope = sourceApplications.length
+      ? await readPartnerAdvanceWriteScope(db, tx, advanceSnapshot!, cancelDate, input.releaseId,
+        stateRows.find(row => row.id === current.partnerId)?.snap.data()?.revision ?? 0) : null;
+    const advanceMutations = [];
+    for (const application of sourceApplications) advanceMutations.push(await prepareAdvanceCancellation(db, tx, advanceSnapshot!, application.id, {
+      operationId: 'cash-advance-' + cashMutationHash([input.operationId, application.id]), date: cancelDate,
+      reason: input.action === 'delete' ? '원천 현금 삭제에 따른 적용 취소' : '원천 현금 수정에 따른 적용 취소', actorId,
+    }, advanceScope!));
+    const projectedAdvance = advanceScope ? { ...advanceSnapshot!, rows: { ...advanceSnapshot!.rows,
+      issuedStatements: [...advanceSnapshot!.rows.issuedStatements, ...advanceMutations.map(row => row.statement)],
+      partnerAdvanceOperations: [...advanceSnapshot!.rows.partnerAdvanceOperations, ...advanceMutations.map(row => row.operation)],
+    } } : null;
+    if (advanceMutations.length * 2 + (advanceScope ? 1 : 0) + linkedRows.docs.length + stateRows.length + 4 > 500)
+      fail('연결된 적용·정산 문서가 너무 많습니다.');
     const companyCash = cashRows.docs.filter(doc => owner(doc.data()) === companyId && doc.id !== input.cashEntryId).map<CashRow>(doc => ({ ...doc.data(), id: doc.id }));
     if (next) companyCash.push({ ...next, id: input.cashEntryId });
-    const claims = await readClaimsAfterReturns(db, tx, allStatements.filter(row => owner(row) === companyId && affected.has(row.partnerId)).map(row => claimFromStatement(row.id, row)).filter((row): row is NonNullable<typeof row> => row !== null),
-      returns.docs.filter(doc => owner(doc.data()) === companyId && affected.has(doc.data().partnerId)).map(doc => ({ ...doc.data(), id: doc.id } as ReturnApplication)), allStatements);
+    const claims = await readClaimsAfterReturns(db, tx, allStatements.filter(row => owner(row) === companyId && affected.has(row.partnerId) && (!projectedAdvance || row.partnerId !== current.partnerId)).map(row => claimFromStatement(row.id, row)).filter((row): row is NonNullable<typeof row> => row !== null),
+      returns.docs.filter(doc => owner(doc.data()) === companyId && affected.has(doc.data().partnerId) && (!projectedAdvance || doc.data().partnerId !== current.partnerId)).map(doc => ({ ...doc.data(), id: doc.id } as ReturnApplication)), allStatements.filter(row => !projectedAdvance || row.partnerId !== current.partnerId));
+    if (projectedAdvance) claims.push(...advanceClaims(projectedAdvance));
     const companySettlements = settlements.docs.filter(doc => owner(doc.data()) === companyId && doc.data().cashEntryId !== input.cashEntryId).map<CashRow>(doc => ({ ...doc.data(), id: doc.id }));
     companySettlements.push(...linked as any);
     for (const partner of affected) {
@@ -161,6 +187,7 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
     const revision = input.expectedRevision + 1;
     if (!Number.isSafeInteger(revision)) fail('자금 revision 범위를 초과했습니다.');
     const result = { id: input.cashEntryId, action: input.action, revision, docNo: current.docNo ?? '' };
+    if (advanceScope) writePartnerAdvanceMutations(tx, advanceSnapshot!, advanceScope, advanceMutations, { writePartnerRevision: false });
     if (next) tx.update(cashRef, { ...input.patch, ...(Object.prototype.hasOwnProperty.call(input.patch, 'partnerId') ? { partnerName: next.partnerName ?? '' } : {}), ...(next.date !== current.date ? { createdAt: next.createdAt } : {}), ...(current.balanceAdjustment ? { balanceAdjustment: next.balanceAdjustment } : {}), mutationRevision: revision }); else tx.delete(cashRef);
     if (payrollUpdate) tx.update(payrollSnapshot!.ref, payrollUpdate);
     if (loanUpdate) tx.update(loanSnapshot!.ref, loanUpdate);
@@ -174,7 +201,7 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
     }
     tx.create(operation, { companyId, kind: 'cashEntries', voucherId: input.cashEntryId, cashEntryIds: [input.cashEntryId], action: input.action,
       requestHash, status: 'applied', expectedRevision: input.expectedRevision, beforeHash: input.expectedCashHash, beforeSnapshot: current,
-      afterHash: next ? cashOriginalHash({ ...next, mutationRevision: revision }) : null, result, createdBy: actorId, createdAt: new Date().toISOString() });
+      afterHash: next ? cashOriginalHash({ ...next, mutationRevision: revision }) : null, canceledAdvanceStatementIds: advanceMutations.map(row => row.statement.id), result, createdBy: actorId, createdAt: new Date().toISOString() });
     return { ...result, status: 'applied' as const };
   });
 }

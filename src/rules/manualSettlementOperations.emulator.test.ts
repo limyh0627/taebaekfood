@@ -12,7 +12,7 @@ import { getFirestore as adminFirestore, FieldValue } from 'firebase-admin/fires
 describe.skipIf(process.env.MANUAL_AUDIT_RULES_TEST !== 'true')('금융 서버 감사 실제 Auth·Rules 경계', () => {
   const projectId = 'demo-manual-audit-policy', prefix = `manual-audit-${randomUUID()}`;
   const legacyId = `${prefix}-regular`, repairId = `${prefix}-repair`, newId = `${prefix}-new`;
-  const audits = ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations', 'loanMovementOperations', 'returnOperations', 'voucherMutationOperations', 'companyTransferOperations', 'oemReceiptOperations'];
+  const audits = ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations', 'loanMovementOperations', 'returnOperations', 'voucherMutationOperations', 'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations'];
   const paths = [...[legacyId, repairId].map(id => `manualSettlementOperations/${id}`),
     ...audits.slice(1).map(name => `${name}/${legacyId}`)];
   let admin: ReturnType<typeof initAdmin>, database: ReturnType<typeof adminFirestore>, env: RulesTestEnvironment;

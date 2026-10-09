@@ -13,7 +13,7 @@ const mock = vi.hoisted(() => ({
   documents: [] as Array<{ id: string; callback: (value: any) => void }>,
 }));
 
-vi.mock('../firebase', () => ({ authReady: Promise.resolve() }));
+vi.mock('../firebase', () => ({ authReady: Promise.resolve(), auth: {currentUser:null} }));
 vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }) }));
 vi.mock('../services/firebaseService', () => ({
   subscribeToCollection: (collection: string, callback: (orders: Order[]) => void) => {

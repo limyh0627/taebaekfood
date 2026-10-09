@@ -523,7 +523,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                 </>) : (<>
                   <div className="flex items-center gap-1.5">
                     <input value={volNum}
-                      onChange={e => { setVolNum(e.target.value); writeSpec(e.target.value, volUnit); }}
+                      onChange={e => {
+                        const entered = e.target.value;
+                        const parsed = /^\s*(\d+(?:\.\d+)?)\s*(ml|L|g|kg)\s*$/i.exec(entered);
+                        if (!parsed && !/^\d*(?:\.\d*)?$/.test(entered)) return;
+                        const num = parsed ? parsed[1] : entered;
+                        const unit = parsed ? normUnit(parsed[2]) : volUnit;
+                        setVolNum(num);
+                        setVolUnit(unit);
+                        writeSpec(num, unit);
+                      }}
                       placeholder="예: 350" inputMode="decimal"
                       className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
                     {/* 단위도 드롭다운 — 네 개가 늘 자리를 먹어 숫자칸이 좁았다(2026-09-06 사장님) */}

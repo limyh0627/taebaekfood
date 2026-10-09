@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.prepareInterCompanyTransferCommand = void 0;
 exports.prepareInterCompanyTransfer = prepareInterCompanyTransfer;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const admin = require("firebase-admin");
 const https_1 = require("firebase-functions/v2/https");
 const interCompanyAuthority_1 = require("./interCompanyAuthority");
@@ -44,7 +44,7 @@ async function prepareInterCompanyTransfer(db, uid, claims, input) {
                     const revision = (_b = (_a = state.data()) === null || _a === void 0 ? void 0 : _a.revision) !== null && _b !== void 0 ? _b : 0;
                     if (!Number.isSafeInteger(revision) || revision < 0 || state.exists && (((_c = state.data()) === null || _c === void 0 ? void 0 : _c.companyId) !== company || ((_d = state.data()) === null || _d === void 0 ? void 0 : _d.partnerId) !== partner.id))
                         fail('거래처 정산 상태를 확인해 주세요.');
-                    const claimRows = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, statements.docs.map(snap => (0, partnerPaymentCommand_1.claimFromStatement)(snap.id, snap.data())).filter((row) => row !== null), returns.docs.filter(snap => snap.data().companyId === company).map(snap => (Object.assign(Object.assign({}, snap.data()), { id: snap.id }))), statements.docs.map(snap => (Object.assign(Object.assign({}, snap.data()), { id: snap.id }))));
+                    const claimRows = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, statements.docs.map(snap => (0, partnerPaymentCommand_1.claimFromStatement)(snap.id, snap.data())).filter((row) => row !== null), returns.docs.filter(snap => snap.data().companyId === company).map(snap => (Object.assign(Object.assign({}, snap.data()), { id: snap.id }))), statements.docs.map(snap => (Object.assign(Object.assign({}, snap.data()), { id: snap.id }))));
                     const plan = (0, partnerPaymentPlan_1.planPartnerPayment)({ companyId: company, partnerId: partner.id, direction: index === 0 ? '출금' : '입금', amount: Number.MAX_SAFE_INTEGER, pin: false, allocations: [], claims: claimRows, cashEntries: cash.docs.map(snap => (0, partnerPaymentCommand_1.cashFromEntry)(snap.id, snap.data())).filter((row) => row !== null), settlements: settlements.docs.map(snap => (Object.assign({ id: snap.id }, snap.data()))) });
                     if (plan.ignoredOrphanSettlementIds.length)
                         fail('양사 정산 원본이 불완전합니다.');

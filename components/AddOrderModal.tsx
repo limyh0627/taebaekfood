@@ -75,29 +75,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
   }, [isSaving, onClose]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const scrollBodyRef = useRef<HTMLDivElement>(null);
-  const [searchAbove, setSearchAbove] = useState(false);
-  const placeSearchResults = () => {
-    const input = searchInputRef.current?.getBoundingClientRect();
-    const body = scrollBodyRef.current?.getBoundingClientRect();
-    if (input && body) setSearchAbove(body.bottom - input.bottom < 208 && input.top - body.top > body.bottom - input.bottom);
-  };
-  useEffect(() => {
-    if (!searchTerm.trim()) return;
-    const frame = requestAnimationFrame(placeSearchResults);
-    const viewport = window.visualViewport;
-    window.addEventListener('resize', placeSearchResults);
-    viewport?.addEventListener('resize', placeSearchResults);
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(placeSearchResults);
-    if (scrollBodyRef.current) observer?.observe(scrollBodyRef.current);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', placeSearchResults);
-      viewport?.removeEventListener('resize', placeSearchResults);
-      observer?.disconnect();
-    };
-  }, [searchTerm]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   // 거래처 원본이 갱신돼도 옛 배송지로 주문하지 않도록 선택 키만 보관한다.
   const selectedPartner = partners.find(partner => partner.id === selectedPartnerId) ?? null;
@@ -388,7 +365,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
     const configs = getPartnerBoxConfigs(itemId, selectedPartner?.id);
     // 개입수는 품목이 안다(BOM → 포장 환산표). 거래처 포장설정이 있으면 그게 먼저.
     const first = configs[0] ?? { unitsPerBox: unitsPerBoxOf(product), boxType: '', boxSubId: undefined };
-    return { itemId, quantity: 1, isBoxUnit: first.unitsPerBox > 0, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
+    return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
   };
 
   const toggleProduct = (itemId: string) => {
@@ -441,8 +418,14 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
    */
   const renderQtyBox = (product: Item) => {
     const isBox = isBoxStockItem(product);
+    const selection = selectedItems.find(row => row.itemId === product.id);
+    const perBox = selection?.unitsPerBox ?? unitsPerBoxOf(product);
+    const boxed = !isBox && !!selection?.isBoxUnit && perBox > 1;
     return (
       <>
+        {!isBox && perBox > 1 && <div className="flex rounded-lg bg-slate-100 p-0.5" onClick={event => event.stopPropagation()}>
+          {(['낱개','박스'] as const).map(unit => <button type="button" key={unit} aria-label={product.name+' 수량 '+unit} aria-pressed={(unit==='박스')===boxed} onClick={() => setSelectedItems(rows => {const current=rows.find(row=>row.itemId===product.id)??buildSelection(product.id);return [...rows.filter(row=>row.itemId!==product.id),{...current,isBoxUnit:unit==='박스'}];})} className={`rounded-md px-2 py-1 text-[10px] font-black ${(unit==='박스')===boxed?'bg-indigo-600 text-white':'text-slate-500'}`}>{unit}</button>)}
+        </div>}
         <input inputMode="numeric" value={quickQtyOf(product.id)} placeholder="0"
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setQuickQty(product.id, e.target.value)}
@@ -450,7 +433,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
             selectedItems.some(i => i.itemId === product.id) ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
         {/* 단위 — 숫자 바로 옆이라야 '3'이 3박스인지 3병인지 눈으로 안다 */}
         <span className={`w-7 shrink-0 text-[10px] font-black ${isBox ? 'text-indigo-500' : 'text-slate-400'}`}>
-          {isBox ? '박스' : (product.unit || '개')}
+          {isBox || boxed ? '박스' : (product.unit || '개')}
         </span>
       </>
     );
@@ -551,7 +534,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
     <ModalShell title={stockProduction ? '재고 만들기' : '주문 등록 · 직접 선택'} onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
         {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-4 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
-        <div ref={scrollBodyRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
           {!stockProduction && <section className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-2 text-slate-700"><CalendarDays size={16} /><h3 className="text-sm font-black">주문 일정</h3></div>
@@ -578,13 +561,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
             {!selectedPartner ? (
               <div className="space-y-3">
                 <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input ref={searchInputRef} type="text" placeholder="거래처명 또는 초성 검색 (예: ㅌㅂ)..." value={searchTerm} onFocus={placeSearchResults} onChange={(e) => { setSearchTerm(e.target.value); placeSearchResults(); }} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+                  <Search className="absolute left-4 top-5 text-slate-400" size={18} />
+                  <input type="text" placeholder="거래처명 또는 초성 검색 (예: ㅌㅂ)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
 
                   {filteredPartners.length > 0 && (
-                    <div className={`absolute left-0 right-0 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar ${searchAbove ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+                    <div className="mt-2 grid grid-cols-1 gap-2">
                       {filteredPartners.map(partner => (
-                        <button key={partner.id} onClick={() => selectPartner(partner)} className="w-full px-5 py-3 text-left hover:bg-indigo-50 flex items-center justify-between group">
+                        <button key={partner.id} onClick={() => selectPartner(partner)} className="w-full rounded-xl border border-slate-200 bg-white px-5 py-3 text-left hover:bg-indigo-50 flex items-center justify-between group">
                           <div>
                             <div className="flex items-center space-x-2">
                               <p className="font-bold text-slate-800 text-sm">{partner.name || '이름 없음'}</p>
@@ -601,7 +584,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
                 {!searchTerm && quickPartners.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">자주 사용하는 거래처</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       {quickPartners.map(partner => {
                         //  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
                         const typeConfig = { ...channelStyle(partner.type), color: channelStyle(partner.type).chip };

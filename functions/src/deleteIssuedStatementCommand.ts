@@ -2,6 +2,10 @@ import * as admin from 'firebase-admin';
 import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
+import {readPartnerAdvanceSnapshot} from './partnerAdvanceReader';
+import {activeAdvanceApplications} from './shared/partnerAdvance';
+import {readPartnerAdvanceWriteScope,prepareAdvanceCancellation,writePartnerAdvanceMutations} from './partnerAdvanceCommand';
+import {kstDateOf} from './shared/calculation';
 type Row=Record<string,any>;
 type Link={kind:'orders'|'purchaseOrders'|'settlements';id:string;data:Row};
 type Input={operationId:string;statementId:string;releaseId:string;expectedRevision:number;expectedOriginalHash:string};
@@ -80,6 +84,7 @@ export async function deleteIssuedStatement(db:admin.firestore.Firestore,company
   if(!statement.exists)fail('대상 전표를 찾을 수 없습니다.');
   const original=statement.data()!;
   if(statementOriginalHash(original)!==input.expectedOriginalHash||(original.mutationRevision??0)!==input.expectedRevision)fail('전표가 변경되었습니다. 다시 확인해 주세요.');
+  if(original.noncashApplication)fail('적용 전표는 전용 적용 취소로 처리해 주세요. 취소 기록은 삭제하지 않습니다.');
   const partnerId=original.partnerId;
   const refs=groups.map((kind,index)=>{
    const ids=new Set(linked[index].docs.map(doc=>doc.id));if(kind!=='settlements')statementSourceIds(original,kind).forEach(id=>ids.add(id));
@@ -88,14 +93,25 @@ export async function deleteIssuedStatement(db:admin.firestore.Firestore,company
   const snapshots=await Promise.all(refs.flat().map(ref=>tx.get(ref)));
   const links:Link[]=snapshots.filter(snap=>snap.exists).map(snap=>({kind:snap.ref.parent.id as Link['kind'],id:snap.id,data:snap.data()!}));
   const plan=planStatementDeletion(companyId,input.statementId,original,links,state?.exists?state.data()!:null);
+  const advanceSnapshot=partnerId?await readPartnerAdvanceSnapshot(db,tx,companyId as 'taebaek'|'punghoe',partnerId):null;
+  const affected=advanceSnapshot?activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any,companyId as 'taebaek'|'punghoe',partnerId)
+    .filter(row=>row.noncashApplication.kind==='advance-application'&&row.noncashApplication.allocations.some(allocation=>allocation.statementId===input.statementId
+      ||allocation.source.collection==='issuedStatements'&&allocation.source.id===input.statementId)):[];
+  const cancelDate=[kstDateOf(new Date()),...affected.map(row=>row.tradeDate)].sort().at(-1)!;
+  const advanceScope=affected.length?await readPartnerAdvanceWriteScope(db,tx,advanceSnapshot!,cancelDate,input.releaseId,plan.revision):null;
+  const advanceMutations=[];
+  for(const application of affected)advanceMutations.push(await prepareAdvanceCancellation(db,tx,advanceSnapshot!,application.id,{
+    operationId:'delete-advance-'+statementDeletionHash([input.operationId,application.id]),date:cancelDate,reason:'원전표 삭제에 따른 적용 취소',actorId},advanceScope!));
+  if(plan.clear.length+plan.remove.length+(partnerId?3:2)+advanceMutations.length*2+(advanceScope?1:0)>500)fail('연결 문서가 너무 많아 삭제할 수 없습니다.');
   writesStarted=true;
+  if(advanceScope)writePartnerAdvanceMutations(tx,advanceSnapshot!,advanceScope,advanceMutations,{writePartnerRevision:false});
   for(const row of plan.clear)tx.update(db.collection(row.kind).doc(row.id),{linkedStatementId:admin.firestore.FieldValue.delete(),linkedStatementAt:admin.firestore.FieldValue.delete()});
   for(const row of plan.remove)tx.delete(db.collection('settlements').doc(row.id));
   if(stateRef){if(state?.exists)tx.update(stateRef,{revision:plan.revisionAfter});else tx.create(stateRef,{companyId,partnerId,revision:plan.revisionAfter});}
   tx.delete(statementRef);
   tx.create(operationRef,{companyId,kind:'issuedStatements',action:'delete',status:'applied',voucherId:input.statementId,statementIds:[input.statementId],
    requestHash,command:input,expectedRevision:input.expectedRevision,beforeSnapshot:original,beforeHash:input.expectedOriginalHash,afterHash:null,
-   clearedLinks:plan.clear.map(row=>({kind:row.kind,id:row.id,companyId:row.data.companyId??companyId,linkedStatementId:row.data.linkedStatementId,...(row.data.linkedStatementAt!==undefined?{linkedStatementAt:row.data.linkedStatementAt}:{})})),deletedSettlements:plan.remove,partnerId:plan.partnerId,revisionBefore:plan.revision,revisionAfter:plan.revisionAfter,createdBy:actorId,createdAt:new Date().toISOString()});
+   clearedLinks:plan.clear.map(row=>({kind:row.kind,id:row.id,companyId:row.data.companyId??companyId,linkedStatementId:row.data.linkedStatementId,...(row.data.linkedStatementAt!==undefined?{linkedStatementAt:row.data.linkedStatementAt}:{})})),deletedSettlements:plan.remove,canceledAdvanceStatementIds:advanceMutations.map(row=>row.statement.id),partnerId:plan.partnerId,revisionBefore:plan.revision,revisionAfter:plan.revisionAfter,createdBy:actorId,createdAt:new Date().toISOString()});
   return {status:'applied' as const,id:input.statementId};
   }catch(error){
    if(prior.exists||writesStarted||!(error instanceof HttpsError)||!['invalid-argument','failed-precondition'].includes(error.code))throw error;

@@ -7,7 +7,7 @@ import DateRangeFilter, { type DateRangeQuick } from '../src/shared/components/D
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate, CompanyId, companyOf } from '../src/shared/types';
 import { useLoanContracts } from '../src/shared/useLoanContracts';
-import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
+import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash, type ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
 import { AR, AP, OTHER_PAYABLE, journalizeCashEntry } from '../src/shared/autoJournal';
 import { stampFor } from '../src/shared/voucherStamp';
@@ -22,6 +22,8 @@ import { projectCashLines } from '../functions/src/shared/cashLineProjection';
 import { auth, authReady } from '../src/shared/firebase';
 
 interface Props {
+  returnOperations?: readonly ReadonlyReturnOperation[];
+  advanceStatements?: readonly IssuedStatement[];
   companyId: CompanyId;
   cashAccounts: CashAccount[];
   cashEntries: CashEntry[];
@@ -44,7 +46,7 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 const ACCOUNT_ICON = { 통장: Landmark, 카드: CreditCard, 현금: Coins } as const;
 
 export default function CashLedger({
-  companyId, cashAccounts, cashEntries, accountCodes, fixedCostTemplates = [], partners, issuedStatements, settlements, currentUser,
+  companyId, cashAccounts, cashEntries, accountCodes, returnOperations, advanceStatements, fixedCostTemplates = [], partners, issuedStatements, settlements, currentUser,
   onAddCashAccount, onUpdateCashAccount, onCorrectCashAccount, onAddCashEntry, onDeleteCashEntry,
   onAddSettlement, onDeleteSettlement,
 }: Props) {
@@ -243,7 +245,7 @@ export default function CashLedger({
           onAdd={onAddCashAccount} onUpdate={onUpdateCashAccount} onCorrect={onCorrectCashAccount} onAddEntry={onAddCashEntry} />
       )}
       {matchTarget && !matchTarget.balanceAdjustment && (
-        <MatchModal key={`${companyId}:${matchTarget.id}`} entry={matchTarget} statements={issuedStatements} settlements={settlements} cashEntries={cashEntries}
+        <MatchModal key={`${companyId}:${matchTarget.id}`} entry={matchTarget} returnOperations={returnOperations} advanceStatements={advanceStatements} statements={issuedStatements} settlements={settlements} cashEntries={cashEntries}
           onClose={() => setMatchTarget(null)} onAdd={onAddSettlement} onDelete={onDeleteSettlement} />
       )}
     </div>
@@ -252,8 +254,10 @@ export default function CashLedger({
 
 // ── 전표 매칭 모달 ────────────────────────────────────────────────────────────
 // 출금 → 매입전표 상계, 입금 → 매출전표 상계. 이체 1건을 전표 여러 건에 나눠 붙일 수 있다.
-export function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAdd, onDelete }: {
+export function MatchModal({ entry, statements, settlements, cashEntries, returnOperations, advanceStatements, onClose, onAdd, onDelete }: {
   entry: CashEntry;
+  returnOperations?: readonly ReadonlyReturnOperation[];
+  advanceStatements?: readonly IssuedStatement[];
   statements: IssuedStatement[];
   settlements: Settlement[];
   /** 살아 있는 자금줄 — 지워진 줄에 매달린 매칭은 안 센다 */
@@ -292,9 +296,9 @@ export function MatchModal({ entry, statements, settlements, cashEntries, onClos
       type: stmtType,
       ...(entry.partnerId ? { partnerId: entry.partnerId } : {}),
       //  지워진 자금줄에 매달린 매칭은 안 센다 — 없는 돈으로 갚은 게 된다
-      cashEntries,
+      cashEntries, projection:{returnOperations,advanceStatements},
     }),
-    [statements, settlements, stmtType, entry.partnerId, cashEntries],
+    [statements, settlements, stmtType, entry.partnerId, cashEntries, returnOperations, advanceStatements],
   );
 
   const attach = (statementId: string, open: number) => {

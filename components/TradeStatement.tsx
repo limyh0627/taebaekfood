@@ -92,6 +92,7 @@ import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
   returnOperations?: readonly ReadonlyReturnOperation[];
+  advanceStatements?: readonly IssuedStatement[];
   orders: Order[];
   allItems: Item[];
   partners: Partner[];
@@ -239,7 +240,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   cashAccounts = [],
   cashEntries = [],
   settlements = [],
-  returnOperations,
+  returnOperations, advanceStatements,
   onAddCashEntry,
   onIssueCashEntry,
   onUpdateCashEntry,
@@ -705,7 +706,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const type = entry.accountCode === AR ? '매출' : entry.accountCode === AP ? '매입' : null;
     if (!type) return;
     let left = unmatchedCash(entry, settlements);
-    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries });
+    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries, projection:{returnOperations,advanceStatements} });
     const amount = Math.min(left, targets.reduce((sum, target) => sum + target.open, 0));
     if (amount <= 0 || !await appConfirm(`${entry.accountCode === AR ? '외상매출금' : '외상매입금'}으로 잡힌 ${fmt(left)}원을\n이 거래처의 미결제 전표에 오래된 순으로 ${fmt(amount)}원 매칭할까요?\n\n매칭해야 미수금/미지급금이 줄어듭니다.`)) return;
     if (!cashEditScope.current.alive || cashEditScope.current.token !== scope) return;
@@ -963,7 +964,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const {
     mergedStatements, journalBySource, partnerBalances, partnerJournals,
     getBalance, canSettle, isVouchered, isFetchingHistory, forgetStatement,
-  } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations });
+  } = useVoucherLedger({ companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations, advanceStatements });
 
   /**
    * **표 머리를 눌러 세운다**(2026-09-15 사장님: "업체명이랑 이런거 눌러서 정렬 거는거
@@ -1035,7 +1036,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (!onDeleteIssuedStatement) throw new Error('전표 삭제 기능을 사용할 수 없습니다.');
       await onDeleteIssuedStatement(id);
       if (!deleteViewRef.current.alive || deleteViewRef.current.companyId !== requestCompany) return false;
-      forgetStatement(id);
+      if (!issuedStatements.find(row => row.id === id)?.noncashApplication) forgetStatement(id);
       return true;
     } catch (error) {
       if (deleteViewRef.current.alive && deleteViewRef.current.companyId === requestCompany)
@@ -1150,6 +1151,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [mergedStatements, isEditMode]);
 
   const openEdit = (stmt: IssuedStatement) => {
+    if (stmt.noncashApplication) { setDetailStmt(stmt); return; }
     setEditingStmt(stmt);
     setIsEditMode(false);
     setCreateMode(stmt.type);
@@ -2387,10 +2389,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                <button onClick={() => { const token = deleteViewRef.current.token; return confirmDelete(`statement:${detailStmt.id}`, '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(detailStmt.id) && deleteViewRef.current.token === token) setDetailStmt(null); }); }}
+                {!detailStmt.noncashApplication || detailStmt.noncashApplication.kind === 'advance-application' ? <button onClick={() => { const token = deleteViewRef.current.token; return confirmDelete(`statement:${detailStmt.id}`, detailStmt.noncashApplication ? '원문을 보존하고 이 적용을 취소하시겠습니까?' : '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(detailStmt.id) && deleteViewRef.current.token === token) setDetailStmt(null); }); }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
-                  <X size={12}/>삭제
-                </button>
+                  <X size={12}/>{detailStmt.noncashApplication ? '적용 취소' : '삭제'}
+                </button> : <span className="text-xs text-slate-500">적용 취소 기록 · 원문 보존</span>}
                 <button onClick={()=>setDetailStmt(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
               </div>
             </div>

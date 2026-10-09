@@ -1,4 +1,4 @@
-import { readClaimsAfterReturns } from './returnClaimReader';
+import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import * as admin from 'firebase-admin';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertInterCompanyAuthority} from './interCompanyAuthority';

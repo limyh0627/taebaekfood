@@ -3,7 +3,8 @@ import { partnerQuarantined } from './partnerCutover';
 import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { claimFromStatement, cashFromEntry } from './partnerPaymentCommand';
-import { claimsAfterReturns, PartnerPaymentValidationError, type ReturnApplication } from './partnerPaymentPlan';
+import { PartnerPaymentValidationError, type ReturnApplication } from './partnerPaymentPlan';
+import { readClaimsAfterReturnsAndAdvance } from './partnerAdvanceClaimReader';
 import { assertReleaseActive, releaseGateRef } from './releaseGate';
 
 type Action = 'add' | 'update' | 'delete';
@@ -42,11 +43,10 @@ export async function mutateManualSettlement(db: admin.firestore.Firestore, comp
   const cutoverRef = db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`);
   const outcome = await db.runTransaction(async tx => {
     const [operationSnap, settlementSnap, statementSnap, cashSnap, stateSnap, cutoverSnap, releaseSnap,
-      settlementRows, returnRows, partnerSnap] = await Promise.all([
+      settlementRows, partnerSnap] = await Promise.all([
       tx.get(operationRef), tx.get(settlementRef), tx.get(statementRef), tx.get(cashRef),
       tx.get(stateRef), tx.get(cutoverRef), tx.get(releaseGateRef(db)),
       tx.get(db.collection('settlements')),
-      tx.get(db.collection('returnApplications').where('statementId', '==', input.statementId)),
       tx.get(db.collection('partners').doc(input.partnerId)),
     ]);
     const priorOperation = operationSnap.data();
@@ -97,11 +97,17 @@ export async function mutateManualSettlement(db: admin.firestore.Firestore, comp
     const claim = claimFromStatement(input.statementId, statementSnap.data()!);
     const cash = cashFromEntry(input.cashEntryId, cashSnap.data()!);
     if (!claim || !cash) fail('원전표·자금전표의 정산 계정을 확인할 수 없습니다.');
-    const returned = returnRows.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReturnApplication));
-    const net = claimsAfterReturns([claim!], returned)[0].amount;
+    const [partnerStatements, partnerReturns] = await Promise.all([
+      tx.get(db.collection('issuedStatements').where('partnerId', '==', input.partnerId)),
+      tx.get(db.collection('returnApplications').where('partnerId', '==', input.partnerId)),
+    ]);
+    const statementData = partnerStatements.docs.filter(doc => owner(doc.data()) === companyId).map(doc => ({ ...doc.data(), id: doc.id }));
+    const returned = partnerReturns.docs.filter(doc => owner(doc.data()) === companyId).map(doc => ({ ...doc.data(), id: doc.id } as ReturnApplication));
+    const reduced = await readClaimsAfterReturnsAndAdvance(db, tx, statementData.map(row => claimFromStatement(row.id, row)).filter((row): row is NonNullable<typeof row> => row !== null), returned, statementData);
+    const net = reduced.find(row => row.id === input.statementId)?.amount;
     const availableCash = cash!.parts.filter(part => part.accountCode === claim!.accountCode)
       .reduce((sum, part) => sum + part.reduce, 0);
-    if (!Number.isSafeInteger(net) || net < 0 || !Number.isSafeInteger(availableCash)
+    if (!Number.isSafeInteger(net) || net === undefined || net < 0 || !Number.isSafeInteger(availableCash)
       || availableCash <= 0 || availableCash > cashSource.amount)
       fail('원전표 잔액 또는 자금전표 방향이 맞지 않습니다.');
     const prior = settlementSnap.data();

@@ -333,3 +333,5 @@ export { replaceManualSettlementBatchCommand } from './manualSettlementBatchComm
 export { prepareInterCompanyTransferCommand } from './interCompanyTransferPreparation';
 
 export { recordInterCompanyTransferCommand } from './interCompanyTransferCommand';
+
+export { preparePartnerAdvanceCommand, applyPartnerAdvanceCommand, cancelPartnerAdvanceCommand } from './partnerAdvanceCommand';

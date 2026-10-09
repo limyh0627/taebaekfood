@@ -1826,12 +1826,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // 조회만으로 운영 주문을 수정하지 않는다. 상태 이동은 사용자 조작의 승인 경로에서만 한다.
 
-  // 신규 주문 생성 시 자동으로 편집 모드 열기
+  // 신규 주문은 목록에서 보여준다. 편집창은 주문을 직접 선택할 때만 연다.
   useEffect(() => {
     if (!newOrderId) return;
     setActiveTab('active');
     const timer = setTimeout(() => {
-      openOrderEditor(newOrderId);
       const el = document.getElementById(`order-card-${newOrderId}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       onNewOrderIdClear?.();

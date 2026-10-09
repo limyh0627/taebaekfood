@@ -5,6 +5,11 @@ exports.editIssuedStatement = editIssuedStatement;
 const https_1 = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
+const cashMutationReceipt_1 = require("./cashMutationReceipt");
+const partnerAdvanceReader_1 = require("./partnerAdvanceReader");
+const partnerAdvance_1 = require("./shared/partnerAdvance");
+const partnerAdvanceCommand_1 = require("./partnerAdvanceCommand");
+const calculation_1 = require("./shared/calculation");
 const canonical = (value) => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
 const pendingData = (value) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'id'));
 const approvedSource = (value) => (Object.assign(Object.assign({}, Object.fromEntries(Object.entries(pendingData(value)).filter(([key]) => !['approvalOperationId', 'approvedRequestHash', 'approvedAt', 'approvedBy'].includes(key)))), { status: 'pending' }));
@@ -51,7 +56,7 @@ async function editIssuedStatement(db, request) {
     const operationRef = db.collection('voucherMutationOperations').doc(operationId);
     const settlementQuery = db.collection('settlements').where('statementId', '==', statementId);
     return db.runTransaction(async (tx) => {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const [gate, operation, original, settlements] = await Promise.all([
             tx.get(gateRef), tx.get(operationRef), tx.get(statementRef), tx.get(settlementQuery),
         ]);
@@ -83,6 +88,8 @@ async function editIssuedStatement(db, request) {
             || editSnap.get('statementId') !== statementId || editSnap.get('status') !== 'pending'
             || hash(pendingData(editSnap.data())) !== approval.pendingEditRequestHash || hash(editSnap.get('proposedData')) !== hash(patch)))
             throw new https_1.HttpsError('failed-precondition', '전표 수정 요청이 변경됐습니다. 다시 확인해 주세요.');
+        if (old.noncashApplication)
+            throw new https_1.HttpsError('failed-precondition', '적용 전표는 직접 수정할 수 없습니다. 적용 취소 후 다시 적용해 주세요. 취소 기록은 보존합니다.');
         const revision = Number((_f = old.mutationRevision) !== null && _f !== void 0 ? _f : 0);
         if (revision !== expectedRevision)
             throw new https_1.HttpsError('aborted', '전표가 다른 곳에서 수정됐습니다. 화면을 새로고침하고 다시 확인해 주세요.');
@@ -106,11 +113,54 @@ async function editIssuedStatement(db, request) {
         if (settled > 0 && money(next.totalAmount) && next.totalAmount < settled) {
             throw new https_1.HttpsError('failed-precondition', `수정 후 전표 금액이 이미 수금한 ${settled.toLocaleString()}원보다 작습니다.`);
         }
-        tx.update(statementRef, Object.assign(Object.assign({}, patch), { mutationRevision: revision + 1, editedAt: new Date().toISOString(), editedBy: claims.employeeId }));
+        const editedAt = new Date().toISOString();
+        const after = Object.assign(Object.assign(Object.assign({}, old), patch), { mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId });
+        const editProof = { statementId, uid: request.auth.uid, companyId: claims.companyId, kind: 'issuedStatements', status: 'applied',
+            action: 'edit-statement', expectedRevision, revision: revision + 1, beforeSnapshot: old, beforeHash: (0, cashMutationReceipt_1.cashOriginalHash)(old), afterHash: (0, cashMutationReceipt_1.cashOriginalHash)(after) };
+        const advanceSnapshot = old.partnerId ? await (0, partnerAdvanceReader_1.readPartnerAdvanceSnapshot)(db, tx, claims.companyId, old.partnerId) : null;
+        const affected = advanceSnapshot ? (0, partnerAdvance_1.activeAdvanceApplications)(advanceSnapshot.rows.issuedStatements, claims.companyId, old.partnerId)
+            .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.statementId === statementId)) : [];
+        const advanceDate = [(0, calculation_1.kstDateOf)(new Date()), next.tradeDate, ...affected.map(row => row.tradeDate)].filter((date) => typeof date === 'string').sort().at(-1);
+        const advanceScope = affected.length ? await (0, partnerAdvanceCommand_1.readPartnerAdvanceWriteScope)(db, tx, advanceSnapshot, advanceDate, releaseId) : null;
+        const advanceMutations = [];
+        if (advanceScope) {
+            const projected = Object.assign(Object.assign({}, advanceSnapshot), { rows: Object.fromEntries(Object.entries(advanceSnapshot.rows).map(([key, rows]) => [key, [...rows]])) });
+            projected.rows.issuedStatements = projected.rows.issuedStatements.map(row => row.id === statementId ? Object.assign(Object.assign({}, after), { id: statementId }) : row);
+            for (const application of affected) {
+                const canceled = await (0, partnerAdvanceCommand_1.prepareAdvanceCancellation)(db, tx, advanceSnapshot, application.id, { operationId: 'edit-cancel-' + hash([operationId, application.id]), date: advanceDate, reason: '원전표 수정에 따른 적용 재계산', actorId: request.auth.uid }, advanceScope);
+                advanceMutations.push(canceled);
+                projected.rows.issuedStatements.push(canceled.statement);
+                projected.rows.partnerAdvanceOperations.push(canceled.operation);
+            }
+            for (const application of affected) {
+                if (application.noncashApplication.kind !== 'advance-application')
+                    continue;
+                for (const allocation of application.noncashApplication.allocations) {
+                    const internal = allocation.statementId === statementId ? { pendingTargetEdit: { beforeSnapshot: old, afterSnapshot: after, operation: editProof } } : undefined;
+                    const resolved = await (0, partnerAdvanceReader_1.resolveSelectedAdvance)(db, tx, projected, allocation.source, allocation.statementId, internal);
+                    const source = resolved.context.sources[0], target = resolved.context.targets[0];
+                    const amount = Math.min(allocation.amount, source.originalAmount - ((_h = resolved.context.priorSourceUse.get((0, partnerAdvance_1.sourceKey)(allocation.source))) !== null && _h !== void 0 ? _h : 0), target.remaining);
+                    if (amount <= 0)
+                        continue;
+                    const reapplied = await (0, partnerAdvanceCommand_1.prepareAdvanceApplication)(db, tx, projected, advanceScope, request.auth.uid, {
+                        operationId: 'edit-reapply-' + hash([operationId, application.id, (0, partnerAdvance_1.sourceKey)(allocation.source), allocation.statementId]), date: advanceDate,
+                        partnerId: old.partnerId, source: allocation.source, statementId: allocation.statementId, accountCode: allocation.accountCode, amount,
+                        expectedRevision: advanceScope.revision, releaseId, expectedSourceFingerprint: resolved.sourceFingerprint, expectedTargetFingerprint: resolved.targetFingerprint,
+                    }, internal);
+                    advanceMutations.push(reapplied);
+                    projected.rows.issuedStatements.push(reapplied.statement);
+                    projected.rows.partnerAdvanceOperations.push(reapplied.operation);
+                }
+            }
+            if (advanceMutations.length * 2 + (approval ? 5 : 4) > 500)
+                throw new https_1.HttpsError('failed-precondition', '연결된 적용 내역이 너무 많습니다.');
+            (0, partnerAdvanceCommand_1.writePartnerAdvanceMutations)(tx, advanceSnapshot, advanceScope, advanceMutations);
+        }
+        tx.update(statementRef, Object.assign(Object.assign({}, patch), { mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId }));
         if (approval && editRef)
             tx.update(editRef, { status: 'approved', approvalOperationId: operationId,
                 approvedRequestHash: approval.pendingEditRequestHash, approvedAt: new Date().toISOString(), approvedBy: claims.employeeId });
-        tx.create(operationRef, Object.assign(Object.assign({}, (approval !== null && approval !== void 0 ? approval : {})), { statementId, uid: request.auth.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement', createdAt: admin.firestore.FieldValue.serverTimestamp() }));
+        tx.create(operationRef, Object.assign(Object.assign({}, (approval !== null && approval !== void 0 ? approval : {})), { statementId, uid: request.auth.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement', kind: 'issuedStatements', status: 'applied', expectedRevision, beforeSnapshot: old, beforeHash: (0, cashMutationReceipt_1.cashOriginalHash)(old), afterHash: (0, cashMutationReceipt_1.cashOriginalHash)(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), createdAt: admin.firestore.FieldValue.serverTimestamp() }));
         return { status: 'applied', revision: revision + 1 };
     });
 }

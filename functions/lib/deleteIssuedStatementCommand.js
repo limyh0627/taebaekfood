@@ -8,6 +8,10 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const https_1 = require("firebase-functions/v2/https");
 const releaseGate_1 = require("./releaseGate");
+const partnerAdvanceReader_1 = require("./partnerAdvanceReader");
+const partnerAdvance_1 = require("./shared/partnerAdvance");
+const partnerAdvanceCommand_1 = require("./partnerAdvanceCommand");
+const calculation_1 = require("./shared/calculation");
 const fail = (message) => { throw new https_1.HttpsError('failed-precondition', message); };
 function canonical(value) {
     if (Array.isArray(value))
@@ -109,6 +113,8 @@ async function deleteIssuedStatement(db, companyId, actorId, input) {
             const original = statement.data();
             if ((0, exports.statementOriginalHash)(original) !== input.expectedOriginalHash || ((_c = original.mutationRevision) !== null && _c !== void 0 ? _c : 0) !== input.expectedRevision)
                 fail('전표가 변경되었습니다. 다시 확인해 주세요.');
+            if (original.noncashApplication)
+                fail('적용 전표는 전용 적용 취소로 처리해 주세요. 취소 기록은 삭제하지 않습니다.');
             const partnerId = original.partnerId;
             const refs = groups.map((kind, index) => {
                 const ids = new Set(linked[index].docs.map(doc => doc.id));
@@ -120,7 +126,22 @@ async function deleteIssuedStatement(db, companyId, actorId, input) {
             const snapshots = await Promise.all(refs.flat().map(ref => tx.get(ref)));
             const links = snapshots.filter(snap => snap.exists).map(snap => ({ kind: snap.ref.parent.id, id: snap.id, data: snap.data() }));
             const plan = planStatementDeletion(companyId, input.statementId, original, links, (state === null || state === void 0 ? void 0 : state.exists) ? state.data() : null);
+            const advanceSnapshot = partnerId ? await (0, partnerAdvanceReader_1.readPartnerAdvanceSnapshot)(db, tx, companyId, partnerId) : null;
+            const affected = advanceSnapshot ? (0, partnerAdvance_1.activeAdvanceApplications)(advanceSnapshot.rows.issuedStatements, companyId, partnerId)
+                .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.statementId === input.statementId
+                || allocation.source.collection === 'issuedStatements' && allocation.source.id === input.statementId)) : [];
+            const cancelDate = [(0, calculation_1.kstDateOf)(new Date()), ...affected.map(row => row.tradeDate)].sort().at(-1);
+            const advanceScope = affected.length ? await (0, partnerAdvanceCommand_1.readPartnerAdvanceWriteScope)(db, tx, advanceSnapshot, cancelDate, input.releaseId, plan.revision) : null;
+            const advanceMutations = [];
+            for (const application of affected)
+                advanceMutations.push(await (0, partnerAdvanceCommand_1.prepareAdvanceCancellation)(db, tx, advanceSnapshot, application.id, {
+                    operationId: 'delete-advance-' + (0, exports.statementDeletionHash)([input.operationId, application.id]), date: cancelDate, reason: '원전표 삭제에 따른 적용 취소', actorId
+                }, advanceScope));
+            if (plan.clear.length + plan.remove.length + (partnerId ? 3 : 2) + advanceMutations.length * 2 + (advanceScope ? 1 : 0) > 500)
+                fail('연결 문서가 너무 많아 삭제할 수 없습니다.');
             writesStarted = true;
+            if (advanceScope)
+                (0, partnerAdvanceCommand_1.writePartnerAdvanceMutations)(tx, advanceSnapshot, advanceScope, advanceMutations, { writePartnerRevision: false });
             for (const row of plan.clear)
                 tx.update(db.collection(row.kind).doc(row.id), { linkedStatementId: admin.firestore.FieldValue.delete(), linkedStatementAt: admin.firestore.FieldValue.delete() });
             for (const row of plan.remove)
@@ -134,7 +155,7 @@ async function deleteIssuedStatement(db, companyId, actorId, input) {
             tx.delete(statementRef);
             tx.create(operationRef, { companyId, kind: 'issuedStatements', action: 'delete', status: 'applied', voucherId: input.statementId, statementIds: [input.statementId],
                 requestHash, command: input, expectedRevision: input.expectedRevision, beforeSnapshot: original, beforeHash: input.expectedOriginalHash, afterHash: null,
-                clearedLinks: plan.clear.map(row => { var _a; return (Object.assign({ kind: row.kind, id: row.id, companyId: (_a = row.data.companyId) !== null && _a !== void 0 ? _a : companyId, linkedStatementId: row.data.linkedStatementId }, (row.data.linkedStatementAt !== undefined ? { linkedStatementAt: row.data.linkedStatementAt } : {}))); }), deletedSettlements: plan.remove, partnerId: plan.partnerId, revisionBefore: plan.revision, revisionAfter: plan.revisionAfter, createdBy: actorId, createdAt: new Date().toISOString() });
+                clearedLinks: plan.clear.map(row => { var _a; return (Object.assign({ kind: row.kind, id: row.id, companyId: (_a = row.data.companyId) !== null && _a !== void 0 ? _a : companyId, linkedStatementId: row.data.linkedStatementId }, (row.data.linkedStatementAt !== undefined ? { linkedStatementAt: row.data.linkedStatementAt } : {}))); }), deletedSettlements: plan.remove, canceledAdvanceStatementIds: advanceMutations.map(row => row.statement.id), partnerId: plan.partnerId, revisionBefore: plan.revision, revisionAfter: plan.revisionAfter, createdBy: actorId, createdAt: new Date().toISOString() });
             return { status: 'applied', id: input.statementId };
         }
         catch (error) {

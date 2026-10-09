@@ -20,6 +20,10 @@ const partnerPaymentPlan_1 = require("./partnerPaymentPlan");
 const returnAllocationPlan_1 = require("./returnAllocationPlan");
 const releaseGate_1 = require("./releaseGate");
 const partnerCutover_1 = require("./partnerCutover");
+const partnerAdvanceReader_1 = require("./partnerAdvanceReader");
+const partnerAdvance_1 = require("./shared/partnerAdvance");
+const partnerAdvanceCommand_1 = require("./partnerAdvanceCommand");
+const calculation_1 = require("./shared/calculation");
 const fail = (message) => { throw new https_1.HttpsError('failed-precondition', message); };
 const bad = (message) => { throw new https_1.HttpsError('invalid-argument', message); };
 const validDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -49,7 +53,7 @@ async function processGeneralStockReturn(db, companyId, actorId, input) {
     const paymentCutover = db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`);
     const releaseGate = (0, releaseGate_1.releaseGateRef)(db);
     const outcome = await db.runTransaction(async (tx) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
         const opSnap = await tx.get(operation);
         const outputRows = await Promise.all([
             tx.get(db.collection('issuedStatements').where('returnOperationId', '==', input.operationId)),
@@ -203,7 +207,20 @@ async function processGeneralStockReturn(db, companyId, actorId, input) {
                 .map(doc => { var _a; return (Object.assign(Object.assign({ id: doc.id }, doc.data()), { companyId: (_a = doc.data().companyId) !== null && _a !== void 0 ? _a : 'taebaek' })); });
             const claims = statementRows.docs.filter(doc => { var _a; return ((_a = doc.data().companyId) !== null && _a !== void 0 ? _a : 'taebaek') === companyId; })
                 .map(doc => (0, partnerPaymentCommand_1.claimFromStatement)(doc.id, doc.data())).filter((row) => row !== null);
-            const reducedClaims = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, claims, existingApps, statementRows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))));
+            const advanceSnapshot = await (0, partnerAdvanceReader_1.readPartnerAdvanceSnapshot)(db, tx, companyId, request.partnerId);
+            const affectedAdvances = (0, partnerAdvance_1.activeAdvanceApplications)(advanceSnapshot.rows.issuedStatements, companyId, request.partnerId)
+                .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.accountCode === sourceClaim.accountCode));
+            const advanceDate = [(0, calculation_1.kstDateOf)(new Date()), input.tradeDate, ...affectedAdvances.map(row => row.tradeDate)].sort().at(-1);
+            const advanceScope = affectedAdvances.length ? await (0, partnerAdvanceCommand_1.readPartnerAdvanceWriteScope)(db, tx, advanceSnapshot, advanceDate, input.releaseId, revision) : null;
+            const projectedAdvance = Object.assign(Object.assign({}, advanceSnapshot), { rows: Object.fromEntries(Object.entries(advanceSnapshot.rows).map(([key, rows]) => [key, [...rows]])) });
+            const advanceMutations = [];
+            for (const application of affectedAdvances) {
+                const canceled = await (0, partnerAdvanceCommand_1.prepareAdvanceCancellation)(db, tx, advanceSnapshot, application.id, { operationId: 'return-cancel-' + hash([input.operationId, application.id]), date: advanceDate, reason: '반품에 따른 적용 잔량 재계산', actorId }, advanceScope);
+                advanceMutations.push(canceled);
+                projectedAdvance.rows.issuedStatements.push(canceled.statement);
+                projectedAdvance.rows.partnerAdvanceOperations.push(canceled.operation);
+            }
+            const reducedClaims = advanceScope ? (0, partnerAdvanceReader_1.advanceClaims)(projectedAdvance) : await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, claims, existingApps, statementRows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))));
             const claimById = new Map(claims.map(row => [row.id, row]));
             for (const claim of claims) {
                 const priorReturned = existingApps.filter(row => row.statementId === claim.id)
@@ -299,7 +316,46 @@ async function processGeneralStockReturn(db, companyId, actorId, input) {
                 items: plan.journalLines.map(line => ({ name: '반품 역분개', spec: '', qty: 1, price: line.amount,
                     supply: line.amount, tax: 0, total: line.amount, isTaxExempt: true,
                     accountCode: line.accountCode, side: line.side })), };
+            const returnOperationData = { companyId, requestHash, businessHash, returnRequestId: returnRef.id, sourceStatementId: sourceSnap.id,
+                amount: plan.amount, docNo, journalId: journal.id, journalHash: hash(journalData),
+                applications: applications.map(row => ({ id: row.id, statementId: row.statementId, amount: row.amount,
+                    applicationHash: hash({ companyId, partnerId: request.partnerId, statementId: row.statementId,
+                        returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso }) })),
+                stockMovements, stockMovementsHash: hash(stockMovements),
+                rawMovements, rawMovementsHash: hash(rawMovements),
+                receipts: receipts.map(row => ({ id: row.receiptId, itemId: row.itemId,
+                    quantity: row.receipt.quantity, fingerprint: row.receipt.returnReceiptFingerprint,
+                    receiptHash: hash(row.receipt) })),
+                createdAt: todayIso, createdBy: actorId };
+            if (advanceScope) {
+                projectedAdvance.rows.issuedStatements.push(Object.assign(Object.assign({}, journalData), { id: journal.id }));
+                projectedAdvance.rows.returnApplications.push(...applications.map(row => ({ id: row.id, companyId, partnerId: request.partnerId, statementId: row.statementId, returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso })));
+                projectedAdvance.rows.returnOperations.push(Object.assign(Object.assign({}, returnOperationData), { id: operation.id }));
+                for (const application of affectedAdvances) {
+                    if (application.noncashApplication.kind !== 'advance-application')
+                        continue;
+                    for (const allocation of application.noncashApplication.allocations) {
+                        const resolved = await (0, partnerAdvanceReader_1.resolveSelectedAdvance)(db, tx, projectedAdvance, allocation.source, allocation.statementId);
+                        const source = resolved.context.sources[0], target = resolved.context.targets[0];
+                        const amount = Math.min(allocation.amount, source.originalAmount - ((_y = resolved.context.priorSourceUse.get((0, partnerAdvance_1.sourceKey)(allocation.source))) !== null && _y !== void 0 ? _y : 0), target.remaining);
+                        if (amount <= 0)
+                            continue;
+                        const reapplied = await (0, partnerAdvanceCommand_1.prepareAdvanceApplication)(db, tx, projectedAdvance, advanceScope, actorId, {
+                            operationId: 'return-reapply-' + hash([input.operationId, application.id, (0, partnerAdvance_1.sourceKey)(allocation.source), allocation.statementId]), date: advanceDate,
+                            partnerId: request.partnerId, source: allocation.source, statementId: allocation.statementId, accountCode: allocation.accountCode, amount,
+                            expectedRevision: revision, releaseId: input.releaseId, expectedSourceFingerprint: resolved.sourceFingerprint, expectedTargetFingerprint: resolved.targetFingerprint,
+                        });
+                        advanceMutations.push(reapplied);
+                        projectedAdvance.rows.issuedStatements.push(reapplied.statement);
+                        projectedAdvance.rows.partnerAdvanceOperations.push(reapplied.operation);
+                    }
+                }
+                if (advanceMutations.length * 2 + prepared.length * 2 + rawPrepared.length * 4 + applications.length + 5 > 500)
+                    fail('연결된 반품 적용 내역이 너무 많습니다.');
+            }
             writesStarted = true;
+            if (advanceScope)
+                (0, partnerAdvanceCommand_1.writePartnerAdvanceMutations)(tx, advanceSnapshot, advanceScope, advanceMutations, { writePartnerRevision: false });
             (0, newScopeCounter_1.writeVoucherCounter)(tx, counterSnap, sequence, sequence.last + 1);
             for (const row of prepared) {
                 tx.update(db.collection('items').doc(row.itemId), Object.assign({ stock: row.nextStock }, ('lots' in row ? { lots: JSON.parse(JSON.stringify(row.lots)) } : {})));
@@ -320,17 +376,7 @@ async function processGeneralStockReturn(db, companyId, actorId, input) {
                 tx.update(stateRef, { revision: revision + 1 });
             else
                 tx.create(stateRef, { companyId, partnerId: request.partnerId, revision: 1 });
-            tx.create(operation, { companyId, requestHash, businessHash, returnRequestId: returnRef.id, sourceStatementId: sourceSnap.id,
-                amount: plan.amount, docNo, journalId: journal.id, journalHash: hash(journalData),
-                applications: applications.map(row => ({ id: row.id, statementId: row.statementId, amount: row.amount,
-                    applicationHash: hash({ companyId, partnerId: request.partnerId, statementId: row.statementId,
-                        returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso }) })),
-                stockMovements, stockMovementsHash: hash(stockMovements),
-                rawMovements, rawMovementsHash: hash(rawMovements),
-                receipts: receipts.map(row => ({ id: row.receiptId, itemId: row.itemId,
-                    quantity: row.receipt.quantity, fingerprint: row.receipt.returnReceiptFingerprint,
-                    receiptHash: hash(row.receipt) })),
-                createdAt: todayIso, createdBy: actorId });
+            tx.create(operation, Object.assign(Object.assign({}, returnOperationData), { advanceStatementIds: advanceMutations.map(row => row.statement.id) }));
             return { status: 'applied', docNo, journalId: journal.id };
         }
         catch (error) {

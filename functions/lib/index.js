@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.recordInterCompanyTransferCommand = exports.prepareInterCompanyTransferCommand = exports.replaceManualSettlementBatchCommand = exports.prepareTransferCashEditCommand = exports.cashMutationCommand = exports.deleteIssuedStatementCommand = exports.notifyChatMessage = exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = exports.issuePayrollVoucherCommand = exports.savePayrollDraftCommand = exports.processGeneralStockReturnCommand = exports.mutateManualSettlementCommand = exports.recordLoanMovementCommand = exports.recordPartnerPaymentCommand = exports.receiveOemFinishedGoodsCommand = exports.issueOemFeeVoucherCommand = exports.issueTradeStatementCommand = exports.issueNumberedVoucher = exports.editIssuedStatementCommand = exports.employeeLogin = exports.extractOrder = void 0;
+exports.cancelPartnerAdvanceCommand = exports.applyPartnerAdvanceCommand = exports.preparePartnerAdvanceCommand = exports.recordInterCompanyTransferCommand = exports.prepareInterCompanyTransferCommand = exports.replaceManualSettlementBatchCommand = exports.prepareTransferCashEditCommand = exports.cashMutationCommand = exports.deleteIssuedStatementCommand = exports.notifyChatMessage = exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = exports.issuePayrollVoucherCommand = exports.savePayrollDraftCommand = exports.processGeneralStockReturnCommand = exports.mutateManualSettlementCommand = exports.recordLoanMovementCommand = exports.recordPartnerPaymentCommand = exports.receiveOemFinishedGoodsCommand = exports.issueOemFeeVoucherCommand = exports.issueTradeStatementCommand = exports.issueNumberedVoucher = exports.editIssuedStatementCommand = exports.employeeLogin = exports.extractOrder = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
@@ -325,4 +325,8 @@ var interCompanyTransferPreparation_1 = require("./interCompanyTransferPreparati
 Object.defineProperty(exports, "prepareInterCompanyTransferCommand", { enumerable: true, get: function () { return interCompanyTransferPreparation_1.prepareInterCompanyTransferCommand; } });
 var interCompanyTransferCommand_1 = require("./interCompanyTransferCommand");
 Object.defineProperty(exports, "recordInterCompanyTransferCommand", { enumerable: true, get: function () { return interCompanyTransferCommand_1.recordInterCompanyTransferCommand; } });
+var partnerAdvanceCommand_1 = require("./partnerAdvanceCommand");
+Object.defineProperty(exports, "preparePartnerAdvanceCommand", { enumerable: true, get: function () { return partnerAdvanceCommand_1.preparePartnerAdvanceCommand; } });
+Object.defineProperty(exports, "applyPartnerAdvanceCommand", { enumerable: true, get: function () { return partnerAdvanceCommand_1.applyPartnerAdvanceCommand; } });
+Object.defineProperty(exports, "cancelPartnerAdvanceCommand", { enumerable: true, get: function () { return partnerAdvanceCommand_1.cancelPartnerAdvanceCommand; } });
 //# sourceMappingURL=index.js.map

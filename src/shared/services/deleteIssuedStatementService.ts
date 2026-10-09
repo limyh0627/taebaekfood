@@ -3,6 +3,7 @@ import {httpsCallable} from 'firebase/functions';
 import {auth,authReady,db,functions} from '../firebase';
 import {companyOf,type CompanyId} from '../types';
 import {requireActiveReleaseId} from '../releaseGate';
+import {preparePartnerAdvance,cancelPartnerAdvance,readPendingPartnerAdvance} from '../../features/statements/infrastructure/partnerAdvanceCommands';
 type Command={operationId:string;statementId:string;releaseId:string;expectedRevision:number;expectedOriginalHash:string};
 const running=new Set<string>();
 const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value.toMillis==='function'?{timestampMillis:value.toMillis()}:value instanceof Date?{dateISO:value.toISOString()}:value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,canonical(value[key])])):value;
@@ -17,7 +18,16 @@ export async function deleteIssuedStatement(companyId:CompanyId,id:string):Promi
  let input:Command;let saved=localStorage.getItem(key);
  if(saved!==null){try{input=JSON.parse(saved);}catch{throw new Error('보관된 삭제 요청을 확인할 수 없습니다.');}
   if(!input||input.statementId!==id||typeof input.operationId!=='string'||typeof input.releaseId!=='string'||typeof input.expectedOriginalHash!=='string'||!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId)||!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0||!/^[a-f0-9]{64}$/.test(input.expectedOriginalHash)||Object.keys(input).sort().join(',')!=='expectedOriginalHash,expectedRevision,operationId,releaseId,statementId')throw new Error('보관된 삭제 요청이 손상되었습니다.');
- }else{const original=await getDoc(doc(db,'issuedStatements',id));await assertActor();if(!original.exists())throw new Error('대상 전표를 찾을 수 없습니다.');const row=original.data();if(companyOf(row)!==companyId)throw new Error('다른 회사의 전표는 삭제할 수 없습니다.');const gate=await getDoc(doc(db,'appMeta','releaseCutover'));await assertActor();input={operationId:`delete-${crypto.randomUUID()}`,statementId:id,releaseId:requireActiveReleaseId(gate.data()),expectedRevision:row.mutationRevision??0,expectedOriginalHash:await hash(Object.fromEntries(Object.entries(row).filter(([key])=>key!=='id')))};await assertActor();saved=JSON.stringify(input);localStorage.setItem(key,saved);}
+ }else{const original=await getDoc(doc(db,'issuedStatements',id));await assertActor();if(!original.exists())throw new Error('대상 전표를 찾을 수 없습니다.');const row=original.data();if(companyOf(row)!==companyId)throw new Error('다른 회사의 전표는 삭제할 수 없습니다.');
+   if(row.noncashApplication){
+    if(row.noncashApplication.kind!=='advance-application')throw new Error('적용 취소 기록은 삭제하지 않습니다.');
+    const pending=readPendingPartnerAdvance(companyId);
+    if(pending&&(pending.action!=='cancel'||!('applicationStatementId' in pending.input)||pending.input.applicationStatementId!==id))throw new Error('이전 적용 요청의 결과를 먼저 확인해 주세요.');
+    const prepared=pending?null:await preparePartnerAdvance(companyId,row.partnerId);await assertActor();
+    const input=pending?.input??{operationId:'advance-cancel-'+crypto.randomUUID(),partnerId:row.partnerId,date:[new Date(Date.now()+9*60*60*1000).toISOString().slice(0,10),String(row.tradeDate)].sort().at(-1)!,applicationStatementId:id,reason:'적용 전표 삭제 요청에 따른 적용 취소',expectedRevision:prepared!.revision,releaseId:prepared!.releaseId};
+    await cancelPartnerAdvance(companyId,input as Parameters<typeof cancelPartnerAdvance>[1]);await assertActor();return;
+   }
+   const gate=await getDoc(doc(db,'appMeta','releaseCutover'));await assertActor();input={operationId:`delete-${crypto.randomUUID()}`,statementId:id,releaseId:requireActiveReleaseId(gate.data()),expectedRevision:row.mutationRevision??0,expectedOriginalHash:await hash(Object.fromEntries(Object.entries(row).filter(([key])=>key!=='id')))};await assertActor();saved=JSON.stringify(input);localStorage.setItem(key,saved);}
  const requestHash=await hash({companyId,actorId:user!.uid,...input});
  const verify=async()=>{const snap=await getDoc(doc(db,'voucherMutationOperations',input.operationId));await assertActor();if(!snap.exists())return null;const row=snap.data();if(row.companyId!==companyId||row.createdBy!==user!.uid||row.kind!=='issuedStatements'||row.action!=='delete'||!['applied','rejected'].includes(row.status)||row.voucherId!==id||row.requestHash!==requestHash||!row.command||await hash(row.command)!==await hash(input))throw new Error('삭제 감사가 원 요청과 일치하지 않습니다.');
   if(row.status==='rejected'){if(!['invalid-argument','failed-precondition'].includes(row.failureCode)||typeof row.failureMessage!=='string')throw new Error('삭제 거절 감사를 확인할 수 없습니다.');await assertActor();return {status:'rejected' as const,message:row.failureMessage};}

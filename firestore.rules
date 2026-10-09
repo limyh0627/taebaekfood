@@ -105,7 +105,7 @@ service cloud.firestore {
     function serverAuditCollection(c) {
       return c in ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
                    'loanMovementOperations', 'returnOperations', 'voucherMutationOperations',
-                   'companyTransferOperations', 'oemReceiptOperations'];
+                   'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations'];
     }
     function adminOnlyCollection(c) {
       return serverAuditCollection(c) || c in [

@@ -11,8 +11,10 @@ import { formatMoneyInput, parseMoneyInput } from '../src/shared/moneyInput';
 import { downloadListExcel } from '../src/shared/listExcel';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
+import PartnerAdvanceModal from './PartnerAdvanceModal';
 
 interface Props {
+  advanceStatements?: readonly IssuedStatement[];
   returnOperations?: readonly ReadonlyReturnOperation[];
   companyId: CompanyId;
   issuedStatements: IssuedStatement[];
@@ -27,7 +29,7 @@ interface Props {
 
 const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 
-export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], returnOperations, onOpenVoucher }: Props) {
+export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], returnOperations, advanceStatements, onOpenVoucher }: Props) {
   const issuedStatements = useMemo(() => allStatements.filter(s => companyOf(s) === companyId), [allStatements, companyId]);
   const cashEntries = useMemo(() => allCashEntries.filter(e => companyOf(e) === companyId), [allCashEntries, companyId]);
   //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
@@ -38,6 +40,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
   const [payOpen, setPayOpen] = useState(false);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
   const [payAccountId, setPayAccountId] = useState('');
   /**
    * 수금·지불 창을 연다. 금액을 미리 채워 두면 바로 누르기만 하면 된다 —
@@ -121,8 +124,8 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
    */
   const openByStmt = useMemo(() => {
     if (!selId) return new Map<string, number>();
-    return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements, undefined, returnOperations);
-  }, [selId, type, issuedStatements, cashEntries, settlements, returnOperations]);
+    return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements, undefined, returnOperations, { statements: advanceStatements });
+  }, [selId, type, issuedStatements, cashEntries, settlements, returnOperations, advanceStatements]);
 
   const allPartners = useMemo(() => {
     const names = new Map<string, string>();
@@ -336,6 +339,9 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             </button>}
             {/*  수금·지불은 **잔액 바로 옆**이다 — 얼마 남았는지 보고 누르는 자리라(2026-09-03 사장님).
                  색은 들어오면 파랑, 나가면 빨강. */}
+            {sel && (
+              <button type="button" onClick={() => setAdvanceOpen(true)} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-black text-indigo-700">선급·선수금 적용</button>
+            )}
             {sel && (
               <button type="button" onClick={() => openPay(sel.balance)}
                 className={`ml-auto flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black text-white transition-all ${
@@ -575,6 +581,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             </div>
         </ModalShell>
       )}
+      {advanceOpen && sel && <PartnerAdvanceModal key={`${companyId}:${selId}`} companyId={companyId} partnerId={selId} partnerName={sel.partnerName} onClose={() => setAdvanceOpen(false)} />}
     </div>
   );
 }

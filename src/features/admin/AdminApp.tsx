@@ -909,14 +909,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return new Date(r.processedAt).getTime() >= 하루전;
   }), [adjustmentRequests, 하루전]);
 
-  //  전표가 끊기고 하루 지난 선입고 이력은 안 보인다.
-  //  OEM 배치는 계속 보인다 — 보낸 원료·받은 완제품·로스(수율)를 들고 있어야 한다.
-  const 보이는입고이력 = useMemo(() => receivedOrders.filter(po => {
-    if (po.poType === 'oem' || !po.linkedStatementId) return true;
-    const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
-    return !at || new Date(at).getTime() >= 하루전;
-  }), [receivedOrders, issuedStatements, 하루전]);
-
   /**
    * 날짜가 바뀐 뒤 첫 접속에 작업순서를 비운다(주문 자료는 그대로).
    *
@@ -2811,7 +2803,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              receivedOrders={보이는입고이력}
+              receivedOrders={receivedOrders}
               returnRequests={returnRequests}
               returnBadge={returnRequests.filter(r => r.status === 'pending').length}
               returnContent={
@@ -3075,7 +3067,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               employees={employees}
               returnRequests={returnRequests}
               onProcessReturn={handleProcessReturn}
-              receivedOrders={보이는입고이력}
+              receivedOrders={receivedOrders}
               partners={partners}
               issuedStatements={issuedStatements}
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
@@ -4466,6 +4458,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {(currentView === 'trade-statement' || showInboundInvoice) && (
             <TradeStatement
               returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+                  advanceStatements={appData.advanceStatements}
               currentUserId={currentUser.id}
               composerOnly={currentView !== 'trade-statement'}
               onComposerClose={() => { setShowInboundInvoice(false); setPendingInvoice(null); }}
@@ -4615,6 +4608,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <ProfitAnalysis
                 returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+                  advanceStatements={appData.advanceStatements}
                   companyId={companyId}
                 issuedStatements={issuedStatements}
                 fixedCostTemplates={companyTemplates}
@@ -4647,6 +4641,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
                   returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+                  advanceStatements={appData.advanceStatements}
                   companyId={companyId}
                   initialTab="partners"
                   issuedStatements={issuedStatements}
@@ -4691,6 +4686,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   {ledgerTab === 'partner' ? (
                     <PartnerLedger
                       returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+                  advanceStatements={appData.advanceStatements}
                       companyId={companyId}
                       issuedStatements={issuedStatements}
                       cashEntries={companyCashEntries}
@@ -4701,6 +4697,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     />
                   ) : (
                   <CashLedger
+              returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+              advanceStatements={appData.advanceStatements}
                     companyId={companyId}
                     cashAccounts={companyCashAccounts}
                     cashEntries={companyCashEntries}
@@ -4747,6 +4745,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
                   returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
+                  advanceStatements={appData.advanceStatements}
                   companyId={companyId}
                   initialTab="cash-flow"
                   issuedStatements={issuedStatements}
@@ -5127,7 +5126,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
         <ModalShell title="주문 생성 방법" onClose={() => setIsOrderCreateChooserOpen(false)} className="max-w-md"
           footer={<button type="button" onClick={() => setIsOrderCreateChooserOpen(false)} className="ml-auto block rounded-lg px-4 py-2.5 text-xs font-black text-slate-500 hover:bg-slate-100">취소</button>}>
             <div className="grid gap-3">
-              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('stock'); setIsAddOrderOpen(true); }} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-indigo-50"><strong className="block text-sm">재고 만들기</strong><span className="text-xs text-slate-500">판매 주문 없이 필요한 수량을 추가 생산합니다.</span></button>
               <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('order'); setIsAddOrderOpen(true); }} className="group flex min-h-20 items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition-colors group-hover:bg-slate-200 group-hover:text-slate-800"><Plus size={19} /></span>
                 <span className="min-w-0">
@@ -5142,6 +5140,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <span className="mt-1 block text-xs font-bold text-slate-500">문자나 메신저로 받은 주문 내용을 붙여넣습니다.</span>
                 </span>
               </button>
+              <button type="button" onClick={() => { setIsOrderCreateChooserOpen(false); setOrderCreateMode('stock'); setIsAddOrderOpen(true); }} className="rounded-xl border border-slate-200 p-4 text-left hover:bg-indigo-50"><strong className="block text-sm">재고 만들기</strong><span className="text-xs text-slate-500">판매 주문 없이 필요한 수량을 추가 생산합니다.</span></button>
             </div>
         </ModalShell>
       )}

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.auditReturnPartner = auditReturnPartner;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const partnerPaymentPlan_1 = require("./partnerPaymentPlan");
 /** Read-only diagnosis, never an authorization token. The command must re-read and validate the complete history. */
 function auditReturnPartner(input) {
@@ -36,9 +36,9 @@ function auditReturnPartner(input) {
             issues.push({ kind: 'settlementDirectionOrAccountMismatch', id: row.id });
     }
     const directions = ['입금', '출금'].map(direction => {
-        var _a, _b;
+        var _a, _b, _c;
         try {
-            const reduced = (0, returnClaimReader_1.projectClaimsAfterReturns)(claims, applications, (_a = input.statements) !== null && _a !== void 0 ? _a : [], (_b = input.returnOperations) !== null && _b !== void 0 ? _b : []);
+            const reduced = (0, partnerAdvanceClaimReader_1.projectClaimsAfterReturnsAndAdvance)(claims, applications, (_a = input.statements) !== null && _a !== void 0 ? _a : [], (_b = input.returnOperations) !== null && _b !== void 0 ? _b : [], (_c = input.advanceOperations) !== null && _c !== void 0 ? _c : []);
             const open = (0, partnerPaymentPlan_1.openClaimBalances)({ companyId: input.companyId, partnerId: input.partnerId, direction,
                 claims: reduced, cashEntries: cash, settlements: input.settlements });
             return { direction, ready: issues.length === 0, balances: Object.fromEntries(open), error: null };

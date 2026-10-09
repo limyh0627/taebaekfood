@@ -1,10 +1,10 @@
-import { projectClaimsAfterReturns } from './returnClaimReader';
+import { projectClaimsAfterReturnsAndAdvance as projectClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import { openClaimBalances, type Claim, type PaymentCash,
   type PaymentSettlement, type ReturnApplication } from './partnerPaymentPlan';
 
 /** Read-only diagnosis, never an authorization token. The command must re-read and validate the complete history. */
 export function auditReturnPartner(input: { companyId: string; partnerId: string; claims: Claim[];
-  cashEntries: PaymentCash[]; settlements: PaymentSettlement[]; applications: ReturnApplication[]; statements?: Record<string, any>[]; returnOperations?: Record<string, any>[] }) {
+  cashEntries: PaymentCash[]; settlements: PaymentSettlement[]; applications: ReturnApplication[]; statements?: Record<string, any>[]; returnOperations?: Record<string, any>[]; advanceOperations?: Record<string, any>[] }) {
   const claims = input.claims.filter(row => row.companyId === input.companyId && row.partnerId === input.partnerId);
   const cash = input.cashEntries.filter(row => row.companyId === input.companyId && row.partnerId === input.partnerId);
   const applications = input.applications.filter(row => row.companyId === input.companyId && row.partnerId === input.partnerId);
@@ -32,7 +32,7 @@ export function auditReturnPartner(input: { companyId: string; partnerId: string
   }
   const directions = (['입금', '출금'] as const).map(direction => {
     try {
-      const reduced = projectClaimsAfterReturns(claims, applications, input.statements ?? [], input.returnOperations ?? []);
+      const reduced = projectClaimsAfterReturns(claims, applications, input.statements ?? [], input.returnOperations ?? [], input.advanceOperations ?? []);
       const open = openClaimBalances({ companyId: input.companyId, partnerId: input.partnerId, direction,
         claims: reduced, cashEntries: cash, settlements: input.settlements });
       return { direction, ready: issues.length === 0, balances: Object.fromEntries(open), error: null };

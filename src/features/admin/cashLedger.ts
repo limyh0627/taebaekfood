@@ -2,6 +2,7 @@ import { projectCashLines, cashLineReduction } from '../../../functions/src/shar
 import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, JournalEntry, Settlement, companyOf } from '../../shared/types';
 import { rowStamp, issuedMs, timeOfLocal } from '../../shared/voucherStamp';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
+import { appliedToTargets } from '../../shared/partnerAdvance';
 
 /**
  * 자금 원장(현금출납장) 순수 도메인 모듈 — 부수효과 없음(입력 → 값).
@@ -72,12 +73,17 @@ export function openBalance(
 export function unsettledStatements(
   statements: IssuedStatement[],
   settlements: Settlement[],
-  opts?: { type?: '매출' | '매입'; partnerId?: string; cashEntries?: CashEntry[] },
+  opts?: { type?: '매출' | '매입'; partnerId?: string; cashEntries?: CashEntry[]; projection?: {returnOperations?:readonly ReadonlyReturnOperation[];advanceStatements?:readonly IssuedStatement[]} },
 ): { stmt: IssuedStatement; open: number }[] {
   const live = opts?.cashEntries ? new Set(opts.cashEntries.map(e => e.id)) : undefined;
+  const projected = new Map<string,number>();
+  if(opts?.projection) for(const partnerId of new Set(statements.map(s=>s.partnerId))){
+    if(opts.partnerId&&opts.partnerId!==partnerId)continue;
+    for(const type of opts.type?[opts.type]:['매출','매입'] as const)for(const [id,open] of allocatePartnerCash(partnerId,type,statements,opts.cashEntries??[],settlements,undefined,opts.projection.returnOperations,{statements:opts.projection.advanceStatements,matchOnly:true}))projected.set(id,open);
+  }
   return statements
-    .filter(s => (!opts?.type || s.type === opts.type) && (!opts?.partnerId || s.partnerId === opts.partnerId))
-    .map(stmt => ({ stmt, open: openBalance(stmt, settlements, live) }))
+    .filter(s => s.noncashApplication===undefined && (!opts?.type || (opts.projection ? isReceivableStmt(s,opts.type) : s.type === opts.type)) && (!opts?.partnerId || s.partnerId === opts.partnerId))
+    .map(stmt => ({ stmt, open: opts?.projection ? projected.get(stmt.id)??0 : openBalance(stmt, settlements, live) }))
     .filter(r => r.open > 0)
     .sort((a, b) => (a.stmt.tradeDate || '').localeCompare(b.stmt.tradeDate || ''));
 }
@@ -472,6 +478,7 @@ function returnClaimAmount(s: IssuedStatement, type: '매출' | '매입'): numbe
     .reduce((sum, line) => sum + (type === '매출' ? (line.debit ?? 0) - (line.credit ?? 0) : (line.credit ?? 0) - (line.debit ?? 0)), 0);
 }
 export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
+  if (s.noncashApplication !== undefined) return false;
   const returned = returnClaimAmount(s, type);
   if (returned !== undefined) return returned !== 0;
   const wantCodes = type === '매출' ? [AR] : PAYABLES;
@@ -500,16 +507,18 @@ export function allocatePartnerCash(
    */
   opening?: Map<string, number>,
   returnOperations?: readonly ReadonlyReturnOperation[],
+  advance?: { statements?: readonly IssuedStatement[]; asOf?: string; matchOnly?:boolean },
 ): Map<string, number> {
   //  기초이월 전표도 후보에 넣는다 — 안 넣으면 그걸 갚은 수금이 새 전표를 갉아먹는다(isReceivableStmt 주석 참조).
   const eligible = statements
     .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate) || a.id.localeCompare(b.id));
   const amountOf = (s: IssuedStatement) => opening?.get(s.id) ?? returnClaimAmount(s, type) ?? s.totalAmount ?? 0;
-  const mine = eligible.filter(s => amountOf(s) > 0);
+  let mine = eligible.filter(s => amountOf(s) > 0);
   let returnCredit = -eligible.filter(s => returnClaimAmount(s, type) === undefined)
     .reduce((sum, s) => sum + Math.min(0, amountOf(s)), 0);
   const left = new Map(mine.map(s => [s.id, amountOf(s)]));
+  for (const statement of eligible) if (opening?.get(statement.id) === 0) left.set(statement.id, 0);
   const returned = eligible.filter(s => returnClaimAmount(s, type) !== undefined);
   const pending = () => new Map(eligible.map(s => [s.id, Number.NaN]));
   // A subscription not yet loaded cannot establish invoice allocations.
@@ -535,6 +544,20 @@ export function allocatePartnerCash(
     }
   }
   for (const journal of returned) left.set(journal.id, 0);
+  const tagged = statements.filter(s => s.partnerId === partnerId && s.noncashApplication !== undefined);
+  if (tagged.some(s => !advance?.statements?.some(verified => verified.id === s.id))) return pending();
+  if (advance?.statements) {
+    try {
+      const companyId = companyOf(eligible[0] ?? tagged[0] ?? advance.statements.find(s => s.partnerId === partnerId)!);
+      for (const [id, applied] of appliedToTargets([...advance.statements], companyId, partnerId, advance.asOf)) {
+        if (!(type === '매출' ? applied.accountCode === AR : isPay(applied.accountCode))) continue;
+        const old = left.get(id);
+        if (old === undefined || applied.amount > old) return pending();
+        left.set(id, old - applied.amount);
+      }
+    } catch { return pending(); }
+  }
+  mine = eligible.filter(s => (left.get(s.id) ?? 0) > 0);
   if (!mine.length) return left;
 
   const liveCash = new Set(cashEntries.map(e => e.id));
@@ -552,7 +575,7 @@ export function allocatePartnerCash(
   }
 
   // 2) 남은 돈은 오래된 순으로
-  let rem = Math.max(0, partnerPaid(partnerId, type, cashEntries) - pinned + returnCredit);
+  let rem = Math.max(0, (advance?.matchOnly ? 0 : partnerPaid(partnerId, type, cashEntries) - pinned) + returnCredit);
   for (const s of mine) {
     if (rem <= 0) break;
     const open = left.get(s.id) ?? 0;

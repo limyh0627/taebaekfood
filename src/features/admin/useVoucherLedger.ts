@@ -3,7 +3,7 @@ import type { IssuedStatement, CashEntry, Settlement, AccountCode, CompanyId, Jo
 import { openingDocId } from '../../shared/types';
 import { fetchDateRange, fetchByIds, fetchWhere } from '../../shared/services/firebaseService';
 import { buildJournals } from '../../shared/buildJournals';
-import { allocatePartnerCash, type ReadonlyReturnOperation } from './cashLedger';
+import { allocatePartnerCash, isReceivableStmt, type ReadonlyReturnOperation } from './cashLedger';
 import { mergeStatements, voucheredOrderIds, canSettleStatement, isAccruedPayableStatement, accruedPayableBalance } from './voucherMerge';
 import {
   anchorBefore, readFrom, openStatementIds, allocationInputs, balancesWithAnchor,
@@ -30,6 +30,7 @@ import { where } from 'firebase/firestore';
  * 합칠 때는 props가 이긴다(가장 최신이다).
  */
 export interface VoucherLedgerInput {
+  advanceStatements?: readonly IssuedStatement[];
   returnOperations?: readonly ReadonlyReturnOperation[];
   companyId: CompanyId;
   /** 최근 7일 실시간 구독분 */
@@ -43,7 +44,7 @@ export interface VoucherLedgerInput {
 }
 
 export function useVoucherLedger({
-  companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations,
+  companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo, returnOperations, advanceStatements,
 }: VoucherLedgerInput) {
   // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
   const [stateCompany, setStateCompany] = useState(companyId);
@@ -276,19 +277,18 @@ export function useVoucherLedger({
    */
   const openByStmt = useMemo(() => {
     //  앵커가 걸리면 전표·자금·시작잔액 셋을 같이 잘라야 한다 — 규칙은 앵커가 들고 있다
-    const alloc = allocationInputs(anchor, mergedStatements, cashEntries);
+    const alloc = allocationInputs(anchor, mergedStatements, cashEntries, advanceStatements);
     const out = new Map<string, number>();
-    const keys = new Set(alloc.statements
-      .filter(st => st.type === '매출' || st.type === '매입')
-      .map(st => `${st.partnerId}|${st.type}`));
+    const keys = new Set(alloc.statements.flatMap(st => (['매출','매입'] as const)
+      .filter(type => isReceivableStmt(st,type)).map(type => `${st.partnerId}|${type}`)));
     for (const key of keys) {
       const [pid, type] = key.split('|');
-      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', alloc.statements, alloc.cashEntries, settlements, alloc.opening, returnOperations)) {
+      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', alloc.statements, alloc.cashEntries, settlements, alloc.opening, returnOperations, {statements:advanceStatements,asOf:anchor?.asOf})) {
         out.set(id, open);
       }
     }
     return out;
-  }, [anchor, mergedStatements, cashEntries, settlements, returnOperations]);
+  }, [anchor, mergedStatements, cashEntries, settlements, returnOperations, advanceStatements]);
   //  배분에 없으면 총액으로 물러선다 — 채권·채무를 안 세우는 전표(감가상각·급여 등)가 그렇다
   const getBalance = useCallback(
     (s: IssuedStatement) => isAccruedPayableStatement(s)

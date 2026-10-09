@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordInterCompanyTransferCommand = void 0;
 exports.recordInterCompanyTransfer = recordInterCompanyTransfer;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const admin = require("firebase-admin");
 const cashMutationReceipt_1 = require("./cashMutationReceipt");
 const newScopeCounter_1 = require("./newScopeCounter");
@@ -170,7 +170,7 @@ async function recordInterCompanyTransfer(db, authUid, claims, input) {
                 || currentRevisions[0] !== input.expectedFromRevision || currentRevisions[1] !== input.expectedToRevision)
                 fail('양사 정산 상태가 변경되었습니다.');
             const statementData = [...fromStatements.docs, ...toStatements.docs].map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })));
-            const statements = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, statementData.map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returnRows.flatMap(rows => rows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })))).filter((row) => row.companyId === input.from && row.partnerId === input.fromPartnerId || row.companyId === input.to && row.partnerId === input.toPartnerId), statementData);
+            const statements = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, statementData.map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returnRows.flatMap(rows => rows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })))).filter((row) => row.companyId === input.from && row.partnerId === input.fromPartnerId || row.companyId === input.to && row.partnerId === input.toPartnerId), statementData);
             const cashEntries = [...fromCash.docs, ...toCash.docs]
                 .map(doc => (0, partnerPaymentCommand_1.cashFromEntry)(doc.id, doc.data())).filter((row) => row !== null);
             const settlements = settlementRows.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));

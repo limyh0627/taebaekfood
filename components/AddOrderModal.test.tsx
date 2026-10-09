@@ -103,6 +103,8 @@ describe('옛 박스 설정과 포장 환산표 충돌', () => {
         palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
       fireEvent.click(screen.getAllByRole('button', { name: /가을식품/ })[0]);
       fireEvent.click(screen.getByText('포장 설정 충돌 품목'));
+      expect(screen.queryByText('× 12개 = 12개')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '포장 설정 충돌 품목 수량 박스' }));
       expect(screen.getByText('× 12개 = 12개')).toBeInTheDocument();
     } finally {
       resetPackIndex();
@@ -111,36 +113,7 @@ describe('옛 박스 설정과 포장 환산표 충돌', () => {
 });
 
 describe('신규 주문 창의 거래처 진행 주문', () => {
-  it('검색 후 키보드가 화면을 줄여도 결과를 보이는 쪽으로 옮기고 선택할 수 있다', () => {
-    const viewport = new EventTarget();
-    vi.stubGlobal('visualViewport', viewport);
-    try {
-      render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
-      const input = screen.getByPlaceholderText(/거래처명 또는 초성 검색/);
-      const body = input.closest('.overflow-y-auto') as HTMLElement;
-      vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({ top: 315, bottom: 365 } as DOMRect);
-      const bodyRect = vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 84, bottom: 844 } as DOMRect);
-      fireEvent.change(input, { target: { value: '가을' } });
-      expect(screen.getAllByRole('button', { name: /가을식품/ })[0].parentElement).toHaveClass('top-full');
-      bodyRect.mockReturnValue({ top: 84, bottom: 389 } as DOMRect);
-      act(() => { viewport.dispatchEvent(new Event('resize')); });
-      const result = screen.getAllByRole('button', { name: /가을식품/ })[0];
-      expect(result.parentElement).toHaveClass('bottom-full');
-      fireEvent.click(result);
-      expect(screen.getByRole('heading', { name: '주문 품목' })).toBeInTheDocument();
-    } finally { vi.unstubAllGlobals(); }
-  });
-  it('검색칸 아래 공간이 부족하면 거래처 결과를 위쪽에 보여준다', () => {
-    render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()} />);
-    const input = screen.getByPlaceholderText(/거래처명 또는 초성 검색/);
-    const body = input.closest('.overflow-y-auto') as HTMLElement;
-    vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({ top: 315, bottom: 365 } as DOMRect);
-    vi.spyOn(body, 'getBoundingClientRect').mockReturnValue({ top: 84, bottom: 389 } as DOMRect);
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: '가을' } });
-    expect(screen.getAllByRole('button', { name: /가을식품/ })[0].parentElement).toHaveClass('bottom-full');
-  });
-
+  it('검색 결과는 입력칸 아래 한행 카드로 선택하고 주문 품목을 연다',()=>{render(<AddOrderModal items={items} orders={[]} partners={partners} palletStocks={[]} onClose={vi.fn()} onSave={vi.fn()}/>);const input=screen.getByPlaceholderText(/거래처명 또는 초성 검색/);fireEvent.change(input,{target:{value:'가을'}});const result=screen.getAllByRole('button',{name:/가을식품/})[0];expect(result.parentElement).toHaveClass('grid-cols-1');expect(result.parentElement).not.toHaveClass('absolute');expect(input.compareDocumentPosition(result)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();fireEvent.click(result);expect(screen.getByRole('heading',{name:'주문 품목'})).toBeInTheDocument();});
   it('매출 연결된 비재고 용역을 주문 품목에 노출하지 않는다', () => {
     const service = { id: 'delivery-fee', name: '배송 용역', unit: '건', type: 'service', category: 'service' } as Item;
     render(
@@ -223,4 +196,8 @@ it('생산 거래처 필터는 복수 ID로 품목만 거르고 판매상대를 
  expect(screen.queryByText('주문 일정')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button', { name: /거래처 필터 전체 해제/ }));
  expect(choices[0]).not.toBeChecked();
+});
+
+describe('주문 수량 입력 단위',()=>{
+ it('낱개10은 포장환산12가 있어도10으로 저장하고 박스는 명시 선택한다',async()=>{setPackIndex(buildPackIndex([{item_id:'flavor',units_per_box:12}]));try{const save=vi.fn(async()=>{}),item={id:'flavor',name:'맛기름',spec:'1.8L',unit:'개',type:'goods',stock:500} as Item;render(<AddOrderModal items={[item]} orders={[]} partners={partners} partnerItems={[{id:'link-flavor',itemId:item.id,partnerId:'partner-1',Direction:'out',price:1000} as PartnerItem]} palletStocks={[]} onClose={vi.fn()} onSave={save}/>);fireEvent.click(screen.getAllByRole('button',{name:/가을식품/})[0]);fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'10'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenNthCalledWith(1,expect.objectContaining({items:[expect.objectContaining({itemId:'flavor',quantity:10})]}));fireEvent.click(screen.getByRole('button',{name:'맛기름 수량 박스'}));expect(screen.getByText('× 12개 = 120개')).toBeInTheDocument();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenNthCalledWith(2,expect.objectContaining({items:[expect.objectContaining({itemId:'flavor',quantity:120,boxQuantity:10,isBoxUnit:true})]}));}finally{resetPackIndex();}});
 });

@@ -1,4 +1,4 @@
-import { readClaimsAfterReturns } from './returnClaimReader';
+import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import { projectCashLines, cashLineReduction, CashLineProjectionError } from './shared/cashLineProjection';
 import { readCashCreationMutation } from './cashMutationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
@@ -34,6 +34,8 @@ const tradeCodes = new Set(['500', '501', '503', '505']);
 
 /** The adapter deliberately rejects ambiguous documents instead of inventing an account. */
 export function claimFromStatement(id: string, row: Row): Claim | null {
+  // 적용·취소의 신뢰성은 공용 reader가 감사와 함께 검증한다. 새 발생채무로 해석하지 않는다.
+  if (row.noncashApplication !== undefined) return null;
   if (!row.partnerId) return null;
   const items: Row[] = Array.isArray(row.items) ? row.items : [];
   if (row.type === '매출' || row.type === '매입') {

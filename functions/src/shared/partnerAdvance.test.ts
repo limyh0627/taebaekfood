@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest';
+import { activeAdvanceApplications, appliedToTargets, claimsAfterAdvance, planAdvanceApplication, planAdvanceCancellation, sourceKey, type AdvanceStatement } from './partnerAdvance';
+const source={collection:'cashEntries' as const,id:'cash',lineKey:'133'};
+const context={companyId:'taebaek' as const,partnerId:'p',complete:true,unattributedReduction:false,blockedSourceKeys:[],
+ sources:[{key:source,companyId:'taebaek' as const,partnerId:'p',code:'133' as const,originalAmount:100,date:'2026-10-01',fingerprint:'source-hash',purpose:'selected'}],
+ targets:[{statementId:'target',companyId:'taebaek' as const,partnerId:'p',accountCode:'251' as const,remaining:80,date:'2026-10-01',fingerprint:'target-hash',purpose:'selected'}],priorSourceUse:new Map<string,number>()};
+const request={operationId:'apply',date:'2026-10-02',purpose:'selected',allocations:[{source,statementId:'target',accountCode:'251' as const,amount:60}]};
+function application():AdvanceStatement {const plan=planAdvanceApplication(context,request);return {id:'application',companyId:'taebaek',partnerId:'p',type:'비용',tradeDate:request.date,totalAmount:plan.amount,items:plan.items,noncashApplication:plan.metadata};}
+describe('공용 선급 적용 도메인',()=>{
+ it('기준점 이전 적용은 다시 차감하지 않고 이후 취소는 잔량을 복원한다',()=>{const doc=application();const cancelled=planAdvanceCancellation(doc,'cancel','취소');const reverse:AdvanceStatement={...doc,id:'cancelled',tradeDate:'2026-10-03',items:cancelled.items,noncashApplication:cancelled.metadata};expect(appliedToTargets([doc],'taebaek','p','2026-10-02').size).toBe(0);expect(appliedToTargets([doc,reverse],'taebaek','p','2026-10-02').get('target')?.amount).toBe(-60);});
+ it('비현금 균형분개와 대상 미결을 한번만 차감한다',()=>{const doc=application();expect(doc.items.map(row=>[row.accountCode,row.side,row.total])).toEqual([['133','대변',60],['251','차변',60]]);expect(claimsAfterAdvance([{id:'target',companyId:'taebaek',partnerId:'p',accountCode:'251' as const,amount:80}],[doc],'taebaek','p')[0].amount).toBe(20);});
+ it('전액 취소는 원문 역분개이며 원천 사용을 해제한다',()=>{const doc=application();const cancelled=planAdvanceCancellation(doc,'cancel','반품');const reverse:AdvanceStatement={...doc,id:'cancelled',tradeDate:'2026-10-03',items:cancelled.items,noncashApplication:cancelled.metadata};expect(activeAdvanceApplications([doc,reverse],'taebaek','p')).toEqual([]);expect(claimsAfterAdvance([{id:'target',companyId:'taebaek',partnerId:'p',accountCode:'251' as const,amount:80}],[doc,reverse],'taebaek','p')[0].amount).toBe(80);});
+ it.each([0,81,Number.MAX_SAFE_INTEGER+1])('잘못된 적용액 %s을 거절한다',amount=>expect(()=>planAdvanceApplication(context,{...request,allocations:[{...request.allocations[0],amount}]})).toThrow());
+ it('기존 원천 사용량과 타회사 대상을 검증한다',()=>{expect(()=>planAdvanceApplication({...context,priorSourceUse:new Map([[sourceKey(source),50]])},request)).toThrow();expect(()=>planAdvanceApplication({...context,targets:[{...context.targets[0],companyId:'punghoe'}]},request)).toThrow();});
+});

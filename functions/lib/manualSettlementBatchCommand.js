@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.replaceManualSettlementBatchCommand = void 0;
 exports.replaceManualSettlementBatch = replaceManualSettlementBatch;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const admin = require("firebase-admin");
 const partnerCutover_1 = require("./partnerCutover");
 const crypto_1 = require("crypto");
@@ -79,7 +79,7 @@ async function replaceManualSettlementBatch(db, companyId, actorId, input) {
         const cash = (0, partnerPaymentCommand_1.cashFromEntry)(input.cashEntryId, source);
         if (!cash || cash.parts.some(part => !Number.isSafeInteger(part.reduce)))
             conflict('자금전표 정산 계정이 불명확합니다.');
-        const claims = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
+        const claims = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
             .map(doc => (0, partnerPaymentCommand_1.claimFromStatement)(doc.id, doc.data())).filter((row) => row !== null), returnRows.docs.filter(doc => owner(doc.data()) === companyId)
             .map(doc => (Object.assign({ id: doc.id }, doc.data()))), statementRows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))));
         const byClaim = new Map(claims.map(row => [row.id, row]));

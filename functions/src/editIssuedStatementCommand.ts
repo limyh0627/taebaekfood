@@ -1,6 +1,11 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
+import { cashOriginalHash } from './cashMutationReceipt';
+import { readPartnerAdvanceSnapshot, resolveSelectedAdvance } from './partnerAdvanceReader';
+import { activeAdvanceApplications, sourceKey } from './shared/partnerAdvance';
+import { readPartnerAdvanceWriteScope, prepareAdvanceCancellation, prepareAdvanceApplication, writePartnerAdvanceMutations } from './partnerAdvanceCommand';
+import { kstDateOf } from './shared/calculation';
 
 type Approval = { pendingEditRequestId: string; pendingEditRequestHash: string };
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([key,item]) => [key,canonical(item)])) : value;
@@ -75,6 +80,7 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
       || editSnap.get('statementId') !== statementId || editSnap.get('status') !== 'pending'
       || hash(pendingData(editSnap.data()!)) !== approval.pendingEditRequestHash || hash(editSnap.get('proposedData')) !== hash(patch)))
       throw new HttpsError('failed-precondition', '전표 수정 요청이 변경됐습니다. 다시 확인해 주세요.');
+    if (old.noncashApplication) throw new HttpsError('failed-precondition', '적용 전표는 직접 수정할 수 없습니다. 적용 취소 후 다시 적용해 주세요. 취소 기록은 보존합니다.');
     const revision = Number(old.mutationRevision ?? 0);
     if (revision !== expectedRevision) throw new HttpsError('aborted', '전표가 다른 곳에서 수정됐습니다. 화면을 새로고침하고 다시 확인해 주세요.');
     if ('partnerId' in patch && patch.partnerId !== old.partnerId &&
@@ -97,10 +103,47 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     if (settled > 0 && money(next.totalAmount) && next.totalAmount < settled) {
       throw new HttpsError('failed-precondition', `수정 후 전표 금액이 이미 수금한 ${settled.toLocaleString()}원보다 작습니다.`);
     }
-    tx.update(statementRef, { ...patch, mutationRevision: revision + 1, editedAt: new Date().toISOString(), editedBy: claims.employeeId });
+    const editedAt = new Date().toISOString();
+    const after = { ...old, ...patch, mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId };
+    const editProof = { statementId, uid: request.auth!.uid, companyId: claims.companyId, kind: 'issuedStatements', status: 'applied',
+      action: 'edit-statement', expectedRevision, revision: revision + 1, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after) };
+    const advanceSnapshot = old.partnerId ? await readPartnerAdvanceSnapshot(db, tx, claims.companyId, old.partnerId) : null;
+    const affected = advanceSnapshot ? activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any, claims.companyId, old.partnerId)
+      .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.statementId === statementId)) : [];
+    const advanceDate = [kstDateOf(new Date()), next.tradeDate, ...affected.map(row => row.tradeDate)].filter((date): date is string => typeof date === 'string').sort().at(-1)!;
+    const advanceScope = affected.length ? await readPartnerAdvanceWriteScope(db, tx, advanceSnapshot!, advanceDate, releaseId) : null;
+    const advanceMutations = [];
+    if (advanceScope) {
+      const projected = { ...advanceSnapshot!, rows: Object.fromEntries(Object.entries(advanceSnapshot!.rows).map(([key, rows]) => [key, [...rows]])) as NonNullable<typeof advanceSnapshot>['rows'] };
+      projected.rows.issuedStatements = projected.rows.issuedStatements.map(row => row.id === statementId ? { ...after, id: statementId } : row);
+      for (const application of affected) {
+        const canceled = await prepareAdvanceCancellation(db, tx, advanceSnapshot!, application.id, { operationId: 'edit-cancel-' + hash([operationId, application.id]), date: advanceDate, reason: '원전표 수정에 따른 적용 재계산', actorId: request.auth!.uid }, advanceScope);
+        advanceMutations.push(canceled); projected.rows.issuedStatements.push(canceled.statement); projected.rows.partnerAdvanceOperations.push(canceled.operation);
+      }
+      for (const application of affected) {
+        if (application.noncashApplication.kind !== 'advance-application') continue;
+        for (const allocation of application.noncashApplication.allocations) {
+          const internal = allocation.statementId === statementId ? { pendingTargetEdit: { beforeSnapshot: old, afterSnapshot: after, operation: editProof } } : undefined;
+          const resolved = await resolveSelectedAdvance(db, tx, projected, allocation.source, allocation.statementId, internal);
+          const source = resolved.context.sources[0], target = resolved.context.targets[0];
+          const amount = Math.min(allocation.amount, source.originalAmount - (resolved.context.priorSourceUse.get(sourceKey(allocation.source)) ?? 0), target.remaining);
+          if (amount <= 0) continue;
+          const reapplied = await prepareAdvanceApplication(db, tx, projected, advanceScope, request.auth!.uid, {
+            operationId: 'edit-reapply-' + hash([operationId, application.id, sourceKey(allocation.source), allocation.statementId]), date: advanceDate,
+            partnerId: old.partnerId, source: allocation.source, statementId: allocation.statementId, accountCode: allocation.accountCode, amount,
+            expectedRevision: advanceScope.revision, releaseId, expectedSourceFingerprint: resolved.sourceFingerprint, expectedTargetFingerprint: resolved.targetFingerprint,
+          }, internal);
+          advanceMutations.push(reapplied); projected.rows.issuedStatements.push(reapplied.statement); projected.rows.partnerAdvanceOperations.push(reapplied.operation);
+        }
+      }
+      if (advanceMutations.length * 2 + (approval ? 5 : 4) > 500) throw new HttpsError('failed-precondition', '연결된 적용 내역이 너무 많습니다.');
+      writePartnerAdvanceMutations(tx, advanceSnapshot!, advanceScope, advanceMutations);
+    }
+    tx.update(statementRef, { ...patch, mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId });
     if (approval && editRef) tx.update(editRef, { status: 'approved', approvalOperationId: operationId,
       approvedRequestHash: approval.pendingEditRequestHash, approvedAt: new Date().toISOString(), approvedBy: claims.employeeId });
-    tx.create(operationRef, { ...(approval ?? {}), statementId, uid: request.auth!.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement', createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    tx.create(operationRef, { ...(approval ?? {}), statementId, uid: request.auth!.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement',
+      kind: 'issuedStatements', status: 'applied', expectedRevision, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), createdAt: admin.firestore.FieldValue.serverTimestamp() });
     return { status: 'applied', revision: revision + 1 };
   });
 }

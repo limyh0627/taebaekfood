@@ -7,6 +7,7 @@ import TradeStatement from '../../../components/TradeStatement';
 import type { CompanyId, IssuedStatement } from '../../shared/types';
 import { openingDocId } from '../../shared/types';
 import type { PartnerAnchor } from './partnerAnchor';
+import {planAdvanceApplication} from '../../shared/partnerAdvance';
 const service = vi.hoisted(() => ({ fetchDateRange: vi.fn(), fetchByIds: vi.fn(), fetchWhere: vi.fn(), fetchCollection: vi.fn() }));
 vi.mock('../../shared/services/firebaseService', () => service);
 vi.mock('../../../components/CashLedger', () => ({ AccountModal: () => null }));
@@ -15,6 +16,14 @@ const input = (companyId: CompanyId): VoucherLedgerInput => ({ companyId, issued
 const pending = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 const statement = (companyId: CompanyId, id = 'same'): IssuedStatement => ({ id, docNo: '합성260820-001', companyId, tradeDate: '2026-08-20', issuedAt: '2026-08-20T00:00:00Z', type: '매출', partnerId: 'partner', partnerName: companyId, orderId: '', items: [], totalSupply: 100, totalTax: 0, totalAmount: 100 });
 const anchor = (companyId: CompanyId, receivable: number): PartnerAnchor => ({ id: companyId, companyId, year: '2025', asOf: '2025-12-31', recordedAt: '2026-01-01', rows: [{ partnerId: 'partner', receivable, payable: 0, openStmts: [] }] });
+it('비용형 미지급 원전표도 적용 후 남은 금액을 실제 전표 hook에서 읽는다',async()=>{
+ const source={collection:'cashEntries' as const,id:'cash',lineKey:'133'};
+ const target:IssuedStatement={...statement('taebaek','target'),type:'비용',totalAmount:100,items:[{name:'비용',spec:'',isTaxExempt:true,qty:1,price:100,supply:100,tax:0,total:100,accountCode:'500',side:'차변'},{name:'미지급금',spec:'',isTaxExempt:true,qty:1,price:100,supply:100,tax:0,total:100,accountCode:'253',side:'대변'}]};
+ const plan=planAdvanceApplication({companyId:'taebaek',partnerId:'partner',complete:true,unattributedReduction:false,blockedSourceKeys:[],sources:[{key:source,companyId:'taebaek',partnerId:'partner',code:'133',originalAmount:100,date:'2026-08-01',fingerprint:'s',purpose:'pair'}],targets:[{statementId:'target',companyId:'taebaek',partnerId:'partner',accountCode:'253',remaining:100,date:'2026-08-20',fingerprint:'t',purpose:'pair'}],priorSourceUse:new Map()}, {operationId:'apply',date:'2026-08-21',purpose:'pair',allocations:[{source,statementId:'target',accountCode:'253',amount:60}]});
+ const applied:IssuedStatement={...target,id:'application',tradeDate:'2026-08-21',totalAmount:60,totalSupply:60,items:plan.items.map(item=>({...item,isTaxExempt:true})),noncashApplication:plan.metadata};
+ const view=renderHook(useVoucherLedger,{initialProps:{...input('taebaek'),issuedStatements:[target,applied],advanceStatements:[applied]}});
+ await act(async()=>{});expect(view.result.current.getBalance(target)).toBe(40);
+});
 beforeEach(() => {
   service.fetchDateRange.mockReset().mockResolvedValue([]); service.fetchByIds.mockReset().mockResolvedValue([]);
   service.fetchWhere.mockReset().mockResolvedValue([]); service.fetchCollection.mockReset().mockResolvedValue([]);

@@ -17,6 +17,10 @@ import { openClaimBalances, PartnerPaymentValidationError, type ReturnApplicatio
 import { planReturnAllocation } from './returnAllocationPlan';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 import { partnerQuarantined } from './partnerCutover';
+import { readPartnerAdvanceSnapshot, resolveSelectedAdvance, advanceClaims } from './partnerAdvanceReader';
+import { activeAdvanceApplications, sourceKey } from './shared/partnerAdvance';
+import { readPartnerAdvanceWriteScope, prepareAdvanceCancellation, prepareAdvanceApplication, writePartnerAdvanceMutations } from './partnerAdvanceCommand';
+import { kstDateOf } from './shared/calculation';
 
 type Row = Record<string, any>;
 type Input = { operationId: string; returnRequestId: string; tradeDate: string;
@@ -190,7 +194,18 @@ export async function processGeneralStockReturn(
       .map(doc => ({ id: doc.id, ...doc.data(), companyId: doc.data().companyId ?? 'taebaek' } as ReturnApplication));
     const claims = statementRows.docs.filter(doc => (doc.data().companyId ?? 'taebaek') === companyId)
       .map(doc => claimFromStatement(doc.id, doc.data())).filter((row): row is NonNullable<typeof row> => row !== null);
-    const reducedClaims = await readClaimsAfterReturns(db, tx, claims, existingApps, statementRows.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+    const advanceSnapshot = await readPartnerAdvanceSnapshot(db, tx, companyId as 'taebaek' | 'punghoe', request.partnerId);
+    const affectedAdvances = activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any, companyId as 'taebaek' | 'punghoe', request.partnerId)
+      .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.accountCode === sourceClaim!.accountCode));
+    const advanceDate = [kstDateOf(new Date()), input.tradeDate, ...affectedAdvances.map(row => row.tradeDate)].sort().at(-1)!;
+    const advanceScope = affectedAdvances.length ? await readPartnerAdvanceWriteScope(db, tx, advanceSnapshot, advanceDate, input.releaseId, revision) : null;
+    const projectedAdvance = { ...advanceSnapshot, rows: Object.fromEntries(Object.entries(advanceSnapshot.rows).map(([key, rows]) => [key, [...rows]])) as typeof advanceSnapshot.rows };
+    const advanceMutations = [];
+    for (const application of affectedAdvances) {
+      const canceled = await prepareAdvanceCancellation(db, tx, advanceSnapshot, application.id, { operationId: 'return-cancel-' + hash([input.operationId, application.id]), date: advanceDate, reason: '반품에 따른 적용 잔량 재계산', actorId }, advanceScope!);
+      advanceMutations.push(canceled); projectedAdvance.rows.issuedStatements.push(canceled.statement); projectedAdvance.rows.partnerAdvanceOperations.push(canceled.operation);
+    }
+    const reducedClaims = advanceScope ? advanceClaims(projectedAdvance) : await readClaimsAfterReturns(db, tx, claims, existingApps, statementRows.docs.map(doc => ({ ...doc.data(), id: doc.id })));
     const claimById = new Map(claims.map(row => [row.id, row]));
     for (const claim of claims) {
       const priorReturned = existingApps.filter(row => row.statementId === claim.id)
@@ -277,7 +292,40 @@ export async function processGeneralStockReturn(
         supply: line.amount, tax: 0, total: line.amount, isTaxExempt: true,
         accountCode: line.accountCode, side: line.side })),
     };
+    const returnOperationData = { companyId, requestHash, businessHash, returnRequestId: returnRef.id, sourceStatementId: sourceSnap.id,
+      amount: plan.amount, docNo, journalId: journal.id, journalHash: hash(journalData),
+      applications: applications.map(row => ({ id: row.id, statementId: row.statementId, amount: row.amount,
+        applicationHash: hash({ companyId, partnerId: request.partnerId, statementId: row.statementId,
+          returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso }) })),
+      stockMovements, stockMovementsHash: hash(stockMovements),
+      rawMovements, rawMovementsHash: hash(rawMovements),
+      receipts: receipts.map(row => ({ id: row.receiptId, itemId: row.itemId,
+        quantity: row.receipt.quantity, fingerprint: row.receipt.returnReceiptFingerprint,
+        receiptHash: hash(row.receipt) })),
+      createdAt: todayIso, createdBy: actorId };
+    if (advanceScope) {
+      projectedAdvance.rows.issuedStatements.push({ ...journalData, id: journal.id });
+      projectedAdvance.rows.returnApplications.push(...applications.map(row => ({ id: row.id, companyId, partnerId: request.partnerId, statementId: row.statementId, returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso })));
+      projectedAdvance.rows.returnOperations.push({ ...returnOperationData, id: operation.id });
+      for (const application of affectedAdvances) {
+        if (application.noncashApplication.kind !== 'advance-application') continue;
+        for (const allocation of application.noncashApplication.allocations) {
+          const resolved = await resolveSelectedAdvance(db, tx, projectedAdvance, allocation.source, allocation.statementId);
+          const source = resolved.context.sources[0], target = resolved.context.targets[0];
+          const amount = Math.min(allocation.amount, source.originalAmount - (resolved.context.priorSourceUse.get(sourceKey(allocation.source)) ?? 0), target.remaining);
+          if (amount <= 0) continue;
+          const reapplied = await prepareAdvanceApplication(db, tx, projectedAdvance, advanceScope, actorId, {
+            operationId: 'return-reapply-' + hash([input.operationId, application.id, sourceKey(allocation.source), allocation.statementId]), date: advanceDate,
+            partnerId: request.partnerId, source: allocation.source, statementId: allocation.statementId, accountCode: allocation.accountCode, amount,
+            expectedRevision: revision, releaseId: input.releaseId, expectedSourceFingerprint: resolved.sourceFingerprint, expectedTargetFingerprint: resolved.targetFingerprint,
+          });
+          advanceMutations.push(reapplied); projectedAdvance.rows.issuedStatements.push(reapplied.statement); projectedAdvance.rows.partnerAdvanceOperations.push(reapplied.operation);
+        }
+      }
+      if (advanceMutations.length * 2 + prepared.length * 2 + rawPrepared.length * 4 + applications.length + 5 > 500) fail('연결된 반품 적용 내역이 너무 많습니다.');
+    }
     writesStarted = true;
+    if (advanceScope) writePartnerAdvanceMutations(tx, advanceSnapshot, advanceScope, advanceMutations, { writePartnerRevision: false });
     writeVoucherCounter(tx, counterSnap, sequence, sequence.last + 1);
     for (const row of prepared) {
       tx.update(db.collection('items').doc(row.itemId), { stock: row.nextStock,
@@ -294,17 +342,7 @@ export async function processGeneralStockReturn(
       returnJournalId: journal.id, returnApplicationId: appRef.id });
     if (stateSnap.exists) tx.update(stateRef, { revision: revision + 1 });
     else tx.create(stateRef, { companyId, partnerId: request.partnerId, revision: 1 });
-    tx.create(operation, { companyId, requestHash, businessHash, returnRequestId: returnRef.id, sourceStatementId: sourceSnap.id,
-      amount: plan.amount, docNo, journalId: journal.id, journalHash: hash(journalData),
-      applications: applications.map(row => ({ id: row.id, statementId: row.statementId, amount: row.amount,
-        applicationHash: hash({ companyId, partnerId: request.partnerId, statementId: row.statementId,
-          returnRequestId: returnRef.id, operationId: input.operationId, amount: row.amount, createdAt: todayIso }) })),
-      stockMovements, stockMovementsHash: hash(stockMovements),
-      rawMovements, rawMovementsHash: hash(rawMovements),
-      receipts: receipts.map(row => ({ id: row.receiptId, itemId: row.itemId,
-        quantity: row.receipt.quantity, fingerprint: row.receipt.returnReceiptFingerprint,
-        receiptHash: hash(row.receipt) })),
-      createdAt: todayIso, createdBy: actorId });
+    tx.create(operation, { ...returnOperationData, advanceStatementIds: advanceMutations.map(row => row.statement.id) });
     return { status: 'applied' as const, docNo, journalId: journal.id };
     } catch (error) {
       const validation = error instanceof ReturnValidationError || error instanceof PartnerPaymentValidationError

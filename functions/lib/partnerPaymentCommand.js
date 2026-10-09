@@ -4,7 +4,7 @@ exports.recordPartnerPaymentCommand = void 0;
 exports.claimFromStatement = claimFromStatement;
 exports.cashFromEntry = cashFromEntry;
 exports.recordPartnerPayment = recordPartnerPayment;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const cashLineProjection_1 = require("./shared/cashLineProjection");
 const cashMutationReceipt_1 = require("./cashMutationReceipt");
 const newScopeCounter_1 = require("./newScopeCounter");
@@ -30,6 +30,9 @@ const nonTrade = /^(1[0-9]{2}|2[0-9]{2}|5[1-9][0-9]|6[0-9]{2}|8[0-9]{2}|9[0-9]{2
 const tradeCodes = new Set(['500', '501', '503', '505']);
 /** The adapter deliberately rejects ambiguous documents instead of inventing an account. */
 function claimFromStatement(id, row) {
+    // 적용·취소의 신뢰성은 공용 reader가 감사와 함께 검증한다. 새 발생채무로 해석하지 않는다.
+    if (row.noncashApplication !== undefined)
+        return null;
     if (!row.partnerId)
         return null;
     const items = Array.isArray(row.items) ? row.items : [];
@@ -206,7 +209,7 @@ async function recordPartnerPayment(db, companyId, actorId, input) {
                 conflict('회사 계좌가 맞지 않습니다.');
             if (!partnerSnap.exists || owner(partnerSnap.data()) !== companyId)
                 conflict('거래처 회사가 맞지 않습니다.');
-            const statements = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
+            const statements = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, statementRows.docs.filter(doc => owner(doc.data()) === companyId)
                 .map(doc => claimFromStatement(doc.id, doc.data()))
                 .filter((row) => row !== null), returnRows.docs.filter(doc => owner(doc.data()) === companyId)
                 .map(doc => (Object.assign({ id: doc.id }, doc.data()))), statementRows.docs.map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))));

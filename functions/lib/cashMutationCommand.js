@@ -14,7 +14,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.prepareTransferCashEditCommand = exports.cashMutationCommand = exports.cashOriginalHash = exports.cashMutationHash = void 0;
 exports.mutateCashEntry = mutateCashEntry;
 exports.prepareTransferCashEdit = prepareTransferCashEdit;
-const returnClaimReader_1 = require("./returnClaimReader");
+const partnerAdvanceReader_1 = require("./partnerAdvanceReader");
+const partnerAdvance_1 = require("./shared/partnerAdvance");
+const partnerAdvanceCommand_1 = require("./partnerAdvanceCommand");
+const partnerAdvanceClaimReader_1 = require("./partnerAdvanceClaimReader");
 const admin = require("firebase-admin");
 const cashMutationReceipt_1 = require("./cashMutationReceipt");
 var cashMutationReceipt_2 = require("./cashMutationReceipt");
@@ -42,7 +45,7 @@ async function mutateCashEntry(db, companyId, actorId, input, authClaims) {
     const cashRef = db.collection('cashEntries').doc(input.cashEntryId);
     const requestHash = (0, cashMutationReceipt_1.cashMutationHash)(Object.assign({ companyId, actorId }, input));
     return db.runTransaction(async (tx) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8;
         const [gate, prior, snap, linkedRows, codes, statements, settlements, cashRows, returns] = await Promise.all([
             tx.get((0, releaseGate_1.releaseGateRef)(db)), tx.get(operation), tx.get(cashRef),
             tx.get(db.collection('settlements').where('cashEntryId', '==', input.cashEntryId)),
@@ -191,10 +194,30 @@ async function mutateCashEntry(db, companyId, actorId, input, authClaims) {
             affected.add(statement.partnerId);
         }
         const stateRows = await Promise.all([...affected].map(async (id) => ({ id, snap: await tx.get(db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${id}`)) })));
+        // 원천을 바꾸기 전에 활성 적용을 같은 거래에서 취소하여 대상 미결을 복원한다.
+        const sourceApplications = current.partnerId
+            ? (0, partnerAdvance_1.activeAdvanceApplications)(allStatements, companyId, current.partnerId)
+                .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.source.collection === 'cashEntries' && allocation.source.id === input.cashEntryId)) : [];
+        const advanceSnapshot = sourceApplications.length
+            ? await (0, partnerAdvanceReader_1.readPartnerAdvanceSnapshot)(db, tx, companyId, current.partnerId) : null;
+        const cancelDate = [(0, calculation_1.kstDateOf)(now), ...sourceApplications.map(row => row.tradeDate)].sort().at(-1);
+        const advanceScope = sourceApplications.length
+            ? await (0, partnerAdvanceCommand_1.readPartnerAdvanceWriteScope)(db, tx, advanceSnapshot, cancelDate, input.releaseId, (_w = (_v = (_u = stateRows.find(row => row.id === current.partnerId)) === null || _u === void 0 ? void 0 : _u.snap.data()) === null || _v === void 0 ? void 0 : _v.revision) !== null && _w !== void 0 ? _w : 0) : null;
+        const advanceMutations = [];
+        for (const application of sourceApplications)
+            advanceMutations.push(await (0, partnerAdvanceCommand_1.prepareAdvanceCancellation)(db, tx, advanceSnapshot, application.id, {
+                operationId: 'cash-advance-' + (0, cashMutationReceipt_1.cashMutationHash)([input.operationId, application.id]), date: cancelDate,
+                reason: input.action === 'delete' ? '원천 현금 삭제에 따른 적용 취소' : '원천 현금 수정에 따른 적용 취소', actorId,
+            }, advanceScope));
+        const projectedAdvance = advanceScope ? Object.assign(Object.assign({}, advanceSnapshot), { rows: Object.assign(Object.assign({}, advanceSnapshot.rows), { issuedStatements: [...advanceSnapshot.rows.issuedStatements, ...advanceMutations.map(row => row.statement)], partnerAdvanceOperations: [...advanceSnapshot.rows.partnerAdvanceOperations, ...advanceMutations.map(row => row.operation)] }) }) : null;
+        if (advanceMutations.length * 2 + (advanceScope ? 1 : 0) + linkedRows.docs.length + stateRows.length + 4 > 500)
+            fail('연결된 적용·정산 문서가 너무 많습니다.');
         const companyCash = cashRows.docs.filter(doc => owner(doc.data()) === companyId && doc.id !== input.cashEntryId).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })));
         if (next)
             companyCash.push(Object.assign(Object.assign({}, next), { id: input.cashEntryId }));
-        const claims = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, allStatements.filter(row => owner(row) === companyId && affected.has(row.partnerId)).map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returns.docs.filter(doc => owner(doc.data()) === companyId && affected.has(doc.data().partnerId)).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))), allStatements);
+        const claims = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, allStatements.filter(row => owner(row) === companyId && affected.has(row.partnerId) && (!projectedAdvance || row.partnerId !== current.partnerId)).map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returns.docs.filter(doc => owner(doc.data()) === companyId && affected.has(doc.data().partnerId) && (!projectedAdvance || doc.data().partnerId !== current.partnerId)).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))), allStatements.filter(row => !projectedAdvance || row.partnerId !== current.partnerId));
+        if (projectedAdvance)
+            claims.push(...(0, partnerAdvanceReader_1.advanceClaims)(projectedAdvance));
         const companySettlements = settlements.docs.filter(doc => owner(doc.data()) === companyId && doc.data().cashEntryId !== input.cashEntryId).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id })));
         companySettlements.push(...linked);
         for (const partner of affected) {
@@ -206,14 +229,16 @@ async function mutateCashEntry(db, companyId, actorId, input, authClaims) {
             }
         }
         for (const state of stateRows)
-            if (!Number.isSafeInteger((_v = (_u = state.snap.data()) === null || _u === void 0 ? void 0 : _u.revision) !== null && _v !== void 0 ? _v : 0) || ((_x = (_w = state.snap.data()) === null || _w === void 0 ? void 0 : _w.revision) !== null && _x !== void 0 ? _x : 0) < 0 || !Number.isSafeInteger(((_z = (_y = state.snap.data()) === null || _y === void 0 ? void 0 : _y.revision) !== null && _z !== void 0 ? _z : 0) + 1) || state.snap.exists && (((_0 = state.snap.data()) === null || _0 === void 0 ? void 0 : _0.companyId) !== companyId || ((_1 = state.snap.data()) === null || _1 === void 0 ? void 0 : _1.partnerId) !== state.id))
+            if (!Number.isSafeInteger((_y = (_x = state.snap.data()) === null || _x === void 0 ? void 0 : _x.revision) !== null && _y !== void 0 ? _y : 0) || ((_0 = (_z = state.snap.data()) === null || _z === void 0 ? void 0 : _z.revision) !== null && _0 !== void 0 ? _0 : 0) < 0 || !Number.isSafeInteger(((_2 = (_1 = state.snap.data()) === null || _1 === void 0 ? void 0 : _1.revision) !== null && _2 !== void 0 ? _2 : 0) + 1) || state.snap.exists && (((_3 = state.snap.data()) === null || _3 === void 0 ? void 0 : _3.companyId) !== companyId || ((_4 = state.snap.data()) === null || _4 === void 0 ? void 0 : _4.partnerId) !== state.id))
                 fail('거래처 revision이 잘못되었습니다.');
         const revision = input.expectedRevision + 1;
         if (!Number.isSafeInteger(revision))
             fail('자금 revision 범위를 초과했습니다.');
-        const result = { id: input.cashEntryId, action: input.action, revision, docNo: (_2 = current.docNo) !== null && _2 !== void 0 ? _2 : '' };
+        const result = { id: input.cashEntryId, action: input.action, revision, docNo: (_5 = current.docNo) !== null && _5 !== void 0 ? _5 : '' };
+        if (advanceScope)
+            (0, partnerAdvanceCommand_1.writePartnerAdvanceMutations)(tx, advanceSnapshot, advanceScope, advanceMutations, { writePartnerRevision: false });
         if (next)
-            tx.update(cashRef, Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, input.patch), (Object.prototype.hasOwnProperty.call(input.patch, 'partnerId') ? { partnerName: (_3 = next.partnerName) !== null && _3 !== void 0 ? _3 : '' } : {})), (next.date !== current.date ? { createdAt: next.createdAt } : {})), (current.balanceAdjustment ? { balanceAdjustment: next.balanceAdjustment } : {})), { mutationRevision: revision }));
+            tx.update(cashRef, Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, input.patch), (Object.prototype.hasOwnProperty.call(input.patch, 'partnerId') ? { partnerName: (_6 = next.partnerName) !== null && _6 !== void 0 ? _6 : '' } : {})), (next.date !== current.date ? { createdAt: next.createdAt } : {})), (current.balanceAdjustment ? { balanceAdjustment: next.balanceAdjustment } : {})), { mutationRevision: revision }));
         else
             tx.delete(cashRef);
         if (payrollUpdate)
@@ -228,7 +253,7 @@ async function mutateCashEntry(db, companyId, actorId, input, authClaims) {
                 tx.update(row.ref, { amount: updated.amount });
         }
         for (const state of stateRows) {
-            const value = { companyId, partnerId: state.id, revision: ((_5 = (_4 = state.snap.data()) === null || _4 === void 0 ? void 0 : _4.revision) !== null && _5 !== void 0 ? _5 : 0) + 1 };
+            const value = { companyId, partnerId: state.id, revision: ((_8 = (_7 = state.snap.data()) === null || _7 === void 0 ? void 0 : _7.revision) !== null && _8 !== void 0 ? _8 : 0) + 1 };
             if (state.snap.exists)
                 tx.update(state.snap.ref, value);
             else
@@ -236,7 +261,7 @@ async function mutateCashEntry(db, companyId, actorId, input, authClaims) {
         }
         tx.create(operation, { companyId, kind: 'cashEntries', voucherId: input.cashEntryId, cashEntryIds: [input.cashEntryId], action: input.action,
             requestHash, status: 'applied', expectedRevision: input.expectedRevision, beforeHash: input.expectedCashHash, beforeSnapshot: current,
-            afterHash: next ? (0, cashMutationReceipt_1.cashOriginalHash)(Object.assign(Object.assign({}, next), { mutationRevision: revision })) : null, result, createdBy: actorId, createdAt: new Date().toISOString() });
+            afterHash: next ? (0, cashMutationReceipt_1.cashOriginalHash)(Object.assign(Object.assign({}, next), { mutationRevision: revision })) : null, canceledAdvanceStatementIds: advanceMutations.map(row => row.statement.id), result, createdBy: actorId, createdAt: new Date().toISOString() });
         return Object.assign(Object.assign({}, result), { status: 'applied' });
     });
 }
@@ -367,7 +392,7 @@ async function mutateTransferCash(tx, db, companyId, actorId, claims, input, cur
         if (!Number.isSafeInteger((_d = (_c = state.snap.data()) === null || _c === void 0 ? void 0 : _c.revision) !== null && _d !== void 0 ? _d : 0) || ((_f = (_e = state.snap.data()) === null || _e === void 0 ? void 0 : _e.revision) !== null && _f !== void 0 ? _f : 0) < 0 || !Number.isSafeInteger(((_h = (_g = state.snap.data()) === null || _g === void 0 ? void 0 : _g.revision) !== null && _h !== void 0 ? _h : 0) + 1) || state.snap.exists && (((_j = state.snap.data()) === null || _j === void 0 ? void 0 : _j.companyId) !== state.companyId || ((_k = state.snap.data()) === null || _k === void 0 ? void 0 : _k.partnerId) !== state.partnerId))
             fail('양사 거래처 revision이 잘못되었습니다.');
         try {
-            const claimRows = await (0, returnClaimReader_1.readClaimsAfterReturns)(db, tx, allStatements.filter(row => owner(row) === state.companyId && row.partnerId === state.partnerId)
+            const claimRows = await (0, partnerAdvanceClaimReader_1.readClaimsAfterReturnsAndAdvance)(db, tx, allStatements.filter(row => owner(row) === state.companyId && row.partnerId === state.partnerId)
                 .map(row => (0, partnerPaymentCommand_1.claimFromStatement)(row.id, row)).filter((row) => row !== null), returns.docs.filter(doc => owner(doc.data()) === state.companyId && doc.data().partnerId === state.partnerId).map(doc => (Object.assign(Object.assign({}, doc.data()), { id: doc.id }))), allStatements);
             const payments = candidateCash.filter(row => owner(row) === state.companyId && row.partnerId === state.partnerId).map(row => (0, partnerPaymentCommand_1.cashFromEntry)(row.id, row)).filter((row) => row !== null);
             (0, cashMutationPlan_1.validateCashSettlementLimits)(claimRows, payments, candidateSettlements.filter(row => owner(row) === state.companyId), state.partnerId);

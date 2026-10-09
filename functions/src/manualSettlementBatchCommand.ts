@@ -1,4 +1,4 @@
-import { readClaimsAfterReturns } from './returnClaimReader';
+import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import * as admin from 'firebase-admin';
 import { partnerQuarantined } from './partnerCutover';
 import { createHash } from 'crypto';
