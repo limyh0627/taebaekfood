@@ -1,3 +1,5 @@
+import {auth} from '../src/shared/firebase';
+import {readTradePending,storeTradePending,clearTradePending,tradePendingKey,tradeNoWriteProof,type TradeStatementPending} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { isStockProduction } from '../src/shared/orderPurpose';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import { loadPayrollCashEdit, prepareTransferCash, hasPendingCashMutation, type PayrollCashEdit, type TransferCashEdit, type PreparedTransferCashEdit } from '../src/features/admin/cashMutationCommands';
@@ -87,7 +89,7 @@ import { buildCashEditPatch, cashEditPartner, cashPartnerChangeError, type CashE
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
-import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
+import { completeTradeStatementRequest, recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
@@ -430,6 +432,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const confirmDelete = useDeleteConfirmation();
   const [isSaving, setIsSaving] = useState(false);
   // 전표 저장 뒤 단가 저장만 실패해도 재시도는 같은 전표에 쓴다. 새 ID면 중복 발행된다.
+  const [issuePending,setIssuePending]=useState<TradeStatementPending|null>(null);
+  const [issuePendingError,setIssuePendingError]=useState('');
+  const issueActor=auth.currentUser?.uid;
+  useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePending(null);setIssuePendingError('');if(!issueActor)return;try{setIssuePending(readTradePending(tradePendingKey(companyId,issueActor),companyId,issueActor));}catch(error){setIssuePendingError((error as Error).message);}},[companyId,issueActor]);
   const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
 
   /**
@@ -1427,7 +1433,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
-  const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<IssuedStatement | null> => {
+  const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
@@ -1485,11 +1491,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       beforeCost: Number(allItems.find(i => i.id === c.itemId)?.cost ?? 0),
       sourceLineIndex: lineItems.findIndex(line => line.itemId === c.itemId),
     }));
-    const 결과 = await onApplyStatement({
-      command, statement: stmt, costUpdates,
-      poIds: stmtType === '매입' && registerInbound ? loadedPoIds : [],
-      newPoItems: registerInbound ? newPoItems : [],
-    });
+    const input={command,statement:{...stmt,companyId},costUpdates,
+      poIds:stmtType==='매입'&&registerInbound?loadedPoIds:[],newPoItems:registerInbound?newPoItems:[]};
+    const uid=auth.currentUser?.uid;if(!uid)throw new Error('로그인을 확인해 주세요.');
+    const paymentAmount=Number((issuePayAmount||'').replace(/[,\s원]/g,''))||0;
+    if(issuePay&&paymentAmount>0&&(!Number.isSafeInteger(paymentAmount)||!defaultCashAccountId(activeCashAccounts,companyId)))throw new Error('지불 금액과 입출금 계좌를 확인해 주세요.');
+    const pending:TradeStatementPending={version:1,companyId,userId:uid,input,
+      ...(issuePay&&paymentAmount>0?{payment:{amount:paymentAmount,date:tradeDate,cashAccountId:defaultCashAccountId(activeCashAccounts,companyId)}}:{})};
+    const key=tradePendingKey(companyId,uid),text=storeTradePending(key,pending);setIssuePending(pending);
+    const token=cashEditScope.current.token;
+    let 결과:Awaited<ReturnType<NonNullable<typeof onApplyStatement>>>;
+    try{결과=await onApplyStatement(input);}catch(error){if(cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&tradeNoWriteProof(error,pending)){clearTradePending(key,text);setIssuePending(null);issueIdentityRef.current=null;}throw error;}
+    if(!cashEditScope.current.alive||cashEditScope.current.token!==token||auth.currentUser?.uid!==uid)throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
     if (결과 === 'applied' || (typeof 결과 !== 'string' && 결과.status === 'applied')) {
       try {
@@ -1503,7 +1516,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
     //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
-    return typeof 결과 === 'string' ? stmt : { ...stmt, docNo: 결과.docNo };
+    return {statement:typeof 결과 === 'string' ? stmt : { ...stmt, docNo: 결과.docNo },pending};
   };
 
   // 과거 전표를 고쳐도 지금 거래처 단가가 옛 값으로 돌아가면 안 된다.
@@ -1527,7 +1540,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return link ? noLinkIds : new Set([...noLinkIds, ...unlinked.map(line => line.itemId!)]);
   };
 
+  const retryIssue=async()=>{
+    const p=issuePending;if(!p||saveBusyRef.current||!onApplyStatement)return;
+    const token=cashEditScope.current.token;
+    const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===p.userId&&companyId===p.companyId;
+    if(!alive())return;saveBusyRef.current=true;setIsSaving(true);
+    try {const result=await onApplyStatement(p.input);if(!alive())return;
+      const statement=typeof result==='string'?p.input.statement:{...p.input.statement,docNo:result.docNo};
+      if(p.payment){await recordPayment([{stmt:statement,amount:p.payment.amount}],{date:p.payment.date,method:'계좌이체',cashAccountId:p.payment.cashAccountId,pin:true});if(!alive())return;}
+      clearTradePending(tradePendingKey(p.companyId,p.userId),JSON.stringify(p));completeTradeStatementRequest(p.companyId,p.userId,p.input.command.operationId);setIssuePending(null);saveBusyRef.current=false;closeCreate();
+    }catch(error){if(alive())alert(저장실패문구(error));}finally{if(alive()){saveBusyRef.current=false;setIsSaving(false);}}
+  };
+
   const handleIssue = async () => {
+    if(issuePending){await retryIssue();return;}if(issuePendingError)return;
+    const token=cashEditScope.current.token,uid=auth.currentUser?.uid;
+    const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid;
     if (saveBusyRef.current) return;
     // 계정과목 미설정 품목이 있으면 발행 차단 (매출은 800 기본이라 대개 매입에서 걸림)
     const 계정없음 = 걸린줄들('NO_ACCOUNT_CODE');
@@ -1572,11 +1600,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       '이 매입전표의 재고 품목을 입고대기에 등록할까요?\n\n' +
       '예: 입고대기에 등록\n아니오: 매입전표만 발행'
     );
+    if(!alive())return;
     saveBusyRef.current = true;
     setIsSaving(true);
     try {
-      const stmt = await markIssued(registerInbound, skipLinkIds);
-      if (!stmt) return;
+      const issued = await markIssued(registerInbound, skipLinkIds);
+      if (!issued||!alive()) return;
+      const stmt=issued.statement;
       //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
       if (issuePay) {
         const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
@@ -1586,14 +1616,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           });
         }
       }
+      if(!alive())return;
+      if(uid){const p=issued.pending,key=tradePendingKey(companyId,uid);clearTradePending(key,JSON.stringify(p));completeTradeStatementRequest(companyId,uid,p.input.command.operationId);setIssuePending(null);}
       setIssuePay(false); setIssuePayAmount('');
       saveBusyRef.current = false;
       closeCreate();
     } catch (e: any) {
-      alert(저장실패문구(e));
+      if(alive())alert(저장실패문구(e));
     } finally {
-      saveBusyRef.current = false;
-      setIsSaving(false);
+      if(alive()){saveBusyRef.current = false;setIsSaving(false);}
     }
   };
 
@@ -1992,6 +2023,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
+      {(issuePending||issuePendingError)&&<div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+        <p>{issuePendingError||'저장 결과를 확인하지 못한 전표가 있습니다. 같은 원문으로 재시도합니다.'}</p>
+        {issuePending&&<><p>{issuePending.input.statement.partnerName} · {issuePending.input.statement.tradeDate} · {issuePending.input.statement.totalAmount.toLocaleString()}원</p><button type="button" disabled={isSaving} onClick={retryIssue}>이전 전표 재시도</button>{createMode&&<button type="button" disabled={isSaving} onClick={closeCreate}>작성창 닫기</button>}</>}
+      </div>}
       {!composerOnly && <>
       <PageHeader
         title="거래명세서"
@@ -2445,7 +2480,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {createMode && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
-          <fieldset disabled={isSaving} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
+          <fieldset disabled={isSaving || !editingStmt && (!!issuePending || !!issuePendingError)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
 
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
               editingDocNo={editingStmt?.docNo} editMode={isEditMode}

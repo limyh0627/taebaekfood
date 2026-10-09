@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
+import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp as initAdmin, deleteApp as deleteAdmin } from 'firebase-admin/app';
+import { getAuth as adminAuth } from 'firebase-admin/auth';
+import { getFirestore as adminFirestore } from 'firebase-admin/firestore';
 import {
   initializeTestEnvironment, assertSucceeds, assertFails,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, runTransaction, writeBatch, getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 
 /**
  * **회사별·메뉴별 권한을 규칙이 실제로 막는가.**
@@ -50,6 +56,60 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
+  it.skipIf(process.env.CASH_WRITE_RULES_AUTH_TEST !== 'true')('현금 서버 전용 저장: 실제 로그인·양사 조회·모든 직접 쓰기 거절·원문 보존', async () => {
+    if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8082' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099') throw new Error('격리 에뮬레이터 주소를 확인하세요.');
+    const prefix = `cash-rules-${randomUUID()}`;
+    const admin = initAdmin({ projectId: 'demo-rules-test' }, prefix);
+    const database = adminFirestore(admin), users: string[] = [], apps: FirebaseApp[] = [], paths: string[] = [];
+    try {
+      const clients = [];
+      for (const companyId of ['taebaek', 'punghoe'] as const) {
+        const uid = `${prefix}-${companyId}`, employeeId = `${uid}-employee`, email = `${uid}@example.invalid`, password = `${randomUUID()}Aa1!`;
+        await adminAuth(admin).createUser({ uid, email, password }); users.push(uid);
+        await adminAuth(admin).setCustomUserClaims(uid, { employeeId, companyId, isAdmin: true });
+        const app = initializeApp({ projectId: 'demo-rules-test', apiKey: 'local-emulator-only' }, uid); apps.push(app);
+        const auth = getAuth(app); connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+        const db = getFirestore(app); connectFirestoreEmulator(db, '127.0.0.1', 8082);
+        await signInWithEmailAndPassword(auth, email, password);
+        expect(auth.currentUser!.uid).not.toBe(employeeId);
+        expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({ employeeId, companyId, isAdmin: true });
+        clients.push({ db, companyId });
+        const path = `cashEntries/${prefix}-${companyId}-read`; paths.push(path);
+        await database.doc(path).create({ companyId, amount: 10 });
+      }
+      for (const { db, companyId } of clients) {
+        const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
+        await assertSucceeds(getDoc(doc(db, `cashEntries/${prefix}-${companyId}-read`)));
+        await assertSucceeds(getDocs(query(collection(db, 'cashEntries'), where('companyId', '==', companyId))));
+        await assertFails(getDoc(doc(db, `cashEntries/${prefix}-${other}-read`)));
+        await assertFails(getDocs(query(collection(db, 'cashEntries'), where('companyId', '==', other))));
+        await assertFails(getDocs(collection(db, 'cashEntries')));
+        const variants = [ {}, ...['108', '251', '253'].map(accountCode => ({ accountCode })),
+          { loanId: `${prefix}-loan` }, { payrollId: `${prefix}-payroll` }, { transferOperationId: `${prefix}-transfer` } ];
+        for (const [index, fields] of variants.entries()) {
+          const original = { companyId, dir: '출금', amount: 100, date: '2026-10-09', ...fields };
+          const path = `cashEntries/${prefix}-${companyId}-${index}`; paths.push(path);
+          // 서버 Admin SDK 생산은 성공하고, 같은 문서의 클라이언트 변경은 거절되어야 한다.
+          await database.doc(path).create(original);
+          const newPath = `${path}-new`; paths.push(newPath);
+          await assertFails(setDoc(doc(db, newPath), original));
+          await assertFails(setDoc(doc(db, path), { ...original, amount: 200 }));
+          await assertFails(updateDoc(doc(db, path), { amount: 200 }));
+          await assertFails(deleteDoc(doc(db, path)));
+          expect((await database.doc(path).get()).data()).toEqual(original);
+          expect((await database.doc(newPath).get()).exists).toBe(false);
+        }
+      }
+    } finally {
+      for (const path of paths) {
+        if (!path.includes(prefix)) throw new Error('자기 문서가 아닌 정리 경로입니다.');
+        await database.doc(path).delete(); expect((await database.doc(path).get()).exists).toBe(false);
+      }
+      for (const uid of users) await adminAuth(admin).deleteUser(uid);
+      for (const app of apps) await deleteApp(app);
+      await deleteAdmin(admin);
+    }
+  }, 90_000);
   describe('OEM 취소 가공비 부재 단건 조회', () => {
     it('양사 관리자만 없는 OEM 가공비 요청을 단건 조회한다', async () => {
       for (const db of [관리자(), 풍회관리자()]) await assertSucceeds(getDoc(doc(db, 'adjustmentRequests', 'OEMFEE-cancel-missing')));
@@ -669,7 +729,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     for (const companyId of ['taebaek', 'punghoe']) {
       const own = () => companyId === 'taebaek' ? 관리자() : 풍회관리자();
       for (const state of ['absent', 'disabled', 'active']) {
-        it(`${companyId} ${state}: 활성 대출 현금만 직접 쓰기를 막는다`, async () => {
+        it(`${companyId} ${state}: 전환 설정과 무관하게 현금 직접 쓰기를 막는다`, async () => {
           await env.withSecurityRulesDisabled(async ctx => {
             const store = ctx.firestore();
             if (state !== 'absent') await setDoc(doc(store, 'appMeta', `loanMovementCutover_${companyId}`), { companyId, enabled: state === 'active' });
@@ -677,15 +737,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
             await setDoc(doc(store, 'cashEntries', 'general-existing'), { companyId, amount: 100 });
           });
           const db = own();
-          const check = state === 'active' ? assertFails : assertSucceeds;
+          const check = assertFails;
           await check(setDoc(doc(db, 'cashEntries', 'loan-new'), { companyId, loanId: 'loan-a', amount: 100 }));
           await check(updateDoc(doc(db, 'cashEntries', 'loan-existing'), { amount: 200 }));
           await check(updateDoc(doc(db, 'cashEntries', 'loan-existing'), { loanId: '' }));
           await check(updateDoc(doc(db, 'cashEntries', 'general-existing'), { loanId: 'loan-a' }));
           await check(deleteDoc(doc(db, 'cashEntries', 'loan-existing')));
-          await assertSucceeds(setDoc(doc(db, 'cashEntries', 'general-new'), { companyId, amount: 100 }));
-          await assertSucceeds(updateDoc(doc(db, 'cashEntries', 'general-new'), { amount: 200 }));
-          await assertSucceeds(deleteDoc(doc(db, 'cashEntries', 'general-new')));
+          await assertFails(setDoc(doc(db, 'cashEntries', 'general-new'), { companyId, amount: 100 }));
+          await assertFails(updateDoc(doc(db, 'cashEntries', 'general-existing'), { amount: 200 }));
+          await assertFails(deleteDoc(doc(db, 'cashEntries', 'general-existing')));
           await assertSucceeds(setDoc(doc(db, 'loanContracts', 'opening-contract'), { companyId, openingPrincipal: 100 }));
           await assertSucceeds(updateDoc(doc(db, 'loanContracts', 'opening-contract'), { movementRevision: 1, principalBalance: 200 }));
           await assertFails(setDoc(doc(db, 'cashEntries', 'foreign-cash'), { companyId: companyId === 'taebaek' ? 'punghoe' : 'taebaek', loanId: 'loan-a' }));
@@ -718,7 +778,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
           await check(setDoc(doc(db, 'payrolls', 'new-payroll'), { companyId, yearMonth: '2026-10', lines: [] }));
           await check(updateDoc(doc(db, 'payrolls', 'legacy-payroll'), { note: '직접 변경' }));
           await check(deleteDoc(doc(db, 'payrolls', 'legacy-payroll')));
-          await assertSucceeds(setDoc(doc(db, 'cashEntries', 'general-cash'), { companyId, amount: 100 }));
+          await assertFails(setDoc(doc(db, 'cashEntries', 'general-cash'), { companyId, amount: 100 }));
         });
       }
       it(`${companyId}: 급여 전환 설정은 관리자도 직접 생성·변조·삭제하지 못한다`, async () => {

@@ -1,0 +1,8 @@
+/** @vitest-environment jsdom */
+import {beforeEach,it,expect} from 'vitest';
+import {storeTradePending,clearTradePending,readTradePending,tradePendingKey,type TradeStatementPending} from './tradeStatementPending';
+const pending:TradeStatementPending={version:1,companyId:'taebaek',userId:'uid',input:{command:{operationId:'issue:s',statementId:'s',kind:'ISSUE',partnerId:'p',partnerName:'거래처',tradeDate:'2026-10-09',type:'매입',docNo:'preview',orderIds:['order'],lines:[],totals:{supply:100,tax:0,amount:100}},statement:{id:'s',companyId:'taebaek',partnerId:'p',partnerName:'거래처',tradeDate:'2026-10-09',type:'매입',docNo:'preview',orderId:'order',issuedAt:'',totalAmount:100,totalSupply:100,totalTax:0,items:[{name:'품목',spec:'',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:false}]},poIds:['po'],newPoItems:[],costUpdates:[]}};
+beforeEach(()=>localStorage.clear());
+it('주문·PO·원가 원문과 UID 회사 범위를 복원한다',()=>{const key=tradePendingKey('taebaek','uid');storeTradePending(key,pending);expect(readTradePending(key,'taebaek','uid')).toEqual(pending);expect(()=>readTradePending(key,'taebaek','other')).toThrow();});
+it('다른 창 원문을 덮거나 늦은 완료로 삭제하지 않는다',()=>{const key=tradePendingKey('taebaek','uid'),text=storeTradePending(key,pending);expect(()=>storeTradePending(key,{...pending,userId:'other'})).toThrow();localStorage.setItem(key,'other');clearTradePending(key,text);expect(localStorage.getItem(key)).toBe('other');});
+it('유효 JSON 손상은 원문 보존 후 재전송을 막는다',()=>{const key=tradePendingKey('taebaek','uid');localStorage.setItem(key,JSON.stringify({...pending,input:{...pending.input,poIds:3}}));expect(()=>readTradePending(key,'taebaek','uid')).toThrow();expect(localStorage.getItem(key)).not.toBeNull();});

@@ -56,6 +56,7 @@ interface Props {
   /** 열 때의 방향 — 지금은 목록 화면의 [일반전표] 단추가 늘 출금으로 연다 */
   initialDir: VoucherDir;
   initialDate?: string;
+  initialPartnerId?: string;
 
   partners: Partner[];
   accountCodes: AccountCode[];
@@ -90,7 +91,7 @@ interface Props {
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export default function VoucherComposer({
-  companyId, initialDir, initialDate, partners, accountCodes, accountGroups, cashAccounts,
+  companyId, initialDir, initialDate, initialPartnerId, partners, accountCodes, accountGroups, cashAccounts,
   fixedCostTemplates, cashEntries, statements: mergedStatements, partnerBalances, getBalance,
   cashAccountId: quickPayAccountId, onCashAccountId: setQuickPayAccountId,
   onClose, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate,
@@ -102,7 +103,7 @@ export default function VoucherComposer({
   const normalOf = (code: string): 'debit' | 'credit' =>
     accountCodes.find(a => String(a.code) === String(code))?.normalBalance ?? 'debit';
 
-    const [quickPayClientId, setQuickPayClientId] = useState('');
+    const [quickPayClientId, setQuickPayClientId] = useState(initialPartnerId ?? '');
   const [quickPayClientSearch, setQuickPayClientSearch] = useState('');
   const [quickPayDate, setQuickPayDate] = useState(initialDate ?? today());
   const [quickPayAmount, setQuickPayAmount] = useState('');

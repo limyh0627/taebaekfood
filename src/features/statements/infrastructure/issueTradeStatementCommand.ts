@@ -1,3 +1,4 @@
+import {tradeRequestKey} from './tradeStatementPending';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../../shared/firebase';
@@ -13,19 +14,39 @@ export type TradeStatementIssueInput = {
   costUpdates: { itemId: string; price: number; beforeCost: number; sourceLineIndex: number }[];
 };
 
-/** 운영 규칙은 전표 직접 쓰기를 막는다. 발행과 연관 기록은 서버의 한 거래로 저장한다. */
-export async function issueTradeStatementCommand(input: TradeStatementIssueInput): Promise<{
-  status: 'applied' | 'duplicate'; id: string; docNo: string;
-}> {
-  await authReady;
-  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
-  if (gate?.status !== 'active' || typeof gate.releaseId !== 'string') {
-    throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
-  }
-  const scoped = await companyScopedWriteData('issuedStatements', input.statement as unknown as Record<string, unknown>);
-  const call = httpsCallable<unknown, { status: 'applied' | 'duplicate'; id: string; docNo: string }>(functions, 'issueTradeStatementCommand');
-  const result = await call({ ...input, statement: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId });
-  return result.data;
+const completedTradeRequests=new Map<string,string>();
+/** 발행과 연관 기록을 서버 한 거래로 저장한다. */
+export async function issueTradeStatementCommand(input: TradeStatementIssueInput): Promise<{status:'applied'|'duplicate';id:string;docNo:string}> {
+ const uid=auth.currentUser?.uid,companyId=input.statement.companyId;
+ const assertActor=()=>{if(!uid||auth.currentUser?.uid!==uid)throw new Error('로그인 사용자가 변경되었습니다. 전표를 보내지 않았습니다.');};
+ let request:TradeStatementIssueInput&{releaseId:string};let key='';let old:string|null=null;let encoded='';
+ try {
+  await authReady;assertActor();
+  if(companyId!=='taebaek'&&companyId!=='punghoe')throw new Error('전표 회사를 확인해 주세요.');
+  key=tradeRequestKey(companyId,uid!);old=localStorage.getItem(key);
+  const gate=(await getDoc(doc(db,'appMeta','releaseCutover'))).data();assertActor();
+  if(gate?.status!=='active'||typeof gate.releaseId!=='string')throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
+  const scoped=await companyScopedWriteData('issuedStatements',input.statement as unknown as Record<string,unknown>);assertActor();
+  const fresh={...input,statement:JSON.parse(JSON.stringify(scoped)),releaseId:gate.releaseId};
+  if(old){request=JSON.parse(old);const comparable=(r:TradeStatementIssueInput)=>JSON.stringify({...r,statement:{...r.statement,createdBy:undefined},newPo:r.newPo?{...r.newPo,cardNo:undefined}:undefined,releaseId:undefined});
+   if(request.operationId!==input.operationId||request.statement.companyId!==companyId||typeof request.releaseId!=='string'||comparable(request)!==comparable(fresh))throw new Error('이전에 저장 중이던 전표 원문을 먼저 재시도해 주세요.');
+  }else request=fresh;
+  encoded=JSON.stringify(request);if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
+  localStorage.setItem(key,encoded);assertActor();
+ }catch(error){if(!old&&encoded&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);if(!old&&(companyId==='taebaek'||companyId==='punghoe'))throw Object.assign(new Error(error instanceof Error?error.message:String(error)),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId}});throw error;}
+ try {
+  const call=httpsCallable<unknown,{status:'applied'|'duplicate';id:string;docNo:string}>(functions,'issueTradeStatementCommand');
+  assertActor();const result=await call(request!);assertActor();completedTradeRequests.set(key,encoded);return result.data;
+ }catch(error){const d=(error as {details?:Record<string,unknown>})?.details;
+  if(!old&&d?.operationStatus==='rejected'&&d.version===1&&d.financialWrites===false&&d.companyId===companyId&&d.operationId===input.operationId&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);
+  throw error;
+ }
+}
+/** 즉시 지급까지 완료한 화면만 원 요청을 정리한다. */
+export function completeTradeStatementRequest(companyId:string,uid:string,operationId:string):void {
+ if(auth.currentUser?.uid!==uid||(companyId!=='taebaek'&&companyId!=='punghoe'))return;
+ const key=tradeRequestKey(companyId,uid),text=localStorage.getItem(key);if(!text)return;
+ try{if(JSON.parse(text).operationId===operationId&&completedTradeRequests.get(key)===text&&localStorage.getItem(key)===text){localStorage.removeItem(key);completedTradeRequests.delete(key);}}catch{/* 손상 원문 보존 */}
 }
 
 /** 주문 연결이 없는 일반 대체전표도 번호와 본문을 서버에서 함께 확정한다. */

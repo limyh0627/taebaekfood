@@ -1,7 +1,7 @@
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
-import { AccountCode, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement, companyOf } from '../src/shared/types';
+import { AccountCode, AccountGroup, FixedCostTemplate, Partner, CashAccount, CashEntry, CompanyId, IssuedStatement, Settlement, companyOf } from '../src/shared/types';
 import { endOfMonth, monthStart, today } from '../src/shared/day';
 import { recordPartnerPayment } from '../src/features/statements/infrastructure/issueTradeStatementCommand';
 import VoucherSlip from '../src/shared/VoucherSlip';
@@ -12,8 +12,19 @@ import { downloadListExcel } from '../src/shared/listExcel';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 import PartnerAdvanceModal from './PartnerAdvanceModal';
+import { defaultCashAccountId } from '../src/shared/defaultCashAccount';
+import { settlementTypeOf, settlementDirectionOf } from '../src/features/admin/voucherMerge';
+const VoucherComposer = React.lazy(() => import('./voucher/VoucherComposer'));
+type ComposerProps = React.ComponentProps<typeof VoucherComposer>;
 
 interface Props {
+  partners?: Partner[];
+  accountGroups?: AccountGroup[];
+  fixedCostTemplates?: FixedCostTemplate[];
+  onAddCashEntry?: ComposerProps['onAddCashEntry'];
+  onIssueCashEntry?: ComposerProps['onIssueCashEntry'];
+  onAddIssuedStatement?: ComposerProps['onAddIssuedStatement'];
+  onAddFixedCostTemplate?: ComposerProps['onAddFixedCostTemplate'];
   advanceStatements?: readonly IssuedStatement[];
   returnOperations?: readonly ReadonlyReturnOperation[];
   companyId: CompanyId;
@@ -29,7 +40,7 @@ interface Props {
 
 const fmt = (n: number) => Number.isFinite(n) ? n.toLocaleString('ko-KR') : '반품 연결 확인 중';
 
-export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], returnOperations, advanceStatements, onOpenVoucher }: Props) {
+export default function PartnerLedger({ companyId, issuedStatements: allStatements, cashEntries: allCashEntries, cashAccounts, accountCodes, settlements = [], returnOperations, advanceStatements, onOpenVoucher, partners = [], accountGroups = [], fixedCostTemplates = [], onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate }: Props) {
   const issuedStatements = useMemo(() => allStatements.filter(s => companyOf(s) === companyId), [allStatements, companyId]);
   const cashEntries = useMemo(() => allCashEntries.filter(e => companyOf(e) === companyId), [allCashEntries, companyId]);
   //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
@@ -39,6 +50,9 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
   const [selectedAccount, setSelectedAccount] = useState('');
   /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
+  const [manualVoucher, setManualVoucher] = useState<{companyId: CompanyId; partnerId: string} | null>(null);
+  const [manualAccountId, setManualAccountId] = useState('');
+  const activeCashAccounts = cashAccounts.filter(a => companyOf(a) === companyId && a.active);
   const [payOpen, setPayOpen] = useState(false);
   const [advanceOpen, setAdvanceOpen] = useState(false);
   const [payAccountId, setPayAccountId] = useState('');
@@ -67,6 +81,16 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
     () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes }),
     [issuedStatements, cashEntries, accountCodes]);
   const journals = journalResult.entries;
+  const composerBalances = useMemo(() => {
+    const result = new Map<string, {receivable: number; payable: number}>();
+    for (const kind of ['매출', '매입'] as const) for (const row of partnerBalances(kind, issuedStatements, cashEntries, journals)) {
+      const balance = result.get(row.partnerId) ?? {receivable: 0, payable: 0};
+      balance[kind === '매출' ? 'receivable' : 'payable'] = row.balance;
+      result.set(row.partnerId, balance);
+    }
+    return result;
+  }, [issuedStatements, cashEntries, accountCodes]);
+
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
@@ -265,6 +289,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
           <section aria-label="전체 거래처 원장" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
               <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
+              {sel && onAddIssuedStatement && <button type="button" onClick={() => { setManualAccountId(defaultCashAccountId(activeCashAccounts, companyId)); setManualVoucher({companyId, partnerId: sel.partnerId}); }} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">수동 전표 작성</button>}
               <select aria-label="계정 필터" value={activeAccount} onChange={e => setSelectedAccount(e.target.value)}
                 className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
                 <option value="">모든 계정</option>
@@ -581,6 +606,25 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
             </div>
         </ModalShell>
       )}
+      {manualVoucher?.companyId === companyId && <React.Suspense fallback={<p role="status">전표 작성창을 여는 중입니다.</p>}>
+        <VoucherComposer key={companyId + ':' + manualVoucher.partnerId} companyId={companyId} initialDir="대체" initialPartnerId={manualVoucher.partnerId}
+          partners={partners.filter(p => companyOf(p) === companyId)} accountCodes={accountCodes} accountGroups={accountGroups} cashAccounts={activeCashAccounts}
+          fixedCostTemplates={fixedCostTemplates} cashEntries={cashEntries} statements={issuedStatements} partnerBalances={composerBalances}
+          getBalance={statement => allocatePartnerCash(statement.partnerId, settlementTypeOf(statement), issuedStatements, cashEntries, settlements, undefined, returnOperations, {statements: advanceStatements}).get(statement.id) ?? 0}
+          cashAccountId={manualAccountId} onCashAccountId={setManualAccountId} onClose={() => setManualVoucher(null)}
+          onAddCashEntry={onAddCashEntry} onIssueCashEntry={onIssueCashEntry} onAddIssuedStatement={onAddIssuedStatement} onAddFixedCostTemplate={onAddFixedCostTemplate}
+          recordPayment={(allocations, opts) => {
+            const first = allocations[0]?.stmt;
+            const amount = allocations.reduce((sum, row) => sum + row.amount, 0);
+            if (!first?.partnerId || amount <= 0 || allocations.some(row => row.stmt.partnerId !== first.partnerId || companyOf(row.stmt) !== companyId)) throw new Error('같은 회사의 거래처와 수금·지불 금액을 확인해 주세요.');
+            const cashAccountId = opts.cashAccountId || defaultCashAccountId(activeCashAccounts, companyId);
+            if (!activeCashAccounts.some(account => account.id === cashAccountId)) throw new Error('입출금 계좌를 선택해 주세요.');
+            return recordPartnerPayment(companyId, {tradeDate: opts.date, partnerId: first.partnerId, direction: settlementDirectionOf(first), amount, cashAccountId, pin: opts.pin !== false,
+              allocations: opts.pin === false ? [] : allocations.map(row => ({statementId: row.stmt.id, amount: row.amount})), note: opts.note || first.partnerName || ''});
+          }}
+          renderJournal={(je, _compact, meta) => <VoucherSlip je={je} partnerName={new Map(partners.map(p => [p.id, p.name]))} headPartner={partners.find(p => p.id === manualVoucher.partnerId)?.name} date={meta?.date ?? today()} docNo={meta?.docNo ?? ''} codeName={codeName} />}
+        />
+      </React.Suspense>}
       {advanceOpen && sel && <PartnerAdvanceModal key={`${companyId}:${selId}`} companyId={companyId} partnerId={selId} partnerName={sel.partnerName} onClose={() => setAdvanceOpen(false)} />}
     </div>
   );

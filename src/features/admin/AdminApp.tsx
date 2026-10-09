@@ -4688,7 +4688,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <div className="p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   {ledgerTab === 'partner' ? (
-                    <PartnerLedger
+                    <PartnerLedger key={companyId}
+                      partners={partners}
+                      accountGroups={appData.accountGroups}
+                      fixedCostTemplates={companyTemplates}
+                      onAddCashEntry={addCashEntry}
+                      onIssueCashEntry={addCashEntry}
+                      onAddIssuedStatement={stmt => issueNumberedStatement({ ...stmt, companyId, createdBy: stmt.createdBy ?? currentUser?.name })}
+                      onAddFixedCostTemplate={async data => { await addItem('fixedCostTemplates', { ...data, companyId, id: `fct-${Date.now()}` }); refreshStaticData(); }}
                       returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                   advanceStatements={appData.advanceStatements}
                       companyId={companyId}

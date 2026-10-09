@@ -7,12 +7,16 @@ import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '..
 import { appConfirm } from '../src/shared/components/appDialog';
 import { OrderStatus, type Order } from '../src/shared/types';
 
+const issueMocks=vi.hoisted(()=>({payment:vi.fn()}));
+vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment}));
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
+
 // 운영 DB에 닿지 않고 저장 콜백의 완료·실패에 따른 화면 동작을 검증한다.
 vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []) }));
 vi.mock('../src/features/admin/useVoucherLedger', () => ({
   useVoucherLedger: ({ issuedStatements }: { issuedStatements: IssuedStatement[] }) => ({
     mergedStatements: issuedStatements, journalBySource: new Map(), partnerBalances: new Map(),
-    getBalance: () => 0, canSettle: () => false, isVouchered: () => false,
+    getBalance: (statement:IssuedStatement) => statement.totalAmount, canSettle: () => false, isVouchered: () => false,
     isFetchingHistory: false, forgetStatement: vi.fn(),
   }),
 }));
@@ -93,6 +97,8 @@ function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
 }
 
 beforeEach(() => {
+  issueMocks.payment.mockResolvedValue(undefined);
+  localStorage.clear();
   vi.clearAllMocks();
   vi.spyOn(window, 'alert').mockImplementation(() => {});
   vi.mocked(appConfirm).mockResolvedValue(true);
@@ -260,7 +266,8 @@ describe('자금 전표 수정 저장 순서', () => {
     const source = cash;
     const save = vi.fn(async () => {}), match = vi.fn(async () => {}), oldAdd = vi.fn();
     const stmt = { id: 'fifo-statement', companyId: 'taebaek', partnerId: partner.id, partnerName: partner.name,
-      docNo: '260924-01', type: '매출', tradeDate: '2026-09-24', totalAmount: 10000 } as IssuedStatement;
+      docNo: '260924-01', type: '매출', tradeDate: '2026-09-24', totalAmount: 10000,
+      items:[{name:'매출',qty:1,price:10000,supply:10000,tax:0,total:10000,isTaxExempt:true,accountCode:'108'}] } as IssuedStatement;
     setup(undefined, undefined, { pendingInvoice: null, cashEntries: [source], issuedStatements: [stmt],
       onUpdateCashEntry: save, onMatchCashAllocations: match, onAddSettlement: oldAdd,
       accountCodes: [{ id: 'ar', code: '108', name: '외상매출금' }] as React.ComponentProps<typeof TradeStatement>['accountCodes'] });
@@ -349,6 +356,7 @@ it('실제 전표 날짜셀은 월 탐색을 저장하지 않고 적용 뒤 기�
     tradeDate:'2026-10-06',issuedAt:'2026-10-06T00:00:00Z',type:'매입',totalSupply:100,totalTax:0,totalAmount:100,
     items:[{itemId:item.id,name:item.name,qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]} as IssuedStatement;
   setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[stmt],onUpdateIssuedStatement:update});
+  fireEvent.click(screen.getByRole('button',{name:'ALL'}));
   const input = (await screen.findAllByLabelText('전표일자'))[0];
   fireEvent.change(input,{target:{value:'2026-09-06'}});fireEvent.blur(input);
   expect(appConfirm).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();
@@ -381,4 +389,53 @@ it('저장 대기 중 갱신된 외부 날짜를 늦은 완료가 이전 날짜�
   expect(screen.getByLabelText('전표일자')).toHaveValue('2026-09-06');
   expect(screen.queryByRole('button',{name:'날짜 적용'})).not.toBeInTheDocument();
   expect(apply).toHaveBeenCalledOnce();
+});
+
+
+it('응답 유실 뒤 다시 열면 이전 주요 발행 원문을 재시도한다', async () => {
+  const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
+  const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-original']}} onApplyStatement={apply} composerOnly/>);
+  fireEvent.click(screen.getByRole('button',{name:'저장'}));
+  await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+  const original=apply.mock.calls[0][0];
+  const close=await screen.findByRole('button',{name:'작성창 닫기'});await waitFor(()=>expect(close).not.toBeDisabled());fireEvent.click(close);
+  expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument();
+  first.unmount();
+  setup(undefined,undefined,{pendingInvoice:null,composerOnly:true,onApplyStatement:apply});
+  fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));
+  await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
+  expect(apply.mock.calls[1][0]).toEqual(original);
+});
+
+
+it('전표 발행 뒤 지급 응답 유실도 재열기에서 같은 전표와 지급 원문으로 재시도한다',async()=>{
+ const apply=vi.fn().mockResolvedValue('duplicate');issueMocks.payment.mockRejectedValueOnce(new Error('지급 응답 유실')).mockResolvedValue(undefined);
+ const accounts=[{id:'bank',companyId:'taebaek' as const,name:'은행',type:'통장' as const,active:true,openingBalance:0,openingDate:'2026-01-01',createdAt:''}];
+ const view=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly cashAccounts={accounts}/>);
+ fireEvent.click(screen.getByLabelText('지불도 함께'));fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledOnce());const original=issueMocks.payment.mock.calls[0];const body=apply.mock.calls[0][0];view.unmount();
+ setup(undefined,undefined,{pendingInvoice:null,composerOnly:true,onApplyStatement:apply,cashAccounts:accounts});
+ fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledTimes(2));
+ expect(apply.mock.calls[1][0]).toEqual(body);expect(issueMocks.payment.mock.calls[1]).toEqual(original);
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());
+});
+
+
+it('최초 발행 늦은 완료는 다른 창의 저장 원문을 지우지 않는다',async()=>{
+ const gate=deferred();const apply=vi.fn(async()=>{await gate.promise;return 'applied' as const;});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,pendingInvoice:{...pendingInvoice,poIds:['po-original']}});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const key='trade-statement-issue:taebaek:test-uid',first=JSON.parse(localStorage.getItem(key)!);
+ const other={...first,input:{...first.input,command:{...first.input.command,operationId:'other-operation',statementId:'other-statement'},statement:{...first.input.statement,id:'other-statement'}}};
+ const encoded=JSON.stringify(other);localStorage.setItem(key,encoded);
+ await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument());
+ expect(localStorage.getItem(key)).toBe(encoded);
+});
+
+
+it('최초 명확한 송신 전 거절만 원문 대기를 해제해 입력 수정을 허용한다',async()=>{
+ const apply=vi.fn(async(input:{command:{operationId:string}})=>{throw Object.assign(new Error('송신 전 회사 확인 실패'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:input.command.operationId}});});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(apply).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());
+ expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();
 });
