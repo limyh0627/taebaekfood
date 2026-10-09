@@ -1,4 +1,5 @@
 import type { CompanyId, RawMaterialLot } from '../../functions/src/shared/rawLot';
+import type { RawMovementKind } from './rawInventoryCore';
 /**
  * @shared-move  shared/types.ts
  * 앱 전체 공통 TypeScript 타입 정의
@@ -1176,7 +1177,8 @@ export interface PurchaseOrder {
   unit?: string;
   /** '몇 박스라고 말했는지' — 표시용. 계산은 `quantity`(재고 단위)만 본다. */
   boxQuantity?: number;
-  status: 'pending' | 'invoiced' | 'received';
+  status: 'pending' | 'invoiced' | 'received' | 'cancelled';
+  duplicateReceiptCorrection?: {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string};
   confirmedByUser?: boolean;
   linkedStatementId?: string;
   /**
@@ -1308,6 +1310,8 @@ export interface RawMaterialEntry {
    * 새 줄은 [rawLedgerKeys](rawHolder.ts) 로 반드시 같이 박는다.
    */
   rawItemId?: string;
+  kind?: RawMovementKind;
+  reversalOf?: string;
   /** 원료명 — **보여주기용 스냅샷이다.** 대상을 찾는 열쇠로 쓰지 마라(`rawItemId` 를 써라). */
   material: string;
   date: string;

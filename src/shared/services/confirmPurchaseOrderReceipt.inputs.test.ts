@@ -79,3 +79,9 @@ it('다른 회사 발주는 명시 계산 입력이 있어도 입고 상태나 �
   expect(state.docs.get('purchaseOrders/po').status).toBe('invoiced');
   expect(state.docs.get('items/box').stock).toBe(0);
 });
+it('취소된 일반·원료 발주는 received duplicate 반환보다 먼저 거절하고 원문을 보존한다',async()=>{
+ for(const type of ['product','raw']){
+  state.docs.set('items/box',{...items[0],type});state.docs.set('purchaseOrders/po',{companyId:'taebaek',status:'cancelled',items:[{itemId:'box',quantity:2}]});
+  const before=JSON.stringify([...state.docs]);await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).rejects.toThrow('취소된 발주');expect(JSON.stringify([...state.docs])).toBe(before);expect(raw.read).not.toHaveBeenCalled();
+ }
+});

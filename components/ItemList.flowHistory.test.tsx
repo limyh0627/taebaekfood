@@ -139,3 +139,8 @@ it.each([{statements:[]},{statements:[{id:'private-id',companyId:'punghoe',docNo
  fireEvent.click(row.getByText('공급업체'));
  expect(within(screen.getByRole('dialog')).getByText('연결 전표 미확인')).toBeInTheDocument();
 });
+it('취소된 일반 입고는 대기에서 빠지고 취소 날짜·읽기 전용 이력을 보존한다',()=>{
+ const row=view({receivedOrders:[{...po,status:'cancelled',receivedAt:'2026-10-03T01:00:00Z',duplicateReceiptCorrection:{operationId:'fix',originalOperationId:'receive',commandHash:'hash',originalHash:'original',proofHash:'proof',kg:2,reason:'중복 입고 취소',cancelledAt:'2026-10-09T01:00:00Z'}} as any]},true);
+ expect(row.getAllByText('취소').length).toBeGreaterThan(0);expect(row.getByText('2026-10-09')).toBeInTheDocument();expect(row.queryByRole('button',{name:'입고확정'})).toBeNull();
+ fireEvent.click(row.getByText('공급업체'));expect(screen.getByText(/중복 입고를 취소하고/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'수량 저장'})).toBeNull();expect(screen.getByRole('button',{name:/^삭제$/})).toBeDisabled();
+});

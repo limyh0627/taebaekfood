@@ -113,7 +113,7 @@ const RawLedgerList: React.FC<Props> = ({
         if (tr.cardNo) g.cards.add(tr.cardNo);
         g.types.add(e.type ?? 'manual');
         if (currentUserName && e.addedBy === currentUserName) g.mine = true;
-        if (isAdmin && e.type !== 'auto' && e.id && onDelete) g.delIds.push(e.id);
+        if (isAdmin && e.type !== 'auto' && !(e.kind === 'reverse' && e.reversalOf) && e.id && onDelete) g.delIds.push(e.id);
         g.cur = bal;
         g.rows.push(e);
         if (isCorr) { flush(); seg++; }   // 정정 뒤부터는 새 묶음
@@ -192,7 +192,7 @@ const RawLedgerList: React.FC<Props> = ({
             const prevBal = displayQty(g.prev, g.material);
             const curBal  = displayQty(g.cur, g.material);
             const badge = g.types.has('correction')
-              ? { label: '정정', cls: 'bg-amber-50 text-amber-700' }
+              ? { label: g.rows.some(e => e.kind === 'reverse' && e.reversalOf) ? '취소 정정' : '정정', cls: 'bg-amber-50 text-amber-700' }
               : (g.types.size === 1 && g.types.has('auto'))
                 ? { label: '자동', cls: 'bg-blue-50 text-blue-600' }
                 : { label: '수동', cls: 'bg-slate-50 text-slate-500' };
@@ -277,7 +277,7 @@ const RawLedgerList: React.FC<Props> = ({
                     const r = toU(e.received ?? 0), s = toU(e.used ?? 0);
                     const t = e.createdAt ? new Date(e.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
                     const kind = e.type === 'auto' ? { t: '자동', c: 'bg-blue-50 text-blue-600' }
-                      : e.type === 'correction' ? { t: '정정', c: 'bg-amber-50 text-amber-700' }
+                      : e.type === 'correction' ? { t: e.kind === 'reverse' && e.reversalOf ? '취소 정정' : '정정', c: 'bg-amber-50 text-amber-700' }
                       : { t: '수동', c: 'bg-white text-slate-500 border border-slate-200' };
                     //  펼친 줄에서는 줄이지 않고 다 보인다 — 주문 카드번호까지 나와야 찾아갈 수 있다
                     const tr = ledgerTrace(e, orderById, linesUsingRaw);
@@ -300,7 +300,7 @@ const RawLedgerList: React.FC<Props> = ({
                           <span className="shrink-0 w-9 text-right">
                             {/* 삭제하면 로트·재고도 같이 되돌아간다 — 문구로 분명히 알린다.
                                 실사(targetKg) 줄은 잔량 앵커라 되돌릴 움직임이 없어 줄만 사라진다. */}
-                            {e.type !== 'auto' && e.id && (
+                            {e.type !== 'auto' && !(e.kind === 'reverse' && e.reversalOf) && e.id && (
                               <button onClick={async (ev) => {
                                 ev.stopPropagation();
                                 const kg = (e.received ?? 0) || (e.used ?? 0);

@@ -1560,8 +1560,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
             key: `입고-${status}-${po.id}`,
             id: po.id,
             type: '입고',
-            status: po.oemCancelledAt ? '완료' : status,
-            date: po.oemCancelledAt || date,
+            status: po.oemCancelledAt || po.status === 'cancelled' ? '완료' : status,
+            date: po.duplicateReceiptCorrection?.cancelledAt || po.oemCancelledAt || date,
             partnerName: po.partnerName || '거래처 미지정',
             itemSummary: (lines[0]?.name || productMap.get(lines[0]?.itemId)?.name || '품목 미지정') + (lines.length > 1 ? ` 외 ${lines.length - 1}개` : ''),
             quantitySummary: lines.length === 1
@@ -1647,9 +1647,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 <tbody>
                   {visible.map(row => (
                     <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { const lines = row.type === '입고' ? poLines(row.source as PurchaseOrder) : (row.source as ReturnRequest).items; setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
-                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
+                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? (row.source as PurchaseOrder).status === 'cancelled' ? '취소' : row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
-                      <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{(row.type === '입고' && (row.source as PurchaseOrder).oemCancelledAt) || (row.type === '반품' && (row.source as ReturnRequest).cancelledAt) ? '취소' : row.status}</span></td>
+                      <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{(row.type === '입고' && ((row.source as PurchaseOrder).oemCancelledAt || (row.source as PurchaseOrder).status === 'cancelled')) || (row.type === '반품' && (row.source as ReturnRequest).cancelledAt) ? '취소' : row.status}</span></td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
                       <td className="truncate px-3 py-3 text-xs font-bold text-slate-600" title={row.itemSummary}>{row.itemSummary || '-'}</td>
                       <td className="px-3 py-3 text-right text-xs font-black tabular-nums text-slate-800">{row.quantitySummary}</td>
@@ -1690,7 +1690,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         if (!record) return null;
         const lines = flowDetail.type === '입고' ? poLines(record as PurchaseOrder) : (record as ReturnRequest).items;
         const sourceChanged = flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
-        const cancelled = flowDetail.type === '반품' && !!(record as ReturnRequest).cancelledAt;
+        const cancelled = flowDetail.type === '반품' ? !!(record as ReturnRequest).cancelledAt : (record as PurchaseOrder).status === 'cancelled';
         const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending' && !cancelled;
         const issued = !!record.linkedStatementId;
         const quantityPending = flowDetail.type === '반품' && hasPendingReturnQuantity(companyId,flowDetail.id);
@@ -1698,9 +1698,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const canReceive = flowDetail.type === '입고' && canConfirmReceipt(record as PurchaseOrder);
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
         const eventDates = po
-          ? [['생성', po.createdAt], ['발주확정', po.invoicedAt], ['실입고', po.receivedAt]]
+          ? [['생성', po.createdAt], ['발주확정', po.invoicedAt], ['실입고', po.receivedAt], ...(po.status === 'cancelled' ? [['취소', po.duplicateReceiptCorrection?.cancelledAt]] : [])]
           : [['생성', record.createdAt], ['반품처리', (record as ReturnRequest).processedAt], ['취소', (record as ReturnRequest).cancelledAt]];
-        const deleteReason = !po ? '' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
+        const deleteReason = !po ? '' : po.status === 'cancelled' ? '취소된 입고 기록은 보존합니다.' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
           : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'
           : po.poType === 'oem' ? '외주 발주는 이 화면에서 삭제할 수 없습니다.'
           : lines.some(line => !productMap.get(line.itemId)) ? '품목이 없는 발주는 상세 내역을 먼저 확인해 주세요.'
@@ -1766,6 +1766,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
             </div>
           </div>}
         >
+          {po?.status === 'cancelled' && <p className="text-xs font-bold text-amber-700">중복 입고를 취소하고 원료 재고를 차감했습니다. 원입고와 생산 이력은 보존합니다.</p>}
           <div className="text-xs font-bold text-slate-500">{record.partnerName || '거래처 미지정'} · {cancelled ? '취소' : pending ? '대기' : flowDetail.type === '입고' && (record as PurchaseOrder).status === 'pending' ? '예정' : '완료'}</div>
           <dl className="space-y-1 text-xs text-slate-500">{eventDates.map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{value ? `${dateOfLocal(value)}${value.includes('T') ? ` ${timeOfLocal(value)}` : ''}` : '미기록'}</dd></div>)}</dl>
           {record.linkedStatementId && <div className="text-xs font-bold">연결 전표: {flowVoucherLink(record.linkedStatementId)}</div>}
@@ -1896,7 +1897,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         return <tr key={`${item.id}-${lot.id}`} onClick={() => setSelectedLot({ itemId: item.id, lotId: lot.id })}
                           className={`cursor-pointer text-[10px] text-slate-700 transition-colors ${index % 2 ? 'bg-slate-50/40 hover:bg-indigo-50/60' : 'hover:bg-indigo-50/60'}`}>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{lot.receivedDate || '-'}</td>
-                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-600">{lot.supplierName || '미입력'}</td>
+                          <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold text-slate-600">{lot.supplierName || '미입력'}{[...orderRequests, ...confirmedOrders, ...receivedOrders].some(po => po.id === lot.poId && po.status === 'cancelled') && <span className="block text-[10px] text-amber-700">원입고 취소 · 이력 보존</span>}</td>
                           <td className={`border-b-2 border-r border-slate-300 px-3 py-2.5 text-[11px] font-bold whitespace-nowrap ${lot.lotNo ? 'text-slate-700' : 'text-amber-600'}`}>{lot.lotNo || '미입력'}</td>
                           <td className="border-b-2 border-r border-slate-300 px-3 py-2.5 whitespace-nowrap">
                             <span className={`text-[10px] font-black ${lotState === '완료' ? 'text-slate-400' : lotState === '사용중' ? 'text-indigo-600' : 'text-emerald-600'}`}>{lotState}</span>

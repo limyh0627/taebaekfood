@@ -341,7 +341,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const viewAllowed = (_v: ViewType) => true;
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
   const allOrders = useMemo(() => mergeCompanyOrders(orders, historicalOrders, companyId), [orders, historicalOrders, companyId]);
-  const receivedOrders = purchaseOrders.filter(po => po.status === 'received');
+  const receivedOrders = purchaseOrders.filter(po => po.status === 'received' || po.status === 'cancelled');
 
 
   // items 컬렉션 카테고리별 분리
@@ -2236,7 +2236,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const adminPendingCount =
                 leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
                 adjustmentRequests.filter(r => r.status === 'pending').length +
-                receivedOrders.filter(r => !r.linkedStatementId).length;
+                receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length;
               return (
                 <>
                   {/* 메뉴 짜임 — 사장님이 정한 순서 그대로.
@@ -2259,7 +2259,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   </NavGroup>
                   <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
-                      <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
+                      <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
                       <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
@@ -2331,7 +2331,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                          화면이 거의 같았다 — 캘린더만 배송 쪽 것을 쓰고 리스트·보드는 주문 쪽 것을 쓴다.
                          `shipping` 권한이 있는 사람도 이 칸으로 들어온다. */}
                     <NavItem icon={ShoppingCart} label="주문·배송" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders') && !viewAllowed('shipping')} />
-                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
+                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length + receivedOrders.filter(r => r.status === 'received' && !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
                     <NavItem icon={Factory} label="생산 관리" active={currentView === 'lot-management'} onClick={() => handleNavClick('lot-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('lot-management')} />
                     <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />
@@ -3074,7 +3074,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               employees={employees}
               returnRequests={returnRequests}
               onProcessReturn={handleProcessReturn}
-              receivedOrders={receivedOrders}
+              receivedOrders={receivedOrders.filter(po => po.status === 'received')}
               partners={partners}
               issuedStatements={issuedStatements}
               /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던

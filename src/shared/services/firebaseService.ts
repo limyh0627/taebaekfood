@@ -752,7 +752,9 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
   const now = new Date().toISOString();
   const date = today();
   const poRef = doc(store, 'purchaseOrders', poId);
-  if ((await getDoc(poRef)).data()?.status === 'received') return false;
+  const currentPo = (await getDoc(poRef)).data();
+  if (currentPo?.status === 'cancelled') throw new Error('취소된 발주는 다시 입고할 수 없습니다.');
+  if (currentPo?.status === 'received') return false;
   // 옛 입고 방식으로 일부만 반영된 발주는 자동 재시도하면 중복 재고가 된다.
   const oldReceipts = await getDocs(query(collection(store, 'itemReceipts'), where('companyId', '==', claim), where('poId', '==', poId)));
   if (!oldReceipts.empty) throw new Error('이 발주에 이미 입고 기록이 있습니다. 기존 반영 내역을 먼저 확인해 주세요.');
@@ -764,6 +766,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
     const po = { id: poId, ...poSnap.data() } as PurchaseOrder;
     if (companyOf(po) !== claim) throw new Error('발주 회사가 로그인 회사와 다릅니다.');
     if (po.poType === 'oem') throw new Error('외주 발주는 이 버튼으로 입고할 수 없습니다.');
+    if (po.status === 'cancelled') throw new Error('취소된 발주는 다시 입고할 수 없습니다.');
     if (po.status === 'received') return false;
     if (po.status !== 'invoiced') throw new Error('입고대기 발주만 확정할 수 있습니다.');
     const lines = poLines(po);
