@@ -59,11 +59,7 @@ export default function CashLedger({
   const [showAccounts, setShowAccounts] = useState(false);
   const [matchTarget, setMatchTarget] = useState<CashEntry | null>(null);
 
-  // 계좌를 안 만들었어도 자금기록을 보여준다 — '현금(미지정)' 가상계좌로 cashAccountId='' 항목 표시
-  const effAccounts = useMemo<CashAccount[]>(
-    () => cashAccounts.length > 0 ? cashAccounts : [{ id: '', name: '현금(미지정)', type: '현금', openingBalance: 0, openingDate: '2020-01-01', active: true } as CashAccount],
-    [cashAccounts],
-  );
+  const effAccounts = cashAccounts;
 
   const active = effAccounts.find(a => a.id === activeId) ?? effAccounts[0];
   const totalCash = useMemo(
@@ -75,11 +71,28 @@ export default function CashLedger({
     [active, cashEntries, from, to],
   );
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  // 과거 공란 기록은 실계좌에 추정 귀속하거나 현재 잔액에 합치지 않는다.
+  const unknownEntries = cashEntries.filter(entry => companyOf(entry) === companyId && !entry.cashAccountId);
+  const unknownAccountSection = unknownEntries.length > 0 && (
+    <section aria-label="계좌 미지정" className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <h3 className="text-sm font-black text-amber-900">계좌 미지정</h3>
+      <p className="mt-1 text-xs text-amber-800">계좌 확인이 필요한 과거 기록입니다. 등록된 통장·현금 잔액에는 포함하지 않습니다.</p>
+      <div className="mt-3 space-y-2">
+        {unknownEntries.map(entry => (
+          <div key={entry.id} className="flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-white px-3 py-2 text-xs">
+            <span>{entry.date}</span><span>{entry.note || entry.partnerName || '자금 기록'}</span>
+            <strong>{entry.dir} {fmt(entry.amount)}원</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 
   // ── 계좌가 하나도 없을 때 ──
   if (cashAccounts.length === 0) {
     return (
       <>
+        {unknownAccountSection}
         <div className="bg-white rounded-2xl border border-slate-100 py-24 flex flex-col items-center justify-center gap-4">
           <Wallet size={44} className="text-slate-200" />
           <div className="text-center">
@@ -101,6 +114,7 @@ export default function CashLedger({
 
   return (
     <div className="space-y-4">
+      {unknownAccountSection}
       {/* ── 자금 현황 ── */}
       <div className="flex items-stretch gap-3 flex-wrap">
         <div className="bg-slate-800 text-white rounded-2xl px-5 py-4 min-w-[200px]">

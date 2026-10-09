@@ -1708,11 +1708,19 @@ const ItemListContent: React.FC<ItemListProps> = ({
             {po?.poType === 'oem' && <p className="text-xs font-bold text-slate-500">{po.oemCancelledAt ? '취소된 외주 발주입니다. 보낸 원료를 재고로 복원하고 기록을 남겼습니다.' : po.status === 'invoiced' ? '취소하면 보낸 원료를 재고로 복원하고 발주 기록을 남깁니다.' : '입고된 외주 발주는 삭제하지 않습니다. 반환이 필요하면 입고 기록을 먼저 확인해 주세요.'}</p>}
             <div className="flex flex-wrap gap-2">
               {po && po.poType !== 'oem' && <button type="button" disabled={flowSaving || !!deleteReason} onClick={async () => {
-                if (!await appConfirm('이 발주 기록을 삭제할까요? 입고 기록이나 연결 전표가 있으면 삭제되지 않습니다.')) return;
+                if (oemCancelBusy.current) return;
+                oemCancelBusy.current = true;
+                const detail = flowDetail;
+                const active = () => unpackMounted.current && oemCancelScope.current.companyId === companyId && oemCancelScope.current.detail === detail;
                 setFlowSaving(true);
-                try { await onRemoveConfirmedOrder(po.id); setFlowDetail(null); }
-                catch (error) { alert(`발주를 삭제하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
-                finally { setFlowSaving(false); }
+                try {
+                  if (!await appConfirm('이 발주 기록을 삭제할까요? 입고 기록이나 연결 전표가 있으면 삭제되지 않습니다.')) return;
+                  if (!active()) return;
+                  await onRemoveConfirmedOrder(po.id);
+                  if (active()) setFlowDetail(current => current === detail ? null : current);
+                }
+                catch (error) { if (active()) alert(`발주를 삭제하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
+                finally { oemCancelBusy.current = false; if (active()) setFlowSaving(false); }
               }} className="min-w-20 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">삭제</button>}
               <button type="button" disabled={flowSaving} onClick={() => setFlowDetail(null)} className="min-w-20 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-600 disabled:opacity-40">닫기</button>
               {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'invoiced' && isAdmin && onOemCancel && <button type="button" disabled={flowSaving} onClick={async () => {
