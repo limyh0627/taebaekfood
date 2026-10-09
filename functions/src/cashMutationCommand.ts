@@ -3,14 +3,14 @@ import { activeAdvanceApplications } from './shared/partnerAdvance';
 import { readPartnerAdvanceWriteScope, prepareAdvanceCancellation, writePartnerAdvanceMutations } from './partnerAdvanceCommand';
 import { readClaimsAfterReturnsAndAdvance as readClaimsAfterReturns } from './partnerAdvanceClaimReader';
 import * as admin from 'firebase-admin';
-import { cashMutationHash, cashOriginalHash } from './cashMutationReceipt';
+import { cashMutationHash, cashOriginalHash, readCashCreationMutation } from './cashMutationReceipt';
 export { cashMutationHash, cashOriginalHash } from './cashMutationReceipt';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { assertInterCompanyAuthority } from './interCompanyAuthority';
 import { buildAccountLedger, type LedgerCashEntry } from './shared/cashAccountLedger';
 import { kstDateOf } from './shared/calculation';
 import { assertReleaseActive, releaseGateRef } from './releaseGate';
-import { planCashEdit, planCashSettlements, planLoanCashMutation, validateCashSettlementLimits, type CashPatch, type CashRow } from './cashMutationPlan';
+import { CashAccountAssignmentValidationError, planCashAccountAssignment, planCashEdit, planCashSettlements, planLoanCashMutation, validateCashSettlementLimits, type CashPatch, type CashRow } from './cashMutationPlan';
 import { checkPayrollDraft, payrollVoucherContent, payrollVoucherHash, type PayrollDraftInput } from './payrollVoucher';
 import type { LoanCash, LoanSnapshot } from './loanMovementPlan';
 import { cashFromEntry, claimFromStatement } from './partnerPaymentCommand';
@@ -31,7 +31,7 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
   const operation = db.collection('voucherMutationOperations').doc(input.operationId);
   const cashRef = db.collection('cashEntries').doc(input.cashEntryId);
   const requestHash = cashMutationHash({ companyId, actorId, ...input });
-  return db.runTransaction(async tx => {
+  const outcome = await db.runTransaction(async tx => {
     const [gate, prior, snap, linkedRows, codes, statements, settlements, cashRows, returns] = await Promise.all([
       tx.get(releaseGateRef(db)), tx.get(operation), tx.get(cashRef),
       tx.get(db.collection('settlements').where('cashEntryId', '==', input.cashEntryId)),
@@ -42,6 +42,14 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
     assertReleaseActive(gate, input.releaseId);
     if (prior.exists) {
       const saved = prior.data()!;
+      if (saved.kind === 'cashAccountAssignment' && saved.status === 'rejected') {
+        if (saved.companyId !== companyId || saved.createdBy !== actorId || saved.requestHash !== requestHash
+          || saved.voucherId !== input.cashEntryId || !saved.command
+          || cashMutationHash({ companyId, actorId, ...saved.command }) !== requestHash
+          || saved.failureCode !== 'failed-precondition'
+          || typeof saved.failureMessage !== 'string' || !saved.failureMessage) fail('기존 계좌 지정 요청의 원문이 다릅니다.');
+        return { status: 'rejected' as const, message: saved.failureMessage as string };
+      }
       if (saved.companyId !== companyId || saved.createdBy !== actorId || saved.requestHash !== requestHash
         || saved.kind !== 'cashEntries' || saved.voucherId !== input.cashEntryId || saved.status !== 'applied') fail('기존 자금 변경 요청과 내용이 다릅니다.');
       return { ...saved.result, status: 'duplicate' as const };
@@ -49,6 +57,37 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
     const current = snap.data();
     if (!current || owner(current) !== companyId) fail('자금전표의 회사가 맞지 않습니다.');
     if ((current.mutationRevision ?? 0) !== input.expectedRevision || cashOriginalHash(current) !== input.expectedCashHash) fail('자금전표가 다른 화면에서 변경되었습니다.');
+    if (input.action === 'edit' && Object.prototype.hasOwnProperty.call(input.patch, 'cashAccountId')) {
+      if (input.payrollEdit || input.transferEdit) fail('계좌 지정에는 다른 업무 수정 입력을 함께 보낼 수 없습니다.');
+      const accountId = input.patch!.cashAccountId;
+      if (typeof accountId !== 'string' || !accountId || accountId.includes('/')) fail('계좌 선택을 확인해주세요.');
+      const account = await tx.get(db.collection('cashAccounts').doc(accountId));
+      let next: CashRow;
+      const rejectAssignment = (message: string) => {
+        tx.create(operation, { companyId, kind: 'cashAccountAssignment', voucherId: input.cashEntryId, status: 'rejected',
+          requestHash, command: input, createdBy: actorId, failureCode: 'failed-precondition', failureMessage: message, createdAt: new Date().toISOString() });
+        return { status: 'rejected' as const, message };
+      };
+      try { next = planCashAccountAssignment(current, input.patch!, account.data(), companyId); }
+      catch (error) { if (!(error instanceof CashAccountAssignmentValidationError)) throw error; return rejectAssignment(error.message); }
+      const active = activeAdvanceApplications(statements.docs.filter(doc => owner(doc.data()) === companyId)
+        .map(doc => ({ ...doc.data(), id: doc.id })) as any, companyId as any, current.partnerId);
+      if (active.some(row => row.noncashApplication.kind === 'advance-application'
+        && row.noncashApplication.allocations.some(allocation => allocation.source.collection === 'cashEntries' && allocation.source.id === input.cashEntryId)))
+        return rejectAssignment('활성 선급·선수 적용 원천의 계좌는 적용 취소 후 지정해주세요.');
+      const origin = await readCashCreationMutation(db, tx, companyId, input.cashEntryId, snap, row =>
+        owner(row) === companyId && row.docNo === current.docNo && row.issueOperationId === current.issueOperationId
+        && row.issuePayloadHash === current.issuePayloadHash);
+      if (input.expectedRevision > 0 && !origin) fail('자금전표의 변경 감사 사슬을 확인해주세요.');
+      const revision = input.expectedRevision + 1;
+      if (!Number.isSafeInteger(revision)) fail('자금 revision 범위를 초과했습니다.');
+      const result = { id: input.cashEntryId, action: input.action, revision, docNo: current.docNo ?? '' };
+      tx.update(cashRef, { cashAccountId: accountId, mutationRevision: revision });
+      tx.create(operation, { companyId, kind: 'cashEntries', voucherId: input.cashEntryId, cashEntryIds: [input.cashEntryId], action: 'edit',
+        requestHash, status: 'applied', expectedRevision: input.expectedRevision, beforeHash: input.expectedCashHash, beforeSnapshot: current,
+        afterHash: cashOriginalHash({ ...next!, mutationRevision: revision }), result, createdBy: actorId, createdAt: new Date().toISOString() });
+      return { ...result, status: 'applied' as const };
+    }
     // These branches retain their full semantics; they are not exposed until the linked contracts below are implemented.
     if (current.transferOperationId) return mutateTransferCash(tx, db, companyId, actorId, authClaims, input, current, operation, requestHash);
     if (input.transferEdit) fail('회사이체 원본이 없는 요청입니다.');
@@ -204,6 +243,11 @@ export async function mutateCashEntry(db: admin.firestore.Firestore, companyId: 
       afterHash: next ? cashOriginalHash({ ...next, mutationRevision: revision }) : null, canceledAdvanceStatementIds: advanceMutations.map(row => row.statement.id), result, createdBy: actorId, createdAt: new Date().toISOString() });
     return { ...result, status: 'applied' as const };
   });
+  if (outcome.status === 'rejected') throw new HttpsError('failed-precondition', outcome.message, {
+    cashAccountAssignmentRejected: { version: 1, terminalConfirmed: true, status: 'rejected', financialWrites: false, companyId, actorId,
+      operationId: input.operationId, cashEntryId: input.cashEntryId, requestHash, command: input },
+  });
+  return outcome;
 }
 export const cashMutationCommand = onCall({ region: 'asia-northeast3' }, async request => {
   const company = request.auth?.token.companyId;

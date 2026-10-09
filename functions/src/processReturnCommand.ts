@@ -87,6 +87,8 @@ export async function processGeneralStockReturn(
     assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate);
     if (!requestSnap.exists || requestSnap.data()?.companyId !== companyId) fail('반품 요청의 회사가 맞지 않습니다.');
     const request = requestSnap.data()!;
+    if (request.cancelledAt !== undefined || request.cancelledBy !== undefined || request.cancellationReceipt !== undefined)
+      fail('취소된 반품 접수는 처리할 수 없습니다.');
     const standalone = !request.linkedStatementId;
     if (!request.partnerId || !Array.isArray(request.items) || (standalone && !['매출','매입'].includes(request.returnType)))
       fail('반품 원전표·거래처·품목 연결이 없습니다.');

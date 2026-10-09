@@ -1386,6 +1386,9 @@ export interface ReturnRequest {
   createdBy?: string;
   processedAt?: string;
   processedBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReceipt?: Record<string, unknown>;
   linkedStatementId?: string;
   payableAccountCode?: '251' | '253';
   note?: string;

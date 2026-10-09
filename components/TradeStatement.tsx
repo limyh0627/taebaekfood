@@ -467,6 +467,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **고친 자금 전표를 저장한다** — 폼은 창이 쥐고, 돈이 얽힌 뒷일은 여기서 푼다.
    * 판정 자체는 shared/cashEntryEdit이 쥔다(화면 조각이라 테스트가 안 닿던 자리였다).
    */
+  const assignCashAccount = async (entry: CashEntry, cashAccountId: string) => {
+    const userId = auth.currentUser?.uid;
+    const scope = cashEditScope.current.token;
+    if (!userId || companyOf(entry) !== companyId || entry.cashAccountId || !onUpdateCashEntry
+      || !activeCashAccounts.some(account => account.id === cashAccountId && account.type === '통장'))
+      throw new Error('현재 회사의 계좌 미지정 원문과 통장을 확인해주세요.');
+    // 계좌 메타데이터만 지정한다. 금액 편집이나 자동 정산은 실행하지 않는다.
+    await onUpdateCashEntry(entry.id, { cashAccountId }, entry);
+    if (!cashEditScope.current.alive || cashEditScope.current.token !== scope || auth.currentUser?.uid !== userId) return;
+    setCashModal(current => current?.kind === '수정' && current.entry === entry ? null : current);
+  };
   const saveEditCash = async (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[], payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit) => {
     if (companyOf(entry) !== companyId) throw new Error('현재 회사의 자금 원문을 다시 확인해주세요.');
     if (!onUpdateCashEntry) throw new Error('자금 전표 저장 경로가 연결되지 않았습니다.');
@@ -2360,6 +2371,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           payrollEdit={cashModal.kind === '수정' ? cashPayrollEdit : undefined}
           transferEdit={cashModal.kind === '수정' ? cashTransferEdit : undefined}
           onSaveEdit={saveEditCash}
+          onAssignCashAccount={onUpdateCashEntry ? assignCashAccount : undefined}
           hasPendingRequest={id => hasPendingCashMutation(companyId, id)}
           onResumeEntry={onResumeCashMutation}
           onDeleteEntry={onDeleteCashEntry ? async id => {

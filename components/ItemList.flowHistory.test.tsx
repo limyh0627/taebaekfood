@@ -7,8 +7,10 @@ import type { Item } from '../src/shared/types';
 vi.mock('../src/shared/firebase', () => ({ db: {}, storage: {}, functions: {}, auth: {}, authReady: Promise.resolve() }));
 vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn().mockResolvedValue([]), subscribeToCollection: vi.fn(() => () => {}), addItem: vi.fn() }));
 const dialogs = vi.hoisted(() => ({ confirm: vi.fn() }));
+const cancellation = vi.hoisted(() => ({ cancel: vi.fn(), resume: vi.fn(), pending: vi.fn() }));
+vi.mock('../src/shared/services/returnRequestCancellation', () => ({cancelReturnRequest:cancellation.cancel, resumeReturnCancellation:cancellation.resume, hasPendingReturnCancellation:cancellation.pending}));
 vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: dialogs.confirm }));
-beforeEach(() => { dialogs.confirm.mockReset().mockResolvedValue(true); });
+beforeEach(() => { dialogs.confirm.mockReset().mockResolvedValue(true); cancellation.cancel.mockReset().mockResolvedValue(undefined); cancellation.resume.mockReset().mockResolvedValue(undefined); cancellation.pending.mockReset().mockReturnValue(false); });
 const item = { id:'p1', companyId:'taebaek', name:'기름', type:'product', unit:'병', stock:10, minStock:0 } as Item;
 const po = { id:'po1',companyId:'taebaek',partnerName:'공급업체',createdAt:'2026-10-01T01:00:00Z', items:[{itemId:'p1',name:'기름',quantity:2,unit:'병'}] };
 function view(extra: Partial<React.ComponentProps<typeof ItemList>>, history = false) {
@@ -28,6 +30,37 @@ it('발주확정 날짜는 생성일이 아닌 실제 확정 시각이다',()=>{
 
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: Error) => void;
  const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; }
+const returned = { id:'return-1', companyId:'taebaek', partnerId:'supplier', partnerName:'공급업체', status:'pending',
+  createdAt:po.createdAt, totalAmount:100, items:[{itemId:'p1',name:'기름',quantity:2}] };
+it('미처리 반품 취소는 읽은 원문을 보내고 성공하면 상세를 닫는다', async () => {
+  const row = view({returnRequests:[returned as any],isAdmin:true});
+  fireEvent.click(row.getByText('공급업체')); fireEvent.click(screen.getByRole('button',{name:'반품 접수 취소'}));
+  await waitFor(() => expect(cancellation.cancel).toHaveBeenCalledWith('taebaek',returned));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+it('취소 확인 중 상세가 닫히면 이전 반품 취소를 보내지 않는다', async () => {
+  const answer = deferred<boolean>(); dialogs.confirm.mockReturnValue(answer.promise);
+  const row = view({returnRequests:[returned as any],isAdmin:true});
+  fireEvent.click(row.getByText('공급업체')); fireEvent.click(screen.getByRole('button',{name:'반품 접수 취소'}));
+  fireEvent.click(screen.getByRole('button',{name:'반품 상세 닫기'}));
+  await act(async () => { answer.resolve(true); await answer.promise; });
+  expect(cancellation.cancel).not.toHaveBeenCalled();
+});
+it('취소된 반품은 대기에서 빠지고 이력에서 취소 표시와 읽기 전용 상세를 보인다', () => {
+  const row = view({returnRequests:[{...returned,cancelledAt:'2026-10-09T01:00:00Z'} as any],isAdmin:true},true);
+  expect(row.getByText('취소')).toBeInTheDocument();
+  expect(row.queryByRole('button',{name:'반품 처리'})).not.toBeInTheDocument();
+  fireEvent.click(row.getByText('공급업체'));
+  expect(screen.queryByRole('button',{name:'반품 접수 취소'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'수량 저장'})).not.toBeInTheDocument();
+});
+it('불명확한 이전 취소는 새 취소를 만들지 않고 보존된 요청을 재개한다', async () => {
+  cancellation.pending.mockReturnValue(true);
+  const row = view({returnRequests:[returned as any],isAdmin:true});
+  fireEvent.click(row.getByText('공급업체')); fireEvent.click(screen.getByRole('button',{name:'이전 취소 결과 확인'}));
+  await waitFor(() => expect(cancellation.resume).toHaveBeenCalledWith('taebaek','return-1'));
+  expect(cancellation.cancel).not.toHaveBeenCalled(); expect(dialogs.confirm).not.toHaveBeenCalled();
+});
 function deletingView(remove = vi.fn<(id: string) => Promise<void>>().mockResolvedValue(undefined)) {
  const row = view({ confirmedOrders: [{ ...po, status: 'invoiced' }, { ...po, id: 'po2', status: 'invoiced', partnerName: '다른 업체' }] as any, onRemoveConfirmedOrder: remove });
  fireEvent.click(row.getByText('공급업체')); return remove;

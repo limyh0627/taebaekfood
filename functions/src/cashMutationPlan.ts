@@ -2,11 +2,22 @@ import type { Claim, PaymentCash } from './partnerPaymentPlan';
 import { loanPrincipalBalance, LOAN_INTEREST_ACCOUNT, type LoanCash, type LoanSnapshot } from './loanMovementPlan';
 /** Full cash edit normalization. The command supplies fresh company-owned originals. */
 export type CashRow = Record<string, any>;
-export type CashPatch = { amount?: number; date?: string; dir?: '입금' | '출금' | '대체';
+export type CashPatch = { cashAccountId?: string; amount?: number; date?: string; dir?: '입금' | '출금' | '대체';
   accountCode?: string; lines?: { accountCode: string; amount: number; side?: '차변' | '대변'; note?: string }[];
   note?: string; partnerId?: string; partnerName?: string };
 const fields = new Set(['amount', 'date', 'dir', 'accountCode', 'lines', 'note', 'partnerId', 'partnerName']);
 function fail(message: string): never { throw new Error(message); }
+/** Explicit attribution only: never rebuild legacy financial lines or loan balances. */
+export class CashAccountAssignmentValidationError extends Error {}
+export function planCashAccountAssignment(current: CashRow, patch: CashPatch, account: CashRow | undefined, companyId: string): CashRow {
+  if (Object.keys(patch).length !== 1 || typeof patch.cashAccountId !== 'string' || !patch.cashAccountId
+    || patch.cashAccountId.includes('/') || current.cashAccountId || !['입금', '출금'].includes(current.dir)
+    || (current.companyId ?? 'taebaek') !== companyId || !account || account.companyId !== companyId
+    || account.active !== true || account.type !== '통장') throw new CashAccountAssignmentValidationError('같은 회사의 활성 통장을 미지정 자금전표에 명시적으로 선택해주세요.');
+  if (current.transferOperationId || current.payrollId || current.balanceAdjustment || current.returnOperationId)
+    throw new CashAccountAssignmentValidationError('전용 업무 자금전표의 계좌는 해당 업무 경로에서 확인해주세요.');
+  return { ...current, cashAccountId: patch.cashAccountId };
+}
 const integer = (n: unknown): n is number => Number.isSafeInteger(n);
 export function validCashDate(date: unknown): date is string {
   return typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)

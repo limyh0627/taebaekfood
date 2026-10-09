@@ -2,7 +2,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../shared/firebase';
 import type { CashEntry, CompanyId, PayrollLine } from '../../shared/types';
-type Patch = Pick<Partial<CashEntry>, 'amount' | 'date' | 'dir' | 'accountCode' | 'lines' | 'note' | 'partnerId' | 'partnerName'>;
+type Patch = Pick<Partial<CashEntry>, 'amount' | 'date' | 'dir' | 'accountCode' | 'lines' | 'note' | 'partnerId' | 'partnerName' | 'cashAccountId'>;
 export type PayrollCashEdit = { yearMonth: string; payDate: string; lines: PayrollLine[]; expectedRevision: number };
 export type TransferCashEdit = { counterpartId: string; expectedRevision: number; expectedCashHash: string; patch?: Patch };
 export type PreparedTransferCashEdit = { counterpart: CashEntry; expectedRevision: number; expectedCashHash: string };
@@ -42,8 +42,33 @@ async function hash(value: unknown) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(canonical(value))));
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
+async function sendCashMutation(command: Command, companyId: CompanyId, actorId: string,
+  key: string, assertCompany: () => Promise<void>, expectedEncoded: string): Promise<Result> {
+  const assignment = command.action === 'edit' && command.patch
+    && Object.keys(command.patch).length === 1 && typeof command.patch.cashAccountId === 'string';
+  if (assignment && localStorage.getItem(key) !== expectedEncoded) throw new Error('다른 계좌 지정 요청이 진행 중입니다.');
+  try {
+    const { data } = await httpsCallable<Command, Result>(functions, 'cashMutationCommand')(command);
+    if (assignment) await assertCompany();
+    return data;
+  } catch (error) {
+    if (assignment) {
+      await assertCompany();
+      const proof = (error as { details?: { cashAccountAssignmentRejected?: any } })?.details?.cashAccountAssignmentRejected;
+      if (proof?.version === 1 && proof.terminalConfirmed === true && proof.status === 'rejected' && proof.financialWrites === false
+        && proof.companyId === companyId && proof.actorId === actorId && proof.operationId === command.operationId
+        && proof.cashEntryId === command.cashEntryId && JSON.stringify(canonical(proof.command)) === JSON.stringify(canonical(command))
+        && proof.requestHash === await hash({ companyId, actorId, ...command })) {
+        await assertCompany();
+        if (localStorage.getItem(key) === expectedEncoded) localStorage.removeItem(key);
+      }
+    }
+    throw error;
+  }
+}
 /** Captures the UI original; never fetches a newer cash revision to approve a stale draft. */
 export async function mutateCash(companyId: CompanyId, original: CashEntry, action: 'edit' | 'delete', patch?: Patch, payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit): Promise<Result> {
+  const assignment = action === 'edit' && patch && Object.keys(patch).length === 1 && Object.hasOwn(patch, 'cashAccountId');
   if ((original.companyId ?? 'taebaek') !== companyId || !/^[A-Za-z0-9_-]{1,160}$/.test(original.id)
     || !['edit', 'delete'].includes(action) || (action === 'edit' ? !patch : patch !== undefined)) throw new Error('자금전표 변경 입력을 확인해주세요.');
   await authReady;
@@ -82,13 +107,15 @@ export async function mutateCash(companyId: CompanyId, original: CashEntry, acti
       if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('원전표 revision을 확인해주세요.');
       pending = { intent, command: { operationId: `cash-mutation-${crypto.randomUUID()}`, cashEntryId: id, action,
         expectedRevision: revision, expectedCashHash, releaseId: release.releaseId, ...(patch ? { patch } : {}), ...(payrollEdit ? { payrollEdit } : {}), ...(transferEdit ? { transferEdit } : {}) } };
+      if (assignment && localStorage.getItem(key) !== saved) throw new Error('다른 계좌 지정 요청이 진행 중입니다.');
       localStorage.setItem(key, JSON.stringify(pending));
     }
     await assertCompany();
-    const { data } = await httpsCallable<Command, Result>(functions, 'cashMutationCommand')(pending.command);
+    const data = await sendCashMutation(pending.command, companyId, user.uid, key, assertCompany, saved ?? JSON.stringify(pending));
     if (!['applied', 'duplicate'].includes(data?.status) || data.id !== id || data.action !== action
       || data.revision !== pending.command.expectedRevision + 1 || typeof data.docNo !== 'string') throw new Error('변경 응답이 불확실합니다. 같은 요청으로 재시도해주세요.');
-    localStorage.removeItem(key);
+    if (!patch || Object.keys(patch).length !== 1 || !Object.hasOwn(patch, 'cashAccountId')
+      || localStorage.getItem(key) === (saved ?? JSON.stringify(pending))) localStorage.removeItem(key);
     return data;
   } finally { running.delete(key); }
 }
@@ -139,7 +166,7 @@ export async function resumeCashMutation(companyId: CompanyId, cashEntryId: stri
       || pending.intent !== JSON.stringify(canonical({ action: command.action, cashEntryId,
         expectedCashHash: command.expectedCashHash, patch: command.patch, payrollEdit: command.payrollEdit, transferEdit: command.transferEdit }))) throw new Error('저장된 자금 변경 요청을 확인해야 합니다.');
     await assertCompany();
-    const { data } = await httpsCallable<Command, Result>(functions, 'cashMutationCommand')(command);
+    const data = await sendCashMutation(command, companyId, user!.uid, key, assertCompany, saved!);
     if (!['applied', 'duplicate'].includes(data?.status) || data.id !== cashEntryId || data.action !== command.action
       || data.revision !== command.expectedRevision + 1 || typeof data.docNo !== 'string') throw new Error('변경 응답이 불확실합니다. 같은 요청으로 재시도해주세요.');
     if (localStorage.getItem(key) === saved) localStorage.removeItem(key);

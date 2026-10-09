@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { webcrypto } from 'node:crypto';
+import { createHash, webcrypto } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ call: vi.fn(), get: vi.fn(), claims: { companyId: 'taebaek', isAdmin: true }, user: null as any }));
 vi.mock('../../shared/firebase', () => ({ auth: { get currentUser() { return m.user; } }, authReady: Promise.resolve(), db: {}, functions: {} }));
@@ -16,6 +16,67 @@ beforeEach(() => {
   m.call.mockImplementation(async (command: any) => ({ data: { status: 'applied', id: command.cashEntryId, action: command.action, revision: command.expectedRevision + 1, docNo: original.docNo } }));
 });
 describe('cash mutation captured UI intent', () => {
+  const stable = (value: any): any => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, stable(value[key])])) : value;
+  const rejected = (command: any, override: Record<string, unknown> = {}) => Object.assign(new Error('계좌 거절'), {
+    details: { cashAccountAssignmentRejected: { version: 1, terminalConfirmed: true, status: 'rejected', financialWrites: false, companyId: 'taebaek', actorId: 'uid',
+      operationId: command.operationId, cashEntryId: command.cashEntryId, command,
+      requestHash: createHash('sha256').update(JSON.stringify(stable({ companyId: 'taebaek', actorId: 'uid', ...command }))).digest('hex'), ...override } },
+  });
+  it('unlocks an exact durable bank rejection and sends a changed choice with a new operation', async () => {
+    m.call.mockImplementationOnce(async command => { throw rejected(command); });
+    await expect(mutateCash('taebaek', original, 'edit', { cashAccountId: 'bad-bank' })).rejects.toThrow('계좌 거절');
+    expect(localStorage.length).toBe(0);
+    const first = m.call.mock.calls[0][0];
+    await mutateCash('taebaek', original, 'edit', { cashAccountId: 'good-bank' });
+    expect(m.call.mock.calls[1][0].operationId).not.toBe(first.operationId);
+  });
+  it('does not overwrite another tab pending while the initial release read is delayed', async () => {
+    let release!: (value: any) => void;
+    m.get.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const work = mutateCash('taebaek', original, 'edit', { cashAccountId: 'bank' });
+    const rejectedWork = expect(work).rejects.toThrow('다른 계좌 지정');
+    await vi.waitFor(() => expect(m.get).toHaveBeenCalledOnce());
+    localStorage.setItem('cash-mutation-pending:taebaek:cash:uid', 'other-tab');
+    release({ data: () => ({ status: 'active', releaseId: 'release' }) });
+    await rejectedWork;
+    expect(m.call).not.toHaveBeenCalled();
+    expect(localStorage.getItem('cash-mutation-pending:taebaek:cash:uid')).toBe('other-tab');
+  });
+  it('does not send or clear old metadata after another tab replaces pending during the auth await', async () => {
+    let release!: (value: any) => void, checks = 0;
+    m.user.getIdTokenResult = () => ++checks === 2 ? new Promise(resolve => { release = resolve; }) : Promise.resolve({ claims: m.claims });
+    const work = mutateCash('taebaek', original, 'edit', { cashAccountId: 'bank' });
+    const rejectedWork = expect(work).rejects.toThrow('다른 계좌 지정');
+    await vi.waitFor(() => expect(checks).toBe(2));
+    localStorage.setItem('cash-mutation-pending:taebaek:cash:uid', 'other-tab');
+    release({ claims: m.claims });
+    await rejectedWork;
+    expect(m.call).not.toHaveBeenCalled();
+    expect(localStorage.getItem('cash-mutation-pending:taebaek:cash:uid')).toBe('other-tab');
+  });
+  it('resumes the exact unknown bank request and clears only its immutable rejected proof', async () => {
+    m.call.mockRejectedValueOnce(new Error('lost response'));
+    await expect(mutateCash('taebaek', original, 'edit', { cashAccountId: 'bank' })).rejects.toThrow();
+    const first = m.call.mock.calls[0][0];
+    m.call.mockImplementationOnce(async command => { throw rejected(command); });
+    await expect(resumeCashMutation('taebaek', original.id)).rejects.toThrow('계좌 거절');
+    expect(m.call.mock.calls[1][0]).toEqual(first); expect(localStorage.length).toBe(0);
+  });
+  it.each([{ terminalConfirmed: false }, { requestHash: '0'.repeat(64) }, { actorId: 'other' }, { command: {} }])('preserves bank pending for unmatched rejection %j', async override => {
+    m.call.mockImplementationOnce(async command => { throw rejected(command, override); });
+    await expect(mutateCash('taebaek', original, 'edit', { cashAccountId: 'bank' })).rejects.toThrow();
+    expect(localStorage.getItem('cash-mutation-pending:taebaek:cash:uid')).not.toBeNull();
+  });
+  it('preserves exact bank pending after actor switch and preserves a replacement request during rejection CAS', async () => {
+    m.call.mockImplementationOnce(async command => { m.user = { ...m.user, uid: 'other' }; throw rejected(command); });
+    await expect(mutateCash('taebaek', original, 'edit', { cashAccountId: 'bank' })).rejects.toThrow('권한');
+    expect(localStorage.getItem('cash-mutation-pending:taebaek:cash:uid')).not.toBeNull();
+    m.user = { ...m.user, uid: 'uid' };
+    m.call.mockImplementationOnce(async command => { localStorage.setItem('cash-mutation-pending:taebaek:cash:uid', 'replacement'); throw rejected(command); });
+    await expect(resumeCashMutation('taebaek', original.id)).rejects.toThrow('계좌 거절');
+    expect(localStorage.getItem('cash-mutation-pending:taebaek:cash:uid')).toBe('replacement');
+  });
   it('confirms the original uncertain request after reopening without approving a newer cash revision', async () => {
     m.call.mockRejectedValueOnce(new Error('response lost'));
     await expect(mutateCash('taebaek', original, 'edit', { amount: 120 })).rejects.toThrow();

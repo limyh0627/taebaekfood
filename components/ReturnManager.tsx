@@ -253,9 +253,9 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
             }`}
           >
             {t}
-            {t === '이력' && returnRequests.filter(r => r.status === 'pending').length > 0 && (
+            {t === '이력' && returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length > 0 && (
               <span className="ml-1.5 bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">
-                {returnRequests.filter(r => r.status === 'pending').length}
+                {returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length}
               </span>
             )}
           </button>
@@ -525,7 +525,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
                   : 'bg-amber-100 text-amber-700'
               }`}
             >
-              {req.status === 'processed' ? '처리완료' : '처리대기'}
+              {req.cancelledAt ? '취소' : req.status === 'processed' ? '처리완료' : '처리대기'}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -533,7 +533,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
           </p>
         </div>
 
-        {req.status === 'pending' && isAdmin && (
+        {req.status === 'pending' && !req.cancelledAt && isAdmin && (
           <button
             onClick={e => { e.stopPropagation(); onProcess(); }}
             disabled={isProcessing}

@@ -13,7 +13,7 @@ function fakeDb(initial: Record<string, Row>) {
       const result = await fn({ get: async (ref: any) => {
         if (writes.length) throw new Error('read after write');
         if (ref.key) return snapshot(ref.key);
-        return { docs: [...rows].filter(([key, data]) => key.startsWith(`${ref.collection}/`) && (!ref.field || data[ref.field] === ref.value)).map(([key]) => snapshot(key)) };
+        return { docs: [...rows].filter(([key, data]) => key.startsWith(`${ref.collection}/`) && (!ref.field || (Array.isArray(data[ref.field]) ? data[ref.field].includes(ref.value) : data[ref.field] === ref.value))).map(([key]) => snapshot(key)) };
       }, update: (ref: any, value: Row) => writes.push(() => rows.set(ref.key, { ...rows.get(ref.key), ...value })),
       create: (ref: any, value: Row) => writes.push(() => rows.set(ref.key, value)), delete: (ref: any) => writes.push(() => rows.delete(ref.key)) });
       writes.forEach(write => write()); return result;
@@ -27,6 +27,45 @@ function seeded(extra: Record<string, Row> = {}) { return fakeDb({ 'appMeta/rele
 const input = (action: 'edit' | 'delete', patch?: any) => ({ action, operationId: 'mutation', cashEntryId: 'cash', expectedRevision: 0,
   expectedCashHash: cashMutationHash(cash), releaseId: 'release', ...(patch ? { patch } : {}) });
 describe('fresh cash transaction', () => {
+  it.each([undefined, 'loan'])('assigns only a bank to legacy 260/951 with loanId=%s and no financial rewrites', async loanId => {
+    const original = { ...cash, cashAccountId: '', accountCode: '', ...(loanId ? { loanId } : {}), lines: [{ accountCode: '260', amount: 80 }, { accountCode: '951', amount: 20 }] };
+    const { db, rows } = seeded({ 'cashEntries/cash': original,
+      'cashAccounts/bank': { companyId: 'taebaek', active: true, type: '통장', openingBalance: 1000, confirmedBalances: [{ date: '2026-10-03', balance: 900 }] },
+      'settlements/s': { companyId: 'taebaek', cashEntryId: 'cash', statementId: 'v', amount: 100 },
+      'loanContracts/loan': { principalBalance: 800 }, 'appMeta/partnerPaymentState_taebaek_p': { revision: 7 } });
+    const before = new Map([...rows].map(([key, value]) => [key, structuredClone(value)]));
+    const request = { ...input('edit', { cashAccountId: 'bank' }), expectedCashHash: cashOriginalHash(original) };
+    expect(await mutateCashEntry(db, 'taebaek', 'uid', request)).toMatchObject({ status: 'applied', revision: 1 });
+    expect(rows.get('cashEntries/cash')).toEqual({ ...original, cashAccountId: 'bank', mutationRevision: 1 });
+    for (const [key, value] of before) if (key !== 'cashEntries/cash') expect(rows.get(key)).toEqual(value);
+    expect(rows.get('voucherMutationOperations/mutation')).toMatchObject({ kind: 'cashEntries', status: 'applied', createdBy: 'uid', beforeSnapshot: original,
+      beforeHash: cashOriginalHash(original), afterHash: cashOriginalHash(rows.get('cashEntries/cash')!) });
+    expect(await mutateCashEntry(db, 'taebaek', 'uid', request)).toMatchObject({ status: 'duplicate' });
+  });
+  it('requires the original audit chain when assigning a previously changed unassigned cash', async () => {
+    const original = { ...cash, cashAccountId: '', mutationRevision: 1 };
+    const { db, rows } = seeded({ 'cashEntries/cash': original, 'cashAccounts/bank': { companyId: 'taebaek', active: true, type: '통장' } });
+    await expect(mutateCashEntry(db, 'taebaek', 'uid', { ...input('edit', { cashAccountId: 'bank' }),
+      expectedRevision: 1, expectedCashHash: cashOriginalHash(original) })).rejects.toThrow('감사 사슬');
+    expect(rows.get('cashEntries/cash')).toEqual(original);
+    expect(rows.has('voucherMutationOperations/mutation')).toBe(false);
+  });
+  it('rejects mixed patches, assigned cash, inactive/foreign/non-bank accounts and special origins without writes', async () => {
+    for (const [cashExtra, bankExtra, patchExtra] of [
+      [{}, {}, { note: '다른 수정' }], [{ cashAccountId: 'old' }, {}, {}], [{}, { active: false }, {}],
+      [{}, { companyId: 'punghoe' }, {}], [{}, { type: '현금' }, {}],
+      ...['transferOperationId', 'payrollId', 'returnOperationId', 'balanceAdjustment'].map(key => [{ [key]: 'special' }, {}, {}]),
+    ]) {
+      const original = { ...cash, cashAccountId: '', ...cashExtra };
+      const { db, rows } = seeded({ 'cashEntries/cash': original, 'cashAccounts/bank': { companyId: 'taebaek', active: true, type: '통장', ...bankExtra } });
+      const before = [...rows];
+      await expect(mutateCashEntry(db, 'taebaek', 'uid', { ...input('edit', { cashAccountId: 'bank', ...patchExtra }), expectedCashHash: cashOriginalHash(original) })).rejects.toThrow();
+      for (const [key, value] of before) expect(rows.get(key)).toEqual(value);
+      expect(rows.get('voucherMutationOperations/mutation')).toMatchObject({ kind: 'cashAccountAssignment', status: 'rejected', createdBy: 'uid' });
+      expect(rows.get('voucherMutationOperations/mutation')?.cashEntryIds).toBeUndefined();
+      await expect(mutateCashEntry(db, 'taebaek', 'uid', { ...input('edit', { cashAccountId: 'bank', ...patchExtra }), expectedCashHash: cashOriginalHash(original) })).rejects.toThrow();
+    }
+  });
   it('atomically changes cash and one settlement and increments partner revision', async () => {
     const { db, rows } = seeded({ 'issuedStatements/v': { companyId: 'taebaek', partnerId: 'p', type: '매입', tradeDate: '2026-10-03', totalAmount: 200, totalSupply: 200, totalTax: 0, items: [{ accountCode: '802', supply: 200, tax: 0, total: 200, qty: 1 }] },
       'settlements/s': { companyId: 'taebaek', statementId: 'v', cashEntryId: 'cash', amount: 100 } });

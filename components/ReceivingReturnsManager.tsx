@@ -250,7 +250,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
     } finally { submissionBusy.current = false; if (liveSubmission()) { setReturnSaving(false); setPrSaving(false); } }
   };
 
-  const pendingReturnCount = returnRequests.filter(r => r.status === 'pending' && r.returnType !== '매입').length;
+  const pendingReturnCount = returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt && r.returnType !== '매입').length;
 
   // ══════════════════════════════════════════
   // Render

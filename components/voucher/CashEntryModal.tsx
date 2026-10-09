@@ -11,6 +11,7 @@ import SearchableSelect from '../../src/shared/components/SearchableSelect';
 import PayrollLineEditor from '../hr/PayrollLineEditor';
 import { payrollTotals, type PayrollLine } from '../../src/shared/types';
 import type { PayrollCashEdit, TransferCashEdit, PreparedTransferCashEdit } from '../../src/features/admin/cashMutationCommands';
+import { auth } from '../../src/shared/firebase';
 
 /**
  * **자금 전표 하나를 세우거나 고치는 창.**
@@ -49,7 +50,7 @@ interface Props {
   companyId: CompanyId;
   accountCodes: AccountCode[];
   /** 활성 통장만 */
-  cashAccounts: { id: string; name: string }[];
+  cashAccounts: { id: string; name: string; openingDate?: string; type?: '통장' | '현금' | '카드' }[];
   /** 고른 통장 — 창을 닫아도 기억해야 해서 밖이 쥔다 */
   accountId: string;
   onAccountId: (_id: string) => void;
@@ -65,6 +66,7 @@ interface Props {
   onDeleteEntry?: (_id: string) => void | Promise<void>;
   hasPendingRequest?: (_id: string) => boolean;
   onResumeEntry?: (_id: string) => Promise<unknown>;
+  onAssignCashAccount?: (_entry: CashEntry, _accountId: string) => Promise<void>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -220,7 +222,7 @@ function SettleBody({
 
 // ── 이미 난 자금 전표 고치기 ─────────────────────────────────────────────────
 
-function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, onClose, onSaveEdit, onDeleteEntry, payrollEdit, transferEdit, hasPendingRequest, onResumeEntry }: Props & { entry: CashEntry }) {
+function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, onClose, onSaveEdit, onDeleteEntry, payrollEdit, transferEdit, hasPendingRequest, onResumeEntry, cashAccounts, onAssignCashAccount }: Props & { entry: CashEntry }) {
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const [payrollLines, setPayrollLines] = useState(payrollEdit?.lines ?? []);
@@ -247,6 +249,13 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
   const [partnerTouched, setPartnerTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const [assignmentAccountId, setAssignmentAccountId] = useState('');
+  const [assignmentError, setAssignmentError] = useState('');
+  const assignmentScope = useRef({ companyId, entry });
+  assignmentScope.current = { companyId, entry };
+  const assignmentAccounts = cashAccounts.filter(account => account.type === '통장');
+  const assignmentAccount = assignmentAccounts.find(account => account.id === assignmentAccountId);
+  const beforeOpening = !!assignmentAccount?.openingDate && entry.date < assignmentAccount.openingDate;
   const currentPartners = partners.filter(partner => companyOf(partner) === companyId);
   const selectedPartner = currentPartners.find(partner => partner.id === partnerId);
   const originalMissing = Boolean(entry.partnerId && !currentPartners.some(partner => partner.id === entry.partnerId));
@@ -271,6 +280,32 @@ function EditBody({ entry, accountCodes, partners, companyId, partnerBalances, o
 
   return (
     <ModalShell title="자금 전표 수정" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="space-y-4">
+          {!entry.cashAccountId && entry.dir !== '대체' && !entry.balanceAdjustment && !payrollEdit && !transferEdit
+            && !('payrollId' in entry && entry.payrollId) && !('transferOperationId' in entry && entry.transferOperationId)
+            && !('returnOperationId' in entry && entry.returnOperationId) && onAssignCashAccount && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <label htmlFor="cash-assignment-account" className="block text-xs font-bold">계좌 미지정 · 통장 선택</label>
+              <select id="cash-assignment-account" value={assignmentAccountId} disabled={saving} onChange={event => { setAssignmentAccountId(event.target.value); setAssignmentError(''); }} className="w-full rounded-lg border p-2 text-sm">
+                <option value="">직접 선택하세요</option>
+                {assignmentAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </select>
+              {beforeOpening && <p className="text-xs text-amber-800">계좌 기초일 이전 기록입니다. 분개는 유지되지만 계좌 원장 잔액에는 반영되지 않습니다.</p>}
+              {assignmentError && <p role="alert" className="text-xs text-rose-600">{assignmentError}</p>}
+              <button type="button" disabled={saving || !assignmentAccount} onClick={async () => {
+                if (savingRef.current || !assignmentAccount || companyOf(entry) !== companyId) return;
+                const userId = auth.currentUser?.uid;
+                if (!userId) return;
+                savingRef.current = true; setSaving(true); setAssignmentError('');
+                const current = () => alive.current && assignmentScope.current.companyId === companyId && assignmentScope.current.entry === entry && auth.currentUser?.uid === userId;
+                try {
+                  if (beforeOpening && !await appConfirm('계좌 기초일 이전 기록입니다. 계좌 원장 잔액에는 반영되지 않아도 이 통장으로 지정할까요?')) return;
+                  if (!current()) return;
+                  await onAssignCashAccount(entry, assignmentAccount.id);
+                } catch (error) { if (current()) setAssignmentError(error instanceof Error ? error.message : String(error)); }
+                finally { savingRef.current = false; if (current()) setSaving(false); }
+              }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">계좌 지정</button>
+            </div>
+          )}
           {onResumeEntry && hasPendingRequest?.(entry.id) && <button disabled={saving} onClick={async () => {
             if (savingRef.current) return;
             savingRef.current = true; setSaving(true);
