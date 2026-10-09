@@ -1,26 +1,26 @@
 # 현재 코드 필드 사전
 
-COL 73개, 선언 필드 697개, 운영 소스 425개를 분석했다.
+COL 73개, 선언 필드 700개, 운영 소스 427개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 622건. 동적 문서 ID도 미해석으로 보존하며, 미해석 317건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 630건. 동적 문서 ID도 미해석으로 보존하며, 미해석 320건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransferGrants`, `companyTransferOperations`, `itemUnpackMovements`, `loanMovementOperations`, `manualSettlementBatchOperations`, `manualSettlementOperations`, `oemReceiptOperations`, `partnerPaymentOperations`, `returnApplications`, `voucherMutationOperations`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 36건과 정적 컬렉션의 동적 문서 경로 280건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, 런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 36건과 정적 컬렉션의 동적 문서 경로 283건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, 런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
 | doc | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:27, functions/src/financialOpeningCommand.ts:28, functions/src/financialOpeningCommand.ts:30, functions/src/financialOpeningCommand.ts:61, functions/src/financialOpeningCommand.ts:62, functions/src/financialOpeningCommand.ts:63, functions/src/financialOpeningCommand.ts:64, functions/src/financialOpeningCommand.ts:100, functions/src/financialOpeningCommand.ts:101, functions/src/financialOpeningCommand.ts:150, functions/src/financialOpeningCommand.ts:151, functions/src/financialOpeningCommand.ts:152, functions/src/financialOpeningCommand.ts:194, functions/src/financialOpeningCommand.ts:195 |
 | subscribeToDocument | src/shared/services/firebaseService.ts:146 | src/shared/services/firebaseService.ts:151 | src/shared/deliveryTimeSlot.ts:24, components/OrdersList.tsx:1712, components/DeliveryManager.tsx:138, components/LeaveManager.tsx:181, src/shared/hooks/useAppData.ts:326 |
 | setDocument | src/shared/services/firebaseService.ts:156 | src/shared/services/firebaseService.ts:158 | src/shared/deliveryTimeSlot.ts:34, components/OrdersList.tsx:1718, components/DeliveryManager.tsx:300, components/DeliveryManager.tsx:302, components/DeliveryManager.tsx:303, components/DeliveryManager.tsx:309, components/DeliveryManager.tsx:480, components/DeliveryManager.tsx:486, components/DeliveryManager.tsx:1201, components/LeaveManager.tsx:215, components/PartnerSignupApproval.tsx:59, components/PartnerSignupApproval.tsx:74, components/HaccpChecklist.tsx:2881, components/HaccpChecklist.tsx:3008, components/HaccpChecklist.tsx:3144, components/HaccpChecklist.tsx:3316, components/HaccpChecklist.tsx:3459, components/HaccpChecklist.tsx:4019, components/HaccpChecklist.tsx:4489, src/features/admin/AdminApp.tsx:397, src/features/admin/AdminApp.tsx:2027, src/features/admin/AdminApp.tsx:4597, src/features/admin/AdminApp.tsx:4783 |
-| subscribeToCollection | src/shared/services/firebaseService.ts:242 | src/shared/services/firebaseService.ts:248 | src/shared/services/firebaseService.ts:288, components/ItemList.tsx:527, src/shared/hooks/useAppData.ts:252, src/shared/hooks/useAppData.ts:258, src/shared/hooks/useAppData.ts:272, src/shared/hooks/useAppData.ts:273, src/shared/hooks/useAppData.ts:276, src/shared/hooks/useAppData.ts:277, src/shared/hooks/useAppData.ts:278, src/shared/hooks/useAppData.ts:279, src/shared/hooks/useAppData.ts:298, src/shared/hooks/useAppData.ts:307, src/shared/hooks/useAppData.ts:308, src/shared/hooks/useAppData.ts:310, src/shared/hooks/useAppData.ts:311, src/shared/hooks/useAppData.ts:312, src/shared/hooks/useAppData.ts:313, src/shared/hooks/useAppData.ts:314, src/shared/hooks/useAppData.ts:315, src/shared/hooks/useAppData.ts:316, src/shared/hooks/useAppData.ts:321, src/shared/hooks/useAppData.ts:322, src/shared/hooks/useAppData.ts:324, src/shared/hooks/useAppData.ts:344, src/hooks/useAdminData.ts:56, src/hooks/useAdminData.ts:61, components/HRManager.tsx:128, components/PartnerSignupApproval.tsx:40, components/DocumentManager.tsx:78, components/DocumentManager.tsx:79, components/DocumentManager.tsx:80, components/QuotationManager.tsx:117, components/ReturnManager.tsx:102, components/ReceivingReturnsManager.tsx:54 |
-| fetchCollection | src/shared/services/firebaseService.ts:265 | src/shared/services/firebaseService.ts:269 | components/AddItemModal.tsx:135, components/CategoryManager.tsx:39, components/ItemList.tsx:503, components/ItemList.tsx:558, components/ItemList.tsx:560, components/ItemManager.tsx:317, src/shared/hooks/useAppData.ts:222, src/shared/hooks/useAppData.ts:377, src/shared/hooks/useAppData.ts:378, src/shared/hooks/useAppData.ts:379, src/shared/hooks/useAppData.ts:380, src/shared/hooks/useAppData.ts:384, src/shared/hooks/useAppData.ts:385, src/shared/hooks/useAppData.ts:386, src/shared/hooks/useAppData.ts:387, src/shared/hooks/useAppData.ts:388, components/DashboardLinks.tsx:53, components/DocumentManager.tsx:82, components/DocumentManager.tsx:114, components/DocumentManager.tsx:115, src/features/statements/hooks/useStatementHistoryFilters.ts:29, src/features/admin/AdminApp.tsx:532, src/features/admin/AdminApp.tsx:545 |
+| subscribeToCollection | src/shared/services/firebaseService.ts:242 | src/shared/services/firebaseService.ts:248 | src/shared/services/firebaseService.ts:288, components/ItemList.tsx:528, src/shared/hooks/useAppData.ts:252, src/shared/hooks/useAppData.ts:258, src/shared/hooks/useAppData.ts:272, src/shared/hooks/useAppData.ts:273, src/shared/hooks/useAppData.ts:276, src/shared/hooks/useAppData.ts:277, src/shared/hooks/useAppData.ts:278, src/shared/hooks/useAppData.ts:279, src/shared/hooks/useAppData.ts:298, src/shared/hooks/useAppData.ts:307, src/shared/hooks/useAppData.ts:308, src/shared/hooks/useAppData.ts:310, src/shared/hooks/useAppData.ts:311, src/shared/hooks/useAppData.ts:312, src/shared/hooks/useAppData.ts:313, src/shared/hooks/useAppData.ts:314, src/shared/hooks/useAppData.ts:315, src/shared/hooks/useAppData.ts:316, src/shared/hooks/useAppData.ts:321, src/shared/hooks/useAppData.ts:322, src/shared/hooks/useAppData.ts:324, src/shared/hooks/useAppData.ts:344, src/hooks/useAdminData.ts:56, src/hooks/useAdminData.ts:61, components/HRManager.tsx:128, components/PartnerSignupApproval.tsx:40, components/DocumentManager.tsx:78, components/DocumentManager.tsx:79, components/DocumentManager.tsx:80, components/QuotationManager.tsx:117, components/ReturnManager.tsx:102, components/ReceivingReturnsManager.tsx:54 |
+| fetchCollection | src/shared/services/firebaseService.ts:265 | src/shared/services/firebaseService.ts:269 | components/AddItemModal.tsx:135, components/CategoryManager.tsx:39, components/ItemList.tsx:504, components/ItemList.tsx:559, components/ItemList.tsx:561, components/ItemManager.tsx:317, src/shared/hooks/useAppData.ts:222, src/shared/hooks/useAppData.ts:377, src/shared/hooks/useAppData.ts:378, src/shared/hooks/useAppData.ts:379, src/shared/hooks/useAppData.ts:380, src/shared/hooks/useAppData.ts:384, src/shared/hooks/useAppData.ts:385, src/shared/hooks/useAppData.ts:386, src/shared/hooks/useAppData.ts:387, src/shared/hooks/useAppData.ts:388, components/DashboardLinks.tsx:53, components/DocumentManager.tsx:82, components/DocumentManager.tsx:114, components/DocumentManager.tsx:115, src/features/statements/hooks/useStatementHistoryFilters.ts:29, src/features/admin/AdminApp.tsx:532, src/features/admin/AdminApp.tsx:545 |
 | fetchDateRange | src/shared/services/firebaseService.ts:296 | src/shared/services/firebaseService.ts:304 | src/features/admin/useProductionSalesHistory.ts:14, components/PalletManager.tsx:65, components/TaxStatement.tsx:56, src/features/admin/useVoucherLedger.ts:152, src/features/admin/useVoucherLedger.ts:169 |
-| addItem | src/shared/services/firebaseService.ts:331 | src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:367, src/shared/services/firebaseService.ts:370 | src/shared/receipt.ts:95, src/shared/services/firebaseService.ts:597, src/shared/services/employeeCommand.ts:36, components/CategoryManager.tsx:45, components/CategoryManager.tsx:88, components/CategoryManager.tsx:106, components/CategoryManager.tsx:124, components/CategoryManager.tsx:149, components/ItemList.tsx:559, components/ItemList.tsx:562, components/DashboardLinks.tsx:64, components/DashboardLinks.tsx:93, components/DocumentManager.tsx:86, components/DocumentManager.tsx:119, components/DocumentManager.tsx:121, components/DocumentManager.tsx:206, components/DocumentManager.tsx:254, components/DocumentManager.tsx:274, components/QuotationManager.tsx:266, components/HaccpChecklist.tsx:555, components/HaccpChecklist.tsx:1095, components/HaccpChecklist.tsx:1386, components/HaccpChecklist.tsx:1982, components/HaccpChecklist.tsx:2591, components/HaccpChecklist.tsx:3648, components/HaccpChecklist.tsx:4176, components/BenzopyreneLog.tsx:62, src/features/admin/AdminApp.tsx:764, src/features/admin/AdminApp.tsx:1071, src/features/admin/AdminApp.tsx:1083, src/features/admin/AdminApp.tsx:1098, src/features/admin/AdminApp.tsx:1110, src/features/admin/AdminApp.tsx:1248, src/features/admin/AdminApp.tsx:1451, src/features/admin/AdminApp.tsx:1748, src/features/admin/AdminApp.tsx:2009, src/features/admin/AdminApp.tsx:2605, src/features/admin/AdminApp.tsx:2641, src/features/admin/AdminApp.tsx:2662, src/features/admin/AdminApp.tsx:3013, src/features/admin/AdminApp.tsx:3039, src/features/admin/AdminApp.tsx:3049, src/features/admin/AdminApp.tsx:3059, src/features/admin/AdminApp.tsx:3067, src/features/admin/AdminApp.tsx:3377, src/features/admin/AdminApp.tsx:4504, src/features/admin/AdminApp.tsx:4508, src/features/admin/AdminApp.tsx:4557, src/features/admin/AdminApp.tsx:4626, src/features/admin/AdminApp.tsx:4636, src/features/admin/AdminApp.tsx:4638, src/features/admin/AdminApp.tsx:4643, src/features/admin/AdminApp.tsx:4705, src/features/admin/AdminApp.tsx:4854, src/features/admin/AdminApp.tsx:4928, src/features/admin/AdminApp.tsx:4930, src/features/admin/AdminApp.tsx:5076, src/features/admin/AdminApp.tsx:5092, src/features/admin/AdminApp.tsx:5112, src/features/admin/AdminApp.tsx:5121, src/features/admin/AdminApp.tsx:5233, src/features/admin/AdminApp.tsx:5288 |
+| addItem | src/shared/services/firebaseService.ts:331 | src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:344, src/shared/services/firebaseService.ts:367, src/shared/services/firebaseService.ts:370 | src/shared/receipt.ts:95, src/shared/services/firebaseService.ts:597, src/shared/services/employeeCommand.ts:36, components/CategoryManager.tsx:45, components/CategoryManager.tsx:88, components/CategoryManager.tsx:106, components/CategoryManager.tsx:124, components/CategoryManager.tsx:149, components/ItemList.tsx:560, components/ItemList.tsx:563, components/DashboardLinks.tsx:64, components/DashboardLinks.tsx:93, components/DocumentManager.tsx:86, components/DocumentManager.tsx:119, components/DocumentManager.tsx:121, components/DocumentManager.tsx:206, components/DocumentManager.tsx:254, components/DocumentManager.tsx:274, components/QuotationManager.tsx:266, components/HaccpChecklist.tsx:555, components/HaccpChecklist.tsx:1095, components/HaccpChecklist.tsx:1386, components/HaccpChecklist.tsx:1982, components/HaccpChecklist.tsx:2591, components/HaccpChecklist.tsx:3648, components/HaccpChecklist.tsx:4176, components/BenzopyreneLog.tsx:62, src/features/admin/AdminApp.tsx:764, src/features/admin/AdminApp.tsx:1071, src/features/admin/AdminApp.tsx:1083, src/features/admin/AdminApp.tsx:1098, src/features/admin/AdminApp.tsx:1110, src/features/admin/AdminApp.tsx:1248, src/features/admin/AdminApp.tsx:1451, src/features/admin/AdminApp.tsx:1748, src/features/admin/AdminApp.tsx:2009, src/features/admin/AdminApp.tsx:2605, src/features/admin/AdminApp.tsx:2641, src/features/admin/AdminApp.tsx:2662, src/features/admin/AdminApp.tsx:3013, src/features/admin/AdminApp.tsx:3039, src/features/admin/AdminApp.tsx:3049, src/features/admin/AdminApp.tsx:3059, src/features/admin/AdminApp.tsx:3067, src/features/admin/AdminApp.tsx:3377, src/features/admin/AdminApp.tsx:4504, src/features/admin/AdminApp.tsx:4508, src/features/admin/AdminApp.tsx:4557, src/features/admin/AdminApp.tsx:4626, src/features/admin/AdminApp.tsx:4636, src/features/admin/AdminApp.tsx:4638, src/features/admin/AdminApp.tsx:4643, src/features/admin/AdminApp.tsx:4705, src/features/admin/AdminApp.tsx:4854, src/features/admin/AdminApp.tsx:4928, src/features/admin/AdminApp.tsx:4930, src/features/admin/AdminApp.tsx:5076, src/features/admin/AdminApp.tsx:5092, src/features/admin/AdminApp.tsx:5112, src/features/admin/AdminApp.tsx:5121, src/features/admin/AdminApp.tsx:5233, src/features/admin/AdminApp.tsx:5288 |
 | updateItem | src/shared/services/firebaseService.ts:375 | src/shared/services/firebaseService.ts:376 | components/RawMaterialLotPanel.tsx:80, components/RawMaterialLotPanel.tsx:94, components/CategoryManager.tsx:91, components/CategoryManager.tsx:105, components/CategoryManager.tsx:120, components/CategoryManager.tsx:135, components/CategoryManager.tsx:159, components/CategoryManager.tsx:180, components/PalletManager.tsx:360, components/DashboardLinks.tsx:103, components/DocumentManager.tsx:246, components/HaccpChecklist.tsx:559, components/HaccpChecklist.tsx:570, components/HaccpChecklist.tsx:1097, components/HaccpChecklist.tsx:1106, components/HaccpChecklist.tsx:1388, components/HaccpChecklist.tsx:1397, components/HaccpChecklist.tsx:1992, components/HaccpChecklist.tsx:2015, components/HaccpChecklist.tsx:2595, components/HaccpChecklist.tsx:2609, components/HaccpChecklist.tsx:3652, components/HaccpChecklist.tsx:3666, components/HaccpChecklist.tsx:4180, components/HaccpChecklist.tsx:4194, components/BenzopyreneLog.tsx:81, src/features/admin/AdminApp.tsx:733, src/features/admin/AdminApp.tsx:785, src/features/admin/AdminApp.tsx:1143, src/features/admin/AdminApp.tsx:1151, src/features/admin/AdminApp.tsx:1153, src/features/admin/AdminApp.tsx:1162, src/features/admin/AdminApp.tsx:1170, src/features/admin/AdminApp.tsx:1214, src/features/admin/AdminApp.tsx:2003, src/features/admin/AdminApp.tsx:2516, src/features/admin/AdminApp.tsx:2519, src/features/admin/AdminApp.tsx:2520, src/features/admin/AdminApp.tsx:2521, src/features/admin/AdminApp.tsx:2522, src/features/admin/AdminApp.tsx:2550, src/features/admin/AdminApp.tsx:2553, src/features/admin/AdminApp.tsx:2554, src/features/admin/AdminApp.tsx:2555, src/features/admin/AdminApp.tsx:2556, src/features/admin/AdminApp.tsx:2577, src/features/admin/AdminApp.tsx:2578, src/features/admin/AdminApp.tsx:2582, src/features/admin/AdminApp.tsx:2583, src/features/admin/AdminApp.tsx:2584, src/features/admin/AdminApp.tsx:2585, src/features/admin/AdminApp.tsx:2623, src/features/admin/AdminApp.tsx:2639, src/features/admin/AdminApp.tsx:2657, src/features/admin/AdminApp.tsx:2812, src/features/admin/AdminApp.tsx:3013, src/features/admin/AdminApp.tsx:3039, src/features/admin/AdminApp.tsx:3048, src/features/admin/AdminApp.tsx:3058, src/features/admin/AdminApp.tsx:3062, src/features/admin/AdminApp.tsx:3064, src/features/admin/AdminApp.tsx:3085, src/features/admin/AdminApp.tsx:3087, src/features/admin/AdminApp.tsx:3096, src/features/admin/AdminApp.tsx:3119, src/features/admin/AdminApp.tsx:3130, src/features/admin/AdminApp.tsx:3770, src/features/admin/AdminApp.tsx:4501, src/features/admin/AdminApp.tsx:4505, src/features/admin/AdminApp.tsx:4513, src/features/admin/AdminApp.tsx:4577, src/features/admin/AdminApp.tsx:4627, src/features/admin/AdminApp.tsx:4635, src/features/admin/AdminApp.tsx:4639, src/features/admin/AdminApp.tsx:4731, src/features/admin/AdminApp.tsx:4824, src/features/admin/AdminApp.tsx:4856, src/features/admin/AdminApp.tsx:4866, src/features/admin/AdminApp.tsx:4875, src/features/admin/AdminApp.tsx:4909, src/features/admin/AdminApp.tsx:4942, src/features/admin/AdminApp.tsx:4944, src/features/admin/AdminApp.tsx:5057, src/features/admin/AdminApp.tsx:5077, src/features/admin/AdminApp.tsx:5080, src/features/admin/AdminApp.tsx:5100, src/features/admin/AdminApp.tsx:5271, src/features/admin/AdminApp.tsx:5283 |
 | deleteItem | src/shared/services/firebaseService.ts:385 | src/shared/services/firebaseService.ts:386 | src/shared/services/workOrderResetService.ts:21, components/CategoryManager.tsx:169, components/PalletManager.tsx:379, components/DashboardLinks.tsx:109, components/DocumentManager.tsx:235, components/DocumentManager.tsx:265, components/DocumentManager.tsx:284, components/QuotationManager.tsx:362, components/HaccpChecklist.tsx:577, components/HaccpChecklist.tsx:2028, components/HaccpChecklist.tsx:2616, components/HaccpChecklist.tsx:3677, components/HaccpChecklist.tsx:4205, components/BenzopyreneLog.tsx:91, src/features/admin/AdminApp.tsx:1009, src/features/admin/AdminApp.tsx:1139, src/features/admin/AdminApp.tsx:1161, src/features/admin/AdminApp.tsx:1164, src/features/admin/AdminApp.tsx:2601, src/features/admin/AdminApp.tsx:3013, src/features/admin/AdminApp.tsx:3039, src/features/admin/AdminApp.tsx:3060, src/features/admin/AdminApp.tsx:3065, src/features/admin/AdminApp.tsx:3088, src/features/admin/AdminApp.tsx:4506, src/features/admin/AdminApp.tsx:4509, src/features/admin/AdminApp.tsx:4628, src/features/admin/AdminApp.tsx:4637, src/features/admin/AdminApp.tsx:4640, src/features/admin/AdminApp.tsx:4855, src/features/admin/AdminApp.tsx:4907, src/features/admin/AdminApp.tsx:4912, src/features/admin/AdminApp.tsx:5078, src/features/admin/AdminApp.tsx:5230, src/features/admin/AdminApp.tsx:5258 |
 | adjustItemStock | src/shared/services/firebaseService.ts:422 | src/shared/services/firebaseService.ts:429 | src/shared/receipt.ts:94 |
@@ -35,7 +35,7 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | commitCompanyWrites | src/shared/services/firebaseService.ts:681 | src/shared/services/firebaseService.ts:687 | src/shared/services/firebaseService.ts:560, src/shared/services/firebaseService.ts:591, src/shared/services/firebaseService.ts:894, src/features/admin/AdminApp.tsx:1397, src/features/admin/AdminApp.tsx:5028, src/features/admin/AdminApp.tsx:5216, src/features/admin/AdminApp.tsx:5306 |
 | mutateDoc | src/shared/services/firebaseService.ts:903 | src/shared/services/firebaseService.ts:908 | 정적 호출 연결 없음 |
 | applyTaxIssueWrites | src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:6 | src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:13, src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:16 | src/features/admin/AdminApp.tsx:4613 |
-| readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98, functions/src/partnerAdvanceCommand.ts:128, functions/src/deleteIssuedStatementCommand.ts:96, functions/src/cashMutationCommand.ts:159, functions/src/editIssuedStatementCommand.ts:110, functions/src/processReturnCommand.ts:202 |
+| readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98, functions/src/partnerAdvanceCommand.ts:128, functions/src/deleteIssuedStatementCommand.ts:96, functions/src/cashMutationCommand.ts:198, functions/src/editIssuedStatementCommand.ts:110, functions/src/processReturnCommand.ts:204 |
 | deleteIssuedStatement | functions/src/deleteIssuedStatementCommand.ts:52 | functions/src/deleteIssuedStatementCommand.ts:76, functions/src/deleteIssuedStatementCommand.ts:91, functions/src/deleteIssuedStatementCommand.ts:91, functions/src/deleteIssuedStatementCommand.ts:108, functions/src/deleteIssuedStatementCommand.ts:108 | functions/src/deleteIssuedStatementCommand.ts:130 |
 | issueVoucher | functions/src/voucherIssue.ts:33 | functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:75, functions/src/voucherIssue.ts:75 | functions/src/voucherIssue.ts:187, functions/src/autoVoucherCommand.ts:39 |
 
@@ -68,10 +68,10 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | src/features/admin/manualSettlementCommands.ts:58 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
 | src/features/admin/manualSettlementCommands.ts:59 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${input.partnerId}`} | appMeta |
 | src/features/admin/cashMutationCommands.ts:18 | client | doc | root / top-level-candidate | 미해석 | payrolls/{(original as CashEntry & { payrollId?: string }).payrollId} |  |
-| src/features/admin/cashMutationCommands.ts:79 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
-| src/features/admin/cashMutationCommands.ts:105 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
-| src/features/admin/cashMutationCommands.ts:178 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
-| src/features/admin/cashMutationCommands.ts:179 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${entry.partnerId}`} | appMeta |
+| src/features/admin/cashMutationCommands.ts:104 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/admin/cashMutationCommands.ts:132 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/admin/cashMutationCommands.ts:205 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
+| src/features/admin/cashMutationCommands.ts:206 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${entry.partnerId}`} | appMeta |
 | src/shared/services/firebaseService.ts:87 | client | doc | root / top-level-candidate | 미해석 | accountCodes/{account.id} |  |
 | src/shared/services/firebaseService.ts:109 | client | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
 | src/shared/services/firebaseService.ts:151 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{docId} |  |
@@ -329,6 +329,12 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | functions/src/loanMovementCommand.ts:195 | server | collection | root / top-level | 1 | cashAccounts |  |
 | functions/src/autoVoucherCommand.ts:20 | server | collection | root / top-level | 1 | cashAccounts |  |
 | functions/src/autoVoucherCommand.ts:25 | server | collection | root / top-level | 1 | accountCodes |  |
+| functions/src/cancelPendingReturnCommand.ts:27 | server | doc | root / top-level-candidate | 미해석 | returnRequests/{input.requestId} |  |
+| functions/src/cancelPendingReturnCommand.ts:27 | server | collection | root / top-level | 1 | returnRequests |  |
+| functions/src/cancelPendingReturnCommand.ts:32 | server | doc | root / top-level-candidate | 미해석 | returnSubmissionOperations/{input.requestId} |  |
+| functions/src/cancelPendingReturnCommand.ts:32 | server | collection | root / top-level | 1 | returnSubmissionOperations |  |
+| functions/src/cancelPendingReturnCommand.ts:81 | server | collection | root / top-level | 1 | returnOperations |  |
+| functions/src/cancelPendingReturnCommand.ts:82 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
 | functions/src/payrollVoucher.ts:81 | server | doc | root / top-level-candidate | 미해석 | employees/{line.employeeId} |  |
 | functions/src/payrollVoucher.ts:81 | server | collection | root / top-level | 1 | employees |  |
 | functions/src/payrollVoucher.ts:92 | server | doc | root / top-level-candidate | 미해석 | payrolls/{id} |  |
@@ -357,44 +363,46 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | functions/src/cashMutationCommand.ts:39 | server | collection | root / top-level | 1 | settlements |  |
 | functions/src/cashMutationCommand.ts:40 | server | collection | root / top-level | 1 | cashEntries |  |
 | functions/src/cashMutationCommand.ts:40 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
-| functions/src/cashMutationCommand.ts:55 | server | doc | root / top-level-candidate | 미해석 | loanContracts/{current.loanId} |  |
-| functions/src/cashMutationCommand.ts:55 | server | collection | root / top-level | 1 | loanContracts |  |
-| functions/src/cashMutationCommand.ts:56 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/cashMutationCommand.ts:57 | server | doc | root / top-level-candidate | 미해석 | payrolls/{current.payrollId} |  |
-| functions/src/cashMutationCommand.ts:57 | server | collection | root / top-level | 1 | payrolls |  |
-| functions/src/cashMutationCommand.ts:59 | server | doc | root / top-level-candidate | 미해석 | partners/{input.patch?.partnerId === undefined ? current.partnerId : input.patch.partnerId} |  |
-| functions/src/cashMutationCommand.ts:59 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/cashMutationCommand.ts:60 | server | doc | root / top-level-candidate | 미해석 | cashAccounts/{current.cashAccountId} |  |
-| functions/src/cashMutationCommand.ts:60 | server | collection | root / top-level | 1 | cashAccounts |  |
-| functions/src/cashMutationCommand.ts:114 | server | doc | root / top-level-candidate | 미해석 | employees/{line.employeeId} |  |
-| functions/src/cashMutationCommand.ts:114 | server | collection | root / top-level | 1 | employees |  |
-| functions/src/cashMutationCommand.ts:152 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${id}`} | appMeta |
-| functions/src/cashMutationCommand.ts:152 | server | collection | root / top-level | 1 | appMeta | appMeta |
-| functions/src/cashMutationCommand.ts:217 | server | doc | root / top-level-candidate | 미해석 | companyTransferOperations/{current.transferOperationId} | companyTransferOperations |
-| functions/src/cashMutationCommand.ts:217 | server | collection | root / top-level | 1 | companyTransferOperations | companyTransferOperations |
-| functions/src/cashMutationCommand.ts:225 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{transfer.outCashEntryId} |  |
-| functions/src/cashMutationCommand.ts:225 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/cashMutationCommand.ts:225 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{transfer.inCashEntryId} |  |
-| functions/src/cashMutationCommand.ts:225 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/cashMutationCommand.ts:226 | server | doc | root / top-level-candidate | 미해석 | companyTransferGrants/{actorId} | companyTransferGrants |
-| functions/src/cashMutationCommand.ts:226 | server | collection | root / top-level | 1 | companyTransferGrants | companyTransferGrants |
-| functions/src/cashMutationCommand.ts:226 | server | doc | root / top-level-candidate | 미해석 | employees/{claims.employeeId} |  |
-| functions/src/cashMutationCommand.ts:226 | server | collection | root / top-level | 1 | employees |  |
-| functions/src/cashMutationCommand.ts:238 | server | doc | root / top-level-candidate | 미해석 | voucherMutationOperations/{transfer.latestCashMutationId} | voucherMutationOperations |
-| functions/src/cashMutationCommand.ts:238 | server | collection | root / top-level | 1 | voucherMutationOperations | voucherMutationOperations |
-| functions/src/cashMutationCommand.ts:254 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{input.cashEntryId} |  |
-| functions/src/cashMutationCommand.ts:254 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/cashMutationCommand.ts:272 | server | collection | root / top-level | 1 | accountCodes |  |
-| functions/src/cashMutationCommand.ts:272 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/cashMutationCommand.ts:272 | server | collection | root / top-level | 1 | settlements |  |
-| functions/src/cashMutationCommand.ts:273 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/cashMutationCommand.ts:273 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
-| functions/src/cashMutationCommand.ts:281 | server | doc | root / top-level-candidate | 미해석 | partners/{original.row.partnerId} |  |
-| functions/src/cashMutationCommand.ts:281 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/cashMutationCommand.ts:281 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${company}_${partnerId}`} | appMeta |
-| functions/src/cashMutationCommand.ts:281 | server | collection | root / top-level | 1 | appMeta | appMeta |
-| functions/src/cashMutationCommand.ts:321 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{original.id} |  |
-| functions/src/cashMutationCommand.ts:321 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:64 | server | doc | root / top-level-candidate | 미해석 | cashAccounts/{input.patch!.cashAccountId} |  |
+| functions/src/cashMutationCommand.ts:64 | server | collection | root / top-level | 1 | cashAccounts |  |
+| functions/src/cashMutationCommand.ts:94 | server | doc | root / top-level-candidate | 미해석 | loanContracts/{current.loanId} |  |
+| functions/src/cashMutationCommand.ts:94 | server | collection | root / top-level | 1 | loanContracts |  |
+| functions/src/cashMutationCommand.ts:95 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:96 | server | doc | root / top-level-candidate | 미해석 | payrolls/{current.payrollId} |  |
+| functions/src/cashMutationCommand.ts:96 | server | collection | root / top-level | 1 | payrolls |  |
+| functions/src/cashMutationCommand.ts:98 | server | doc | root / top-level-candidate | 미해석 | partners/{input.patch?.partnerId === undefined ? current.partnerId : input.patch.partnerId} |  |
+| functions/src/cashMutationCommand.ts:98 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/cashMutationCommand.ts:99 | server | doc | root / top-level-candidate | 미해석 | cashAccounts/{current.cashAccountId} |  |
+| functions/src/cashMutationCommand.ts:99 | server | collection | root / top-level | 1 | cashAccounts |  |
+| functions/src/cashMutationCommand.ts:153 | server | doc | root / top-level-candidate | 미해석 | employees/{line.employeeId} |  |
+| functions/src/cashMutationCommand.ts:153 | server | collection | root / top-level | 1 | employees |  |
+| functions/src/cashMutationCommand.ts:191 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${id}`} | appMeta |
+| functions/src/cashMutationCommand.ts:191 | server | collection | root / top-level | 1 | appMeta | appMeta |
+| functions/src/cashMutationCommand.ts:261 | server | doc | root / top-level-candidate | 미해석 | companyTransferOperations/{current.transferOperationId} | companyTransferOperations |
+| functions/src/cashMutationCommand.ts:261 | server | collection | root / top-level | 1 | companyTransferOperations | companyTransferOperations |
+| functions/src/cashMutationCommand.ts:269 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{transfer.outCashEntryId} |  |
+| functions/src/cashMutationCommand.ts:269 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:269 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{transfer.inCashEntryId} |  |
+| functions/src/cashMutationCommand.ts:269 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:270 | server | doc | root / top-level-candidate | 미해석 | companyTransferGrants/{actorId} | companyTransferGrants |
+| functions/src/cashMutationCommand.ts:270 | server | collection | root / top-level | 1 | companyTransferGrants | companyTransferGrants |
+| functions/src/cashMutationCommand.ts:270 | server | doc | root / top-level-candidate | 미해석 | employees/{claims.employeeId} |  |
+| functions/src/cashMutationCommand.ts:270 | server | collection | root / top-level | 1 | employees |  |
+| functions/src/cashMutationCommand.ts:282 | server | doc | root / top-level-candidate | 미해석 | voucherMutationOperations/{transfer.latestCashMutationId} | voucherMutationOperations |
+| functions/src/cashMutationCommand.ts:282 | server | collection | root / top-level | 1 | voucherMutationOperations | voucherMutationOperations |
+| functions/src/cashMutationCommand.ts:298 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{input.cashEntryId} |  |
+| functions/src/cashMutationCommand.ts:298 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:316 | server | collection | root / top-level | 1 | accountCodes |  |
+| functions/src/cashMutationCommand.ts:316 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/cashMutationCommand.ts:316 | server | collection | root / top-level | 1 | settlements |  |
+| functions/src/cashMutationCommand.ts:317 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/cashMutationCommand.ts:317 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
+| functions/src/cashMutationCommand.ts:325 | server | doc | root / top-level-candidate | 미해석 | partners/{original.row.partnerId} |  |
+| functions/src/cashMutationCommand.ts:325 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/cashMutationCommand.ts:325 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${company}_${partnerId}`} | appMeta |
+| functions/src/cashMutationCommand.ts:325 | server | collection | root / top-level | 1 | appMeta | appMeta |
+| functions/src/cashMutationCommand.ts:365 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{original.id} |  |
+| functions/src/cashMutationCommand.ts:365 | server | collection | root / top-level | 1 | cashEntries |  |
 | functions/src/editIssuedStatementCommand.ts:49 | server | doc | root / top-level | 1 | appMeta/releaseCutover | appMeta |
 | functions/src/editIssuedStatementCommand.ts:50 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{statementId} |  |
 | functions/src/editIssuedStatementCommand.ts:50 | server | collection | root / top-level | 1 | issuedStatements |  |
@@ -516,36 +524,36 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | functions/src/processReturnCommand.ts:61 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
 | functions/src/processReturnCommand.ts:62 | server | collection | root / top-level | 1 | itemReceipts |  |
 | functions/src/processReturnCommand.ts:63 | server | collection | root / top-level | 1 | rawMaterialLedger |  |
-| functions/src/processReturnCommand.ts:96 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{request.linkedStatementId} |  |
-| functions/src/processReturnCommand.ts:96 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/processReturnCommand.ts:97 | server | doc | root / top-level-candidate | 미해석 | partners/{request.partnerId} |  |
-| functions/src/processReturnCommand.ts:97 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/processReturnCommand.ts:98 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${request.partnerId}`} | appMeta |
-| functions/src/processReturnCommand.ts:98 | server | collection | root / top-level | 1 | appMeta | appMeta |
-| functions/src/processReturnCommand.ts:102 | server | collection | root / top-level | 1 | returnRequests |  |
-| functions/src/processReturnCommand.ts:103 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/processReturnCommand.ts:104 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/processReturnCommand.ts:105 | server | collection | root / top-level | 1 | settlements |  |
-| functions/src/processReturnCommand.ts:106 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
-| functions/src/processReturnCommand.ts:107 | server | collection | root / top-level | 1 | items |  |
-| functions/src/processReturnCommand.ts:108 | server | collection | root / top-level | 1 | item_bom |  |
-| functions/src/processReturnCommand.ts:109 | server | collection | root / top-level | 1 | accountCodes |  |
-| functions/src/processReturnCommand.ts:115 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
-| functions/src/processReturnCommand.ts:115 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
-| functions/src/processReturnCommand.ts:129 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{expected.id} |  |
-| functions/src/processReturnCommand.ts:129 | server | collection | root / top-level | 1 | itemReceipts |  |
-| functions/src/processReturnCommand.ts:141 | server | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{expected.id} |  |
-| functions/src/processReturnCommand.ts:141 | server | collection | root / top-level | 1 | rawMaterialLedger |  |
-| functions/src/processReturnCommand.ts:243 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
-| functions/src/processReturnCommand.ts:243 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
-| functions/src/processReturnCommand.ts:287 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{row.receiptId} |  |
-| functions/src/processReturnCommand.ts:287 | server | collection | root / top-level | 1 | itemReceipts |  |
-| functions/src/processReturnCommand.ts:336 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
-| functions/src/processReturnCommand.ts:336 | server | collection | root / top-level | 1 | items |  |
-| functions/src/processReturnCommand.ts:338 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{row.receiptId} |  |
-| functions/src/processReturnCommand.ts:338 | server | collection | root / top-level | 1 | itemReceipts |  |
-| functions/src/processReturnCommand.ts:342 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
-| functions/src/processReturnCommand.ts:342 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
+| functions/src/processReturnCommand.ts:98 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{request.linkedStatementId} |  |
+| functions/src/processReturnCommand.ts:98 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/processReturnCommand.ts:99 | server | doc | root / top-level-candidate | 미해석 | partners/{request.partnerId} |  |
+| functions/src/processReturnCommand.ts:99 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/processReturnCommand.ts:100 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`partnerPaymentState_${companyId}_${request.partnerId}`} | appMeta |
+| functions/src/processReturnCommand.ts:100 | server | collection | root / top-level | 1 | appMeta | appMeta |
+| functions/src/processReturnCommand.ts:104 | server | collection | root / top-level | 1 | returnRequests |  |
+| functions/src/processReturnCommand.ts:105 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/processReturnCommand.ts:106 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/processReturnCommand.ts:107 | server | collection | root / top-level | 1 | settlements |  |
+| functions/src/processReturnCommand.ts:108 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
+| functions/src/processReturnCommand.ts:109 | server | collection | root / top-level | 1 | items |  |
+| functions/src/processReturnCommand.ts:110 | server | collection | root / top-level | 1 | item_bom |  |
+| functions/src/processReturnCommand.ts:111 | server | collection | root / top-level | 1 | accountCodes |  |
+| functions/src/processReturnCommand.ts:117 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
+| functions/src/processReturnCommand.ts:117 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
+| functions/src/processReturnCommand.ts:131 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{expected.id} |  |
+| functions/src/processReturnCommand.ts:131 | server | collection | root / top-level | 1 | itemReceipts |  |
+| functions/src/processReturnCommand.ts:143 | server | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{expected.id} |  |
+| functions/src/processReturnCommand.ts:143 | server | collection | root / top-level | 1 | rawMaterialLedger |  |
+| functions/src/processReturnCommand.ts:245 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
+| functions/src/processReturnCommand.ts:245 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
+| functions/src/processReturnCommand.ts:289 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{row.receiptId} |  |
+| functions/src/processReturnCommand.ts:289 | server | collection | root / top-level | 1 | itemReceipts |  |
+| functions/src/processReturnCommand.ts:338 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
+| functions/src/processReturnCommand.ts:338 | server | collection | root / top-level | 1 | items |  |
+| functions/src/processReturnCommand.ts:340 | server | doc | root / top-level-candidate | 미해석 | itemReceipts/{row.receiptId} |  |
+| functions/src/processReturnCommand.ts:340 | server | collection | root / top-level | 1 | itemReceipts |  |
+| functions/src/processReturnCommand.ts:344 | server | doc | root / top-level-candidate | 미해석 | returnApplications/{row.id} | returnApplications |
+| functions/src/processReturnCommand.ts:344 | server | collection | root / top-level | 1 | returnApplications | returnApplications |
 | functions/src/manualSettlementBatchCommand.ts:39 | server | doc | root / top-level-candidate | 미해석 | manualSettlementBatchOperations/{input.operationId} | manualSettlementBatchOperations |
 | functions/src/manualSettlementBatchCommand.ts:39 | server | collection | root / top-level | 1 | manualSettlementBatchOperations | manualSettlementBatchOperations |
 | functions/src/manualSettlementBatchCommand.ts:40 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{input.cashEntryId} |  |
@@ -666,7 +674,7 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 686개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -884,6 +892,8 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | DeliveryRowProps | components/OrdersList.tsx:370 | interface | direct-properties-only | order, partnerName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes |
 | TabType | components/OrdersList.tsx:378 | type-alias | non-object-alias-not-expanded |  |
 | WorkItem | components/OrdersList.tsx:1696 | type-alias | direct-properties-only | key, orderId, itemId, lineKey, itemName, partnerName, qty, category, workGroup, groupId, groupName |
+| Command | src/shared/services/returnRequestCancellation.ts:5 | type-alias | direct-properties-only | companyId, requestId, operationId, expectedRequest |
+| Result | src/shared/services/returnRequestCancellation.ts:6 | type-alias | direct-properties-only | status, requestId, operationId, requestHash |
 | RoleLike | src/shared/partnerRole.ts:17 | type-alias | non-object-alias-not-expanded |  |
 | ProductModalProps | components/AddItemModal.tsx:19 | interface | direct-properties-only | companyId, orderUnitInputs, initialData, allSubmaterials, items, partners, partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems, itemFormulas, onSaveItemFormula, rollupCostOf |
 | SpecUnit | components/AddItemModal.tsx:65 | type-alias | non-object-alias-not-expanded |  |
@@ -919,17 +929,17 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | Props | components/OemManager.tsx:17 | interface | direct-properties-only | orderUnitInputs, companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee |
 | IssueInput | components/OemManager.tsx:33 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/CategoryManager.tsx:14 | interface | direct-properties-only | onClose, onSaved, usage, companyId |
-| StockClosingRow | components/ItemList.tsx:179 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
-| StockClosing | components/ItemList.tsx:180 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
-| ItemListProps | components/ItemList.tsx:191 | interface | direct-properties-only | orderUnitInputs, mode, companyId, items, orderRequests, confirmedOrders, dispatchedQtyByItem, onUpdateItem, onAddItem, onAddOrderRequest, onRemoveOrderRequest, onUpdateOrderRequestQty, onUpdatePoItemQty, onRemovePoItem, onRequestPoEdit, onToggleConfirmRequestQty, onConfirmRequest, onConfirmRequests, onBulkAddConfirmedOrders, onConfirmAllRequests, onFinishConfirmedOrder, onUpdateConfirmedQty, onUpdatePendingFlowQty, onRemoveConfirmedOrder, onEditProduct, onDeleteItem, onAddAdjustmentRequest, inboundPartners, partners, partnerItems, rawMaterialLedger, linesUsingRaw, orders, onRequestPurchaseInvoice, onOpenVoucher, issuedStatements, onAddRawMaterialEntry, onDeleteRawMaterialEntry, onLedgerChanged, currentUser, isAdmin, onUpdateSubmaterial, receivedOrders, returnRequests, returnContent, returnBadge, oemEnabled, oemIssueDrafts, rawStockKg, onOemIssue, onOemReceive, onOemCancel, onOemIssueFee |
-| MainTab | components/ItemList.tsx:265 | type-alias | non-object-alias-not-expanded |  |
-| FlowTypeFilter | components/ItemList.tsx:305 | type-alias | non-object-alias-not-expanded |  |
-| FlowStatusFilter | components/ItemList.tsx:306 | type-alias | non-object-alias-not-expanded |  |
-| InboundSubTab | components/ItemList.tsx:307 | type-alias | non-object-alias-not-expanded |  |
-| TopTab | components/ItemList.tsx:310 | type-alias | non-object-alias-not-expanded |  |
-| GroupRow | components/ItemList.tsx:1225 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
-| FlowRow | components/ItemList.tsx:1545 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
-| GridRow | components/ItemList.tsx:3563 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
+| StockClosingRow | components/ItemList.tsx:180 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
+| StockClosing | components/ItemList.tsx:181 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
+| ItemListProps | components/ItemList.tsx:192 | interface | direct-properties-only | orderUnitInputs, mode, companyId, items, orderRequests, confirmedOrders, dispatchedQtyByItem, onUpdateItem, onAddItem, onAddOrderRequest, onRemoveOrderRequest, onUpdateOrderRequestQty, onUpdatePoItemQty, onRemovePoItem, onRequestPoEdit, onToggleConfirmRequestQty, onConfirmRequest, onConfirmRequests, onBulkAddConfirmedOrders, onConfirmAllRequests, onFinishConfirmedOrder, onUpdateConfirmedQty, onUpdatePendingFlowQty, onRemoveConfirmedOrder, onEditProduct, onDeleteItem, onAddAdjustmentRequest, inboundPartners, partners, partnerItems, rawMaterialLedger, linesUsingRaw, orders, onRequestPurchaseInvoice, onOpenVoucher, issuedStatements, onAddRawMaterialEntry, onDeleteRawMaterialEntry, onLedgerChanged, currentUser, isAdmin, onUpdateSubmaterial, receivedOrders, returnRequests, returnContent, returnBadge, oemEnabled, oemIssueDrafts, rawStockKg, onOemIssue, onOemReceive, onOemCancel, onOemIssueFee |
+| MainTab | components/ItemList.tsx:266 | type-alias | non-object-alias-not-expanded |  |
+| FlowTypeFilter | components/ItemList.tsx:306 | type-alias | non-object-alias-not-expanded |  |
+| FlowStatusFilter | components/ItemList.tsx:307 | type-alias | non-object-alias-not-expanded |  |
+| InboundSubTab | components/ItemList.tsx:308 | type-alias | non-object-alias-not-expanded |  |
+| TopTab | components/ItemList.tsx:311 | type-alias | non-object-alias-not-expanded |  |
+| GroupRow | components/ItemList.tsx:1226 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
+| FlowRow | components/ItemList.tsx:1546 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
+| GridRow | components/ItemList.tsx:3590 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
 | Vouchered | src/shared/statementOrders.ts:24 | type-alias | non-object-alias-not-expanded |  |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | interface | direct-properties-only | orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | interface | direct-properties-only | status, className |
@@ -1175,9 +1185,9 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | VoucherLedgerInput | src/features/admin/useVoucherLedger.ts:32 | interface | direct-properties-only | advanceStatements, returnOperations, companyId, issuedStatements, cashEntries, settlements, accountCodes, histFrom, histTo |
 | CashEditLineDraft | src/shared/cashEntryEdit.ts:15 | interface | direct-properties-only | accountCode, amount, note |
 | CashEditForm | src/shared/cashEntryEdit.ts:21 | interface | direct-properties-only | amount, date, dir, accountCode, note, partnerId |
-| CashModalMode | components/voucher/CashEntryModal.tsx:32 | type-alias | non-object-alias-not-expanded |  |
-| SettleInput | components/voucher/CashEntryModal.tsx:37 | interface | direct-properties-only | amount, date, method, note, scope |
-| Props | components/voucher/CashEntryModal.tsx:46 | interface | direct-properties-only | mode, partners, companyId, accountCodes, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle, payrollEdit, transferEdit, onSaveEdit, onDeleteEntry, hasPendingRequest, onResumeEntry |
+| CashModalMode | components/voucher/CashEntryModal.tsx:33 | type-alias | non-object-alias-not-expanded |  |
+| SettleInput | components/voucher/CashEntryModal.tsx:38 | interface | direct-properties-only | amount, date, method, note, scope |
+| Props | components/voucher/CashEntryModal.tsx:47 | interface | direct-properties-only | mode, partners, companyId, accountCodes, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle, payrollEdit, transferEdit, onSaveEdit, onDeleteEntry, hasPendingRequest, onResumeEntry, onAssignCashAccount |
 | VoucherDir | src/shared/cashTemplates.tsx:26 | type-alias | non-object-alias-not-expanded |  |
 | CashTemplate | src/shared/cashTemplates.tsx:56 | interface | direct-properties-only | statementType, id, label, dir, mode, accountCode, note, wantsPartner, hint, amount, partnerId, taxExempt, partnerName, builtin, group, favorite, itemName, loanCode, loanId, vat, incomeTax, transferLines, unavailableCodes, insCorp, insEmp, principal, interest, gross, deduction |
 | SplitMode | src/shared/cashTemplates.tsx:143 | type-alias | non-object-alias-not-expanded |  |
@@ -1228,8 +1238,8 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | Input | src/features/statements/infrastructure/statementExcel.ts:4 | interface | direct-properties-only | type, docNo, dateLabel, tradeDate, partnerName, items, totals |
 | QuickItemMetrics | src/features/statements/domain/quickItemModel.ts:4 | type-alias | direct-properties-only | supply, tax, marginRate, unitSupply, showUnitSupply |
 | Props | components/CashLedger.tsx:24 | interface | direct-properties-only | returnOperations, advanceStatements, companyId, cashAccounts, cashEntries, accountCodes, fixedCostTemplates, partners, issuedStatements, settlements, currentUser, onAddCashAccount, onUpdateCashAccount, onCorrectCashAccount, onAddCashEntry, onDeleteCashEntry, onAddSettlement, onDeleteSettlement |
-| EntryAttempt | components/CashLedger.tsx:388 | type-alias | direct-properties-only | companyId, userId, entries |
-| AccountModalProps | components/CashLedger.tsx:957 | interface | direct-properties-only | companyId, accounts, cashEntries, onClose, onAdd, onUpdate, onCorrect, onAddEntry |
+| EntryAttempt | components/CashLedger.tsx:402 | type-alias | direct-properties-only | companyId, userId, entries |
+| AccountModalProps | components/CashLedger.tsx:971 | interface | direct-properties-only | companyId, accounts, cashEntries, onClose, onAdd, onUpdate, onCorrect, onAddEntry |
 | TradeStatementProps | components/TradeStatement.tsx:94 | interface | direct-properties-only | orderUnitInputs, returnOperations, advanceStatements, orders, allItems, partners, partnerItems, accountCodes, accountGroups, cashAccounts, cashEntries, settlements, onAddCashEntry, onIssueCashEntry, onUpdateCashEntry, onMatchCashAllocations, onResumeCashMutation, onAddSettlement, onUpdateSettlement, onDeleteCashEntry, onDeleteSettlement, onAddCashAccount, onUpdateCashAccount, fixedCostTemplates, onGenerateRecurringCosts, onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate, voucherMode, embedded, issuedStatements, onUpdateStatus, onUpsertPartnerItem, onAddIssuedStatement, onApplyStatement, companyId, onUpdateIssuedStatement, onProposeEdit, focusDocNo, onFocusHandled, detailStatementId, onDetailClose, onDeleteIssuedStatement, pendingInvoice, onClearPendingInvoice, composerOnly, onComposerClose, confirmedOrders, orderRequests, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, companyInfo, onSaveCompanyInfo, onUpdateItemCost, onUpdateOrder, currentUserId, defaultTab, expensePresets, onAddExpensePreset, onDeleteExpensePreset |
 | StatementType | components/TradeStatement.tsx:178 | type-alias | non-object-alias-not-expanded |  |
 | Period | src/shared/ui/PeriodPicker.tsx:3 | type-alias | non-object-alias-not-expanded |  |
@@ -1296,8 +1306,12 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | Row | functions/src/loanMovementCommand.ts:12 | type-alias | non-object-alias-not-expanded |  |
 | LoanMovementInput | functions/src/loanMovementCommand.ts:13 | type-alias | direct-properties-only | operationId, loanId, tradeDate, cashAccountId, action, principal, interest, expectedRevision, releaseId, note |
 | ScheduledRequest | functions/src/loanMovementCommand.ts:30 | type-alias | direct-properties-only | templateId, yearMonth, loanCode, input |
+| Row | functions/src/cancelPendingReturnCommand.ts:4 | type-alias | non-object-alias-not-expanded |  |
+| Actor | functions/src/cancelPendingReturnCommand.ts:5 | type-alias | non-object-alias-not-expanded |  |
+| PendingReturnCancellationInput | functions/src/cancelPendingReturnCommand.ts:6 | type-alias | direct-properties-only | companyId, requestId, operationId, expectedRequest, reason |
+| PendingReturnCancellationResult | functions/src/cancelPendingReturnCommand.ts:8 | type-alias | direct-properties-only | status, requestId, operationId, requestHash |
 | CashRow | functions/src/cashMutationPlan.ts:4 | type-alias | non-object-alias-not-expanded |  |
-| CashPatch | functions/src/cashMutationPlan.ts:5 | type-alias | direct-properties-only | amount, date, dir, accountCode, lines, note, partnerId, partnerName |
+| CashPatch | functions/src/cashMutationPlan.ts:5 | type-alias | direct-properties-only | cashAccountId, amount, date, dir, accountCode, lines, note, partnerId, partnerName |
 | Mode | functions/src/payrollVoucher.ts:9 | type-alias | non-object-alias-not-expanded |  |
 | Line | functions/src/payrollVoucher.ts:10 | type-alias | direct-properties-only | employeeId, employeeName, base, overtime, allowance, incomeTax, localTax, pension, health, employment, otherDeduct, department, position, note |
 | Input | functions/src/payrollVoucher.ts:13 | type-alias | direct-properties-only | yearMonth, payDate, lines, expectedRevision, mode, releaseId, cashAccountId |
@@ -1473,13 +1487,23 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | src/features/admin/cashMutationCommands.ts:17 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
 | src/features/admin/cashMutationCommands.ts:36 | value.toMillis | any | any-receiver |
 | src/features/admin/cashMutationCommands.ts:36 | value.toMillis | any | any-receiver |
-| src/features/admin/cashMutationCommands.ts:80 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:102 | token?.claims.companyId | ParsedToken \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:106 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:123 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:158 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:180 | state?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| src/features/admin/cashMutationCommands.ts:181 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:58 | proof?.version | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:58 | proof.terminalConfirmed | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:58 | proof.status | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:58 | proof.financialWrites | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:59 | proof.companyId | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:59 | proof.actorId | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:59 | proof.operationId | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:60 | proof.cashEntryId | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:60 | proof.command | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:61 | proof.requestHash | any | any-receiver |
+| src/features/admin/cashMutationCommands.ts:105 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:129 | token?.claims.companyId | ParsedToken \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:133 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:150 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:185 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:207 | state?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| src/features/admin/cashMutationCommands.ts:208 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
 | src/shared/releaseGate.ts:2 | gate?.status | Record<string, unknown> \| undefined | property-symbol-unresolved |
 | src/shared/releaseGate.ts:2 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/releaseGate.ts:3 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
@@ -1632,6 +1656,18 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | src/features/statements/infrastructure/issueTradeStatementCommand.ts:192 | failure.operationId | Record<string, unknown> | property-symbol-unresolved |
 | src/features/statements/infrastructure/issueTradeStatementCommand.ts:192 | failure.operationRejected | Record<string, unknown> | property-symbol-unresolved |
 | src/features/statements/infrastructure/issueTradeStatementCommand.ts:192 | failure.financialWrites | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/services/returnRequestCancellation.ts:10 | value.toMillis | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:10 | value.toMillis | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:24 | saved.expectedRequest.companyId | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/services/returnRequestCancellation.ts:56 | proof?.version | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:56 | proof.terminalConfirmed | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:56 | proof.status | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:57 | proof.companyId | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:57 | proof.actorId | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:57 | proof.requestId | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:58 | proof.operationId | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:58 | proof.requestHash | any | any-receiver |
+| src/shared/services/returnRequestCancellation.ts:59 | proof.command | any | any-receiver |
 | components/AddItemModal.tsx:95 | pi.Direction | any | any-receiver |
 | components/AddItemModal.tsx:96 | pi.Direction | any | any-receiver |
 | components/AddItemModal.tsx:715 | (s as any).spec | any | any-receiver |
@@ -1649,24 +1685,24 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | components/LotTimeline.tsx:35 | parts.day | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.hour | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.minute | { [k: string]: string; } | property-symbol-unresolved |
-| components/ItemList.tsx:320 | (p?.lots ?? []).length | any | any-receiver |
-| components/ItemList.tsx:320 | p?.lots | any | any-receiver |
-| components/ItemList.tsx:321 | p.lots | any | any-receiver |
-| components/ItemList.tsx:322 | p?.stock | any | any-receiver |
-| components/ItemList.tsx:323 | p?.density | any | any-receiver |
-| components/ItemList.tsx:323 | p.density | any | any-receiver |
-| components/ItemList.tsx:552 | canvas.toBlob | any | any-receiver |
-| components/ItemList.tsx:581 | (e as any)?.message | any | any-receiver |
-| components/ItemList.tsx:593 | nav.canShare | any | any-receiver |
-| components/ItemList.tsx:593 | nav.canShare | any | any-receiver |
-| components/ItemList.tsx:594 | nav.share | any | any-receiver |
-| components/ItemList.tsx:1954 | (e as any).lotChanges?.some | any | any-receiver |
-| components/ItemList.tsx:1954 | (e as any).lotChanges | any | any-receiver |
-| components/ItemList.tsx:1954 | change.lotId | any | any-receiver |
-| components/ItemList.tsx:1956 | (e as any).source?.type | any | any-receiver |
-| components/ItemList.tsx:1956 | (e as any).source | any | any-receiver |
-| components/ItemList.tsx:1956 | (e as any).source?.id | any | any-receiver |
-| components/ItemList.tsx:1956 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:321 | (p?.lots ?? []).length | any | any-receiver |
+| components/ItemList.tsx:321 | p?.lots | any | any-receiver |
+| components/ItemList.tsx:322 | p.lots | any | any-receiver |
+| components/ItemList.tsx:323 | p?.stock | any | any-receiver |
+| components/ItemList.tsx:324 | p?.density | any | any-receiver |
+| components/ItemList.tsx:324 | p.density | any | any-receiver |
+| components/ItemList.tsx:553 | canvas.toBlob | any | any-receiver |
+| components/ItemList.tsx:582 | (e as any)?.message | any | any-receiver |
+| components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
+| components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
+| components/ItemList.tsx:595 | nav.share | any | any-receiver |
+| components/ItemList.tsx:1981 | (e as any).lotChanges?.some | any | any-receiver |
+| components/ItemList.tsx:1981 | (e as any).lotChanges | any | any-receiver |
+| components/ItemList.tsx:1981 | change.lotId | any | any-receiver |
+| components/ItemList.tsx:1983 | (e as any).source?.type | any | any-receiver |
+| components/ItemList.tsx:1983 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:1983 | (e as any).source?.id | any | any-receiver |
+| components/ItemList.tsx:1983 | (e as any).source | any | any-receiver |
 | components/AddOrderModal.tsx:67 | pi.Direction | any | any-receiver |
 | components/AddOrderModal.tsx:235 | pi.partnerId | any | any-receiver |
 | components/AddOrderModal.tsx:236 | pi.itemId | any | any-receiver |
@@ -1922,11 +1958,11 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | src/features/statements/infrastructure/statementPrint.ts:121 | item.price | any | any-receiver |
 | src/features/statements/infrastructure/statementPrint.ts:122 | item.total | any | any-receiver |
 | src/shared/services/confirmedCashBalance.ts:23 | token?.claims.companyId | ParsedToken \| undefined | property-symbol-unresolved |
-| components/CashLedger.tsx:645 | proof?.operationStatus | Record<string, unknown> \| undefined | property-symbol-unresolved |
-| components/CashLedger.tsx:645 | proof.version | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:646 | proof.financialWrites | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:646 | proof.companyId | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:646 | proof.operationId | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:659 | proof?.operationStatus | Record<string, unknown> \| undefined | property-symbol-unresolved |
+| components/CashLedger.tsx:659 | proof.version | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:660 | proof.financialWrites | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:660 | proof.companyId | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:660 | proof.operationId | Record<string, unknown> | property-symbol-unresolved |
 | components/TradeStatement.tsx:227 | (item as any).itemId | any | any-receiver |
 | components/TradeStatement.tsx:229 | (item as any).partnerId | any | any-receiver |
 | components/TradeStatement.tsx:290 | pi.Direction | any | any-receiver |
@@ -1939,21 +1975,21 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | components/TradeStatement.tsx:380 | s.partnerId | any | any-receiver |
 | components/TradeStatement.tsx:395 | error?.message | any | any-receiver |
 | components/TradeStatement.tsx:396 | error?.code | any | any-receiver |
-| components/TradeStatement.tsx:726 | row.manual | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:726 | row.operationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:726 | row.returnOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:726 | row.transferOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:727 | row.issueOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:727 | row.serverOwned | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:1204 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
-| components/TradeStatement.tsx:1204 | (st as any).purchaseOrderIds | any | any-receiver |
-| components/TradeStatement.tsx:1204 | (st as any).confirmedProductIds | any | any-receiver |
-| components/TradeStatement.tsx:1235 | (s as any).itemId | any | any-receiver |
-| components/TradeStatement.tsx:1237 | (ps as any).partnerId | any | any-receiver |
-| components/TradeStatement.tsx:1823 | e?.message | any | any-receiver |
-| components/TradeStatement.tsx:1841 | e?.message | any | any-receiver |
-| components/TradeStatement.tsx:2635 | error?.message | any | any-receiver |
-| components/TradeStatement.tsx:2810 | (purchaseOrder as any).id | any | any-receiver |
+| components/TradeStatement.tsx:737 | row.manual | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:737 | row.operationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:737 | row.returnOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:737 | row.transferOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:738 | row.issueOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:738 | row.serverOwned | Settlement & Record<string, unknown> | property-symbol-unresolved |
+| components/TradeStatement.tsx:1215 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
+| components/TradeStatement.tsx:1215 | (st as any).purchaseOrderIds | any | any-receiver |
+| components/TradeStatement.tsx:1215 | (st as any).confirmedProductIds | any | any-receiver |
+| components/TradeStatement.tsx:1246 | (s as any).itemId | any | any-receiver |
+| components/TradeStatement.tsx:1248 | (ps as any).partnerId | any | any-receiver |
+| components/TradeStatement.tsx:1834 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:1852 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:2647 | error?.message | any | any-receiver |
+| components/TradeStatement.tsx:2822 | (purchaseOrder as any).id | any | any-receiver |
 | components/ProfitAnalysis.tsx:391 | payload?.length | any | any-receiver |
 | components/ProfitAnalysis.tsx:395 | payload.map | any | any-receiver |
 | components/ProfitAnalysis.tsx:396 | p.name | any | any-receiver |
@@ -2471,107 +2507,195 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | functions/src/loanMovementCommand.ts:189 | template.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/autoVoucherCommand.ts:26 | decision.draft.document.type | Record<string, unknown> | property-symbol-unresolved |
 | functions/src/autoVoucherCommand.ts:39 | document.type | Record<string, unknown> | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:19 | current.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:19 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:20 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:20 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:20 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:21 | current.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:21 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:22 | next.note | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:22 | next.note | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:22 | next.note | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:26 | partner.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:26 | partner.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:27 | next.partnerName | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:27 | partner!.name | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:29 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:29 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:29 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:30 | next.lines?.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:30 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:30 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:30 | next.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:30 | next.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:30 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:34 | line.accountCode | any | any-receiver |
-| functions/src/cashMutationPlan.ts:34 | line.accountCode | any | any-receiver |
-| functions/src/cashMutationPlan.ts:35 | line.amount | any | any-receiver |
-| functions/src/cashMutationPlan.ts:35 | line.amount | any | any-receiver |
-| functions/src/cashMutationPlan.ts:36 | line.side | any | any-receiver |
-| functions/src/cashMutationPlan.ts:36 | line.side | any | any-receiver |
-| functions/src/cashMutationPlan.ts:37 | line.note | any | any-receiver |
-| functions/src/cashMutationPlan.ts:37 | line.note | any | any-receiver |
-| functions/src/cashMutationPlan.ts:37 | line.note.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:37 | line.note | any | any-receiver |
-| functions/src/cashMutationPlan.ts:38 | line.side | any | any-receiver |
-| functions/src/cashMutationPlan.ts:38 | line.side | any | any-receiver |
-| functions/src/cashMutationPlan.ts:38 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:38 | line.amount | any | any-receiver |
-| functions/src/cashMutationPlan.ts:38 | line.amount | any | any-receiver |
-| functions/src/cashMutationPlan.ts:42 | lines.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:42 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:42 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:42 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:43 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:44 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:45 | lines.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:45 | next.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:45 | next.loanId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:45 | next.linkedAccrualStatementId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:46 | meta.before | any | any-receiver |
-| functions/src/cashMutationPlan.ts:46 | meta.target | any | any-receiver |
-| functions/src/cashMutationPlan.ts:46 | meta.delta | any | any-receiver |
-| functions/src/cashMutationPlan.ts:46 | meta.delta | any | any-receiver |
-| functions/src/cashMutationPlan.ts:47 | meta.reason | any | any-receiver |
-| functions/src/cashMutationPlan.ts:47 | meta.reason.trim | any | any-receiver |
-| functions/src/cashMutationPlan.ts:47 | meta.reason | any | any-receiver |
-| functions/src/cashMutationPlan.ts:48 | meta.target | any | any-receiver |
-| functions/src/cashMutationPlan.ts:48 | meta.before | any | any-receiver |
-| functions/src/cashMutationPlan.ts:48 | meta.delta | any | any-receiver |
-| functions/src/cashMutationPlan.ts:48 | meta.delta | any | any-receiver |
-| functions/src/cashMutationPlan.ts:48 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:20 | actor.token.isAdmin | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:20 | actor.token.employeeId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:21 | actor.token.companyId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:21 | actor.token.companyId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:30 | snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:33 | receipt.version | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:34 | receipt.requestId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:35 | receipt.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:35 | receipt.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:35 | receipt.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:36 | receipt.request | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:36 | receipt.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:37 | receipt.request | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:37 | receipt.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:37 | receipt.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.status | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.companyId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.message | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:42 | rejected.message | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:43 | rejected.message | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:47 | prior?.command?.expectedRequest?.quantityOperations | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:47 | prior?.command?.expectedRequest | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:47 | prior?.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:48 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:49 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:49 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:49 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:50 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:52 | value.status | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:52 | value.companyId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:52 | value.actorId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:52 | value.actorId | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:53 | value.message | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:53 | value.command | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command.companyId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command.requestId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command.operationId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:54 | value.command | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:55 | value.command | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:55 | value.requestHash | Row | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:57 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:57 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:58 | proofBody.quantityOperations | { [x: string]: any; } | property-symbol-unresolved |
+| functions/src/cancelPendingReturnCommand.ts:60 | prior.version | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:60 | prior.status | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:61 | prior.companyId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:61 | prior.requestId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:61 | prior.operationId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:62 | prior.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:62 | prior.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:62 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:63 | prior.command.companyId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:63 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:63 | prior.command.requestId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:63 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:64 | prior.command.operationId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:64 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:64 | prior.operationId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:64 | prior.command.expectedRequest | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:64 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:65 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:65 | prior.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:66 | prior.createdAt | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:66 | prior.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:67 | prior.beforeHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:68 | prior.beforeHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:68 | prior.command.expectedRequest | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:68 | prior.command | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:69 | prior.operationId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:74 | prior.actorId | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:74 | prior.requestHash | any | any-receiver |
+| functions/src/cancelPendingReturnCommand.ts:86 | op.command.returnRequestId | any | any-receiver |
+| functions/src/cashMutationPlan.ts:14 | current.cashAccountId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:14 | current.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:15 | current.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:15 | account.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:16 | account.active | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:16 | account.type | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:17 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:17 | current.payrollId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:17 | current.balanceAdjustment | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:17 | current.returnOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:30 | current.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:30 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:31 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:31 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:31 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:32 | current.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:32 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:33 | next.note | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:33 | next.note | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:33 | next.note | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:37 | partner.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:37 | partner.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:38 | next.partnerName | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:38 | partner!.name | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:40 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:40 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:40 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:41 | next.lines?.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:41 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:41 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:41 | next.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:41 | next.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:41 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:45 | line.accountCode | any | any-receiver |
+| functions/src/cashMutationPlan.ts:45 | line.accountCode | any | any-receiver |
+| functions/src/cashMutationPlan.ts:46 | line.amount | any | any-receiver |
+| functions/src/cashMutationPlan.ts:46 | line.amount | any | any-receiver |
+| functions/src/cashMutationPlan.ts:47 | line.side | any | any-receiver |
+| functions/src/cashMutationPlan.ts:47 | line.side | any | any-receiver |
+| functions/src/cashMutationPlan.ts:48 | line.note | any | any-receiver |
+| functions/src/cashMutationPlan.ts:48 | line.note | any | any-receiver |
+| functions/src/cashMutationPlan.ts:48 | line.note.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:48 | line.note | any | any-receiver |
+| functions/src/cashMutationPlan.ts:49 | line.side | any | any-receiver |
+| functions/src/cashMutationPlan.ts:49 | line.side | any | any-receiver |
 | functions/src/cashMutationPlan.ts:49 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:49 | meta.delta | any | any-receiver |
-| functions/src/cashMutationPlan.ts:49 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:49 | current.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:55 | row.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:55 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:55 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:57 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:57 | current.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:58 | next.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:58 | current.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:62 | statement.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:62 | row.statementId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:63 | statement.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:63 | statement.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:63 | next.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:64 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:76 | next.loanId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:76 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:76 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:77 | next.lines?.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:77 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:77 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:77 | next.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:77 | next.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:77 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:78 | lines.length | any | any-receiver |
-| functions/src/cashMutationPlan.ts:78 | lines.some | any | any-receiver |
-| functions/src/cashMutationPlan.ts:78 | line.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:79 | line.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:79 | line.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:79 | line.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:79 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:80 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:80 | line.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:90 | row.statementId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:91 | row.cashEntryId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:93 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:93 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:95 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationPlan.ts:96 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:49 | line.amount | any | any-receiver |
+| functions/src/cashMutationPlan.ts:49 | line.amount | any | any-receiver |
+| functions/src/cashMutationPlan.ts:53 | lines.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:53 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:53 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:53 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:54 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:55 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:56 | lines.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:56 | next.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:56 | next.loanId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:56 | next.linkedAccrualStatementId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:57 | meta.before | any | any-receiver |
+| functions/src/cashMutationPlan.ts:57 | meta.target | any | any-receiver |
+| functions/src/cashMutationPlan.ts:57 | meta.delta | any | any-receiver |
+| functions/src/cashMutationPlan.ts:57 | meta.delta | any | any-receiver |
+| functions/src/cashMutationPlan.ts:58 | meta.reason | any | any-receiver |
+| functions/src/cashMutationPlan.ts:58 | meta.reason.trim | any | any-receiver |
+| functions/src/cashMutationPlan.ts:58 | meta.reason | any | any-receiver |
+| functions/src/cashMutationPlan.ts:59 | meta.target | any | any-receiver |
+| functions/src/cashMutationPlan.ts:59 | meta.before | any | any-receiver |
+| functions/src/cashMutationPlan.ts:59 | meta.delta | any | any-receiver |
+| functions/src/cashMutationPlan.ts:59 | meta.delta | any | any-receiver |
+| functions/src/cashMutationPlan.ts:59 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:60 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:60 | meta.delta | any | any-receiver |
+| functions/src/cashMutationPlan.ts:60 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:60 | current.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:66 | row.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:66 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:66 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:68 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:68 | current.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:69 | next.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:69 | current.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:73 | statement.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:73 | row.statementId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:74 | statement.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:74 | statement.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:74 | next.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:75 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:87 | next.loanId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:87 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:87 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:88 | next.lines?.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:88 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:88 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:88 | next.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:88 | next.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:88 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:89 | lines.length | any | any-receiver |
+| functions/src/cashMutationPlan.ts:89 | lines.some | any | any-receiver |
+| functions/src/cashMutationPlan.ts:89 | line.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:90 | line.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:90 | line.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:90 | line.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:90 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:91 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:91 | line.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:101 | row.statementId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:102 | row.cashEntryId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:104 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:104 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:106 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationPlan.ts:107 | row.amount | CashRow | property-symbol-unresolved |
 | functions/src/payrollVoucher.ts:29 | row.id | Record<string, any> | property-symbol-unresolved |
 | functions/src/payrollVoucher.ts:29 | row.companyId | Record<string, any> | property-symbol-unresolved |
 | functions/src/payrollVoucher.ts:29 | row.payrollId | Record<string, any> | property-symbol-unresolved |
@@ -2612,133 +2736,138 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | functions/src/payrollVoucher.ts:237 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
 | functions/src/payrollVoucher.ts:244 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
 | functions/src/cashMutationCommand.ts:22 | row.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:84 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:86 | next.createdAt | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:86 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:87 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:87 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:112 | next!.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:112 | next!.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:113 | next!.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:113 | next!.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:119 | codes.docs.find(doc => doc.data().name === '급여')?.data().code | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:120 | codes.docs.find(doc => doc.data().name === '예수금')?.data().code | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:122 | next!.lines?.length | any | any-receiver |
-| functions/src/cashMutationCommand.ts:122 | next!.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:122 | next!.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:122 | next!.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:122 | next!.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:123 | actual.map | any | any-receiver |
-| functions/src/cashMutationCommand.ts:123 | line.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:124 | line.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:124 | line.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:124 | line.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:124 | line.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:124 | line.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:127 | next!.note | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:133 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:134 | source.type | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:134 | source.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:135 | source.items | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:136 | source.items | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:136 | line.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:136 | line.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:137 | line.total | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:139 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:139 | next.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:139 | next.lines?.length | any | any-receiver |
-| functions/src/cashMutationCommand.ts:139 | next.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:139 | next.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:143 | next?.amount | CashRow \| null | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:146 | next?.partnerId | CashRow \| null | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:148 | statement.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:150 | statement.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:163 | stateRows.find(row => row.id === current.partnerId)?.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:177 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:177 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:177 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:178 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:183 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:183 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:186 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:186 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:186 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:186 | state.snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:186 | state.snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:191 | next.partnerName | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:191 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:191 | next.createdAt | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:191 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:195 | next.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:196 | updated.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:196 | updated.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:199 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:204 | row.statement.id | Row | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:209 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:217 | current.transferOperationId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:234 | current.transferOperationId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:234 | current.transferOperationId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:239 | last.data()?.status | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:239 | last.data()?.transferOperationId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:239 | current.transferOperationId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:240 | last.data()?.transferAfterHashes | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:241 | last.data()?.transferAfterHashes | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:243 | row.companyId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:243 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:243 | row.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:244 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:244 | row.note | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:244 | row.cashAccountId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:244 | row.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:244 | row.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:259 | pair.other.data()?.mutationRevision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:280 | original.row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:287 | next.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:287 | next.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:287 | original.row.dir | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:288 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:288 | original.row.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:288 | next.createdAt | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:288 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:289 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:289 | next.date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:290 | original.row.mutationRevision | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:295 | nextRows[0].amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:295 | nextRows[1].amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:295 | nextRows[0].date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:295 | nextRows[1].date | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:297 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:297 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:298 | row.lines?.length | any | any-receiver |
-| functions/src/cashMutationCommand.ts:298 | row.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:298 | row.lines | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:298 | row.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:298 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:300 | row.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:300 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:300 | row.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:301 | row.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:301 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:301 | row.side | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:302 | row.accountCode | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:302 | row.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:310 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:310 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:310 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:310 | state.snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:310 | state.snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:312 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:313 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:314 | row.partnerId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:314 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:318 | current.docNo | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:321 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:326 | row.id | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:327 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:327 | next.amount | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:330 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:335 | current.transferOperationId | CashRow | property-symbol-unresolved |
-| functions/src/cashMutationCommand.ts:342 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:79 | row.docNo | Row | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:79 | row.issueOperationId | Row | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:80 | row.issuePayloadHash | Row | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:123 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:125 | next.createdAt | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:125 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:126 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:126 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:151 | next!.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:151 | next!.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:152 | next!.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:152 | next!.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:158 | codes.docs.find(doc => doc.data().name === '급여')?.data().code | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:159 | codes.docs.find(doc => doc.data().name === '예수금')?.data().code | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:161 | next!.lines?.length | any | any-receiver |
+| functions/src/cashMutationCommand.ts:161 | next!.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:161 | next!.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:161 | next!.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:161 | next!.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:162 | actual.map | any | any-receiver |
+| functions/src/cashMutationCommand.ts:162 | line.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:163 | line.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:163 | line.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:163 | line.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:163 | line.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:163 | line.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:166 | next!.note | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:172 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:173 | source.type | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:173 | source.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:174 | source.items | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:175 | source.items | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:175 | line.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:175 | line.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:176 | line.total | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:178 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:178 | next.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:178 | next.lines?.length | any | any-receiver |
+| functions/src/cashMutationCommand.ts:178 | next.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:178 | next.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:182 | next?.amount | CashRow \| null | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:185 | next?.partnerId | CashRow \| null | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:187 | statement.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:189 | statement.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:202 | stateRows.find(row => row.id === current.partnerId)?.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:216 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:216 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:216 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:217 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:222 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:222 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:225 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:225 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:225 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:225 | state.snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:225 | state.snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:230 | next.partnerName | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:230 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:230 | next.createdAt | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:230 | next.balanceAdjustment | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:234 | next.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:235 | updated.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:235 | updated.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:238 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:243 | row.statement.id | Row | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:246 | outcome.status | any | any-receiver |
+| functions/src/cashMutationCommand.ts:246 | outcome.message | any | any-receiver |
+| functions/src/cashMutationCommand.ts:253 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:261 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:278 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:278 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:283 | last.data()?.status | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:283 | last.data()?.transferOperationId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:283 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:284 | last.data()?.transferAfterHashes | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:285 | last.data()?.transferAfterHashes | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:287 | row.companyId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:287 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:287 | row.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:288 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:288 | row.note | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:288 | row.cashAccountId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:288 | row.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:288 | row.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:303 | pair.other.data()?.mutationRevision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:324 | original.row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:331 | next.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:331 | next.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:331 | original.row.dir | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:332 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:332 | original.row.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:332 | next.createdAt | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:332 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:333 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:333 | next.date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:334 | original.row.mutationRevision | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:339 | nextRows[0].amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:339 | nextRows[1].amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:339 | nextRows[0].date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:339 | nextRows[1].date | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:341 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:341 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:342 | row.lines?.length | any | any-receiver |
+| functions/src/cashMutationCommand.ts:342 | row.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:342 | row.lines | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:342 | row.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:342 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:344 | row.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:344 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:344 | row.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:345 | row.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:345 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:345 | row.side | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:346 | row.accountCode | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:346 | row.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:354 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:354 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:354 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:354 | state.snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:354 | state.snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:356 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:357 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:358 | row.partnerId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:358 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:362 | current.docNo | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:365 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:370 | row.id | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:371 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:371 | next.amount | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:374 | state.snap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:379 | current.transferOperationId | CashRow | property-symbol-unresolved |
+| functions/src/cashMutationCommand.ts:386 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
 | functions/src/editIssuedStatementCommand.ts:22 | claims?.isAdmin | Record<string, any> \| undefined | property-symbol-unresolved |
 | functions/src/editIssuedStatementCommand.ts:22 | claims.employeeId | Record<string, any> | property-symbol-unresolved |
 | functions/src/editIssuedStatementCommand.ts:22 | claims.companyId | Record<string, any> | property-symbol-unresolved |
@@ -2998,61 +3127,61 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | functions/src/manualSettlementCommand.ts:130 | linked.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/processReturnCommand.ts:67 | opSnap.data()?.status | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/processReturnCommand.ts:88 | requestSnap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:120 | saved?.docNo | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:121 | saved?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:123 | snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:124 | snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:124 | snap.data()?.statementId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:125 | snap.data()?.amount | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:125 | snap.data()?.operationId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:129 | expected.id | any | any-receiver |
-| functions/src/processReturnCommand.ts:130 | receipt.data()?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:131 | receipt.data()?.returnReceiptFingerprint | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:131 | expected.fingerprint | any | any-receiver |
-| functions/src/processReturnCommand.ts:132 | receipt.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:132 | receipt.data()?.itemId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:132 | expected.itemId | any | any-receiver |
-| functions/src/processReturnCommand.ts:133 | receipt.data()?.quantity | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:133 | expected.quantity | any | any-receiver |
-| functions/src/processReturnCommand.ts:134 | expected.receiptHash | any | any-receiver |
-| functions/src/processReturnCommand.ts:140 | expected.id | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:140 | expected.id | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:141 | expected.id | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:142 | movement.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:143 | movement.data()?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:144 | expected.movementHash | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:146 | sourceSnap?.data()?.type | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:147 | row.requestItemId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:148 | request.items.length | any | any-receiver |
-| functions/src/processReturnCommand.ts:150 | row.itemId | any | any-receiver |
+| functions/src/processReturnCommand.ts:122 | saved?.docNo | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:123 | saved?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:125 | snap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:126 | snap.data()?.partnerId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:126 | snap.data()?.statementId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:127 | snap.data()?.amount | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:127 | snap.data()?.operationId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:131 | expected.id | any | any-receiver |
+| functions/src/processReturnCommand.ts:132 | receipt.data()?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:133 | receipt.data()?.returnReceiptFingerprint | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:133 | expected.fingerprint | any | any-receiver |
+| functions/src/processReturnCommand.ts:134 | receipt.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:134 | receipt.data()?.itemId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:134 | expected.itemId | any | any-receiver |
+| functions/src/processReturnCommand.ts:135 | receipt.data()?.quantity | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:135 | expected.quantity | any | any-receiver |
+| functions/src/processReturnCommand.ts:136 | expected.receiptHash | any | any-receiver |
+| functions/src/processReturnCommand.ts:142 | expected.id | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:142 | expected.id | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:143 | expected.id | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:144 | movement.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:145 | movement.data()?.returnOperationId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:146 | expected.movementHash | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:148 | sourceSnap?.data()?.type | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:149 | row.requestItemId | Row | property-symbol-unresolved |
 | functions/src/processReturnCommand.ts:150 | request.items.length | any | any-receiver |
-| functions/src/processReturnCommand.ts:151 | row.companyId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:152 | row.partnerId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:152 | row.operationId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:153 | row.quantityDelta | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:153 | request.items.find((item: Row) => item.itemId === row.itemId)?.quantity | any | any-receiver |
-| functions/src/processReturnCommand.ts:153 | request.items.find | any | any-receiver |
-| functions/src/processReturnCommand.ts:153 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:153 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:154 | row.date | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:159 | sourceSnap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:159 | sourceSnap.data()?.type | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:160 | partnerSnap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:164 | gate?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:173 | stateSnap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:177 | source?.type | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:178 | cutoverSnap.data()?.purchaseGeneralStockEnabled | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:183 | request.items.some | any | any-receiver |
-| functions/src/processReturnCommand.ts:183 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:184 | request.items.some | any | any-receiver |
-| functions/src/processReturnCommand.ts:184 | item.accountCode | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:187 | request.items.length | any | any-receiver |
-| functions/src/processReturnCommand.ts:188 | request.items.filter((item: Row) => item.isResellable).length | any | any-receiver |
-| functions/src/processReturnCommand.ts:188 | request.items.filter | any | any-receiver |
-| functions/src/processReturnCommand.ts:188 | item.isResellable | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:227 | (app as Row).returnRequestId | Row | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:268 | itemDocs.get(doc.data().child_id)?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/processReturnCommand.ts:350 | row.statement.id | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:152 | row.itemId | any | any-receiver |
+| functions/src/processReturnCommand.ts:152 | request.items.length | any | any-receiver |
+| functions/src/processReturnCommand.ts:153 | row.companyId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:154 | row.partnerId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:154 | row.operationId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:155 | row.quantityDelta | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:155 | request.items.find((item: Row) => item.itemId === row.itemId)?.quantity | any | any-receiver |
+| functions/src/processReturnCommand.ts:155 | request.items.find | any | any-receiver |
+| functions/src/processReturnCommand.ts:155 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:155 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:156 | row.date | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:161 | sourceSnap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:161 | sourceSnap.data()?.type | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:162 | partnerSnap.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:166 | gate?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:175 | stateSnap.data()?.revision | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:179 | source?.type | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:180 | cutoverSnap.data()?.purchaseGeneralStockEnabled | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:185 | request.items.some | any | any-receiver |
+| functions/src/processReturnCommand.ts:185 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:186 | request.items.some | any | any-receiver |
+| functions/src/processReturnCommand.ts:186 | item.accountCode | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:189 | request.items.length | any | any-receiver |
+| functions/src/processReturnCommand.ts:190 | request.items.filter((item: Row) => item.isResellable).length | any | any-receiver |
+| functions/src/processReturnCommand.ts:190 | request.items.filter | any | any-receiver |
+| functions/src/processReturnCommand.ts:190 | item.isResellable | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:229 | (app as Row).returnRequestId | Row | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:270 | itemDocs.get(doc.data().child_id)?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/processReturnCommand.ts:352 | row.statement.id | Row | property-symbol-unresolved |
 | functions/src/manualSettlementBatchCommand.ts:15 | row.companyId | Record<string, any> | property-symbol-unresolved |
 | functions/src/manualSettlementBatchCommand.ts:17 | row.manual | Record<string, any> | property-symbol-unresolved |
 | functions/src/manualSettlementBatchCommand.ts:17 | row.operationId | Record<string, any> | property-symbol-unresolved |
@@ -3795,133 +3924,136 @@ shared/types.ts 외 interface/type alias 680개를 별도 목록에 기록한다
 | ReturnItem | tax | 선택 | number | src/shared/types.ts:1371 | 0 |
 | ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1372 | 0 |
 | ReturnRequest | id | 필수 | string | src/shared/types.ts:1376 | 15 |
-| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1377 | 2 |
+| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1377 | 3 |
 | ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1378 | 2 |
 | ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1379 | 3 |
 | ReturnRequest | partnerName | 필수 | string | src/shared/types.ts:1380 | 5 |
 | ReturnRequest | items | 필수 | ReturnItem[] | src/shared/types.ts:1381 | 15 |
 | ReturnRequest | totalAmount | 필수 | number | src/shared/types.ts:1382 | 3 |
-| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1383 | 15 |
+| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1383 | 16 |
 | ReturnRequest | returnType | 선택 | '매출' \| '매입' | src/shared/types.ts:1384 | 2 |
 | ReturnRequest | createdAt | 필수 | string | src/shared/types.ts:1385 | 7 |
 | ReturnRequest | createdBy | 선택 | string | src/shared/types.ts:1386 | 0 |
 | ReturnRequest | processedAt | 선택 | string | src/shared/types.ts:1387 | 4 |
 | ReturnRequest | processedBy | 선택 | string | src/shared/types.ts:1388 | 1 |
-| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1389 | 7 |
-| ReturnRequest | payableAccountCode | 선택 | '251' \| '253' | src/shared/types.ts:1390 | 0 |
-| ReturnRequest | note | 선택 | string | src/shared/types.ts:1391 | 3 |
-| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1395 | 11 |
-| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1396 | 2 |
-| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1397 | 1 |
-| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1398 | 1 |
-| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1399 | 1 |
-| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1400 | 3 |
-| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1409 | 2 |
-| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1410 | 1 |
-| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1411 | 1 |
-| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1412 | 1 |
-| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1413 | 2 |
-| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1414 | 0 |
-| AccountCode | id | 필수 | string | src/shared/types.ts:1421 | 27 |
-| AccountCode | code | 필수 | string | src/shared/types.ts:1422 | 104 |
-| AccountCode | name | 필수 | string | src/shared/types.ts:1423 | 60 |
-| AccountCode | groupId | 선택 | string | src/shared/types.ts:1424 | 11 |
-| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1426 | 18 |
-| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1427 | 10 |
-| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1428 | 1 |
-| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1433 | 0 |
-| AccountCode | note | 선택 | string | src/shared/types.ts:1434 | 0 |
-| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1439 | 36 |
-| JournalLine | debit | 필수 | number | src/shared/types.ts:1440 | 35 |
-| JournalLine | credit | 필수 | number | src/shared/types.ts:1441 | 31 |
-| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1442 | 12 |
-| JournalLine | note | 선택 | string | src/shared/types.ts:1443 | 1 |
-| JournalEntry | id | 필수 | string | src/shared/types.ts:1447 | 10 |
-| JournalEntry | date | 필수 | string | src/shared/types.ts:1448 | 17 |
-| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1449 | 33 |
-| JournalEntry | memo | 선택 | string | src/shared/types.ts:1450 | 3 |
-| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1451 | 9 |
-| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1452 | 16 |
-| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1453 | 0 |
-| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1454 | 0 |
-| AccountGroup | id | 필수 | string | src/shared/types.ts:1462 | 24 |
-| AccountGroup | name | 필수 | string | src/shared/types.ts:1463 | 9 |
-| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1464 | 6 |
-| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1465 | 4 |
-| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1468 | 1 |
-| AccountGroup | note | 선택 | string | src/shared/types.ts:1469 | 0 |
-| CashAccount | id | 필수 | string | src/shared/types.ts:1477 | 33 |
-| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1479 | 1 |
-| CashAccount | name | 필수 | string | src/shared/types.ts:1480 | 12 |
-| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1481 | 16 |
-| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1482 | 3 |
-| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1483 | 8 |
-| CashAccount | active | 필수 | boolean | src/shared/types.ts:1484 | 18 |
-| CashAccount | note | 선택 | string | src/shared/types.ts:1485 | 0 |
-| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1486 | 2 |
-| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1487 | 0 |
-| CashEntry | id | 필수 | string | src/shared/types.ts:1491 | 75 |
-| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1493 | 14 |
-| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1495 | 2 |
-| CashEntry | loanId | 선택 | string | src/shared/types.ts:1497 | 9 |
-| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1499 | 10 |
-| CashEntry | docNo | 선택 | string | src/shared/types.ts:1505 | 10 |
-| CashEntry | date | 필수 | string | src/shared/types.ts:1506 | 43 |
-| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1507 | 8 |
-| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1518 | 46 |
-| CashEntry | amount | 필수 | number | src/shared/types.ts:1519 | 30 |
-| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1520 | 48 |
-| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1521 | 17 |
-| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1522 | 23 |
-| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1529 | 27 |
-| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1545 | 0 |
-| CashEntry | note | 선택 | string | src/shared/types.ts:1546 | 22 |
-| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1547 | 14 |
-| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1548 | 5 |
-| Settlement | id | 필수 | string | src/shared/types.ts:1554 | 9 |
-| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1555 | 17 |
-| Settlement | statementId | 필수 | string | src/shared/types.ts:1556 | 14 |
-| Settlement | amount | 필수 | number | src/shared/types.ts:1557 | 9 |
-| Settlement | createdAt | 필수 | string | src/shared/types.ts:1558 | 0 |
-| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1562 | 5 |
-| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1565 | 0 |
-| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1566 | 8 |
-| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1567 | 5 |
-| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1568 | 1 |
-| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1571 | 3 |
-| CashFlowManual | id | 필수 | string | src/shared/types.ts:1576 | 0 |
-| CashFlowManual | month | 필수 | string | src/shared/types.ts:1577 | 3 |
-| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1578 | 1 |
-| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1579 | 1 |
-| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1580 | 1 |
-| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1581 | 1 |
-| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1582 | 1 |
-| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1583 | 1 |
-| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1584 | 4 |
-| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1585 | 4 |
-| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1589 | 10 |
-| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1590 | 1 |
-| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1591 | 12 |
-| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1592 | 2 |
-| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1593 | 2 |
-| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1594 | 3 |
-| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1596 | 2 |
-| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1598 | 2 |
-| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1600 | 5 |
-| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1602 | 1 |
-| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1604 | 1 |
-| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1612 | 19 |
-| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1613 | 1 |
-| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1614 | 9 |
-| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1615 | 3 |
-| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1616 | 6 |
-| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1617 | 9 |
-| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1618 | 31 |
-| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1619 | 4 |
-| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1620 | 11 |
-| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1621 | 4 |
-| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1622 | 3 |
-| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1623 | 4 |
-| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1625 | 3 |
-| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1626 | 5 |
-| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1627 | 2 |
+| ReturnRequest | cancelledAt | 선택 | string | src/shared/types.ts:1389 | 13 |
+| ReturnRequest | cancelledBy | 선택 | string | src/shared/types.ts:1390 | 0 |
+| ReturnRequest | cancellationReceipt | 선택 | Record<string, unknown> | src/shared/types.ts:1391 | 0 |
+| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1392 | 7 |
+| ReturnRequest | payableAccountCode | 선택 | '251' \| '253' | src/shared/types.ts:1393 | 0 |
+| ReturnRequest | note | 선택 | string | src/shared/types.ts:1394 | 3 |
+| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1398 | 11 |
+| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1399 | 2 |
+| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1400 | 1 |
+| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1401 | 1 |
+| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1402 | 1 |
+| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1403 | 3 |
+| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1412 | 2 |
+| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1413 | 1 |
+| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1414 | 1 |
+| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1415 | 1 |
+| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1416 | 2 |
+| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1417 | 0 |
+| AccountCode | id | 필수 | string | src/shared/types.ts:1424 | 27 |
+| AccountCode | code | 필수 | string | src/shared/types.ts:1425 | 104 |
+| AccountCode | name | 필수 | string | src/shared/types.ts:1426 | 60 |
+| AccountCode | groupId | 선택 | string | src/shared/types.ts:1427 | 11 |
+| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1429 | 18 |
+| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1430 | 10 |
+| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1431 | 1 |
+| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1436 | 0 |
+| AccountCode | note | 선택 | string | src/shared/types.ts:1437 | 0 |
+| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1442 | 36 |
+| JournalLine | debit | 필수 | number | src/shared/types.ts:1443 | 35 |
+| JournalLine | credit | 필수 | number | src/shared/types.ts:1444 | 31 |
+| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1445 | 12 |
+| JournalLine | note | 선택 | string | src/shared/types.ts:1446 | 1 |
+| JournalEntry | id | 필수 | string | src/shared/types.ts:1450 | 10 |
+| JournalEntry | date | 필수 | string | src/shared/types.ts:1451 | 17 |
+| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1452 | 33 |
+| JournalEntry | memo | 선택 | string | src/shared/types.ts:1453 | 3 |
+| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1454 | 9 |
+| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1455 | 16 |
+| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1456 | 0 |
+| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1457 | 0 |
+| AccountGroup | id | 필수 | string | src/shared/types.ts:1465 | 24 |
+| AccountGroup | name | 필수 | string | src/shared/types.ts:1466 | 9 |
+| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1467 | 6 |
+| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1468 | 4 |
+| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1471 | 1 |
+| AccountGroup | note | 선택 | string | src/shared/types.ts:1472 | 0 |
+| CashAccount | id | 필수 | string | src/shared/types.ts:1480 | 34 |
+| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1482 | 1 |
+| CashAccount | name | 필수 | string | src/shared/types.ts:1483 | 12 |
+| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1484 | 17 |
+| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1485 | 3 |
+| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1486 | 8 |
+| CashAccount | active | 필수 | boolean | src/shared/types.ts:1487 | 18 |
+| CashAccount | note | 선택 | string | src/shared/types.ts:1488 | 0 |
+| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1489 | 2 |
+| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1490 | 0 |
+| CashEntry | id | 필수 | string | src/shared/types.ts:1494 | 77 |
+| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1496 | 15 |
+| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1498 | 2 |
+| CashEntry | loanId | 선택 | string | src/shared/types.ts:1500 | 9 |
+| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1502 | 10 |
+| CashEntry | docNo | 선택 | string | src/shared/types.ts:1508 | 10 |
+| CashEntry | date | 필수 | string | src/shared/types.ts:1509 | 45 |
+| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1510 | 12 |
+| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1521 | 48 |
+| CashEntry | amount | 필수 | number | src/shared/types.ts:1522 | 31 |
+| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1523 | 48 |
+| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1524 | 18 |
+| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1525 | 23 |
+| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1532 | 27 |
+| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1548 | 0 |
+| CashEntry | note | 선택 | string | src/shared/types.ts:1549 | 23 |
+| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1550 | 14 |
+| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1551 | 5 |
+| Settlement | id | 필수 | string | src/shared/types.ts:1557 | 9 |
+| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1558 | 17 |
+| Settlement | statementId | 필수 | string | src/shared/types.ts:1559 | 14 |
+| Settlement | amount | 필수 | number | src/shared/types.ts:1560 | 9 |
+| Settlement | createdAt | 필수 | string | src/shared/types.ts:1561 | 0 |
+| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1565 | 5 |
+| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1568 | 0 |
+| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1569 | 8 |
+| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1570 | 5 |
+| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1571 | 1 |
+| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1574 | 3 |
+| CashFlowManual | id | 필수 | string | src/shared/types.ts:1579 | 0 |
+| CashFlowManual | month | 필수 | string | src/shared/types.ts:1580 | 3 |
+| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1581 | 1 |
+| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1582 | 1 |
+| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1583 | 1 |
+| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1584 | 1 |
+| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1585 | 1 |
+| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1586 | 1 |
+| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1587 | 4 |
+| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1588 | 4 |
+| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1592 | 10 |
+| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1593 | 1 |
+| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1594 | 12 |
+| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1595 | 2 |
+| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1596 | 2 |
+| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1597 | 3 |
+| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1599 | 2 |
+| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1601 | 2 |
+| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1603 | 5 |
+| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1605 | 1 |
+| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1607 | 1 |
+| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1615 | 19 |
+| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1616 | 1 |
+| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1617 | 9 |
+| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1618 | 3 |
+| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1619 | 6 |
+| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1620 | 9 |
+| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1621 | 31 |
+| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1622 | 4 |
+| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1623 | 11 |
+| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1624 | 4 |
+| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1625 | 3 |
+| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1626 | 4 |
+| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1628 | 3 |
+| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1629 | 5 |
+| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1630 | 2 |

@@ -4,9 +4,9 @@
 
 ## 2026-10-09 동결 소스 사전 갱신
 
-정적 사전 생성 시각은 2026-10-09 11:35:01.814 UTC이며 checkout HEAD는 `3cd977fe`다. `e10b6cbc`의 인수시험 추가와 후속 문서를 포함하는 소스 기준으로, 생성기는 `.test.`·`.spec.` 파일을 분석에서 제외한다. 분석 소스425·COL73·공용 직접 선언697·참조 있는 필드598·미해석 속성1866, SDK 경로622·registry 밖12·명명 동적 wrapper24·동적 collection 표현36·경로 미해석 위치317·별도 모델680이다. 생성기 --self-check 생성과 후속 --self-check --check-only 재대조가 모두 exit0으로 통과했다. 미해석 항목은 별도 목록에 남으며 오류 수나 운영 문서 수가 아니다. 생성기와 제품 소스·운영 DB 변경 없이 파생 산출물3개만 갱신했다.
+정적 사전은 최신 배포 소스 c7f336cf와 후속 cbd74974를 기준으로 2026-10-09 재생성했다. 테스트·spec은 제외하며 분석 소스427·COL73·직접 선언700·참조 필드599·미해석 속성1981, SDK 경로630·registry 밖12·wrapper24·동적 collection36·경로 미해석320·별도 모델686이다. 생성 --self-check와 후속 --self-check --check-only 모두 exit0이다. 미해석은 별도 목록이며 DB 실측이나 삭제 근거가 아니다.
 
-소스 사전과 운영 배포는 별도 근거다. TODO042 `474bc229`는 실제32함수 Node22 전환·runtime68/compiled68 일치, TODO015 `66a2715a`는 dailyAutoVoucher·recordLoanMovementCommand 선택2함수의 runtime68/compiled68 일치가 확인됐다. 최신 INITIAL-DATA `f1a39ec7`는 양앱 Hosting33파일·HTML entry 일치이며 이번 변경의 Functions·Rules 배포는 없다. `e10b6cbc`는 시험만, `3cd977fe`는 결과 문서만 추가했으므로 새 런타임 배포를 뜻하지 않는다. 양사 partnerAdvanceCutover 활성화는 별도 승인·적용 기록으로 확인되며 이번 사전 작업의 운영 쓰기는0이다. 현재 원본43개 중20완료·23잔여, 우선15개 중11완료·4보류이고 전체 ERD 완료 판정은 하지 않는다. GitHub 푸시·Notion 쓰기·Figma 다른 보드 정리는 보류를 유지한다. 아래 수치·잔량·배포 대기 문구는 각 제목의 과거 검증 시점 기록이다.
+이번 선택4 Functions는 원격 원본69·compiled69 일치, 전체33 ACTIVE/Node22 및 나머지29 source·trigger 불변을 확인했다. 후속 앱 타입·양앱 build43707, Hosting86780, 원격72682의33JS·양HTML 일치가 확인됐다. 기존042·015 배포는 각 당시 증거로 보존한다. 현재 원본21완료·22잔여, 우선15는11완료·4잔여이고 ERD 전체는 미완료다. 신규 AddItemModal 죽은 초기 state1줄 제거는 별도 미배포 후속이며 이번 사전 생성 시점 뒤 변경과 구분한다. 운영/신규 gate/Notion/Figma/푸시0이다. 아래 수치와 대기 문구는 제목별 과거 시점이다.
 
 | 최신 코드 관계 | 근거와 제한 |
 | --- | --- |
