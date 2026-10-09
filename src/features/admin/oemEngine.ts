@@ -3,7 +3,7 @@ import { stampFor } from '../../shared/voucherStamp';
 import { companyOf, type CompanyId, type Item, type IssuedStatement, type Partner, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { parsePackageKg, parseSpecCount } from '../../constants/formula';
-import { itemKg } from '../../shared/orderUnits';
+import { itemKg, type OrderUnitInputs } from '../../shared/orderUnits';
 import { lineAmount } from '../../shared/lineAmount';
 export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
@@ -29,6 +29,7 @@ export const OEM_PROCESSING_FEE_CODE = '540'; // 외주가공비 (제조원가) 
 export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) — 푸미푸드 볶음. 입고 시 변경 가능
 
 export interface OemEngineDeps {
+  orderUnitInputs?: OrderUnitInputs;
   companyId: CompanyId;
   items: Item[];
   partners: Partner[];
@@ -158,7 +159,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     for (const r of lines) {
       const item = items.find(i => i.id === r.itemId);
       if (!item) throw new Error(`품목을 찾을 수 없습니다: ${r.itemId}`);
-      const unitKg = itemKg(item);
+      const unitKg = itemKg(item, deps.orderUnitInputs);
       const kg = unitKg * r.qty;
       receivedKg += kg;
       poItems.push({ itemId: item.id, name: item.name, quantity: r.qty, unit: item.unit ?? '개' });
@@ -254,7 +255,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     const productFeeLines = (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
       if (!it || companyOf(it) !== companyId) throw new Error(`현재 회사의 OEM 전표 품목을 찾을 수 없습니다: ${pi.itemId}`);
-      const unitTotal = Math.round((it ? itemKg(it) : 0) * perKg);       // 1개당 가공비(세포함)
+      const unitTotal = Math.round((it ? itemKg(it, deps.orderUnitInputs) : 0) * perKg);       // 1개당 가공비(세포함)
       const q = pi.quantity ?? 0;
       //  줄의 공급가·세액은 **합계에서** 푼다 — 개당으로 풀어 곱하면 개수만큼 오차가 쌓인다
       const { supply: lineSupply, tax: lineTax, gross: lineGross } = lineAmount(q, unitTotal, !taxable);

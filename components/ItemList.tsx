@@ -392,12 +392,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
       for (const line of order.items ?? []) {
         if (!line.checked) continue;
         const product = items.find(candidate => candidate.id === line.itemId);
-        const quantity = shipQtyOfLine(line, product);
+        const quantity = shipQtyOfLine(line, product, orderUnitInputs);
         result.set(line.itemId, (result.get(line.itemId) ?? 0) + quantity);
       }
     }
     return result;
-  }, [items, orders]);
+  }, [items, orders, orderUnitInputs]);
   // 품목 → 매출처 이름들(공백연결). 재고 현황 거래처 검색용. Direction='out' + 품목의 partnerIds 둘 다.
   const salesPartnerNames = useMemo(() => {
     const nameById = new Map(partners.map(c => [c.id, c.name]));

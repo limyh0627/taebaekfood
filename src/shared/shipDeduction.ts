@@ -61,11 +61,12 @@ export interface ShipDeductionRow {
 export function shipDeductions(
   order: Pick<{ items: OrderItem[] }, 'items'>,
   allItems: readonly Item[],
+  inputs?: OrderUnitInputs,
 ): ShipDeductionRow[] {
   const 모음 = new Map<string, ShipDeductionRow>();
   for (const line of order.items ?? []) {
     const product = allItems.find(candidate => candidate.id === line.itemId);
-    const qty = shipQtyOfLine(line, product);
+    const qty = shipQtyOfLine(line, product, inputs);
     if (!product || qty <= 0) continue;
     const 있던것 = 모음.get(product.id);
     if (있던것) {
@@ -84,7 +85,7 @@ export function shipDeductions(
       itemId: product.id,
       name: product.name,
       //  박스로 세는 품목은 '개' 라고 하면 거짓말이 된다.
-      unit: isBoxStockItem(product) ? '박스' : (product.unit || '개'),
+      unit: isBoxStockItem(product, inputs) ? '박스' : (product.unit || '개'),
       qty: Math.round(qty * 1000) / 1000,
       before,
       after: Math.round((before - qty) * 1000) / 1000,

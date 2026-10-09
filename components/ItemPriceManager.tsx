@@ -3,12 +3,14 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
 import { Item, PartnerItem, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
+import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { marginOf } from '../src/shared/margin';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSaleTaxExempt, salePriceRange } from '../src/shared/partnerPrice';
 
 interface ItemPriceManagerProps {
+  orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   onEditProduct: (product: Item) => void;
   onAddItem: () => void;
@@ -26,7 +28,7 @@ const CATEGORIES: (InventoryCategory | '전체')[] = ['전체', '완제품', '�
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
-  items, onEditProduct, onAddItem, onDeleteItem, onUpdateCost, partnerItems,
+  items, onEditProduct, onAddItem, onDeleteItem, onUpdateCost, partnerItems, orderUnitInputs,
 }) => {
   const [category, setCategory] = useState<string>('전체');
   const [search, setSearch] = useState('');
@@ -123,7 +125,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                       <div className="font-black text-slate-800 text-sm">{p.name}</div>
                       {(() => {
                         //  부자재는 BOM 그대로 — 용기·마개만 골라 뽑던 자리다(그 필터는 늘 비어 있었다).
-                        const subs = bomOf(p.id);
+                        const subs = orderUnitInputs ? orderUnitInputs.bom.of(p.id) : bomOf(p.id);
                         const 정보 = p.oil || p.spec || '';
                         if (!subs.length && !정보) return null;
                         return (

@@ -224,15 +224,6 @@ const seoulWeekStart = () => {
   return seoulDateInput(date);
 };
 
-/**
- * 화면에서 박스 재고 상품으로 볼 수 있는 경우만 개입수를 반환한다.
- * 단일 BOM 수량만 보면 스마트스토어 상품의 원액 사용량(예: 1.649kg)을
- * 개입수로 오인할 수 있으므로, 박스 표식과 2 이상의 정수 수량을 함께 확인한다.
- */
-const inventoryBoxPackCount = (product: Item | undefined): number | undefined => {
-  return product && isBoxStockItem(product) ? unitsPerBoxOf(product) || undefined : undefined;
-};
-
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
 interface OrdersListProps {
@@ -2163,7 +2154,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     const order = orders.find(candidate => candidate.id === orderId);
     if (!order) return;
     const partnerName = order.partnerName || partners.find(partner => partner.id === order.partnerId)?.name || '거래처 미지정';
-    const 빠질것 = shipDeductions(order, items);
+    const 빠질것 = shipDeductions(order, items, orderUnitInputs);
     const 수 = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString();
     /*  **재고가 음수가 될 출고는 아예 막는다**(2026-09-15 사장님: "작업완료에서 출고완료로
         갈때 음수재고 나오는 경우는 막아야겠다 출고완료버튼 못 누르게 막아두고").

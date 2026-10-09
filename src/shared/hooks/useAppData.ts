@@ -16,8 +16,8 @@ import {
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import type { OrderUnitInputs } from '../orderUnits';
-import { buildBomIndex, setBomIndex } from '../bomIndex';
-import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
+import { buildBomIndex } from '../bomIndex';
+import { buildPackIndex, type PackRow } from '../packIndex';
 import { where, doc, getDoc } from 'firebase/firestore';
 import { auth, db, authReady } from '../firebase';
 import { dateOfLocal, kstDateRangeUtc } from '../day';
@@ -412,10 +412,8 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
    * 같은 인덱스라 여러 번 돌아도 결과가 같다).
    */
   const bomIndex = useMemo(() => buildBomIndex(enabled ? items.filter(row => companyOf(row) === companyId) : [], enabled ? itemBoms.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, items, itemBoms]);
-  setBomIndex(bomIndex);
   //  포장 환산표도 같은 방식으로 — 개입수의 근거는 BOM 아니면 이 표, 둘뿐이다
   const packIndex = useMemo(() => buildPackIndex(enabled ? itemPacks.filter(row => companyOf(row as { companyId?: CompanyId }) === companyId) : []), [enabled, companyId, itemPacks]);
-  setPackIndex(packIndex);
 
   const loadedReturnOperations = enabled && isAdmin && returnOperationState?.companyId === companyId ? returnOperationState.rows : undefined;
   const loadReturnSources = useCallback(async (ids: string[], company: CompanyId) => {

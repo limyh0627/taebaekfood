@@ -686,9 +686,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 볶음참깨 줄에도 들깨가루가 떴다. 배합식으로 걸러 준다([rawUsers](../../shared/rawUsers.ts)).
    */
   const linesUsingRaw = useMemo(() => {
-    const deps = { allItems, bomOf, buildFormula: (k: string) => buildFormulaBom(k, itemFormulas, allItems), baseRawName };
+    const deps = { allItems, bomOf: (id: string) => appData.orderUnitInputs ? appData.orderUnitInputs.bom.of(id) : bomOf(id), buildFormula: (k: string) => buildFormulaBom(k, itemFormulas, allItems), baseRawName };
     return (order: Order, material: string) => orderLinesUsingRaw(order.items, material, deps);
-  }, [allItems, itemFormulas]);
+  }, [allItems, itemFormulas, appData.orderUnitInputs]);
 
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
@@ -1532,14 +1532,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
        *  그 사이 원료·부자재가 조용히 되돌아가 무슨 일이 있었는지 알 길이 없었다.
        *  되돌릴 것이 하나도 없는 건(전량 재고로 나가 생산이 없던 건)도 묻기는 한다 —
        *  다만 `buildStatusChangeAsk` 가 "되돌릴 원료·부자재가 없습니다"로 글을 바꾼다. */
-      const 계획: RollbackPlan = prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status);
+      const 계획: RollbackPlan = prepared?.plan ?? buildRollbackPlan(cur, allItems, cur.status, status, appData.orderUnitInputs);
       const 최종패치 = { ...orderPatch, ...(shouldClearChecks ? { items: clearedItems } : {}) };
       /*  **작업완료에서 내릴 때만** 잡힘이 풀린다 — 출고까지 갔던 건은 재고가 이미 빠졌고,
           그건 위 `계획`(원복)이 되돌린다. 여기서 또 세면 두 번 말하는 셈이 된다. */
       const 풀릴것 = cur.status === OrderStatus.DISPATCHED
         ? cur.items.flatMap(줄 => {
             const 품목 = allItems.find(p => p.id === 줄.itemId);
-            const 양 = shipQtyOfLine(줄, 품목);
+            const 양 = shipQtyOfLine(줄, 품목, appData.orderUnitInputs);
             return 품목 && 양 > 0
               ? [{ name: 품목.name, qty: 양, unit: unpackComponent(품목, appData.orderUnitInputs) ? '박스' : (품목.unit || '개') }]
               : [];
@@ -1682,6 +1682,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
+    orderUnitInputs: appData.orderUnitInputs,
     companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula,
     issueOemBatchJob: input => issueOemBatchJob(db, input),
     applyOemReceiptInventory: input => receiveOemFinishedGoodsCommand({
@@ -1853,14 +1854,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
         //  이 줄이 실제로 차감했다는 근거다. 없으면 '기록 없음'으로 잘못 겁준다.
         producedAt: 줄상태.completedAt ?? 줄상태.production?.capturedAt,
         inventorySnapshots: { production: 줄상태.production },
-      } as Parameters<typeof buildRollbackPlan>[0], allItems, OrderStatus.DISPATCHED, OrderStatus.PROCESSING);
+      } as Parameters<typeof buildRollbackPlan>[0], allItems, OrderStatus.DISPATCHED, OrderStatus.PROCESSING, appData.orderUnitInputs);
       const 줄이름 = allItems.find(p => p.id === plan.items[itemIdx]?.itemId)?.name ?? plan.items[itemIdx]?.name ?? '이 품목';
       /*  **되돌리면 이 주문 몫으로 잡아 둔 재고가 풀린다**(2026-09-15 사장님).
           작업완료로는 재고가 안 줄고 그 몫이 이 주문에 잡혀 있을 뿐이라, 생산이 없는
           사입·임가공 줄은 "되돌릴 게 없습니다" 만 떴다 — 실제로는 잡힘이 풀린다.
           얼마가 풀리는지는 출고 때 빠질 양과 같다(`shipQtyOfLine`) — 그 몫을 잡아 둔 것이니. */
       const 푸는품목 = allItems.find(p => p.id === normalizedOrder.items[itemIdx]?.itemId);
-      const 풀릴양 = shipQtyOfLine(normalizedOrder.items[itemIdx]!, 푸는품목);
+      const 풀릴양 = shipQtyOfLine(normalizedOrder.items[itemIdx]!, 푸는품목, appData.orderUnitInputs);
       const 묻는글 = buildStatusChangeAsk({
         partnerName: order.partnerName, from: order.status, to: plan.status, plan: 줄계획, lineName: 줄이름,
         released: 푸는품목 && 풀릴양 > 0
@@ -5042,6 +5043,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {currentView === 'item-price-management' && (
             <ItemPriceManager
+              orderUnitInputs={appData.orderUnitInputs}
               items={allItems}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}

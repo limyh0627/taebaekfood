@@ -97,3 +97,34 @@ it('상세 실제 포장 chip은 회사 입력을 쓰며 벌크·배합 제외�
  expect(displayParts('chips').map(row=>(row as Item).id)).toEqual(['cap-b']);
  expect(getBomIndex()).toBe(packagingB.bom);
 });
+import {shipDeductions,shipQtyOfLine} from '../src/shared/shipDeduction';
+import {OrderStatus} from '../src/shared/types';
+import {isStockProduction} from '../src/shared/orderPurpose';
+const shippingItems=[...items,{...items[1],id:'goods',procureType:'완사입'}] as Item[];
+const shippingA={...a,pack:buildPackIndex([{item_id:'goods',units_per_box:12}])};
+const shippingB={bom:b.bom,pack:buildPackIndex([{item_id:'goods',units_per_box:4}])};
+const shippingLines=[{itemId:'box',quantity:40,isBoxUnit:true,boxQuantity:2,checked:true},{itemId:'goods',quantity:2,isBoxUnit:true,boxQuantity:2,checked:true},{itemId:'goods',quantity:1,isBoxUnit:true,boxQuantity:1,checked:true}];
+const shippingOrder={items:shippingLines};
+it('출고 확인 실제 호출은 회사 구성으로 여러 품목 수량과 표 단위를 함께 계산한다',()=>{
+ setBomIndex(shippingB.bom);setPackIndex(shippingB.pack);
+ const orderSource=readFileSync('components/OrdersList.tsx','utf8');
+ const call=orderSource.match(/shipDeductions\(order, items[^)]*\)/)?.[0];
+ expect(call).toBeTruthy();
+ const run=new Function('shipDeductions','order','items','orderUnitInputs',`return ${call};`);
+ const evaluate=(input?:OrderUnitInputs)=>run(shipDeductions,shippingOrder,shippingItems,input).map((row:any)=>[row.itemId,row.qty,row.unit]);
+ expect(evaluate(shippingA)).toEqual([['box',2,'박스'],['goods',36,'개']]);
+ expect(evaluate({bom:buildBomIndex([],[]),pack:buildPackIndex([])})).toEqual([['box',40,'개'],['goods',3,'개']]);
+ expect(evaluate()).toEqual([['box',40,'개'],['goods',12,'개']]);
+ expect(getBomIndex()).toBe(shippingB.bom);expect(getPackIndex()).toBe(shippingB.pack);
+});
+it('실제 출고예정 합계 memo는 회사 입력 변경을 반영하고 제외 상태·미완료·재고생산을 보존한다',()=>{
+ setBomIndex(shippingB.bom);setPackIndex(shippingB.pack);
+ const begin=source.indexOf('  const scheduledOutboundQty ='),finish=source.indexOf('  // 품목 → 매출처',begin);
+ const js=ts.transpileModule(`${source.slice(begin,finish)} return scheduledOutboundQty;`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ const run=new Function('useMemo','orders','items','OrderStatus','isStockProduction','shipQtyOfLine','orderUnitInputs',js);
+ const orders=[{status:OrderStatus.PENDING,items:shippingLines},{status:OrderStatus.PROCESSING,items:[{...shippingLines[1],boxQuantity:1}]},{status:OrderStatus.DELIVERED,items:shippingLines},{status:OrderStatus.DISPATCHED,purpose:'stock-production',items:shippingLines},{status:OrderStatus.PENDING,items:[{...shippingLines[1],checked:false}]}];
+ const view=renderHook(({input})=>run(useMemo,orders,shippingItems,OrderStatus,isStockProduction,shipQtyOfLine,input),{initialProps:{input:shippingA}});
+ expect([...view.result.current]).toEqual([['box',2],['goods',48]]);
+ view.rerender({input:shippingB});expect([...view.result.current]).toEqual([['box',40],['goods',16]]);
+ expect(getBomIndex()).toBe(shippingB.bom);expect(getPackIndex()).toBe(shippingB.pack);
+});
