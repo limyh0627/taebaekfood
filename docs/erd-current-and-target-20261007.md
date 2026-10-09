@@ -1,12 +1,20 @@
-# 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-08
+# 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-09
 
 기준: 기존 통합 저장소 534b67fa 이후 문서 보완. 원료·주문 관계는 제품 변경 955e4ab8을 기준으로 확인했고, 이어 거래처 원장 조회 화면을 보완했다. 이 문서는 **코드에서 확인한 관계**이며 Firestore 전 문서 실측, 외래키 강제, 모든 읽기·쓰기 완전 추적을 주장하지 않는다. registry와 생성기 결과는 field-dictionary.generated.md/json에서 재생성한다.
 
 ## 2026-10-09 동결 소스 사전 갱신
 
-정적 사전 생성 시각은 2026-10-09 02:58:44 UTC다. 현재 동결 checkout의 PARTNER 적용·취소 및 원전표 수정/삭제/반품 합성, 조회 투영과 주문 입력 보완을 포함한다. 분석 소스410·COL71·공용 직접 선언693·참조 있는 필드598·미해석 속성1669, SDK 경로599·registry 밖12·명명 동적 wrapper25·경로 미해석 위치315·별도 모델646이다. 생성기 --self-check 생성과 후속 --check-only 재대조가 모두 exit0으로 통과했다. 미해석 수는 오류나 운영 문서 수가 아니며 제품 소스·운영 DB 변경 없이 파생 사전만 갱신했다.
+정적 사전 생성 시각은 2026-10-09 11:35:01.814 UTC이며 checkout HEAD는 `3cd977fe`다. `e10b6cbc`의 인수시험 추가와 후속 문서를 포함하는 소스 기준으로, 생성기는 `.test.`·`.spec.` 파일을 분석에서 제외한다. 분석 소스425·COL73·공용 직접 선언697·참조 있는 필드598·미해석 속성1866, SDK 경로622·registry 밖12·명명 동적 wrapper24·동적 collection 표현36·경로 미해석 위치317·별도 모델680이다. 생성기 --self-check 생성과 후속 --self-check --check-only 재대조가 모두 exit0으로 통과했다. 미해석 항목은 별도 목록에 남으며 오류 수나 운영 문서 수가 아니다. 생성기와 제품 소스·운영 DB 변경 없이 파생 산출물3개만 갱신했다.
 
-이 시점 새 Functions·Rules 배포 및 Hosting 검증은 총괄 진행 중이며 완료를 이 문서에서 먼저 주장하지 않는다. 신규 partnerAdvanceCutover 양사 활성화 승인·운영 쓰기는 없고 GitHub 푸시 보류를 유지한다. 전체 잔량35개 및 우선 원본8/15 판정도 그대로다. 아래 c4a54ea9와 릴리즈별 운영 증거는 이전 검증 시점의 기록이다.
+소스 사전과 운영 배포는 별도 근거다. TODO042 `474bc229`는 실제32함수 Node22 전환·runtime68/compiled68 일치, TODO015 `66a2715a`는 dailyAutoVoucher·recordLoanMovementCommand 선택2함수의 runtime68/compiled68 일치가 확인됐다. 최신 INITIAL-DATA `f1a39ec7`는 양앱 Hosting33파일·HTML entry 일치이며 이번 변경의 Functions·Rules 배포는 없다. `e10b6cbc`는 시험만, `3cd977fe`는 결과 문서만 추가했으므로 새 런타임 배포를 뜻하지 않는다. 양사 partnerAdvanceCutover 활성화는 별도 승인·적용 기록으로 확인되며 이번 사전 작업의 운영 쓰기는0이다. 현재 원본43개 중20완료·23잔여, 우선15개 중11완료·4보류이고 전체 ERD 완료 판정은 하지 않는다. GitHub 푸시·Notion 쓰기·Figma 다른 보드 정리는 보류를 유지한다. 아래 수치·잔량·배포 대기 문구는 각 제목의 과거 검증 시점 기록이다.
+
+| 최신 코드 관계 | 근거와 제한 |
+| --- | --- |
+| 정기 대출 예약 → loanMovementOperations | functions/src/loanMovementCommand.ts의 recordScheduledLoanMovement가 templateId/yearMonth와 고정 scheduledRequest를 감사에 저장한다. 재시도는 저장된 입력·결과를 검증하며 새 계약 revision으로 과거 입력을 바꾸지 않는다. fixedCostTemplates·loanContracts·cashAccounts를 읽는 관계이며 독립 예약 collection을 추측하지 않는다. |
+| 반품 접수 → returnSubmissionOperations / returnRequests | submitReturnRequestCommand.ts는 requestId·actorId·requestHash로 accepted/rejected terminal 감사를 보존한다. accepted와 접수 원문·submissionReceipt는 같은 TX에서 생성되며 처리 후 replay는 최초 receipt를 확인하고 최신 처리 상태를 덮지 않는다. |
+| 금융 기초 → financialOpeningOperations | financialOpeningCommand.ts의 kind와 원문 hash·actor·결과를 보존하며 cashAccounts·loanContracts·거래처 기초 전표 저장을 해당 명령 TX에 합성한다. account-create는 현금 계좌 생성이다. |
+| 회사 기초 계정표 → accountCodes | firebaseService.ts의 createOpeningAccountCodeWithDb는 adminOnly Rules 아래 Web TX로 동일 내용은 unchanged, 없는 계정만 생성한다. 금융 operation receipt가 아닌 회사 계정 metadata이며 기존 계정 덮어쓰기와 331 등록을 허용하지 않는다. |
+| 생산 소비 추적 → 원 로트 복원 근거 | 주문 내 productConsumedLots의 optional lotSnapshot은 차감 전 원 로트 metadata다. orderProductLots.ts는 제거된 원 로트만 잔량0으로 재구성한 뒤 이번 소비 수량을 더한다. snapshot의 과거 잔량 전체를 복사하지 않고, snapshot 없는 구형 trace의 원 로트를 추정하지 않는다. 원료 lotChanges.lotSnapshot과 제품 소비 추적은 서로 다른 저장 구조다. |
 
 ## 2026-10-08 이전 분석 기준과 당시 경로
 
@@ -23,7 +31,7 @@
 
 운영 증거는 릴리즈별 선택 범위다. batch6 d2d8dc60은 선택16함수의 runtime53/compiled13 일치와 옛 mutate callable 삭제, batch7 d21eb7d0은 선택3함수 runtime54/compiled6 일치, 새 재고3ab3b758은 issueTradeStatementCommand1개 runtime54/compiled6, OEM76c855ca는 receiveOemFinishedGoodsCommand1개 runtime54/compiled7 일치를 확인했다. d2876860은 앱 품목 규격 표시1파일이다. 소스 사전 재생성이 모든 Functions 최신 재배포 또는 전체 운영 문서 존재를 뜻하지 않는다.
 
-Figma 다른 보드 정리는 사용자 '일단냅둬'로 보류한다. Notion 의미 중복의 실제 편집은 기존 자동 거절 제한으로 수행하지 않는다. 현재/지향·사전 갱신의 부분 근거만 추가하며 전체 ERD 원본 완료 및 원본 ERD 전체 완료로 확대하지 않는다. 원본 인수 판정은 별도 TODO023 완료를 포함해15개 중8개이며 전체 잔량은35개다.
+Figma 다른 보드 정리는 사용자 '일단냅둬'로 보류한다. Notion 의미 중복의 실제 편집은 기존 자동 거절 제한으로 수행하지 않는다. 현재/지향·사전 갱신의 부분 근거만 추가하며 전체 ERD 원본 완료로 확대하지 않는다. 최신 원본 인수 판정은 우선15개 중11완료·4보류이며 전체43개 중20완료·23잔여다.
 
 ## 이전 생성 시점·배포 경계 기록
 
