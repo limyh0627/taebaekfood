@@ -12,6 +12,13 @@ const key='return-cancellation:taebaek:uid:request';
 const success=(command:any)=>({data:{status:'duplicate',requestId:command.requestId,operationId:command.operationId,requestHash:cashOriginalHash(command)}});
 const rejected=(command:any,patch:Record<string,unknown>={})=>Object.assign(new Error('확정 거절'),{details:{cancellationRejected:{version:1,terminalConfirmed:true,status:'rejected',companyId:'taebaek',actorId:'uid',requestId:command.requestId,operationId:command.operationId,requestHash:cashOriginalHash(command),command,...patch}}});
 beforeEach(()=>{vi.stubGlobal('crypto',webcrypto);localStorage.clear();m.call.mockReset();m.user.uid='uid';m.user.getIdTokenResult.mockReset().mockResolvedValue({claims:{companyId:'taebaek',isAdmin:true}});});
+it('이전 취소 거절 감사는 새 원문에 중첩하지 않고 접수·수량 증명은 보존한다',async()=>{
+ const row={...original,cancellationOperations:{old:{command:{expectedRequest:{cancellationOperations:{older:{}}}}}},submissionReceipt:{version:1},quantityOperations:{quantity:{status:'updated'}}};
+ m.call.mockImplementationOnce(success);await cancelReturnRequest('taebaek',row);
+ const sent=m.call.mock.calls[0][0];
+ expect(sent.expectedRequest).not.toHaveProperty('cancellationOperations');
+ expect(sent.expectedRequest).toMatchObject({submissionReceipt:{version:1},quantityOperations:{quantity:{status:'updated'}}});
+});
 it('unknown은 전체 동일 원문으로 재개하고 변경 입력은 새 작업을 만들지 않는다',async()=>{
  m.call.mockRejectedValueOnce(new Error('unknown'));await expect(cancelReturnRequest('taebaek',original)).rejects.toThrow('unknown');
  const saved=localStorage.getItem(key);expect(hasPendingReturnCancellation('taebaek','request')).toBe(true);

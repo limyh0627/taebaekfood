@@ -68,7 +68,8 @@ export function hasPendingReturnCancellation(companyId: CompanyId, requestId: st
 export async function cancelReturnRequest(companyId: CompanyId, original: ReturnRequest): Promise<void> {
   const uid = auth.currentUser?.uid;
   if (!uid || original.companyId !== companyId || original.status !== 'pending') throw new Error('현재 회사의 처리 대기 반품을 확인해주세요.');
-  const { id, ...body } = original;
+  // 서버의 원문 비교에서도 제외하는 취소 거절 감사는 재차 중첩해 저장하지 않는다.
+  const { id, cancellationOperations: _operations, ...body } = original as ReturnRequest & {cancellationOperations?: unknown};
   const saved = pending(companyId, uid, id);
   if (saved && encoded(saved.expectedRequest) !== encoded(body)) throw new Error('이전 취소 결과 확인 버튼으로 먼저 확인해주세요.');
   return send(saved ?? { companyId, requestId: id, operationId: `rc-${crypto.randomUUID()}`, expectedRequest: canonical(body) }, uid);
