@@ -47,6 +47,7 @@ import { OrderStatus, type Order } from '../src/shared/types';
 import { shipQtyOfLine } from '../src/shared/shipDeduction';
 import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, itemKg, packBreakdown, stockKg, stocktakeStoredQuantity, unitsPerBoxOf, unpackComponent, unpackQty, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
+import { hasPendingReturnQuantity, resumePendingReturnQuantity } from '../src/shared/services/pendingFlowQuantityService';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
 import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
 import { getPackIndex, packUnitsOf } from '../src/shared/packIndex';
@@ -71,7 +72,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import { addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
 import { unpackBoxStock } from '../src/shared/services/boxUnpackService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../src/shared/firebase';
+import { storage, auth } from '../src/shared/firebase';
 import { lotQtyRemaining } from '../src/shared/lotUtils';
 import { lastStocktakeDate } from '../src/shared/lastStocktake';
 import FilterRow from '../src/shared/ui/FilterRow';
@@ -679,6 +680,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [flowDetail, setFlowDetail] = useState<{ type: '입고' | '반품'; id: string; lines: { itemId: string; quantity: number }[] } | null>(null);
   const [flowQuantities, setFlowQuantities] = useState<string[]>([]);
   const [flowSaving, setFlowSaving] = useState(false);
+  const flowQuantityAlive = useRef(true);
+  const flowQuantityAttempt = useRef<object | null>(null);
+  useEffect(() => { flowQuantityAlive.current = true; return () => { flowQuantityAlive.current = false; }; }, []);
+  useEffect(() => { flowQuantityAttempt.current = null; setFlowSaving(false); }, [flowDetail]);
   const oemCancelBusy = useRef(false);
   const oemCancelScope = useRef({ companyId, detail: flowDetail });
   oemCancelScope.current = { companyId, detail: flowDetail };
@@ -1686,6 +1691,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const sourceChanged = flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
         const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending';
         const issued = !!record.linkedStatementId;
+        const quantityPending = flowDetail.type === '반품' && hasPendingReturnQuantity(companyId,flowDetail.id);
         const canReceive = flowDetail.type === '입고' && canConfirmReceipt(record as PurchaseOrder);
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
         const eventDates = po
@@ -1741,20 +1747,32 @@ const ItemListContent: React.FC<ItemListProps> = ({
           {po?.poType === 'oem' && <div className="rounded-lg bg-violet-50 p-3 text-xs text-violet-800"><p>{oemSummary(po).itemSummary}</p><p>{oemSummary(po).quantitySummary}</p><p className="mt-1">송부 원료는 받은 수량이 아닙니다. 입고 기록이 없으면 수량을 추정하지 않습니다.</p></div>}
           <div className="space-y-2">{(po?.poType === 'oem' ? [] : lines).map((line, index) => <div key={`${line.itemId}-${index}`} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
             <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700">{line.name || productMap.get(line.itemId)?.name || '품목 미지정'}</span>
-            {pending && po?.poType !== 'oem' && !sourceChanged ? <input type="number" min="0.001" step="0.001" value={flowQuantities[index] ?? String(line.quantity)} onChange={event => setFlowQuantities(values => values.map((value, i) => i === index ? event.target.value : value))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold" aria-label={`${line.name || '품목'} 수량`} />
+            {pending && po?.poType !== 'oem' && !sourceChanged ? <input type="number" min="0.001" step="0.001" disabled={flowSaving || quantityPending} value={flowQuantities[index] ?? String(line.quantity)} onChange={event => setFlowQuantities(values => values.map((value, i) => i === index ? event.target.value : value))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm font-bold" aria-label={`${line.name || '품목'} 수량`} />
               : <span className="text-sm font-black tabular-nums">{line.quantity.toLocaleString()}</span>}
           </div>)}</div>
-          {pending && po?.poType !== 'oem' && <button type="button" disabled={flowSaving || sourceChanged || !onUpdatePendingFlowQty} onClick={async () => {
+          {pending && po?.poType !== 'oem' && <button type="button" disabled={flowSaving || quantityPending || sourceChanged || !onUpdatePendingFlowQty} onClick={async () => {
             const quantities = flowQuantities.map(Number);
             if (quantities.length !== lines.length || quantities.some(qty => !Number.isFinite(qty) || qty <= 0 || Math.abs(Math.round(qty * 1000) - qty * 1000) > 1e-6)) { alert('수량은 0보다 큰 숫자로 소수 셋째 자리까지 입력해주세요.'); return; }
             if (issued) alert('이미 전표가 발행됐습니다. 이 수량을 저장한 뒤 연결된 전표 수량도 별도로 변경해주세요.');
-            setFlowSaving(true);
+            if (flowQuantityAttempt.current) return;
+            const detail = flowDetail, uid = auth.currentUser?.uid, attempt = {};
+            const current = () => flowQuantityAlive.current && flowQuantityAttempt.current === attempt && oemCancelScope.current.companyId === companyId && oemCancelScope.current.detail === detail && auth.currentUser?.uid === uid;
+            flowQuantityAttempt.current = attempt; setFlowSaving(true);
             try {
-              await onUpdatePendingFlowQty?.(flowDetail.type, flowDetail.id, flowDetail.lines.map((line, index) => ({ itemId: line.itemId, previousQuantity: line.quantity, quantity: quantities[index] })));
-              setFlowDetail(null);
-            } catch (error) { alert(`수량을 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
-            finally { setFlowSaving(false); }
+              await onUpdatePendingFlowQty?.(detail.type, detail.id, detail.lines.map((line, index) => ({ itemId: line.itemId, previousQuantity: line.quantity, quantity: quantities[index] })));
+              if (current()) setFlowDetail(null);
+            } catch (error) { if (current()) alert('수량을 저장하지 못했습니다: '+(error instanceof Error ? error.message : String(error))); }
+            finally { if (current()) { flowQuantityAttempt.current = null; setFlowSaving(false); } }
           }} className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-black text-white disabled:opacity-40">수량 저장</button>}
+          {quantityPending && <button type="button" disabled={flowSaving} onClick={async () => {
+            if (flowQuantityAttempt.current) return;
+            const detail = flowDetail, uid = auth.currentUser?.uid, attempt = {};
+            const current = () => flowQuantityAlive.current && flowQuantityAttempt.current === attempt && oemCancelScope.current.companyId === companyId && oemCancelScope.current.detail === detail && auth.currentUser?.uid === uid;
+            flowQuantityAttempt.current = attempt; setFlowSaving(true);
+            try { await resumePendingReturnQuantity(companyId,detail.id); if (current()) setFlowDetail(null); }
+            catch (error) { if (current()) alert('이전 수량 수정 결과를 확인하지 못했습니다: '+(error instanceof Error ? error.message : String(error))); }
+            finally { if (current()) { flowQuantityAttempt.current = null; setFlowSaving(false); } }
+          }} className="w-full rounded-xl bg-amber-100 py-2.5 text-sm font-black text-amber-900 disabled:opacity-40">이전 수량 수정 확인</button>}
           {flowDetail.type === '입고' && pending && !canReceive && <p className="text-xs font-bold text-amber-700">품목이나 원료 로트 연결을 확인한 뒤 입고확정해 주세요.</p>}
         </ModalShell>;
       })()}

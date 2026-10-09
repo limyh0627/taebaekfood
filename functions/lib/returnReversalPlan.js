@@ -120,12 +120,11 @@ function planStandaloneReturn(request) {
             || !money(row.supply) || !money(row.tax) || row.supply + row.tax <= 0
             || !row.accountCode || typeof row.isResellable !== 'boolean')
             fail('반품 수량·금액·계정이 잘못되었습니다.');
-        if (request.returnType === '매출' && !row.isResellable)
-            fail('폐기 반품의 실물 처리는 아직 준비되지 않았습니다.');
         supply += row.supply;
         tax += row.tax;
         add(row.accountCode, request.returnType === '매출' ? '차변' : '대변', row.supply);
-        stockEffects.push({ itemId: row.itemId, quantityDelta: request.returnType === '매출' ? row.quantity : -row.quantity });
+        if (request.returnType === '매입' || row.isResellable)
+            stockEffects.push({ itemId: row.itemId, quantityDelta: request.returnType === '매출' ? row.quantity : -row.quantity });
     }
     const amount = supply + tax;
     if (!money(supply) || !money(tax) || !money(amount) || amount !== request.totalAmount)

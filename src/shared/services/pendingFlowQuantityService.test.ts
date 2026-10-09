@@ -26,22 +26,17 @@ describe('대기 입고·반품 수량 공용 저장', () => {
     await updatePendingFlowQuantity('taebaek', '입고', 'legacy', updates);
     expect(state.update).toHaveBeenCalledWith({ collection: 'purchaseOrders', id: 'legacy' }, { quantity: 3.125 });
   });
-  it('풍회 반품은 실제 가격으로 합계를 다시 계산한다', async () => {
-    state.record = request();
-    await updatePendingFlowQuantity('punghoe', '반품', 'r1', updates);
-    expect(state.update).toHaveBeenCalledWith({ collection: 'returnRequests', id: 'r1' }, { items: [{ ...request().items[0], quantity: 3.125 }], totalAmount: 156.25 });
-  });
-  it.each(['입고', '반품'] as const)('%s 문서가 없으면 저장하지 않는다', async type => {
+  it.each(['입고'] as const)('%s 문서가 없으면 저장하지 않는다', async type => {
     state.record = undefined;
     await expect(updatePendingFlowQuantity('taebaek', type, 'missing', updates)).rejects.toThrow('찾을 수');
     expect(state.update).not.toHaveBeenCalled();
   });
-  it.each(['입고', '반품'] as const)('%s 다른 회사 문서는 저장하지 않는다', async type => {
+  it.each(['입고'] as const)('%s 다른 회사 문서는 저장하지 않는다', async type => {
     state.record = type === '입고' ? { ...po(), companyId: 'punghoe' } : request();
     await expect(updatePendingFlowQuantity('taebaek', type, 'foreign', updates)).rejects.toThrow('다른 회사');
     expect(state.update).not.toHaveBeenCalled();
   });
-  it.each(['입고', '반품'] as const)('%s 완료 상태나 바뀐 원본 수량은 거절한다', async type => {
+  it.each(['입고'] as const)('%s 완료 상태나 바뀐 원본 수량은 거절한다', async type => {
     state.record = type === '입고' ? { ...po(), status: 'received' } : { ...request(), companyId: 'taebaek', status: 'processed' };
     await expect(updatePendingFlowQuantity('taebaek', type, 'done', updates)).rejects.toThrow('대기');
     state.record = type === '입고' ? po() : { ...request(), companyId: 'taebaek' };

@@ -10,7 +10,8 @@ export function purchaseReturnAvailable(companyId: CompanyId, release: any, retu
 
 /** 화면 금액도 원전표 공급가/세액 비례로 계산한다. 최종 수량/잔액은 서버가 다시 검증한다. */
 export function purchaseReturnRequest(companyId: CompanyId, partnerId: string, source: IssuedStatement | undefined,
-  selected: { itemId: string; qty: string }[], allItems: Item[]) {
+  selected: { itemId: string; qty: string }[], allItems: Item[], explicit?: ExplicitReturnMoney) {
+  if (!source && explicit) return explicitReturnRequest(companyId, partnerId, '매입', selected, allItems, explicit);
   const money = (value: number) => Number.isSafeInteger(value) && value >= 0;
   if (!source || source.companyId !== companyId || source.type !== '매입' || source.partnerId !== partnerId
     || !source.items.length || new Set(source.items.map(row => row.itemId)).size !== source.items.length
@@ -44,7 +45,8 @@ export function purchaseReturnRequest(companyId: CompanyId, partnerId: string, s
 
 /** 받은 반품은 원매출 전표의 금액·품목을 근거로만 접수한다. */
 export function salesReturnRequest(companyId: CompanyId, partnerId: string, source: IssuedStatement | undefined,
-  selected: { itemId: string; qty: string; isResellable?: boolean }[], allItems: Item[]) {
+  selected: { itemId: string; qty: string; isResellable?: boolean }[], allItems: Item[], explicit?: ExplicitReturnMoney) {
+  if (!source && explicit) return explicitReturnRequest(companyId, partnerId, '매출', selected, allItems, explicit);
   const money = (value: number) => Number.isSafeInteger(value) && value >= 0;
   if (!source || source.companyId !== companyId || source.type !== '매출' || source.partnerId !== partnerId
     || !source.items.length || new Set(source.items.map(row => row.itemId)).size !== source.items.length
@@ -79,4 +81,39 @@ export function salesReturnRequest(companyId: CompanyId, partnerId: string, sour
   if (!money(totalAmount) || totalAmount <= 0) throw new Error('반품 금액을 확인해주세요.');
   return { companyId, partnerId, linkedStatementId: source.id, returnType: '매출' as const,
     status: 'pending' as const, totalAmount, items };
+}
+
+export interface ExplicitReturnMoney {
+  items: { itemId: string; supply: number; tax: number; accountCode: string }[];
+  payableAccountCode?: '251' | '253';
+}
+function explicitReturnRequest(companyId: CompanyId, partnerId: string, returnType: '매출' | '매입',
+  selected: { itemId: string; qty: string; isResellable?: boolean }[], allItems: Item[], explicit: ExplicitReturnMoney) {
+  if (!partnerId || (returnType === '매입' && !['251', '253'].includes(explicit.payableAccountCode ?? '')))
+    throw new Error('거래처와 매입 채무 계정을 선택해주세요.');
+  const rows = selected.filter(row => row.qty !== '' && Number(row.qty) !== 0);
+  if (!rows.length || new Set(rows.map(row => row.itemId)).size !== rows.length
+    || explicit.items.length !== rows.length || new Set(explicit.items.map(row => row.itemId)).size !== rows.length)
+    throw new Error('반품 품목과 명시 금액을 확인해주세요.');
+  let totalAmount = 0;
+  const items = rows.map(row => {
+    const item = allItems.find(item => item.id === row.itemId);
+    const money = explicit.items.find(line => line.itemId === row.itemId);
+    const quantity = Number(row.qty);
+    const isResellable = returnType === '매입' ? false : row.isResellable ?? true;
+    if (!item || (item.companyId ?? 'taebaek') !== companyId || !Number.isFinite(quantity) || quantity <= 0
+      || !Number.isSafeInteger(Math.round(quantity * 1000)) || Math.abs(Math.round(quantity * 1000) / 1000 - quantity) > 1e-9
+      || typeof isResellable !== 'boolean' || ((returnType === '매입' || isResellable)
+        && (returnStockKind(companyId, item, allItems) === 'unsupported' || !item.unit?.trim())))
+      throw new Error('반품 품목·수량·단위·회사를 확인해주세요.');
+    if (!money || !Number.isSafeInteger(money.supply) || money.supply < 0 || !Number.isSafeInteger(money.tax) || money.tax < 0
+      || !Number.isSafeInteger(money.supply + money.tax) || money.supply + money.tax <= 0 || !money.accountCode.trim())
+      throw new Error('공급가·세액·발생 계정을 직접 입력해주세요.');
+    totalAmount += money.supply + money.tax;
+    return { itemId: item.id, name: item.name, quantity, price: 0, reason: '기타' as const, isResellable,
+      supply: money.supply, tax: money.tax, accountCode: money.accountCode.trim() };
+  });
+  if (!Number.isSafeInteger(totalAmount)) throw new Error('반품 합계 금액을 확인해주세요.');
+  return { companyId, partnerId, returnType, status: 'pending' as const, totalAmount, items,
+    ...(returnType === '매입' ? { payableAccountCode: explicit.payableAccountCode } : {}) };
 }

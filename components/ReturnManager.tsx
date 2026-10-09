@@ -1,5 +1,5 @@
 import { salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
-import { executeEmployeeCommand } from '../src/shared/services/employeeCommand';
+import { getPendingReturnSubmission, resumeReturnSubmission, submitReturnRequest, returnSubmissionActorUid } from '../src/shared/services/returnRequestSubmission';
 import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -41,7 +41,7 @@ type Tab = '접수' | '이력';
 
 const RETURN_REASONS: ReturnReason[] = ['품질불량', '오배송', '과잉재고', '기타'];
 
-const ReturnManager: React.FC<ReturnManagerProps> = ({
+const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   companyId,
   items, partners,
   orders,
@@ -50,6 +50,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   isAdmin,
   onProcessReturn,
 }) => {
+  const activeActor = returnSubmissionActorUid();
   const scope = useRef({ companyId, token: {} });
   if (scope.current.companyId !== companyId) scope.current = { companyId, token: {} };
   useEffect(() => () => { scope.current = { companyId: scope.current.companyId, token: {} }; }, []);
@@ -62,6 +63,12 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   const [selectedStatementId, setSelectedStatementId] = useState('');
   const [returnLineItems, setReturnLineItems] = useState<Partial<ReturnItem>[]>([]);
   const [note, setNote] = useState('');
+  const [explicitMoney, setExplicitMoney] = useState<Record<string, { supply: string; tax: string; accountCode: string }>>({});
+  const [payableAccountCode, setPayableAccountCode] = useState<'251' | '253'>('251');
+  const explicitFor = (rows: { itemId: string }[]) => ({ items: rows.map(row => ({ itemId: row.itemId,
+    supply: explicitMoney[row.itemId]?.supply?.trim() ? Number(explicitMoney[row.itemId].supply) : NaN,
+    tax: explicitMoney[row.itemId]?.tax?.trim() ? Number(explicitMoney[row.itemId].tax) : NaN,
+    accountCode: explicitMoney[row.itemId]?.accountCode ?? '' })), payableAccountCode });
   const [saving, setSaving] = useState(false);
 
   // 이력 필터
@@ -70,6 +77,25 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   const [filterQuick, setFilterQuick] = useState<DateRangeQuick>('당월');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+  const submissionBusy = useRef(false);
+  const [pendingSubmission, setPendingSubmission] = useState<ReturnType<typeof getPendingReturnSubmission>>(null);
+  const [submissionError, setSubmissionError] = useState('');
+  const [resumingSubmission, setResumingSubmission] = useState(false);
+  useEffect(() => {
+    const load = () => { try { setPendingSubmission(getPendingReturnSubmission(companyId)); setSubmissionError(''); }
+      catch(error) { setSubmissionError(error instanceof Error ? error.message : '이전 접수 원문을 확인해주세요.'); } };
+    load(); window.addEventListener('return-submission-pending', load); window.addEventListener('storage', load);
+    return () => { window.removeEventListener('return-submission-pending', load); window.removeEventListener('storage', load); };
+  }, [companyId]);
+  const handleResumeSubmission = async () => {
+    if (submissionBusy.current) return;
+    submissionBusy.current = true; setResumingSubmission(true);
+    const token = scope.current.token;
+    try { await resumeReturnSubmission(companyId); if (!(scope.current.token === token && returnSubmissionActorUid() === activeActor)) return;
+      setPendingSubmission(null); setSubmissionError(''); setReturnLineItems([]); setNote(''); setTab('이력');
+    } catch(error) { if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setSubmissionError(error instanceof Error ? error.message : '접수 결과를 확인하지 못했습니다. 원문은 보존했습니다.'); }
+    finally { submissionBusy.current = false; if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setResumingSubmission(false); }
+  };
   useEffect(() => {
     let active = true;
     setReturnRequests([]);
@@ -81,12 +107,14 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
 
   // 거래처 변경 시 하위 선택 초기화
   useEffect(() => {
+    setExplicitMoney({});
     setSelectedOrderId('');
     setSelectedStatementId('');
     setReturnLineItems([]);
   }, [selectedClientId]);
 
-  const sellableProducts = items.filter(p =>
+  const sellableProducts = items.filter(p => (p.companyId ?? 'taebaek') === companyId &&
+    (orders.some(order => (order.companyId ?? 'taebaek') === companyId && order.partnerId === selectedClientId && order.items.some(row => row.itemId === p.id)) || issuedStatements.some(statement => (statement.companyId ?? 'taebaek') === companyId && statement.partnerId === selectedClientId && statement.items.some(row => row.itemId === p.id))) &&
     ['완제품', '향미유', '고춧가루', 'product', 'wip', 'goods'].includes(p.type as string)
   );
 
@@ -146,18 +174,24 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   let totalAmount = 0;
   try {
     totalAmount = salesReturnRequest(companyId, selectedClientId, issuedStatements.find(row => row.id === selectedStatementId),
-      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items).totalAmount;
+      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items, selectedStatementId ? undefined : explicitFor(validItems)).totalAmount;
   } catch { /* 원전표와 수량이 유효해지면 원전표 기준 금액을 표시한다. */ }
 
   const handleSubmit = async () => {
+    if (submissionBusy.current) return;
+    submissionBusy.current = true; const submitToken = scope.current.token; setSaving(true);
+    try {
     const selectedClient = partners.find(c => c.id === selectedClientId);
     if (!selectedClient) { alert('거래처를 선택해주세요.'); return; }
     if (validItems.length === 0) { alert('반품 품목을 1개 이상 입력해주세요.'); return; }
 
     let request: ReturnType<typeof salesReturnRequest>;
     try { request = salesReturnRequest(companyId, selectedClientId, issuedStatements.find(row => row.id === selectedStatementId),
-      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items); }
+      validItems.map(row => ({ itemId: row.itemId, qty: String(row.quantity), isResellable: row.isResellable })), items, selectedStatementId ? undefined : explicitFor(validItems)); }
     catch (error) { alert(error instanceof Error ? error.message : '반품 원전표를 확인해주세요.'); return; }
+    const token = scope.current.token;
+    if (!selectedStatementId && !await appConfirm(`공급가·세액 합계 ${request.totalAmount.toLocaleString()}원\n미수금108을 같은 거래처 미결의 거래일·ID 순으로 차감합니다. 현금 수금이 아닙니다.`)) return;
+    if (scope.current.token !== token) return;
     setSaving(true);
     try {
       const req = {
@@ -167,14 +201,16 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
         createdAt: new Date().toISOString(),
         ...(note && { note }),
       };
-      await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data: req });
+      await submitReturnRequest(companyId, req);
+      if ((scope.current.token !== submitToken || returnSubmissionActorUid() !== activeActor)) return;
       setSelectedClientId('');
       setReturnLineItems([]);
       setNote('');
       setTab('이력');
-    } catch (error) { alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
-      setSaving(false);
+    } catch (error) { if (scope.current.token === submitToken && returnSubmissionActorUid() === activeActor) alert(error instanceof Error ? error.message : '반품 접수를 완료하지 못했습니다.'); } finally {
+      if (scope.current.token === submitToken && returnSubmissionActorUid() === activeActor) setSaving(false);
     }
+    } finally { submissionBusy.current = false; if (scope.current.token === submitToken && returnSubmissionActorUid() === activeActor) { setSaving(false); } }
   };
 
   const handleProcess = async (req: ReturnRequest) => {
@@ -185,9 +221,9 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);
-    } catch (error) { if (scope.current.token === token) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
+    } catch (error) { if (scope.current.token === token && returnSubmissionActorUid() === activeActor) alert(error instanceof Error ? error.message : '반품 처리를 완료하지 못했습니다.'); }
     finally {
-      if (scope.current.token === token) setProcessingId(null);
+      if (scope.current.token === token && returnSubmissionActorUid() === activeActor) setProcessingId(null);
     }
   };
 
@@ -197,6 +233,13 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
 
   return (
     <div className="space-y-4">
+      {!navigator.locks && <p className="text-xs text-slate-500">이 브라우저에서는 한 창에서만 반품을 접수해주세요. 다른 창의 동시 첫 접수 보호는 지원되지 않습니다.</p>}
+      {(pendingSubmission || submissionError) && <div role="status" className="border rounded-xl p-3 space-y-2">
+        <p>이전 반품 접수 확인 {pendingSubmission?.request.partnerName} {pendingSubmission?.request.returnType}
+          {pendingSubmission && ` · ${pendingSubmission.request.totalAmount.toLocaleString()}원`}</p>
+        {submissionError && <p role="alert">{submissionError}</p>}
+        <button onClick={handleResumeSubmission} disabled={resumingSubmission}>이전 접수 확인</button>
+      </div>}
       <PageHeader title="반품 관리" subtitle="고객 반품 접수 및 재고/정산 처리" />
 
       {/* 탭 */}
@@ -263,7 +306,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                 disabled={!selectedClientId}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
               >
-                <option value="">전표 선택 (미수금 차감)</option>
+                <option value="">원전표 없이 금액 직접 입력</option>
                 {partnerStatements.map(s => (
                   <option key={s.id} value={s.id}>
                     {s.tradeDate} — {s.docNo} (₩{s.totalAmount.toLocaleString()})
@@ -331,7 +374,8 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                       type="number"
                       min={0}
                       placeholder="0"
-                      value={it.price || ''}
+                      disabled={!selectedStatementId}
+                      value={selectedStatementId ? it.price || '' : ''}
                       onChange={e => updateItemField(idx, 'price', Number(e.target.value))}
                       className="w-full border border-slate-200 rounded-lg px-1 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400"
                     />
@@ -371,6 +415,21 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
             </div>
           )}
 
+{!selectedStatementId && <div className="space-y-2 border rounded-xl p-3">
+              <p>원전표 없이 금액 직접 입력 · 과거 단가를 자동 추정하지 않습니다.</p>
+
+              {returnLineItems.map((row, idx) => row.itemId && <div key={row.itemId} className="flex flex-wrap gap-2">
+                <span>{row.name}</span>
+                {(['supply', 'tax', 'accountCode'] as const).map(field => <label key={field}>
+                  {{ supply: '공급가', tax: '세액', accountCode: '발생 계정' }[field]}
+                  <input aria-label={`${row.name} ${{ supply: '공급가', tax: '세액', accountCode: '발생 계정' }[field]}`}
+                    type={field === 'accountCode' ? 'text' : 'number'} min={0}
+                    value={explicitMoney[row.itemId!]?.[field] ?? ''}
+                    onChange={e => setExplicitMoney(prev => ({ ...prev, [row.itemId!]: {
+                      ...(prev[row.itemId!] ?? { supply: '', tax: '', accountCode: '' }), [field]: e.target.value } }))} />
+                </label>)}
+              </div>)}
+            </div>}
           {/* 비고 */}
           <div className="space-y-1.5">
             <label className="text-xs font-black text-slate-500 uppercase tracking-wider">비고</label>
@@ -541,4 +600,5 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
   );
 };
 
+const ReturnManager: React.FC<ReturnManagerProps> = props => <CompanyReturnManager key={`${props.companyId}:${returnSubmissionActorUid() ?? ""}`} {...props} />;
 export default ReturnManager;

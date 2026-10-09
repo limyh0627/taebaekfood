@@ -11,6 +11,7 @@
  */
 export const COL = {
   financialOpeningOperations: 'financialOpeningOperations',
+  returnSubmissionOperations: 'returnSubmissionOperations',
   partnerAdvanceOperations: 'partnerAdvanceOperations',
   productionWorkDocuments: 'productionWorkDocuments',
   productionWorkDocumentLines: 'productionWorkDocumentLines',

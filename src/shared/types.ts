@@ -1367,6 +1367,9 @@ export interface ReturnItem {
   price: number;
   reason: ReturnReason;
   isResellable: boolean;
+  supply?: number;
+  tax?: number;
+  accountCode?: string;
 }
 
 export interface ReturnRequest {
@@ -1384,6 +1387,7 @@ export interface ReturnRequest {
   processedAt?: string;
   processedBy?: string;
   linkedStatementId?: string;
+  payableAccountCode?: '251' | '253';
   note?: string;
 }
 

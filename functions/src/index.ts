@@ -337,3 +337,5 @@ export { recordInterCompanyTransferCommand } from './interCompanyTransferCommand
 export { preparePartnerAdvanceCommand, applyPartnerAdvanceCommand, cancelPartnerAdvanceCommand } from './partnerAdvanceCommand';
 export { financialOpeningCommand } from './financialOpeningCommand';
 export { createOpeningInventoryCommand } from './inventoryOpeningCommand';
+export { submitReturnRequestCommand } from './submitReturnRequestCommand';
+export { updatePendingReturnQuantityCommand } from './updatePendingReturnQuantityCommand';

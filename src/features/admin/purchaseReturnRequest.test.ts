@@ -55,3 +55,24 @@ describe('purchase return request', () => {
     expect(() => purchaseReturnRequest('taebaek', 'supplier', source, [{ itemId: 'box', qty: '1' }], [sku, foreign])).toThrow();
   });
 });
+
+ describe('원전표 없는 명시 반품 금액', () => {
+  const explicit = { items: [{ itemId: 'box', supply: 100, tax: 10, accountCode: '500' }], payableAccountCode: '253' as const };
+  it('현재 가격 없이 공급가·세액·계정과 매입 채무를 보존한다', () => {
+    const result = purchaseReturnRequest('taebaek', 'supplier', undefined, [{ itemId: 'box', qty: '1' }], [item], explicit);
+    expect(result).toMatchObject({ totalAmount: 110, payableAccountCode: '253', items: [{ supply: 100, tax: 10, accountCode: '500', price: 0, isResellable: false }] });
+    expect(result).not.toHaveProperty('linkedStatementId');
+  });
+  it('폐기 선택과 명시 매출 금액을 유지한다', () => {
+    expect(salesReturnRequest('taebaek', 'supplier', undefined, [{ itemId: 'box', qty: '1', isResellable: false }], [item], explicit))
+      .toMatchObject({ returnType: '매출', totalAmount: 110, items: [{ isResellable: false }] });
+  });
+  it('손상 금액·품목·회사는 접수하지 않는다', () => {
+    for(const change of [{supply:-1},{tax:0.1},{supply:NaN},{accountCode:''},{itemId:'other'}])
+      expect(()=>purchaseReturnRequest('taebaek','supplier',undefined,[{itemId:'box',qty:'1'}],[item],{...explicit,items:[{...explicit.items[0],...change}]})).toThrow();
+    expect(()=>purchaseReturnRequest('punghoe','supplier',undefined,[{itemId:'box',qty:'1'}],[item],explicit)).toThrow();
+  });
+  it('원전표 지정 시 명시 금액이 비례 계산을 덮지 않는다', () => {
+    expect(purchaseReturnRequest('taebaek','supplier',source,[{itemId:'box',qty:'1'}],[item],{...explicit,items:[{...explicit.items[0],supply:999}]}).totalAmount).toBe(110);
+  });
+ });

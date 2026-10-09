@@ -3,7 +3,8 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ command: vi.fn() }));
-vi.mock('../src/shared/services/employeeCommand', () => ({ executeEmployeeCommand: m.command }));
+vi.mock('../src/shared/components/appDialog', () => ({ appConfirm: vi.fn().mockResolvedValue(true) }));
+vi.mock('../src/shared/services/returnRequestSubmission', () => ({ returnSubmissionActorUid: () => 'u', getPendingReturnSubmission: () => null, resumeReturnSubmission: vi.fn(), submitReturnRequest: (_company: string, data: unknown) => m.command({collection:'returnRequests',data}) }));
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: () => () => {} }));
 vi.mock('firebase/firestore', () => ({ where: () => ({}) }));
 import ReceivingReturnsManager from './ReceivingReturnsManager';
@@ -66,4 +67,52 @@ describe('실제 반품 접수 원자 명령 입력', () => {
     expect(m.command).not.toHaveBeenCalled();
   });
 
+});
+
+it('원매입 없이 명시 금액과 선택 채무 계정을 접수한다', async () => {
+ render(<ReceivingReturnsManager {...props} partnerItems={[{id:'link',partnerId:'supplier',itemId:'box',Direction:'in'}]} />);
+ fireEvent.click(screen.getByRole('button',{name:/^반품하기$/}));
+ fireEvent.focus(screen.getByPlaceholderText('공급처 검색...'));
+ fireEvent.mouseDown(screen.getByRole('button',{name:'합성 거래처'}));
+ fireEvent.change(screen.getByPlaceholderText('+ 품목 검색하여 추가...'),{target:{value:'박스'}});
+ fireEvent.mouseDown(screen.getByRole('button',{name:'박스'}));
+ fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'1'}});
+ fireEvent.change(screen.getByLabelText('박스 공급가'),{target:{value:'100'}});
+ fireEvent.change(screen.getByLabelText('박스 세액'),{target:{value:'10'}});
+ fireEvent.change(screen.getByLabelText('박스 발생 계정'),{target:{value:'500'}});
+ fireEvent.change(screen.getByLabelText('줄일 채무 계정'),{target:{value:'253'}});
+ fireEvent.click(screen.getByRole('button',{name:/반품 발송 접수/}));
+ await waitFor(()=>expect(m.command).toHaveBeenCalledOnce());
+ const data=m.command.mock.calls[0][0].data;
+ expect(data).toMatchObject({returnType:'매입',payableAccountCode:'253',totalAmount:110,items:[{supply:100,tax:10,accountCode:'500',quantity:1,isResellable:false}]});
+ expect(data).not.toHaveProperty('linkedStatementId');
+});
+
+it('원전표 없는 매출 접수도 명시 금액을 저장한다', async () => {
+ m.command.mockReset();
+ render(<ReceivingReturnsManager {...props} partnerItems={[{id:'link',partnerId:'supplier',itemId:'box',Direction:'out'}]} />);
+ fireEvent.focus(screen.getByPlaceholderText('거래처 검색...'));
+ fireEvent.mouseDown(screen.getByRole('button',{name:'합성 거래처'}));
+ fireEvent.change(screen.getByPlaceholderText('+ 품목 검색하여 추가...'),{target:{value:'박스'}});
+ fireEvent.mouseDown(screen.getByRole('button',{name:'박스'}));
+ fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'1'}});
+ fireEvent.change(screen.getByLabelText('박스 공급가'),{target:{value:'100'}});
+ fireEvent.change(screen.getByLabelText('박스 세액'),{target:{value:'10'}});
+ fireEvent.change(screen.getByLabelText('박스 발생 계정'),{target:{value:'404'}});
+ fireEvent.click(screen.getByRole('button',{name:/반품 접수/}));
+ await waitFor(()=>expect(m.command).toHaveBeenCalledOnce());
+ expect(m.command.mock.calls[0][0].data).toMatchObject({returnType:'매출',totalAmount:110,items:[{supply:100,tax:10,accountCode:'404',isResellable:true}]});
+ expect(m.command.mock.calls[0][0].data).not.toHaveProperty('linkedStatementId');
+});
+
+import {appConfirm} from '../src/shared/components/appDialog';
+it('확인창을 기다리는 동안 중복 접수를 시작하지 않는다',async()=>{
+ let confirm!:(value:boolean)=>void;vi.mocked(appConfirm).mockImplementationOnce(()=>new Promise(resolve=>{confirm=resolve;}));
+ render(<ReceivingReturnsManager {...props} partnerItems={[{id:'link',partnerId:'supplier',itemId:'box',Direction:'in'}]} />);
+ fireEvent.click(screen.getByRole('button',{name:/^반품하기$/}));fireEvent.focus(screen.getByPlaceholderText('공급처 검색...'));fireEvent.mouseDown(screen.getByRole('button',{name:'합성 거래처'}));
+ fireEvent.change(screen.getByPlaceholderText('+ 품목 검색하여 추가...'),{target:{value:'박스'}});fireEvent.mouseDown(screen.getByRole('button',{name:'박스'}));
+ fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'1'}});
+ fireEvent.change(screen.getByLabelText('박스 공급가'),{target:{value:'100'}});fireEvent.change(screen.getByLabelText('박스 세액'),{target:{value:'10'}});fireEvent.change(screen.getByLabelText('박스 발생 계정'),{target:{value:'500'}});
+ const button=screen.getByRole('button',{name:/반품 발송 접수/});fireEvent.click(button);fireEvent.click(button);expect(m.command).not.toHaveBeenCalled();
+ confirm(true);await waitFor(()=>expect(m.command).toHaveBeenCalledOnce());
 });

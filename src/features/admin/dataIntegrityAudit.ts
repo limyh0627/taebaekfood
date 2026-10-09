@@ -342,11 +342,30 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     const journal = input.issuedStatements.find(row => row.id === operation.journalId);
     const movements = validReturnStockMovements(operation);
     if (!inRange(movements?.[0]?.date ?? operation.createdAt?.slice(0, 10))) continue;
-    const problem = !movements || (source?.type === '매입' && !movements.length)
-      || (movements.length > 0 && (!source || companyOf(source) !== input.companyId || source.type !== '매입'
+    // 원전표 없는 반품은 보호된 operation의 배분과 역분개 원문을 대조한다.
+    const standalone = operation.sourceMode === 'standalone';
+    const applications = operation.applications;
+    const lines = journal?.items ?? [];
+    const debit = lines.filter(row => row.side === '차변').reduce((sum, row) => sum + Number(row.supply), 0);
+    const credit = lines.filter(row => row.side === '대변').reduce((sum, row) => sum + Number(row.supply), 0);
+    const payable = lines.filter(row => ['251', '253'].includes(row.accountCode ?? '') && row.side === '차변')
+      .reduce((sum, row) => sum + Number(row.supply), 0);
+    const standaloneProof = standalone && operation.returnType === '매입' && !!operation.partnerId
+      && !operation.sourceStatementId && !!journal && companyOf(journal) === input.companyId
+      && journal.partnerId === operation.partnerId
+      && (journal as unknown as { returnOperationId?: string; sourceMode?: string }).returnOperationId === operation.id
+      && (journal as unknown as { sourceMode?: string }).sourceMode === 'standalone'
+      && Number.isSafeInteger(operation.amount) && operation.amount! > 0
+      && journal.totalAmount === operation.amount && debit === credit && payable === operation.amount
+      && Array.isArray(applications) && applications.length > 0
+      && new Set(applications.map(row => row?.id)).size === applications.length
+      && applications.every(row => !!row && !!row.id && !!row.statementId && Number.isSafeInteger(row.amount) && row.amount > 0)
+      && applications.reduce((sum, row) => sum + row.amount, 0) === operation.amount;
+    const problem = !movements || ((standalone ? operation.returnType === '매입' : source?.type === '매입') && !movements.length)
+      || (movements.length > 0 && ((standalone ? !standaloneProof : !source || companyOf(source) !== input.companyId || source.type !== '매입')
         || !journal || companyOf(journal) !== input.companyId
         || (journal as unknown as { returnOperationId?: string }).returnOperationId !== operation.id
-        || movements.some(row => !itemIds.has(row.itemId) || row.partnerId !== source.partnerId)
+        || movements.some(row => !itemIds.has(row.itemId) || row.partnerId !== (standalone ? operation.partnerId : source?.partnerId))
         || allReceipts.some(row => (row as ItemReceipt & { returnOperationId?: string }).returnOperationId === operation.id)));
     if (problem) out.push({ id: `return-stock:${operation.id}`, area: '입고·재고', severity: 'error',
       title: '매입 반품 출고 근거 오류', detail: '반품 출고 수량·회사·품목·원전표·역분개 연결을 확인하세요.',

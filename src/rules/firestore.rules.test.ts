@@ -81,6 +81,62 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
           await database.doc(auditPath).create({ companyId, amount: 10 });
         }
       }
+      // 실제 직원 로그인도 UID와 employeeId가 다르다. 관리자와 동일 회사 조회만 허용한다.
+      const returnClients = clients.map(client => ({ ...client, isAdmin: true, hasClaim: true }));
+      for (const companyId of ['taebaek', 'punghoe', 'no-claim'] as const) {
+        const uid = `${prefix}-${companyId}-staff`, employeeId = `${uid}-employee`, email = `${uid}@example.invalid`, password = `${randomUUID()}Aa1!`;
+        await adminAuth(admin).createUser({ uid, email, password }); users.push(uid);
+        if (companyId !== 'no-claim') await adminAuth(admin).setCustomUserClaims(uid, { employeeId, companyId, isAdmin: false });
+        const app = initializeApp({ projectId: 'demo-taebaekfood-local', apiKey: 'local-emulator-only' }, uid); apps.push(app);
+        const auth = getAuth(app); connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+        const db = getFirestore(app); connectFirestoreEmulator(db, '127.0.0.1', 8082);
+        await signInWithEmailAndPassword(auth, email, password);
+        expect(auth.currentUser!.uid).not.toBe(employeeId);
+        const claims = (await auth.currentUser!.getIdTokenResult(true)).claims;
+        if (companyId === 'no-claim') expect(claims.employeeId).toBeUndefined();
+        else expect(claims).toMatchObject({ employeeId, companyId, isAdmin: false });
+        returnClients.push({ db, companyId: companyId === 'no-claim' ? 'taebaek' : companyId, isAdmin: false, hasClaim: companyId !== 'no-claim' });
+      }
+      for (const companyId of ['taebaek', 'punghoe']) {
+        for (const name of ['returnRequests', 'returnSubmissionOperations']) {
+          const path = `${name}/${prefix}-${companyId}-read`; paths.push(path);
+          await database.doc(path).create({ companyId, status: name === 'returnRequests' ? 'pending' : 'accepted', amount: 10 });
+        }
+      }
+      for (const { db, companyId, isAdmin, hasClaim } of returnClients) {
+        const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
+        for (const name of ['returnRequests', 'returnSubmissionOperations']) {
+          const path = `${name}/${prefix}-${companyId}-read`, newPath = `${path}-new`;
+          if (!paths.includes(newPath)) paths.push(newPath);
+          const original = (await database.doc(path).get()).data()!;
+          const canRead = hasClaim && (name === 'returnRequests' || isAdmin);
+          if (canRead) {
+            await assertSucceeds(getDoc(doc(db, path)));
+            await assertSucceeds(getDocs(query(collection(db, name), where('companyId', '==', companyId))));
+          } else {
+            await assertFails(getDoc(doc(db, path)));
+            await assertFails(getDocs(query(collection(db, name), where('companyId', '==', companyId))));
+          }
+          await assertFails(getDoc(doc(db, `${name}/${prefix}-${other}-read`)));
+          await assertFails(getDocs(query(collection(db, name), where('companyId', '==', other))));
+          await assertFails(getDocs(collection(db, name)));
+          await assertFails(setDoc(doc(db, newPath), original));
+          await assertFails(setDoc(doc(db, path), { ...original, amount: 20 }));
+          await assertFails(updateDoc(doc(db, path), { amount: 20 }));
+          await assertFails(deleteDoc(doc(db, path)));
+          // 읽기 가능한 주체도 두 문서 원자 변경을 시작할 수 없다.
+          await assertFails(runTransaction(db, async tx => {
+            if (canRead) await tx.get(doc(db, path));
+            tx.update(doc(db, path), { amount: 30 });
+            tx.set(doc(db, newPath), original);
+          }));
+          const batch = writeBatch(db);
+          batch.delete(doc(db, path)); batch.set(doc(db, newPath), original);
+          await assertFails(batch.commit());
+          expect((await database.doc(path).get()).data()).toEqual(original);
+          expect((await database.doc(newPath).get()).exists).toBe(false);
+        }
+      }
       for (const { db, companyId } of clients) {
         const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
         await assertSucceeds(getDoc(doc(db, `cashEntries/${prefix}-${companyId}-read`)));

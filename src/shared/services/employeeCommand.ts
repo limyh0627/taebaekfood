@@ -2,6 +2,7 @@ import { ensureOrderLineIds } from '../orderLineInventory';
 import { addItem, companyScopedWriteData, confirmUnitPurchaseOrderReceipt } from './firebaseService';
 import type { OrderUnitInputs } from '../orderUnits';
 import type { Item } from '../types';
+import { submitReturnRequest } from './returnRequestSubmission';
 
 type CreateCommand = {
   kind: 'create'; collection: 'orders' | 'purchaseOrders' | 'returnRequests';
@@ -26,6 +27,11 @@ export async function executeEmployeeCommand(command: CreateCommand | ReceiveCom
     throw new Error('품목과 0보다 큰 수량을 입력해 주세요.');
   }
   if (collection !== 'purchaseOrders' && !data.partnerId) throw new Error('거래처를 선택해 주세요.');
+  if (collection === 'returnRequests') {
+    const companyId = data.companyId;
+    if (companyId !== 'taebaek' && companyId !== 'punghoe') throw new Error('반품 접수 회사를 확인해 주세요.');
+    return submitReturnRequest(companyId, { ...data, createdAt: data.createdAt || new Date().toISOString() });
+  }
   // 박스 입력은 폼에서 이미 재고 단위로 변환했다. 여기서 다시 곱하지 않는다.
   return addItem(collection, {
     ...data,

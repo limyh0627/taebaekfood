@@ -3,7 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({ command: vi.fn() }));
-vi.mock('../src/shared/services/employeeCommand', () => ({ executeEmployeeCommand: m.command }));
+vi.mock('../src/shared/services/returnRequestSubmission', () => ({ returnSubmissionActorUid: () => 'u', getPendingReturnSubmission: () => null, resumeReturnSubmission: vi.fn(), submitReturnRequest: (_company: string, data: unknown) => m.command({collection:'returnRequests',data}) }));
 vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection: () => () => {} }));
 vi.mock('firebase/firestore', () => ({ where: () => ({}) }));
 import ReturnManager from './ReturnManager';

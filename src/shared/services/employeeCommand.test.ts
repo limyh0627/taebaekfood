@@ -4,7 +4,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { executeEmployeeCommand } from './employeeCommand';
 
-const mocks = vi.hoisted(() => ({ add: vi.fn(), receive: vi.fn() }));
+const mocks = vi.hoisted(() => ({ add: vi.fn(), receive: vi.fn(), submit: vi.fn() }));
+vi.mock('./returnRequestSubmission', () => ({ submitReturnRequest: mocks.submit }));
 vi.mock('./firebaseService', () => ({
   addItem: mocks.add,
   confirmUnitPurchaseOrderReceipt: mocks.receive,
@@ -12,8 +13,8 @@ vi.mock('./firebaseService', () => ({
 }));
 beforeEach(() => vi.clearAllMocks());
 
-it('주문·발주·반품 모두 회사 claim을 쓰고 이미 환산된 박스 수량을 다시 곱하지 않는다', async () => {
-  for (const collection of ['orders', 'purchaseOrders', 'returnRequests'] as const) {
+it('주문·발주는 회사 claim을 쓰고 이미 환산된 박스 수량을 다시 곱하지 않는다', async () => {
+  for (const collection of ['orders', 'purchaseOrders'] as const) {
     await executeEmployeeCommand({ kind: 'create', collection, data: {
       partnerId: 'p', items: [{ itemId: 'i', quantity: 24, boxQuantity: 2, unitsPerBox: 12 }],
     } });
@@ -21,6 +22,15 @@ it('주문·발주·반품 모두 회사 claim을 쓰고 이미 환산된 박스
       items: [expect.objectContaining({ itemId: 'i', quantity: 24, boxQuantity: 2 })],
     }));
   }
+});
+
+it('반품 접수는 회사와 원문 수량을 보존해 서버 접수로만 보내고 실패도 직접 저장으로 우회하지 않는다', async () => {
+  const data = { partnerId: 'p', createdAt: '2026-10-09T00:00:00Z', items: [{ itemId: 'i', quantity: 24, boxQuantity: 2 }] };
+  await executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data });
+  expect(mocks.submit).toHaveBeenCalledWith('taebaek', { ...data, companyId: 'taebaek' });
+  mocks.submit.mockRejectedValueOnce(new Error('응답 불명확'));
+  await expect(executeEmployeeCommand({ kind: 'create', collection: 'returnRequests', data })).rejects.toThrow('응답 불명확');
+  expect(mocks.add).not.toHaveBeenCalled();
 });
 
 it('단건 발주도 동일한 경계를 통과하고 잘못된 복수 줄은 한 줄도 저장하지 않는다', async () => {

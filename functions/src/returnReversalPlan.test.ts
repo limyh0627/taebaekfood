@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planReturnReversal } from './returnReversalPlan';
+import { planReturnReversal, planStandaloneReturn } from './returnReversalPlan';
 
 const source = { id: 'sale-1', companyId: 'taebaek', type: '매출' as const, partnerId: 'partner-1',
   totalSupply: 100, totalTax: 10, totalAmount: 110,
@@ -56,4 +56,10 @@ describe('source-linked return reverse-journal plan', () => {
       .toThrow('대상 품목의 원전표 금액');
   });
 
+});
+
+it('원전표 없는 매출 폐기는 금융 역분개만 준비한다', () => {
+ const result = planStandaloneReturn({returnType:'매출',totalAmount:110,items:[{itemId:'sku',quantity:1,supply:100,tax:10,accountCode:'404',isResellable:false}]});
+ expect(result.stockEffects).toEqual([]);
+ expect(result.journalLines).toContainEqual({accountCode:'108',side:'대변',amount:110});
 });

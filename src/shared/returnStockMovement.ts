@@ -5,7 +5,9 @@ export type ReturnStockMovement = {
   quantityDelta: number; date: string; createdAt: string;
 };
 export type ReturnStockOperation = {
-  id: string; companyId: CompanyId; partnerId?: string; sourceStatementId: string;
+  id: string; companyId: CompanyId; partnerId?: string; sourceStatementId?: string;
+  sourceMode?: 'standalone'; returnType?: '매입' | '매출'; amount?: number;
+  applications?: { id: string; statementId: string; amount: number; applicationHash?: string }[];
   returnRequestId: string; journalId: string; createdAt: string;
   stockMovements?: ReturnStockMovement[];
 };

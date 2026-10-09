@@ -603,3 +603,15 @@ describe('auditDataIntegrity — 주문·판매일지·서류수불부 대조', 
     expect(ids).toContain('doc-raw-ratio:2026-09-16');
   });
 });
+
+ describe('원전표 없는 매입 반품 감사', () => {
+  const journal = {id:'return-journal',companyId:'taebaek',partnerId:'partner-1',docNo:'반품-1',type:'비용',issuedAt:'2026-10-09T00:00:00Z',tradeDate:'2026-10-09',totalSupply:100,totalTax:10,totalAmount:110,returnOperationId:'return-op',sourceMode:'standalone',items:[{name:'반품',spec:'',qty:1,price:110,supply:110,tax:0,total:110,accountCode:'253',side:'차변'},{name:'반품',spec:'',qty:1,price:110,supply:110,tax:0,total:110,accountCode:'540',side:'대변'}]} as unknown as IssuedStatement;
+  const operation = {id:'return-op',companyId:'taebaek' as const,partnerId:'partner-1',sourceMode:'standalone' as const,returnType:'매입' as const,returnRequestId:'request',journalId:'return-journal',createdAt:'2026-10-09T00:00:00Z',amount:110,applications:[{id:'application',statementId:'original-expense',amount:110}],stockMovements:[{itemId:'item-1',companyId:'taebaek' as const,partnerId:'partner-1',operationId:'return-op',quantityDelta:-1,date:'2026-10-09',createdAt:'2026-10-09T00:00:00Z'}]};
+  it('동일회사 역분개와 전체 배분 증명이 있으면 원전표 미지정을 오류로 보지 않는다', () => {
+   expect(auditDataIntegrity(input({issuedStatements:[journal],returnOperations:[operation]})).filter(row=>row.id==='return-stock:return-op')).toEqual([]);
+  });
+  it.each(['amount','partner','application'] as const)('금액/거래처/배분 증명 훼손을 감지한다: %s', kind => {
+   const changed={...operation,...(kind==='amount'?{amount:111}:kind==='partner'?{partnerId:'foreign'}:{applications:[{id:'application',statementId:'original-expense',amount:109}]})};
+   expect(auditDataIntegrity(input({issuedStatements:[journal],returnOperations:[changed]})).some(row=>row.id==='return-stock:return-op')).toBe(true);
+  });
+ });

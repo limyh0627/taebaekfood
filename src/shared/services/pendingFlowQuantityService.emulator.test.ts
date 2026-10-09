@@ -33,17 +33,18 @@ describe.skipIf(process.env.PENDING_QTY_EMULATOR_TEST!=='true')('대기 수량 �
  afterAll(async()=>{const errors:string[]=[];if(adminDb)for(const location of paths){try{if(!location.includes(prefix))throw new Error('범위');await adminDb.doc(location).delete();expect((await adminDb.doc(location).get()).exists).toBe(false);}catch{errors.push(location);}}
  if(uid&&adminAuth){try{await adminAuth.deleteUser(uid);await expect(adminAuth.getUser(uid)).rejects.toMatchObject({code:'auth/user-not-found'});}catch{errors.push(uid);}}
  if(app)await deleteApp(app);if(adminApp)await deleteAdminApp(adminApp);expect(errors).toEqual([]);},90_000);
- it('자기 회사 입고는 수량만, 반품은 수량과 합계만 변경한다',async()=>{
-  for(const type of ['입고','반품'] as const){const id=await seed(type,'own');const before=await read(type,'own');await updatePendingFlowQuantity('taebaek',type,id,edits());const after=await read(type,'own');
-   expect(after).toEqual({...before,items:[{...line,quantity:3.125}],...(type==='반품'?{totalAmount:156.25}:{})});}
+ // 반품 수량의 서버 TX/접수 receipt 계약은 functions/src/updatePendingReturnQuantityCommand.emulator.test.ts에서 검증한다.
+ it('자기 회사 입고는 수량만 변경한다',async()=>{
+  const id=await seed('입고','own');const before=await read('입고','own');await updatePendingFlowQuantity('taebaek','입고',id,edits());const after=await read('입고','own');
+  expect(after).toEqual({...before,items:[{...line,quantity:3.125}]});
  },60_000);
  it('같은 원본 수량의 동시 수정은 하나만 성공하고 나머지는 최신 원본 충돌로 거절한다',async()=>{
   const id=await seed('입고','race');const results=await Promise.allSettled([updatePendingFlowQuantity('taebaek','입고',id,edits(2,3)),updatePendingFlowQuantity('taebaek','입고',id,edits(2,4))]);
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);const failed=results.find(r=>r.status==='rejected') as PromiseRejectedResult;expect(String(failed.reason)).toContain('품목이나 수량');
   const saved=await read('입고','race');expect([3,4]).toContain(saved.items[0].quantity);expect(saved.linkedStatementId).toBe(prefix+'-statement');
  },60_000);
- it('타 회사·완료 상태·바뀐 원본은 양쪽 경로에서 거절하고 문서를 보존한다',async()=>{
-  for(const type of ['입고','반품'] as const)for(const scenario of ['foreign','done','stale'] as const){const suffix=type+'-'+scenario;const id=await seed(type,suffix,scenario==='foreign'?'punghoe':'taebaek',scenario==='done'?(type==='입고'?'received':'processed'):(type==='입고'?'invoiced':'pending'));const before=await read(type,suffix);
+ it('타 회사·완료 상태·바뀐 입고 원본은 거절하고 문서를 보존한다',async()=>{
+  for(const type of ['입고'] as const)for(const scenario of ['foreign','done','stale'] as const){const suffix=type+'-'+scenario;const id=await seed(type,suffix,scenario==='foreign'?'punghoe':'taebaek',scenario==='done'?'received':'invoiced');const before=await read(type,suffix);
    const result=updatePendingFlowQuantity('taebaek',type,id,edits(scenario==='stale'?1:2));
    if(scenario==='foreign')await expect(result).rejects.toMatchObject({code:'permission-denied'});else await expect(result).rejects.toThrow(scenario==='done'?'대기':'품목이나 수량');expect(await read(type,suffix)).toEqual(before);
   }
