@@ -105,7 +105,7 @@ service cloud.firestore {
     function serverAuditCollection(c) {
       return c in ['manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
                    'loanMovementOperations', 'returnOperations', 'voucherMutationOperations',
-                   'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations'];
+                   'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations', 'financialOpeningOperations'];
     }
     function adminOnlyCollection(c) {
       return serverAuditCollection(c) || c in [
@@ -124,12 +124,18 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines'];
     }
 
     // 현금 내역은 서버 원자 명령만 저장한다. 기존 회사별 관리자 조회는 유지한다.
     match /cashEntries/{id} {
+      allow get: if isAdmin() && getOk();
+      allow list: if isAdmin() && readOk();
+    }
+
+    // 기초 전표를 포함한 전표 저장은 서버 명령만 수행한다.
+    match /issuedStatements/{id} {
       allow get: if isAdmin() && getOk();
       allow list: if isAdmin() && readOk();
     }

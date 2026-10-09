@@ -1,3 +1,4 @@
+import {runFinancialOpening} from './financialOpeningCommands';
 /**
  * @shared-move  shared/src/services/firebaseService.ts
  * Firebase CRUD 공통 서비스 — 직원 앱·관리자 앱 양쪽에서 동일하게 사용합니다.
@@ -31,7 +32,7 @@ import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement
 import { requireActiveReleaseId } from '../releaseGate';
 import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
-import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock, isPhysicalInventoryItem } from '../itemTaxonomy';
+import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock } from '../itemTaxonomy';
 import { itemKg, type OrderUnitInputs } from '../orderUnits';
 import { getBomIndex } from '../bomIndex';
 import { getPackIndex } from '../packIndex';
@@ -49,15 +50,12 @@ import { canResumeFailedInventoryOperation } from '../orderCompletion';
 import type { CollectionName } from '../collections';
 import { COL } from '../collections';
 import { withClaimCompany } from '../companyWriteBoundary';
-import { openingDocId, type Partner } from '../types';
-import { openingPartnerStatement, type OpeningPartnerCode } from '../openingPartnerBalance';
+import { openingDocId } from '../types';
+import type { OpeningPartnerCode } from '../openingPartnerBalance';
 import { AR, AP, BANK, INVENTORY } from '../autoJournal';
 import { STANDARD_ACCOUNT } from '../accountChart';
-import { loanOpeningPrincipalForBalance, type LoanContract } from '../loanLedger';
-import { loanOpeningStatement } from '../loanOpening';
+import type { LoanContract } from '../loanLedger';
 import type { CashAccount } from '../types';
-import { cashOpeningStatement, openingCashAccountCode } from '../cashOpening';
-import { inventoryOpeningStatement } from '../inventoryOpening';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -177,277 +175,36 @@ export async function saveOpeningBalances(companyId: CompanyId, date: string, am
 }
 
 /** Save one opening partner balance without overwriting an existing voucher on retry. */
-export async function createOpeningPartnerBalanceWithDb(
-  store: Firestore, companyId: CompanyId, date: string, partnerId: string, code: OpeningPartnerCode, amount: number,
-): Promise<'created' | 'unchanged'> {
-  const partnerRef = doc(store, 'partners', partnerId);
-  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
-  const id = `opening-partner-${companyId}-${date}-${partnerId}-${code}`;
-  const voucherRef = doc(store, 'issuedStatements', id);
-  return runTransaction(store, async tx => {
-    const [partnerSnap, openingSnap, voucherSnap] = await Promise.all([
-      tx.get(partnerRef), tx.get(openingRef), tx.get(voucherRef),
-    ]);
-    if (!partnerSnap.exists()) throw new Error('거래처가 없습니다.');
-    const partner = { id: partnerSnap.id, ...partnerSnap.data() } as Partner;
-    if (companyOf(partner) !== companyId) throw new Error('다른 회사 거래처입니다.');
-    if (!openingSnap.exists() || openingSnap.data().companyId !== companyId || openingSnap.data().date !== date) {
-      throw new Error('먼저 해당 날짜의 회계 기초잔액을 저장하세요.');
-    }
-    if (Number(openingSnap.data().amounts?.[code] ?? 0) !== 0) {
-      throw new Error(`${code} 계정에 합계 기초잔액이 있어 이중계상됩니다. 기존 금액을 확인하세요.`);
-    }
-    const voucher = openingPartnerStatement(companyId, date, partner, code, amount);
-    if (voucherSnap.exists()) {
-      const saved = voucherSnap.data();
-      if (saved.companyId === companyId && saved.partnerId === partnerId && saved.tradeDate === date &&
-          saved.items?.find((i: { accountCode: string }) => i.accountCode === code)?.total === amount) return 'unchanged';
-      throw new Error('같은 기초 전표번호에 다른 내용이 저장되어 있습니다.');
-    }
-    tx.update(openingRef, { hasPartnerOpening: true });
-    tx.set(voucherRef, voucher);
-    return 'created';
-  });
-}
-
 export async function createOpeningPartnerBalance(companyId: CompanyId, date: string, partnerId: string, code: OpeningPartnerCode, amount: number) {
-  await authReady;
-  const token = await auth.currentUser?.getIdTokenResult();
-  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return createOpeningPartnerBalanceWithDb(db, companyId, date, partnerId, code, amount);
+  return runFinancialOpening(companyId,{kind:'partner-create',date,partnerId,code,amount});
 }
 
 /** Register the loan and its opening liability together; ordinary borrowing uses a zero opening principal. */
-export async function createLoanWithOpeningWithDb(store: Firestore, companyId: CompanyId, loan: LoanContract): Promise<'created' | 'unchanged'> {
-  if (loan.companyId !== companyId || !loan.id || !loan.name?.trim() || !loan.lenderName?.trim() ||
-      !isCalendarDay(loan.openingDate) || !Number.isInteger(loan.openingPrincipal) || loan.openingPrincipal < 0 ||
-      (loan.accountCode !== '260' && loan.accountCode !== '293')) throw new Error('대출 회사·계정·기초일·원금을 확인하세요.');
-  const loanRef = doc(store, 'loanContracts', loan.id);
-  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
-  const voucherRef = doc(store, 'issuedStatements', `opening-loan-${companyId}-${loan.id}`);
-  const partnerRef = loan.partnerId ? doc(store, 'partners', loan.partnerId) : null;
-  return runTransaction(store, async tx => {
-    const [loanSnap, openingSnap, voucherSnap, partnerSnap] = await Promise.all([
-      tx.get(loanRef), tx.get(openingRef), tx.get(voucherRef), partnerRef ? tx.get(partnerRef) : Promise.resolve(null),
-    ]);
-    if (partnerRef && (!partnerSnap?.exists() || companyOf(partnerSnap.data()) !== companyId)) throw new Error('다른 회사 금융기관이거나 없는 거래처입니다.');
-    const hasOpening = loan.openingPrincipal > 0;
-    const openingData = openingSnap.data();
-    if (hasOpening && (!openingData || openingData.companyId !== companyId || openingData.date !== loan.openingDate)) {
-      throw new Error('시작 원금은 회계 기초잔액 기준일과 같을 때만 등록할 수 있습니다. 기초잔액을 먼저 저장하거나 시작 원금 0원으로 등록 후 차입 전표를 발행하세요.');
-    }
-    if (hasOpening && Number(openingData?.amounts?.[loan.accountCode] ?? 0) !== 0) {
-      throw new Error('대출 계정에 합계 기초잔액이 있어 이중계상됩니다. 기존 금액을 확인하세요.');
-    }
-    const sameLoan = loanSnap.exists() && ['companyId', 'name', 'lenderName', 'partnerId', 'accountCode', 'openingDate', 'openingPrincipal', 'maturityDate']
-      .every(key => (loanSnap.data()[key] ?? '') === ((loan as unknown as Record<string, unknown>)[key] ?? ''));
-    if (loanSnap.exists() || voucherSnap.exists()) {
-      if (sameLoan && (hasOpening ? voucherSnap.exists() && voucherSnap.data().companyId === companyId && voucherSnap.data().totalAmount === loan.openingPrincipal : !voucherSnap.exists())) return 'unchanged';
-      throw new Error('같은 대출 요청에 다른 내용이 저장되어 있습니다. 새로 열어 다시 등록하세요.');
-    }
-    tx.set(loanRef, loan);
-    if (hasOpening) {
-      tx.update(openingRef, { hasLoanOpening: true });
-      tx.set(voucherRef, loanOpeningStatement(loan));
-    }
-    return 'created';
-  });
-}
-
 export async function createLoanWithOpening(companyId: CompanyId, loan: LoanContract) {
-  await authReady;
-  const token = await auth.currentUser?.getIdTokenResult();
-  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return createLoanWithOpeningWithDb(db, companyId, loan);
+  return runFinancialOpening(companyId,{kind:'loan-create',loan});
 }
 
 /** 기존 계약의 시작일과 현재 원금 잔액을 함께 정정한다. 전표 없는 옛 계약은 보조원장만 갱신한다. */
-export async function updateLoanOpeningWithDb(store: Firestore, companyId: CompanyId, originalLoan: LoanContract, newDate: string, targetCurrentBalance: number): Promise<void> {
-  if (originalLoan.companyId !== companyId || !originalLoan.id ||
-      (originalLoan.accountCode !== '260' && originalLoan.accountCode !== '293') ||
-      !isCalendarDay(newDate) || !Number.isSafeInteger(targetCurrentBalance) || targetCurrentBalance < 0) {
-    throw new Error('대출 회사·시작일·현재 원금 잔액을 확인하세요.');
-  }
-  const entries = await getDocs(query(collection(store, 'cashEntries'), where('companyId', '==', companyId), where('loanId', '==', originalLoan.id)));
-  const loanRef = doc(store, 'loanContracts', originalLoan.id);
-  const voucherRef = doc(store, 'issuedStatements', `opening-loan-${companyId}-${originalLoan.id}`);
-  await runTransaction(store, async tx => {
-    const [loanSnap, voucherSnap, cashSnaps] = await Promise.all([
-      tx.get(loanRef), tx.get(voucherRef), Promise.all(entries.docs.map(row => tx.get(row.ref))),
-    ]);
-    const latest = loanSnap.data();
-    const original = originalLoan as unknown as Record<string, unknown>;
-    const fields = ['companyId', 'name', 'lenderName', 'partnerId', 'accountCode', 'openingDate', 'openingPrincipal', 'maturityDate', 'note', 'createdAt', 'movementRevision', 'principalBalance'];
-    if (!loanSnap.exists() || loanSnap.id !== originalLoan.id || latest?.companyId !== companyId || fields.some(key => (latest?.[key] ?? '') !== (original[key] ?? ''))) {
-      throw new Error('대출 계약이 변경되었습니다. 새로 조회한 뒤 다시 저장하세요.');
-    }
-    const movements = cashSnaps.filter(snap => snap.exists()).map(snap => ({ ...snap.data(), id: snap.id })) as import('../types').CashEntry[];
-    if (movements.some(row => companyOf(row) !== companyId || row.loanId !== originalLoan.id)) {
-      throw new Error('대출 연결 전표가 변경되었습니다. 다시 조회하세요.');
-    }
-    const openingPrincipal = loanOpeningPrincipalForBalance(originalLoan, movements, newDate, targetCurrentBalance);
-    let voucherPatch: Record<string, unknown> | undefined;
-    if (voucherSnap.exists()) {
-      const voucher = voucherSnap.data() as IssuedStatement;
-      const accountingDate = voucher.tradeDate || voucher.issuedAt?.slice(0, 10);
-      if (voucher.companyId !== companyId || voucher.id !== voucherRef.id || voucher.docNo !== `기초대출-${originalLoan.id}` || !isCalendarDay(accountingDate) ||
-          voucher.type !== '비용' || voucher.orderId !== '' || voucher.partnerId !== (originalLoan.partnerId ?? '') ||
-          voucher.partnerName !== originalLoan.lenderName || !Array.isArray(voucher.items) || voucher.items.length !== 2 ||
-          !Number.isSafeInteger(voucher.totalAmount) || voucher.totalAmount < 0 || voucher.totalSupply !== voucher.totalAmount || voucher.totalTax !== 0 ||
-          voucher.items[0].accountCode !== '375' || voucher.items[0].side !== '차변' ||
-          voucher.items[1].accountCode !== originalLoan.accountCode || voucher.items[1].side !== '대변' ||
-          voucher.items.some(line => line.qty !== 1 || line.tax !== 0 || line.lineKind !== 'account' || line.price !== voucher.totalAmount || line.supply !== voucher.totalAmount || line.total !== voucher.totalAmount)) {
-        throw new Error('대출 기초 전표의 회사·일자·분개를 확인하세요.');
-      }
-      const amount = loanOpeningPrincipalForBalance(originalLoan, movements, accountingDate, targetCurrentBalance);
-      voucherPatch = { totalSupply: amount, totalTax: 0, totalAmount: amount,
-        items: voucher.items.map(line => ({ ...line, price: amount, supply: amount, total: amount })) };
-    }
-    const revision = latest?.movementRevision;
-    if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(revision + 1))) throw new Error('대출 원금 변경 버전을 확인하세요.');
-    tx.update(loanRef, { openingDate: newDate, openingPrincipal,
-      ...(revision !== undefined && { movementRevision: revision + 1 }),
-      ...((revision !== undefined || latest?.principalBalance !== undefined) && { principalBalance: targetCurrentBalance }) });
-    if (voucherPatch) tx.update(voucherRef, voucherPatch);
-  });
-}
-
 export async function updateLoanOpening(companyId: CompanyId, originalLoan: LoanContract, newDate: string, targetCurrentBalance: number) {
-  await authReady;
-  const token = await auth.currentUser?.getIdTokenResult();
-  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return updateLoanOpeningWithDb(db, companyId, originalLoan, newDate, targetCurrentBalance);
+  await runFinancialOpening(companyId,{kind:'loan-update',original:originalLoan,newDate,targetBalance:targetCurrentBalance});
 }
 
 /** The account ledger and the accounting opening voucher are one operation. */
-export async function createCashAccountWithOpeningWithDb(store: Firestore, companyId: CompanyId, account: CashAccount): Promise<'created' | 'unchanged'> {
-  if (account.companyId !== companyId || !account.id || !account.name?.trim() ||
-      !isCalendarDay(account.openingDate) || !Number.isInteger(account.openingBalance) || account.openingBalance < 0 ||
-      !['통장', '현금', '카드'].includes(account.type)) throw new Error('계좌 회사·이름·기초일·잔액을 확인하세요.');
-  if (account.type === '카드' && account.openingBalance > 0) throw new Error('카드 기초잔액은 계좌 자산과 다릅니다. 카드 계좌는 0원으로 등록하세요.');
-  const existing = await getDocs(query(collection(store, 'cashAccounts'), where('companyId', '==', companyId)));
-  const prior = existing.docs.map(row => ({ id: row.id, ...row.data() } as CashAccount));
-  const accountRef = doc(store, 'cashAccounts', account.id);
-  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
-  const voucherRef = doc(store, 'issuedStatements', `opening-cash-${companyId}-${account.id}`);
-  return runTransaction(store, async tx => {
-    const [accountSnap, openingSnap, voucherSnap] = await Promise.all([
-      tx.get(accountRef), tx.get(openingRef), tx.get(voucherRef),
-    ]);
-    const hasOpening = account.openingBalance > 0;
-    const sameAccount = accountSnap.exists() && ['companyId', 'name', 'type', 'openingDate', 'openingBalance']
-      .every(key => (accountSnap.data()[key] ?? '') === ((account as unknown as Record<string, unknown>)[key] ?? ''));
-    if (accountSnap.exists() || voucherSnap.exists()) {
-      if (sameAccount && (hasOpening ? voucherSnap.exists() && voucherSnap.data().companyId === companyId && voucherSnap.data().totalAmount === account.openingBalance : !voucherSnap.exists())) return 'unchanged';
-      throw new Error('같은 계좌 요청에 다른 내용이 저장되어 있습니다. 새로 열어 다시 등록하세요.');
-    }
-    const openingData = openingSnap.data();
-    if (openingData && openingData.companyId !== companyId) throw new Error('다른 회사 기초잔액입니다.');
-    if (hasOpening && openingData?.date && openingData.date !== account.openingDate) {
-      throw new Error('계좌 기초일은 회계 기초잔액 기준일과 같아야 합니다.');
-    }
-    if (hasOpening && !openingData && prior.some(row => row.openingBalance > 0)) {
-      throw new Error('기존 계좌 기초잔액이 있어 먼저 회계 기초잔액을 저장·대조해야 합니다.');
-    }
-    if (hasOpening && openingData && !openingData.hasCashOpening) {
-      const code = openingCashAccountCode(account);
-      const priorTotal = prior.filter(row => row.type === account.type).reduce((sum, row) => sum + (row.openingBalance || 0), 0);
-      if (Number(openingData.amounts?.[code] ?? 0) !== priorTotal) {
-        throw new Error('기존 계좌 잔액과 회계 기초 합계가 다릅니다. 먼저 기초잔액을 대조하세요.');
-      }
-    }
-    tx.set(accountRef, account);
-    if (hasOpening) {
-      if (openingData) tx.update(openingRef, { hasCashOpening: true });
-      else tx.set(openingRef, { id: openingDocId(companyId), companyId, date: account.openingDate, amounts: {}, hasCashOpening: true });
-      tx.set(voucherRef, cashOpeningStatement(account));
-    }
-    return 'created';
-  });
-}
-
 export async function createCashAccountWithOpening(companyId: CompanyId, account: CashAccount) {
-  await authReady;
-  const token = await auth.currentUser?.getIdTokenResult();
-  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return createCashAccountWithOpeningWithDb(db, companyId, account);
+  return runFinancialOpening(companyId,{kind:'account-create',account});
 }
 
 /** 최초 품목 재고와 146 재고자산 기초 전표를 하나의 작업으로 등록한다. */
-export async function createOpeningInventoryWithDb(
-  store: Firestore, companyId: CompanyId, date: string, itemId: string, quantity: number, value: number,
-  inputs?: OrderUnitInputs,
-): Promise<'created' | 'unchanged'> {
-  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
-  if (!itemId || !isCalendarDay(date) || !Number.isFinite(quantity) || quantity <= 0 ||
-      !Number.isInteger(value) || value <= 0) throw new Error('기초 재고 날짜·수량·평가금액을 확인하세요.');
-  const itemRef = doc(store, COL.items, itemId);
-  const openingRef = doc(store, 'openingBalances', openingDocId(companyId));
-  const voucherRef = doc(store, 'issuedStatements', `opening-inventory-${companyId}-${itemId}`);
-  const operationId = `opening-inventory:${companyId}:${itemId}`;
-  const effectiveAt = `${date}T00:00:00+09:00`;
-  const recordedAt = new Date().toISOString();
-  const rawCommand: RawInventoryCommand = {
-    kind: 'opening', operationId, companyId, rawItemId: itemId,
-    materialSnapshot: '', effectiveAt, source: { type: 'opening', id: itemId }, kg: quantity,
-  };
-  return runTransaction(store, async tx => {
-    const [itemSnap, openingSnap, voucherSnap] = await Promise.all([
-      tx.get(itemRef), tx.get(openingRef), tx.get(voucherRef),
-    ]);
-    if (!itemSnap.exists()) throw new Error('기초 재고 품목이 없습니다.');
-    const item = { id: itemSnap.id, ...itemSnap.data() } as Item;
-    if (companyOf(item) !== companyId || !isPhysicalInventoryItem(item) || item.archived || item.phantom) {
-      throw new Error('현재 회사의 실물 품목만 기초 재고로 등록할 수 있습니다.');
-    }
-    if (Math.abs(quantity - Math.round(quantity * 1000) / 1000) > 1e-9 || (!isRawHolder(item) && !Number.isInteger(quantity))) {
-      throw new Error('기초 재고 수량은 개수 품목은 정수, 벌크 원료는 소수 셋째 자리까지 입력하세요.');
-    }
-    const voucher = inventoryOpeningStatement(companyId, date, item, quantity, value);
-    if (voucherSnap.exists()) {
-      const saved = voucherSnap.data();
-      if (saved.companyId === companyId && saved.tradeDate === date && saved.totalAmount === value &&
-          saved.openingQuantity === quantity && saved.openingItemId === itemId) return 'unchanged';
-      throw new Error('같은 품목의 기초 재고가 다른 내용으로 이미 등록됐습니다.');
-    }
-    const opening = openingSnap.data();
-    if (!opening || opening.companyId !== companyId || opening.date !== date) {
-      throw new Error('먼저 해당 날짜의 회계 기초잔액을 저장하세요.');
-    }
-    if (Number(opening.amounts?.[INVENTORY] ?? 0) !== 0) {
-      throw new Error('146 재고자산 계정에 수기 기초 합계가 있어 이중계상됩니다. 기존 금액을 확인하세요.');
-    }
-    if (Number(item.stock ?? 0) !== 0 || (item.lots ?? []).some(lot => Number(lot.qtyRemaining ?? 0) !== 0 || Number(lot.kgRemaining ?? 0) !== 0) ||
-        (item.stocktakeAnchors ?? []).length > 0) {
-      throw new Error('이미 재고나 실사 이력이 있는 품목은 기초 재고로 등록할 수 없습니다.');
-    }
-    if (isRawHolder(item)) {
-      const rawRead = await readRawCommandInTransaction(tx, store, rawCommand);
-      if (rawRead.stateSnap.exists() && (Number(rawRead.stateSnap.data().stockKg ?? 0) !== 0 || Number(rawRead.stateSnap.data().revision ?? 0) !== 0)) {
-        throw new Error('원료 상태에 기존 재고 이력이 있어 기초 재고로 등록할 수 없습니다.');
-      }
-      const result = prepareRawCommand(rawCommand, rawRead, { now: recordedAt, legacy: { note: '기초 재고', type: 'manual' } });
-      if (result.status !== 'applied') throw new Error(result.status === 'rejected' ? result.message : '기초 원료 명령이 이미 처리됐습니다.');
-      writePreparedRawCommand(tx, rawCommand, rawRead, result, { legacy: { note: '기초 재고', type: 'manual' } });
-    } else {
-      const anchored = anchorLotsByQty({ lots: [], targetQty: quantity, unitKg: itemKg(item, fixedInputs),
-        det: { id: `lot-${operationId}`, createdAt: recordedAt, receivedDate: date } });
-      tx.update(itemRef, { stock: quantity, lots: stripUndefined(anchored.lots), stocktakeAnchors: [{
-        id: operationId, date, createdAt: recordedAt, targetQty: quantity, beforeQty: 0, deltaQty: quantity, note: '기초 재고',
-      }] });
-    }
-    tx.update(openingRef, { hasInventoryOpening: true });
-    tx.set(voucherRef, voucher);
-    return 'created';
-  });
-}
-
-export async function createOpeningInventory(companyId: CompanyId, date: string, itemId: string, quantity: number, value: number, inputs?: OrderUnitInputs) {
-  const fixedInputs = inputs ?? { bom: getBomIndex(), pack: getPackIndex() };
-  await authReady;
-  const token = await auth.currentUser?.getIdTokenResult();
-  if (token?.claims.companyId !== companyId) throw new Error('현재 로그인한 회사와 다른 회사에는 저장할 수 없습니다.');
-  return createOpeningInventoryWithDb(db, companyId, date, itemId, quantity, value, fixedInputs);
+export async function createOpeningInventory(companyId: CompanyId, date: string, itemId: string, quantity: number, value: number, _inputs?: OrderUnitInputs): Promise<'created' | 'unchanged'> {
+  const uid = auth.currentUser?.uid;
+  const assertActor = () => { if (!uid || auth.currentUser?.uid !== uid) throw new Error('로그인 사용자가 변경되었습니다. 기초 재고를 보내지 않았습니다.'); };
+  await authReady; assertActor();
+  const token = await auth.currentUser!.getIdTokenResult(); assertActor();
+  if (token.claims.companyId !== companyId || token.claims.isAdmin !== true) throw new Error('현재 회사 관리자만 기초 재고를 등록할 수 있습니다.');
+  const releaseId = await activeReleaseId(); assertActor();
+  const call = httpsCallable<unknown, 'created' | 'unchanged'>(functions, 'createOpeningInventoryCommand');
+  const result = await call({ companyId, date, itemId, quantity, value, releaseId }); assertActor();
+  return result.data;
 }
 
 export const subscribeToCollection = <T extends { id: string }>(

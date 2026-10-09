@@ -1,3 +1,4 @@
+import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
 import { isStockProduction } from '../../shared/orderPurpose';
 import { processReturn } from './returnCommands';
@@ -2408,6 +2409,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
+          <FinancialOpeningResume key={`${companyId}:${auth.currentUser?.uid ?? ''}`} companyId={companyId} onRecovered={refreshStaticData} />
           {/* 초기 데이터 로딩 스켈레톤 */}
           {isDataLoading ? (
             <div className="space-y-4 animate-pulse">

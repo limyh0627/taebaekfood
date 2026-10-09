@@ -1,46 +1,19 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import type { Firestore } from 'firebase/firestore';
 import type { CashEntry } from '../types';
 import type { LoanContract } from '../loanLedger';
 import { loanOpeningStatement } from '../loanOpening';
 
 const state = vi.hoisted(() => ({ rows: new Map<string, Record<string, unknown>>(), writes: [] as Array<{ path: string; patch: Record<string, unknown> }>, afterQuery: null as null | (() => void), claim: 'punghoe', queries: [] as unknown[] }));
-vi.mock('../firebase', () => ({ db: {}, functions: {}, authReady: Promise.resolve(), auth: { currentUser: { getIdTokenResult: async () => ({ claims: { companyId: state.claim } }) } } }));
-vi.mock('firebase/firestore', async importOriginal => {
-  const actual = await importOriginal<typeof import('firebase/firestore')>();
-  const snapshot = (ref: { path: string; id: string }) => ({ ref, id: ref.id, exists: () => state.rows.has(ref.path), data: () => state.rows.get(ref.path) });
-  return { ...actual,
-    doc: (_db: unknown, collection: string, id: string) => ({ path: `${collection}/${id}`, id }),
-    collection: (_db: unknown, name: string) => name,
-    where: (field: string, op: string, value: unknown) => ({ field, op, value }),
-    query: (name: string, ...clauses: Array<{ field: string; value: unknown }>) => ({ name, clauses }),
-    getDocs: async (query: { name: string; clauses: Array<{ field: string; value: unknown }> }) => {
-      state.queries.push(query);
-      const docs = [...state.rows].filter(([path, row]) => path.startsWith(`${query.name}/`) && query.clauses.every(clause => row[clause.field] === clause.value))
-        .map(([path]) => snapshot({ path, id: path.split('/')[1] }));
-      state.afterQuery?.();
-      return { docs };
-    },
-    runTransaction: async (_db: unknown, run: (tx: unknown) => Promise<unknown>) => {
-      const pending: typeof state.writes = [];
-      const result = await run({
-        get: async (ref: { path: string; id: string }) => { if (pending.length) throw new Error('write before read'); return snapshot(ref); },
-        update: (ref: { path: string }, patch: Record<string, unknown>) => pending.push({ path: ref.path, patch }),
-        set: () => { throw new Error('new documents prohibited'); }, delete: () => { throw new Error('delete prohibited'); },
-      });
-      for (const write of pending) state.rows.set(write.path, { ...state.rows.get(write.path), ...write.patch });
-      state.writes.push(...pending);
-      return result;
-    },
-  };
-});
-const { updateLoanOpening, updateLoanOpeningWithDb } = await import('./firebaseService');
-const store = {} as Firestore;
+import {executeFinancialOpening,executeFinancialOpeningForActor} from '../../../functions/src/financialOpeningCommand';
+import {financialOpeningTestStore} from '../../../functions/test/financialOpeningTestStore';
+const updateLoanOpeningWithDb=(_store:unknown,companyId:'taebaek'|'punghoe',original:LoanContract,newDate:string,targetBalance:number)=>executeFinancialOpening(store,companyId,'uid',{kind:'loan-update',companyId,original,newDate,targetBalance,operationId:crypto.randomUUID(),releaseId:'release'});
+const updateLoanOpening=(companyId:'taebaek'|'punghoe',original:LoanContract,newDate:string,targetBalance:number)=>executeFinancialOpeningForActor(store,{uid:'uid',token:{companyId:state.claim,isAdmin:true}},{kind:'loan-update',companyId,original,newDate,targetBalance,operationId:crypto.randomUUID(),releaseId:'release'});
+const store = financialOpeningTestStore(state);
 const loan: LoanContract = { id: 'loan-test', companyId: 'punghoe', name: '운전자금', lenderName: '은행', accountCode: '293', openingDate: '2026-07-31', openingPrincipal: 100_000_000, createdAt: '2026-08-01T00:00:00Z' };
 const path = `loanContracts/${loan.id}`;
 const voucherPath = `issuedStatements/opening-loan-punghoe-${loan.id}`;
 const cash = (id: string, date: string, amount: number): CashEntry => ({ id, companyId: 'punghoe', loanId: loan.id, cashAccountId: 'bank-test', date, dir: '출금', amount, accountCode: '293', createdAt: `${date}T00:00:00Z` });
-beforeEach(() => { state.rows.clear(); state.rows.set(path, { ...loan }); state.writes.length = 0; state.queries.length = 0; state.afterQuery = null; state.claim = 'punghoe'; });
+beforeEach(() => { state.rows.clear(); state.rows.set('appMeta/releaseCutover',{status:'active',releaseId:'release'}); state.rows.set(path, { ...loan }); state.writes.length = 0; state.queries.length = 0; state.afterQuery = null; state.claim = 'punghoe'; });
 
 it('전표 없는 옛 계약은 시작일과 원금만 고치며 회계 문서를 생성하지 않는다', async () => {
   await updateLoanOpeningWithDb(store, 'punghoe', loan, '2026-08-10', 70_000_000);
@@ -115,7 +88,7 @@ it('잘못된 날짜·소수 잔액 및 다른 로그인 회사는 조회·쓰�
   await expect(updateLoanOpeningWithDb(store, 'punghoe', loan, '2026-02-30', 1)).rejects.toThrow();
   await expect(updateLoanOpeningWithDb(store, 'punghoe', loan, '2026-08-10', 1.1)).rejects.toThrow();
   state.claim = 'taebaek';
-  await expect(updateLoanOpening('punghoe', loan, '2026-08-10', 1)).rejects.toThrow('다른 회사');
+  await expect(updateLoanOpening('punghoe', loan, '2026-08-10', 1)).rejects.toThrow('요청');
   expect(state.queries).toHaveLength(0);
   expect(state.writes).toHaveLength(0);
 });

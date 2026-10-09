@@ -56,10 +56,10 @@ const 미로그인 = () => env.unauthenticatedContext().firestore();
 const 익명 = () => env.authenticatedContext('anon', {}).firestore();
 
 describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () => {
-  it.skipIf(process.env.CASH_WRITE_RULES_AUTH_TEST !== 'true')('현금 서버 전용 저장: 실제 로그인·양사 조회·모든 직접 쓰기 거절·원문 보존', async () => {
+  it.skipIf(process.env.CASH_WRITE_RULES_AUTH_TEST !== 'true')('현금·전표·기초 감사 서버 저장: 실제 로그인·양사 조회·직접 쓰기 거절·원문 보존', async () => {
     if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8082' || process.env.FIREBASE_AUTH_EMULATOR_HOST !== '127.0.0.1:9099') throw new Error('격리 에뮬레이터 주소를 확인하세요.');
     const prefix = `cash-rules-${randomUUID()}`;
-    const admin = initAdmin({ projectId: 'demo-rules-test' }, prefix);
+    const admin = initAdmin({ projectId: 'demo-taebaekfood-local' }, prefix);
     const database = adminFirestore(admin), users: string[] = [], apps: FirebaseApp[] = [], paths: string[] = [];
     try {
       const clients = [];
@@ -67,7 +67,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
         const uid = `${prefix}-${companyId}`, employeeId = `${uid}-employee`, email = `${uid}@example.invalid`, password = `${randomUUID()}Aa1!`;
         await adminAuth(admin).createUser({ uid, email, password }); users.push(uid);
         await adminAuth(admin).setCustomUserClaims(uid, { employeeId, companyId, isAdmin: true });
-        const app = initializeApp({ projectId: 'demo-rules-test', apiKey: 'local-emulator-only' }, uid); apps.push(app);
+        const app = initializeApp({ projectId: 'demo-taebaekfood-local', apiKey: 'local-emulator-only' }, uid); apps.push(app);
         const auth = getAuth(app); connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
         const db = getFirestore(app); connectFirestoreEmulator(db, '127.0.0.1', 8082);
         await signInWithEmailAndPassword(auth, email, password);
@@ -76,6 +76,10 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
         clients.push({ db, companyId });
         const path = `cashEntries/${prefix}-${companyId}-read`; paths.push(path);
         await database.doc(path).create({ companyId, amount: 10 });
+        for (const name of ['issuedStatements', 'financialOpeningOperations']) {
+          const auditPath = `${name}/${prefix}-${companyId}-read`; paths.push(auditPath);
+          await database.doc(auditPath).create({ companyId, amount: 10 });
+        }
       }
       for (const { db, companyId } of clients) {
         const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
@@ -84,6 +88,21 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
         await assertFails(getDoc(doc(db, `cashEntries/${prefix}-${other}-read`)));
         await assertFails(getDocs(query(collection(db, 'cashEntries'), where('companyId', '==', other))));
         await assertFails(getDocs(collection(db, 'cashEntries')));
+        for (const name of ['issuedStatements', 'financialOpeningOperations']) {
+          const path = `${name}/${prefix}-${companyId}-read`, newPath = `${path}-new`;
+          paths.push(newPath);
+          await assertSucceeds(getDoc(doc(db, path)));
+          await assertSucceeds(getDocs(query(collection(db, name), where('companyId', '==', companyId))));
+          await assertFails(getDoc(doc(db, `${name}/${prefix}-${other}-read`)));
+          await assertFails(getDocs(query(collection(db, name), where('companyId', '==', other))));
+          await assertFails(getDocs(collection(db, name)));
+          await assertFails(setDoc(doc(db, newPath), { companyId, amount: 20 }));
+          await assertFails(setDoc(doc(db, path), { companyId, amount: 20 }));
+          await assertFails(updateDoc(doc(db, path), { amount: 20 }));
+          await assertFails(deleteDoc(doc(db, path)));
+          expect((await database.doc(path).get()).data()).toEqual({ companyId, amount: 10 });
+          expect((await database.doc(newPath).get()).exists).toBe(false);
+        }
         const variants = [ {}, ...['108', '251', '253'].map(accountCode => ({ accountCode })),
           { loanId: `${prefix}-loan` }, { payrollId: `${prefix}-payroll` }, { transferOperationId: `${prefix}-transfer` } ];
         for (const [index, fields] of variants.entries()) {
@@ -184,7 +203,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
   beforeAll(async () => {
     env = await initializeTestEnvironment({
-      projectId: 'demo-rules-test',
+      projectId: 'demo-taebaekfood-local',
       firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: 8082 },
     });
   });
@@ -369,9 +388,10 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(setDoc(doc(태백직원(), 'issuedStatements', 's-새것'), { companyId: 'taebaek', totalAmount: 1 }));
     });
 
-    it('관리자는 자금·전표를 읽고 쓴다', async () => {
+    it('관리자는 자금·전표를 읽고 전표 직접 저장은 하지 못한다', async () => {
       await assertSucceeds(getDoc(doc(관리자(), 'cashEntries', 'c-taebaek')));
-      await assertSucceeds(setDoc(doc(관리자(), 'issuedStatements', 's-새것'), { companyId: 'taebaek', totalAmount: 1 }));
+      await assertSucceeds(getDoc(doc(관리자(), 'issuedStatements', 's-taebaek')));
+      await assertFails(setDoc(doc(관리자(), 'issuedStatements', 's-새것'), { companyId: 'taebaek', totalAmount: 1 }));
     });
 
     it('대출 계약은 자기 회사 관리자만 읽고 쓴다', async () => {
@@ -388,8 +408,8 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(setDoc(doc(관리자(), 'issuedStatements', 's-풍회'), { companyId: 'punghoe', totalAmount: 1 }));
     });
 
-    it('풍회 관리자는 풍회 전표를 만든다', async () => {
-      await assertSucceeds(setDoc(doc(풍회관리자(), 'issuedStatements', 's-풍회'), { companyId: 'punghoe', totalAmount: 1 }));
+    it('풍회 관리자도 전표 직접 저장은 하지 못한다', async () => {
+      await assertFails(setDoc(doc(풍회관리자(), 'issuedStatements', 's-풍회'), { companyId: 'punghoe', totalAmount: 1 }));
     });
 
     it('현장 자료(주문·품목)는 일반 직원도 쓴다', async () => {
@@ -494,12 +514,12 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     await assertFails(setDoc(doc(풍회관리자(), 'adjustmentRequests', 'OEMFEE-oem-job-2'), { companyId: 'taebaek', type: 'oem_fee' }));
   });
 
-  it('관리자 전표 발행과 연관 기록을 한 트랜잭션으로 저장한다', async () => {
+  it('직접 전표 발행 거래를 거절하고 연관 기록도 일부 저장하지 않는다', async () => {
     const db = env.authenticatedContext('u-eunkyung', {
       employeeId: 'admin-taebaek-eunkyung', companyId: 'taebaek', isAdmin: true,
     }).firestore();
     const statementRef = doc(db, 'issuedStatements', 's-transaction');
-    await assertSucceeds(runTransaction(db, async tx => {
+    await assertFails(runTransaction(db, async tx => {
       expect((await tx.get(statementRef)).exists()).toBe(false);
       tx.set(statementRef, { companyId: 'taebaek', operationId: 'issue-s-transaction', totalAmount: 5000 });
       tx.set(doc(db, 'orders', 'o-taebaek'), { companyId: 'taebaek', invoicePrinted: true }, { merge: true });
@@ -507,7 +527,9 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       tx.set(doc(db, 'itemCostHistory', 's-transaction_i-taebaek_0'), { companyId: 'taebaek', itemId: 'i-taebaek', beforeCost: 0, afterCost: 100 });
       tx.set(doc(db, 'purchaseOrders', 'po-transaction'), { companyId: 'taebaek', linkedStatementId: 's-transaction', status: 'invoiced' });
     }));
-    expect((await getDoc(statementRef)).exists()).toBe(true);
+    expect((await getDoc(statementRef)).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'purchaseOrders', 'po-transaction'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'itemCostHistory', 's-transaction_i-taebaek_0'))).exists()).toBe(false);
   });
 
   describe('companyId 누락 쓰기 — 컬렉션 갈래별 차단', () => {
