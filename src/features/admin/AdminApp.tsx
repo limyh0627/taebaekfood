@@ -439,6 +439,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [cabinetSel, setCabinetSel] = useState<{ cat: string; sub: string }>({ cat: '', sub: '' });
   //  거래처원장에서 전표번호를 누르면 전표 화면이 그 번호로 조회창을 연다
   const [focusDocNo, setFocusDocNo] = useState('');
+  const [inboundDetailId, setInboundDetailId] = useState('');
+  useEffect(() => { setInboundDetailId(''); }, [companyId]);
 
   /** 연결 정산과 특수 원장도 같은 서버 거래에서 삭제한다. */
   const deleteCashEntry = useCallback(async (id: string, original?: CashEntry, transferEdit?: TransferCashEdit) => {
@@ -2663,7 +2665,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setPendingInvoice({ partnerId, partnerName, items, poIds });
                 setShowInboundInvoice(true);
               }}
-              onOpenVoucher={docNo => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
+              onOpenVoucher={(_docNo, statementId) => setInboundDetailId(statementId)}
               rawMaterialLedger={mergedRawMaterialLedger}
               linesUsingRaw={linesUsingRaw}
               
@@ -4455,8 +4457,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             );
           })()}
-          {(currentView === 'trade-statement' || showInboundInvoice) && (
+          {(currentView === 'trade-statement' || showInboundInvoice || inboundDetailId) && (
             <TradeStatement
+              detailStatementId={inboundDetailId}
+              onDetailClose={() => setInboundDetailId('')}
               returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
                   advanceStatements={appData.advanceStatements}
               currentUserId={currentUser.id}

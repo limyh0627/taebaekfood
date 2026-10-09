@@ -149,6 +149,8 @@ interface TradeStatementProps {
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
   focusDocNo?: string;
   onFocusHandled?: () => void;
+  detailStatementId?: string;
+  onDetailClose?: () => void;
   onDeleteIssuedStatement?: (id: string) => Promise<unknown>;
   pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
@@ -261,6 +263,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onProposeEdit,
   focusDocNo,
   onFocusHandled,
+  detailStatementId,
+  onDetailClose,
   onDeleteIssuedStatement,
   pendingInvoice,
   onClearPendingInvoice,
@@ -1047,6 +1051,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
+  useEffect(() => {
+    if (!detailStatementId) return;
+    setDetailStmt(mergedStatements.find(row => row.id === detailStatementId && companyOf(row) === companyId) ?? null);
+  }, [detailStatementId, mergedStatements, companyId]);
+  const closeDetail = () => { setDetailStmt(null); onDetailClose?.(); };
 
   // ── 발주확정 선택 / 매입 품목 검색 ──
   const [selectedConfirmedIds, setSelectedConfirmedIds] = useState<string[]>([]);
@@ -2374,10 +2383,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         />
       )}
 
+      </>}
+      </>}
       {/* ── 계좌 관리 모달 (장부 흡수) ── */}
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (
-        <LargeModalShell title={`발행 전표 상세 — ${detailStmt.partnerName}`} onClose={() => setDetailStmt(null)} bodyClassName="!p-0">
+        <LargeModalShell title={`발행 전표 상세 — ${detailStmt.partnerName}`} onClose={closeDetail} bodyClassName="!p-0">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>{detailStmt.type}</span>
@@ -2389,11 +2400,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                {!detailStmt.noncashApplication || detailStmt.noncashApplication.kind === 'advance-application' ? <button onClick={() => { const token = deleteViewRef.current.token; return confirmDelete(`statement:${detailStmt.id}`, detailStmt.noncashApplication ? '원문을 보존하고 이 적용을 취소하시겠습니까?' : '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(detailStmt.id) && deleteViewRef.current.token === token) setDetailStmt(null); }); }}
+                {!detailStmt.noncashApplication || detailStmt.noncashApplication.kind === 'advance-application' ? <button onClick={() => { const token = deleteViewRef.current.token; return confirmDelete(`statement:${detailStmt.id}`, detailStmt.noncashApplication ? '원문을 보존하고 이 적용을 취소하시겠습니까?' : '이 전표를 삭제하시겠습니까?', async () => { if (deleteViewRef.current.token !== token) return; if (await deleteStatement(detailStmt.id) && deleteViewRef.current.token === token) closeDetail(); }); }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
                   <X size={12}/>{detailStmt.noncashApplication ? '적용 취소' : '삭제'}
                 </button> : <span className="text-xs text-slate-500">적용 취소 기록 · 원문 보존</span>}
-                <button onClick={()=>setDetailStmt(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
+                <button onClick={closeDetail} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
               </div>
             </div>
             <div className="p-6 overflow-x-auto">
@@ -2430,8 +2441,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </LargeModalShell>
       )}
 
-      </>}
-      </>}
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {createMode && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}

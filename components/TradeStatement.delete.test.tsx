@@ -22,6 +22,18 @@ function setup(remove?: (id: string) => Promise<void>) {
   return { ...rendered, props, settlement };
 }
 beforeEach(() => { vi.clearAllMocks(); });
+it('입고 화면에서 전달한 전표 ID는 목록 없이 상세만 열고 닫기는 부모에 전달한다', async () => {
+  const onDetailClose = vi.fn();
+  const issuedStatements = [stmt('A')];
+  const { rerender } = render(<TradeStatement orders={[]} allItems={[]} partners={[]} partnerItems={[]} issuedStatements={issuedStatements} composerOnly detailStatementId="A" onDetailClose={onDetailClose} />);
+  expect(await screen.findByRole('dialog')).toHaveTextContent('발행 전표 상세 — A');
+  expect(screen.queryByRole('button', { name: 'A 열기' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '✕' }));
+  expect(onDetailClose).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  rerender(<TradeStatement orders={[]} allItems={[]} partners={[]} partnerItems={[]} issuedStatements={issuedStatements} composerOnly detailStatementId="A" companyId="punghoe" />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
 it('삭제 대기와 실패는 전표 내용을 유지하며 중복 클릭은 한 번만 요청한다', async () => {
   const pending = deferred(); const remove = vi.fn(() => pending.promise); const { settlement } = setup(remove);
   fireEvent.click(screen.getByRole('button', { name: '삭제' }));
@@ -37,6 +49,15 @@ it('원자 삭제 성공 후에만 전표를 잊고 같은 화면을 닫는다',
   fireEvent.click(screen.getByRole('button', { name: '삭제' })); await waitFor(() => expect(remove).toHaveBeenCalledOnce());
   await act(async () => pending.resolve());
   expect(mocks.forget).toHaveBeenCalledWith('A'); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+it('외부 상세의 삭제 성공도 부모에 닫기를 전달한다', async () => {
+  const close = vi.fn();
+  const remove = vi.fn(async () => {});
+  render(<TradeStatement orders={[]} allItems={[]} partners={[]} partnerItems={[]} issuedStatements={[stmt('A')]} composerOnly detailStatementId="A" onDetailClose={close} onDeleteIssuedStatement={remove} />);
+  fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(remove).toHaveBeenCalledWith('A');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 it('삭제 콜백이 없으면 성공으로 처리하거나 내용을 닫지 않는다', async () => {
   setup(); fireEvent.click(screen.getByRole('button', { name: '삭제' }));

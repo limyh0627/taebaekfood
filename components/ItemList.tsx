@@ -227,7 +227,7 @@ interface ItemListProps {
   /** 로트 탭 — 어느 박스 로트가 어느 거래처로 나갔는지 거꾸로 읽는다(회수·클레임) */
   orders?: Order[];
   onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>, poIds?: string[]) => void;
-  onOpenVoucher?: (docNo: string) => void;
+  onOpenVoucher?: (docNo: string, statementId: string) => void;
   issuedStatements?: IssuedStatement[];
   /** 원료 손입력·실사 — 로트·원장·품목재고를 **한 트랜잭션**에 넣는다(AdminApp 이 명령을 부른다). */
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string }>;
@@ -685,7 +685,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const flowVoucherLink = (linkedId: string) => {
     const linked = issuedStatements.find(statement => statement.id === linkedId && companyOf(statement) === companyId);
     return linked?.docNo
-      ? <button type="button" onClick={event => { event.stopPropagation(); onOpenVoucher?.(linked.docNo); }} className="text-indigo-600 underline">{linked.docNo}</button>
+      ? <button type="button" onClick={event => { event.stopPropagation(); onOpenVoucher?.(linked.docNo, linked.id); }} className="text-indigo-600 underline">{linked.docNo}</button>
       : <span title="연결 전표를 조회할 수 없습니다." className="text-slate-500">연결 전표 미확인</span>;
   };
   const [reqNote, setReqNote] = useState<string>('');

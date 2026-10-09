@@ -37,7 +37,7 @@ it('연결 전표 번호를 목록과 상세에서 열고 링크 클릭은 상�
  const onOpenVoucher=vi.fn();
  const row=view({confirmedOrders:[{...po,status:'invoiced',linkedStatementId:'statement-1',invoicedAt:'2026-10-03T16:20:00Z'} as any],issuedStatements:[{id:'statement-1',companyId:'taebaek',docNo:'261003-001'} as any],onOpenVoucher});
  fireEvent.click(row.getByRole('button',{name:'261003-001'}));
- expect(onOpenVoucher).toHaveBeenCalledWith('261003-001');
+ expect(onOpenVoucher).toHaveBeenCalledWith('261003-001', 'statement-1');
  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
  fireEvent.click(row.getByText('공급업체'));
  const detail=within(screen.getByRole('dialog'));
