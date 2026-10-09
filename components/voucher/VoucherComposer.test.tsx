@@ -8,9 +8,11 @@ import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import type { AccountCode, AccountGroup, CashAccount, Partner, IssuedStatement } from '../../src/shared/types';
 
+vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}}}));
+vi.mock('../../src/shared/useLoanContracts',()=>({useLoanContracts:()=>[]}));
 const transfer = vi.hoisted(()=>({prepare:vi.fn(),save:vi.fn(),resume:vi.fn()}));
 vi.mock('../../src/shared/services/interCompanyTransferService',()=>({prepareTransferOptions:transfer.prepare,saveInterCompanyTransfer:transfer.save,resumeInterCompanyTransfer:transfer.resume,hasPendingTransfer:()=>false}));
-beforeEach(()=>{transfer.prepare.mockReset().mockResolvedValue({from:{companyId:'taebaek',accounts:[{id:'bank1',name:'농협 주계좌',companyId:'taebaek',active:true,type:'통장'}],partners:[{id:'from-partner',name:'풍회유통',companyId:'taebaek',revision:0,available:0}]},to:{companyId:'punghoe',accounts:[{id:'actual-foreign-bank',name:'풍회 은행',companyId:'punghoe',active:true,type:'통장'}],partners:[{id:'actual-foreign-partner',name:'태백푸드',companyId:'punghoe',revision:0,available:0}]},releaseId:'test-release'});transfer.save.mockReset().mockResolvedValue({outDocNo:'out',inDocNo:'in'});});
+beforeEach(()=>{localStorage.clear();transfer.prepare.mockReset().mockResolvedValue({from:{companyId:'taebaek',accounts:[{id:'bank1',name:'농협 주계좌',companyId:'taebaek',active:true,type:'통장'}],partners:[{id:'from-partner',name:'풍회유통',companyId:'taebaek',revision:0,available:0}]},to:{companyId:'punghoe',accounts:[{id:'actual-foreign-bank',name:'풍회 은행',companyId:'punghoe',active:true,type:'통장'}],partners:[{id:'actual-foreign-partner',name:'태백푸드',companyId:'punghoe',revision:0,available:0}]},releaseId:'test-release'});transfer.save.mockReset().mockResolvedValue({outDocNo:'out',inDocNo:'in'});});
 /**
  * **한 번 나간 돈의 성격이 둘 이상일 때 갈라 적는가.**
  *
@@ -137,7 +139,7 @@ describe('한 번 나간 돈을 성격대로 가른다', () => {
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
       expect(onClose).not.toHaveBeenCalled();
       expect(onAddCashEntry).not.toHaveBeenCalled();
-      await 저장(u);
+      await u.click(screen.getByRole('button',{name:'이전 전표 재시도'}));
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(onIssueCashEntry.mock.calls[0][0].id).toBe(onIssueCashEntry.mock.calls[1][0].id);
     } finally {
@@ -284,3 +286,24 @@ describe('회사 계정표에 없는 템플릿', () => {
     expect(screen.queryByText(/현재 회사 계정표에 931 없음/)).not.toBeInTheDocument();
   });
 });
+
+ it('응답 유실 뒤 닫고 다시 열어도 새 전표 대신 원문으로 재개한다',async()=>{
+  const u=userEvent.setup(),onIssueCashEntry=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce({id:'saved'});
+  const alertSpy=vi.spyOn(window,'alert').mockImplementation(()=>{});
+  try {
+   띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry});
+   await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(onIssueCashEntry).toHaveBeenCalledTimes(1));
+   screen.getByRole('button',{name:'저장'});
+   // 실제 모달 닫기와 재열기는 인스턴스의 ref를 새로 만든다.
+   const {cleanup}=await import('@testing-library/react');cleanup();
+   띄우기({onIssueCashEntry});
+   await u.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));
+   await waitFor(()=>expect(onIssueCashEntry).toHaveBeenCalledTimes(2));
+   expect(onIssueCashEntry.mock.calls[1][0]).toEqual(onIssueCashEntry.mock.calls[0][0]);
+  } finally {alertSpy.mockRestore();localStorage.clear();}
+ });
+
+it('최초 명확한 쓰기0 거절은 원문 대기를 풀어 입력을 수정할 수 있다',async()=>{const u=userEvent.setup(),save=vi.fn().mockImplementationOnce(async(entry)=>{throw Object.assign(new Error('계좌 없음'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:entry.id}})}).mockResolvedValue({id:'saved'});const alertSpy=vi.spyOn(window,'alert').mockImplementation(()=>{});try{띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).toBeNull();const amount=screen.getByDisplayValue('10,000');await u.clear(amount);await u.type(amount,'20000');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(save.mock.calls[1][0].amount).toBe(20000);}finally{alertSpy.mockRestore();}});
+it('unknown 뒤에는 원문 입력이 잠기며 재시도 거절 proof도 이전 원문을 지우지 않는다',async()=>{const u=userEvent.setup(),save=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockImplementationOnce(async(entry)=>{throw Object.assign(new Error('권한'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:entry.id}})});const alertSpy=vi.spyOn(window,'alert').mockImplementation(()=>{});try{띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));expect(screen.getByDisplayValue('10,000')).toBeDisabled();await u.click(screen.getByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(screen.getByRole('button',{name:'이전 전표 재시도'})).toBeEnabled();expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);expect(localStorage.length).toBe(1);}finally{alertSpy.mockRestore();}});
+
+it('이전 회사 발행 완료는 새 회사 창을 닫거나 대기 원문을 지우지 않는다',async()=>{const u=userEvent.setup();let finish!:(v:unknown)=>void;const save=vi.fn().mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));const {rerenderCompany,onClose}=띄우기({fixedCostTemplates:[템플릿({name:'차량비',mode:'일반',dir:'출금',accountCode:'811',amount:10000})],onIssueCashEntry:save});await 템플릿고르기(u,'차량비');await 저장(u);await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));rerenderCompany('punghoe');await act(async()=>finish({id:'saved'}));expect(onClose).not.toHaveBeenCalled();expect(localStorage.getItem('voucher-composer-issue:taebaek:test-auth-uid')).not.toBeNull();});

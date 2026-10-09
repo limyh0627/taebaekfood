@@ -1,3 +1,5 @@
+import {auth} from '../../src/shared/firebase';
+import {readVoucherPending,storeVoucherPending,clearVoucherPending,voucherPendingKey,voucherNoWriteProof,type VoucherIssuePending} from '../../src/features/statements/infrastructure/voucherIssuePending';
 import { templateStatementType, templateStatementConflict, type TemplateStatementType } from '../../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -194,25 +196,48 @@ export default function VoucherComposer({
   const [loanSaving, setLoanSaving] = useState(false);
   const loanSaveLock = useRef(false);
   const loanSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
-  const cashSaveLock = useRef(false);
-  const cashSaveAttempt = useRef<{ key: string; entry: CashEntry } | null>(null);
-  const accrualSaveLock = useRef(false);
-  const accrualSaveAttempt = useRef<{ key: string; statement: IssuedStatement } | null>(null);
-  const saveCashEntry = async (entry: CashEntry) => {
-    const save = onIssueCashEntry ?? onAddCashEntry;
-    if (!save || cashSaveLock.current) return;
-    const key = JSON.stringify({ ...entry, id: '', docNo: '', createdAt: '' });
-    if (cashSaveAttempt.current?.key !== key) cashSaveAttempt.current = { key, entry };
-    cashSaveLock.current = true;
+  const issueLock = useRef<object|null>(null);
+  const actorId = auth.currentUser?.uid ?? '';
+  const pendingKey = voucherPendingKey(companyId, actorId);
+  const [issuePending, setIssuePending] = useState<VoucherIssuePending | null>(null);
+  const [issueError, setIssueError] = useState('');
+  const [issueCorrupt,setIssueCorrupt] = useState(false);
+  const [issueSaving, setIssueSaving] = useState(false);
+  useEffect(() => {
+    issueLock.current=null;setIssuePending(null); setIssueError(''); setIssueSaving(false);setIssueCorrupt(false);
+    try { setIssuePending(readVoucherPending(pendingKey, companyId, actorId)); }
+    catch (error) { setIssueCorrupt(true);setIssueError(error instanceof Error ? error.message : String(error)); }
+  }, [pendingKey, companyId, actorId]);
+  const submitIssue = async (pending: VoucherIssuePending, retry = false) => {
+    if (issueLock.current) return;
+    const scope = transferScope.current.token;
+    const alive = () => transferScope.current.alive && transferScope.current.token === scope
+      && auth.currentUser?.uid === pending.userId && pending.companyId === companyId;
+    let encoded = '', sent = false;
+    const lock={};issueLock.current = lock; setIssueSaving(true);
     try {
-      await save(cashSaveAttempt.current.entry);
-      cashSaveAttempt.current = null;
-      onClose();
+      if (!pending.userId || !alive()) throw new Error('로그인과 회사를 다시 확인해 주세요.');
+      const save = pending.kind === 'cashEntries' ? onIssueCashEntry ?? onAddCashEntry : onAddIssuedStatement;
+      if (!save) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
+      encoded = storeVoucherPending(pendingKey, pending);
+      setIssuePending(pending); setIssueError(''); sent = true;
+      if (pending.kind === 'cashEntries') await (onIssueCashEntry ?? onAddCashEntry)!(pending.document);
+      else await onAddIssuedStatement!(pending.document);
+      if (!alive()) return;
+      clearVoucherPending(pendingKey, encoded); setIssuePending(null); onClose();
     } catch (error) {
-      alert(`자금전표를 저장하지 못했습니다. 입력은 유지됩니다. ${String(error instanceof Error ? error.message : error)}`);
-    } finally {
-      cashSaveLock.current = false;
-    }
+      if (!alive()) return;
+      if (sent && !retry && voucherNoWriteProof(error, pending)) {
+        clearVoucherPending(pendingKey, encoded); setIssuePending(null);
+      }
+      setIssueError(error instanceof Error ? error.message : String(error));
+      alert(`전표를 저장하지 못했습니다. ${sent ? '이전 전표를 재시도하면 같은 내용으로 확인합니다.' : '입력은 유지됩니다.'} ${error instanceof Error ? error.message : String(error)}`);
+    } finally { if(issueLock.current===lock){issueLock.current=null;if (alive()) setIssueSaving(false);} }
+  };
+  const saveCashEntry = async (entry: CashEntry) => {
+    // 대출은 기존 전용 명령의 재시도 원문을 사용한다.
+    if (entry.loanId) { await onAddCashEntry?.(entry); return; }
+    await submitIssue({version:1,companyId,userId:actorId,kind:'cashEntries',document:{...entry,companyId}});
   };
   const loans = useLoanContracts(companyId);
   const [qpPrincipal, setQpPrincipal] = useState('');
@@ -575,19 +600,8 @@ export default function VoucherComposer({
             totalSupply: accrSupply, totalTax: accrTax, totalAmount: accrTotal,
             items: accrLines,
           };
-          if (!onAddIssuedStatement || accrualSaveLock.current) return;
-          const key = JSON.stringify({ ...stmt, id: '', docNo: '', issuedAt: '' });
-          if (accrualSaveAttempt.current?.key !== key) accrualSaveAttempt.current = { key, statement: stmt };
-          accrualSaveLock.current = true;
-          try {
-            await onAddIssuedStatement(accrualSaveAttempt.current.statement);
-            accrualSaveAttempt.current = null;
-            onClose();
-          } catch (error) {
-            alert(`전표를 저장하지 못했습니다. 입력은 유지됩니다. ${String(error instanceof Error ? error.message : error)}`);
-          } finally {
-            accrualSaveLock.current = false;
-          }
+          if (!onAddIssuedStatement) return;
+          await submitIssue({version:1,companyId,userId:actorId,kind:'issuedStatements',document:{...stmt,companyId}});
         };
 
         /**
@@ -746,7 +760,15 @@ export default function VoucherComposer({
 
         return (
           <ModalShell title="일반전표 발행" onClose={() => { if (!transferLock.current) onClose(); }} bodyClassName="flex min-h-0 flex-col !p-0">
-            <fieldset disabled={transferSaving} className="contents">
+            {issuePending?.companyId === companyId && issuePending.userId === actorId && <section className="border-b bg-amber-50 p-4 space-y-2" aria-label="저장 중이던 전표">
+              <p className="font-bold">이전 전표의 저장 결과를 확인해야 합니다.</p>
+              <p>{issuePending.kind === 'cashEntries' ? issuePending.document.date : issuePending.document.tradeDate} · {issuePending.kind === 'cashEntries' ? issuePending.document.amount.toLocaleString() : issuePending.document.totalAmount.toLocaleString()}원</p>
+              <p className="text-sm">{issuePending.kind === 'cashEntries' ? issuePending.document.note : issuePending.document.memo} 새 전표를 만들지 않고 이전 내용으로 재시도합니다.</p>
+              <ul className="text-sm">{(issuePending.kind==='issuedStatements'?issuePending.document.items.map(line=>({code:line.accountCode,note:line.name,amount:line.total,side:line.side})):issuePending.document.lines?.map(line=>({code:line.accountCode,note:line.note,amount:line.amount,side:line.side}))??[{code:issuePending.document.accountCode,note:issuePending.document.note,amount:issuePending.document.amount,side:undefined}]).map((line,index)=><li key={index}>{line.side} {accountCodes.find(code=>code.code===line.code)?.name??line.code} · {line.note} {line.amount.toLocaleString()}원</li>)}</ul>
+              <button type="button" disabled={issueSaving} onClick={() => void submitIssue(issuePending,true)} className="rounded-lg bg-emerald-600 px-4 py-2 font-bold text-white">이전 전표 재시도</button>
+            </section>}
+            {issueError && <p role="alert" className="px-6 py-3 text-sm text-rose-600">{issueError}</p>}
+            <fieldset disabled={transferSaving || issueSaving || !!issuePending || issueCorrupt} className="contents">
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 shrink-0">

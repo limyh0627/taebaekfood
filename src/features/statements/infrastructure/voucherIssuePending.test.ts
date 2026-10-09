@@ -1,0 +1,8 @@
+/** @vitest-environment jsdom */
+import {beforeEach,expect,it} from 'vitest';
+import {readVoucherPending,storeVoucherPending,clearVoucherPending,voucherNoWriteProof,type VoucherIssuePending} from './voucherIssuePending';
+const pending:VoucherIssuePending={version:1,companyId:'taebaek',userId:'uid',kind:'cashEntries',document:{id:'cash-one',companyId:'taebaek',date:'2026-10-09',createdAt:'2026-10-09T00:00:00Z',dir:'출금',amount:100,cashAccountId:'bank',accountCode:'811',note:'원문'}};
+beforeEach(()=>localStorage.clear());
+it('손상 JSON 또는 다른 회사·actor 원문은 삭제하거나 재전송하지 않는다',()=>{for(const value of ['{',JSON.stringify({...pending,userId:'other'}),JSON.stringify({...pending,document:{...pending.document,note:123}})]){localStorage.setItem('key',value);expect(()=>readVoucherPending('key','taebaek','uid')).toThrow();expect(localStorage.getItem('key')).toBe(value);}});
+it('다른 탭의 원문을 덮거나 늦은 완료로 삭제하지 않는다',()=>{const encoded=storeVoucherPending('key',pending);const other={...pending,document:{...pending.document,id:'other'}};expect(()=>storeVoucherPending('key',other)).toThrow();localStorage.setItem('key',JSON.stringify(other));clearVoucherPending('key',encoded);expect(readVoucherPending('key','taebaek','uid')?.document.id).toBe('other');});
+it('일반 오류·다른 ID proof를 명확한 쓰기0으로 추정하지 않는다',()=>{expect(voucherNoWriteProof(new Error('timeout'),pending)).toBe(false);expect(voucherNoWriteProof({details:{version:1,financialWrites:false,operationStatus:'rejected',companyId:'taebaek',operationId:'other'}},pending)).toBe(false);expect(voucherNoWriteProof({details:{version:1,financialWrites:false,operationStatus:'rejected',companyId:'taebaek',operationId:'cash-one'}},pending)).toBe(true);});

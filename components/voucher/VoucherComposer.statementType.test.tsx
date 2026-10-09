@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen,waitFor,cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VoucherComposer from './VoucherComposer';
 import type { AccountCode, FixedCostTemplate, Partner } from '../../src/shared/types';
 import { appConfirm } from '../../src/shared/components/appDialog';
 
+vi.mock('../../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-auth-uid'}}}));
 vi.mock('../../src/shared/useLoanContracts', () => ({ useLoanContracts: () => [] }));
 vi.mock('../../src/shared/components/appDialog', () => ({
   appConfirm: vi.fn(), appNotice: vi.fn(), appPrompt: vi.fn().mockResolvedValueOnce('수협 일반전표').mockResolvedValueOnce('은행'),
@@ -16,8 +17,8 @@ const accounts = [
   { id: 'payable', code: '253', name: '미지급금', normalBalance: 'credit' },
 ] as AccountCode[];
 const partner = { id: 'bank', name: '수협은행' } as Partner;
-function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {}) {
-  const onAddIssuedStatement = vi.fn(), onAddFixedCostTemplate = vi.fn();
+function setup(statementType: '비용' | '매출' | '매입', overrides: Partial<FixedCostTemplate> = {},issue=vi.fn()) {
+  const onAddIssuedStatement = issue, onAddFixedCostTemplate = vi.fn();
   const t = { id: 'test-template', kind: 'voucher', name: '은행 템플릿', dir: '대체', mode: '일반',
     statementType, accountCode: '828', amount: 110_000, taxExempt: false, partnerId: 'bank', partnerName: '수협은행',
     ...(statementType === '비용' ? { transferLines: [{ accountCode: '828', side: '차변' }, { accountCode: '253', side: '대변' }] } : {}),
@@ -36,7 +37,7 @@ async function pick(u: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('종류와 거래처가 독립인 실제 전표 작성', () => {
-  beforeEach(() => { vi.spyOn(window, 'alert').mockImplementation(() => {}); });
+  beforeEach(() => {localStorage.clear(); vi.spyOn(window, 'alert').mockImplementation(() => {}); });
   it('대체 양식에서 거래처를 바꿔도 종류와 양변이 바뀌지 않는다', async () => {
     const u = userEvent.setup(); const { onAddIssuedStatement } = setup('비용'); await pick(u);
     const search = screen.getByPlaceholderText('업체명 검색...');
@@ -88,3 +89,5 @@ describe('종류와 거래처가 독립인 실제 전표 작성', () => {
       transferLines: [expect.objectContaining({ accountCode: '828', side: '차변' }), expect.objectContaining({ accountCode: '253', side: '대변' })] }));
   });
 });
+
+it('대체 원문도 응답유실 뒤 재열기에서 같은 ID·양변·금액으로 재개한다',async()=>{localStorage.clear();const u=userEvent.setup(),save=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce({id:'saved'});vi.spyOn(window,'alert').mockImplementation(()=>{});setup('비용',{},save);await pick(u);await u.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));cleanup();setup('비용',{},save);await u.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(save).toHaveBeenCalledTimes(2));expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);expect(localStorage.length).toBe(0);});

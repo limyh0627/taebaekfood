@@ -30,37 +30,52 @@ export async function issueTradeStatementCommand(input: TradeStatementIssueInput
 
 /** 주문 연결이 없는 일반 대체전표도 번호와 본문을 서버에서 함께 확정한다. */
 export async function issueNumberedStatement(statement: IssuedStatement): Promise<{ id: string; docNo: string }> {
-  await authReady;
-  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
+  const actorId=auth.currentUser?.uid;
+  const assertActor=()=>{if(!actorId||auth.currentUser?.uid!==actorId)throw new Error('로그인 사용자가 변경되었습니다. 전표를 보내지 않았습니다.');};
+  let submit!: () => Promise<{data:{id:string;docNo:string}}>;
+  try {
+  await authReady;assertActor();
+  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();assertActor();
   if (gate?.status !== 'active' || typeof gate.releaseId !== 'string') {
     throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
   }
   const scoped = await companyScopedWriteData('issuedStatements', statement as unknown as Record<string, unknown>);
+  assertActor();
   const call = httpsCallable<unknown, { id: string; docNo: string }>(functions, 'issueNumberedVoucher');
-  const result = await call({
+  const request = {
     kind: 'issuedStatements', operationId: statement.id, tradeDate: statement.tradeDate,
     prefix: statement.type === '비용' ? '대체' : '',
     document: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId,
-  });
-  return result.data;
+  };
+  submit = () => {assertActor();return call(request);};
+  } catch(error) {
+    if (statement.companyId === 'taebaek' || statement.companyId === 'punghoe')
+      throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), {
+        details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:statement.companyId,operationId:statement.id}});
+    throw error;
+  }
+  return (await submit()).data;
 }
 
 /** 일반 입출금 전표도 운영의 서버 소유 번호·장부 경계를 통과한다. */
 export async function issueNumberedCashEntry(entry: CashEntry): Promise<{ id: string; docNo: string }> {
+  const actorId=auth.currentUser?.uid;
+  const assertActor=()=>{if(!actorId||auth.currentUser?.uid!==actorId)throw new Error('로그인 사용자가 변경되었습니다. 전표를 보내지 않았습니다.');};
   let submit!: () => Promise<{ data: { id: string; docNo: string } }>;
   try {
-  await authReady;
-  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();
+  await authReady;assertActor();
+  const gate = (await getDoc(doc(db, 'appMeta', 'releaseCutover'))).data();assertActor();
   if (gate?.status !== 'active' || typeof gate.releaseId !== 'string') {
     throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
   }
   const scoped = await companyScopedWriteData('cashEntries', entry as unknown as Record<string, unknown>);
+  assertActor();
   const call = httpsCallable<unknown, { id: string; docNo: string }>(functions, 'issueNumberedVoucher');
   const request = {
     kind: 'cashEntries', operationId: entry.id, tradeDate: entry.date, prefix: '',
     document: JSON.parse(JSON.stringify(scoped)), releaseId: gate.releaseId,
   };
-  submit = () => call(request);
+  submit = () => {assertActor();return call(request);};
   } catch (error) {
     // callable을 아직 보내지 않은 실패만 입력 수정 가능한 쓰기0 증거로 전달한다.
     if (entry.companyId === 'taebaek' || entry.companyId === 'punghoe')
