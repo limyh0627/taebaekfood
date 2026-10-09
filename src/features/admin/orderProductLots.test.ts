@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OrderStatus, type Item, type Order, type RawMaterialLot } from '../../shared/types';
-import { combineProductLotMutations, createOrderProductLotOperations, productionProductLots, reverseProductionProductLots } from './orderProductLots';
+import { combineProductLotMutations, createOrderProductLotOperations, productionProductLots, reverseProductionProductLots, OrderInventoryPreconditionError } from './orderProductLots';
 
 const product = { id: 'p1', name: '완제품', type: 'product', unit: '개' } as Item;
 const order = {
@@ -86,4 +86,33 @@ describe('주문 완제품 로트 계획', () => {
     ]);
     expect(result.consumedLots.map(trace => [trace.lotId, trace.qty])).toEqual([['lot-1', 3]]);
   });
+});
+
+
+it('정리된 소진 원로트는 소비 스냅샷으로 복원하고 새 로트 및 현재 잔량은 그대로 둔다', () => {
+  const operations = createOrderProductLotOperations({ allItems: [product], shipQtyOf: row => row.quantity });
+  const before = [{ ...lots()[0]!, id: 'old', qtyIn: 5, qtyRemaining: 1, kgIn: 5, kgRemaining: 1, receivedDate: '2026-01-01' },
+    { ...lots()[0]!, id: 'new', qtyIn: 2, qtyRemaining: 2, kgIn: 2, kgRemaining: 2 }];
+  const taken = operations.deductProductLotsForOrder({ ...order, items: [{ ...order.items[0]!, quantity: 2 }] })[0]!.apply(before);
+  const retained = taken.lots.filter(lot => lot.status !== 'depleted');
+  const restored = operations.restoreProductLotsForOrder({ ...order, productConsumedLots: taken.consumedLots })[0]!.apply(retained);
+  expect(restored.lots).toEqual([{ ...before[0], qtyRemaining: 1, kgRemaining: 1 }, before[1]]);
+  expect(restored.lots.reduce((sum, lot) => sum + (lot.qtyRemaining ?? 0), 0)).toBe(3);
+  expect(before[0].qtyRemaining).toBe(1);
+});
+
+
+it('이전 스냅샷 잔량을 되살리지 않고 같은 로트의 이번 소비량만 복원한다', () => {
+  const operations = createOrderProductLotOperations({ allItems: [product], shipQtyOf: row => row.quantity });
+  const before = [{ ...lots()[0]!, qtyIn: 10, qtyRemaining: 10, kgIn: 10, kgRemaining: 10 }];
+  const taken = operations.deductProductLotsForOrder({ ...order, items: [{ ...order.items[0]!, quantity: 2 }] })[0]!.apply(before);
+  const restored = operations.restoreProductLotsForOrder({ ...order, productConsumedLots: taken.consumedLots })[0]!.apply([]);
+  expect(restored.lots[0]).toMatchObject({ qtyIn: 10, qtyRemaining: 2, kgIn: 10, kgRemaining: 2, supplierName: '공장', unitKg: 1 });
+});
+
+it('소비 스냅샷 없는 과거 원로트가 사라졌으면 잔량을 추정하지 않고 변환을 거절한다', () => {
+  const operations = createOrderProductLotOperations({ allItems: [product], shipQtyOf: row => row.quantity });
+  const restore = operations.restoreProductLotsForOrder({ ...order, productConsumedLots: [{ itemId: product.id, lotId: 'missing', qty: 1 }] })[0]!;
+  try { restore.apply([]); throw new Error('거절이 필요합니다'); }
+  catch (error) { expect(error).toBeInstanceOf(OrderInventoryPreconditionError); expect(error).toMatchObject({ inventoryUnchanged: true }); }
 });

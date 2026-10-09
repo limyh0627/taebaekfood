@@ -306,7 +306,7 @@ export interface Order {
    * 회수는 이걸 거꾸로 읽는다: 로트번호 → 나간 주문 → 거래처.
    * 출고취소 때도 이 스냅샷대로 되돌린다(FIFO를 다시 돌리면 그새 들어온 로트에 얹혀 어긋난다).
    */
-  productConsumedLots?: { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number }[];
+  productConsumedLots?: { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[];
   autoBuilt?: { itemId: string; qty: number }[];  // 구성품이 모자라 생산처리 때 먼저 만든 것 — 되돌리기용
   producedUnits?: { itemId: string; qty: number }[];  // 주문 품목을 실제로 몇 개 생산했나(기존 재고로 충당한 몫은 빠짐) — 되돌리기용.
                                                       // 없으면 옛 주문(주문량 전량 생산) → 되돌리기는 주문량으로 계산한다.

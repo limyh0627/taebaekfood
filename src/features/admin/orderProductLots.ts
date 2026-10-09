@@ -117,6 +117,7 @@ export function createOrderProductLotOperations(deps: OrderProductLotDeps) {
           lotNo: trace.lotNo,
           receivedDate: trace.receivedDate,
           qty: trace.qty,
+          lotSnapshot: lots.find(lot => lot.id === trace.lotId),
         }));
         return { lots: result.lots, consumedLots };
       },
@@ -124,24 +125,34 @@ export function createOrderProductLotOperations(deps: OrderProductLotDeps) {
   };
 
   const restoreProductLotsForOrder = (order: Order): OrderProductLotMutation[] => {
-    const byItem = new Map<string, ProductLotTake[]>();
+    const byItem = new Map<string, (ProductLotTake & { lotSnapshot?: RawMaterialLot })[]>();
     for (const trace of order.productConsumedLots ?? []) {
       const current = byItem.get(trace.itemId) ?? [];
       current.push({
         lotId: trace.lotId,
         lotNo: trace.lotNo,
         receivedDate: trace.receivedDate,
-        supplierName: '',
+        supplierName: trace.lotSnapshot?.supplierName ?? '',
         qty: trace.qty,
+        lotSnapshot: trace.lotSnapshot,
       });
       byItem.set(trace.itemId, current);
     }
     return [...byItem].map(([itemId, traces]) => ({
       itemId,
-      apply: (lots: RawMaterialLot[]) => ({
-        lots: restoreLotsByQty(lots, traces),
-        consumedLots: [],
-      }),
+      apply: (lots: RawMaterialLot[]) => {
+        const missing: RawMaterialLot[] = [];
+        for (const trace of traces) {
+          if (lots.some(lot => lot.id === trace.lotId) || missing.some(lot => lot.id === trace.lotId)) continue;
+          const snapshot = trace.lotSnapshot;
+          if (!snapshot || !trace.lotId || snapshot.id !== trace.lotId) {
+            throw new OrderInventoryPreconditionError('취소할 완제품 로트 원본이 없습니다. 저장된 소비 이력을 확인해 주세요.');
+          }
+          // Preserve origin metadata, but restore only this consumption, never the old snapshot balance.
+          missing.push({ ...snapshot, qtyRemaining: 0, kgRemaining: 0, status: 'active' });
+        }
+        return { lots: restoreLotsByQty([...missing, ...lots], traces), consumedLots: [] };
+      },
     }));
   };
 
