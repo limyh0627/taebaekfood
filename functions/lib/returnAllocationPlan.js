@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planReturnAllocation = planReturnAllocation;
+exports.prepareStandaloneReturn = prepareStandaloneReturn;
 const returnValidationError_1 = require("./returnValidationError");
+const returnReversalPlan_1 = require("./returnReversalPlan");
 const money = (value) => Number.isSafeInteger(value) && value >= 0;
 function planReturnAllocation(input) {
     if (!input.returnId || !input.companyId || !input.partnerId || !money(input.amount) || !input.amount
@@ -45,5 +47,19 @@ function planReturnAllocation(input) {
             break;
     }
     return { allocations, unappliedAmount: remaining };
+}
+/** 원전표 없는 반품도 명시 금액으로 역분개하고, 금융 미결만 같은 계정 FIFO로 준비한다. */
+function prepareStandaloneReturn(input) {
+    const reversal = (0, returnReversalPlan_1.planStandaloneReturn)(input.request);
+    const direction = input.request.returnType === '매출' ? '입금' : '출금';
+    const accountCode = input.request.returnType === '매출' ? '108' : input.request.payableAccountCode;
+    if (!Array.isArray(input.claims) || input.claims.some(claim => claim.companyId !== input.companyId
+        || claim.partnerId !== input.partnerId || claim.direction !== direction
+        || claim.accountCode !== accountCode))
+        throw new returnValidationError_1.ReturnValidationError('반품 미결의 회사·거래처·방향·계정이 맞지 않습니다.');
+    const allocation = planReturnAllocation({ returnId: input.returnId, companyId: input.companyId,
+        partnerId: input.partnerId, direction, amount: reversal.amount,
+        linkedStatementId: input.linkedStatementId, claims: input.claims, priorAllocations: input.priorAllocations });
+    return Object.assign(Object.assign({}, reversal), allocation);
 }
 //# sourceMappingURL=returnAllocationPlan.js.map

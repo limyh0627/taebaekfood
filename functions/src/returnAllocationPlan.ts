@@ -1,4 +1,5 @@
 import { ReturnValidationError } from './returnValidationError';
+import { planStandaloneReturn } from './returnReversalPlan';
 /** Pure noncash allocation. The caller must read claims and prior applications in one transaction. */
 export type ReturnClaim = {
   id: string; companyId: string; partnerId: string; direction: '입금' | '출금';
@@ -52,4 +53,25 @@ export function planReturnAllocation(input: ReturnAllocationInput) {
     if (!remaining) break;
   }
   return { allocations, unappliedAmount: remaining };
+}
+
+/** 원전표 없는 반품도 명시 금액으로 역분개하고, 금융 미결만 같은 계정 FIFO로 준비한다. */
+export function prepareStandaloneReturn(input: {
+  returnId: string; companyId: string; partnerId: string;
+  request: Parameters<typeof planStandaloneReturn>[0];
+  linkedStatementId?: string;
+  claims: (ReturnClaim & { accountCode: string })[];
+  priorAllocations: PriorReturnAllocation[];
+}) {
+  const reversal = planStandaloneReturn(input.request);
+  const direction = input.request.returnType === '매출' ? '입금' : '출금';
+  const accountCode = input.request.returnType === '매출' ? '108' : input.request.payableAccountCode!;
+  if (!Array.isArray(input.claims) || input.claims.some(claim => claim.companyId !== input.companyId
+    || claim.partnerId !== input.partnerId || claim.direction !== direction
+    || claim.accountCode !== accountCode))
+    throw new ReturnValidationError('반품 미결의 회사·거래처·방향·계정이 맞지 않습니다.');
+  const allocation = planReturnAllocation({ returnId: input.returnId, companyId: input.companyId,
+    partnerId: input.partnerId, direction, amount: reversal.amount,
+    linkedStatementId: input.linkedStatementId, claims: input.claims, priorAllocations: input.priorAllocations });
+  return { ...reversal, ...allocation };
 }
