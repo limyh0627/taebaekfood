@@ -8,6 +8,7 @@ import {buildBomIndex,getBomIndex,setBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex,getPackIndex} from '../src/shared/packIndex';
 import {itemKg,unpackComponent,type OrderUnitInputs} from '../src/shared/orderUnits';
 import type {Item} from '../src/shared/types';
+import {unpackPlan} from '../src/shared/canUnpack';
 const source=readFileSync('components/ItemList.tsx','utf8');
 const start=source.indexOf('  const unpackBox = async');
 const end=source.indexOf('\n  /**',start);
@@ -18,6 +19,17 @@ const items=['box','unit','loose'].map(id=>({id,name:id,type:'product',companyId
 const a={bom:buildBomIndex(items,[{parent_id:'box',child_id:'unit',quantity:10},{parent_id:'unit',child_id:'loose',quantity:20}]),pack:buildPackIndex()};
 const b=buildBomIndex(items,[]),original=getBomIndex();
 afterEach(()=>setBomIndex(original));
+it('목록·상세·미리보기·확정의 실제 네 개봉 계획 표현식은 회사 BOM을 사용한다',()=>{
+ const can={...items[0],unpackable:true},bulk={...items[1],id:'bulk',subtype:'벌크',unit:'kg'},cap={...items[2],id:'cap',type:'submaterial'} as Item;
+ const own={bom:buildBomIndex([can,bulk,cap],[{parent_id:can.id,child_id:'bulk',quantity:16.5},{parent_id:can.id,child_id:'cap',quantity:1}]),pack:buildPackIndex([])};
+ setBomIndex(buildBomIndex([],[]));
+ const calls=[...source.matchAll(/unpackPlan\([^;\n]+\)/g)].map(match=>match[0]);
+ expect(calls).toHaveLength(4);
+ for(const call of calls){
+  const run=new Function('unpackPlan','item','product','unpackModal','orderUnitInputs',`return ${call};`);
+  expect(run(unpackPlan,can,can,{item:can,count:'1'},own)).toMatchObject({ok:true,plan:{bulkQty:16.5,discarded:[{itemId:'cap',qty:1}]}});
+ }
+});
 it('작업 시작부터 다른 전역 BOM이어도 회사 props 입력으로 개봉한다',async()=>{
  setBomIndex(b);const save=vi.fn().mockResolvedValue({ok:true,message:''});
  await make(getBomIndex,getPackIndex,unpackComponent,items,async()=>true,save,vi.fn(),vi.fn(),{current:true},a)(items[0]);

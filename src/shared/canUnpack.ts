@@ -1,5 +1,5 @@
 import type { Item } from './types';
-import { bomOf } from './bomIndex';
+import { bomOf, type BomIndex } from './bomIndex';
 import { isBulkItem } from './itemTaxonomy';
 
 /**
@@ -75,8 +75,8 @@ export type UnpackResult =
  * **표시와 구성이 둘 다 맞아야 한다.** 표시만 켜고 구성이 없으면 깠을 때
  * 아무 데도 안 들어간다 — 그러면 재고가 그냥 사라진다.
  */
-export function isUnpackable(item: Item | undefined): boolean {
-  return unpackPlan(item, 1).ok;
+export function isUnpackable(item: Item | undefined, bom?: BomIndex): boolean {
+  return unpackPlan(item, 1, undefined, bom).ok;
 }
 
 /**
@@ -85,11 +85,11 @@ export function isUnpackable(item: Item | undefined): boolean {
  * 재고가 모자란지까지 보려면 `stock` 을 준다. 안 주면 개수만 본다
  * (단추를 달지 말지 정할 때는 재고를 안 본다 — 0개여도 단추는 보이고, 눌렀을 때 막는다).
  */
-export function unpackPlan(item: Item | undefined, cans: number, stock?: number): UnpackResult {
+export function unpackPlan(item: Item | undefined, cans: number, stock?: number, bom?: BomIndex): UnpackResult {
   if (!item?.unpackable) return { ok: false, reason: 'NOT_MARKED' };
   if (!Number.isFinite(cans) || cans < 1) return { ok: false, reason: 'BAD_COUNT' };
 
-  const lines = bomOf(item.id).filter(l => !!l.child);
+  const lines = (bom ? bom.of(item.id) : bomOf(item.id)).filter(l => !!l.child);
   //  **벌크는 subtype 이 정한다**(`itemTaxonomy.isBulkItem`) — 단위('개'·'kg')로 가르면
   //  품목 단위를 정리하려고 글자 하나 고쳤을 때 개봉 수식이 조용히 바뀐다.
   const bulks = lines.filter(l => isBulkItem(l.child));

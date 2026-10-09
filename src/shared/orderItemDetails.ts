@@ -1,16 +1,17 @@
 import type { Item, OrderItem } from './types';
-import { bomOf } from './bomIndex';
+import { bomOf, type BomIndex } from './bomIndex';
 import { isBulkItem } from './itemTaxonomy';
 
 /** 이름·규격이 같은 별개 SKU를 대신 찾지 않는다. 주문의 ID와 현재 BOM만 표시 근거다. */
-export function orderItemDetails(orderItem: OrderItem, items: readonly Item[]) {
+export function orderItemDetails(orderItem: OrderItem, items: readonly Item[], bomIndex?: BomIndex) {
+  const of = (id: string) => bomIndex ? bomIndex.of(id) : bomOf(id);
   const direct = items.find(item => item.id === orderItem.itemId && !item.archived);
   const isManufacturing = (item: Item) => ['product', 'goods', 'wip'].includes(item.type) && !isBulkItem(item);
-  const rows = bomOf(orderItem.itemId).filter(row => row.child && !row.child.archived);
+  const rows = of(orderItem.itemId).filter(row => row.child && !row.child.archived);
   const manufacturingRows = rows.filter(row => isManufacturing(row.child!));
   const manufacturing = manufacturingRows.map(row => row.child!.name);
   if (!manufacturing.length && direct && isManufacturing(direct)) manufacturing.push(direct.name);
-  const components = [...rows, ...manufacturingRows.flatMap(row => bomOf(row.childId))]
+  const components = [...rows, ...manufacturingRows.flatMap(row => of(row.childId))]
     .flatMap(row => row.child && !row.child.archived ? [row.child] : []);
   const byCategory = (categories: string[]) => [...new Set(components
     .filter(item => item.type === 'submaterial' && categories.includes(item.category || ''))

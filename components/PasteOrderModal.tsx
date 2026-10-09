@@ -12,6 +12,7 @@ import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
+import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import ModalShell from '../src/shared/components/ModalShell';
 import { clampNote, NOTE_MAX } from '../src/shared/orderNote';
 
@@ -100,6 +101,7 @@ const matchClient = (name: string, q: string) => {
 
 // ── Props ────────────────────────────────────────────────────
 interface PasteOrderModalProps {
+  orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   partners: Partner[];
   /**
@@ -120,7 +122,7 @@ interface PasteOrderModalProps {
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, orders, partnerItems, palletStocks, initialText = '', onClose, onBack, onSave,
+  items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -305,7 +307,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const handleSubmit = async () => {
     if (savingRef.current || !orderDate || !deadline || !selectedClient) return;
     const draft = buildNewOrderDraft({
-      partner: selectedClient, items, partnerItems: partnerOut,
+      partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
       lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
         itemId: line.selectedProductId!, quantity: line.qty, isBoxUnit: line.isBox,
         orderedAs: line.rawText,
@@ -596,7 +598,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                     </div>
                     {matched && (() => {
                       // 포장 부자재는 현재 BOM에서만 읽는다.
-                      const subs = bomOf(matched.id)
+                      const subs = (orderUnitInputs ? orderUnitInputs.bom.of(matched.id) : bomOf(matched.id))
                         .filter(l => ['마개', '테이프', '박스', '용기', '라벨', '비닐', '케이스'].includes(String(l.child?.category ?? '')))
                         .map(l => l.child!.name);
                       return (

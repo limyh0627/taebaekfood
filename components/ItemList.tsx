@@ -1013,7 +1013,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const 개봉확정 = async () => {
     if (!unpackModal || unpackBusy) return;
     const { item } = unpackModal;
-    const r = unpackPlan(item, Number(unpackModal.count), item.stock ?? 0);
+    const r = unpackPlan(item, Number(unpackModal.count), item.stock ?? 0, orderUnitInputs?.bom);
     if (!r.ok) return;                                  // 단추가 이미 막혀 있다
     setUnpackBusy(true);
     try {
@@ -2191,7 +2191,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                               title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product, orderUnitInputs)!.itemId)?.name ?? '낱개'} +${unpackComponent(product, orderUnitInputs)!.count}개`}
                             >개봉</button>
                           ) : (() => {
-                            const r = unpackPlan(product, 1);
+                            const r = unpackPlan(product, 1, undefined, orderUnitInputs?.bom);
                             if (!r.ok) return null;
                             return (
                               <button
@@ -2340,7 +2340,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           const canPurchase = purchasableIds.has(product.id) || inboundNames.length > 0;
           const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
           const directUnpack = unpackComponent(product, orderUnitInputs);
-          const plannedUnpack = unpackPlan(product, 1);
+          const plannedUnpack = unpackPlan(product, 1, undefined, orderUnitInputs?.bom);
           return (
             <ModalShell
               title="재고 상세"
@@ -3226,7 +3226,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
            공캔이 안 돌아온다는 것도 여기서 말해 준다 — 나중에 "공캔 재고가 왜 안 늘지"
            하고 찾게 두면 안 된다. */}
       {unpackModal && (() => {
-        const r = unpackPlan(unpackModal.item, Number(unpackModal.count), unpackModal.item.stock ?? 0);
+        const r = unpackPlan(unpackModal.item, Number(unpackModal.count), unpackModal.item.stock ?? 0, orderUnitInputs?.bom);
         const 있는것 = unpackModal.item.stock ?? 0;
         return (
           <ModalShell title="개봉" onClose={() => { if (!unpackBusy) setUnpackModal(null); }} className="md:max-w-sm">

@@ -50,7 +50,7 @@ import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet,
 import { orderItemDetails } from '../src/shared/orderItemDetails';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
-import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../src/shared/orderUnits';
+import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { partnerLabel, shipToOf } from '../src/shared/shipTo';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -236,6 +236,7 @@ const inventoryBoxPackCount = (product: Item | undefined): number | undefined =>
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
 interface OrdersListProps {
+  orderUnitInputs?: OrderUnitInputs;
   companyId: CompanyId;
   title: string;
   /**
@@ -301,6 +302,7 @@ interface OrdersListProps {
 }
 
 interface OrderCardProps {
+  orderUnitInputs?: OrderUnitInputs;
   order: Order;
   partners: Partner[];
   items: Item[];
@@ -341,6 +343,7 @@ interface OrderCardProps {
 }
 
 interface OrderSourceGroupProps {
+  orderUnitInputs?: OrderUnitInputs;
   colId: string;
   source: OrderSource;
   orders: Order[];
@@ -409,7 +412,7 @@ const byDeliveryThenId = (a: Order, b: Order) =>
  * (`onEditOrder` 는 그 뒤에 실제로 쓰기 시작했다.)
  */
 export const OrderCard = memo<OrderCardProps>(({
-  order, partners, items, partnerItems,
+  order, partners, items, partnerItems, orderUnitInputs,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
@@ -645,9 +648,9 @@ export const OrderCard = memo<OrderCardProps>(({
                *  단위를 바꿔야 하면 줄을 지우고 다시 담는다.
                */
               // 주문에 박힌 값 → 품목이 아는 개입수(BOM 아니면 포장 환산표)
-              const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
+              const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo, orderUnitInputs);
               //  개입수를 아는 품목(박스 품목·향미유·고춧가루)에는 제조일자 칸을 안 띄운다
-              const 개입수있음 = unitsPerBoxOf(editProductInfo) > 0;
+              const 개입수있음 = unitsPerBoxOf(editProductInfo, orderUnitInputs) > 0;
               return (
                 <div key={idx} className="flex flex-col gap-1 text-[10px] font-bold border-b border-slate-50 pb-2 last:border-0">
                   {/* **이름 → 규격 → 수량**을 한 줄에. 수량을 아래로 내리면 품목마다 두 줄이 되고,
@@ -757,7 +760,7 @@ export const OrderCard = memo<OrderCardProps>(({
                   </div>
                   {(() => {
                     // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
-                    const isBoxProd = isBoxStockItem(productInfo);
+                    const isBoxProd = isBoxStockItem(productInfo, orderUnitInputs);
                     const isShipPkg = (p: Item) => p.type === 'box' || p.category === '박스' || p.category === '테이프';
                     // 1. item_bom 기반 구성품 (submaterial 카테고리만) — 낱개는 박스/테이프 제외
                     const bomSubs = itemBoms
@@ -839,7 +842,7 @@ export const OrderCard = memo<OrderCardProps>(({
                       )}
                       {open && bomProducts.map(({ p }) => {
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
-                        const cSubs = bomOf(p.id).filter(l => {
+                        const cSubs = (orderUnitInputs ? orderUnitInputs.bom.of(p.id) : bomOf(p.id)).filter(l => {
                           const ci = l.child;
                           return ci?.type === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
                         });
@@ -1026,7 +1029,7 @@ export const OrderCard = memo<OrderCardProps>(({
                  */
                 const pool = items
                   .filter(p => !p.archived && !already.has(p.id) && orderable(p))
-                  .filter(p => !(isBoxStockItem(p) && items.some(x => !x.archived && x.id === unpackComponent(p)?.itemId)))
+                  .filter(p => !(isBoxStockItem(p, orderUnitInputs) && items.some(x => !x.archived && x.id === unpackComponent(p, orderUnitInputs)?.itemId)))
                   .filter(p => !q || matchesSearch(p.name, q) || matchesSearch(String(p.spec ?? ''), q));
                 //  이름표는 shared/taxonomy 한 곳에서 온다
                 const TYPE_LABEL = DEFAULT_CATEGORY_LABELS;
@@ -1059,7 +1062,7 @@ export const OrderCard = memo<OrderCardProps>(({
                           </div>
                           {list.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ko')).map(p => {
                             //  이 낱개에 짝지어진 박스 중 이 거래처가 살 수 있는 것만 토글에 올린다
-                            const boxes = boxSiblings(p, items).filter(b => orderable(b.item) && !already.has(b.item.id));
+                            const boxes = boxSiblings(p, items, orderUnitInputs).filter(b => orderable(b.item) && !already.has(b.item.id));
                             const variants = [
                               { item: p as Item, label: isBulkItem(p) ? '벌크' : '낱개', spec: p.spec || (isBulkItem(p) ? p.unit : '') },
                               ...boxes.map(b => ({ item: b.item as Item, label: `${b.count}개입`, spec: b.item.spec || '' })),
@@ -1559,7 +1562,7 @@ const 정렬목록 = [
 
 const OrdersList: React.FC<OrdersListProps> = ({
   companyId,
-  title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
+  title, subtitle, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms = [], orderUnitInputs,
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted,
@@ -2211,7 +2214,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    partners, items, partnerItems, palletStocks, itemBoms,
+    partners, items, partnerItems, palletStocks, itemBoms, orderUnitInputs,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate,
@@ -2964,7 +2967,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             setListPage(1);
           };
           const listInlineSelectClass = 'h-7 cursor-pointer rounded-md border border-slate-200 pl-2 pr-6 text-[10px] font-black outline-none transition-colors focus:ring-1 focus:ring-indigo-400';
-          const getListItemDetail = (_order: Order, orderItem: OrderItem) => orderItemDetails(orderItem, items);
+          const getListItemDetail = (_order: Order, orderItem: OrderItem) => orderItemDetails(orderItem, items, orderUnitInputs?.bom);
           const getPalletSummary = (order: Order) => (order.pallets ?? [])
             .filter(pallet => pallet.quantity > 0)
             .map(pallet => {
@@ -4164,6 +4167,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   order={order}
                   partners={partners}
                   items={items}
+                  orderUnitInputs={orderUnitInputs}
                   partnerItems={partnerItems}
                   editingOrderId={editingOrderId}
                   setEditingOrderId={setEditingOrderId}

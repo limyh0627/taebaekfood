@@ -37,6 +37,21 @@ beforeEach(() => {
 });
 
 describe('무엇을 깔 수 있나', () => {
+  it('명시 회사 구성은 상대 전역과 무관하게 벌크와 폐기량을 계산한다', () => {
+    const a = buildBomIndex(ITEMS, [bom('캔', '벌크', 16.5), bom('캔', '공캔', 1)]);
+    const b = buildBomIndex(ITEMS, [bom('캔', '들기름', 10), bom('캔', '병뚜껑', 2)]);
+    setBomIndex(b);
+    expect(unpackPlan(캔, 2, 5, a)).toMatchObject({ok:true,plan:{bulkItemId:'벌크',bulkQty:33,discarded:[{itemId:'공캔',qty:2}]}});
+    setBomIndex(a);
+    expect(unpackPlan(캔, 2, 5, b)).toMatchObject({ok:true,plan:{bulkItemId:'들기름',bulkQty:20,discarded:[{itemId:'병뚜껑',qty:4}]}});
+    expect(unpackPlan(캔, 2, 5)).toMatchObject({ok:true,plan:{bulkQty:33}});
+  });
+  it('명시 빈 구성은 전역으로 대체하지 않고 개봉 가능 판정도 같은 입력을 쓴다', () => {
+    const empty = buildBomIndex([], []);
+    expect(unpackPlan(캔, 1, undefined, empty)).toEqual({ok:false,reason:'NO_BULK'});
+    expect(isUnpackable(캔, empty)).toBe(false);
+    expect(isUnpackable(캔)).toBe(true);
+  });
   it('표시를 켜고 구성에 벌크가 있으면 깐다', () => {
     expect(isUnpackable(캔)).toBe(true);
   });

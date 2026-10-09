@@ -2526,6 +2526,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'orders' && (
             <OrdersList
               companyId={companyId}
+              orderUnitInputs={appData.orderUnitInputs}
               //  주문 로그가 `createdBy`(사번)를 이름으로 풀 때 쓴다.
               employees={employees}
               /*  **캘린더 자리는 배송 캘린더가 채운다**(2026-09-11 사장님:
@@ -5171,6 +5172,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       )}
       {isPasteOrderOpen && (
         <PasteOrderModal
+          orderUnitInputs={appData.orderUnitInputs}
           items={allItems}
           partners={partners}
           orders={orders}

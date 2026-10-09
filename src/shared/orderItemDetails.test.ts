@@ -27,3 +27,11 @@ describe('주문 상세의 최신 BOM 연결',()=>{
     expect(orderItemDetails(orderItem,items).manufacturing).toEqual([]);
   });
 });
+
+it('명시 BOM은 같은 ID의 상대 회사 전역과 하위 부자재를 섞지 않는다',()=>{
+ const items=[{id:'box',type:'product',name:'상자'},{id:'loose',type:'product',name:'낱개'},{id:'cap',type:'submaterial',category:'마개',name:'태백 마개'}] as Item[];
+ const own=buildBomIndex(items,[{parent_id:'box',child_id:'loose',quantity:12},{parent_id:'loose',child_id:'cap',quantity:1}]);
+ const other=items.map(i=>i.id==='cap'?{...i,name:'풍회 마개'}:i);
+ setBomIndex(buildBomIndex(other,[{parent_id:'box',child_id:'loose',quantity:6},{parent_id:'loose',child_id:'cap',quantity:1}]));
+ expect(orderItemDetails(orderItem,items,own).caps).toEqual(['태백 마개']);
+});
