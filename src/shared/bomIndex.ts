@@ -128,8 +128,9 @@ export function resetBomIndex(): void {
 export function packingSubmaterials(
   parentId: string | undefined,
   isBulk: (i: { subtype?: string; type?: string }) => boolean,
+  index?: BomIndex,
 ): BomLine['child'][] {
-  return bomOf(parentId)
+  return (index ? index.of(parentId ?? '') : bomOf(parentId))
     .map(l => l.child)
     .filter((c): c is NonNullable<BomLine['child']> =>
       !!c && c.type === 'submaterial' && !isBulk(c) && !(c as { phantom?: boolean }).phantom);

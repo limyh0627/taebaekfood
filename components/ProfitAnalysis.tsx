@@ -17,6 +17,7 @@ import { makeCodeToGroup, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, C
 import { partnerBalanceFromJournals, partnerCarryOver, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { partnerMonthlySettlement } from '../src/features/admin/partnerMonthlySettlement';
 import { savePartnerMonthlyPdf } from '../src/features/admin/partnerMonthlyPdf';
+import { buildProfitAccountProjection } from '../src/features/admin/profitAccountProjection';
 import { buildProfitPeriodProjection } from '../src/features/admin/profitPeriodProjection';
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchWhere } from '../src/shared/services/firebaseService';
@@ -330,62 +331,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     [issuedStatements, cashEntries, accountCodes, opening, inventorySnapshots, periodMonths, codeToGroup]
   );
 
-  /**
-   * 손익 계정을 **계정과목별로** 쪼갠다 — 손익 숫자와 같은 분개에서 뽑으므로 합계가 어긋나지 않는다.
-   *
-   * 수익은 대변, 비용은 차변이 정상이라 계정의 normalBalance로 부호를 잡는다.
-   * 그래야 매출 환입(차변)이나 비용 정정(대변)이 제대로 깎인다.
-   */
-  const plByCode = useMemo(() => {
-    const ymSet = new Set(monthlyData.map(m => m.ym));
-    /*
-     * **손익 계정을 전부 먼저 0으로 깔아 둔다.**
-     *
-     * 분개에 나온 계정만 세면, 그 기간에 안 움직인 계정은 줄 자체가 사라진다.
-     * 그러면 "이자비용이 빠진 건가, 0인 건가"를 화면에서 가릴 수 없다 — 실제로
-     * 기간이 통째로 잘려 전부 0이 됐을 때 계정이 사라진 것처럼 보였다.
-     * 0으로라도 서 있으면 '이 기간엔 없다'가 눈에 보인다.
-     */
-    const tally = new Map<string, number>();
-    for (const a of accountCodes) {
-      if (a.type === '비용' || a.type === '수익') tally.set(String(a.code), 0);
-    }
-    for (const e of journalEntries) {
-      if (!ymSet.has((e.date ?? '').slice(0, 7))) continue;
-      for (const l of e.lines ?? []) {
-        const acc = accountCodes.find(a => String(a.code) === String(l.accountCode));
-        if (acc?.type !== '비용' && acc?.type !== '수익') continue;
-        const normal = acc.normalBalance ?? (acc.type === '수익' ? 'credit' : 'debit');
-        const amt = normal === 'debit' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
-        if (!amt) continue;
-        tally.set(String(l.accountCode), (tally.get(String(l.accountCode)) ?? 0) + amt);
-      }
-    }
-    return [...tally.entries()]
-      .map(([code, amount]) => {
-        const acc = accountCodes.find(a => String(a.code) === String(code));
-        const g = codeToGroup(code);
-        return { code, name: acc?.name ?? code, amount, plLine: g?.plLine, groupId: g?.id, groupName: g?.name };
-      })
-      .sort((a, b) => b.amount - a.amount);   // 0인 줄은 자연히 아래로 모인다
-  }, [journalEntries, accountCodes, codeToGroup, monthlyData]);
-
-  /**
-   * 그룹별로 묶는다 — **묶는 근거는 계정그룹 하나뿐이다.**
-   * 예전엔 여기 계정번호를 박아 뒀는데(원재료 500·501·503·505), 계정을 새로 만들면
-   * 목록을 고치기 전까지 소계에서 조용히 빠졌다. 이제 계정에 그룹만 붙이면 따라온다.
-   */
-  const plByGroup = useMemo(() => {
-    const m = new Map<string, { name: string; plLine?: string; amount: number; rows: typeof plByCode }>();
-    for (const r of plByCode) {
-      const key = r.groupId ?? '(그룹없음)';
-      const cur = m.get(key) ?? { name: r.groupName ?? '그룹 없음', plLine: r.plLine, amount: 0, rows: [] };
-      cur.amount += r.amount;
-      cur.rows.push(r);
-      m.set(key, cur);
-    }
-    return [...m.entries()].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.amount - a.amount);
-  }, [plByCode]);
+  const { plByCode, plByGroup } = useMemo(
+    () => buildProfitAccountProjection({ journalEntries, accountCodes, codeToGroup,
+      periodMonths: monthlyData.map(month => month.ym) }),
+    [journalEntries, accountCodes, codeToGroup, monthlyData]
+  );
 
   // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
   const summary = useMemo(() => {

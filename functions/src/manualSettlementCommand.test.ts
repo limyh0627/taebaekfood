@@ -46,15 +46,18 @@ describe('일반 발행 자금의 수동 연결', () => {
     const f = fixture(); const originals = structuredClone(Object.fromEntries(f.rows));
     const replay = () => issueVoucher(f.db, 'taebaek', { kind: 'cashEntries', operationId: 'c', tradeDate: '2026-10-07',
       releaseId: 'rel', document: { date: '2026-10-07', dir: '입금', amount: 100, partnerId: 'p', accountCode: '108' } });
-    // 현재 issuer의 보호계정 정책은 과거 generic 문서에도 동일하게 거절한다. 임의로 정책을 풀지 않는다.
-    await expect(replay()).rejects.toThrow('원자 명령');
+    // 과거 hash와 현재 요청이 다르면 기존 작업 ID를 재사용하지 않는다.
+    await expect(replay()).rejects.toMatchObject({ code: 'already-exists', message: '작업 ID가 다른 전표에 사용되었습니다.' });
+    expect(Object.fromEntries(f.rows)).toEqual(originals);
     expect(await f.run('add')).toMatchObject({ status: 'applied', revision: 1 });
     expect(await f.run('add')).toMatchObject({ status: 'duplicate', revision: 1 });
     expect(await f.run('update', { action: 'update', settlementId: 'manual-add', expectedAmount: 80, amount: 60, expectedRevision: 1 })).toMatchObject({ revision: 2 });
     expect(await f.run('delete', { action: 'delete', settlementId: 'manual-add', amount: 60, expectedRevision: 2 })).toMatchObject({ revision: 3 });
     for (const path of ['cashEntries/c', 'issuedStatements/s', 'appMeta/voucherNo_taebaek_2026-10-07_general']) expect(f.rows.get(path)).toEqual(originals[path]);
     expect(f.rows.has('settlements/manual-add')).toBe(false);
-    await expect(replay()).rejects.toThrow('원자 명령');
+    const afterManualChanges = structuredClone(Object.fromEntries(f.rows));
+    await expect(replay()).rejects.toMatchObject({ code: 'already-exists', message: '작업 ID가 다른 전표에 사용되었습니다.' });
+    expect(Object.fromEntries(f.rows)).toEqual(afterManualChanges);
   });
   it.each(['operationId', 'returnOperationId', 'transferOperationId', 'issueOperationId', 'serverOwned'])('명령 소유 정산 %s는 변경하지 않는다', async field => {
     const f = fixture(); const row = { companyId: 'taebaek', cashEntryId: 'c', statementId: 's', amount: 80, [field]: field === 'serverOwned' ? true : 'owned' };

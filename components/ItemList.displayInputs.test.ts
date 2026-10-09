@@ -4,7 +4,7 @@ import {useMemo} from 'react';
 import {renderHook} from '@testing-library/react';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {buildBomIndex,getBomIndex,setBomIndex} from '../src/shared/bomIndex';
+import {buildBomIndex,getBomIndex,setBomIndex,bomOf,packingSubmaterials} from '../src/shared/bomIndex';
 import {buildPackIndex,getPackIndex,setPackIndex,packUnitsOf} from '../src/shared/packIndex';
 import {groupLooseBoxRows,unpackComponent,packBreakdown,type OrderUnitInputs} from '../src/shared/orderUnits';
 import type {Item} from '../src/shared/types';
@@ -54,4 +54,29 @@ it('포장 요약은 회사 포장표를 사용하며 박스 SKU를 재환산하
  expect(display(items[1],20,unpackComponent,packBreakdown,packUnitsOf,a)).toBe(packBreakdown(20,20));
  expect(display(items[0],20,unpackComponent,packBreakdown,packUnitsOf,a)).toBe(packBreakdown(20,0));
  expect(display(items[1],20,unpackComponent,packBreakdown,packUnitsOf,undefined)).toBe(packBreakdown(20,10));
+});
+
+const packagingItems=[{id:'made',name:'완제품',type:'product'},{id:'cap-a',name:'태백 캡',type:'submaterial'},{id:'cap-b',name:'풍회 캡',type:'submaterial'},{id:'bulk',name:'벌크',type:'submaterial',subtype:'bulk'},{id:'phantom',name:'배합',type:'submaterial',phantom:true}] as Item[];
+const packagingA:OrderUnitInputs={bom:buildBomIndex(packagingItems,[{parent_id:'made',child_id:'cap-a',quantity:1},{parent_id:'made',child_id:'bulk',quantity:1},{parent_id:'made',child_id:'phantom',quantity:1}]),pack:a.pack};
+const packagingB:OrderUnitInputs={bom:buildBomIndex(packagingItems,[{parent_id:'made',child_id:'cap-b',quantity:1}]),pack:b.pack};
+const displayParts=(name:string,provided?:OrderUnitInputs)=>{
+ const matches=[...source.matchAll(new RegExp(`const ${name} = ([^;]+);`,'g'))];
+ const match=matches.find(row=>name==='subs'?row[1].includes('p.id'):row[1].includes('product?.id'));
+ if(!match)throw new Error('실제 구성 표시 표현식이 없습니다.');
+ const code=ts.transpileModule(`return ${match[1]};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+ return new Function('p','product','bomOf','packingSubmaterials','isBulkItem','orderUnitInputs',code)(packagingItems[0],packagingItems[0],bomOf,packingSubmaterials,(item:Item)=>item.subtype==='bulk',provided) as Array<Item|{childId:string}>;
+};
+it('재고 만들기 실제 구성 표시는 다른 회사 전역과 독립적이고 기존 fallback을 보존한다',()=>{
+ setBomIndex(packagingB.bom);
+ expect(displayParts('subs',packagingA).map(row=>(row as {childId:string}).childId)).toEqual(['cap-a','bulk','phantom']);
+ expect(displayParts('subs',packagingB).map(row=>(row as {childId:string}).childId)).toEqual(['cap-b']);
+ expect(displayParts('subs').map(row=>(row as {childId:string}).childId)).toEqual(['cap-b']);
+ expect(getBomIndex()).toBe(packagingB.bom);
+});
+it('상세 실제 포장 chip은 회사 입력을 쓰며 벌크·배합 제외와 fallback을 보존한다',()=>{
+ setBomIndex(packagingB.bom);
+ expect(displayParts('chips',packagingA).map(row=>(row as Item).id)).toEqual(['cap-a']);
+ expect(displayParts('chips',packagingB).map(row=>(row as Item).id)).toEqual(['cap-b']);
+ expect(displayParts('chips').map(row=>(row as Item).id)).toEqual(['cap-b']);
+ expect(getBomIndex()).toBe(packagingB.bom);
 });

@@ -47,18 +47,26 @@ describe.skipIf(!ready)('전표 번호: 두 인증 사용자와 예약 Functions
  it('공개 명령 두 사용자와 실제 예약 발행 본문은 같은 통의 서로 다른 세 번호를 받고 재시도는 추가 소비하지 않는다',async()=>{
   const [a,b]=await Promise.all([actor(),actor()]);
   expect(a.uid).not.toBe(b.uid);
-  const results=await Promise.all([
+  const [issuedRun,cashRun,scheduledRun]=await Promise.allSettled([
    issueNumberedVoucher.run({auth:a,data:issued} as any),
    issueNumberedVoucher.run({auth:b,data:cash} as any),
    issueScheduledVoucher(db,template,ym,date,prefix),
   ]);
+  if(issuedRun.status==='rejected')throw issuedRun.reason;
+  if(cashRun.status==='rejected')throw cashRun.reason;
+  if(scheduledRun.status==='rejected')throw scheduledRun.reason;
+  const results=[issuedRun.value,cashRun.value,scheduledRun.value] as const;
   const scheduledResult=results[2];expect('result' in scheduledResult).toBe(true);
   const numbers=[results[0].docNo,results[1].docNo,'result' in scheduledResult?scheduledResult.result.docNo:''];
   expect(numbers.sort()).toEqual(['300109-001','300109-002','300109-003']);
   const counter=db.doc(`appMeta/${voucherSequenceKey('taebaek',date)}`);
   expect((await counter.get()).data()?.last).toBe(3);
   const before=await Promise.all([...paths].map(path=>db.doc(path).get()));
-  const retried=await Promise.all([issueNumberedVoucher.run({auth:a,data:issued} as any),issueNumberedVoucher.run({auth:b,data:cash} as any),issueScheduledVoucher(db,template,ym,date,prefix)]);
+  const [issuedReplay,cashReplay,scheduledReplay]=await Promise.allSettled([issueNumberedVoucher.run({auth:a,data:issued} as any),issueNumberedVoucher.run({auth:b,data:cash} as any),issueScheduledVoucher(db,template,ym,date,prefix)]);
+  if(issuedReplay.status==='rejected')throw issuedReplay.reason;
+  if(cashReplay.status==='rejected')throw cashReplay.reason;
+  if(scheduledReplay.status==='rejected')throw scheduledReplay.reason;
+  const retried=[issuedReplay.value,cashReplay.value,scheduledReplay.value] as const;
   expect([retried[0].docNo,retried[1].docNo,'result' in retried[2]?retried[2].result.docNo:''].sort()).toEqual(numbers);
   expect((await Promise.all([...paths].map(path=>db.doc(path).get()))).map(row=>row.data())).toEqual(before.map(row=>row.data()));
  },90000);

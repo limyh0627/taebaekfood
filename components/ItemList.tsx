@@ -3139,7 +3139,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   const cur = displayStockOf(p) ?? 0;
                   const low = p.minStock > 0 && cur < p.minStock;
                   // 이 품목에 들어가는 부자재 — 재고를 같이 보여준다
-                  const subs = bomOf(p.id);
+                  const subs = orderUnitInputs ? orderUnitInputs.bom.of(p.id) : bomOf(p.id);
                   const lbl = parseMakeLabel(p);   // 대표이름 + 구분요소(등급·용량·개입·거래처)
                   return (
                     <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-200/70' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
@@ -3808,7 +3808,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         </span>
                         {(() => {
                           // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
-                          const chips = packingSubmaterials(product?.id, isBulkItem) as Item[];
+                          const chips = packingSubmaterials(product?.id, isBulkItem, orderUnitInputs?.bom) as Item[];
                           if (chips.length === 0) return null;
                           return (
                             <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-7">

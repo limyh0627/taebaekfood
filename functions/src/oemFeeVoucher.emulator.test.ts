@@ -174,4 +174,35 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
         supply: 1818, tax: 182, total: 2000, isTaxExempt: false, accountCode: '540' }] } };
     expect(await issueOemFeeVoucher(db, 'taebaek', boxed)).toBe('OEMFEE-po-11');
   });
+
+  it('BOM·박스 단위 없이 unpackTo만 있는 품목도 실제 박스 kg로 발행하고 같은 요청은 번호·원문을 보존한다', async () => {
+    await seed(['po-12']);
+    await Promise.all([
+      db.collection('purchaseOrders').doc('po-12').update({ oemReceivedKg: 6,
+        items: [{ itemId: 'unpack-only-box', name: '구성만 있는 2개입', quantity: 2, unit: '개' },
+          { itemId: 'unpack-test-loose', name: '별도 낱개', quantity: 1, unit: '개' }] }),
+      db.collection('items').doc('unpack-only-box').set({ companyId: 'taebaek', name: '구성만 있는 2개입',
+        spec: '1kg × 2', unit: '개', type: 'product', unpackTo: { count: 2 } }),
+      db.collection('items').doc('unpack-test-loose').set({ companyId: 'taebaek', name: '별도 낱개', spec: '2kg', unit: '개', type: 'product' }),
+    ]);
+    expect((await db.collection('item_bom').where('parent_id', '==', 'unpack-only-box').get()).empty).toBe(true);
+    // 두 줄을 사용해 총중량 보정이 잘못 환산된 첫 줄을 가리지 못하게 한다.
+    const request = { ...command('po-12'), statement: { ...statement('po-12'),
+      totalSupply: 2727, totalTax: 273, totalAmount: 3000,
+      items: [{ name: '구성만 있는 2개입', spec: '1kg × 2', qty: 2, price: 909,
+        supply: 1818, tax: 182, total: 2000, isTaxExempt: false, accountCode: '540' },
+      { name: '별도 낱개', spec: '2kg', qty: 1, price: 909,
+        supply: 909, tax: 91, total: 1000, isTaxExempt: false, accountCode: '540' }] } };
+    expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-12');
+    const issuedRef = db.collection('issuedStatements').doc('OEMFEE-po-12');
+    const before = await issuedRef.get();
+    expect(before.data()).toMatchObject({ totalAmount: 3000, totalSupply: 2727, totalTax: 273, items: request.statement.items });
+    expect((await db.collection('purchaseOrders').doc('po-12').get()).data()?.linkedStatementId).toBe('OEMFEE-po-12');
+    expect((await db.collection('appMeta').doc(counterId).get()).data()?.last).toBe(1);
+    expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-12');
+    const after = await issuedRef.get();
+    expect(after.data()).toEqual(before.data());
+    expect(after.updateTime).toEqual(before.updateTime);
+    expect((await db.collection('appMeta').doc(counterId).get()).data()?.last).toBe(1);
+  });
 });

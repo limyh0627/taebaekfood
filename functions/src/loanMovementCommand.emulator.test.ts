@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import * as admin from 'firebase-admin';
 
 vi.mock('firebase-functions/v2/https', () => ({
@@ -134,7 +134,18 @@ describe.skipIf(!available)('loan movement actual Admin SDK transaction', () => 
     });
     expect((await ref('loanMovementOperations', same.operationId).get()).exists).toBe(true);
     expect((await ref('loanMovementOperations', winner.operationId).get()).exists).toBe(true);
-    expect((await ref('loanMovementOperations', loser.operationId).get()).exists).toBe(false);
+    const rejected = await ref('loanMovementOperations', loser.operationId).get();
+    expect(rejected.data()).toMatchObject({ companyId: 'taebaek', loanId, status: 'rejected',
+      createdBy: `${runId}-admin`, failureCode: 'failed-precondition', failureMessage: '대출 계약이 변경되었습니다.' });
+    const loserBody = { ...loser, note: '' };
+    const canonicalLoser = Object.fromEntries(Object.keys(loserBody).sort().map(key => [key, loserBody[key as keyof typeof loserBody]]));
+    expect(rejected.data()?.requestHash).toBe(createHash('sha256').update(JSON.stringify(canonicalLoser)).digest('hex'));
+    expect((await ref('issuedStatements', loser.operationId).get()).exists).toBe(false);
+    const preserved = await Promise.all([ref('loanContracts', loanId).get(), ref('appMeta', counterId).get(), rejected.ref.get()]);
+    await expect(issue(loser)).rejects.toThrow('대출 계약이 변경되었습니다.');
+    const afterReplay = await Promise.all([ref('loanContracts', loanId).get(), ref('appMeta', counterId).get(), rejected.ref.get()]);
+    expect(afterReplay.map(row => row.data())).toEqual(preserved.map(row => row.data()));
+    expect((await ref('cashEntries', loser.operationId).get()).exists).toBe(false);
     expect((await ref('cashEntries', same.operationId).get()).exists).toBe(true);
   }, 30_000);
 
@@ -144,13 +155,20 @@ describe.skipIf(!available)('loan movement actual Admin SDK transaction', () => 
     await put('cashAccounts', bankId, { companyId: 'punghoe', type: '통장', active: true });
     await expect(issue(input)).rejects.toThrow('계좌');
     await put('cashAccounts', bankId, { companyId: 'taebaek', type: '통장', active: true });
+    const rejected = await ref('loanMovementOperations', input.operationId).get();
+    await expect(issue(input)).rejects.toThrow('계좌');
+    expect((await rejected.ref.get()).data()).toEqual(rejected.data());
+    expect((await ref('cashEntries', input.operationId).get()).exists).toBe(false);
+    expect((await ref('issuedStatements', input.operationId).get()).exists).toBe(false);
+    expect((await ref('loanContracts', loanId).get()).data()?.movementRevision).toBe(0);
+    expect((await ref('appMeta', counterId).get()).data()?.last).toBe(0);
     await put('cashEntries', `${runId}-legacy`, { companyId: 'taebaek', loanId, date,
       createdAt: '2026-10-03T09:00:00Z', dir: '출금', amount: 100, accountCode: '293' });
-    await expect(issue(input)).rejects.toThrow('원금 계정');
+    await expect(issue(request('wrong-principal', '상환', 100))).rejects.toThrow('원금 계정');
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(0);
     await ref('cashEntries', `${runId}-legacy`).delete();
     await put('loanContracts', loanId, { companyId: 'punghoe', accountCode: '260', openingDate: '2026-09-01', openingPrincipal: 1_000 });
-    await expect(issue(input)).rejects.toThrow('회사');
+    await expect(issue(request('wrong-contract-company', '상환', 100))).rejects.toThrow('회사');
   }, 25_000);
 
   it('orders same-day Firestore Timestamp and timezone ISO, then rejects unknown legacy time without writes', async () => {

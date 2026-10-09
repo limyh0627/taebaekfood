@@ -27,7 +27,9 @@ export async function readVoucherCounter(db: admin.firestore.Firestore, tx: admi
   if (!['', '가공', '반품', '대체', '급여'].includes(prefix)) fail();
   assertNewScope(gate, companyId, date);
   // ponytail: 첫 발행만 전체 조회. 규모가 커지면 검증된 번호 사용 ledger로 교체한다.
-  const collections = await Promise.all(['issuedStatements', 'cashEntries'].map(name => tx.get(db.collection(name))));
+  const statements = await tx.get(db.collection('issuedStatements'));
+  const cashEntries = await tx.get(db.collection('cashEntries'));
+  const collections = [statements, cashEntries];
   const stamp = date.slice(2).replace(/-/g, '');
   for (const collection of collections) for (const doc of collection.docs) {
     const row = doc.data();
