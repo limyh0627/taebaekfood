@@ -10,6 +10,8 @@ vi.mock('firebase-functions/v2/https', () => ({
 }));
 
 import { recordPartnerPayment, recordPartnerPaymentCommand } from './partnerPaymentCommand';
+import { journalizeStatement } from '../../src/shared/autoJournal';
+import type { IssuedStatement } from '../../src/shared/types';
 
 const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
 const runId = `pay-${randomUUID()}`;
@@ -62,6 +64,20 @@ async function seed(label: string, amount = 100, options: { cutover?: boolean; c
   return statementId;
 }
 const issue = (input: Parameters<typeof recordPartnerPayment>[3]) => recordPartnerPayment(db, 'taebaek', actorId, input);
+async function seedMixedPurchase(label: string) {
+  const goods = await seed(label, 100);
+  const expense = `${runId}-${label}-expense`;
+  for (const [id, accountCode] of [[goods, '500'], [expense, '819']]) {
+    await put('issuedStatements', id, { companyId: 'taebaek', partnerId: `${runId}-partner`, type: '매입', tradeDate: date,
+      totalSupply: 100, totalTax: 0, totalAmount: 100,
+      items: [{ accountCode, supply: 100, tax: 0, total: 100 }] });
+  }
+  for (const [id, code] of [[goods, '251'], [expense, '253']]) {
+    const statement = { ...(await ref('issuedStatements', id).get()).data(), id } as IssuedStatement;
+    expect(journalizeStatement(statement)?.lines.find(line => line.accountCode === code)?.credit).toBe(100);
+  }
+  return { goods, expense };
+}
 async function noWrites(input: Parameters<typeof recordPartnerPayment>[3], counterLast: number | null, rejected = true) {
   expect((await ref('cashEntries', input.operationId).get()).exists).toBe(false);
   const operation = await ref('partnerPaymentOperations', input.operationId).get();
@@ -190,6 +206,56 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     expect(competing.filter(row => row.status === 'fulfilled')).toHaveLength(1);
     expect(competing.filter(row => row.status === 'rejected')).toHaveLength(1);
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(2);
+  }, 30_000);
+
+  it('atomically pays mixed 500→251 and 819→253 partially or with advance133, then replays the exact body', async () => {
+    for (const over of [false, true]) {
+      const { goods, expense } = await seedMixedPurchase(`mixed-${over}`);
+      const input = { ...request(`mixed-${over}`, goods), direction: '출금' as const,
+        amount: over ? 250 : 100, allocations: [
+          { statementId: goods, amount: over ? 150 : 60 }, { statementId: expense, amount: over ? 100 : 40 },
+        ] };
+      const originals = await Promise.all([ref('issuedStatements', goods).get(), ref('issuedStatements', expense).get()]);
+      const first = await issue(input);
+      const cash = await ref('cashEntries', input.operationId).get();
+      expect(cash.data()).toMatchObject({ dir: '출금', amount: input.amount, partnerId: input.partnerId,
+        lines: over ? [{ accountCode: '251', amount: 100 }, { accountCode: '253', amount: 100 }, { accountCode: '133', amount: 50 }]
+          : [{ accountCode: '251', amount: 60 }, { accountCode: '253', amount: 40 }] });
+      const links = await db.collection('settlements').where('operationId', '==', input.operationId).get();
+      expect(links.docs.map(row => ({ id: row.id, amount: row.get('amount') })).sort((a, b) => a.id.localeCompare(b.id)))
+        .toEqual([{ id: `st-${input.operationId}-${goods}`, amount: over ? 100 : 60 },
+          { id: `st-${input.operationId}-${expense}`, amount: over ? 100 : 40 }].sort((a, b) => a.id.localeCompare(b.id)));
+      const state = await ref('appMeta', `partnerPaymentState_taebaek_${input.partnerId}`).get();
+      const partner = await ref('partners', input.partnerId).get();
+      expect(state.get('revision')).toBe(1);
+      expect((await ref('appMeta', counterId).get()).get('last')).toBe(1);
+      expect(await issue(input)).toMatchObject({ status: 'duplicate', docNo: first.docNo });
+      for (const before of [cash, state, partner, ...links.docs, ...originals]) {
+        expect((await before.ref.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
+      }
+      expect((await ref('appMeta', counterId).get()).get('last')).toBe(1);
+    }
+  }, 40_000);
+
+  it('a settlement link failure rolls back mixed cash, both links, revision and counter; the same ID then succeeds once', async () => {
+    const { goods, expense } = await seedMixedPurchase('mixed-link-failure');
+    const input = { ...request('mixed-link-failure', goods), direction: '출금' as const, amount: 100,
+      allocations: [{ statementId: goods, amount: 60 }, { statementId: expense, amount: 40 }] };
+    const before = await Promise.all([ref('issuedStatements', goods).get(), ref('issuedStatements', expense).get(),
+      ref('partners', input.partnerId).get(), ref('appMeta', counterId).get()]);
+    const create = admin.firestore.Transaction.prototype.create;
+    const injected = vi.spyOn(admin.firestore.Transaction.prototype, 'create').mockImplementation(function (this: admin.firestore.Transaction, target, value) {
+      if (target.path === `settlements/st-${input.operationId}-${expense}`) throw new Error('injected settlement link failure');
+      return create.call(this, target, value);
+    });
+    try { await expect(issue(input)).rejects.toThrow('injected settlement link failure'); }
+    finally { injected.mockRestore(); }
+    await noWrites(input, 0, false);
+    for (const original of before) expect((await original.ref.get()).updateTime!.isEqual(original.updateTime!)).toBe(true);
+    expect(await issue(input)).toMatchObject({ status: 'applied' });
+    expect(await issue(input)).toMatchObject({ status: 'duplicate' });
+    expect((await ref('appMeta', counterId).get()).get('last')).toBe(1);
+    expect((await db.collection('settlements').where('operationId', '==', input.operationId).get()).size).toBe(2);
   }, 30_000);
 
   it('rejects foreign account and malformed legacy settlement without consuming a number', async () => {

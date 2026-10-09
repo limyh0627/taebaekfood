@@ -82,3 +82,28 @@ it('한국 월 경계와 회사 전환에서 이월 주문·검색 건수는 중
   expect(list.textContent).not.toContain('월경계 거래처');
   expect(screen.getByRole('heading', { name: '조회 결과 1건' })).toBeTruthy();
 });
+
+it('이월 주문의 완료 전후 같은 ID는 진행 목록에서 이력으로 한 번만 이동한다', () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-01T01:00:00Z'));
+  const active = { ...makeOrder('carry-transition', OrderStatus.SHIPPED), companyId: 'taebaek' as const,
+    createdAt: '2026-09-30T14:59:59Z', cardNo: 'ORD-260930-099' };
+  const props = { companyId: 'taebaek' as const, title: '주문', subtitle: '', groupBy: 'status' as const,
+    allowedStatuses: statuses, partners: [], items: [item], onUpdateStatus: vi.fn(),
+    onUpdateDeliveryDate: vi.fn(), onDeleteOrder: vi.fn(), onAddClick: vi.fn() };
+  const view = render(<OrdersList {...props} orders={mergeCompanyOrders([active], [active], 'taebaek')} />);
+  fireEvent.click(screen.getByRole('button', { name: '리스트' }));
+  expect(screen.getByRole('heading', { name: '조회 결과 1건' })).toBeTruthy();
+  expect(screen.getByRole('table', { name: '주문 리스트' }).textContent).toContain('이월');
+
+  const completed = { ...active, status: OrderStatus.DELIVERED, deliveredAt: '2026-10-01T01:00:00Z' };
+  // 오래된 이력에 같은 ID가 남아도 최신 상태를 사용한다.
+  view.rerender(<OrdersList {...props} orders={mergeCompanyOrders([completed], [active], 'taebaek')} />);
+  expect(screen.getByRole('table', { name: '주문 리스트' }).textContent).not.toContain(active.partnerName);
+  fireEvent.click(screen.getAllByRole('button', { name: '이력' }).find(button => button.hasAttribute('aria-pressed'))!);
+  expect(screen.getAllByText(active.partnerName)).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('완료일 시작'), { target: { value: '2026-10-02' } });
+  expect(screen.queryByText(active.partnerName)).toBeNull();
+  fireEvent.change(screen.getByLabelText('완료일 시작'), { target: { value: '2026-10-01' } });
+  expect(screen.getAllByText(active.partnerName)).toHaveLength(1);
+});
