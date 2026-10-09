@@ -1,5 +1,5 @@
 import type { Item } from './types';
-import { boxSiblings } from './orderUnits';
+import { boxSiblings, type OrderUnitInputs } from './orderUnits';
 
 /**
  * **박스 품목의 규격은 낱개 규격을 따라 적는 것이다.**
@@ -43,9 +43,10 @@ export function boxSpecOf(looseSpec: string | undefined, count: number): string 
 export function boxSpecUpdates(
   loose: Pick<Item, 'id' | 'spec'>,
   all: Item[],
+  inputs?: OrderUnitInputs,
 ): { id: string; name?: string; from?: string; spec: string }[] {
   const out: { id: string; name?: string; from?: string; spec: string }[] = [];
-  for (const { item, count } of boxSiblings(loose, all)) {
+  for (const { item, count } of boxSiblings(loose, all, inputs)) {
     const want = boxSpecOf(loose.spec, count);
     //  만들 수 없으면(낱개 규격이 비었다) 손대지 않는다 — 있는 글자를 지우면 더 나쁘다
     if (!want) continue;

@@ -192,6 +192,7 @@ export function orderItemPrice(
 }
 
 export interface OrderLinesInput {
+  orderUnitInputs?: OrderUnitInputs;
   order: Order;
   stmtType: StatementType;
   allItems: readonly Item[];
@@ -222,7 +223,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
   let no = 1;
 
   for (const [orderItemIndex, item] of order.items.entries()) {
-    const { product, qty: qtyUnits, perBox, unknownItem } = resolveOrderItem(item, allItems);
+    const { product, qty: qtyUnits, perBox, unknownItem } = resolveOrderItem(item, allItems, input.orderUnitInputs);
     const displayName = product?.name || item.name;
     const spec = product?.spec || item.displaySize || '';
     const itemId = product?.id ?? item.itemId;
@@ -231,7 +232,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
 
     const pcEntry = partnerItems.find(pc => pc.itemId === product?.id && pc.partnerId === partnerId);
     // 낱개 단가 (박스는 위에서 낱개로 바꿔 조회 → 낱개 partner_item 단가)
-    const pcPrice = pcEntry?.price ?? boxDerivedUnitPrice(product, partnerId, partnerItems as any);
+    const pcPrice = pcEntry?.price ?? boxDerivedUnitPrice(product, partnerId, partnerItems as any, input.orderUnitInputs);
     const pcTaxType = pcEntry?.taxType;   // '과세' | '면세' | undefined(=과세 기본)
 
     //  단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값(개입수로 나눠서)

@@ -378,3 +378,19 @@ describe('전표 줄의 품목 ID', () => {
     expect(r[0].itemId).toBe('loose');
   });
 });
+
+it('전표 줄 환산은 명시 회사 BOM을 사용한다',()=>{
+ const own={bom:buildBomIndex(목록,[{parent_id:'box',child_id:'loose',quantity:12}]),pack:buildPackIndex([])};
+ setBomIndex(buildBomIndex(목록,[{parent_id:'box',child_id:'loose',quantity:6}]));
+ const rows=orderLines({order:주문([{itemId:'box',name:'박스',quantity:2,price:12000}]),stmtType:'매출',allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:own});
+ expect(rows[0]).toMatchObject({itemId:'loose',qty:24,price:1000,total:24000});
+});
+
+it('옛 박스 주문의 포장표 환산은 명시 입력을 쓰고 저장 개입수는 우선한다',()=>{
+ const own={bom:buildBomIndex(목록,[]),pack:buildPackIndex([{item_id:'loose',units_per_box:12}])};
+ setBomIndex(own.bom);setPackIndex(buildPackIndex([{item_id:'loose',units_per_box:6}]));
+ const item={itemId:'loose',name:'낱개',quantity:2,boxQuantity:2,isBoxUnit:true,price:12000};
+ const input={order:주문([item]),stmtType:'매출' as const,allItems:목록,partnerItems:[],partnerId:'p',orderUnitInputs:own};
+ expect(orderLines(input)[0]).toMatchObject({qty:24,price:1000});
+ expect(orderLines({...input,order:주문([{...item,unitsPerBox:10}])})[0]).toMatchObject({qty:20,price:1200});
+});

@@ -868,7 +868,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
    */
   const submitCart = async () => {
     await onBulkAddConfirmedOrders(cart.map(c => {
-      const per = unitsPerBoxOf(items.find(p => p.id === c.id));
+      const per = unitsPerBoxOf(items.find(p => p.id === c.id), orderUnitInputs);
       const box = c.isBox && per > 1;
       return { id: c.id, partnerId: c.partnerId, quantity: box ? c.qty * per : c.qty, ...(box ? { boxQuantity: c.qty } : {}) };
     }));
@@ -1078,7 +1078,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     poLines(po).every(line => {
       const item = productMap.get(line.itemId);
       return !!item && (canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
-        (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item) > 0 || !!parsePackageKg(item.name))))
+        (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item, orderUnitInputs) > 0 || !!parsePackageKg(item.name))))
         && Number.isFinite(line.quantity) && line.quantity > 0;
     });
   const inboundPartnerMap = useMemo(() => new Map(inboundPartners.map(s => [s.id, s])), [inboundPartners]);
@@ -2065,7 +2065,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
                   // 상품은 거래처에 낱개 수량으로만 발주한다. 박스 토글은 완제품 박스 SKU에만 쓴다.
-                  const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
+                  const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 0;
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
                   const lotRaw = isRawHolder(product)
                     ? product
@@ -2271,8 +2271,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
                                 >담기</button>
                                 <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
                                 </div>
-                                {product.type === 'goods' && unitsPerBoxOf(product) > 1 && inlineCartQty > 0 && (
-                                  <span className="pr-5 text-[9px] font-bold text-slate-400">{boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product))}</span>
+                                {product.type === 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 1 && inlineCartQty > 0 && (
+                                  <span className="pr-5 text-[9px] font-bold text-slate-400">{boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product, orderUnitInputs))}</span>
                                 )}
                               </div>
                             ) : (
@@ -2338,7 +2338,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
             .filter(Boolean) as string[];
           const partnerNames = normCat(product.type) === '완제품' ? salesNames : inboundNames;
           const canPurchase = purchasableIds.has(product.id) || inboundNames.length > 0;
-          const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product) > 0;
+          const canOrderByBox = product.type !== 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 0;
           const directUnpack = unpackComponent(product, orderUnitInputs);
           const plannedUnpack = unpackPlan(product, 1, undefined, orderUnitInputs?.bom);
           return (
@@ -2405,7 +2405,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         <span className="text-xs font-bold text-slate-400">{canOrderByBox && detailOrderIsBox ? 'BOX' : product.unit || '개'}</span>
                         <button onClick={() => { addToCart(product.id, detailOrderQty, canOrderByBox && detailOrderIsBox); setDetailProduct(null); }} disabled={detailOrderQty <= 0} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-black text-white disabled:opacity-40">담기</button>
                       </div>
-                      {product.type === 'goods' && unitsPerBoxOf(product) > 1 && detailOrderQty > 0 && <p className="mt-1 text-right text-[10px] font-bold text-slate-400">{boxEquivalentLabel(detailOrderQty, unitsPerBoxOf(product))}</p>}
+                      {product.type === 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 1 && detailOrderQty > 0 && <p className="mt-1 text-right text-[10px] font-bold text-slate-400">{boxEquivalentLabel(detailOrderQty, unitsPerBoxOf(product, orderUnitInputs))}</p>}
                     </div>
                   )}
             </ModalShell>
@@ -2599,7 +2599,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                             </div>
                           </div>
                           {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="max-w-40 rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
-                          {unitsPerBoxOf(product) > 0 && (
+                          {unitsPerBoxOf(product, orderUnitInputs) > 0 && (
                             <button
                               onClick={() => updateCartIsBox(item.id, !item.isBox)}
                               className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
@@ -2615,8 +2615,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
                             <span className="text-[11px] text-slate-400 shrink-0">
-                              {unitsPerBoxOf(product) > 1
-                                ? (item.isBox ? `B(${unpackQty(item.qty, product, true)}개)` : '개')
+                              {unitsPerBoxOf(product, orderUnitInputs) > 1
+                                ? (item.isBox ? `B(${unpackQty(item.qty, product, true, orderUnitInputs)}개)` : '개')
                                 : product.unit}
                             </span>
                           </div>
@@ -2847,7 +2847,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {`${displayStockOf(product)}${product.unit}`}<PackLine product={product} stock={product.stock} /></p>
                       {supplierIds(product.id).length > 1 && <select aria-label={`${product.name} 매입 거래처`} value={item.partnerId ?? supplierIds(product.id)[0]} onChange={event => updateCartPartner(item.id, event.target.value)} className="mt-1 w-full rounded-lg border px-2 py-1 text-xs">{supplierIds(product.id).map(id => <option key={id} value={id}>{inboundPartnerMap.get(id)?.name}</option>)}</select>}
-                      {unitsPerBoxOf(product) > 0 && (
+                      {unitsPerBoxOf(product, orderUnitInputs) > 0 && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                           <button onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -3377,7 +3377,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         <div key={i} className="px-4 py-2 flex items-center gap-3">
                           <span className="text-xs font-bold text-slate-700 flex-1">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
                           <span className="text-xs font-black text-slate-500">
-                            {item.isBox ? boxQtyLabel(item.qty, unitsPerBoxOf(items.find(p => p.id === item.itemId)), 'B') : `${item.qty}개`}
+                            {item.isBox ? boxQtyLabel(item.qty, unitsPerBoxOf(items.find(p => p.id === item.itemId), orderUnitInputs), 'B') : `${item.qty}개`}
                           </span>
                         </div>
                       ))}

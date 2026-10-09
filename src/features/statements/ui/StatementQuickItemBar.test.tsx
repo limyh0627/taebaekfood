@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import StatementQuickItemBar from './StatementQuickItemBar';
 
 const props = {
@@ -31,4 +31,15 @@ describe('StatementQuickItemBar', () => {
     expect(onAdd).toHaveBeenCalledOnce();
     expect(onOpenPicker).toHaveBeenCalledOnce();
   });
+});
+
+import {buildBomIndex,getBomIndex,setBomIndex} from '../../../shared/bomIndex';
+import type {Item} from '../../../shared/types';
+const originalBom=getBomIndex();afterEach(()=>setBomIndex(originalBom));
+it('빠른 품목 검색의 부자재 태그는 회사 명시 BOM을 따른다',()=>{
+ const items=[{id:'oil',name:'참기름',type:'product'},{id:'cap',name:'태백 마개',type:'submaterial',category:'마개'}] as Item[];
+ const own=buildBomIndex(items,[{parent_id:'oil',child_id:'cap',quantity:1}]);
+ setBomIndex(buildBomIndex(items.map(i=>i.id==='cap'?{...i,name:'풍회 마개'}:i),[{parent_id:'oil',child_id:'cap',quantity:1}]));
+ render(<StatementQuickItemBar {...props} results={[{pc:{id:'link'},product:items[0]}]} bomIndex={own}/>);
+ expect(screen.getByText('태백 마개')).toBeInTheDocument();expect(screen.queryByText('풍회 마개')).not.toBeInTheDocument();
 });

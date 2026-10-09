@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { specBase, boxSpecOf, boxSpecUpdates } from './boxSpec';
 import { setBomIndex, buildBomIndex, resetBomIndex } from './bomIndex';
 import type { Item } from './types';
+import { buildPackIndex } from './packIndex';
 
 /**
  * 낱개 규격을 고쳤을 때 박스가 따라오는가. 안 따라와서 여섯 품목이 어긋나 있었다
@@ -12,6 +13,15 @@ const 품목 = (id: string, name: string, spec?: string): Item =>
 const 세우기 = (items: Item[], boms: { parent_id: string; child_id: string; quantity?: number }[]) =>
   setBomIndex(buildBomIndex(items as never, boms));
 afterEach(() => resetBomIndex());
+
+it('박스 규격 전파는 명시 회사의 BOM 개입수를 사용한다', () => {
+  const loose = 품목('loose', '낱개', '350ml'), box = 품목('box', '박스', '300ml * 20');
+  const all = [loose, box];
+  const inputs = { bom: buildBomIndex(all, [{ parent_id: 'box', child_id: 'loose', quantity: 20 }]), pack: buildPackIndex([]) };
+  세우기(all, [{ parent_id: 'box', child_id: 'loose', quantity: 6 }]);
+  expect(boxSpecUpdates(loose, all, inputs)).toEqual([{ id: 'box', name: '박스', from: '300ml * 20', spec: '350ml * 20' }]);
+  expect(boxSpecUpdates(loose, all)[0].spec).toBe('350ml * 6');
+});
 
 describe('규격 글자 다루기', () => {
   it('개입수 꼬리를 뗀다', () => {

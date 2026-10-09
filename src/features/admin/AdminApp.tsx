@@ -404,7 +404,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 박스 품목을 등록하면 낱개도 함께 — "낱개 없이 박스만 물리는" 경우 방지.
     //   낱개가 이 거래처(같은 방향)에 없으면 알림 띄우고 낱개 partner_item까지 자동 추가.
     const boxItem = allItems.find(i => i.id === itemId);
-    const uc = boxItem ? unpackComponent(boxItem) : null;
+    const uc = boxItem ? unpackComponent(boxItem, appData.orderUnitInputs) : null;
     if (uc && !partnerItems.some(pi => pi.itemId === uc.itemId && pi.partnerId === partnerId && (pi.Direction ?? 'out') === dir)) {
       const looseItem = allItems.find(i => i.id === uc.itemId);
       const loosePrice = (typeof price === 'number' && price > 0) ? Math.round(price / uc.count) : undefined;
@@ -810,11 +810,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       for (const it of o.items) {
         const product = allItems.find(p => p.id === it.itemId);
         if (!product || !holdsUnitStock(product) || isGoods(product)) continue;
-        m[it.itemId] = Math.round(((m[it.itemId] ?? 0) + stockUnits(it, product)) * 1000) / 1000;
+        m[it.itemId] = Math.round(((m[it.itemId] ?? 0) + stockUnits(it, product, appData.orderUnitInputs)) * 1000) / 1000;
       }
     }
     return m;
-  }, [allOrders, allItems]);
+  }, [allOrders, allItems, appData.orderUnitInputs]);
 
   // 서류용 통깨/깨분 참기름 사용량 — **생산작업기록부 getOutflow 로직 단일 원천**.
   //  품목 그룹 배합비(시골향1=통깨100 / 2+해내음=50:50 / 3=깨분100 / 4+가득찬순=20:80 / 하남댁+새싹+해달=통깨100),
@@ -835,7 +835,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
          *  **수량은 stockUnits 를 지난다**(2026-09-09 사장님: "전표는 쓰고 재고는 안 쓸 수가 있나").
          *  docUnpack 이 박스를 낱개로 푸는데, 박스 수가 아니라 낱개 수를 주면 **또 풀어서 열 배**가 된다.
          *  재고·전표와 같은 함수를 지나야 세 숫자가 안 갈린다. */
-        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
+        for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs)) {
           const kg = docOilKg(line.spec, line.qty);
           if (kg <= 0) continue;
           (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
@@ -850,7 +850,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       out[ds] = row;
     }
     return out;
-  }, [allOrders, allItems]);
+  }, [allOrders, allItems, appData.orderUnitInputs]);
 
   // 서류용 통깨/깨분 **압착 입고** — rawMaterialLedger의 통깨참기름/깨분참기름 received(압착 rm-yield + 수동입고, 정정 제외).
   //  생산작업기록부/2의 입고를 sesameInputLedger(수동) 대신 자동 압착 입고로 채운다 = 원료수불부 입고와 같은 소스.
@@ -1026,7 +1026,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             ? item.boxQuantity
             //  개입수는 품목이 안다(BOM 아니면 포장 환산표). 예전엔 `boxSize || 1` 이라
             //  그 필드를 걷어낸 뒤로 **36개 주문에 박스 자재 36개**를 잡고 있었다(3개가 맞다).
-            : Math.ceil(item.quantity / (unitsPerBoxOf(product) || 1));
+            : Math.ceil(item.quantity / (unitsPerBoxOf(product, appData.orderUnitInputs) || 1));
           usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + boxesNeeded, unit: 'B' };
         }
         continue;
@@ -1037,7 +1037,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       // 완사입=원료 무관, 임가공=외주가 볶아 옴(우리 원료 로트가 아님) → 둘 다 원료 부족 대상이 아니다
       if (product.procureType === '완사입' || product.procureType === '임가공') continue;
 
-      const units = stockUnits(item, product);   // 박스 품목이면 박스 개수 (spec은 박스 1개 내용량)
+      const units = stockUnits(item, product, appData.orderUnitInputs);   // 박스 품목이면 박스 개수 (spec은 박스 1개 내용량)
 
       // 원료식(item_formula/PRODUCT_FORMULA) 기반 원료 kg 소요 집계 — 부자재와 별도 경로
       for (const f of buildFormula(docName(product))) {
@@ -1047,7 +1047,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       // 겉박스·테이프는 이제 **박스 품목 BOM**에 들어 있다 — 거래처별 포장설정(shipping_rule)은 폐기.
       // 그래서 여기서 따로 세지 않고 아래 BOM 순회가 통째로 맡는다.
-      for (const line of bomOf(product.id)) {
+      for (const line of (appData.orderUnitInputs ? appData.orderUnitInputs.bom.of(product.id) : bomOf(product.id))) {
         const sub = submaterials.find(sm => sm.id === line.childId);
         if (!sub) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
@@ -1123,7 +1123,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       //  **수량은 재고 단위로 저장한다.** 박스로 골랐으면 여기서 풀고 '몇 박스'만 따로 남긴다 —
       //  읽는 쪽마다 곱하면 한 곳만 빠뜨려도 재고가 어긋난다(판매 주문이 이미 이 방식이다).
       ...(() => {
-        const per = unitsPerBoxOf(product);
+        const per = unitsPerBoxOf(product, appData.orderUnitInputs);
         return isBox && per > 1
           ? { quantity: quantity * per, boxQuantity: quantity }
           : { quantity };
@@ -1541,7 +1541,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const 품목 = allItems.find(p => p.id === 줄.itemId);
             const 양 = shipQtyOfLine(줄, 품목);
             return 품목 && 양 > 0
-              ? [{ name: 품목.name, qty: 양, unit: unpackComponent(품목) ? '박스' : (품목.unit || '개') }]
+              ? [{ name: 품목.name, qty: 양, unit: unpackComponent(품목, appData.orderUnitInputs) ? '박스' : (품목.unit || '개') }]
               : [];
           })
         : [];
@@ -1864,7 +1864,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const 묻는글 = buildStatusChangeAsk({
         partnerName: order.partnerName, from: order.status, to: plan.status, plan: 줄계획, lineName: 줄이름,
         released: 푸는품목 && 풀릴양 > 0
-          ? [{ name: 줄이름, qty: 풀릴양, unit: unpackComponent(푸는품목) ? '박스' : (푸는품목.unit || '개') }]
+          ? [{ name: 줄이름, qty: 풀릴양, unit: unpackComponent(푸는품목, appData.orderUnitInputs) ? '박스' : (푸는품목.unit || '개') }]
           : [],
       });
       setRollbackAsk({ scope: askScope, ...묻는글, onConfirm: () => save() });
@@ -1889,9 +1889,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const 완료줄 = plan.items[itemIdx];
     const 완료품목 = 완료줄 ? allItems.find(p => p.id === 완료줄.itemId) : undefined;
     if (applying && lineRows.length === 0 && 완료줄 && 완료품목 && isGoodsItem(완료품목)) {
-      const 주문량 = stockUnits(완료줄, 완료품목);
+      const 주문량 = stockUnits(완료줄, 완료품목, appData.orderUnitInputs);
       const 재고 = unreservedItemStock(완료품목);
-      const 단위 = unpackComponent(완료품목) ? '박스' : (완료품목.unit || '개');
+      const 단위 = unpackComponent(완료품목, appData.orderUnitInputs) ? '박스' : (완료품목.unit || '개');
       const 모자란양 = Math.round((주문량 - 재고) * 1000) / 1000;
       /*  **얼마가 다른 주문에 잡혀 있는지 같이 보여 준다**(2026-09-14 사장님: "참진은 재고가
           24개 있는데 왜 알람에선 0으로 뜨지"). 화면에 0 이라고만 뜨면, 품목 재고 24개를 아는
@@ -3012,6 +3012,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'quotation' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <QuotationManager
+                orderUnitInputs={appData.orderUnitInputs}
                 items={companyItems}
                 partners={companyPartners}
                 partnerItems={partnerItems}
@@ -3570,7 +3571,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   order.items.forEach(item => {
                                     const p = allItems.find(pr => pr.id === item.itemId);
                                     // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                                    for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
+                                    for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs)) {
                                       if (line.품목 !== cat) continue;
                                       if (!dayMap[day]) dayMap[day] = [];
                                       const existing = dayMap[day].find(r => r.spec === line.spec);
@@ -4322,7 +4323,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       order.items.forEach(item => {
                         const p = allItems.find(pr => pr.id === item.itemId);
                         // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
+                        for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs)) {
                           if (line.품목 !== productionWorkCat) continue;
                           if (!dayMap[day]) dayMap[day] = [];
                           const existing = dayMap[day].find(r => r.spec === line.spec);
@@ -4462,6 +4463,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {(currentView === 'trade-statement' || showInboundInvoice || inboundDetailId) && (
             <TradeStatement
+              orderUnitInputs={appData.orderUnitInputs}
               detailStatementId={inboundDetailId}
               onDetailClose={() => setInboundDetailId('')}
               returnOperations={appData.returnAllocationsLoaded ? appData.returnAllocationOperations : undefined}
@@ -5269,7 +5271,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                *
                * 개입수 자체는 BOM 이 정한다. 여기서 맞추는 건 사람이 읽는 글자다.
                */
-              for (const up of boxSpecUpdates(p, allItems)) {
+              for (const up of boxSpecUpdates(p, allItems, appData.orderUnitInputs)) {
                 await updateItem(COL.items, up.id, { spec: up.spec });
               }
             } else {

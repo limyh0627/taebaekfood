@@ -10,7 +10,7 @@ import { marginOf } from '../src/shared/margin';
 import { lineAmount } from '../src/shared/lineAmount';
 import { quoteTotals } from '../src/shared/quoteTotals';
 import { isSaleTaxExempt, saleTaxTypeOf } from '../src/shared/partnerPrice';
-import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
+import { boxDerivedUnitPrice, type OrderUnitInputs } from '../src/shared/orderUnits';
 import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 import { filterItems, ALL } from '../src/shared/itemFilter';
 import { quoteRecipient } from '../src/shared/quoteRecipient';
@@ -78,6 +78,7 @@ export interface Quotation {
 }
 
 interface Props {
+  orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   partners: Partner[];
   partnerItems?: PartnerItem[];
@@ -110,7 +111,7 @@ function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
 //  합계 셈은 [shared/quoteTotals](../src/shared/quoteTotals.ts) 하나다.
 const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0 });
 
-export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, companyInfo, costOf }: Props) {
+export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, companyInfo, costOf, orderUnitInputs }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
   const [quoteError, setQuoteError] = useState('');
   useEffect(() => subscribeToCollection<Quotation>(
@@ -213,7 +214,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     const 붙은값 = partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
     if (typeof 붙은값 === 'number' && 붙은값 > 0) return 붙은값;
     const it = items.find(i => i.id === itemId);
-    return form.partnerId ? boxDerivedUnitPrice(it, form.partnerId, partnerItems as never) : undefined;
+    return form.partnerId ? boxDerivedUnitPrice(it, form.partnerId, partnerItems as never, orderUnitInputs) : undefined;
   };
   const costFor = (it: Item) => Math.round(costOf?.(it) ?? Number(it.cost ?? 0));
 

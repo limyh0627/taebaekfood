@@ -79,8 +79,7 @@ import { downloadStatementExcel } from '../src/features/statements/infrastructur
 import { quickItemMetrics } from '../src/features/statements/domain/quickItemModel';
 import { timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
-import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
-import { bomOf } from '../src/shared/bomIndex';
+import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, partnerCashParts, buildPartnerLedger } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeCashEntry } from '../src/shared/autoJournal';
@@ -93,6 +92,7 @@ import { completeTradeStatementRequest, recordPartnerPayment } from '../src/feat
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
+  orderUnitInputs?: OrderUnitInputs;
   returnOperations?: readonly ReadonlyReturnOperation[];
   advanceStatements?: readonly IssuedStatement[];
   orders: Order[];
@@ -244,7 +244,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   cashAccounts = [],
   cashEntries = [],
   settlements = [],
-  returnOperations, advanceStatements,
+  returnOperations, advanceStatements, orderUnitInputs,
   onAddCashEntry,
   onIssueCashEntry,
   onUpdateCashEntry,
@@ -371,7 +371,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const poToManualRows = (po: PurchaseOrder): ManualRow[] =>
     poLines(po).map(line => {
       //  푸는 것은 [statementLines](../src/shared/statementLines.ts) 와 같은 함수를 쓴다
-      const r = resolveOrderItem({ itemId: line.itemId, name: line.name, quantity: line.quantity } as any, allItems);
+      const r = resolveOrderItem({ itemId: line.itemId, name: line.name, quantity: line.quantity } as any, allItems, orderUnitInputs);
       const 박스였나 = r.perBox > 1;
       // 단가는 바뀐 품목(낱개) 기준으로 다시 찾는다. 없으면 박스 단가 ÷ 개입수로 파생.
       const ps = (partnerItems ?? []).find((s: any) =>
@@ -1130,7 +1130,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     // 품목 채우기
     setManualItems([
       ...pendingInvoice.items.map(item => {
-        const resolved = resolveOrderItem({ itemId: item.itemId, name: item.name, quantity: item.qty } as any, allItems);
+        const resolved = resolveOrderItem({ itemId: item.itemId, name: item.name, quantity: item.qty } as any, allItems, orderUnitInputs);
         const itemId = resolved.product?.id ?? item.itemId;
         const pc = partnerIn.find(p => p.itemId === itemId && p.partnerId === pendingInvoice.partnerId);
         return {
@@ -1341,9 +1341,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const linkedManualItems = useMemo(() => {
     const 연결 = stmtType === '매입' ? partnerIn : partnerOut;
     return allItems
-      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
+      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p, orderUnitInputs) && 연결.some(pc => pc.itemId === p.id && pc.partnerId === selectedClientId))
       .map(p => ({ itemId: p.id, name: p.name }));
-  }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType, companyId]);
+  }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType, companyId, orderUnitInputs]);
   const lineItems = useMemo((): LineItem[] => {
     if (manualMode) {
       //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
@@ -1352,6 +1352,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     if (!selectedOrder) return [];
     return orderLines({
+      orderUnitInputs,
       order: selectedOrder,
       stmtType,
       allItems,
@@ -1361,7 +1362,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       taxExemptOverrides,
       accountCodeOverrides,
     });
-  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems]);
+  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
 
   const 합계 = lineTotals(lineItems);
   const isTwoSided = 합계.isTwoSided;
@@ -1726,8 +1727,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const partnerItemRows = useMemo(() =>
     partnerOut.filter(pc=>pc.partnerId===selectedClientId)
       .map(pc=>({ pc, product: allItems.find(p=>p.id===pc.itemId) }))
-      .filter(r=>r.product && companyOf(r.product) === companyId && !isBoxStockItem(r.product)),   // 박스·타 회사 품목은 전표에서 제외
-    [partnerOut, selectedClientId, allItems, companyId]
+      .filter(r=>r.product && companyOf(r.product) === companyId && !isBoxStockItem(r.product, orderUnitInputs)),   // 박스·타 회사 품목은 전표에서 제외
+    [partnerOut, selectedClientId, allItems, companyId, orderUnitInputs]
   );
 
   // 매입 전표용: supplierId로 연결된 품목 + PartnerItem 단가
@@ -1735,13 +1736,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const inboundPartnerItemRows = useMemo(() =>
     allItems
       // partnerIn 직접 조회 — 한 품목에 매입처가 여러 개여도, 대/소문자 필드 혼재여도 정상 매칭
-      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
+      .filter(p => companyOf(p) === companyId && !isBoxStockItem(p, orderUnitInputs) && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
       .map(p => {
         const ps = partnerIn.find(s => (s.itemId) === p.id && (s.partnerId) === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
         return { pc: ps, ps, product: p };
       }),
-    [allItems, selectedClientId, partnerIn, companyId]
+    [allItems, selectedClientId, partnerIn, companyId, orderUnitInputs]
   );
 
   // 현재 모드에 따른 검색 소스
@@ -1779,7 +1780,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  같이 떠서 "깨분참기름/16.5kg가 왜 두 개냐"가 됐다. 어느 쪽을 골랐는지에 따라
       //  단가도 재고도 다른 품목에 붙는다.
       .filter(p => companyOf(p) === companyId)
-      .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p) && p.type !== 'service')   // 용역은 거래조건을 먼저 저장한 연결 품목만 고른다
+      .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p, orderUnitInputs) && p.type !== 'service')   // 용역은 거래조건을 먼저 저장한 연결 품목만 고른다
       .map(p => {
         const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
         return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price, taxType: ex?.taxType, Account_Code: ex?.Account_Code }, product: p };
@@ -1788,7 +1789,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const sorted = (rows: typeof searchableRows) =>
       [...rows].sort((x, y) => byTaxonomy(x.product as Item | undefined, y.product as Item | undefined));
     return [...sorted(searchableRows), ...sorted(extra as unknown as typeof searchableRows)] as unknown as typeof searchableRows;
-  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy, companyId]);
+  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy, companyId, orderUnitInputs]);
   const effectivePickerRows = useMemo(() => pickerRows.map(row => {
     const itemId = row.product!.id;
     return Object.prototype.hasOwnProperty.call(pickerTaxEdits, itemId)
@@ -1949,7 +1950,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 고침이 저쪽에만 들어가고 여기는 **열 배로 남아 있었다**(2026-09-05).
    */
   const orderToRows = (o: Order): ManualRow[] => o.items.map(item => {
-    const r = resolveOrderItem(item, allItems);
+    const r = resolveOrderItem(item, allItems, orderUnitInputs);
     const pcEntry = partnerOut.find(pc => pc.itemId === r.product?.id && pc.partnerId === o.partnerId);
     //  규격은 박스를 풀었을 때만 품목 것을 앞세운다 — 낱개는 주문에 적힌 표시규격이 맞다
     const spec = r.perBox > 1
@@ -2571,7 +2572,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 });
                 setQuickItemId(undefined);setQuickName('');setQuickSpec('');setQuickQty('');setQuickPrice('');setQuickNote('');setQuickSearchOpen(false);setQuickIsTaxExempt(false);
               };
-              return <StatementQuickItemBar name={quickName} spec={quickSpec} quantity={quickQty} price={quickPrice}
+              return <StatementQuickItemBar bomIndex={orderUnitInputs?.bom} name={quickName} spec={quickSpec} quantity={quickQty} price={quickPrice}
                 note={quickNote} searchOpen={quickSearchOpen} results={quickResults} productCost={productCost}
                 salePrice={salePrice} unitSupply={metrics.unitSupply} supply={qAmt} tax={qTax}
                 marginRate={metrics.marginRate} showUnitSupply={metrics.showUnitSupply} formatAmount={fmt}
@@ -2711,7 +2712,7 @@ ${names}
                       const ro=!!(editingStmt&&!isEditMode);
                       const activeRows=ro?manualItems.filter(r=>r.name.trim()):manualItems;
                       return (<>
-                        <StatementManualItemRows rows={activeRows} readOnly={ro} selectedIndex={selectedItemIdx}
+                        <StatementManualItemRows bomIndex={orderUnitInputs?.bom} rows={activeRows} readOnly={ro} selectedIndex={selectedItemIdx}
                           activeSearchIndex={activeSearchRow} statementType={stmtType} accountCodes={stmtCodes} items={allItems} linked={linkedManualItems}
                           formatAmount={fmt} searchResults={row=>{
                             if (!row.name.trim()) return [];

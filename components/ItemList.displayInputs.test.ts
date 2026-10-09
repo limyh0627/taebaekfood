@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {buildBomIndex,getBomIndex,setBomIndex,bomOf,packingSubmaterials} from '../src/shared/bomIndex';
 import {buildPackIndex,getPackIndex,setPackIndex,packUnitsOf} from '../src/shared/packIndex';
-import {groupLooseBoxRows,unpackComponent,packBreakdown,type OrderUnitInputs} from '../src/shared/orderUnits';
+import {groupLooseBoxRows,unpackComponent,packBreakdown,unitsPerBoxOf,itemKg,unpackQty,type OrderUnitInputs} from '../src/shared/orderUnits';
 import type {Item} from '../src/shared/types';
 const source=readFileSync('components/ItemList.tsx','utf8');
 const items=['box','loose'].map(id=>({id,name:id,type:'product',companyId:'taebaek',unit:'개',spec:'1kg',stock:20,minStock:0,image:''} as Item));
@@ -14,6 +14,23 @@ const a:OrderUnitInputs={bom:buildBomIndex(items,[{parent_id:'box',child_id:'loo
 const b:OrderUnitInputs={bom:buildBomIndex(items,[]),pack:buildPackIndex([{item_id:'loose',units_per_box:10}])};
 const originalBom=getBomIndex(),originalPack=getPackIndex();
 afterEach(()=>{setBomIndex(originalBom);setPackIndex(originalPack);});
+it.each(['unitsPerBoxOf','itemKg','unpackQty'])('실제 %s 잔여 호출은 명시 입력·빈 구성·기존 fallback을 구분한다',name=>{
+ const parsed=ts.createSourceFile('ItemList.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const calls:string[]=[];
+ const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===name)calls.push(node.getText(parsed));ts.forEachChild(node,visit);};
+ visit(parsed);expect(calls).toHaveLength(name==='unitsPerBoxOf'?11:1);
+ setBomIndex(b.bom);setPackIndex(b.pack);
+ const empty={bom:buildBomIndex([],[]),pack:buildPackIndex([])};
+ for(const call of calls){
+  const run=new Function('unitsPerBoxOf','itemKg','unpackQty','items','product','item','c','orderUnitInputs',`return ${call};`);
+  const evaluate=(inputs?:OrderUnitInputs)=>run(unitsPerBoxOf,itemKg,unpackQty,items,items[0],{...items[0],spec:'1kg * 20',itemId:'box',qty:2},{id:'box'},inputs);
+  const expected=name==='unitsPerBoxOf'?20:name==='itemKg'?20:40;
+  expect(evaluate(a)).toBe(expected);
+  expect(evaluate(empty)).toBe(name==='unitsPerBoxOf'?0:name==='itemKg'?1:2);
+  expect(evaluate()).toBe(name==='unitsPerBoxOf'?0:name==='itemKg'?1:2);
+ }
+ expect(getBomIndex()).toBe(b.bom);expect(getPackIndex()).toBe(b.pack);
+});
 const start=source.indexOf('  const groupedRows ='),end=source.indexOf('  const visibleRows =',start);
 const compiled=ts.transpileModule(`${source.slice(start,end)} return groupedRows;`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 const grouped=new Function('useMemo','filteredProducts','topTab','unpackComponent','orderUnitInputs',compiled);

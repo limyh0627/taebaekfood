@@ -1,7 +1,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import type { AccountCode, Item, PartnerItem } from '../../../../types';
-import { bomOf } from '../../../shared/bomIndex';
+import { bomOf, type BomIndex } from '../../../shared/bomIndex';
 import { lineAmountOf } from '../../../shared/lineAmount';
 import { manualAccountCode, type ManualRow, type StatementType } from '../../../shared/statementLines';
 
@@ -11,6 +11,7 @@ export interface StatementManualSearchResult {
 }
 
 interface Props {
+  bomIndex?: BomIndex;
   rows: ManualRow[];
   readOnly: boolean;
   selectedIndex: number | null;
@@ -49,7 +50,7 @@ export default function StatementManualItemRows(props: Props) {
             {props.activeSearchIndex === index && results.length > 0 && (
               <div className="absolute left-0 top-full z-50 mt-1 w-64 h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl">
                 {results.slice(0, 50).map(result => {
-                  const parts = bomOf(result.product.id);
+                  const parts = props.bomIndex ? props.bomIndex.of(result.product.id) : bomOf(result.product.id);
                   const container = parts.find(line => line.child?.category === '용기')?.child?.name;
                   const cap = parts.find(line => line.child?.category === '마개')?.child?.name;
                   const info = result.product.oil || result.product.spec || '';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import type { Item, PartnerItem } from '../../../../types';
-import { bomOf } from '../../../shared/bomIndex';
+import { bomOf, type BomIndex } from '../../../shared/bomIndex';
 
 export interface StatementQuickItemResult {
   pc: Pick<PartnerItem, 'id' | 'price' | 'taxType'>;
@@ -9,6 +9,7 @@ export interface StatementQuickItemResult {
 }
 
 interface Props {
+  bomIndex?: BomIndex;
   name: string;
   spec: string;
   quantity: string;
@@ -58,7 +59,7 @@ export default function StatementQuickItemBar(props: Props) {
               </div>
               <div className="h-60 overflow-y-auto">
                 {props.results.slice(0, 50).map(result => {
-                  const parts = bomOf(result.product.id);
+                  const parts = props.bomIndex ? props.bomIndex.of(result.product.id) : bomOf(result.product.id);
                   const container = parts.find(line => line.child?.category === '용기')?.child?.name;
                   const cap = parts.find(line => line.child?.category === '마개')?.child?.name;
                   const info = result.product.oil || result.product.spec || '';
