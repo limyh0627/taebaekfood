@@ -1,5 +1,7 @@
 # TODO039 구형 필드 조사
 
+현재 기준은 마지막의 **2026-10-09 최신 원본 대조** 표다. 앞의 배포 전/미배포 표현과 건수는 각 제목 날짜의 조사 이력이며 현재 상태로 사용하지 않는다.
+
 기준: 배포 코드 99e87ed6. 운영 읽기 전용 집계 `scripts/audit-deprecated-fields.mts`, 2026-10-06 13:33 UTC. 필드 값이 null이어도 존재하면 집계한다. 개별 값과 개인정보는 보고서에 포함하지 않는다.
 
 | 필드 | 태백 / 풍회 잔존 문서 | 현재 경로 | 대체 및 제거 조건 |
@@ -87,3 +89,27 @@
 실제 101개 템플릿의 원문을 메모리에서만 사용하여 기존 방향 t.dir ?? (postMode 분리이면 줄돈, 아니면 출금)과 새 t.dir ?? 출금을 비교했다. 2026년 12개월 총1212개 표본에서 실제 앱 자금/전표 투영·자동 발행 조건 및 서버 autoVoucherDraft의 변경 전후 해시 차이 모두0, 방향 차이0이다. ID·이름·금액·분개 원문은 저장하지 않았다. 근거는 private work/todo039-postmode-equivalence-20261008.cts/json, 2026-10-08 02:08:38 UTC, exit0이다. 최초 ESM 로더 오류는 조회 전 종료로 구분하고 CTS 실행 완료만 근거로 사용한다.
 
 partnerIds는 SMARTSTORE 호환 reader가 있고 태백188/풍회2 문서에 존재한다. lotsAreTotal 태백1, inUse 태백8, noncash 양사 각2는 잔존하여 유지한다. 구형 InventoryCategory도 실제 소비자가 남아 있다. batch6의 INITIAL_PALLETS 제거는 이미 배포된 과거 범위이며 재작업하지 않는다. 이 후속은 원본039 전체 완료가 아니고 원본15개 완료 집계7/15를 변경하지 않는다.
+
+
+## 2026-10-09 최신 원본 대조 — 코드 제거와 운영 보존
+
+Notion 원본 https://app.notion.com/p/3e82cda7782b8142b375fcdd3dcda820의 writer·reader·DB 잔존·대체·삭제 버전 표 요구를 재조회했다. 현재 HEAD d666929b, CostFn alias 제거 cf083aa9와 제품 배포 c268ccf8 이후 기준이다. 운영 집계는 2026-10-09 03:34:47 UTC, private work/todo039-deprecated-field-counts-20261009.json이다. 존재 여부만 집계하며 null도 존재로 센다. 문서 ID·이름·값 및 백업은 이 문서에 포함하지 않는다. 운영 쓰기0이다.
+
+| 항목 | DB 존재 태백 / 풍회 | 실제 reader / writer | 대체·현재 결정·삭제 버전 |
+| --- | --- | --- | --- |
+| Item.itemType·partnerId·defaultBoxConfig·partnerBoxConfigs·unpackTo | 각각 0 / 0 | 현재 제품 선언·reader/writer 제거 | type·partner_item·item_bom/item_pack. 이전 제거 기록 유지, 재작업 없음 |
+| Item.용량 | 0 / 0 | Item 선언/품목 fallback 제거, 생산일지 동명 필드는 유지 | spec/displaySize, 150d9ddf 및 후속039 동기화 기록 |
+| Item.wipStock·finishedStock | 각각 0 / 0 | 제품 선언 제거 | stock/로트, 1e48437a |
+| PartnerItem 구형 포장9필드 | 이번 재집계 제외, 앞선0/0 감사 유지 | 제품 선언과 세 reader 제거 | BOM/item_pack, 9dcdab82. 새0증거로 재계수하지 않음 |
+| FixedCostTemplate.postMode | 0 / 0, dir 62 / 39 | 현재 앱/Functions 선언·호환 reader와 제품 writer 제거 | 명시 dir, d21eb7d0. 101×12=1212 실제 투영 차이0 근거 유지 |
+| CostFn.effective | DB 필드가 아님 | 본체/소비 alias 제거, buildCostFn 함수를 직접 사용 | cf083aa9, 계산정책 변경0 |
+| INITIAL_PALLETS | DB 필드가 아님 | 미참조 seed와 import 제거 | d2d8dc60. 운영 pallets 삭제 아님 |
+| Item.partnerIds | 188 / 2 | partnerPrice.ts isSmartStoreProduct의 SMARTSTORE 호환 reader, AddItemModal 원문 초기값 보존. 화면 파생 판매 연결 prop과 구별 | partner_item + isSmartStore. 표식 이관·구형 배열 의미 대조 없이 제거하지 않음 |
+| Item.lotsAreTotal | 1 / 0 | 제품 계산 reader/writer0, 재도입 방지 never 선언. 과거 repair script의 별도 writer 존재 | stock=로트 kg 합 공용 계약. 운영 필드 삭제 결정·백업/undo·동치 없이 유지 |
+| PalletStock.inUse | 8 / 0 | required 타입, 제품 잔량 reader0. seed-local-emulator.mts는 합성 local 0을 기록 | PalletManager 거래기록별 잔량과 outstandingByPallet. 거래처 음수 잔량 합/회수대기 실제 동치와 원문 보존 검수 후 필드 삭제 결정 필요 |
+| AccountCode.noncash | 2 / 2 (각 계정56문서) | 제품 계산 reader/writer0, optional 선언 및 역사 주석 | journal 상대계정 기반. 존재값 삭제 결정이 없어 유지 |
+| deprecated InventoryCategory 값 | 이번 필드 존재 감사 대상 아님 | ItemPriceManager 실제 한글 CATEGORIES와 분류 UI 소비 | taxonomy/type 계약 및 과거 분류 호환 확인 전 유니언 축소 금지 |
+
+scripts/fix-sesame-lots.mts에는 lotsAreTotal false 정정 및 원문 undo writer가 있고, fix-lot-to-ledger/fix-kkaebun-lot-to-ledger 등은 옛 축별 분기다. 이는 현재 앱 신규 writer가 아니라 보존된 개별 운영 복구 스크립트다. 이 감사는 스크립트를 실행하거나 옛 모델을 다시 활성화하지 않는다. 새 운영 실행은 해당 현재 계약·명시 승인·백업/조건부 복구를 별도 검토해야 한다.
+
+현재 안전한 추가 제품 필드 제거를 확정하지 않았으며 임의 삭제하지 않는다. 문서 인수 요구의 최신화는 완료했지만 미결 호환·운영 잔존의 정당 유지가 남아 전체 TODO039 완료와 다르다. 원본 전체 잔량35·우선8/15 판정은 변경하지 않는다. Notion쓰기0·Figma 보류·GitHub푸시 보류를 유지한다.
