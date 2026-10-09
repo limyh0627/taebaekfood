@@ -11,6 +11,7 @@ node_modules
 # 빌드 결과물
 /build
 /dist
+/functions/lib/
 .firebase-local-data/
 *-debug.log
 
