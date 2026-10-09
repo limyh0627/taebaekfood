@@ -95,3 +95,28 @@ describe('scheduled voucher contract', () => {
     expect(scheduledCashAccountId(accounts.map(a=>a.id==='cashacct-temp-main'?{...a,active:false}:a),'taebaek')).toBe('a-bank');
   });
 });
+
+
+describe('scheduled linked loan eligibility', () => {
+  it('keeps monthly identity and explicit principal/interest for the loan command', () => {
+    const decision = autoVoucherDraft({ ...base, dir: '출금', mode: '상환', loanId: 'contract',
+      loanCode: '260', principal: 900000, interest: 100001 }, '2026-09', day);
+    expect(decision).toMatchObject({ loan: { companyId: 'taebaek', operationId: 'AUTO-rent-2026-09',
+      tradeDate: day, loanId: 'contract', loanCode: '260', principal: 900000, interest: 100001 } });
+  });
+});
+
+
+describe('scheduled loan validation', () => {
+  const loan = { ...base, mode: '상환', dir: '출금', loanId: 'contract', loanCode: '260', principal: 1000000, interest: 1 };
+  it.each([
+    [{ principal: 1000001, interest: 1 }, '대출 원금·이자 총액 불일치'],
+    [{ principal: -1 }, '대출 원금·이자 총액 불일치'],
+    [{ principal: 1.5 }, '대출 원금·이자 총액 불일치'],
+    [{ loanCode: '251' }, '대출 상환 분할 필요'],
+    [{ dir: '입금' }, '대출 상환은 출금만 가능합니다'],
+    [{ autoIssue: false }, '자동 발행 꺼짐'],
+  ])('rejects an invalid loan template without a generic cash draft', (patch, skip) => {
+    expect(autoVoucherDraft({ ...loan, ...patch }, '2026-09', day)).toEqual({ skip });
+  });
+});

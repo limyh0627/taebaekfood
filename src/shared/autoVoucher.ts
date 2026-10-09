@@ -1,3 +1,5 @@
+import { autoVoucherDraft } from '../../functions/src/autoVoucherDraft';
+import type { LoanContract } from './loanLedger';
 import { templateStatementType, templateStatementConflict, canAutoStatement, templateTransferItems } from './templateStatementType';
 
 import { stampFor } from './voucherStamp';
@@ -45,10 +47,13 @@ export const isCashDir = (d: string) => d === '입금' || d === '출금';
  * 자동 발행 대상인가 — 켜져 있고, 금액이 있고, 기간 안이어야 한다.
  * 금액이 0이면 못 켠다: 매달 다른 금액(전기세)을 자동으로 만들면 틀린 숫자가 장부에 남는다.
  */
-export function canAutoIssue(t: FixedCostTemplate, ym: string): boolean {
+export function canAutoIssue(t: FixedCostTemplate, ym: string, loans?: readonly LoanContract[]): boolean {
   if (!t.autoIssue || !t.accountCode) return false;
-  // 서버 예약 발행이 계약 연결을 보존하지 못하므로 수동 발행만 허용한다.
-  if (t.mode === '상환' && t.loanId) return false;
+  // Generic recurring issue callers have no loan command; only the contract-aware auto settings opt in.
+  if (t.mode === '상환' || t.loanId || (t.principal ?? 0) > 0 || (t.interest ?? 0) > 0) {
+    if (!loans?.some(loan => loan.id === t.loanId && loan.companyId === t.companyId && loan.accountCode === t.loanCode)) return false;
+    return !!autoVoucherDraft(t, ym, issueDateOf(ym, t.issueDay)).loan;
+  }
   // 회사 간 이체는 두 장부에 동시에 서야 해서 자동 발행 대상이 아니다(손으로 끊는다)
   if (dirOf(t) === '회사이체') return false;
   if (!(t.amount > 0)) return false;

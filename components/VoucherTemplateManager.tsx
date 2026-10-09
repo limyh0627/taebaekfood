@@ -1,3 +1,5 @@
+import { canAutoIssue } from '../src/shared/autoVoucher';
+import { today } from '../src/shared/day';
 import { templateStatementType, templateStatementConflict, canAutoStatement, type TemplateStatementType } from '../src/shared/templateStatementType';
 import { appConfirm, appPrompt, appNotice } from '../src/shared/components/appDialog';
 import React, { useMemo, useState, useRef } from 'react';
@@ -5,7 +7,7 @@ import { X, Check, BarChart2, FolderPlus, Pencil, Copy, Eye, EyeOff, Star } from
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
 import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, missingTemplateAccountCodes, CashTemplate } from '../src/shared/cashTemplates';
 import { useLoanContracts } from '../src/shared/useLoanContracts';
-import { matchingLoan, LINKED_LOAN_AUTO_NOTICE } from '../src/shared/loanLedger';
+import { matchingLoan } from '../src/shared/loanLedger';
 import type { CompanyId } from '../src/shared/types';
 import ModalShell from '../src/shared/components/ModalShell';
 
@@ -48,6 +50,8 @@ export default function VoucherTemplateManager({
   onSearchChange?: (search: string) => void;
 }) {
   const loans = useLoanContracts(companyId);
+  const loanAutoReady = (t: FixedCostTemplate) => t.companyId === companyId && canAutoIssue({ ...t, autoIssue: true }, t.startYm || today().slice(0, 7), loans);
+  const loanAutoNotice = '자동 상환은 같은 회사의 대출 계약, 원금 계정, 원금·이자 합계와 출금 방향을 확인해 주세요.';
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -235,7 +239,7 @@ export default function VoucherTemplateManager({
             <button disabled={busy || !onUpdate} title={detailTpl.autoIssue ? '자동 발행 끄기' : '자동 발행 켜기'}
               className="min-h-11 min-w-11 flex items-center justify-center rounded-xl border border-slate-200 px-3 py-3 text-sm font-bold text-slate-700 disabled:opacity-40"
               onClick={() => runAction(async () => {
-                if (!detailTpl.autoIssue && detailTpl.mode === '상환' && detailTpl.loanId) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; }
+                if (!detailTpl.autoIssue && detailTpl.mode === '상환' && !loanAutoReady(detailTpl)) { await appNotice(loanAutoNotice); return; }
                 const missing = missingTemplateAccountCodes(detailTpl, new Set(accountCodes.map(c => c.code)));
                 if (!detailTpl.autoIssue && (!(detailTpl.amount > 0) || !detailTpl.accountCode || missing.length || (!isCashDir(dirOf(detailTpl)) && !canAutoStatement(detailTpl)))) {
                   await appNotice('계정·금액·거래처를 확인한 뒤 자동 발행을 켜 주세요.'); return;
@@ -453,12 +457,12 @@ export default function VoucherTemplateManager({
                   <option key={loan.id} value={loan.id}>{loan.name} · {loan.lenderName}</option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-slate-500">계약이 없으면 대출 관리에서 계약을 먼저 등록하세요. 계약 연결 템플릿은 수동으로 발행합니다.</p>
+              <p className="mt-1 text-xs text-slate-500">계약이 없으면 대출 관리에서 계약을 먼저 등록하세요. 계약과 원금·이자가 확인된 상환 양식은 매월 자동 발행을 선택할 수 있습니다.</p>
             </div>}
             <div className="rounded-xl border border-slate-200 p-3 space-y-2">
               <label className="flex items-start gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={form.autoIssue}
-                  onChange={async e => { if (e.target.checked && editTpl.mode === '상환' && form.loanId) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; } setForm(f => ({ ...f, autoIssue: e.target.checked })); }}
+                  onChange={async e => { if (e.target.checked && editTpl.mode === '상환' && !loanAutoReady({ ...editTpl, dir: form.dir, accountCode: form.accountCode, loanId: form.loanId, loanCode: form.loanCode, principal: Number(form.splitA || 0), interest: Number(form.splitB || 0), amount: Number(form.splitA || 0) + Number(form.splitB || 0) })) { await appNotice(loanAutoNotice); return; } setForm(f => ({ ...f, autoIssue: e.target.checked })); }}
                   className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0"/>
                 <span className="text-xs font-black text-slate-700 leading-snug">
                   자동 발행
@@ -575,7 +579,7 @@ export default function VoucherTemplateManager({
                     ? { [S.a]: a, [S.b]: b, ...('pick' in S ? { loanCode: form.loanCode, loanId: form.loanId } : {}) }
                     : {};
                   if (sm === '상환' && form.loanId && !matchingLoan(loans, companyId, form.loanId, form.loanCode)) { await appNotice('연결할 대출 계약의 회사와 원금 계정을 확인하고 다시 선택해 주세요.'); return; }
-                  if (sm === '상환' && form.loanId && form.autoIssue) { await appNotice(LINKED_LOAN_AUTO_NOTICE); return; }
+                  if (sm === '상환' && form.autoIssue && !loanAutoReady({ ...editTpl, ...splitPatch, amount, dir: form.dir, accountCode: form.accountCode })) { await appNotice(loanAutoNotice); return; }
                   if (form.autoIssue && amount <= 0) { await appNotice('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
                   const missingCodes = missingTemplateAccountCodes({ ...editTpl, accountCode: form.accountCode || undefined, loanCode: form.loanCode || undefined }, new Set(accountCodes.map(c => c.code)));
                   if (form.autoIssue && missingCodes.length) { await appNotice(`현재 회사 계정표에 없는 계정: ${missingCodes.join(', ')}\n\n계정을 먼저 확인해 주세요.`); return; }

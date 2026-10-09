@@ -135,3 +135,18 @@ describe('상환 템플릿 자동발행', () => {
     expect(e.amount).toBe(2_500_000);
   });
 });
+
+
+describe('계약이 확인된 정기 대출 자동 발행', () => {
+  const loan = { id: 'contract', companyId: 'taebaek' as const, name: '대출', lenderName: '은행', accountCode: '260' as const, openingDate: '2026-07-31', openingPrincipal: 1000, createdAt: '2026-07-31T00:00:00Z' };
+  const linked = tpl({ kind: 'recurring', companyId: 'taebaek', mode: '상환', dir: '출금', loanId: loan.id, loanCode: '260', accountCode: '260', amount: 110, principal: 100, interest: 10 });
+  it('회사와 원금 계정이 맞는 계약 및 정확한 분할만 자동 설정을 허용한다', () => {
+    expect(canAutoIssue(linked, '2026-10', [loan])).toBe(true);
+    expect(canAutoIssue(linked, '2026-10')).toBe(false);
+    expect(canAutoIssue({ ...linked, loanId: undefined }, '2026-10', [loan])).toBe(false);
+    expect(canAutoIssue(linked, '2026-10', [{ ...loan, companyId: 'punghoe' }])).toBe(false);
+    expect(canAutoIssue(linked, '2026-10', [{ ...loan, accountCode: '293' }])).toBe(false);
+    expect(canAutoIssue({ ...linked, principal: 101 }, '2026-10', [loan])).toBe(false);
+    expect(canAutoIssue({ ...linked, dir: '입금' }, '2026-10', [loan])).toBe(false);
+  });
+});

@@ -5,12 +5,13 @@ type Template = {
   name?: string; itemName?: string; amount?: number; accountCode?: string;
   issueDay?: number; startYm?: string; endYm?: string;
   statementType?: '매출' | '매입' | '비용';
-  dir?: string; mode?: string; loanId?: string;
+  dir?: string; mode?: string; loanId?: string; loanCode?: string;
   principal?: number; interest?: number; transferLines?: unknown[];
   partnerId?: string; partnerName?: string; taxExempt?: boolean;
 };
 type Draft = { kind: 'issuedStatements' | 'cashEntries'; companyId: Company; operationId: string; tradeDate: string; document: Record<string, unknown> };
-export type AutoVoucherDecision = { skip: string; draft?: never } | { draft: Draft; skip?: never };
+export type ScheduledLoanDraft = { companyId: Company; operationId: string; tradeDate: string; loanId: string; loanCode: string; principal: number; interest: number; note: string };
+export type AutoVoucherDecision = { skip: string; draft?: never; loan?: never } | { draft: Draft; skip?: never; loan?: never } | { loan: ScheduledLoanDraft; skip?: never; draft?: never };
 
 export function scheduledCashAccountId(accounts: Array<{ id: string; companyId?: string; active?: boolean; type?: string }>, companyId: Company): string {
   const active = accounts.filter(a => (a.companyId === companyId || (!a.companyId && companyId === 'taebaek')) && a.active)
@@ -40,7 +41,17 @@ export function autoVoucherDraft(t: Template, ym: string, today: string, cashAcc
   if (!Number.isFinite(issueDay)) return { skip: '발행일 오류' };
   const tradeDate = recurringDate(ym, Math.trunc(issueDay), last);
   if (today !== tradeDate) return { skip: '발행일 아님' };
-  if (t.mode === '상환' || t.loanId || (t.principal ?? 0) > 0 || (t.interest ?? 0) > 0) return { skip: '대출 상환 분할 필요' };
+  if (t.mode === '상환' || t.loanId || (t.principal ?? 0) > 0 || (t.interest ?? 0) > 0) {
+    if (t.mode !== '상환' || !t.loanId || !['260', '293'].includes(t.loanCode ?? '')) return { skip: '대출 상환 분할 필요' };
+    const principal = t.principal ?? 0, interest = t.interest ?? 0;
+    if (!Number.isSafeInteger(principal) || principal < 0 || !Number.isSafeInteger(interest) || interest < 0
+      || !Number.isSafeInteger(principal + interest) || principal + interest !== t.amount) return { skip: '대출 원금·이자 총액 불일치' };
+    if (t.dir && t.dir !== '출금') return { skip: '대출 상환은 출금만 가능합니다' };
+    const operationId = recurringId(t.id, ym);
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId)) return { skip: '작업 ID 오류' };
+    return { loan: { companyId: t.companyId, operationId, tradeDate, loanId: t.loanId, loanCode: t.loanCode!, principal, interest,
+      note: `정기 · ${t.name ?? ''}${t.partnerName ? ` · ${t.partnerName}` : ''}` } };
+  }
   const dir = recurringDir({ ...t, dir: t.dir || undefined });
   if (dir === '회사이체') return { skip: '회사이체 원자 명령 필요' };
   if (!['입금', '출금', '줄돈', '받을돈', '대체'].includes(dir)) return { skip: '전표 갈래 오류' };

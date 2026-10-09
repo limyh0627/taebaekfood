@@ -1,3 +1,4 @@
+import { recordScheduledLoanMovement } from './loanMovementCommand';
 import type * as admin from 'firebase-admin';
 import { autoVoucherDraft, scheduledAccountName, scheduledCashAccountId } from './autoVoucherDraft';
 import { issueVoucher } from './voucherIssue';
@@ -10,13 +11,16 @@ export async function issueScheduledVoucher(
   issueDate: string,
   releaseId: string,
 ) {
+  if (template.mode === '상환' && template.loanId && (template.companyId === 'taebaek' || template.companyId === 'punghoe'))
+    return recordScheduledLoanMovement(db, template.id, template.companyId, yearMonth, issueDate, releaseId);
   let decision = autoVoucherDraft(template, yearMonth, issueDate);
-  if (!decision.draft) return decision;
+  if (decision.loan) return recordScheduledLoanMovement(db, template.id, decision.loan.companyId, yearMonth, issueDate, releaseId);
+  if (!decision.draft) return { skip: decision.skip ?? '대출 연결 양식 아님' };
   if (decision.draft.kind === 'cashEntries') {
     const accounts = await db.collection('cashAccounts').get();
     const accountId = scheduledCashAccountId(accounts.docs.map(doc => ({ ...doc.data(), id: doc.id })), decision.draft.companyId);
     decision = autoVoucherDraft(template, yearMonth, issueDate, accountId);
-    if (!decision.draft) return decision;
+    if (!decision.draft) return { skip: decision.skip ?? '대출 연결 양식 아님' };
   } else {
     const accounts = await db.collection('accountCodes').get();
     if (decision.draft.document.type === '비용' && template.statementType === '비용') {
@@ -29,7 +33,7 @@ export async function issueScheduledVoucher(
     const accountName = scheduledAccountName(accounts.docs.map(doc => ({ ...doc.data(), id: doc.id })),
       decision.draft.companyId, String(template.accountCode ?? ''));
     decision = autoVoucherDraft(template, yearMonth, issueDate, '', accountName);
-    if (!decision.draft) return decision;
+    if (!decision.draft) return { skip: decision.skip ?? '대출 연결 양식 아님' };
   }
   const { kind, companyId, operationId, tradeDate, document } = decision.draft;
   const result = await issueVoucher(db, companyId, { kind, operationId, tradeDate, document, releaseId, prefix: document.type === '비용' ? '대체' : '' });
