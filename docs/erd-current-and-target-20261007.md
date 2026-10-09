@@ -4,12 +4,13 @@
 
 ## 2026-10-09 동결 소스 사전 갱신
 
-정적 사전은 최신 배포 소스 c7f336cf와 후속 cbd74974를 기준으로 2026-10-09 재생성했다. 테스트·spec은 제외하며 분석 소스427·COL73·직접 선언700·참조 필드599·미해석 속성1981, SDK 경로630·registry 밖12·wrapper24·동적 collection36·경로 미해석320·별도 모델686이다. 생성 --self-check와 후속 --self-check --check-only 모두 exit0이다. 미해석은 별도 목록이며 DB 실측이나 삭제 근거가 아니다.
+정적 사전은 최신 배포 소스 a20b992f를 기준으로2026-10-09 13:53:36 UTC에 재생성했다. tests/spec 제외 분석 소스430·COL74·직접 선언701·참조598·미해석 속성2022, SDK645·registry밖12·wrapper24·동적collection40·미해석경로329·별도모델694이다. 생성51114와 후속check-only6778 모두 self-check exit0이다. 미해석은 별도 목록이며 DB실측/삭제 근거가 아니다.
 
-이번 선택4 Functions는 원격 원본69·compiled69 일치, 전체33 ACTIVE/Node22 및 나머지29 source·trigger 불변을 확인했다. 후속 앱 타입·양앱 build43707, Hosting86780, 원격72682의33JS·양HTML 일치가 확인됐다. 기존042·015 배포는 각 당시 증거로 보존한다. 현재 원본21완료·22잔여, 우선15는11완료·4잔여이고 ERD 전체는 미완료다. 신규 AddItemModal 죽은 초기 state1줄 제거는 별도 미배포 후속이며 이번 사전 생성 시점 뒤 변경과 구분한다. 운영/신규 gate/Notion/Figma/푸시0이다. 아래 수치와 대기 문구는 제목별 과거 시점이다.
+이번 세금 선택5 Functions는 각각runtime72/compiled72 byte 일치, 전체34ACTIVE/Node22·나머지29 source 및 trigger 불변이다. 양Hosting27JS·양HTML과 Rules SHA a2b027748890f2a96ca93afc7a9fefb59cefe8a6a4ea8b0f8bebf75eb0ff93a4 일치를 확인했다. 현재022 재인수로 전체21완료22잔여·우선15 11완료4잔여, ERD 전체 미완료다. 이전042/015/LOAN 배포는 당시 기록으로 보존한다. 중복 입고 전용 정정은 private후보이며 현재 앱 사전/운영 적용으로 확대하지 않는다. 운영·newgate·Notion·Figma·push0. 아래 수치·대기 문구는 제목별 과거 시점이다.
 
 | 최신 코드 관계 | 근거와 제한 |
 | --- | --- |
+| 세금 발행 확인 → taxIssueOperations/taxIssueRecords | taxIssueCommand.ts는 선택 원전표·actor/hash를 확인하고 발행 기록과 taxIssuedAt/exemptIssuedAt·mutationRevision 및 voucherMutationOperations를 같은 TX에 저장한다. 새 금융 전표·외부 신고·번호 counter를 만들지 않는다. |
 | 정기 대출 예약 → loanMovementOperations | functions/src/loanMovementCommand.ts의 recordScheduledLoanMovement가 templateId/yearMonth와 고정 scheduledRequest를 감사에 저장한다. 재시도는 저장된 입력·결과를 검증하며 새 계약 revision으로 과거 입력을 바꾸지 않는다. fixedCostTemplates·loanContracts·cashAccounts를 읽는 관계이며 독립 예약 collection을 추측하지 않는다. |
 | 반품 접수 → returnSubmissionOperations / returnRequests | submitReturnRequestCommand.ts는 requestId·actorId·requestHash로 accepted/rejected terminal 감사를 보존한다. accepted와 접수 원문·submissionReceipt는 같은 TX에서 생성되며 처리 후 replay는 최초 receipt를 확인하고 최신 처리 상태를 덮지 않는다. |
 | 금융 기초 → financialOpeningOperations | financialOpeningCommand.ts의 kind와 원문 hash·actor·결과를 보존하며 cashAccounts·loanContracts·거래처 기초 전표 저장을 해당 명령 TX에 합성한다. account-create는 현금 계좌 생성이다. |
