@@ -5,7 +5,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers, ClipboardList, ChevronDown, CalendarDays, Hand, Package } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShipMethod } from '../types';
 import { bomQty } from '../src/shared/bom';
-import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, boxSiblings, unitsPerBoxOf, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { defaultShipToId, activeShipTos, linksForShipTo, partnerLabel } from '../src/shared/shipTo';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { VOLUME_CHIP_COLORS, catOrder, renderColoredName } from '../src/shared/productChip';
@@ -26,6 +26,7 @@ import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 
 interface AddOrderModalProps {
   mode?: 'order' | 'stock';
+  orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   orders: readonly Order[];
   partners: Partner[];
@@ -57,7 +58,7 @@ const decompound = (str: string): string =>
 const matchPartner = (name: string, query: string): boolean =>
   !!query.trim() && matchesSearch(name, query);
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, orders, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onBack, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnitInputs, items, orders, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onBack, onSave }) => {
   const stockProduction = mode === 'stock';
   const products = stockProduction ? items.filter(item => item.type === 'product' && !isGoodsItem(item)) : items;
   const [stockPartnerIds, setStockPartnerIds] = useState<string[]>([]);
@@ -245,7 +246,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
   };
   // 낱개↔박스가 짝인데 거래처마다 노출 명단이 다르다 — 그룹의 아무 변형이나 주문 가능하면 낱개를 앵커로 띄운다
   const groupOrderable = (loose: Item): boolean =>
-    orderableForPartner(loose) || boxSiblings(loose, items).some(s => orderableForPartner(s.item));
+    orderableForPartner(loose) || boxSiblings(loose, items, orderUnitInputs).some(s => orderableForPartner(s.item));
 
   const catalogProducts = useMemo(() => {
     if (!selectedPartner && !stockProduction) return [];
@@ -253,15 +254,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
       .filter(p => {
         if (p.archived || p.type === 'service') return false;
         // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
-        if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
+        if (isBoxStockItem(p, orderUnitInputs) && items.some(x => !x.archived && x.id === (unpackComponent(p, orderUnitInputs)?.itemId))) return false;
         return true;
       })
       .sort((a, b) => {
         const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedPartner, partnerOutIds, items, shipToId, stockProduction]);
-  const linkedProducts = useMemo(() => stockProduction ? catalogProducts.filter(item => stockPartnerIds.length === 0 || (partnerItems ?? []).some(link => stockPartnerIds.includes(link.partnerId) && (link.itemId === item.id || boxSiblings(item, items).some(box => box.item.id === link.itemId)))) : catalogProducts.filter(groupOrderable), [catalogProducts, selectedPartner, partnerOutIds, items, stockProduction, stockPartnerIds, partnerItems]);
+  }, [products, selectedPartner, partnerOutIds, items, shipToId, stockProduction, orderUnitInputs]);
+  const linkedProducts = useMemo(() => stockProduction ? catalogProducts.filter(item => stockPartnerIds.length === 0 || (partnerItems ?? []).some(link => stockPartnerIds.includes(link.partnerId) && (link.itemId === item.id || boxSiblings(item, items, orderUnitInputs).some(box => box.item.id === link.itemId)))) : catalogProducts.filter(groupOrderable), [catalogProducts, selectedPartner, partnerOutIds, items, stockProduction, stockPartnerIds, partnerItems, orderUnitInputs]);
   const usingCatalogFallback = !!selectedPartner && linkedProducts.length === 0;
   const displayProducts = usingCatalogFallback ? catalogProducts : linkedProducts;
 
@@ -332,9 +333,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
 
       // 재고 1단위 기준 수량 — 박스 품목은 박스 개수(입력이 박스면 qty가 곧 박스 수)
-      const unpack = unpackComponent(product);
+      const unpack = unpackComponent(product, orderUnitInputs);
       const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
-      for (const line of bomOf(product.id)) {
+      for (const line of (orderUnitInputs ? orderUnitInputs.bom.of(product.id) : bomOf(product.id))) {
         // 겉박스·테이프도 BOM으로 센다 — 거래처별 포장설정(shipping_rule)은 폐기했다.
         const sub = submaterials.find(sm => sm.id === line.childId);
         if (!sub) continue;
@@ -343,12 +344,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
-  }, [selectedItems, selectedPartner, products, submaterials]);
+  }, [selectedItems, selectedPartner, products, submaterials, orderUnitInputs]);
 
   // 박스 설정 — 품목이 들고 있는 것만 본다(거래처별 포장설정은 폐기).
   const getPartnerBoxConfigs = (itemId: string, _partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     const p = items.find(pr => pr.id === itemId);
-    const currentUnits = unitsPerBoxOf(p);
+    const currentUnits = unitsPerBoxOf(p, orderUnitInputs);
     if (currentUnits > 1) return [{ unitsPerBox: currentUnits, boxType: '' }];
     return [];
   };
@@ -358,13 +359,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
     const product = items.find(p => p.id === itemId);
     // 박스 변형 품목 자체는 재고 단위가 '박스 1개'다. 배송 포장(shipping_rule)을 얹지 않는다
     // — 수량 = 박스 개수, 그대로 그 품목 재고에서 뺀다.
-    if (product && isBoxStockItem(product)) {
+    if (product && isBoxStockItem(product, orderUnitInputs)) {
       // 겉박스는 박스 품목 BOM에 들어있어 생산 때 깎인다 — 주문 라인엔 안 싣는다(이중차감 방지)
       return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: 0, boxType: '' };
     }
     const configs = getPartnerBoxConfigs(itemId, selectedPartner?.id);
     // 개입수는 품목이 안다(BOM → 포장 환산표). 거래처 포장설정이 있으면 그게 먼저.
-    const first = configs[0] ?? { unitsPerBox: unitsPerBoxOf(product), boxType: '', boxSubId: undefined };
+    const first = configs[0] ?? { unitsPerBox: unitsPerBoxOf(product, orderUnitInputs), boxType: '', boxSubId: undefined };
     return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
   };
 
@@ -417,9 +418,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
    * 어느 쪽이 진짜인지 헷갈리고, 카드가 세로로 길어져 목록이 안 읽혔다.
    */
   const renderQtyBox = (product: Item) => {
-    const isBox = isBoxStockItem(product);
+    const isBox = isBoxStockItem(product, orderUnitInputs);
     const selection = selectedItems.find(row => row.itemId === product.id);
-    const perBox = selection?.unitsPerBox ?? unitsPerBoxOf(product);
+    const perBox = selection?.unitsPerBox ?? unitsPerBoxOf(product, orderUnitInputs);
     const boxed = !isBox && !!selection?.isBoxUnit && perBox > 1;
     return (
       <>
@@ -487,7 +488,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
         {(() => {
           const full = items.find(i => i.id === product.id);
           if (!full) return null;
-          const boxes = items.filter(b => !b.archived && unpackComponent(b)?.itemId === full.id);
+          const boxes = items.filter(b => !b.archived && unpackComponent(b, orderUnitInputs)?.itemId === full.id);
           if (boxes.length === 0) return null;
           const shortBy = totalUnits - (full.stock ?? 0);
           if (shortBy <= 0) return null;
@@ -516,7 +517,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
       partner: stockProduction ? undefined : selectedPartner!, purpose: stockProduction ? 'stock-production' : undefined, items, partnerItems: partnerOut, lines: selectedItems,
       orderDate, deliveryDate: stockProduction ? orderDate : deadline, shipToId: stockProduction ? undefined : shipToId,
       source: (isDelivery && source === '일반') ? '택배' : source,
-      shipMethod, note: orderNote, noteImportant, pallets,
+      shipMethod, note: orderNote, noteImportant, pallets, orderUnitInputs,
     });
     if (!draft.items.length) return;
 
@@ -832,7 +833,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
                   {g.list.map(looseProduct => {
                     // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
                     // 낱개 + 이 거래처에 설정된 박스만 (모든 박스 규격을 다 띄우지 않는다)
-                    const siblings = boxSiblings(looseProduct, items).filter(s => usingCatalogFallback || orderableForPartner(s.item));
+                    const siblings = boxSiblings(looseProduct, items, orderUnitInputs).filter(s => usingCatalogFallback || orderableForPartner(s.item));
                     const groupIds = [looseProduct.id, ...siblings.map(s => s.item.id)];
                     // 기본 변형 — 거의 박스로 주문하니 박스를 기본으로 연다. 박스가 여럿이면
                     // 가장 작은 개입(첫 번째)으로 과다주문 방지. 짝 박스가 없으면 낱개.
@@ -878,7 +879,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', items, or
                           //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
                           //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
                           // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
-                          const chips = packingSubmaterials(product.id, isBulkItem) as Item[];
+                          const chips = packingSubmaterials(product.id, isBulkItem, orderUnitInputs?.bom) as Item[];
                           if (chips.length === 0) return null;
                           return (
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5"

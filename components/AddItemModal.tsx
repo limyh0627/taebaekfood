@@ -10,7 +10,7 @@ import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
-import { 묶음갈래of } from '../src/shared/orderUnits';
+import { 묶음갈래of, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import PickRow from '../src/shared/ui/PickRow';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -18,6 +18,7 @@ import { db, storage } from '../src/shared/firebase';
 
 interface ProductModalProps {
   companyId: CompanyId;
+  orderUnitInputs?: OrderUnitInputs;
   initialData?: Item;
   allSubmaterials?: Item[];
   items?: Item[];
@@ -69,7 +70,7 @@ const PHOTO_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 
-const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs, initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -117,7 +118,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
       .map(pi => (pi.partnerId))
       .filter(Boolean) as string[],
     //  구성은 item_bom에서 읽는다. 자식 품목이 붙어 오므로 이름·규격·단위가 언제나 제 값이다.
-    submaterials: bomOf(initialData?.id).map(l => ({
+    submaterials: (orderUnitInputs ? orderUnitInputs.bom.of(initialData?.id ?? '') : bomOf(initialData?.id)).map(l => ({
       id: l.childId,
       name: l.child?.name ?? l.childId,
       category: normCat(l.child?.type ?? 'submaterial'),
@@ -183,7 +184,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
    * 붙잡아 둔다. 수량만 보고 판정하면 숫자를 지우는 순간 낱개 칸으로 홱 바뀐다.
    */
   const openedAsBoxChild = useRef<string | null>((() => {
-    const comps = bomOf(initialData?.id).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
+    const comps = (orderUnitInputs ? orderUnitInputs.bom.of(initialData?.id ?? '') : bomOf(initialData?.id)).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
     return comps.length === 1 && comps[0].qty > 1 ? comps[0].childId : null;
   })());
   const [volNum, setVolNum] = useState(() => SPEC_RE.exec(initialData?.spec ?? '')?.[1] ?? '');
@@ -690,7 +691,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, initialData, all
                     const cCat = child ? normCat(child.type) : '';
                     const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.type === '완제품');
                     const open = expandedBom.has(s.id);
-                    const childSubs = bomOf(child?.id).map(l => ({
+                    const childSubs = (orderUnitInputs ? orderUnitInputs.bom.of(child?.id ?? '') : bomOf(child?.id)).map(l => ({
                       id: l.childId, name: l.child?.name ?? l.childId,
                       category: l.child?.type ?? 'submaterial', stock: l.qty, unit: l.child?.unit ?? '개',
                     })) as any[];

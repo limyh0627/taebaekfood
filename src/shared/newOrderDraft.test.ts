@@ -52,3 +52,15 @@ describe('직접 입력과 추출의 공통 주문 생성', () => {
 it.each(['goods', 'raw'])('재고 만들기 draft는 생산할 수 없는 %s 품목을 발행하지 않는다', type => {
  expect(() => buildNewOrderDraft({ ...base, partner: undefined, purpose: 'stock-production', items: [{...loose,type} as Item], lines: [{itemId:'loose',quantity:5,isBoxUnit:false}] })).toThrow('직접 생산 가능한');
 });
+
+it('화면 회사의 BOM 가격과 포장표 환산은 상대 회사 전역으로 바뀌지 않는다', () => {
+ const orderUnitInputs = { bom: buildBomIndex(base.items, [{ parent_id: 'box', child_id: 'loose', quantity: 20 }]),
+   pack: buildPackIndex([{ item_id: 'loose', units_per_box: 12 }]) };
+ setBomIndex(buildBomIndex(base.items, [{ parent_id: 'box', child_id: 'loose', quantity: 6 }]));
+ setPackIndex(buildPackIndex([{ item_id: 'loose', units_per_box: 4 }]));
+ const draft = buildNewOrderDraft({ ...base, orderUnitInputs,
+   lines: [{ itemId: 'box', quantity: 2, isBoxUnit: false }, { itemId: 'loose', quantity: 2, isBoxUnit: true }] });
+ expect(draft.items).toEqual([expect.objectContaining({ itemId: 'box', quantity: 2, price: 20000 }),
+   expect.objectContaining({ itemId: 'loose', quantity: 24, price: 1000, unitsPerBox: 12, boxQuantity: 2 })]);
+ expect(draft.totalAmount).toBe(64000);
+});

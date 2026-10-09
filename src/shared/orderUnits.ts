@@ -62,8 +62,9 @@ export function boxDerivedUnitPrice(
   product: BoxLike | undefined,
   clientId: string,
   partnerItems: { itemId?: string; partnerId?: string; price?: number }[],
+  inputs?: OrderUnitInputs,
 ): number | undefined {
-  const uc = unpackComponent(product);
+  const uc = unpackComponent(product, inputs);
   if (!uc) return undefined;
   const loose = partnerItems.find(pc => pc.itemId === uc.itemId && pc.partnerId === clientId);
   return typeof loose?.price === 'number' ? loose.price * uc.count : undefined;
@@ -75,16 +76,16 @@ export function boxDerivedUnitPrice(
  * count 오름차순(10kg박스 < 20kg박스).
  */
 export function boxSiblings<T extends Pick<Item, 'id' | 'archived'>>(
-  loose: Pick<Item, 'id'>, all: T[],
+  loose: Pick<Item, 'id'>, all: T[], inputs?: OrderUnitInputs,
 ): { item: T; count: number }[] {
   //  BOM 역방향으로 이 낱개를 문 부모만 본다 — 예전엔 전 품목을 훑으며 unpackComponent를
   //  두 번씩 불렀다(품목 수 × 2회).
   const byId = new Map(all.map(p => [p.id, p]));
   const hits = new Map<string, { item: T; count: number }>();
-  for (const { parentId } of bomParentsOf(loose.id)) {
+  for (const { parentId } of (inputs ? inputs.bom.parentsOf(loose.id) : bomParentsOf(loose.id))) {
     const item = byId.get(parentId);
     if (!item || item.archived) continue;
-    const uc = unpackComponent(item);
+    const uc = unpackComponent(item, inputs);
     if (uc && uc.count > 1 && uc.itemId === loose.id) hits.set(parentId, { item, count: uc.count });
   }
   return [...hits.values()].sort((a, b) => a.count - b.count);

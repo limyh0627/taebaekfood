@@ -4939,6 +4939,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               {true && (
                 <ItemManager
                   companyId={companyId}
+                  orderUnitInputs={appData.orderUnitInputs}
                   isAdmin={isAdmin}
                   onCreateBoxItem={createBoxItem}
                   /* 원가계산기 — **원료식·전체 품목을 여기서 물려 넘긴다.**
@@ -4950,11 +4951,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas),
                   })}
                   costOf={inventoryCostOf}
-                  /**
-                   * **목록은 회사 것만.** BOM 조회는 여기 안 걸린다 — bomIndex가 allItems로
-                   * 따로 만들어져 있어서 남의 회사 품목을 물고 있어도 안 끊긴다.
-                   * (품목에 회사가 뜻을 갖는 건 "이 창고에 뭐가 얼마 있나"를 셀 때뿐이다)
-                   */
+                  /* 목록과 BOM 표시는 현재 회사의 입력을 사용한다. */
                   items={companyItems}
                   partners={partners}
                   partnerItems={partnerItems}
@@ -5160,6 +5157,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {isAddOrderOpen && (
         <AddOrderModal
           mode={orderCreateMode}
+          orderUnitInputs={appData.orderUnitInputs}
           items={allItems}
           orders={allOrders}
           partners={partners}
@@ -5187,6 +5185,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       {isProductModalOpen && (
         <ProductModal
           companyId={companyId}
+          orderUnitInputs={appData.orderUnitInputs}
           initialData={editingProduct || undefined}
           allSubmaterials={itemsOfCompany(submaterials, companyId)}
           items={itemsOfCompany(products, companyId)}

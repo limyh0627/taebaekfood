@@ -12,7 +12,7 @@ import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { fetchCollection } from '../src/shared/services/firebaseService';
-import { isBoxStockItem, unpackComponent, boxSiblings, groupLooseBoxRows } from '../src/shared/orderUnits';
+import { isBoxStockItem, unpackComponent, boxSiblings, groupLooseBoxRows, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { BomLine, bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/costCalc';
@@ -28,6 +28,7 @@ import ModalShell from '../src/shared/components/ModalShell';
 
 interface ItemManagerProps {
   companyId: CompanyId;
+  orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   partners: Partner[];
   partnerItems?: PartnerItem[];
@@ -170,7 +171,8 @@ const matchGrade = (p: Item, g: string): boolean => {
 /** 용량은 개입수를 뗀 낱개 용량으로 묶는다 — '1kg * 20'과 '1kg'은 같은 용량이다 */
 const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
 
-const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveServiceTerms, onCreateBoxItem, onCalcCost, costOf, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, items, partners, partnerItems = [], accountCodes = [], accountGroups = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveServiceTerms, onCreateBoxItem, onCalcCost, costOf, isAdmin = true }) => {
+  const readBom = (id: string) => orderUnitInputs ? orderUnitInputs.bom.of(id) : bomOf(id);
   const shownCostOf = (item: Item): number | undefined => {
     const rolled = costOf?.(item);
     if (typeof rolled === 'number' && Number.isFinite(rolled) && rolled > 0) return Math.round(rolled);
@@ -395,7 +397,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
      * BOM 파생(buildSubmaterialsFromBom)이 category에 자식의 **type**을 넣게 되면서
      * 그 필터가 아무것도 안 걸러, 사실상 **이름만으로** 묶고 있었다.
      */
-    const bomKey = (p: Item) => bomOf(p.id)
+    const bomKey = (p: Item) => readBom(p.id)
       .map(l => `${l.childId}×${l.qty}`)
       .sort()
       .join(',');
@@ -417,9 +419,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
           pcs: pcByProduct[p.id] || [],
           directClients: partnersOfItem(partnerItems, p.id),
         }));
-        return { key, name: key.split('||')[0], subs: bomOf(prods[0].id), items };
+        return { key, name: key.split('||')[0], subs: readBom(prods[0].id), items };
       });
-  }, [products, partnerItems]);
+  }, [products, partnerItems, orderUnitInputs]);
 
   // 삭제/통합된 품목을 가리키는 유령 연결은 카운트에서 제외 (목록과 개수 일치)
   const validItemIds = useMemo(() => new Set(items.filter(p => !p.archived).map(p => p.id)), [items]);
@@ -588,7 +590,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
   //  박스는 제 낱개 밑에 붙인다. **묶고 나서** 쪽을 나눠야 둘이 다른 쪽으로 안 갈린다.
   const pagedRows = useMemo(() => {
     if (itemSort !== '거래처') {
-      return groupLooseBoxRows(filteredItems)
+      return groupLooseBoxRows(filteredItems, orderUnitInputs)
         .slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
         .map(row => ({ ...row, 머리: '', 묶음수: 0, 묶음끝: false }));
     }
@@ -600,7 +602,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
         묶음수: i === 0 ? 한묶음.줄.length : 0,
         묶음끝: i === 한묶음.줄.length - 1,
       })));
-  }, [filteredItems, safePage, itemSort, 거래처쪽들]);
+  }, [filteredItems, safePage, itemSort, 거래처쪽들, orderUnitInputs]);
 
   const handleSelectClient = (id: string) => {
     setSelectedClientId(id);
@@ -916,11 +918,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                   const taken = new Set<string>();
                   for (const p of pagedItems) {
                     if (taken.has(p.id)) continue;
-                    const uc = unpackComponent(p);
+                    const uc = unpackComponent(p, orderUnitInputs);
                     // 박스면 그 낱개가 이 거래처에도 연결돼 있을 때만 낱개를 앵커로 삼는다
                     const loose = uc && shown.has(uc.itemId) ? pagedItems.find(x => x.id === uc.itemId)! : p;
                     if (taken.has(loose.id)) continue;
-                    const sibs = boxSiblings(loose, pagedItems);
+                    const sibs = boxSiblings(loose, pagedItems, orderUnitInputs);
                     const variants = [
                       ...(shown.has(loose.id) ? [{ item: loose, label: '낱개' }] : []),
                       ...sibs.map(s => ({ item: s.item as Item, label: `${s.count}개입` })),
@@ -935,7 +937,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     return (
                 <React.Fragment key={anchor.id}>
                 {(() => {
-                  const subs = packingSubmaterials(item.id, isBulkItem) as Item[];
+                  const subs = packingSubmaterials(item.id, isBulkItem, orderUnitInputs?.bom) as Item[];
                   // 겉박스·테이프는 박스 품목 BOM에 들어 있다 — 거래처별 포장설정은 폐기했다.
                   return (
                     <ProductCard key={item.id} product={item} subs={subs}
@@ -1189,9 +1191,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                     )}
                     <td className="px-2 py-3">
                       {/* 품목이 품은 것 전부 — 주문 생성 화면과 같은 부자재 색 칩 */}
-                      {item.type !== 'service' && bomOf(item.id).length > 0 ? (
+                      {item.type !== 'service' && readBom(item.id).length > 0 ? (
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          {sortSubs(bomOf(item.id), subRank).map(bomChip)}
+                          {sortSubs(readBom(item.id), subRank).map(bomChip)}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-200">-</span>
@@ -1274,7 +1276,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                           // 품목 목록 뷰: 품목 수정 / 삭제 버튼
                           <div className="flex items-center justify-end gap-1.5">
                             {/* 낱개 완제품 → N개입 박스 품목 만들기. 이미 박스인 품목엔 안 띄운다. */}
-                            {onCreateBoxItem && item.type === 'product' && !isBoxStockItem(item) && (
+                            {onCreateBoxItem && item.type === 'product' && !isBoxStockItem(item, orderUnitInputs) && (
                               <button
                                 onClick={() => openBoxModal(item)}
                                 className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all text-[10px] font-black"
@@ -1748,9 +1750,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, items, partners, p
                       {/* 주문 생성 화면과 같은 표기 — 이름 색 + 규격칩 + 부자재칩 (src/shared/productChip) */}
                       <div className="min-w-0 flex-1">
                         <ProductNameRow product={p} />
-                        {bomOf(p.id).length > 0 && (
+                        {readBom(p.id).length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                            {sortSubs(bomOf(p.id), subRank).map(bomChip)}
+                            {sortSubs(readBom(p.id), subRank).map(bomChip)}
                           </div>
                         )}
                       </div>
