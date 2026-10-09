@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 74개, 선언 필드 701개, 운영 소스 430개를 분석했다.
+COL 74개, 선언 필드 704개, 운영 소스 430개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -32,8 +32,8 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | fetchWhereIn | src/shared/services/firebaseService.ts:623 | src/shared/services/firebaseService.ts:633 | src/features/admin/AdminApp.tsx:1346 |
 | fetchByIds | src/shared/services/firebaseService.ts:646 | src/shared/services/firebaseService.ts:654 | src/features/admin/useVoucherLedger.ts:136 |
 | subscribeWhere | src/shared/services/firebaseService.ts:660 | src/shared/services/firebaseService.ts:667 | 정적 호출 연결 없음 |
-| commitCompanyWrites | src/shared/services/firebaseService.ts:681 | src/shared/services/firebaseService.ts:687 | src/shared/services/firebaseService.ts:560, src/shared/services/firebaseService.ts:591, src/shared/services/firebaseService.ts:894, src/features/admin/AdminApp.tsx:1396, src/features/admin/AdminApp.tsx:5025, src/features/admin/AdminApp.tsx:5213, src/features/admin/AdminApp.tsx:5303 |
-| mutateDoc | src/shared/services/firebaseService.ts:903 | src/shared/services/firebaseService.ts:908 | 정적 호출 연결 없음 |
+| commitCompanyWrites | src/shared/services/firebaseService.ts:681 | src/shared/services/firebaseService.ts:687 | src/shared/services/firebaseService.ts:560, src/shared/services/firebaseService.ts:591, src/shared/services/firebaseService.ts:897, src/features/admin/AdminApp.tsx:1396, src/features/admin/AdminApp.tsx:5025, src/features/admin/AdminApp.tsx:5213, src/features/admin/AdminApp.tsx:5303 |
+| mutateDoc | src/shared/services/firebaseService.ts:906 | src/shared/services/firebaseService.ts:911 | 정적 호출 연결 없음 |
 | readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98, functions/src/partnerAdvanceCommand.ts:128, functions/src/deleteIssuedStatementCommand.ts:98, functions/src/cashMutationCommand.ts:198, functions/src/editIssuedStatementCommand.ts:110, functions/src/processReturnCommand.ts:204 |
 | deleteIssuedStatement | functions/src/deleteIssuedStatementCommand.ts:54 | functions/src/deleteIssuedStatementCommand.ts:78, functions/src/deleteIssuedStatementCommand.ts:93, functions/src/deleteIssuedStatementCommand.ts:93, functions/src/deleteIssuedStatementCommand.ts:110, functions/src/deleteIssuedStatementCommand.ts:110 | functions/src/deleteIssuedStatementCommand.ts:132 |
 | issueVoucher | functions/src/voucherIssue.ts:33 | functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:75, functions/src/voucherIssue.ts:75 | functions/src/voucherIssue.ts:187, functions/src/autoVoucherCommand.ts:39 |
@@ -108,16 +108,16 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | src/shared/services/firebaseService.ts:712 | client | doc | root / top-level-candidate | 미해석 | items/{receipt.itemId} |  |
 | src/shared/services/firebaseService.ts:713 | client | doc | root / top-level-candidate | 미해석 | itemReceipts/{receipt.id} |  |
 | src/shared/services/firebaseService.ts:754 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
-| src/shared/services/firebaseService.ts:757 | client | collection | root / top-level | 1 | itemReceipts |  |
-| src/shared/services/firebaseService.ts:759 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
-| src/shared/services/firebaseService.ts:772 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
-| src/shared/services/firebaseService.ts:772 | client | doc | root / top-level-candidate | 미해석 | itemReceipts/{`rcv-po-${encodeURIComponent(poId)}-${encodeURIComponent(line.itemId)}`} |  |
-| src/shared/services/firebaseService.ts:870 | client | collection | root / top-level | 1 | itemReceipts |  |
-| src/shared/services/firebaseService.ts:872 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
-| src/shared/services/firebaseService.ts:875 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
-| src/shared/services/firebaseService.ts:885 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
-| src/shared/services/firebaseService.ts:908 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
-| src/shared/services/firebaseService.ts:925 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
+| src/shared/services/firebaseService.ts:759 | client | collection | root / top-level | 1 | itemReceipts |  |
+| src/shared/services/firebaseService.ts:761 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| src/shared/services/firebaseService.ts:775 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
+| src/shared/services/firebaseService.ts:775 | client | doc | root / top-level-candidate | 미해석 | itemReceipts/{`rcv-po-${encodeURIComponent(poId)}-${encodeURIComponent(line.itemId)}`} |  |
+| src/shared/services/firebaseService.ts:873 | client | collection | root / top-level | 1 | itemReceipts |  |
+| src/shared/services/firebaseService.ts:875 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
+| src/shared/services/firebaseService.ts:878 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
+| src/shared/services/firebaseService.ts:888 | client | doc | root / top-level-candidate | 미해석 | items/{line.itemId} |  |
+| src/shared/services/firebaseService.ts:911 | client | doc | root / top-level-candidate | 미해석 | {collectionName}/{id} |  |
+| src/shared/services/firebaseService.ts:928 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
 | src/shared/services/productionWorkDocumentService.ts:59 | client | collection | root / top-level | 1 | productionWorkDocumentLines |  |
 | src/shared/services/productionWorkDocumentService.ts:66 | client | doc | root / top-level-candidate | 미해석 | productionWorkDocuments/{header.id} |  |
 | src/shared/services/productionWorkDocumentService.ts:73 | client | doc | root / top-level-candidate | 미해석 | productionWorkDocumentLines/{id} |  |
@@ -696,6 +696,20 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | CompanyId | functions/src/shared/rawLot.ts:1 | type-alias | non-object-alias-not-expanded |  |
 | RawMaterialLot | functions/src/shared/rawLot.ts:3 | interface | direct-properties-only | id, supplierId, supplierName, packageType, packageKg, qtyIn, kgIn, kgRemaining, receivedDate, lotNo, status, poId, createdAt, material, qtyRemaining, unitKg |
 | LotMixSetting | functions/src/shared/rawLot.ts:34 | interface | direct-properties-only | topPercent, ratios |
+| StocktakeAnchor | functions/src/shared/rawInventoryCore.ts:35 | interface | direct-properties-only | effectiveAt, operationId, sequence |
+| RawInventoryState | functions/src/shared/rawInventoryCore.ts:49 | interface | direct-properties-only | id, companyId, rawItemId, materialSnapshot, stockKg, activeLots, recentDepletedLots, stocktakeAnchor, revision, lastProcessedAt |
+| LotChange | functions/src/shared/rawInventoryCore.ts:81 | interface | direct-properties-only | lotId, supplierName, lotNo, receivedDate, deltaKg, beforeKg, afterKg, lotSnapshot |
+| RawMovementKind | functions/src/shared/rawInventoryCore.ts:98 | type-alias | non-object-alias-not-expanded |  |
+| RawInventoryMovement | functions/src/shared/rawInventoryCore.ts:109 | interface | direct-properties-only | id, operationId, commandHash, companyId, rawItemId, materialSnapshot, effectiveAt, recordedAt, sequence, kind, reportedDeltaKg, appliedDeltaKg, balanceAfterKg, targetKg, targetLotId, targetLotKg, lotChanges, source, reversalOf, stocktakeAnchorBefore, backdatedBeforeStocktake, actorId, actorName |
+| ReversalGuard | functions/src/shared/rawInventoryCore.ts:150 | interface | direct-properties-only | id, originalOperationId, reverseOperationId, companyId, rawItemId, createdAt |
+| RawInventoryJob | functions/src/shared/rawInventoryCore.ts:160 | interface | direct-properties-only | id, companyId, source, expectedOperationIds, status, lastError, createdAt, completedAt |
+| RawSourceType | functions/src/shared/rawInventoryCore.ts:176 | type-alias | non-object-alias-not-expanded |  |
+| CommandBase | functions/src/shared/rawInventoryCore.ts:182 | interface | direct-properties-only | operationId, companyId, rawItemId, materialSnapshot, effectiveAt, source, actorId, actorName, backdatedIntent |
+| ReceiveLotInput | functions/src/shared/rawInventoryCore.ts:203 | interface | direct-properties-only | supplierId, supplierName, packageType, packageKg, qtyIn, poId |
+| RawInventoryCommand | functions/src/shared/rawInventoryCore.ts:212 | type-alias | non-object-alias-not-expanded |  |
+| RawRejectCode | functions/src/shared/rawInventoryCore.ts:227 | type-alias | non-object-alias-not-expanded |  |
+| RawApplyResult | functions/src/shared/rawInventoryCore.ts:251 | type-alias | non-object-alias-not-expanded |  |
+| ApplyDeterministic | functions/src/shared/rawInventoryCore.ts:258 | interface | direct-properties-only | now, newLotId, carryOverLotId |
 | CompanyId | functions/src/shared/partnerAdvance.ts:2 | type-alias | non-object-alias-not-expanded |  |
 | AdvancePurpose | functions/src/shared/partnerAdvance.ts:3 | type-alias | direct-properties-only | version, contractId, purpose, operationId |
 | IssuedStatementItem | functions/src/shared/partnerAdvance.ts:4 | type-alias | direct-properties-only | name, spec, qty, price, supply, tax, total, isTaxExempt, accountCode, side |
@@ -736,20 +750,6 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | OpeningStore | functions/src/financialOpeningCommand.ts:18 | type-alias | direct-properties-only | collection, runTransaction |
 | FinancialOpeningPending | src/shared/services/financialOpeningCommands.ts:6 | type-alias | direct-properties-only | version, companyId, userId, request |
 | FinancialOpeningDraft | src/shared/services/financialOpeningCommands.ts:7 | type-alias | non-object-alias-not-expanded |  |
-| StocktakeAnchor | functions/src/shared/rawInventoryCore.ts:35 | interface | direct-properties-only | effectiveAt, operationId, sequence |
-| RawInventoryState | functions/src/shared/rawInventoryCore.ts:49 | interface | direct-properties-only | id, companyId, rawItemId, materialSnapshot, stockKg, activeLots, recentDepletedLots, stocktakeAnchor, revision, lastProcessedAt |
-| LotChange | functions/src/shared/rawInventoryCore.ts:81 | interface | direct-properties-only | lotId, supplierName, lotNo, receivedDate, deltaKg, beforeKg, afterKg, lotSnapshot |
-| RawMovementKind | functions/src/shared/rawInventoryCore.ts:98 | type-alias | non-object-alias-not-expanded |  |
-| RawInventoryMovement | functions/src/shared/rawInventoryCore.ts:109 | interface | direct-properties-only | id, operationId, commandHash, companyId, rawItemId, materialSnapshot, effectiveAt, recordedAt, sequence, kind, reportedDeltaKg, appliedDeltaKg, balanceAfterKg, targetKg, targetLotId, targetLotKg, lotChanges, source, reversalOf, stocktakeAnchorBefore, backdatedBeforeStocktake, actorId, actorName |
-| ReversalGuard | functions/src/shared/rawInventoryCore.ts:150 | interface | direct-properties-only | id, originalOperationId, reverseOperationId, companyId, rawItemId, createdAt |
-| RawInventoryJob | functions/src/shared/rawInventoryCore.ts:160 | interface | direct-properties-only | id, companyId, source, expectedOperationIds, status, lastError, createdAt, completedAt |
-| RawSourceType | functions/src/shared/rawInventoryCore.ts:176 | type-alias | non-object-alias-not-expanded |  |
-| CommandBase | functions/src/shared/rawInventoryCore.ts:182 | interface | direct-properties-only | operationId, companyId, rawItemId, materialSnapshot, effectiveAt, source, actorId, actorName, backdatedIntent |
-| ReceiveLotInput | functions/src/shared/rawInventoryCore.ts:203 | interface | direct-properties-only | supplierId, supplierName, packageType, packageKg, qtyIn, poId |
-| RawInventoryCommand | functions/src/shared/rawInventoryCore.ts:212 | type-alias | non-object-alias-not-expanded |  |
-| RawRejectCode | functions/src/shared/rawInventoryCore.ts:227 | type-alias | non-object-alias-not-expanded |  |
-| RawApplyResult | functions/src/shared/rawInventoryCore.ts:251 | type-alias | non-object-alias-not-expanded |  |
-| ApplyDeterministic | functions/src/shared/rawInventoryCore.ts:258 | interface | direct-properties-only | now, newLotId, carryOverLotId |
 | LegacyLedgerFields | functions/src/shared/rawInventoryDocument.ts:11 | interface | direct-properties-only | note, type, addedBy, orderId, canSize, canCount, canSizeTag, originalAmount, originalUnit |
 | RawReadSnapshot | functions/src/shared/rawInventoryPrepare.ts:6 | interface | direct-properties-only |  |
 | RawCommandRead | functions/src/shared/rawInventoryPrepare.ts:7 | interface | direct-properties-only | movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap |
@@ -954,7 +954,7 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | TopTab | components/ItemList.tsx:311 | type-alias | non-object-alias-not-expanded |  |
 | GroupRow | components/ItemList.tsx:1226 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
 | FlowRow | components/ItemList.tsx:1546 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
-| GridRow | components/ItemList.tsx:3590 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
+| GridRow | components/ItemList.tsx:3591 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
 | Vouchered | src/shared/statementOrders.ts:24 | type-alias | non-object-alias-not-expanded |  |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | interface | direct-properties-only | orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | interface | direct-properties-only | status, className |
@@ -1561,7 +1561,8 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | src/shared/services/firebaseService.ts:534 | scoped.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/firebaseService.ts:568 | scoped.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/firebaseService.ts:717 | data.companyId | any | any-receiver |
-| src/shared/services/firebaseService.ts:755 | (await getDoc(poRef)).data()?.status | DocumentData \| undefined | property-symbol-unresolved |
+| src/shared/services/firebaseService.ts:756 | currentPo?.status | DocumentData \| undefined | property-symbol-unresolved |
+| src/shared/services/firebaseService.ts:757 | currentPo?.status | DocumentData \| undefined | property-symbol-unresolved |
 | src/shared/services/productionWorkDocumentService.ts:27 | scoped.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/productionWorkDocumentService.ts:29 | header.documentDate | ProductionDocumentWrite | property-symbol-unresolved |
 | src/shared/services/productionWorkDocumentService.ts:30 | header.documentDate | ProductionDocumentWrite | property-symbol-unresolved |
@@ -1719,13 +1720,13 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
 | components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
 | components/ItemList.tsx:595 | nav.share | any | any-receiver |
-| components/ItemList.tsx:1981 | (e as any).lotChanges?.some | any | any-receiver |
-| components/ItemList.tsx:1981 | (e as any).lotChanges | any | any-receiver |
-| components/ItemList.tsx:1981 | change.lotId | any | any-receiver |
-| components/ItemList.tsx:1983 | (e as any).source?.type | any | any-receiver |
-| components/ItemList.tsx:1983 | (e as any).source | any | any-receiver |
-| components/ItemList.tsx:1983 | (e as any).source?.id | any | any-receiver |
-| components/ItemList.tsx:1983 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:1982 | (e as any).lotChanges?.some | any | any-receiver |
+| components/ItemList.tsx:1982 | (e as any).lotChanges | any | any-receiver |
+| components/ItemList.tsx:1982 | change.lotId | any | any-receiver |
+| components/ItemList.tsx:1984 | (e as any).source?.type | any | any-receiver |
+| components/ItemList.tsx:1984 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:1984 | (e as any).source?.id | any | any-receiver |
+| components/ItemList.tsx:1984 | (e as any).source | any | any-receiver |
 | components/AddOrderModal.tsx:67 | pi.Direction | any | any-receiver |
 | components/AddOrderModal.tsx:235 | pi.partnerId | any | any-receiver |
 | components/AddOrderModal.tsx:236 | pi.itemId | any | any-receiver |
@@ -3421,704 +3422,707 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 
 | 모델 | 필드 | 입력 | 선언 타입 | 선언 위치 | 정적 사용처 |
 | --- | --- | --- | --- | --- | --- |
-| OrderItem | lineId | 선택 | string | src/shared/types.ts:21 | 39 |
-| OrderItem | itemId | 필수 | string | src/shared/types.ts:22 | 118 |
-| OrderItem | name | 필수 | string | src/shared/types.ts:23 | 61 |
-| OrderItem | orderedAs | 선택 | string | src/shared/types.ts:37 | 0 |
-| OrderItem | quantity | 필수 | number | src/shared/types.ts:38 | 41 |
-| OrderItem | price | 필수 | number | src/shared/types.ts:39 | 7 |
-| OrderItem | checked | 선택 | boolean | src/shared/types.ts:40 | 37 |
-| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:41 | 6 |
-| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:42 | 5 |
-| OrderItem | mfgDate | 선택 | string | src/shared/types.ts:43 | 20 |
-| OrderItem | mfgBy | 선택 | string | src/shared/types.ts:44 | 2 |
-| OrderItem | mfgAt | 선택 | string | src/shared/types.ts:45 | 2 |
-| OrderItem | labelType | 선택 | '대기' \| '날인' \| '부착' | src/shared/types.ts:46 | 13 |
-| OrderItem | labelBy | 선택 | string | src/shared/types.ts:53 | 2 |
-| OrderItem | labelAt | 선택 | string | src/shared/types.ts:54 | 2 |
-| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:55 | 26 |
-| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:56 | 24 |
-| OrderItem | unitsPerBox | 선택 | number | src/shared/types.ts:57 | 7 |
-| OrderItem | boxType | 선택 | string | src/shared/types.ts:58 | 2 |
-| OrderItem | boxSubId | 선택 | string | src/shared/types.ts:59 | 1 |
-| OrderItem | displaySize | 선택 | string | src/shared/types.ts:60 | 4 |
-| OrderPallet | type | 필수 | string | src/shared/types.ts:64 | 16 |
-| OrderPallet | quantity | 필수 | number | src/shared/types.ts:65 | 17 |
-| OrderPallet | isExchange | 선택 | boolean | src/shared/types.ts:66 | 7 |
-| DeliveryBox | itemId | 필수 | string | src/shared/types.ts:70 | 3 |
-| DeliveryBox | name | 필수 | string | src/shared/types.ts:71 | 1 |
-| DeliveryBox | quantity | 필수 | number | src/shared/types.ts:72 | 2 |
-| PurchaseItem | id | 필수 | string | src/shared/types.ts:91 | 0 |
-| PurchaseItem | name | 필수 | string | src/shared/types.ts:92 | 0 |
-| ShipTo | id | 필수 | string | src/shared/types.ts:103 | 19 |
-| ShipTo | name | 필수 | string | src/shared/types.ts:104 | 12 |
-| ShipTo | archived | 선택 | boolean | src/shared/types.ts:106 | 11 |
-| PartnerItem | id | 필수 | string | src/shared/types.ts:110 | 25 |
-| PartnerItem | itemId | 필수 | string | src/shared/types.ts:111 | 70 |
-| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:112 | 63 |
-| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:113 | 28 |
-| PartnerItem | price | 선택 | number | src/shared/types.ts:114 | 29 |
-| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:115 | 13 |
-| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:124 | 21 |
-| PartnerItem | shipToIds | 선택 | string[] | src/shared/types.ts:138 | 1 |
-| PartnerItem | isSmartStore | 선택 | boolean | src/shared/types.ts:139 | 0 |
-| Partner | shipTos | 선택 | ShipTo[] | src/shared/types.ts:151 | 5 |
-| Partner | id | 필수 | string | src/shared/types.ts:152 | 186 |
-| Partner | name | 필수 | string | src/shared/types.ts:153 | 175 |
-| Partner | email | 선택 | string | src/shared/types.ts:154 | 4 |
-| Partner | phone | 선택 | string | src/shared/types.ts:155 | 6 |
-| Partner | type | 필수 | PartnerChannel | src/shared/types.ts:156 | 28 |
-| Partner | region | 선택 | string | src/shared/types.ts:157 | 8 |
-| Partner | address | 선택 | string | src/shared/types.ts:158 | 10 |
-| Partner | addressDetail | 선택 | string | src/shared/types.ts:159 | 8 |
-| Partner | ownerName | 선택 | string | src/shared/types.ts:160 | 6 |
-| Partner | bizNo | 선택 | string | src/shared/types.ts:161 | 6 |
-| Partner | tel | 선택 | string | src/shared/types.ts:162 | 7 |
-| Partner | mobile | 선택 | string | src/shared/types.ts:163 | 7 |
-| Partner | fax | 선택 | string | src/shared/types.ts:164 | 2 |
-| Partner | note | 선택 | string | src/shared/types.ts:165 | 3 |
-| Partner | partnerType | 선택 | PartnerType | src/shared/types.ts:166 | 7 |
-| Partner | companyId | 선택 | CompanyId | src/shared/types.ts:173 | 2 |
-| Partner | isOemFactory | 선택 | boolean | src/shared/types.ts:174 | 1 |
-| Partner | purchaseItems | 선택 | PurchaseItem[] | src/shared/types.ts:175 | 0 |
-| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:208 | 8 |
-| OrderRawInventoryTrace | rawItemId | 선택 | string | src/shared/types.ts:210 | 10 |
-| OrderRawInventoryTrace | operationId | 선택 | string | src/shared/types.ts:212 | 17 |
-| OrderRawInventoryTrace | ledgerId | 선택 | string | src/shared/types.ts:214 | 2 |
-| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:216 | 6 |
-| OrderRawInventoryTrace | lotId | 선택 | string | src/shared/types.ts:217 | 8 |
-| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:218 | 3 |
-| OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:219 | 3 |
-| OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:220 | 3 |
-| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:221 | 10 |
-| Order | id | 필수 | string | src/shared/types.ts:225 | 254 |
-| Order | companyId | 선택 | CompanyId | src/shared/types.ts:227 | 2 |
-| Order | cardNo | 선택 | string | src/shared/types.ts:238 | 4 |
-| Order | createdBy | 선택 | string | src/shared/types.ts:243 | 1 |
-| Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:245 | 1 |
-| Order | partnerId | 선택 | string | src/shared/types.ts:246 | 58 |
-| Order | partnerName | 필수 | string | src/shared/types.ts:247 | 89 |
-| Order | items | 필수 | OrderItem[] | src/shared/types.ts:248 | 146 |
-| Order | note | 선택 | string | src/shared/types.ts:250 | 14 |
-| Order | noteImportant | 선택 | boolean | src/shared/types.ts:251 | 4 |
-| Order | noteBy | 선택 | string | src/shared/types.ts:252 | 2 |
-| Order | noteAt | 선택 | string | src/shared/types.ts:253 | 2 |
-| Order | totalAmount | 필수 | number | src/shared/types.ts:254 | 0 |
-| Order | status | 필수 | OrderStatus | src/shared/types.ts:255 | 133 |
-| Order | createdAt | 필수 | string | src/shared/types.ts:256 | 55 |
-| Order | deliveryDate | 필수 | string | src/shared/types.ts:257 | 58 |
-| Order | email | 필수 | string | src/shared/types.ts:258 | 0 |
-| Order | purpose | 선택 | 'stock-production' | src/shared/types.ts:260 | 1 |
-| Order | source | 필수 | OrderSource | src/shared/types.ts:261 | 33 |
-| Order | pallets | 선택 | OrderPallet[] | src/shared/types.ts:262 | 20 |
-| Order | region | 선택 | string | src/shared/types.ts:263 | 0 |
-| Order | shipToId | 선택 | string | src/shared/types.ts:271 | 5 |
-| Order | deliveryBoxes | 선택 | DeliveryBox[] | src/shared/types.ts:272 | 10 |
-| Order | shipMethod | 선택 | ShipMethod \| '직접수령' | src/shared/types.ts:274 | 0 |
-| Order | invoicePrinted | 선택 | boolean | src/shared/types.ts:275 | 16 |
-| Order | invoiceStage | 선택 | 'printed' \| 'attached' | src/shared/types.ts:284 | 2 |
-| Order | invoiceType | 선택 | InvoiceType | src/shared/types.ts:286 | 2 |
-| Order | shipmentConfirmedBy | 선택 | string \| null | src/shared/types.ts:287 | 3 |
-| Order | shipmentConfirmedAt | 선택 | string \| null | src/shared/types.ts:288 | 5 |
-| Order | deliveredAt | 선택 | string | src/shared/types.ts:289 | 13 |
-| Order | documentDate | 선택 | string | src/shared/types.ts:290 | 0 |
-| Order | accountingExcluded | 선택 | boolean | src/shared/types.ts:296 | 3 |
-| Order | accountingExclusionReason | 선택 | string | src/shared/types.ts:297 | 2 |
-| Order | accountingExcludedAt | 선택 | string | src/shared/types.ts:298 | 0 |
-| Order | accountingExcludedBy | 선택 | string | src/shared/types.ts:299 | 0 |
-| Order | rawLotsDeducted | 선택 | boolean | src/shared/types.ts:300 | 3 |
-| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:301 | 18 |
-| Order | rawInventoryAttempt | 선택 | number | src/shared/types.ts:303 | 5 |
-| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:309 | 8 |
-| Order | autoBuilt | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:310 | 12 |
-| Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:311 | 15 |
-| Order | producedAt | 선택 | string | src/shared/types.ts:313 | 22 |
-| Order | shippedOut | 선택 | boolean | src/shared/types.ts:314 | 15 |
-| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:319 | 28 |
-| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:329 | 17 |
-| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:331 | 13 |
-| OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:346 | 0 |
-| OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:347 | 3 |
-| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:348 | 1 |
-| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:349 | 13 |
-| OrderItemInventoryState | attempt | 필수 | number | src/shared/types.ts:350 | 5 |
-| OrderItemInventoryState | completedAt | 선택 | string | src/shared/types.ts:351 | 8 |
-| OrderItemInventoryState | reversedAt | 선택 | string | src/shared/types.ts:352 | 0 |
-| OrderItemInventoryState | rawConsumedLots | 필수 | OrderRawInventoryTrace[] | src/shared/types.ts:353 | 9 |
-| OrderItemInventoryState | autoBuilt | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:354 | 4 |
-| OrderItemInventoryState | producedUnits | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:355 | 5 |
-| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:356 | 19 |
-| OrderInventoryAdjustment | itemId | 필수 | string | src/shared/types.ts:360 | 18 |
-| OrderInventoryAdjustment | delta | 필수 | number | src/shared/types.ts:361 | 14 |
-| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:365 | 13 |
-| OrderInventorySnapshot | stockDeltas | 필수 | OrderInventoryAdjustment[] | src/shared/types.ts:366 | 19 |
-| OrderInventorySnapshot | bomLines | 필수 | { parentItemId: string; childItemId: string; quantity: number }[] | src/shared/types.ts:367 | 3 |
-| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:368 | 10 |
-| OrderInventorySnapshot | productConsumedLots | 선택 | Order['productConsumedLots'] | src/shared/types.ts:369 | 6 |
-| OrderInventorySnapshot | productProducedLots | 선택 | { itemId: string; lotId: string; qty: number }[] | src/shared/types.ts:370 | 6 |
-| OrderInventorySnapshot | rawLedgerIds | 선택 | string[] | src/shared/types.ts:371 | 4 |
-| OrderStatusAudit | id | 필수 | string | src/shared/types.ts:375 | 0 |
-| OrderStatusAudit | orderId | 필수 | string | src/shared/types.ts:376 | 0 |
-| OrderStatusAudit | partnerName | 필수 | string | src/shared/types.ts:377 | 0 |
-| OrderStatusAudit | previousStatus | 필수 | OrderStatus | src/shared/types.ts:378 | 1 |
-| OrderStatusAudit | nextStatus | 필수 | OrderStatus | src/shared/types.ts:379 | 1 |
-| OrderStatusAudit | approvedBy | 필수 | string | src/shared/types.ts:380 | 1 |
-| OrderStatusAudit | approvedAt | 필수 | string | src/shared/types.ts:381 | 1 |
-| OrderStatusAudit | completedAt | 선택 | string | src/shared/types.ts:382 | 1 |
-| OrderStatusAudit | state | 필수 | 'processing' \| 'completed' \| 'failed' | src/shared/types.ts:383 | 3 |
-| OrderStatusAudit | legacyEvidenceWarning | 필수 | boolean | src/shared/types.ts:384 | 1 |
-| OrderStatusAudit | stockAdjustments | 필수 | Array<OrderInventoryAdjustment & { name: string; unit: string }> | src/shared/types.ts:385 | 1 |
-| OrderStatusAudit | error | 선택 | string | src/shared/types.ts:386 | 1 |
-| OrderItemEdit | id | 필수 | string | src/shared/types.ts:396 | 0 |
-| OrderItemEdit | orderId | 필수 | string | src/shared/types.ts:397 | 0 |
-| OrderItemEdit | at | 필수 | string | src/shared/types.ts:398 | 1 |
-| OrderItemEdit | by | 필수 | string | src/shared/types.ts:399 | 1 |
-| OrderItemEdit | changes | 필수 | string[] | src/shared/types.ts:401 | 1 |
-| SubmaterialComponent | id | 필수 | string | src/shared/types.ts:405 | 13 |
-| SubmaterialComponent | name | 필수 | string | src/shared/types.ts:406 | 2 |
-| SubmaterialComponent | category | 필수 | InventoryCategory \| string | src/shared/types.ts:407 | 0 |
-| SubmaterialComponent | stock | 필수 | number | src/shared/types.ts:408 | 8 |
-| SubmaterialComponent | unit | 필수 | string | src/shared/types.ts:409 | 1 |
-| SubmaterialComponent | spec | 선택 | string | src/shared/types.ts:410 | 0 |
-| SubmaterialComponent | cost | 선택 | number | src/shared/types.ts:411 | 0 |
-| SubmaterialComponent | qrCode | 선택 | string | src/shared/types.ts:412 | 0 |
-| ItemInventoryReservation | operationId | 필수 | string | src/shared/types.ts:458 | 2 |
-| ItemInventoryReservation | orderId | 필수 | string | src/shared/types.ts:459 | 9 |
-| ItemInventoryReservation | qty | 필수 | number | src/shared/types.ts:460 | 7 |
-| ItemInventoryReservation | createdAt | 필수 | string | src/shared/types.ts:461 | 1 |
-| ItemInventoryReservation | state | 필수 | 'processing' \| 'allocated' | src/shared/types.ts:463 | 3 |
-| ItemStocktakeAnchor | id | 필수 | string | src/shared/types.ts:467 | 4 |
-| ItemStocktakeAnchor | date | 필수 | string | src/shared/types.ts:468 | 3 |
-| ItemStocktakeAnchor | createdAt | 필수 | string | src/shared/types.ts:469 | 2 |
-| ItemStocktakeAnchor | targetQty | 필수 | number | src/shared/types.ts:470 | 1 |
-| ItemStocktakeAnchor | beforeQty | 필수 | number | src/shared/types.ts:471 | 1 |
-| ItemStocktakeAnchor | deltaQty | 필수 | number | src/shared/types.ts:472 | 0 |
-| ItemStocktakeAnchor | note | 선택 | string | src/shared/types.ts:473 | 1 |
-| Item | id | 필수 | string | src/shared/types.ts:478 | 675 |
-| Item | companyId | 선택 | CompanyId | src/shared/types.ts:490 | 5 |
-| Item | name | 필수 | string | src/shared/types.ts:491 | 296 |
-| Item | sku | 선택 | string | src/shared/types.ts:492 | 1 |
-| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:494 | 133 |
-| Item | category | 선택 | ItemSubtype \| string | src/shared/types.ts:495 | 37 |
-| Item | subtype | 선택 | string | src/shared/types.ts:496 | 20 |
-| Item | cost | 선택 | number | src/shared/types.ts:497 | 20 |
-| Item | costSource | 선택 | 'rollup' \| 'manual' | src/shared/types.ts:506 | 2 |
-| Item | lotsAreTotal | 선택 | never | src/shared/types.ts:535 | 0 |
-| Item | stock | 필수 | number | src/shared/types.ts:537 | 62 |
-| Item | inventoryReservations | 선택 | ItemInventoryReservation[] | src/shared/types.ts:539 | 4 |
-| Item | stocktakeAnchors | 선택 | ItemStocktakeAnchor[] | src/shared/types.ts:541 | 4 |
-| Item | density | 선택 | number | src/shared/types.ts:547 | 15 |
-| Item | minStock | 필수 | number | src/shared/types.ts:548 | 22 |
-| Item | unit | 필수 | string | src/shared/types.ts:549 | 112 |
-| Item | image | 필수 | string | src/shared/types.ts:550 | 3 |
-| Item | imagePath | 선택 | string | src/shared/types.ts:552 | 5 |
-| Item | oil | 선택 | string | src/shared/types.ts:553 | 4 |
-| Item | partnerIds | 선택 | string[] | src/shared/types.ts:554 | 0 |
-| Item | freightType | 선택 | 's' \| 'a' \| 'b' \| 'c' \| 'd' \| 'e' | src/shared/types.ts:555 | 3 |
-| Item | 품목 | 선택 | string | src/shared/types.ts:558 | 14 |
-| Item | spec | 선택 | string | src/shared/types.ts:559 | 96 |
-| Item | isSmartStore | 선택 | boolean | src/shared/types.ts:560 | 1 |
-| Item | smartStorePrice | 선택 | number | src/shared/types.ts:561 | 4 |
-| Item | procureType | 선택 | '완사입' \| '임가공' | src/shared/types.ts:564 | 5 |
-| Item | unpackable | 선택 | boolean | src/shared/types.ts:574 | 2 |
-| Item | rawMaterialName | 선택 | string | src/shared/types.ts:575 | 7 |
-| Item | packageType | 선택 | string | src/shared/types.ts:576 | 3 |
-| Item | packageKg | 선택 | number | src/shared/types.ts:577 | 2 |
-| Item | lots | 선택 | RawMaterialLot[] | src/shared/types.ts:578 | 39 |
-| Item | mixEnabled | 선택 | boolean | src/shared/types.ts:579 | 4 |
-| Item | mixTopPercent | 선택 | number | src/shared/types.ts:580 | 3 |
-| Item | mixLotRatios | 선택 | { lotId: string; percent: number }[] | src/shared/types.ts:581 | 8 |
-| Item | phantom | 선택 | boolean | src/shared/types.ts:582 | 12 |
-| Item | archived | 선택 | boolean | src/shared/types.ts:584 | 38 |
-| PalletStock | id | 필수 | string | src/shared/types.ts:589 | 35 |
-| PalletStock | name | 필수 | string | src/shared/types.ts:590 | 25 |
-| PalletStock | total | 필수 | number | src/shared/types.ts:591 | 10 |
-| PalletStock | inUse | 필수 | number | src/shared/types.ts:593 | 0 |
-| PalletStock | damaged | 필수 | number | src/shared/types.ts:594 | 6 |
-| PalletStock | hidden | 선택 | boolean | src/shared/types.ts:595 | 9 |
-| PalletTransaction | id | 필수 | string | src/shared/types.ts:599 | 12 |
-| PalletTransaction | partnerId | 필수 | string | src/shared/types.ts:600 | 6 |
-| PalletTransaction | palletId | 필수 | string | src/shared/types.ts:601 | 6 |
-| PalletTransaction | type | 필수 | 'in' \| 'out' | src/shared/types.ts:602 | 9 |
-| PalletTransaction | quantity | 필수 | number | src/shared/types.ts:603 | 13 |
-| PalletTransaction | date | 필수 | string | src/shared/types.ts:604 | 6 |
-| PalletTransaction | note | 선택 | string | src/shared/types.ts:605 | 2 |
-| PalletTransaction | status | 선택 | '교체중' \| '교체완료' | src/shared/types.ts:606 | 3 |
-| PalletTransaction | exchangeReturnQty | 선택 | number | src/shared/types.ts:607 | 2 |
-| PalletTransaction | isTransfer | 선택 | boolean | src/shared/types.ts:608 | 5 |
-| Post | id | 필수 | string | src/shared/types.ts:613 | 6 |
-| Post | title | 필수 | string | src/shared/types.ts:614 | 5 |
-| Post | author | 필수 | string | src/shared/types.ts:615 | 4 |
-| Post | content | 필수 | string | src/shared/types.ts:616 | 3 |
-| Post | date | 필수 | string | src/shared/types.ts:617 | 4 |
-| Post | tag | 필수 | '공지' \| '긴급' \| '매뉴얼' \| '업무' | src/shared/types.ts:618 | 8 |
-| Post | pinned | 선택 | boolean | src/shared/types.ts:619 | 6 |
-| Post | blocks | 선택 | ({ type: 'text'; text: string; format?: 'paragraph' \| 'heading' \| 'subheading' \| 'list'; bold?: boolean; link?: string } \| { type: 'image'; url: string; path: string; caption: string })[] | src/shared/types.ts:620 | 5 |
-| FileItem | id | 필수 | string | src/shared/types.ts:624 | 0 |
-| FileItem | name | 필수 | string | src/shared/types.ts:625 | 0 |
-| FileItem | type | 필수 | 'pdf' \| 'excel' \| 'image' \| 'word' | src/shared/types.ts:626 | 0 |
-| FileItem | size | 필수 | string | src/shared/types.ts:627 | 0 |
-| FileItem | date | 필수 | string | src/shared/types.ts:628 | 0 |
-| FileItem | uploader | 필수 | string | src/shared/types.ts:629 | 0 |
-| CabinetCategory | id | 필수 | string | src/shared/types.ts:635 | 2 |
-| CabinetCategory | companyId | 선택 | CompanyId | src/shared/types.ts:636 | 0 |
-| CabinetCategory | name | 필수 | string | src/shared/types.ts:637 | 12 |
-| CabinetCategory | order | 필수 | number | src/shared/types.ts:638 | 1 |
-| CabinetCategory | createdAt | 필수 | string | src/shared/types.ts:639 | 0 |
-| CabinetSubCategory | id | 필수 | string | src/shared/types.ts:643 | 2 |
-| CabinetSubCategory | companyId | 선택 | CompanyId | src/shared/types.ts:644 | 0 |
-| CabinetSubCategory | category | 필수 | string | src/shared/types.ts:645 | 6 |
-| CabinetSubCategory | name | 필수 | string | src/shared/types.ts:646 | 11 |
-| CabinetSubCategory | order | 필수 | number | src/shared/types.ts:647 | 1 |
-| CabinetSubCategory | createdAt | 필수 | string | src/shared/types.ts:648 | 0 |
-| CabinetDoc | id | 필수 | string | src/shared/types.ts:652 | 3 |
-| CabinetDoc | companyId | 선택 | CompanyId | src/shared/types.ts:653 | 0 |
-| CabinetDoc | category | 필수 | string | src/shared/types.ts:654 | 3 |
-| CabinetDoc | subCategory | 필수 | string | src/shared/types.ts:655 | 3 |
-| CabinetDoc | fileName | 필수 | string | src/shared/types.ts:656 | 5 |
-| CabinetDoc | storagePath | 필수 | string | src/shared/types.ts:657 | 1 |
-| CabinetDoc | downloadUrl | 필수 | string | src/shared/types.ts:658 | 1 |
-| CabinetDoc | size | 필수 | number | src/shared/types.ts:659 | 1 |
-| CabinetDoc | contentType | 필수 | string | src/shared/types.ts:660 | 1 |
-| CabinetDoc | note | 선택 | string | src/shared/types.ts:661 | 3 |
-| CabinetDoc | uploadedBy | 필수 | string | src/shared/types.ts:662 | 1 |
-| CabinetDoc | uploadedAt | 필수 | string | src/shared/types.ts:663 | 2 |
-| AnnualLeave | carryOverLeave | 필수 | number | src/shared/types.ts:670 | 7 |
-| AnnualLeave | bonusLeave | 필수 | number | src/shared/types.ts:671 | 7 |
-| Employee | id | 필수 | string | src/shared/types.ts:675 | 130 |
-| Employee | companyId | 선택 | CompanyId | src/shared/types.ts:677 | 2 |
-| Employee | name | 필수 | string | src/shared/types.ts:678 | 99 |
-| Employee | username | 선택 | string | src/shared/types.ts:679 | 1 |
-| Employee | position | 필수 | string | src/shared/types.ts:680 | 25 |
-| Employee | department | 필수 | string | src/shared/types.ts:681 | 21 |
-| Employee | joinDate | 필수 | string | src/shared/types.ts:682 | 12 |
-| Employee | status | 필수 | EmployeeStatus | src/shared/types.ts:683 | 5 |
-| Employee | phone | 필수 | string | src/shared/types.ts:684 | 9 |
-| Employee | birthDate | 선택 | string | src/shared/types.ts:685 | 1 |
-| Employee | annualLeave | 선택 | AnnualLeave | src/shared/types.ts:686 | 12 |
-| Employee | healthCertDate | 선택 | string | src/shared/types.ts:687 | 7 |
-| Employee | adminAccess | 선택 | boolean | src/shared/types.ts:692 | 2 |
-| Employee | fcmTokens | 선택 | string[] | src/shared/types.ts:697 | 1 |
-| Employee | fcmDevices | 선택 | Record<string, { name: string; at: string }> | src/shared/types.ts:708 | 1 |
-| PayrollLine | employeeId | 필수 | string | src/shared/types.ts:716 | 4 |
-| PayrollLine | employeeName | 필수 | string | src/shared/types.ts:717 | 3 |
-| PayrollLine | department | 선택 | string | src/shared/types.ts:718 | 3 |
-| PayrollLine | position | 선택 | string | src/shared/types.ts:719 | 2 |
-| PayrollLine | base | 필수 | number | src/shared/types.ts:720 | 2 |
-| PayrollLine | overtime | 선택 | number | src/shared/types.ts:721 | 2 |
-| PayrollLine | allowance | 선택 | number | src/shared/types.ts:722 | 2 |
-| PayrollLine | incomeTax | 선택 | number | src/shared/types.ts:723 | 2 |
-| PayrollLine | localTax | 선택 | number | src/shared/types.ts:724 | 2 |
-| PayrollLine | pension | 선택 | number | src/shared/types.ts:725 | 2 |
-| PayrollLine | health | 선택 | number | src/shared/types.ts:726 | 2 |
-| PayrollLine | employment | 선택 | number | src/shared/types.ts:727 | 2 |
-| PayrollLine | otherDeduct | 선택 | number | src/shared/types.ts:728 | 2 |
-| PayrollLine | note | 선택 | string | src/shared/types.ts:729 | 0 |
-| Payroll | id | 필수 | string | src/shared/types.ts:733 | 3 |
-| Payroll | companyId | 선택 | CompanyId | src/shared/types.ts:735 | 0 |
-| Payroll | yearMonth | 필수 | string | src/shared/types.ts:736 | 0 |
-| Payroll | payDate | 필수 | string | src/shared/types.ts:737 | 1 |
-| Payroll | lines | 필수 | PayrollLine[] | src/shared/types.ts:738 | 2 |
-| Payroll | cashEntryId | 선택 | string | src/shared/types.ts:739 | 1 |
-| Payroll | note | 선택 | string | src/shared/types.ts:740 | 0 |
-| Payroll | createdAt | 선택 | string | src/shared/types.ts:741 | 0 |
-| Payroll | updatedAt | 선택 | string | src/shared/types.ts:742 | 0 |
-| LeaveModifyRequest | startDate | 필수 | string | src/shared/types.ts:777 | 3 |
-| LeaveModifyRequest | endDate | 필수 | string | src/shared/types.ts:778 | 3 |
-| LeaveModifyRequest | reason | 필수 | string | src/shared/types.ts:779 | 3 |
-| LeaveModifyRequest | daysUsed | 필수 | number | src/shared/types.ts:780 | 3 |
-| LeaveModifyRequest | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:781 | 7 |
-| LeaveRequest | id | 필수 | string | src/shared/types.ts:785 | 19 |
-| LeaveRequest | employeeId | 필수 | string | src/shared/types.ts:786 | 8 |
-| LeaveRequest | employeeName | 필수 | string | src/shared/types.ts:787 | 6 |
-| LeaveRequest | type | 필수 | LeaveType | src/shared/types.ts:788 | 10 |
-| LeaveRequest | startDate | 필수 | string | src/shared/types.ts:789 | 17 |
-| LeaveRequest | endDate | 필수 | string | src/shared/types.ts:790 | 11 |
-| LeaveRequest | reason | 필수 | string | src/shared/types.ts:791 | 6 |
-| LeaveRequest | status | 필수 | LeaveStatus | src/shared/types.ts:792 | 24 |
-| LeaveRequest | requestedAt | 필수 | string | src/shared/types.ts:793 | 4 |
-| LeaveRequest | daysUsed | 필수 | number | src/shared/types.ts:794 | 10 |
-| LeaveRequest | deductsLeave | 선택 | boolean | src/shared/types.ts:800 | 1 |
-| LeaveRequest | modifyRequest | 선택 | LeaveModifyRequest | src/shared/types.ts:801 | 19 |
-| LeaveRequest | cancelledAt | 선택 | string | src/shared/types.ts:807 | 2 |
-| LeaveRequest | cancelledBy | 선택 | string | src/shared/types.ts:808 | 0 |
-| LeaveRequest | cancelledByName | 선택 | string | src/shared/types.ts:809 | 1 |
-| LeaveRequest | cancelReason | 선택 | string | src/shared/types.ts:810 | 2 |
-| ChatMessage | id | 필수 | string | src/shared/types.ts:814 | 15 |
-| ChatMessage | companyId | 선택 | CompanyId | src/shared/types.ts:815 | 0 |
-| ChatMessage | roomId | 필수 | string | src/shared/types.ts:816 | 4 |
-| ChatMessage | senderId | 필수 | string | src/shared/types.ts:817 | 6 |
-| ChatMessage | senderName | 필수 | string | src/shared/types.ts:818 | 7 |
-| ChatMessage | text | 필수 | string | src/shared/types.ts:819 | 18 |
-| ChatMessage | imageUrl | 선택 | string | src/shared/types.ts:820 | 2 |
-| ChatMessage | images | 선택 | string[] | src/shared/types.ts:827 | 2 |
-| ChatMessage | createdAt | 필수 | string | src/shared/types.ts:828 | 4 |
-| ChatMessage | mentions | 선택 | string[] | src/shared/types.ts:829 | 0 |
-| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:831 | 2 |
-| ChatMessage | fileName | 선택 | string | src/shared/types.ts:832 | 1 |
-| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:833 | 2 |
-| ChatMessage | replyTo | 선택 | { id: string; senderName: string; text: string } | src/shared/types.ts:838 | 3 |
-| ChatMessage | deletedAt | 선택 | string | src/shared/types.ts:843 | 4 |
-| ChatMessage | deletedBy | 선택 | string | src/shared/types.ts:844 | 0 |
-| ChatMessage | reactions | 선택 | Record<string, string[]> | src/shared/types.ts:850 | 6 |
-| ChatRoom | id | 필수 | string | src/shared/types.ts:854 | 26 |
-| ChatRoom | companyId | 선택 | CompanyId | src/shared/types.ts:855 | 0 |
-| ChatRoom | name | 선택 | string | src/shared/types.ts:857 | 3 |
-| ChatRoom | nameBy | 선택 | Record<string, string> | src/shared/types.ts:859 | 1 |
-| ChatRoom | createdBy | 선택 | string | src/shared/types.ts:861 | 0 |
-| ChatRoom | participantIds | 필수 | string[] | src/shared/types.ts:862 | 12 |
-| ChatRoom | participantCompanies | 선택 | Record<string, CompanyId> | src/shared/types.ts:864 | 0 |
-| ChatRoom | lastMessage | 선택 | string | src/shared/types.ts:865 | 1 |
-| ChatRoom | lastUpdatedAt | 필수 | string | src/shared/types.ts:866 | 5 |
-| ChatRoom | isGroup | 필수 | boolean | src/shared/types.ts:867 | 7 |
-| ChatRoom | lastReadBy | 선택 | Record<string, string> | src/shared/types.ts:868 | 5 |
-| ChatRoom | pinnedBy | 선택 | Record<string, string> | src/shared/types.ts:876 | 3 |
-| ChatRoom | notice | 선택 | RoomNotice \| null | src/shared/types.ts:884 | 2 |
-| RoomNotice | messageId | 필수 | string | src/shared/types.ts:890 | 1 |
-| RoomNotice | text | 필수 | string | src/shared/types.ts:891 | 2 |
-| RoomNotice | by | 필수 | string | src/shared/types.ts:893 | 0 |
-| RoomNotice | byName | 필수 | string | src/shared/types.ts:894 | 1 |
-| RoomNotice | at | 필수 | string | src/shared/types.ts:896 | 1 |
-| ProductionRecord | id | 필수 | string | src/shared/types.ts:904 | 9 |
-| ProductionRecord | date | 필수 | string | src/shared/types.ts:905 | 4 |
-| ProductionRecord | itemId | 필수 | string | src/shared/types.ts:906 | 8 |
-| ProductionRecord | itemName | 필수 | string | src/shared/types.ts:907 | 3 |
-| ProductionRecord | finishedQty | 필수 | number | src/shared/types.ts:908 | 3 |
-| ProductionRecord | wipUsed | 선택 | number | src/shared/types.ts:909 | 1 |
-| ProductionRecord | wipItemId | 선택 | string | src/shared/types.ts:910 | 0 |
-| ProductionRecord | wipItemName | 선택 | string | src/shared/types.ts:911 | 2 |
-| ProductionRecord | cost | 선택 | number | src/shared/types.ts:912 | 0 |
-| ProductionRecord | note | 선택 | string | src/shared/types.ts:913 | 2 |
-| ProductionRecord | createdBy | 선택 | string | src/shared/types.ts:914 | 0 |
-| ProductionRecord | createdAt | 필수 | string | src/shared/types.ts:915 | 0 |
-| FixedCostEntry | id | 필수 | string | src/shared/types.ts:922 | 0 |
-| FixedCostEntry | yearMonth | 필수 | string | src/shared/types.ts:923 | 1 |
-| FixedCostEntry | category | 필수 | FixedCostCategory | src/shared/types.ts:924 | 0 |
-| FixedCostEntry | label | 필수 | string | src/shared/types.ts:925 | 0 |
-| FixedCostEntry | amount | 필수 | number | src/shared/types.ts:926 | 1 |
-| FixedCostEntry | accountCode | 선택 | string | src/shared/types.ts:927 | 0 |
-| FixedCostEntry | note | 선택 | string | src/shared/types.ts:928 | 0 |
-| FixedCostEntry | createdAt | 필수 | string | src/shared/types.ts:929 | 0 |
-| FixedCostTemplate | statementType | 선택 | '매출' \| '매입' \| '비용' | src/shared/types.ts:933 | 2 |
-| FixedCostTemplate | companyId | 선택 | CompanyId | src/shared/types.ts:943 | 3 |
-| FixedCostTemplate | transferLines | 선택 | { accountCode: string; side: '차변' \| '대변'; name?: string }[] | src/shared/types.ts:945 | 7 |
-| FixedCostTemplate | id | 필수 | string | src/shared/types.ts:946 | 16 |
-| FixedCostTemplate | name | 필수 | string | src/shared/types.ts:947 | 19 |
-| FixedCostTemplate | amount | 필수 | number | src/shared/types.ts:948 | 14 |
-| FixedCostTemplate | category | 필수 | FixedCostCategory | src/shared/types.ts:949 | 1 |
-| FixedCostTemplate | active | 필수 | boolean | src/shared/types.ts:950 | 1 |
-| FixedCostTemplate | note | 선택 | string | src/shared/types.ts:951 | 1 |
-| FixedCostTemplate | accountCode | 선택 | string | src/shared/types.ts:953 | 15 |
-| FixedCostTemplate | partnerId | 선택 | string | src/shared/types.ts:954 | 4 |
-| FixedCostTemplate | partnerName | 선택 | string | src/shared/types.ts:955 | 11 |
-| FixedCostTemplate | startYm | 선택 | string | src/shared/types.ts:956 | 2 |
-| FixedCostTemplate | endYm | 선택 | string | src/shared/types.ts:957 | 1 |
-| FixedCostTemplate | kind | 선택 | 'recurring' \| 'voucher' | src/shared/types.ts:962 | 3 |
-| FixedCostTemplate | dir | 선택 | '입금' \| '출금' \| '줄돈' \| '받을돈' \| '대체' \| '회사이체' | src/shared/types.ts:975 | 3 |
-| FixedCostTemplate | mode | 선택 | '일반' \| '상환' \| '급여' \| '보험' \| '세금' | src/shared/types.ts:976 | 22 |
-| FixedCostTemplate | insCorp | 선택 | number | src/shared/types.ts:988 | 1 |
-| FixedCostTemplate | insEmp | 선택 | number | src/shared/types.ts:988 | 1 |
-| FixedCostTemplate | principal | 선택 | number | src/shared/types.ts:989 | 4 |
-| FixedCostTemplate | interest | 선택 | number | src/shared/types.ts:989 | 4 |
-| FixedCostTemplate | gross | 선택 | number | src/shared/types.ts:990 | 1 |
-| FixedCostTemplate | deduction | 선택 | number | src/shared/types.ts:990 | 1 |
-| FixedCostTemplate | loanCode | 선택 | string | src/shared/types.ts:992 | 4 |
-| FixedCostTemplate | loanId | 선택 | string | src/shared/types.ts:994 | 6 |
-| FixedCostTemplate | vat | 선택 | number | src/shared/types.ts:996 | 0 |
-| FixedCostTemplate | incomeTax | 선택 | number | src/shared/types.ts:996 | 0 |
-| FixedCostTemplate | builtin | 선택 | string | src/shared/types.ts:998 | 8 |
-| FixedCostTemplate | hidden | 선택 | boolean | src/shared/types.ts:1000 | 6 |
-| FixedCostTemplate | group | 선택 | string | src/shared/types.ts:1002 | 10 |
-| FixedCostTemplate | favorite | 선택 | boolean | src/shared/types.ts:1004 | 6 |
-| FixedCostTemplate | autoIssue | 선택 | boolean | src/shared/types.ts:1007 | 12 |
-| FixedCostTemplate | issueDay | 선택 | number | src/shared/types.ts:1009 | 11 |
-| FixedCostTemplate | taxExempt | 선택 | boolean | src/shared/types.ts:1011 | 2 |
-| FixedCostTemplate | itemName | 선택 | string | src/shared/types.ts:1016 | 2 |
-| IssuedStatementItem | itemId | 선택 | string | src/shared/types.ts:1038 | 15 |
-| IssuedStatementItem | lineKind | 선택 | StatementLineKind | src/shared/types.ts:1040 | 1 |
-| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1041 | 27 |
-| IssuedStatementItem | spec | 필수 | string | src/shared/types.ts:1042 | 4 |
-| IssuedStatementItem | qty | 필수 | number | src/shared/types.ts:1043 | 19 |
-| IssuedStatementItem | price | 필수 | number | src/shared/types.ts:1044 | 2 |
-| IssuedStatementItem | supply | 필수 | number | src/shared/types.ts:1045 | 18 |
-| IssuedStatementItem | tax | 필수 | number | src/shared/types.ts:1046 | 14 |
-| IssuedStatementItem | total | 필수 | number | src/shared/types.ts:1047 | 23 |
-| IssuedStatementItem | isTaxExempt | 필수 | boolean | src/shared/types.ts:1048 | 4 |
-| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1053 | 19 |
-| IssuedStatementItem | side | 선택 | '차변' \| '대변' | src/shared/types.ts:1066 | 15 |
-| StatementParty | name | 필수 | string | src/shared/types.ts:1071 | 0 |
-| StatementParty | bizNo | 필수 | string | src/shared/types.ts:1072 | 0 |
-| StatementParty | ceo | 필수 | string | src/shared/types.ts:1073 | 0 |
-| StatementParty | addr | 필수 | string | src/shared/types.ts:1074 | 0 |
-| StatementParty | bizType | 필수 | string | src/shared/types.ts:1075 | 0 |
-| StatementParty | bizItem | 필수 | string | src/shared/types.ts:1076 | 0 |
-| StatementParty | tel | 필수 | string | src/shared/types.ts:1077 | 0 |
-| StatementParty | fax | 필수 | string | src/shared/types.ts:1078 | 0 |
-| StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1082 | 1 |
-| StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1083 | 1 |
-| IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1087 | 9 |
-| IssuedStatement | id | 필수 | string | src/shared/types.ts:1088 | 138 |
-| IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1090 | 4 |
-| IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1092 | 0 |
-| IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1093 | 0 |
-| IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1095 | 17 |
-| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1096 | 16 |
-| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1097 | 86 |
-| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1098 | 73 |
-| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1099 | 79 |
-| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1100 | 31 |
-| IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1101 | 8 |
-| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1102 | 43 |
-| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1103 | 7 |
-| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1104 | 8 |
-| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1105 | 55 |
-| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1106 | 57 |
-| IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1108 | 3 |
-| IssuedStatement | memo | 선택 | string | src/shared/types.ts:1113 | 5 |
-| IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1121 | 4 |
-| IssuedStatement | evidence | 선택 | string | src/shared/types.ts:1129 | 0 |
-| IssuedStatement | taxIssuedAt | 선택 | string | src/shared/types.ts:1130 | 9 |
-| IssuedStatement | exemptIssuedAt | 선택 | string | src/shared/types.ts:1136 | 0 |
-| IssuedStatement | cashDir | 선택 | '입금' \| '출금' | src/shared/types.ts:1137 | 0 |
-| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1154 | 46 |
-| PurchaseOrderItem | name | 필수 | string | src/shared/types.ts:1155 | 24 |
-| PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1157 | 28 |
-| PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1158 | 12 |
-| PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1164 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1168 | 79 |
-| PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1170 | 5 |
-| PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1171 | 5 |
-| PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1172 | 1 |
-| PurchaseOrder | partnerId | 선택 | string | src/shared/types.ts:1173 | 17 |
-| PurchaseOrder | partnerName | 선택 | string | src/shared/types.ts:1174 | 21 |
-| PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1175 | 11 |
-| PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1176 | 1 |
-| PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1178 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' | src/shared/types.ts:1179 | 38 |
-| PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1180 | 1 |
-| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1181 | 21 |
-| PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1186 | 2 |
-| PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1187 | 0 |
-| PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1188 | 11 |
-| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1189 | 3 |
-| PurchaseOrder | receivedAt | 선택 | string | src/shared/types.ts:1190 | 7 |
-| PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1191 | 15 |
-| PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1192 | 0 |
-| PurchaseOrder | note | 선택 | string | src/shared/types.ts:1193 | 1 |
-| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1197 | 29 |
-| PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1198 | 4 |
-| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1199 | 11 |
-| PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1200 | 1 |
-| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1202 | 3 |
-| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1203 | 15 |
-| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1204 | 4 |
-| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1205 | 3 |
-| PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1206 | 3 |
-| PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1207 | 1 |
-| PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1208 | 0 |
-| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1209 | 6 |
-| PurchaseOrder | oemReceivedBulk | 선택 | { material: string; kg: number }[] | src/shared/types.ts:1210 | 5 |
-| PurchaseOrder | oemFeePerKg | 선택 | number | src/shared/types.ts:1211 | 3 |
-| PurchaseOrder | oemReceiptOperationId | 선택 | string | src/shared/types.ts:1213 | 3 |
-| CompanyInfo | name | 필수 | string | src/shared/types.ts:1247 | 4 |
-| CompanyInfo | ceoName | 필수 | string | src/shared/types.ts:1248 | 3 |
-| CompanyInfo | bizNo | 필수 | string | src/shared/types.ts:1249 | 3 |
-| CompanyInfo | bizType | 필수 | string | src/shared/types.ts:1250 | 2 |
-| CompanyInfo | bizItem | 필수 | string | src/shared/types.ts:1251 | 2 |
-| CompanyInfo | address | 필수 | string | src/shared/types.ts:1252 | 3 |
-| CompanyInfo | phone | 선택 | string | src/shared/types.ts:1253 | 2 |
-| CompanyInfo | fax | 선택 | string | src/shared/types.ts:1254 | 2 |
-| CompanyInfo | email | 선택 | string | src/shared/types.ts:1255 | 0 |
-| CompanyInfo | bankAccount | 선택 | string | src/shared/types.ts:1256 | 3 |
-| CompanyInfo | adminPassword | 선택 | string | src/shared/types.ts:1257 | 2 |
-| ExpensePreset | id | 필수 | string | src/shared/types.ts:1262 | 2 |
-| ExpensePreset | name | 필수 | string | src/shared/types.ts:1263 | 2 |
-| ExpensePreset | price | 선택 | number | src/shared/types.ts:1264 | 2 |
-| ExpensePreset | taxType | 선택 | '과세' \| '면세' | src/shared/types.ts:1265 | 1 |
-| ExpensePreset | createdAt | 선택 | string | src/shared/types.ts:1266 | 0 |
-| AppNotification | id | 필수 | string | src/shared/types.ts:1270 | 5 |
-| AppNotification | type | 필수 | 'new_order' \| 'confirmation' \| 'mention' \| 'leave_request' \| 'inventory_shortage' | src/shared/types.ts:1271 | 8 |
-| AppNotification | title | 필수 | string | src/shared/types.ts:1272 | 1 |
-| AppNotification | body | 필수 | string | src/shared/types.ts:1273 | 3 |
-| AppNotification | readBy | 필수 | string[] | src/shared/types.ts:1274 | 4 |
-| AppNotification | dismissedBy | 선택 | string[] | src/shared/types.ts:1275 | 1 |
-| AppNotification | createdAt | 필수 | string | src/shared/types.ts:1276 | 3 |
-| AppNotification | linkedId | 선택 | string | src/shared/types.ts:1277 | 4 |
-| AppNotification | senderId | 선택 | string | src/shared/types.ts:1278 | 0 |
-| AppNotification | targetId | 선택 | string | src/shared/types.ts:1279 | 2 |
-| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1297 | 40 |
-| RawMaterialEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1299 | 5 |
-| RawMaterialEntry | rawItemId | 선택 | string | src/shared/types.ts:1310 | 13 |
-| RawMaterialEntry | material | 필수 | string | src/shared/types.ts:1312 | 38 |
-| RawMaterialEntry | date | 필수 | string | src/shared/types.ts:1313 | 23 |
-| RawMaterialEntry | received | 필수 | number | src/shared/types.ts:1314 | 18 |
-| RawMaterialEntry | used | 필수 | number | src/shared/types.ts:1315 | 17 |
-| RawMaterialEntry | note | 필수 | string | src/shared/types.ts:1316 | 13 |
-| RawMaterialEntry | createdAt | 필수 | string | src/shared/types.ts:1317 | 12 |
-| RawMaterialEntry | recordedAt | 선택 | string | src/shared/types.ts:1319 | 7 |
-| RawMaterialEntry | sequence | 선택 | number | src/shared/types.ts:1321 | 3 |
-| RawMaterialEntry | effectiveAt | 선택 | string | src/shared/types.ts:1323 | 8 |
-| RawMaterialEntry | balanceAfterKg | 선택 | number | src/shared/types.ts:1325 | 3 |
-| RawMaterialEntry | addedBy | 선택 | string | src/shared/types.ts:1326 | 8 |
-| RawMaterialEntry | type | 선택 | 'auto' \| 'manual' \| 'correction' \| 'stocktake_unit' | src/shared/types.ts:1327 | 13 |
-| RawMaterialEntry | orderId | 선택 | string | src/shared/types.ts:1328 | 2 |
-| RawMaterialEntry | canSize | 선택 | number | src/shared/types.ts:1329 | 2 |
-| RawMaterialEntry | canSizeTag | 선택 | string | src/shared/types.ts:1330 | 2 |
-| RawMaterialEntry | canCount | 선택 | number | src/shared/types.ts:1331 | 4 |
-| RawMaterialEntry | unit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1332 | 7 |
-| RawMaterialEntry | originalAmount | 선택 | number | src/shared/types.ts:1334 | 1 |
-| RawMaterialEntry | originalUnit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1335 | 1 |
-| RawMaterialEntry | targetKg | 선택 | number | src/shared/types.ts:1336 | 14 |
-| RawMaterialEntry | targetLotId | 선택 | string | src/shared/types.ts:1338 | 4 |
-| ItemFormula | id | 필수 | string | src/shared/types.ts:1346 | 1 |
-| ItemFormula | parent_key | 필수 | string | src/shared/types.ts:1347 | 10 |
-| ItemFormula | child_name | 필수 | string | src/shared/types.ts:1348 | 6 |
-| ItemFormula | ratio | 필수 | number | src/shared/types.ts:1349 | 5 |
-| ItemFormula | yield_rate | 필수 | number | src/shared/types.ts:1350 | 4 |
-| ItemBom | id | 필수 | string | src/shared/types.ts:1355 | 4 |
-| ItemBom | parent_id | 필수 | string | src/shared/types.ts:1356 | 14 |
-| ItemBom | child_id | 필수 | string | src/shared/types.ts:1357 | 11 |
-| ItemBom | quantity | 필수 | number | src/shared/types.ts:1358 | 3 |
-| ReturnItem | itemId | 필수 | string | src/shared/types.ts:1366 | 16 |
-| ReturnItem | name | 필수 | string | src/shared/types.ts:1367 | 8 |
-| ReturnItem | quantity | 필수 | number | src/shared/types.ts:1368 | 12 |
-| ReturnItem | price | 필수 | number | src/shared/types.ts:1369 | 3 |
-| ReturnItem | reason | 필수 | ReturnReason | src/shared/types.ts:1370 | 3 |
-| ReturnItem | isResellable | 필수 | boolean | src/shared/types.ts:1371 | 8 |
-| ReturnItem | supply | 선택 | number | src/shared/types.ts:1372 | 0 |
-| ReturnItem | tax | 선택 | number | src/shared/types.ts:1373 | 0 |
-| ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1374 | 0 |
-| ReturnRequest | id | 필수 | string | src/shared/types.ts:1378 | 15 |
-| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1379 | 3 |
-| ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1380 | 2 |
-| ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1381 | 3 |
-| ReturnRequest | partnerName | 필수 | string | src/shared/types.ts:1382 | 5 |
-| ReturnRequest | items | 필수 | ReturnItem[] | src/shared/types.ts:1383 | 15 |
-| ReturnRequest | totalAmount | 필수 | number | src/shared/types.ts:1384 | 3 |
-| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1385 | 16 |
-| ReturnRequest | returnType | 선택 | '매출' \| '매입' | src/shared/types.ts:1386 | 2 |
-| ReturnRequest | createdAt | 필수 | string | src/shared/types.ts:1387 | 7 |
-| ReturnRequest | createdBy | 선택 | string | src/shared/types.ts:1388 | 0 |
-| ReturnRequest | processedAt | 선택 | string | src/shared/types.ts:1389 | 4 |
-| ReturnRequest | processedBy | 선택 | string | src/shared/types.ts:1390 | 1 |
-| ReturnRequest | cancelledAt | 선택 | string | src/shared/types.ts:1391 | 13 |
-| ReturnRequest | cancelledBy | 선택 | string | src/shared/types.ts:1392 | 0 |
-| ReturnRequest | cancellationReceipt | 선택 | Record<string, unknown> | src/shared/types.ts:1393 | 0 |
-| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1394 | 7 |
-| ReturnRequest | payableAccountCode | 선택 | '251' \| '253' | src/shared/types.ts:1395 | 0 |
-| ReturnRequest | note | 선택 | string | src/shared/types.ts:1396 | 3 |
-| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1400 | 11 |
-| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1401 | 2 |
-| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1402 | 1 |
-| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1403 | 1 |
-| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1404 | 1 |
-| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1405 | 3 |
-| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1414 | 2 |
-| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1415 | 1 |
-| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1416 | 1 |
-| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1417 | 1 |
-| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1418 | 2 |
-| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1419 | 0 |
-| AccountCode | id | 필수 | string | src/shared/types.ts:1426 | 27 |
-| AccountCode | code | 필수 | string | src/shared/types.ts:1427 | 104 |
-| AccountCode | name | 필수 | string | src/shared/types.ts:1428 | 60 |
-| AccountCode | groupId | 선택 | string | src/shared/types.ts:1429 | 11 |
-| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1431 | 18 |
-| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1432 | 10 |
-| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1433 | 1 |
-| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1438 | 0 |
-| AccountCode | note | 선택 | string | src/shared/types.ts:1439 | 0 |
-| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1444 | 36 |
-| JournalLine | debit | 필수 | number | src/shared/types.ts:1445 | 35 |
-| JournalLine | credit | 필수 | number | src/shared/types.ts:1446 | 31 |
-| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1447 | 12 |
-| JournalLine | note | 선택 | string | src/shared/types.ts:1448 | 1 |
-| JournalEntry | id | 필수 | string | src/shared/types.ts:1452 | 10 |
-| JournalEntry | date | 필수 | string | src/shared/types.ts:1453 | 17 |
-| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1454 | 33 |
-| JournalEntry | memo | 선택 | string | src/shared/types.ts:1455 | 3 |
-| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1456 | 9 |
-| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1457 | 16 |
-| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1458 | 0 |
-| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1459 | 0 |
-| AccountGroup | id | 필수 | string | src/shared/types.ts:1467 | 24 |
-| AccountGroup | name | 필수 | string | src/shared/types.ts:1468 | 9 |
-| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1469 | 6 |
-| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1470 | 4 |
-| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1473 | 1 |
-| AccountGroup | note | 선택 | string | src/shared/types.ts:1474 | 0 |
-| CashAccount | id | 필수 | string | src/shared/types.ts:1482 | 34 |
-| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1484 | 1 |
-| CashAccount | name | 필수 | string | src/shared/types.ts:1485 | 12 |
-| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1486 | 17 |
-| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1487 | 3 |
-| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1488 | 8 |
-| CashAccount | active | 필수 | boolean | src/shared/types.ts:1489 | 18 |
-| CashAccount | note | 선택 | string | src/shared/types.ts:1490 | 0 |
-| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1491 | 2 |
-| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1492 | 0 |
-| CashEntry | id | 필수 | string | src/shared/types.ts:1496 | 77 |
-| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1498 | 15 |
-| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1500 | 2 |
-| CashEntry | loanId | 선택 | string | src/shared/types.ts:1502 | 9 |
-| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1504 | 10 |
-| CashEntry | docNo | 선택 | string | src/shared/types.ts:1510 | 10 |
-| CashEntry | date | 필수 | string | src/shared/types.ts:1511 | 45 |
-| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1512 | 12 |
-| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1523 | 48 |
-| CashEntry | amount | 필수 | number | src/shared/types.ts:1524 | 31 |
-| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1525 | 48 |
-| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1526 | 18 |
-| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1527 | 23 |
-| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1534 | 27 |
-| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1550 | 0 |
-| CashEntry | note | 선택 | string | src/shared/types.ts:1551 | 23 |
-| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1552 | 14 |
-| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1553 | 5 |
-| Settlement | id | 필수 | string | src/shared/types.ts:1559 | 9 |
-| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1560 | 17 |
-| Settlement | statementId | 필수 | string | src/shared/types.ts:1561 | 14 |
-| Settlement | amount | 필수 | number | src/shared/types.ts:1562 | 9 |
-| Settlement | createdAt | 필수 | string | src/shared/types.ts:1563 | 0 |
-| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1567 | 5 |
-| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1570 | 0 |
-| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1571 | 8 |
-| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1572 | 5 |
-| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1573 | 1 |
-| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1576 | 3 |
-| CashFlowManual | id | 필수 | string | src/shared/types.ts:1581 | 0 |
-| CashFlowManual | month | 필수 | string | src/shared/types.ts:1582 | 3 |
-| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1583 | 1 |
-| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1584 | 1 |
-| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1585 | 1 |
-| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1586 | 1 |
-| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1587 | 1 |
-| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1588 | 1 |
-| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1589 | 4 |
-| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1590 | 4 |
-| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1594 | 10 |
-| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1595 | 1 |
-| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1596 | 12 |
-| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1597 | 2 |
-| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1598 | 2 |
-| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1599 | 3 |
-| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1601 | 2 |
-| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1603 | 2 |
-| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1605 | 5 |
-| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1607 | 1 |
-| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1609 | 1 |
-| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1617 | 19 |
-| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1618 | 1 |
-| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1619 | 9 |
-| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1620 | 3 |
-| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1621 | 6 |
-| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1622 | 9 |
-| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1623 | 31 |
-| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1624 | 4 |
-| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1625 | 11 |
-| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1626 | 4 |
-| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1627 | 3 |
-| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1628 | 4 |
-| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1630 | 3 |
-| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1631 | 5 |
-| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1632 | 2 |
+| OrderItem | lineId | 선택 | string | src/shared/types.ts:22 | 39 |
+| OrderItem | itemId | 필수 | string | src/shared/types.ts:23 | 118 |
+| OrderItem | name | 필수 | string | src/shared/types.ts:24 | 61 |
+| OrderItem | orderedAs | 선택 | string | src/shared/types.ts:38 | 0 |
+| OrderItem | quantity | 필수 | number | src/shared/types.ts:39 | 41 |
+| OrderItem | price | 필수 | number | src/shared/types.ts:40 | 7 |
+| OrderItem | checked | 선택 | boolean | src/shared/types.ts:41 | 37 |
+| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:42 | 6 |
+| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:43 | 5 |
+| OrderItem | mfgDate | 선택 | string | src/shared/types.ts:44 | 20 |
+| OrderItem | mfgBy | 선택 | string | src/shared/types.ts:45 | 2 |
+| OrderItem | mfgAt | 선택 | string | src/shared/types.ts:46 | 2 |
+| OrderItem | labelType | 선택 | '대기' \| '날인' \| '부착' | src/shared/types.ts:47 | 13 |
+| OrderItem | labelBy | 선택 | string | src/shared/types.ts:54 | 2 |
+| OrderItem | labelAt | 선택 | string | src/shared/types.ts:55 | 2 |
+| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:56 | 26 |
+| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:57 | 24 |
+| OrderItem | unitsPerBox | 선택 | number | src/shared/types.ts:58 | 7 |
+| OrderItem | boxType | 선택 | string | src/shared/types.ts:59 | 2 |
+| OrderItem | boxSubId | 선택 | string | src/shared/types.ts:60 | 1 |
+| OrderItem | displaySize | 선택 | string | src/shared/types.ts:61 | 4 |
+| OrderPallet | type | 필수 | string | src/shared/types.ts:65 | 16 |
+| OrderPallet | quantity | 필수 | number | src/shared/types.ts:66 | 17 |
+| OrderPallet | isExchange | 선택 | boolean | src/shared/types.ts:67 | 7 |
+| DeliveryBox | itemId | 필수 | string | src/shared/types.ts:71 | 3 |
+| DeliveryBox | name | 필수 | string | src/shared/types.ts:72 | 1 |
+| DeliveryBox | quantity | 필수 | number | src/shared/types.ts:73 | 2 |
+| PurchaseItem | id | 필수 | string | src/shared/types.ts:92 | 0 |
+| PurchaseItem | name | 필수 | string | src/shared/types.ts:93 | 0 |
+| ShipTo | id | 필수 | string | src/shared/types.ts:104 | 19 |
+| ShipTo | name | 필수 | string | src/shared/types.ts:105 | 12 |
+| ShipTo | archived | 선택 | boolean | src/shared/types.ts:107 | 11 |
+| PartnerItem | id | 필수 | string | src/shared/types.ts:111 | 25 |
+| PartnerItem | itemId | 필수 | string | src/shared/types.ts:112 | 70 |
+| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:113 | 63 |
+| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:114 | 28 |
+| PartnerItem | price | 선택 | number | src/shared/types.ts:115 | 29 |
+| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:116 | 13 |
+| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:125 | 21 |
+| PartnerItem | shipToIds | 선택 | string[] | src/shared/types.ts:139 | 1 |
+| PartnerItem | isSmartStore | 선택 | boolean | src/shared/types.ts:140 | 0 |
+| Partner | shipTos | 선택 | ShipTo[] | src/shared/types.ts:152 | 5 |
+| Partner | id | 필수 | string | src/shared/types.ts:153 | 186 |
+| Partner | name | 필수 | string | src/shared/types.ts:154 | 175 |
+| Partner | email | 선택 | string | src/shared/types.ts:155 | 4 |
+| Partner | phone | 선택 | string | src/shared/types.ts:156 | 6 |
+| Partner | type | 필수 | PartnerChannel | src/shared/types.ts:157 | 28 |
+| Partner | region | 선택 | string | src/shared/types.ts:158 | 8 |
+| Partner | address | 선택 | string | src/shared/types.ts:159 | 10 |
+| Partner | addressDetail | 선택 | string | src/shared/types.ts:160 | 8 |
+| Partner | ownerName | 선택 | string | src/shared/types.ts:161 | 6 |
+| Partner | bizNo | 선택 | string | src/shared/types.ts:162 | 6 |
+| Partner | tel | 선택 | string | src/shared/types.ts:163 | 7 |
+| Partner | mobile | 선택 | string | src/shared/types.ts:164 | 7 |
+| Partner | fax | 선택 | string | src/shared/types.ts:165 | 2 |
+| Partner | note | 선택 | string | src/shared/types.ts:166 | 3 |
+| Partner | partnerType | 선택 | PartnerType | src/shared/types.ts:167 | 7 |
+| Partner | companyId | 선택 | CompanyId | src/shared/types.ts:174 | 2 |
+| Partner | isOemFactory | 선택 | boolean | src/shared/types.ts:175 | 1 |
+| Partner | purchaseItems | 선택 | PurchaseItem[] | src/shared/types.ts:176 | 0 |
+| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:209 | 8 |
+| OrderRawInventoryTrace | rawItemId | 선택 | string | src/shared/types.ts:211 | 10 |
+| OrderRawInventoryTrace | operationId | 선택 | string | src/shared/types.ts:213 | 17 |
+| OrderRawInventoryTrace | ledgerId | 선택 | string | src/shared/types.ts:215 | 2 |
+| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:217 | 6 |
+| OrderRawInventoryTrace | lotId | 선택 | string | src/shared/types.ts:218 | 8 |
+| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:219 | 3 |
+| OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:220 | 3 |
+| OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:221 | 3 |
+| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:222 | 10 |
+| Order | id | 필수 | string | src/shared/types.ts:226 | 254 |
+| Order | companyId | 선택 | CompanyId | src/shared/types.ts:228 | 2 |
+| Order | cardNo | 선택 | string | src/shared/types.ts:239 | 4 |
+| Order | createdBy | 선택 | string | src/shared/types.ts:244 | 1 |
+| Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:246 | 1 |
+| Order | partnerId | 선택 | string | src/shared/types.ts:247 | 58 |
+| Order | partnerName | 필수 | string | src/shared/types.ts:248 | 89 |
+| Order | items | 필수 | OrderItem[] | src/shared/types.ts:249 | 146 |
+| Order | note | 선택 | string | src/shared/types.ts:251 | 14 |
+| Order | noteImportant | 선택 | boolean | src/shared/types.ts:252 | 4 |
+| Order | noteBy | 선택 | string | src/shared/types.ts:253 | 2 |
+| Order | noteAt | 선택 | string | src/shared/types.ts:254 | 2 |
+| Order | totalAmount | 필수 | number | src/shared/types.ts:255 | 0 |
+| Order | status | 필수 | OrderStatus | src/shared/types.ts:256 | 133 |
+| Order | createdAt | 필수 | string | src/shared/types.ts:257 | 55 |
+| Order | deliveryDate | 필수 | string | src/shared/types.ts:258 | 58 |
+| Order | email | 필수 | string | src/shared/types.ts:259 | 0 |
+| Order | purpose | 선택 | 'stock-production' | src/shared/types.ts:261 | 1 |
+| Order | source | 필수 | OrderSource | src/shared/types.ts:262 | 33 |
+| Order | pallets | 선택 | OrderPallet[] | src/shared/types.ts:263 | 20 |
+| Order | region | 선택 | string | src/shared/types.ts:264 | 0 |
+| Order | shipToId | 선택 | string | src/shared/types.ts:272 | 5 |
+| Order | deliveryBoxes | 선택 | DeliveryBox[] | src/shared/types.ts:273 | 10 |
+| Order | shipMethod | 선택 | ShipMethod \| '직접수령' | src/shared/types.ts:275 | 0 |
+| Order | invoicePrinted | 선택 | boolean | src/shared/types.ts:276 | 16 |
+| Order | invoiceStage | 선택 | 'printed' \| 'attached' | src/shared/types.ts:285 | 2 |
+| Order | invoiceType | 선택 | InvoiceType | src/shared/types.ts:287 | 2 |
+| Order | shipmentConfirmedBy | 선택 | string \| null | src/shared/types.ts:288 | 3 |
+| Order | shipmentConfirmedAt | 선택 | string \| null | src/shared/types.ts:289 | 5 |
+| Order | deliveredAt | 선택 | string | src/shared/types.ts:290 | 13 |
+| Order | documentDate | 선택 | string | src/shared/types.ts:291 | 0 |
+| Order | accountingExcluded | 선택 | boolean | src/shared/types.ts:297 | 3 |
+| Order | accountingExclusionReason | 선택 | string | src/shared/types.ts:298 | 2 |
+| Order | accountingExcludedAt | 선택 | string | src/shared/types.ts:299 | 0 |
+| Order | accountingExcludedBy | 선택 | string | src/shared/types.ts:300 | 0 |
+| Order | rawLotsDeducted | 선택 | boolean | src/shared/types.ts:301 | 3 |
+| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:302 | 18 |
+| Order | rawInventoryAttempt | 선택 | number | src/shared/types.ts:304 | 5 |
+| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:310 | 8 |
+| Order | autoBuilt | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:311 | 12 |
+| Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:312 | 15 |
+| Order | producedAt | 선택 | string | src/shared/types.ts:314 | 22 |
+| Order | shippedOut | 선택 | boolean | src/shared/types.ts:315 | 15 |
+| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:320 | 28 |
+| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:330 | 17 |
+| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:332 | 13 |
+| OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:347 | 0 |
+| OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:348 | 3 |
+| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:349 | 1 |
+| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:350 | 13 |
+| OrderItemInventoryState | attempt | 필수 | number | src/shared/types.ts:351 | 5 |
+| OrderItemInventoryState | completedAt | 선택 | string | src/shared/types.ts:352 | 8 |
+| OrderItemInventoryState | reversedAt | 선택 | string | src/shared/types.ts:353 | 0 |
+| OrderItemInventoryState | rawConsumedLots | 필수 | OrderRawInventoryTrace[] | src/shared/types.ts:354 | 9 |
+| OrderItemInventoryState | autoBuilt | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:355 | 4 |
+| OrderItemInventoryState | producedUnits | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:356 | 5 |
+| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:357 | 19 |
+| OrderInventoryAdjustment | itemId | 필수 | string | src/shared/types.ts:361 | 18 |
+| OrderInventoryAdjustment | delta | 필수 | number | src/shared/types.ts:362 | 14 |
+| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:366 | 13 |
+| OrderInventorySnapshot | stockDeltas | 필수 | OrderInventoryAdjustment[] | src/shared/types.ts:367 | 19 |
+| OrderInventorySnapshot | bomLines | 필수 | { parentItemId: string; childItemId: string; quantity: number }[] | src/shared/types.ts:368 | 3 |
+| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:369 | 10 |
+| OrderInventorySnapshot | productConsumedLots | 선택 | Order['productConsumedLots'] | src/shared/types.ts:370 | 6 |
+| OrderInventorySnapshot | productProducedLots | 선택 | { itemId: string; lotId: string; qty: number }[] | src/shared/types.ts:371 | 6 |
+| OrderInventorySnapshot | rawLedgerIds | 선택 | string[] | src/shared/types.ts:372 | 4 |
+| OrderStatusAudit | id | 필수 | string | src/shared/types.ts:376 | 0 |
+| OrderStatusAudit | orderId | 필수 | string | src/shared/types.ts:377 | 0 |
+| OrderStatusAudit | partnerName | 필수 | string | src/shared/types.ts:378 | 0 |
+| OrderStatusAudit | previousStatus | 필수 | OrderStatus | src/shared/types.ts:379 | 1 |
+| OrderStatusAudit | nextStatus | 필수 | OrderStatus | src/shared/types.ts:380 | 1 |
+| OrderStatusAudit | approvedBy | 필수 | string | src/shared/types.ts:381 | 1 |
+| OrderStatusAudit | approvedAt | 필수 | string | src/shared/types.ts:382 | 1 |
+| OrderStatusAudit | completedAt | 선택 | string | src/shared/types.ts:383 | 1 |
+| OrderStatusAudit | state | 필수 | 'processing' \| 'completed' \| 'failed' | src/shared/types.ts:384 | 3 |
+| OrderStatusAudit | legacyEvidenceWarning | 필수 | boolean | src/shared/types.ts:385 | 1 |
+| OrderStatusAudit | stockAdjustments | 필수 | Array<OrderInventoryAdjustment & { name: string; unit: string }> | src/shared/types.ts:386 | 1 |
+| OrderStatusAudit | error | 선택 | string | src/shared/types.ts:387 | 1 |
+| OrderItemEdit | id | 필수 | string | src/shared/types.ts:397 | 0 |
+| OrderItemEdit | orderId | 필수 | string | src/shared/types.ts:398 | 0 |
+| OrderItemEdit | at | 필수 | string | src/shared/types.ts:399 | 1 |
+| OrderItemEdit | by | 필수 | string | src/shared/types.ts:400 | 1 |
+| OrderItemEdit | changes | 필수 | string[] | src/shared/types.ts:402 | 1 |
+| SubmaterialComponent | id | 필수 | string | src/shared/types.ts:406 | 13 |
+| SubmaterialComponent | name | 필수 | string | src/shared/types.ts:407 | 2 |
+| SubmaterialComponent | category | 필수 | InventoryCategory \| string | src/shared/types.ts:408 | 0 |
+| SubmaterialComponent | stock | 필수 | number | src/shared/types.ts:409 | 8 |
+| SubmaterialComponent | unit | 필수 | string | src/shared/types.ts:410 | 1 |
+| SubmaterialComponent | spec | 선택 | string | src/shared/types.ts:411 | 0 |
+| SubmaterialComponent | cost | 선택 | number | src/shared/types.ts:412 | 0 |
+| SubmaterialComponent | qrCode | 선택 | string | src/shared/types.ts:413 | 0 |
+| ItemInventoryReservation | operationId | 필수 | string | src/shared/types.ts:459 | 2 |
+| ItemInventoryReservation | orderId | 필수 | string | src/shared/types.ts:460 | 9 |
+| ItemInventoryReservation | qty | 필수 | number | src/shared/types.ts:461 | 7 |
+| ItemInventoryReservation | createdAt | 필수 | string | src/shared/types.ts:462 | 1 |
+| ItemInventoryReservation | state | 필수 | 'processing' \| 'allocated' | src/shared/types.ts:464 | 3 |
+| ItemStocktakeAnchor | id | 필수 | string | src/shared/types.ts:468 | 4 |
+| ItemStocktakeAnchor | date | 필수 | string | src/shared/types.ts:469 | 3 |
+| ItemStocktakeAnchor | createdAt | 필수 | string | src/shared/types.ts:470 | 2 |
+| ItemStocktakeAnchor | targetQty | 필수 | number | src/shared/types.ts:471 | 1 |
+| ItemStocktakeAnchor | beforeQty | 필수 | number | src/shared/types.ts:472 | 1 |
+| ItemStocktakeAnchor | deltaQty | 필수 | number | src/shared/types.ts:473 | 0 |
+| ItemStocktakeAnchor | note | 선택 | string | src/shared/types.ts:474 | 1 |
+| Item | id | 필수 | string | src/shared/types.ts:479 | 675 |
+| Item | companyId | 선택 | CompanyId | src/shared/types.ts:491 | 5 |
+| Item | name | 필수 | string | src/shared/types.ts:492 | 296 |
+| Item | sku | 선택 | string | src/shared/types.ts:493 | 1 |
+| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:495 | 133 |
+| Item | category | 선택 | ItemSubtype \| string | src/shared/types.ts:496 | 37 |
+| Item | subtype | 선택 | string | src/shared/types.ts:497 | 20 |
+| Item | cost | 선택 | number | src/shared/types.ts:498 | 20 |
+| Item | costSource | 선택 | 'rollup' \| 'manual' | src/shared/types.ts:507 | 2 |
+| Item | lotsAreTotal | 선택 | never | src/shared/types.ts:536 | 0 |
+| Item | stock | 필수 | number | src/shared/types.ts:538 | 62 |
+| Item | inventoryReservations | 선택 | ItemInventoryReservation[] | src/shared/types.ts:540 | 4 |
+| Item | stocktakeAnchors | 선택 | ItemStocktakeAnchor[] | src/shared/types.ts:542 | 4 |
+| Item | density | 선택 | number | src/shared/types.ts:548 | 15 |
+| Item | minStock | 필수 | number | src/shared/types.ts:549 | 22 |
+| Item | unit | 필수 | string | src/shared/types.ts:550 | 112 |
+| Item | image | 필수 | string | src/shared/types.ts:551 | 3 |
+| Item | imagePath | 선택 | string | src/shared/types.ts:553 | 5 |
+| Item | oil | 선택 | string | src/shared/types.ts:554 | 4 |
+| Item | partnerIds | 선택 | string[] | src/shared/types.ts:555 | 0 |
+| Item | freightType | 선택 | 's' \| 'a' \| 'b' \| 'c' \| 'd' \| 'e' | src/shared/types.ts:556 | 3 |
+| Item | 품목 | 선택 | string | src/shared/types.ts:559 | 14 |
+| Item | spec | 선택 | string | src/shared/types.ts:560 | 96 |
+| Item | isSmartStore | 선택 | boolean | src/shared/types.ts:561 | 1 |
+| Item | smartStorePrice | 선택 | number | src/shared/types.ts:562 | 4 |
+| Item | procureType | 선택 | '완사입' \| '임가공' | src/shared/types.ts:565 | 5 |
+| Item | unpackable | 선택 | boolean | src/shared/types.ts:575 | 2 |
+| Item | rawMaterialName | 선택 | string | src/shared/types.ts:576 | 7 |
+| Item | packageType | 선택 | string | src/shared/types.ts:577 | 3 |
+| Item | packageKg | 선택 | number | src/shared/types.ts:578 | 2 |
+| Item | lots | 선택 | RawMaterialLot[] | src/shared/types.ts:579 | 39 |
+| Item | mixEnabled | 선택 | boolean | src/shared/types.ts:580 | 4 |
+| Item | mixTopPercent | 선택 | number | src/shared/types.ts:581 | 3 |
+| Item | mixLotRatios | 선택 | { lotId: string; percent: number }[] | src/shared/types.ts:582 | 8 |
+| Item | phantom | 선택 | boolean | src/shared/types.ts:583 | 12 |
+| Item | archived | 선택 | boolean | src/shared/types.ts:585 | 38 |
+| PalletStock | id | 필수 | string | src/shared/types.ts:590 | 35 |
+| PalletStock | name | 필수 | string | src/shared/types.ts:591 | 25 |
+| PalletStock | total | 필수 | number | src/shared/types.ts:592 | 10 |
+| PalletStock | inUse | 필수 | number | src/shared/types.ts:594 | 0 |
+| PalletStock | damaged | 필수 | number | src/shared/types.ts:595 | 6 |
+| PalletStock | hidden | 선택 | boolean | src/shared/types.ts:596 | 9 |
+| PalletTransaction | id | 필수 | string | src/shared/types.ts:600 | 12 |
+| PalletTransaction | partnerId | 필수 | string | src/shared/types.ts:601 | 6 |
+| PalletTransaction | palletId | 필수 | string | src/shared/types.ts:602 | 6 |
+| PalletTransaction | type | 필수 | 'in' \| 'out' | src/shared/types.ts:603 | 9 |
+| PalletTransaction | quantity | 필수 | number | src/shared/types.ts:604 | 13 |
+| PalletTransaction | date | 필수 | string | src/shared/types.ts:605 | 6 |
+| PalletTransaction | note | 선택 | string | src/shared/types.ts:606 | 2 |
+| PalletTransaction | status | 선택 | '교체중' \| '교체완료' | src/shared/types.ts:607 | 3 |
+| PalletTransaction | exchangeReturnQty | 선택 | number | src/shared/types.ts:608 | 2 |
+| PalletTransaction | isTransfer | 선택 | boolean | src/shared/types.ts:609 | 5 |
+| Post | id | 필수 | string | src/shared/types.ts:614 | 6 |
+| Post | title | 필수 | string | src/shared/types.ts:615 | 5 |
+| Post | author | 필수 | string | src/shared/types.ts:616 | 4 |
+| Post | content | 필수 | string | src/shared/types.ts:617 | 3 |
+| Post | date | 필수 | string | src/shared/types.ts:618 | 4 |
+| Post | tag | 필수 | '공지' \| '긴급' \| '매뉴얼' \| '업무' | src/shared/types.ts:619 | 8 |
+| Post | pinned | 선택 | boolean | src/shared/types.ts:620 | 6 |
+| Post | blocks | 선택 | ({ type: 'text'; text: string; format?: 'paragraph' \| 'heading' \| 'subheading' \| 'list'; bold?: boolean; link?: string } \| { type: 'image'; url: string; path: string; caption: string })[] | src/shared/types.ts:621 | 5 |
+| FileItem | id | 필수 | string | src/shared/types.ts:625 | 0 |
+| FileItem | name | 필수 | string | src/shared/types.ts:626 | 0 |
+| FileItem | type | 필수 | 'pdf' \| 'excel' \| 'image' \| 'word' | src/shared/types.ts:627 | 0 |
+| FileItem | size | 필수 | string | src/shared/types.ts:628 | 0 |
+| FileItem | date | 필수 | string | src/shared/types.ts:629 | 0 |
+| FileItem | uploader | 필수 | string | src/shared/types.ts:630 | 0 |
+| CabinetCategory | id | 필수 | string | src/shared/types.ts:636 | 2 |
+| CabinetCategory | companyId | 선택 | CompanyId | src/shared/types.ts:637 | 0 |
+| CabinetCategory | name | 필수 | string | src/shared/types.ts:638 | 12 |
+| CabinetCategory | order | 필수 | number | src/shared/types.ts:639 | 1 |
+| CabinetCategory | createdAt | 필수 | string | src/shared/types.ts:640 | 0 |
+| CabinetSubCategory | id | 필수 | string | src/shared/types.ts:644 | 2 |
+| CabinetSubCategory | companyId | 선택 | CompanyId | src/shared/types.ts:645 | 0 |
+| CabinetSubCategory | category | 필수 | string | src/shared/types.ts:646 | 6 |
+| CabinetSubCategory | name | 필수 | string | src/shared/types.ts:647 | 11 |
+| CabinetSubCategory | order | 필수 | number | src/shared/types.ts:648 | 1 |
+| CabinetSubCategory | createdAt | 필수 | string | src/shared/types.ts:649 | 0 |
+| CabinetDoc | id | 필수 | string | src/shared/types.ts:653 | 3 |
+| CabinetDoc | companyId | 선택 | CompanyId | src/shared/types.ts:654 | 0 |
+| CabinetDoc | category | 필수 | string | src/shared/types.ts:655 | 3 |
+| CabinetDoc | subCategory | 필수 | string | src/shared/types.ts:656 | 3 |
+| CabinetDoc | fileName | 필수 | string | src/shared/types.ts:657 | 5 |
+| CabinetDoc | storagePath | 필수 | string | src/shared/types.ts:658 | 1 |
+| CabinetDoc | downloadUrl | 필수 | string | src/shared/types.ts:659 | 1 |
+| CabinetDoc | size | 필수 | number | src/shared/types.ts:660 | 1 |
+| CabinetDoc | contentType | 필수 | string | src/shared/types.ts:661 | 1 |
+| CabinetDoc | note | 선택 | string | src/shared/types.ts:662 | 3 |
+| CabinetDoc | uploadedBy | 필수 | string | src/shared/types.ts:663 | 1 |
+| CabinetDoc | uploadedAt | 필수 | string | src/shared/types.ts:664 | 2 |
+| AnnualLeave | carryOverLeave | 필수 | number | src/shared/types.ts:671 | 7 |
+| AnnualLeave | bonusLeave | 필수 | number | src/shared/types.ts:672 | 7 |
+| Employee | id | 필수 | string | src/shared/types.ts:676 | 130 |
+| Employee | companyId | 선택 | CompanyId | src/shared/types.ts:678 | 2 |
+| Employee | name | 필수 | string | src/shared/types.ts:679 | 99 |
+| Employee | username | 선택 | string | src/shared/types.ts:680 | 1 |
+| Employee | position | 필수 | string | src/shared/types.ts:681 | 25 |
+| Employee | department | 필수 | string | src/shared/types.ts:682 | 21 |
+| Employee | joinDate | 필수 | string | src/shared/types.ts:683 | 12 |
+| Employee | status | 필수 | EmployeeStatus | src/shared/types.ts:684 | 5 |
+| Employee | phone | 필수 | string | src/shared/types.ts:685 | 9 |
+| Employee | birthDate | 선택 | string | src/shared/types.ts:686 | 1 |
+| Employee | annualLeave | 선택 | AnnualLeave | src/shared/types.ts:687 | 12 |
+| Employee | healthCertDate | 선택 | string | src/shared/types.ts:688 | 7 |
+| Employee | adminAccess | 선택 | boolean | src/shared/types.ts:693 | 2 |
+| Employee | fcmTokens | 선택 | string[] | src/shared/types.ts:698 | 1 |
+| Employee | fcmDevices | 선택 | Record<string, { name: string; at: string }> | src/shared/types.ts:709 | 1 |
+| PayrollLine | employeeId | 필수 | string | src/shared/types.ts:717 | 4 |
+| PayrollLine | employeeName | 필수 | string | src/shared/types.ts:718 | 3 |
+| PayrollLine | department | 선택 | string | src/shared/types.ts:719 | 3 |
+| PayrollLine | position | 선택 | string | src/shared/types.ts:720 | 2 |
+| PayrollLine | base | 필수 | number | src/shared/types.ts:721 | 2 |
+| PayrollLine | overtime | 선택 | number | src/shared/types.ts:722 | 2 |
+| PayrollLine | allowance | 선택 | number | src/shared/types.ts:723 | 2 |
+| PayrollLine | incomeTax | 선택 | number | src/shared/types.ts:724 | 2 |
+| PayrollLine | localTax | 선택 | number | src/shared/types.ts:725 | 2 |
+| PayrollLine | pension | 선택 | number | src/shared/types.ts:726 | 2 |
+| PayrollLine | health | 선택 | number | src/shared/types.ts:727 | 2 |
+| PayrollLine | employment | 선택 | number | src/shared/types.ts:728 | 2 |
+| PayrollLine | otherDeduct | 선택 | number | src/shared/types.ts:729 | 2 |
+| PayrollLine | note | 선택 | string | src/shared/types.ts:730 | 0 |
+| Payroll | id | 필수 | string | src/shared/types.ts:734 | 3 |
+| Payroll | companyId | 선택 | CompanyId | src/shared/types.ts:736 | 0 |
+| Payroll | yearMonth | 필수 | string | src/shared/types.ts:737 | 0 |
+| Payroll | payDate | 필수 | string | src/shared/types.ts:738 | 1 |
+| Payroll | lines | 필수 | PayrollLine[] | src/shared/types.ts:739 | 2 |
+| Payroll | cashEntryId | 선택 | string | src/shared/types.ts:740 | 1 |
+| Payroll | note | 선택 | string | src/shared/types.ts:741 | 0 |
+| Payroll | createdAt | 선택 | string | src/shared/types.ts:742 | 0 |
+| Payroll | updatedAt | 선택 | string | src/shared/types.ts:743 | 0 |
+| LeaveModifyRequest | startDate | 필수 | string | src/shared/types.ts:778 | 3 |
+| LeaveModifyRequest | endDate | 필수 | string | src/shared/types.ts:779 | 3 |
+| LeaveModifyRequest | reason | 필수 | string | src/shared/types.ts:780 | 3 |
+| LeaveModifyRequest | daysUsed | 필수 | number | src/shared/types.ts:781 | 3 |
+| LeaveModifyRequest | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:782 | 7 |
+| LeaveRequest | id | 필수 | string | src/shared/types.ts:786 | 19 |
+| LeaveRequest | employeeId | 필수 | string | src/shared/types.ts:787 | 8 |
+| LeaveRequest | employeeName | 필수 | string | src/shared/types.ts:788 | 6 |
+| LeaveRequest | type | 필수 | LeaveType | src/shared/types.ts:789 | 10 |
+| LeaveRequest | startDate | 필수 | string | src/shared/types.ts:790 | 17 |
+| LeaveRequest | endDate | 필수 | string | src/shared/types.ts:791 | 11 |
+| LeaveRequest | reason | 필수 | string | src/shared/types.ts:792 | 6 |
+| LeaveRequest | status | 필수 | LeaveStatus | src/shared/types.ts:793 | 24 |
+| LeaveRequest | requestedAt | 필수 | string | src/shared/types.ts:794 | 4 |
+| LeaveRequest | daysUsed | 필수 | number | src/shared/types.ts:795 | 10 |
+| LeaveRequest | deductsLeave | 선택 | boolean | src/shared/types.ts:801 | 1 |
+| LeaveRequest | modifyRequest | 선택 | LeaveModifyRequest | src/shared/types.ts:802 | 19 |
+| LeaveRequest | cancelledAt | 선택 | string | src/shared/types.ts:808 | 2 |
+| LeaveRequest | cancelledBy | 선택 | string | src/shared/types.ts:809 | 0 |
+| LeaveRequest | cancelledByName | 선택 | string | src/shared/types.ts:810 | 1 |
+| LeaveRequest | cancelReason | 선택 | string | src/shared/types.ts:811 | 2 |
+| ChatMessage | id | 필수 | string | src/shared/types.ts:815 | 15 |
+| ChatMessage | companyId | 선택 | CompanyId | src/shared/types.ts:816 | 0 |
+| ChatMessage | roomId | 필수 | string | src/shared/types.ts:817 | 4 |
+| ChatMessage | senderId | 필수 | string | src/shared/types.ts:818 | 6 |
+| ChatMessage | senderName | 필수 | string | src/shared/types.ts:819 | 7 |
+| ChatMessage | text | 필수 | string | src/shared/types.ts:820 | 18 |
+| ChatMessage | imageUrl | 선택 | string | src/shared/types.ts:821 | 2 |
+| ChatMessage | images | 선택 | string[] | src/shared/types.ts:828 | 2 |
+| ChatMessage | createdAt | 필수 | string | src/shared/types.ts:829 | 4 |
+| ChatMessage | mentions | 선택 | string[] | src/shared/types.ts:830 | 0 |
+| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:832 | 2 |
+| ChatMessage | fileName | 선택 | string | src/shared/types.ts:833 | 1 |
+| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:834 | 2 |
+| ChatMessage | replyTo | 선택 | { id: string; senderName: string; text: string } | src/shared/types.ts:839 | 3 |
+| ChatMessage | deletedAt | 선택 | string | src/shared/types.ts:844 | 4 |
+| ChatMessage | deletedBy | 선택 | string | src/shared/types.ts:845 | 0 |
+| ChatMessage | reactions | 선택 | Record<string, string[]> | src/shared/types.ts:851 | 6 |
+| ChatRoom | id | 필수 | string | src/shared/types.ts:855 | 26 |
+| ChatRoom | companyId | 선택 | CompanyId | src/shared/types.ts:856 | 0 |
+| ChatRoom | name | 선택 | string | src/shared/types.ts:858 | 3 |
+| ChatRoom | nameBy | 선택 | Record<string, string> | src/shared/types.ts:860 | 1 |
+| ChatRoom | createdBy | 선택 | string | src/shared/types.ts:862 | 0 |
+| ChatRoom | participantIds | 필수 | string[] | src/shared/types.ts:863 | 12 |
+| ChatRoom | participantCompanies | 선택 | Record<string, CompanyId> | src/shared/types.ts:865 | 0 |
+| ChatRoom | lastMessage | 선택 | string | src/shared/types.ts:866 | 1 |
+| ChatRoom | lastUpdatedAt | 필수 | string | src/shared/types.ts:867 | 5 |
+| ChatRoom | isGroup | 필수 | boolean | src/shared/types.ts:868 | 7 |
+| ChatRoom | lastReadBy | 선택 | Record<string, string> | src/shared/types.ts:869 | 5 |
+| ChatRoom | pinnedBy | 선택 | Record<string, string> | src/shared/types.ts:877 | 3 |
+| ChatRoom | notice | 선택 | RoomNotice \| null | src/shared/types.ts:885 | 2 |
+| RoomNotice | messageId | 필수 | string | src/shared/types.ts:891 | 1 |
+| RoomNotice | text | 필수 | string | src/shared/types.ts:892 | 2 |
+| RoomNotice | by | 필수 | string | src/shared/types.ts:894 | 0 |
+| RoomNotice | byName | 필수 | string | src/shared/types.ts:895 | 1 |
+| RoomNotice | at | 필수 | string | src/shared/types.ts:897 | 1 |
+| ProductionRecord | id | 필수 | string | src/shared/types.ts:905 | 9 |
+| ProductionRecord | date | 필수 | string | src/shared/types.ts:906 | 4 |
+| ProductionRecord | itemId | 필수 | string | src/shared/types.ts:907 | 8 |
+| ProductionRecord | itemName | 필수 | string | src/shared/types.ts:908 | 3 |
+| ProductionRecord | finishedQty | 필수 | number | src/shared/types.ts:909 | 3 |
+| ProductionRecord | wipUsed | 선택 | number | src/shared/types.ts:910 | 1 |
+| ProductionRecord | wipItemId | 선택 | string | src/shared/types.ts:911 | 0 |
+| ProductionRecord | wipItemName | 선택 | string | src/shared/types.ts:912 | 2 |
+| ProductionRecord | cost | 선택 | number | src/shared/types.ts:913 | 0 |
+| ProductionRecord | note | 선택 | string | src/shared/types.ts:914 | 2 |
+| ProductionRecord | createdBy | 선택 | string | src/shared/types.ts:915 | 0 |
+| ProductionRecord | createdAt | 필수 | string | src/shared/types.ts:916 | 0 |
+| FixedCostEntry | id | 필수 | string | src/shared/types.ts:923 | 0 |
+| FixedCostEntry | yearMonth | 필수 | string | src/shared/types.ts:924 | 1 |
+| FixedCostEntry | category | 필수 | FixedCostCategory | src/shared/types.ts:925 | 0 |
+| FixedCostEntry | label | 필수 | string | src/shared/types.ts:926 | 0 |
+| FixedCostEntry | amount | 필수 | number | src/shared/types.ts:927 | 1 |
+| FixedCostEntry | accountCode | 선택 | string | src/shared/types.ts:928 | 0 |
+| FixedCostEntry | note | 선택 | string | src/shared/types.ts:929 | 0 |
+| FixedCostEntry | createdAt | 필수 | string | src/shared/types.ts:930 | 0 |
+| FixedCostTemplate | statementType | 선택 | '매출' \| '매입' \| '비용' | src/shared/types.ts:934 | 2 |
+| FixedCostTemplate | companyId | 선택 | CompanyId | src/shared/types.ts:944 | 3 |
+| FixedCostTemplate | transferLines | 선택 | { accountCode: string; side: '차변' \| '대변'; name?: string }[] | src/shared/types.ts:946 | 7 |
+| FixedCostTemplate | id | 필수 | string | src/shared/types.ts:947 | 16 |
+| FixedCostTemplate | name | 필수 | string | src/shared/types.ts:948 | 19 |
+| FixedCostTemplate | amount | 필수 | number | src/shared/types.ts:949 | 14 |
+| FixedCostTemplate | category | 필수 | FixedCostCategory | src/shared/types.ts:950 | 1 |
+| FixedCostTemplate | active | 필수 | boolean | src/shared/types.ts:951 | 1 |
+| FixedCostTemplate | note | 선택 | string | src/shared/types.ts:952 | 1 |
+| FixedCostTemplate | accountCode | 선택 | string | src/shared/types.ts:954 | 15 |
+| FixedCostTemplate | partnerId | 선택 | string | src/shared/types.ts:955 | 4 |
+| FixedCostTemplate | partnerName | 선택 | string | src/shared/types.ts:956 | 11 |
+| FixedCostTemplate | startYm | 선택 | string | src/shared/types.ts:957 | 2 |
+| FixedCostTemplate | endYm | 선택 | string | src/shared/types.ts:958 | 1 |
+| FixedCostTemplate | kind | 선택 | 'recurring' \| 'voucher' | src/shared/types.ts:963 | 3 |
+| FixedCostTemplate | dir | 선택 | '입금' \| '출금' \| '줄돈' \| '받을돈' \| '대체' \| '회사이체' | src/shared/types.ts:976 | 3 |
+| FixedCostTemplate | mode | 선택 | '일반' \| '상환' \| '급여' \| '보험' \| '세금' | src/shared/types.ts:977 | 22 |
+| FixedCostTemplate | insCorp | 선택 | number | src/shared/types.ts:989 | 1 |
+| FixedCostTemplate | insEmp | 선택 | number | src/shared/types.ts:989 | 1 |
+| FixedCostTemplate | principal | 선택 | number | src/shared/types.ts:990 | 4 |
+| FixedCostTemplate | interest | 선택 | number | src/shared/types.ts:990 | 4 |
+| FixedCostTemplate | gross | 선택 | number | src/shared/types.ts:991 | 1 |
+| FixedCostTemplate | deduction | 선택 | number | src/shared/types.ts:991 | 1 |
+| FixedCostTemplate | loanCode | 선택 | string | src/shared/types.ts:993 | 4 |
+| FixedCostTemplate | loanId | 선택 | string | src/shared/types.ts:995 | 6 |
+| FixedCostTemplate | vat | 선택 | number | src/shared/types.ts:997 | 0 |
+| FixedCostTemplate | incomeTax | 선택 | number | src/shared/types.ts:997 | 0 |
+| FixedCostTemplate | builtin | 선택 | string | src/shared/types.ts:999 | 8 |
+| FixedCostTemplate | hidden | 선택 | boolean | src/shared/types.ts:1001 | 6 |
+| FixedCostTemplate | group | 선택 | string | src/shared/types.ts:1003 | 10 |
+| FixedCostTemplate | favorite | 선택 | boolean | src/shared/types.ts:1005 | 6 |
+| FixedCostTemplate | autoIssue | 선택 | boolean | src/shared/types.ts:1008 | 12 |
+| FixedCostTemplate | issueDay | 선택 | number | src/shared/types.ts:1010 | 11 |
+| FixedCostTemplate | taxExempt | 선택 | boolean | src/shared/types.ts:1012 | 2 |
+| FixedCostTemplate | itemName | 선택 | string | src/shared/types.ts:1017 | 2 |
+| IssuedStatementItem | itemId | 선택 | string | src/shared/types.ts:1039 | 15 |
+| IssuedStatementItem | lineKind | 선택 | StatementLineKind | src/shared/types.ts:1041 | 1 |
+| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1042 | 27 |
+| IssuedStatementItem | spec | 필수 | string | src/shared/types.ts:1043 | 4 |
+| IssuedStatementItem | qty | 필수 | number | src/shared/types.ts:1044 | 19 |
+| IssuedStatementItem | price | 필수 | number | src/shared/types.ts:1045 | 2 |
+| IssuedStatementItem | supply | 필수 | number | src/shared/types.ts:1046 | 18 |
+| IssuedStatementItem | tax | 필수 | number | src/shared/types.ts:1047 | 14 |
+| IssuedStatementItem | total | 필수 | number | src/shared/types.ts:1048 | 23 |
+| IssuedStatementItem | isTaxExempt | 필수 | boolean | src/shared/types.ts:1049 | 4 |
+| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1054 | 19 |
+| IssuedStatementItem | side | 선택 | '차변' \| '대변' | src/shared/types.ts:1067 | 15 |
+| StatementParty | name | 필수 | string | src/shared/types.ts:1072 | 0 |
+| StatementParty | bizNo | 필수 | string | src/shared/types.ts:1073 | 0 |
+| StatementParty | ceo | 필수 | string | src/shared/types.ts:1074 | 0 |
+| StatementParty | addr | 필수 | string | src/shared/types.ts:1075 | 0 |
+| StatementParty | bizType | 필수 | string | src/shared/types.ts:1076 | 0 |
+| StatementParty | bizItem | 필수 | string | src/shared/types.ts:1077 | 0 |
+| StatementParty | tel | 필수 | string | src/shared/types.ts:1078 | 0 |
+| StatementParty | fax | 필수 | string | src/shared/types.ts:1079 | 0 |
+| StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1083 | 1 |
+| StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1084 | 1 |
+| IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1088 | 9 |
+| IssuedStatement | id | 필수 | string | src/shared/types.ts:1089 | 138 |
+| IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1091 | 4 |
+| IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1093 | 0 |
+| IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1094 | 0 |
+| IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1096 | 17 |
+| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1097 | 16 |
+| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1098 | 86 |
+| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1099 | 73 |
+| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1100 | 79 |
+| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1101 | 31 |
+| IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1102 | 8 |
+| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1103 | 43 |
+| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1104 | 7 |
+| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1105 | 8 |
+| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1106 | 55 |
+| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1107 | 57 |
+| IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1109 | 3 |
+| IssuedStatement | memo | 선택 | string | src/shared/types.ts:1114 | 5 |
+| IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1122 | 4 |
+| IssuedStatement | evidence | 선택 | string | src/shared/types.ts:1130 | 0 |
+| IssuedStatement | taxIssuedAt | 선택 | string | src/shared/types.ts:1131 | 9 |
+| IssuedStatement | exemptIssuedAt | 선택 | string | src/shared/types.ts:1137 | 0 |
+| IssuedStatement | cashDir | 선택 | '입금' \| '출금' | src/shared/types.ts:1138 | 0 |
+| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1155 | 46 |
+| PurchaseOrderItem | name | 필수 | string | src/shared/types.ts:1156 | 24 |
+| PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1158 | 28 |
+| PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1159 | 12 |
+| PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1165 | 0 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1169 | 80 |
+| PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1171 | 5 |
+| PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1172 | 5 |
+| PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1173 | 1 |
+| PurchaseOrder | partnerId | 선택 | string | src/shared/types.ts:1174 | 17 |
+| PurchaseOrder | partnerName | 선택 | string | src/shared/types.ts:1175 | 21 |
+| PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1176 | 11 |
+| PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1177 | 1 |
+| PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1179 | 1 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1180 | 50 |
+| PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1181 | 2 |
+| PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1182 | 1 |
+| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1183 | 21 |
+| PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1188 | 2 |
+| PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1189 | 0 |
+| PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1190 | 11 |
+| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1191 | 3 |
+| PurchaseOrder | receivedAt | 선택 | string | src/shared/types.ts:1192 | 7 |
+| PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1193 | 15 |
+| PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1194 | 0 |
+| PurchaseOrder | note | 선택 | string | src/shared/types.ts:1195 | 1 |
+| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1199 | 29 |
+| PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1200 | 4 |
+| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1201 | 11 |
+| PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1202 | 1 |
+| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1204 | 3 |
+| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1205 | 15 |
+| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1206 | 4 |
+| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1207 | 3 |
+| PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1208 | 3 |
+| PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1209 | 1 |
+| PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1210 | 0 |
+| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1211 | 6 |
+| PurchaseOrder | oemReceivedBulk | 선택 | { material: string; kg: number }[] | src/shared/types.ts:1212 | 5 |
+| PurchaseOrder | oemFeePerKg | 선택 | number | src/shared/types.ts:1213 | 3 |
+| PurchaseOrder | oemReceiptOperationId | 선택 | string | src/shared/types.ts:1215 | 3 |
+| CompanyInfo | name | 필수 | string | src/shared/types.ts:1249 | 4 |
+| CompanyInfo | ceoName | 필수 | string | src/shared/types.ts:1250 | 3 |
+| CompanyInfo | bizNo | 필수 | string | src/shared/types.ts:1251 | 3 |
+| CompanyInfo | bizType | 필수 | string | src/shared/types.ts:1252 | 2 |
+| CompanyInfo | bizItem | 필수 | string | src/shared/types.ts:1253 | 2 |
+| CompanyInfo | address | 필수 | string | src/shared/types.ts:1254 | 3 |
+| CompanyInfo | phone | 선택 | string | src/shared/types.ts:1255 | 2 |
+| CompanyInfo | fax | 선택 | string | src/shared/types.ts:1256 | 2 |
+| CompanyInfo | email | 선택 | string | src/shared/types.ts:1257 | 0 |
+| CompanyInfo | bankAccount | 선택 | string | src/shared/types.ts:1258 | 3 |
+| CompanyInfo | adminPassword | 선택 | string | src/shared/types.ts:1259 | 2 |
+| ExpensePreset | id | 필수 | string | src/shared/types.ts:1264 | 2 |
+| ExpensePreset | name | 필수 | string | src/shared/types.ts:1265 | 2 |
+| ExpensePreset | price | 선택 | number | src/shared/types.ts:1266 | 2 |
+| ExpensePreset | taxType | 선택 | '과세' \| '면세' | src/shared/types.ts:1267 | 1 |
+| ExpensePreset | createdAt | 선택 | string | src/shared/types.ts:1268 | 0 |
+| AppNotification | id | 필수 | string | src/shared/types.ts:1272 | 5 |
+| AppNotification | type | 필수 | 'new_order' \| 'confirmation' \| 'mention' \| 'leave_request' \| 'inventory_shortage' | src/shared/types.ts:1273 | 8 |
+| AppNotification | title | 필수 | string | src/shared/types.ts:1274 | 1 |
+| AppNotification | body | 필수 | string | src/shared/types.ts:1275 | 3 |
+| AppNotification | readBy | 필수 | string[] | src/shared/types.ts:1276 | 4 |
+| AppNotification | dismissedBy | 선택 | string[] | src/shared/types.ts:1277 | 1 |
+| AppNotification | createdAt | 필수 | string | src/shared/types.ts:1278 | 3 |
+| AppNotification | linkedId | 선택 | string | src/shared/types.ts:1279 | 4 |
+| AppNotification | senderId | 선택 | string | src/shared/types.ts:1280 | 0 |
+| AppNotification | targetId | 선택 | string | src/shared/types.ts:1281 | 2 |
+| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1299 | 40 |
+| RawMaterialEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1301 | 5 |
+| RawMaterialEntry | rawItemId | 선택 | string | src/shared/types.ts:1312 | 13 |
+| RawMaterialEntry | kind | 선택 | RawMovementKind | src/shared/types.ts:1313 | 15 |
+| RawMaterialEntry | reversalOf | 선택 | string | src/shared/types.ts:1314 | 5 |
+| RawMaterialEntry | material | 필수 | string | src/shared/types.ts:1316 | 38 |
+| RawMaterialEntry | date | 필수 | string | src/shared/types.ts:1317 | 23 |
+| RawMaterialEntry | received | 필수 | number | src/shared/types.ts:1318 | 18 |
+| RawMaterialEntry | used | 필수 | number | src/shared/types.ts:1319 | 17 |
+| RawMaterialEntry | note | 필수 | string | src/shared/types.ts:1320 | 13 |
+| RawMaterialEntry | createdAt | 필수 | string | src/shared/types.ts:1321 | 12 |
+| RawMaterialEntry | recordedAt | 선택 | string | src/shared/types.ts:1323 | 7 |
+| RawMaterialEntry | sequence | 선택 | number | src/shared/types.ts:1325 | 3 |
+| RawMaterialEntry | effectiveAt | 선택 | string | src/shared/types.ts:1327 | 8 |
+| RawMaterialEntry | balanceAfterKg | 선택 | number | src/shared/types.ts:1329 | 3 |
+| RawMaterialEntry | addedBy | 선택 | string | src/shared/types.ts:1330 | 8 |
+| RawMaterialEntry | type | 선택 | 'auto' \| 'manual' \| 'correction' \| 'stocktake_unit' | src/shared/types.ts:1331 | 13 |
+| RawMaterialEntry | orderId | 선택 | string | src/shared/types.ts:1332 | 2 |
+| RawMaterialEntry | canSize | 선택 | number | src/shared/types.ts:1333 | 2 |
+| RawMaterialEntry | canSizeTag | 선택 | string | src/shared/types.ts:1334 | 2 |
+| RawMaterialEntry | canCount | 선택 | number | src/shared/types.ts:1335 | 4 |
+| RawMaterialEntry | unit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1336 | 7 |
+| RawMaterialEntry | originalAmount | 선택 | number | src/shared/types.ts:1338 | 1 |
+| RawMaterialEntry | originalUnit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1339 | 1 |
+| RawMaterialEntry | targetKg | 선택 | number | src/shared/types.ts:1340 | 14 |
+| RawMaterialEntry | targetLotId | 선택 | string | src/shared/types.ts:1342 | 4 |
+| ItemFormula | id | 필수 | string | src/shared/types.ts:1350 | 1 |
+| ItemFormula | parent_key | 필수 | string | src/shared/types.ts:1351 | 10 |
+| ItemFormula | child_name | 필수 | string | src/shared/types.ts:1352 | 6 |
+| ItemFormula | ratio | 필수 | number | src/shared/types.ts:1353 | 5 |
+| ItemFormula | yield_rate | 필수 | number | src/shared/types.ts:1354 | 4 |
+| ItemBom | id | 필수 | string | src/shared/types.ts:1359 | 4 |
+| ItemBom | parent_id | 필수 | string | src/shared/types.ts:1360 | 14 |
+| ItemBom | child_id | 필수 | string | src/shared/types.ts:1361 | 11 |
+| ItemBom | quantity | 필수 | number | src/shared/types.ts:1362 | 3 |
+| ReturnItem | itemId | 필수 | string | src/shared/types.ts:1370 | 16 |
+| ReturnItem | name | 필수 | string | src/shared/types.ts:1371 | 8 |
+| ReturnItem | quantity | 필수 | number | src/shared/types.ts:1372 | 12 |
+| ReturnItem | price | 필수 | number | src/shared/types.ts:1373 | 3 |
+| ReturnItem | reason | 필수 | ReturnReason | src/shared/types.ts:1374 | 3 |
+| ReturnItem | isResellable | 필수 | boolean | src/shared/types.ts:1375 | 8 |
+| ReturnItem | supply | 선택 | number | src/shared/types.ts:1376 | 0 |
+| ReturnItem | tax | 선택 | number | src/shared/types.ts:1377 | 0 |
+| ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1378 | 0 |
+| ReturnRequest | id | 필수 | string | src/shared/types.ts:1382 | 15 |
+| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1383 | 3 |
+| ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1384 | 2 |
+| ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1385 | 3 |
+| ReturnRequest | partnerName | 필수 | string | src/shared/types.ts:1386 | 5 |
+| ReturnRequest | items | 필수 | ReturnItem[] | src/shared/types.ts:1387 | 15 |
+| ReturnRequest | totalAmount | 필수 | number | src/shared/types.ts:1388 | 3 |
+| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1389 | 16 |
+| ReturnRequest | returnType | 선택 | '매출' \| '매입' | src/shared/types.ts:1390 | 2 |
+| ReturnRequest | createdAt | 필수 | string | src/shared/types.ts:1391 | 7 |
+| ReturnRequest | createdBy | 선택 | string | src/shared/types.ts:1392 | 0 |
+| ReturnRequest | processedAt | 선택 | string | src/shared/types.ts:1393 | 4 |
+| ReturnRequest | processedBy | 선택 | string | src/shared/types.ts:1394 | 1 |
+| ReturnRequest | cancelledAt | 선택 | string | src/shared/types.ts:1395 | 13 |
+| ReturnRequest | cancelledBy | 선택 | string | src/shared/types.ts:1396 | 0 |
+| ReturnRequest | cancellationReceipt | 선택 | Record<string, unknown> | src/shared/types.ts:1397 | 0 |
+| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1398 | 7 |
+| ReturnRequest | payableAccountCode | 선택 | '251' \| '253' | src/shared/types.ts:1399 | 0 |
+| ReturnRequest | note | 선택 | string | src/shared/types.ts:1400 | 3 |
+| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1404 | 11 |
+| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1405 | 2 |
+| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1406 | 1 |
+| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1407 | 1 |
+| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1408 | 1 |
+| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1409 | 3 |
+| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1418 | 2 |
+| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1419 | 1 |
+| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1420 | 1 |
+| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1421 | 1 |
+| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1422 | 2 |
+| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1423 | 0 |
+| AccountCode | id | 필수 | string | src/shared/types.ts:1430 | 27 |
+| AccountCode | code | 필수 | string | src/shared/types.ts:1431 | 104 |
+| AccountCode | name | 필수 | string | src/shared/types.ts:1432 | 60 |
+| AccountCode | groupId | 선택 | string | src/shared/types.ts:1433 | 11 |
+| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1435 | 18 |
+| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1436 | 10 |
+| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1437 | 1 |
+| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1442 | 0 |
+| AccountCode | note | 선택 | string | src/shared/types.ts:1443 | 0 |
+| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1448 | 36 |
+| JournalLine | debit | 필수 | number | src/shared/types.ts:1449 | 35 |
+| JournalLine | credit | 필수 | number | src/shared/types.ts:1450 | 31 |
+| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1451 | 12 |
+| JournalLine | note | 선택 | string | src/shared/types.ts:1452 | 1 |
+| JournalEntry | id | 필수 | string | src/shared/types.ts:1456 | 10 |
+| JournalEntry | date | 필수 | string | src/shared/types.ts:1457 | 17 |
+| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1458 | 33 |
+| JournalEntry | memo | 선택 | string | src/shared/types.ts:1459 | 3 |
+| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1460 | 9 |
+| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1461 | 16 |
+| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1462 | 0 |
+| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1463 | 0 |
+| AccountGroup | id | 필수 | string | src/shared/types.ts:1471 | 24 |
+| AccountGroup | name | 필수 | string | src/shared/types.ts:1472 | 9 |
+| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1473 | 6 |
+| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1474 | 4 |
+| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1477 | 1 |
+| AccountGroup | note | 선택 | string | src/shared/types.ts:1478 | 0 |
+| CashAccount | id | 필수 | string | src/shared/types.ts:1486 | 34 |
+| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1488 | 1 |
+| CashAccount | name | 필수 | string | src/shared/types.ts:1489 | 12 |
+| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1490 | 17 |
+| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1491 | 3 |
+| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1492 | 8 |
+| CashAccount | active | 필수 | boolean | src/shared/types.ts:1493 | 18 |
+| CashAccount | note | 선택 | string | src/shared/types.ts:1494 | 0 |
+| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1495 | 2 |
+| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1496 | 0 |
+| CashEntry | id | 필수 | string | src/shared/types.ts:1500 | 77 |
+| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1502 | 15 |
+| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1504 | 2 |
+| CashEntry | loanId | 선택 | string | src/shared/types.ts:1506 | 9 |
+| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1508 | 10 |
+| CashEntry | docNo | 선택 | string | src/shared/types.ts:1514 | 10 |
+| CashEntry | date | 필수 | string | src/shared/types.ts:1515 | 45 |
+| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1516 | 12 |
+| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1527 | 48 |
+| CashEntry | amount | 필수 | number | src/shared/types.ts:1528 | 31 |
+| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1529 | 48 |
+| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1530 | 18 |
+| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1531 | 23 |
+| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1538 | 27 |
+| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1554 | 0 |
+| CashEntry | note | 선택 | string | src/shared/types.ts:1555 | 23 |
+| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1556 | 14 |
+| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1557 | 5 |
+| Settlement | id | 필수 | string | src/shared/types.ts:1563 | 9 |
+| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1564 | 17 |
+| Settlement | statementId | 필수 | string | src/shared/types.ts:1565 | 14 |
+| Settlement | amount | 필수 | number | src/shared/types.ts:1566 | 9 |
+| Settlement | createdAt | 필수 | string | src/shared/types.ts:1567 | 0 |
+| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1571 | 5 |
+| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1574 | 0 |
+| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1575 | 8 |
+| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1576 | 5 |
+| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1577 | 1 |
+| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1580 | 3 |
+| CashFlowManual | id | 필수 | string | src/shared/types.ts:1585 | 0 |
+| CashFlowManual | month | 필수 | string | src/shared/types.ts:1586 | 3 |
+| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1587 | 1 |
+| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1588 | 1 |
+| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1589 | 1 |
+| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1590 | 1 |
+| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1591 | 1 |
+| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1592 | 1 |
+| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1593 | 4 |
+| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1594 | 4 |
+| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1598 | 10 |
+| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1599 | 1 |
+| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1600 | 12 |
+| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1601 | 2 |
+| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1602 | 2 |
+| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1603 | 3 |
+| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1605 | 2 |
+| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1607 | 2 |
+| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1609 | 5 |
+| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1611 | 1 |
+| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1613 | 1 |
+| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1621 | 19 |
+| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1622 | 1 |
+| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1623 | 9 |
+| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1624 | 3 |
+| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1625 | 6 |
+| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1626 | 9 |
+| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1627 | 31 |
+| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1628 | 4 |
+| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1629 | 11 |
+| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1630 | 4 |
+| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1631 | 3 |
+| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1632 | 4 |
+| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1634 | 3 |
+| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1635 | 5 |
+| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1636 | 2 |
