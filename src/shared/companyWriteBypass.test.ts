@@ -13,7 +13,6 @@ const reviewedTransactionWriters = new Set([
   'src/features/admin/AdminApp.tsx',
   // 쓰기 전 companyScopedWriteData를 통과한 배열만 트랜잭션에 넣는다.
   'src/features/statements/infrastructure/applyStatementWrites.ts',
-  'src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts',
   // 명령/상태 계약 자체에 companyId가 있고 서로 다르면 트랜잭션 전에 거부한다.
   'src/shared/services/rawInventoryJob.ts',
   'src/shared/services/rawInventoryService.ts',

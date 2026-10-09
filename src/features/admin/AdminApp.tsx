@@ -235,7 +235,6 @@ import { docName, findByDocName } from '../../shared/docName';
 import { issueNumberedCashEntry, issueNumberedStatement, issueTradeStatementCommand } from '../statements/infrastructure/issueTradeStatementCommand';
 import { recordLoanCashEntry } from '../../shared/services/recordLoanCashEntry';
 import { companySettingDocId, companySettingPatch } from '../../shared/companySettings';
-import { planTaxIssue } from '../tax-documents/domain/taxIssue';
 import { applyTaxIssueWrites } from '../tax-documents/infrastructure/applyTaxIssueWrites';
 import { crossCompanyBoms, itemsOfCompany } from '../../shared/itemCompany';
 import DataIntegrityMonitor from './DataIntegrityMonitor';
@@ -4609,9 +4608,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               companyInfo={companyInfo}
               onApplyTaxIssue={async input => {
-                const plan = planTaxIssue({ ...input, companyId, actorId: currentUser.id });
-                await applyTaxIssueWrites(plan.writes);
-                return plan.statementPatches;
+                return applyTaxIssueWrites({ ...input, companyId });
               }}
             />
           )}

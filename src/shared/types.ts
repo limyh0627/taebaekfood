@@ -1086,6 +1086,8 @@ export interface StatementPartySnapshot {
 export interface IssuedStatement {
   noncashApplication?: import('../../functions/src/shared/partnerAdvance').ApplicationMetadata | import('../../functions/src/shared/partnerAdvance').CancellationMetadata;
   id: string;
+  /** 서버의 전표 변경 감사와 같은 버전. 없는 옛 전표는 0으로 본다. */
+  mutationRevision?: number;
   /** 품목별 기초 재고 대체전표의 출처. 재시도 시 수량·평가액 일치 검사에 사용한다. */
   openingItemId?: string;
   openingQuantity?: number;

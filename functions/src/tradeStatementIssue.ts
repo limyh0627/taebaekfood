@@ -1,5 +1,6 @@
 import { costFromPurchaseLine } from './shared/purchaseCost';
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
+import { readStatementCreation } from './statementCreationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -135,10 +136,14 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     if (deleted) return { status: 'duplicate' as const, id: raw.id, docNo: deleted.docNo as string };
     if (existing.exists) {
       const saved = existing.data()!;
+      await readStatementCreation(db, tx, companyId, raw.id, saved, original =>
+        original.companyId === companyId && original.issueOperationId === operationId
+        && (original.issuePrefix ?? '') === effectivePrefix && original.issuePayloadHash === payloadHash
+        && original.issueStatementHash === statementHash && hash(statementBusiness(original)) === statementHash
+        && typeof original.docNo === 'string' && original.docNo === original.issueVoucherNo);
       if (saved.companyId !== companyId || saved.issueOperationId !== operationId
         || (saved.issuePrefix ?? '') !== effectivePrefix
         || saved.issuePayloadHash !== payloadHash || saved.issueStatementHash !== statementHash
-        || hash(statementBusiness(saved)) !== statementHash
         || typeof saved.docNo !== 'string' || saved.docNo !== saved.issueVoucherNo) conflict('기존 전표와 재시도 내용이 다릅니다.');
       if (orders.some(snap => !snap.exists || oldCompany(snap.data()!) !== companyId
         || snap.data()!.partnerId !== raw.partnerId

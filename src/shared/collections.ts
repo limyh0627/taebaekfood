@@ -52,6 +52,7 @@ export const COL = {
   expensePresets: 'expensePresets',
   quotations: 'quotations',
   taxIssueRecords: 'taxIssueRecords',
+  taxIssueOperations: 'taxIssueOperations',
   openingBalances: 'openingBalances',
   fixedCosts: 'fixedCosts',
   cashFlowManual: 'cashFlowManual',

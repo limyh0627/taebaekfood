@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import {readStatementCreation} from './statementCreationReceipt';
 import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
@@ -46,7 +47,8 @@ export async function readStatementDeletion(db:admin.firestore.Firestore,tx:admi
  if(receipt.companyId!==companyId||receipt.kind!=='issuedStatements'||receipt.action!=='delete'||receipt.status!=='applied'
   ||receipt.voucherId!==statementId||typeof receipt.createdBy!=='string'||!receipt.createdBy||!before
   ||(before.companyId??'taebaek')!==companyId||receipt.beforeHash!==statementOriginalHash(before)||receipt.afterHash!==null
-  ||!validatesCreation(before))fail('원 발행과 전표 삭제 감사가 맞지 않습니다.');
+  )fail('원 발행과 전표 삭제 감사가 맞지 않습니다.');
+ await readStatementCreation(db,tx,companyId,statementId,before,validatesCreation);
  return before;
 }
 export async function deleteIssuedStatement(db:admin.firestore.Firestore,companyId:string,actorId:string,input:Input){

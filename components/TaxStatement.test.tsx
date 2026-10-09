@@ -1,10 +1,15 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TaxStatement from './TaxStatement';
+import {fetchDateRange} from '../src/shared/services/firebaseService';
+import {getPendingTaxIssue,resumeTaxIssue,type TaxIssueCommand} from '../src/features/tax-documents/infrastructure/applyTaxIssueWrites';
+beforeEach(()=>{vi.mocked(getPendingTaxIssue).mockReturnValue(null);vi.mocked(resumeTaxIssue).mockReset().mockResolvedValue([]);});
 import type { CompanyInfo, IssuedStatement, Partner } from '../src/shared/types';
 
+vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'tax-ui-uid'}}}));
+vi.mock('../src/features/tax-documents/infrastructure/applyTaxIssueWrites',()=>({getPendingTaxIssue:vi.fn().mockReturnValue(null),resumeTaxIssue:vi.fn().mockResolvedValue([])}));
 vi.mock('../src/shared/services/firebaseService', () => ({
   fetchDateRange: vi.fn().mockResolvedValue([]),
 }));
@@ -206,4 +211,50 @@ describe('세금계산서 원본과 편집 세션', () => {
     const view=render(<TaxStatement {...props([original()])}/>);select();fireEvent.change(screen.getByDisplayValue('10000'),{target:{value:'9000'}});view.rerender(<TaxStatement {...props([updated()])}/>);expect(screen.getByRole('button',{name:'PDF'})).toBeDisabled();view.rerender(<TaxStatement {...props([original()])}/>);expect(screen.getByDisplayValue('9000')).toBeInTheDocument();expect(screen.queryByText(/원본 전표가 변경/)).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'PDF'})).toBeEnabled();
   });
 
+});
+ describe('발행 기록 저장 재개',()=>{
+  const original=()=>전표('source-one',거래처A.id,'SOURCE-01');
+  const select=()=>{fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));};
+  const issueButton=()=>within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'});
+  it('unknown 후 닫기·재열기는 이전 전체 요청을 재개하고 새 발행을 하지 않는다',async()=>{
+   vi.spyOn(window,'alert').mockImplementation(()=>{});let saved:TaxIssueCommand|null=null;
+   vi.mocked(getPendingTaxIssue).mockImplementation(()=>saved);
+   const issue=vi.fn(async (input:Omit<TaxIssueCommand,'companyId'>)=>{saved={...input,companyId:'taebaek'};throw new Error('unknown');});
+   const props={issuedStatements:[original()],partners:[거래처A],companyInfo:회사,onApplyTaxIssue:issue};
+   const view=render(<TaxStatement {...props}/>);select();fireEvent.click(issueButton());
+   await waitFor(()=>expect(screen.getByRole('button',{name:'이전 발행 결과 확인'})).toBeInTheDocument());const before=saved;
+   expect(issueButton()).toBeDisabled();view.unmount();render(<TaxStatement {...props}/>);
+   expect(screen.getByText(/전표 1건/)).toBeInTheDocument();vi.mocked(resumeTaxIssue).mockImplementationOnce(async()=>{expect(saved).toEqual(before);saved=null;return [];});
+   fireEvent.click(screen.getByRole('button',{name:'이전 발행 결과 확인'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 발행 결과 확인'})).not.toBeInTheDocument());expect(issue).toHaveBeenCalledOnce();
+  });
+  it('빠른 두번 확인은 callback1회이고 늦은 완료가 새 회사 선택을 지우지 않는다',async()=>{
+   let resolve!:(value:{id:string;data:{taxIssuedAt:string}}[])=>void;
+   const issue=vi.fn(()=>new Promise<{id:string;data:{taxIssuedAt:string}}[]>(r=>{resolve=r;}));
+   const props={issuedStatements:[original()],partners:[거래처A],companyInfo:회사,onApplyTaxIssue:issue};
+   const view=render(<TaxStatement {...props}/>);select();const button=issueButton();fireEvent.click(button);fireEvent.click(button);expect(issue).toHaveBeenCalledOnce();
+   view.rerender(<TaxStatement {...props} companyId="punghoe" issuedStatements={[{...original(),companyId:'punghoe'}]}/>);select();resolve([]);
+   await waitFor(()=>expect(screen.getByRole('button',{name:/SOURCE-01/})).toBeInTheDocument());expect(screen.getByDisplayValue('10000')).toBeInTheDocument();
+  });
+ });
+
+describe('늦은 세금 발행 응답 원문 보존',()=>{
+ it('이전 응답 revision이 과거조회 최신 revision을 낮추지 않는다',async()=>{
+  const current={...전표('source-one',거래처A.id,'SOURCE-01'),mutationRevision:2};
+  vi.mocked(fetchDateRange).mockResolvedValueOnce([current]);
+  let pending:TaxIssueCommand|null={companyId:'taebaek',operationId:'tax-old',scope:'all',issuedAt:'2026-10-09T00:00:00Z',statements:[{...current,mutationRevision:0}]};
+  vi.mocked(getPendingTaxIssue).mockImplementation(()=>pending);
+  vi.mocked(resumeTaxIssue).mockImplementationOnce(async()=>{pending=null;return [{id:current.id,data:{taxIssuedAt:'2026-10-09T00:00:00Z',mutationRevision:1}}];});
+  const issue=vi.fn().mockResolvedValue([]);render(<TaxStatement issuedStatements={[]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue}/>);
+  await waitFor(()=>expect(screen.getByRole('button',{name:/동명유통/})).toBeInTheDocument());fireEvent.click(screen.getByRole('button',{name:'이전 발행 결과 확인'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 발행 결과 확인'})).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));fireEvent.click(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'}));
+  await waitFor(()=>expect(issue).toHaveBeenCalledOnce());expect(issue.mock.calls[0][0].statements[0].mutationRevision).toBe(2);
+ });
+ it('발행 대기 중 새로 고른 전표를 이전 성공이 해제하지 않는다',async()=>{
+  const first=전표('source-one',거래처A.id,'SOURCE-01'),second=전표('source-two',거래처A.id,'SOURCE-02');
+  let resolve!:(value:{id:string;data:Partial<IssuedStatement>}[])=>void;const issue=vi.fn((_input:{statements:IssuedStatement[]})=>new Promise<{id:string;data:Partial<IssuedStatement>}[]>(r=>{resolve=r;}));
+  render(<TaxStatement issuedStatements={[first,second]} partners={[거래처A]} companyInfo={회사} onApplyTaxIssue={issue}/>);
+  fireEvent.click(screen.getByRole('button',{name:/동명유통/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));fireEvent.click(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'}));
+  fireEvent.click(screen.getByRole('button',{name:/SOURCE-01/}));fireEvent.click(screen.getByRole('button',{name:/SOURCE-02/}));resolve([{id:first.id,data:{taxIssuedAt:'2026-10-09T00:00:00Z',mutationRevision:1}}]);
+  await waitFor(()=>expect(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'})).toBeEnabled());fireEvent.click(within(screen.getByRole('button',{name:'PDF'}).parentElement!).getByRole('button',{name:'발행'}));expect(issue.mock.calls[1][0].statements.map((row:IssuedStatement)=>row.id)).toEqual([second.id]);
+ });
 });

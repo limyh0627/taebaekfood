@@ -14,6 +14,8 @@ import { vatOn } from '../src/shared/lineAmount';
 import { companyOf } from '../src/shared/types';
 import { 서류당사자스냅샷우선, type DocParty } from '../src/shared/docParty';
 import type { TaxIssueScope } from '../src/features/tax-documents/domain/taxIssue';
+import {auth} from '../src/shared/firebase';
+import {getPendingTaxIssue,resumeTaxIssue,type TaxIssueCommand} from '../src/features/tax-documents/infrastructure/applyTaxIssueWrites';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
 interface TaxStatementProps {
@@ -79,7 +81,18 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [taxClientSearch, setTaxClientSearch] = useState('');
   const [taxStmtIds, setTaxStmtIds] = useState<string[]>([]);
   const taxPrintRef = useRef<HTMLDivElement>(null);
-  const taxIssueOperationRef = useRef<string | null>(null);
+  const taxActorUid=auth.currentUser?.uid;
+  const [taxPending,setTaxPending]=useState<TaxIssueCommand|null>(null);
+  const [taxPendingError,setTaxPendingError]=useState('');
+  const [taxBusy,setTaxBusy]=useState(false);
+  const taxBusyRef=useRef(false);
+  const taxScopeRef=useRef({companyId,uid:auth.currentUser?.uid,token:{}});
+  if(taxScopeRef.current.companyId!==companyId||taxScopeRef.current.uid!==auth.currentUser?.uid)taxScopeRef.current={companyId,uid:auth.currentUser?.uid,token:{}};
+  useEffect(()=>{
+    const read=()=>{try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}};
+    taxBusyRef.current=false;setTaxBusy(false);read();window.addEventListener('tax-issue-pending',read);window.addEventListener('storage',read);
+    return()=>{window.removeEventListener('tax-issue-pending',read);window.removeEventListener('storage',read);taxScopeRef.current={...taxScopeRef.current,token:{}};};
+  },[companyId,taxActorUid]);
 
   // ── 발행 탭 편집 상태 ──
   const [editedItems, setEditedItems] = useState<MergedItem[]>([]);
@@ -174,6 +187,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   };
 
   const [taxScope, setTaxScope] = useState<'all' | 'taxable' | 'exempt'>('all');
+  const taxSelectionScopeRef=useRef('');taxSelectionScopeRef.current=JSON.stringify([selectedMonth,taxClientId,taxScope]);
   const allItems2 = editedItems;
   /**
    * **과세분·면세분은 서류가 따로 나간다** — 세금계산서 / 계산서.
@@ -232,24 +246,19 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
    * 면세만 있는 전표는 taxIssuedAt도 같이 찍는다: 다른 화면(전표·재고)들이 그 칸 하나로
    * '발행됨'을 보기 때문에, 안 찍으면 영영 미발행으로 남는다.
    */
-  const handleTaxIssue = async () => {
-    if (sourceChanged || selectedStmts.length === 0 || !onApplyTaxIssue) return;
-    const at = new Date().toISOString();
-    taxIssueOperationRef.current ??= `tax-${Date.now()}`;
+  const handleTaxIssue = async (resume=false) => {
+    if(!resume&&selectedStmts.length>100){alert('한 번에 전표 100건까지 발행 결과를 기록할 수 있습니다.');return;}
+    if(taxBusyRef.current||(!resume&&(sourceChanged||selectedStmts.length===0||!onApplyTaxIssue||taxPending||taxPendingError)))return;
+    const token=taxScopeRef.current.token,uid=auth.currentUser?.uid,selectedIds=taxStmtIds,selectionScope=taxSelectionScopeRef.current;
+    const active=()=>taxScopeRef.current.token===token&&auth.currentUser?.uid===uid;
+    taxBusyRef.current=true;setTaxBusy(true);
     try {
-      const patches = await onApplyTaxIssue({
-        operationId: taxIssueOperationRef.current, statements: selectedStmts, scope: taxScope, issuedAt: at,
-      });
-      // 12개월 온디맨드 캐시는 실시간 구독 밖의 전표도 들고 있으므로 커밋 결과를 같이 반영한다.
-      setExtraStatements(prev => prev.map(s => {
-        const patch = patches.find(p => p.id === s.id);
-        return patch ? { ...s, ...patch.data } : s;
-      }));
-      taxIssueOperationRef.current = null;
-      setTaxStmtIds([]);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '세금계산서 발행 기록을 저장하지 못했습니다.');
-    }
+      const patches=resume?await resumeTaxIssue(companyId):await onApplyTaxIssue!({operationId:`tax-${crypto.randomUUID()}`,statements:selectedStmts,scope:taxScope,issuedAt:new Date().toISOString()});
+      if(!active())return;
+      setExtraStatements(prev=>prev.map(s=>{const patch=patches.find(p=>p.id===s.id);return patch&&(s.mutationRevision??0)<=(patch.data.mutationRevision??0)?{...s,...patch.data}:s;}));
+      setTaxStmtIds(current=>taxSelectionScopeRef.current===selectionScope&&JSON.stringify(current)===JSON.stringify(selectedIds)?[]:current);
+    } catch(error){if(active())alert(error instanceof Error?error.message:'세금계산서 발행 기록을 저장하지 못했습니다.');}
+    finally{if(active()){taxBusyRef.current=false;setTaxBusy(false);try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}}}
   };
 
   const handleTaxPdf = async () => {
@@ -388,6 +397,11 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         }
       />
 
+      {selectedStmts.length>100&&<p role="alert" className="text-sm text-amber-700">한 번에 전표 100건까지 발행 결과를 기록할 수 있습니다. 선택을 줄여주세요.</p>}
+      {(taxPending||taxPendingError)&&<div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+        {taxPendingError||`발행 결과 확인이 필요합니다. 전표 ${taxPending!.statements.length}건 · ${taxPending!.scope==='all'?'과세·면세':taxPending!.scope==='taxable'?'과세':'면세'} · ${taxPending!.issuedAt.slice(0,10)}`}
+        {taxPending&&!taxPendingError&&<button disabled={taxBusy} onClick={()=>void handleTaxIssue(true)} className="ml-3 rounded-lg bg-amber-700 px-3 py-2 font-bold text-white">이전 발행 결과 확인</button>}
+      </div>}
       {/* ── 발행 탭 ── */}
       {activeTab === 'issue' && (
         <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
@@ -530,7 +544,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{taxStmtIds.length}건</span>
                     </div>
                     <div className="flex gap-1.5">
-                      <button disabled={sourceChanged} onClick={handleTaxIssue}
+                      <button disabled={sourceChanged||taxBusy||!!taxPending||!!taxPendingError||selectedStmts.length>100} onClick={()=>void handleTaxIssue()}
                         className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[11px] font-black hover:bg-emerald-700">
                         <Check size={11}/>{taxScope === 'taxable' ? '과세분 발행' : taxScope === 'exempt' ? '면세분 발행' : '발행'}
                       </button>

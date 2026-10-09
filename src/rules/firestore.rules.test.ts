@@ -98,14 +98,14 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
         returnClients.push({ db, companyId: companyId === 'no-claim' ? 'taebaek' : companyId, isAdmin: false, hasClaim: companyId !== 'no-claim' });
       }
       for (const companyId of ['taebaek', 'punghoe']) {
-        for (const name of ['returnRequests', 'returnSubmissionOperations']) {
+        for (const name of ['returnRequests', 'returnSubmissionOperations', 'taxIssueRecords', 'taxIssueOperations']) {
           const path = `${name}/${prefix}-${companyId}-read`; paths.push(path);
           await database.doc(path).create({ companyId, status: name === 'returnRequests' ? 'pending' : 'accepted', amount: 10 });
         }
       }
       for (const { db, companyId, isAdmin, hasClaim } of returnClients) {
         const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
-        for (const name of ['returnRequests', 'returnSubmissionOperations']) {
+        for (const name of ['returnRequests', 'returnSubmissionOperations', 'taxIssueRecords', 'taxIssueOperations']) {
           const path = `${name}/${prefix}-${companyId}-read`, newPath = `${path}-new`;
           if (!paths.includes(newPath)) paths.push(newPath);
           const original = (await database.doc(path).get()).data()!;
@@ -139,6 +139,18 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       }
       for (const { db, companyId } of clients) {
         const other = companyId === 'taebaek' ? 'punghoe' : 'taebaek';
+        const taxPath = `taxIssueRecords/${prefix}-${companyId}-read`;
+        const statementPath = `issuedStatements/${prefix}-${companyId}-read`;
+        const taxBefore = (await database.doc(taxPath).get()).data();
+        const statementBefore = (await database.doc(statementPath).get()).data();
+        // 옛 완료 저장의 기록+원전표 merge를 함께 시도해도 일부 저장이 없어야 한다.
+        await assertFails(runTransaction(db, async tx => {
+          await tx.get(doc(db, taxPath)); await tx.get(doc(db, statementPath));
+          tx.set(doc(db, taxPath), { issuedAt: '2026-10-09T12:00:00Z' }, { merge: true });
+          tx.set(doc(db, statementPath), { taxIssuedAt: '2026-10-09T12:00:00Z' }, { merge: true });
+        }));
+        expect((await database.doc(taxPath).get()).data()).toEqual(taxBefore);
+        expect((await database.doc(statementPath).get()).data()).toEqual(statementBefore);
         await assertSucceeds(getDoc(doc(db, `cashEntries/${prefix}-${companyId}-read`)));
         await assertSucceeds(getDocs(query(collection(db, 'cashEntries'), where('companyId', '==', companyId))));
         await assertFails(getDoc(doc(db, `cashEntries/${prefix}-${other}-read`)));
