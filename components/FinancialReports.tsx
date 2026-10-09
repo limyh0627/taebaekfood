@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X, ChevronDown } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId, Partner, Item } from '../src/shared/types';
 import { companyOf, openingDocId } from '../src/shared/types';
@@ -22,6 +22,7 @@ interface Props {
   statements: IssuedStatement[];
   cashEntries: CashEntry[];
   accounts: AccountCode[];
+  onAddAccountCode?: (account: AccountCode) => Promise<void>;
   cashAccounts: CashAccount[];
   partners?: Partner[];
   items?: Item[];
@@ -35,7 +36,35 @@ const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
  * 재무제표 (복식부기 · 병행/대조용). 기존 전표·수금·자금에서 분개를 계산으로 뽑아
  * 시산표·손익계산서·재무상태표를 그린다. 저장 안 함, 읽기 전용. 기존 손익표와 대조하는 화면.
  */
-const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, partners = [], items = [], inventorySnapshots = [], companyId = 'taebaek' }) => {
+const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts: providedAccounts, onAddAccountCode, cashAccounts, partners = [], items = [], inventorySnapshots = [], companyId = 'taebaek' }) => {
+  const scope = useRef({ companyId });
+  if (scope.current.companyId !== companyId) scope.current = { companyId };
+  useEffect(() => () => { scope.current = { companyId: scope.current.companyId }; }, []);
+  const [registered, setRegistered] = useState<{ companyId: CompanyId; rows: AccountCode[] }>({ companyId, rows: [] });
+  const accounts = useMemo(() => [...providedAccounts, ...(registered.companyId === companyId ? registered.rows.filter(row => !providedAccounts.some(account => account.code === row.code)) : [])], [providedAccounts, registered, companyId]);
+  const [accountSetup, setAccountSetup] = useState(providedAccounts.length === 0);
+  const [accountDraft, setAccountDraft] = useState({ code: '', name: '', type: '자산' as '자산' | '부채' | '자본', normalBalance: 'debit' as 'debit' | 'credit' });
+  const [accountPending, setAccountPending] = useState<AccountCode | null>(null);
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const accountBusy = useRef<object | null>(null);
+  const registerAccount = async () => {
+    if (!onAddAccountCode || accountBusy.current) return;
+    const code = accountDraft.code.trim(), name = accountDraft.name.trim();
+    if (code === CAPITAL) { setAccountError('331 자본금은 기초잔액 차액으로 자동 계산됩니다. 다른 계정을 등록해 주세요.'); return; }
+    if (!code || !name || code.length > 40 || name.length > 100) { setAccountError('계정 코드와 계정명을 확인해 주세요.'); return; }
+    if (!accountPending && accounts.some(account => account.code === code)) { setAccountError('이미 등록된 계정 코드입니다.'); return; }
+    const captured = scope.current;
+    const account = accountPending ?? { id: `opening-account-${companyId}-${encodeURIComponent(code)}`, code, name, type: accountDraft.type, normalBalance: accountDraft.normalBalance };
+    accountBusy.current = captured; setAccountSaving(true); setAccountError(''); setAccountPending(account);
+    try {
+      await onAddAccountCode(account);
+      if (scope.current !== captured) return;
+      setRegistered(previous => ({ companyId, rows: [...(previous.companyId === companyId ? previous.rows.filter(row => row.code !== account.code) : []), account] }));
+      setAccountPending(null); setAccountDraft({ code: '', name: '', type: '자산', normalBalance: 'debit' });
+    } catch (error) { if (scope.current === captured) setAccountError(`계정 등록을 확인하지 못했습니다. 같은 내용으로 다시 시도해 주세요. ${String(error)}`); }
+    finally { if (scope.current === captured) { accountBusy.current = null; setAccountSaving(false); } }
+  };
   const months = useMemo(() => {
     const s = new Set<string>();
     for (const st of statements) if (st.tradeDate) s.add(st.tradeDate.slice(0, 7));
@@ -70,6 +99,9 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     setOpeningDoc(null);
     setDraft(null);
     setEditing(false);
+    setAccountSetup(providedAccounts.length === 0);
+    setAccountDraft({ code: '', name: '', type: '자산', normalBalance: 'debit' });
+    setAccountPending(null); setAccountError(''); setAccountSaving(false); accountBusy.current = null;
     setPartnerId('');
     setInventoryItemId('');
     setInventoryQuantity('');
@@ -324,6 +356,23 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
                 className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               <span className="text-[10px] font-bold text-slate-400">이 날짜의 기초 잔액. 이 값들의 차액이 자본금으로 들어갑니다.</span>
             </div>
+            {accountSetup && onAddAccountCode && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 space-y-2">
+                <p className="text-xs font-bold text-indigo-800">필요한 기초 계정을 직접 등록한 뒤 잔액을 입력하세요.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input aria-label="기초 계정 코드" placeholder="계정 코드" value={accountDraft.code} disabled={accountSaving || !!accountPending} onChange={e => setAccountDraft({ ...accountDraft, code: e.target.value })} className="rounded-lg border px-2 py-1 text-xs" />
+                  <input aria-label="기초 계정명" placeholder="계정명" value={accountDraft.name} disabled={accountSaving || !!accountPending} onChange={e => setAccountDraft({ ...accountDraft, name: e.target.value })} className="rounded-lg border px-2 py-1 text-xs" />
+                  <select aria-label="기초 계정 종류" value={accountDraft.type} disabled={accountSaving || !!accountPending} onChange={e => setAccountDraft({ ...accountDraft, type: e.target.value as '자산' | '부채' | '자본' })} className="rounded-lg border px-2 py-1 text-xs">
+                    {['자산', '부채', '자본'].map(type => <option key={type}>{type}</option>)}
+                  </select>
+                  <select aria-label="기초 계정 증가 방향" value={accountDraft.normalBalance} disabled={accountSaving || !!accountPending} onChange={e => setAccountDraft({ ...accountDraft, normalBalance: e.target.value as 'debit' | 'credit' })} className="rounded-lg border px-2 py-1 text-xs">
+                    <option value="debit">차변 증가</option><option value="credit">대변 증가</option>
+                  </select>
+                </div>
+                {accountError && <p role="alert" className="text-xs text-rose-700">{accountError}</p>}
+                <button type="button" disabled={accountSaving} onClick={registerAccount} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{accountSaving ? '등록 중' : '계정 등록'}</button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {openableAccounts.map(a => (
                 <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">

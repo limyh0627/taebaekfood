@@ -13,7 +13,7 @@ import type { CashAccount, IssuedStatement, AccountCode } from '../types';
 import type { LoanContract } from '../loanLedger';
 
 vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
-const { saveOpeningBalancesWithDb } = await import('./firebaseService');
+const { saveOpeningBalancesWithDb, createOpeningAccountCodeWithDb } = await import('./firebaseService');
 const ready = await fetch('http://127.0.0.1:8082/', { signal: AbortSignal.timeout(1500) }).then(r => r.status < 500).catch(() => false);
 let env: RulesTestEnvironment;
 let admin: ReturnType<typeof initializeAdminApp>;
@@ -50,6 +50,25 @@ describe.skipIf(!ready)('품목별 기초 재고 (Firestore Emulator)', () => {
   });
   afterAll(async () => { await env?.cleanup();if(admin)await deleteAdminApp(admin); });
   const store = () => env.authenticatedContext('inventory-admin', { employeeId: 'admin', companyId: 'punghoe', isAdmin: true }).firestore() as unknown as Firestore;
+
+  it('빈 회사의 명시 계정 등록·재시도·충돌·권한과 실제 122 기초 장부를 연결한다', async () => {
+    await env.clearFirestore();
+    const account: AccountCode = { id: 'opening-account-punghoe-122', code: '122', name: '비품', type: '자산', normalBalance: 'debit' };
+    expect(await createOpeningAccountCodeWithDb(store(), 'punghoe', account)).toBe('created');
+    await env.withSecurityRulesDisabled(async ctx => { await setDoc(doc(ctx.firestore(), 'accountCodes', account.id), { auditNote: '보존' }, { merge: true }); });
+    expect(await createOpeningAccountCodeWithDb(store(), 'punghoe', account)).toBe('unchanged');
+    await expect(createOpeningAccountCodeWithDb(store(), 'punghoe', { ...account, name: '다른 이름' })).rejects.toThrow('다른 회사 또는 내용');
+    const foreign = env.authenticatedContext('foreign-admin', { employeeId: 'foreign', companyId: 'taebaek', isAdmin: true }).firestore() as unknown as Firestore;
+    const staff = env.authenticatedContext('staff', { employeeId: 'staff', companyId: 'punghoe', isAdmin: false }).firestore() as unknown as Firestore;
+    await expect(createOpeningAccountCodeWithDb(foreign, 'punghoe', account)).rejects.toThrow();
+    await expect(createOpeningAccountCodeWithDb(staff, 'punghoe', { ...account, id: 'opening-account-punghoe-123', code: '123' })).rejects.toThrow();
+    await saveOpeningBalancesWithDb(store(), 'punghoe', date, { '122': 50000 });
+    const saved = (await getDoc(doc(store(), 'accountCodes', account.id))).data()!;
+    expect(saved).toEqual({ ...account, companyId: 'punghoe', auditNote: '보존' });
+    const opening = (await getDoc(doc(store(), 'openingBalances', 'main-punghoe'))).data()!;
+    const journal = buildJournals({ statements: [], accounts: [account], opening: { date: opening.date, lines: [{ accountCode: '122', amount: opening.amounts['122'] }] } });
+    expect(trialBalance(journal.entries, [account]).rows.find(row => row.accountCode === '122')?.balance).toBe(50000);
+  });
 
   it('캔 수량·로트·실사 앵커·회계 전표를 함께 만들고 같은 요청은 중복하지 않는다', async () => {
     expect(await inventory(store(), 'punghoe', date, 'can1', 15, 247_500)).toBe('created');

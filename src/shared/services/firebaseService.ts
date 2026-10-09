@@ -55,7 +55,7 @@ import type { OpeningPartnerCode } from '../openingPartnerBalance';
 import { AR, AP, BANK, INVENTORY } from '../autoJournal';
 import { STANDARD_ACCOUNT } from '../accountChart';
 import type { LoanContract } from '../loanLedger';
-import type { CashAccount } from '../types';
+import type { CashAccount, AccountCode } from '../types';
 
 /**
  * 업무문서를 만드는 모든 화면이 같은 회사 판정을 쓴다. 화면의 currentUser/companyId는
@@ -71,6 +71,38 @@ export const companyScopedWriteData = async (
   const token = await user.getIdTokenResult();
   return withClaimCompany(collectionName, data, { companyId: token.claims.companyId });
 };
+
+/** 명시적으로 추가한 기초 계정만 저장하며 기존 계정은 덮어쓰지 않는다. */
+export async function createOpeningAccountCodeWithDb(store: Firestore, companyId: CompanyId, account: AccountCode): Promise<'created' | 'unchanged'> {
+  if (!['taebaek', 'punghoe'].includes(companyId) || !account ||
+      !['자산', '부채', '자본'].includes(account.type ?? '') ||
+      !['debit', 'credit'].includes(account.normalBalance ?? '') ||
+      typeof account.code !== 'string' || account.code === '331' || !account.code.trim() || account.code !== account.code.trim() ||
+      typeof account.name !== 'string' || !account.name.trim() || account.name !== account.name.trim() ||
+      account.id !== `opening-account-${companyId}-${encodeURIComponent(account.code)}`) {
+    throw new Error('기초 계정의 코드·이름·분류·차대 정보를 확인해 주세요.');
+  }
+  const data = stripUndefined({ ...account, companyId });
+  return runTransaction(store, async tx => {
+    const ref = doc(store, 'accountCodes', account.id);
+    const snapshot = await tx.get(ref);
+    if (snapshot.exists()) {
+      const original = snapshot.data();
+      if (Object.keys(data).some(key => original[key] !== data[key])) {
+        throw new Error('이미 다른 회사 또는 내용으로 등록된 기초 계정입니다.');
+      }
+      return 'unchanged';
+    }
+    tx.set(ref, data);
+    return 'created';
+  });
+}
+
+export async function createOpeningAccountCode(companyId: CompanyId, account: AccountCode): Promise<void> {
+  const scoped = await companyScopedWriteData('accountCodes', { companyId });
+  if (scoped.companyId !== companyId) throw new Error('다른 회사 계정은 등록할 수 없습니다.');
+  await createOpeningAccountCodeWithDb(db, companyId, account);
+}
 
 export async function activeReleaseId(): Promise<string> {
   await authReady;
