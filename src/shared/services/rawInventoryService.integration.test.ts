@@ -177,10 +177,24 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
     });
   });
 
-  it('lotsAreTotal 원료는 입고·사용이 items.stock 을 안 덮는다', async () => {
+  it('legacy lotsAreTotal 존재와 무관하게 mirror가 일치하면 입고를 정상 반영한다', async () => {
+    store.set('items/raw-x', 품목('raw-x', { lotsAreTotal: true, stock: 0 }));
+    const received = await executeRawInventoryCommand(명령({ kg: 5 }));
+    expect(received.status).toBe('applied');
+    expect(store.get('items/raw-x')).toMatchObject({ stock: 5, lotsAreTotal: true });
+    expect(store.get(`rawInventories/${inventoryDocId('taebaek', 'raw-x')}`)).toMatchObject({ stockKg: 5, revision: 1 });
+    expect(store.get(`rawMaterialLedger/${operationDocId('op-1')}`)).toMatchObject({ appliedDeltaKg: 5 });
+    const consumed = await executeRawInventoryCommand(명령({ operationId: 'consume', kind: 'consume', kg: 2 } as never));
+    expect(consumed.status).toBe('applied');
+    expect(store.get('items/raw-x')).toMatchObject({ stock: 3, lotsAreTotal: true });
+  });
+
+  it('legacy lotsAreTotal이 있어도 mirror 불일치 입고는 우회하지 않고 모든 원문을 보존한다', async () => {
     store.set('items/raw-x', 품목('raw-x', { lotsAreTotal: true, stock: 42 }));
-    await executeRawInventoryCommand(명령({ kg: 5 }));
-    expect(store.get('items/raw-x')).toMatchObject({ stock: 42 });   // 안 덮었다
+    const before = JSON.stringify([...store]);
+    const received = await executeRawInventoryCommand(명령({ kg: 5 }));
+    expect(received).toMatchObject({ status: 'rejected', code: 'STOCK_MISMATCH' });
+    expect(JSON.stringify([...store])).toBe(before);
   });
 
   it('**lotsAreTotal 이라도 실사는 items.stock 을 맞춘다** — 사람이 세어 보고 찍은 값이다', async () => {
