@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-09T14:42:55.727Z",
-  "sourceFiles": 430,
+  "generatedAt": "2026-10-10T04:16:14.700Z",
+  "sourceFiles": 429,
   "unresolvedAccesses": 2023,
   "unresolvedPropertyAccesses": [
     {
@@ -24164,7 +24164,6 @@
         "src/features/admin/useVoucherLedger.ts:155",
         "src/features/admin/useVoucherLedger.ts:176",
         "src/features/statements/domain/statementHistoryRowView.ts:58",
-        "src/features/statements/domain/statementWrites.ts:97",
         "src/shared/autoJournal.ts:166",
         "src/shared/autoJournal.ts:282",
         "src/shared/hooks/useAppData.ts:267",
@@ -52668,108 +52667,6 @@
           "optional": true,
           "type": "() => void",
           "declaration": "src/features/staff/StaffApp.tsx:33"
-        }
-      ]
-    },
-    {
-      "model": "StatementWrite",
-      "declaration": "src/features/statements/domain/statementWrites.ts:17",
-      "kind": "interface",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "collection",
-          "optional": false,
-          "type": "CollectionName",
-          "declaration": "src/features/statements/domain/statementWrites.ts:18"
-        },
-        {
-          "field": "id",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/statements/domain/statementWrites.ts:19"
-        },
-        {
-          "field": "data",
-          "optional": false,
-          "type": "Record<string, unknown>",
-          "declaration": "src/features/statements/domain/statementWrites.ts:20"
-        },
-        {
-          "field": "merge",
-          "optional": false,
-          "type": "boolean",
-          "declaration": "src/features/statements/domain/statementWrites.ts:22"
-        }
-      ]
-    },
-    {
-      "model": "StatementWritePlan",
-      "declaration": "src/features/statements/domain/statementWrites.ts:25",
-      "kind": "interface",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "writes",
-          "optional": false,
-          "type": "StatementWrite[]",
-          "declaration": "src/features/statements/domain/statementWrites.ts:26"
-        },
-        {
-          "field": "afterCommit",
-          "optional": false,
-          "type": "{ kind: 'RECOMPUTE_COSTS'; itemIds: string[] }[]",
-          "declaration": "src/features/statements/domain/statementWrites.ts:33"
-        }
-      ]
-    },
-    {
-      "model": "PlanInput",
-      "declaration": "src/features/statements/domain/statementWrites.ts:36",
-      "kind": "interface",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "command",
-          "optional": false,
-          "type": "StatementCommand",
-          "declaration": "src/features/statements/domain/statementWrites.ts:37"
-        },
-        {
-          "field": "statement",
-          "optional": false,
-          "type": "IssuedStatement & { companyId?: string }",
-          "declaration": "src/features/statements/domain/statementWrites.ts:39"
-        },
-        {
-          "field": "costUpdates",
-          "optional": true,
-          "type": "readonly { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[]",
-          "declaration": "src/features/statements/domain/statementWrites.ts:41"
-        },
-        {
-          "field": "recordedAt",
-          "optional": true,
-          "type": "string",
-          "declaration": "src/features/statements/domain/statementWrites.ts:43"
-        },
-        {
-          "field": "actorId",
-          "optional": true,
-          "type": "string",
-          "declaration": "src/features/statements/domain/statementWrites.ts:44"
-        },
-        {
-          "field": "poLinks",
-          "optional": true,
-          "type": "readonly { poId: string; data: Record<string, unknown> }[]",
-          "declaration": "src/features/statements/domain/statementWrites.ts:46"
-        },
-        {
-          "field": "newPo",
-          "optional": true,
-          "type": "{ id: string; data: Record<string, unknown> }",
-          "declaration": "src/features/statements/domain/statementWrites.ts:48"
         }
       ]
     },

@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 74개, 선언 필드 704개, 운영 소스 430개를 분석했다.
+COL 74개, 선언 필드 704개, 운영 소스 429개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -689,7 +689,7 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 691개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -1288,9 +1288,6 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | UsageRow | src/features/admin/AdminApp.tsx:3869 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
 | WRow | src/features/admin/AdminApp.tsx:4316 | type-alias | direct-properties-only | spec, 수량, mfgDate |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
-| StatementWrite | src/features/statements/domain/statementWrites.ts:17 | interface | direct-properties-only | collection, id, data, merge |
-| StatementWritePlan | src/features/statements/domain/statementWrites.ts:25 | interface | direct-properties-only | writes, afterCommit |
-| PlanInput | src/features/statements/domain/statementWrites.ts:36 | interface | direct-properties-only | command, statement, costUpdates, recordedAt, actorId, poLinks, newPo |
 | Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
 | LoginResponse | src/shared/employeeAuth.ts:7 | type-alias | direct-properties-only | customToken, employee |
@@ -3863,7 +3860,7 @@ shared/types.ts 외 interface/type alias 694개를 별도 목록에 기록한다
 | IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1093 | 0 |
 | IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1094 | 0 |
 | IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1096 | 17 |
-| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1097 | 16 |
+| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1097 | 15 |
 | IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1098 | 86 |
 | IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1099 | 73 |
 | IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1100 | 79 |

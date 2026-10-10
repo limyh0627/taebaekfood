@@ -4,7 +4,7 @@
 
 ## 2026-10-09 동결 소스 사전 갱신
 
-정적 사전은 최신 앱 배포 소스8858eb21의2026-10-09 14:42:55 UTC checkout 기준으로 재생성했다. tests/spec 제외 분석 소스430·COL74·직접 선언704·참조601·미해석 속성2023, SDK645·registry밖12·wrapper24·동적collection40·미해석경로329·별도모델694이다. 이전 세금 기준701→704의 선언3개 증가는 RawMaterialEntry.kind/reversalOf와 PurchaseOrder.duplicateReceiptCorrection에 대응한다. 추가039 canonical 시험1파일은 분석에서 제외되며 운영 소스/DB 필드 증가가 아니다. 생성77227/self-check 및16297/check-only 모두 exit0이다. 미해석은 별도 목록이며 DB실측/삭제 근거가 아니다.
+정적 사전은 2026-10-10 현재 checkout에서 미사용 statementWrites 계획과 전용 시험을 제거한 뒤 공식 생성기로 재생성했다. tests/spec 제외 분석 소스429·COL74·직접 선언704·참조601·미해석 속성2023, SDK645·registry밖12·wrapper24·동적collection40·미해석경로329·별도모델691이다. 이전 배포8858eb21 사전의 소스430·별도모델694와 구분한다. 직접 선언3개 증가는 RawMaterialEntry.kind/reversalOf와 PurchaseOrder.duplicateReceiptCorrection에 대응하며 이번 미사용 경로 제거는 운영 DB 필드 삭제가 아니다. 생성8529/d4b9f9 self-check exit0, 실제 전표 명령·재시도19회귀 통과를 확인했다. 미해석은 별도 목록이며 DB실측/삭제 근거가 아니다.
 
 이번 세금 선택5 Functions는 각각runtime72/compiled72 byte 일치, 전체34ACTIVE/Node22·나머지29 source 및 trigger 불변이다. 양Hosting27JS·양HTML과 Rules SHA a2b027748890f2a96ca93afc7a9fefb59cefe8a6a4ea8b0f8bebf75eb0ff93a4 일치를 확인했다. 현재022 재인수로 전체21완료22잔여·우선15 11완료4잔여, ERD 전체 미완료다. 이전042/015/LOAN 배포는 당시 기록으로 보존한다. 이후 앱8858eb21은 중복 입고 취소 표시/원복 연결을 반영했고 Hosting 원격33파일·양HTML 일치 확인을 마쳤다. 서버 제품 소스 변경은 없어 선택5 세금 Functions의 기존72runtime/72compiled 배포 증거를 유지한다. 승인된 중복 정정5문서 적용·1700보호 원문/버전 검증은 별도 운영 사실이며, private 실행기·백업은 생성기의 제품소스 범위에 포함하지 않는다. 새 gate·Notion·Figma·push0. 아래 수치·대기 문구는 제목별 과거 시점이다.
 
