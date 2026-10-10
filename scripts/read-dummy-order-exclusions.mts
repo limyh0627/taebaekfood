@@ -1,0 +1,25 @@
+/** Explicit read-only CLI. Never imports or invokes the historic dummy writer. */
+import {writeFileSync,mkdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {adminDb} from './_admin.mts';
+import {getApp} from 'firebase-admin/app';
+import {planDummyOrderExclusions,dummyOrderLinks} from './dummyOrderExclusionPlan.mjs';
+if(process.argv.length!==3||process.argv[2]!=='--read-only') throw new Error('Only --read-only is supported');
+if(process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Unexpected emulator');
+const db=adminDb();if(getApp().options.projectId!=='taebaek-3abe4')throw new Error('Unexpected project');
+const snapshot=await db.doc('issuedStatements/stmt-hide-20260828').get();
+if(!snapshot.exists)throw new Error('Dummy statement missing; do not infer old script targets');
+const dummy={...snapshot.data(),id:snapshot.id};
+const ids:string[]=dummyOrderLinks(dummy);if(!ids.length)throw new Error('No actual dummy links');
+const orderDocs=await db.getAll(...ids.map(id=>db.doc('orders/'+id)));
+const allStatements=await db.collection('issuedStatements').get();
+const statements=allStatements.docs.map(d=>({...d.data(),id:d.id}));
+const orders=orderDocs.filter(d=>d.exists).map(d=>({...d.data(),id:d.id,readVersion:d.updateTime?`${d.updateTime.seconds}:${d.updateTime.nanoseconds}`:''}));
+const input={companyId:'taebaek',dummy,orders,statements,reasons:[],readsComplete:true};
+const plan=planDummyOrderExclusions(input);
+const relevant=statements.filter(s=>dummyOrderLinks(s).some((id:string)=>ids.includes(id)));
+const report={readAt:new Date().toISOString(),operatingWrites:0,scope:{dummy:snapshot.id,actualLinkedOrders:ids.length,existingOrders:orders.length,missingOrders:orderDocs.filter(d=>!d.exists).map(d=>d.id),statementsRead:statements.length},plan,orders,linkedStatements:relevant,reasonEvidenceCollected:false};
+mkdirSync(resolve('work'),{recursive:true});
+const path=resolve('work/todo017-actual-dry-'+Date.now()+'.json');
+writeFileSync(path,JSON.stringify(report,null,2)+'\n',{flag:'wx'});
+console.log(JSON.stringify({file:path,operatingWrites:0,linkedOrders:ids.length,counts:plan.rows.reduce((a:Record<string,number>,r:{status:string})=>(a[r.status]=(a[r.status]??0)+1,a),{})}));

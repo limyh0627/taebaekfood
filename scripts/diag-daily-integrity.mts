@@ -8,14 +8,37 @@ import { access, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { applicationDefault, cert, deleteApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { auditDataIntegrity, type IntegrityIssue } from '../src/features/admin/dataIntegrityAudit';
+import { createRequire } from 'node:module';
+import type { IntegrityIssue } from '../src/features/admin/dataIntegrityAudit';
 import type { ItemReceipt } from '../src/shared/receipt';
 import type { RawInventoryState } from '../src/shared/rawInventoryCore';
 import type { CompanyId, IssuedStatement, Item, ItemBom, Order, OrderStatusAudit, ProductionSalesLog, PurchaseOrder, RawMaterialEntry } from '../src/shared/types';
-import { companyOf } from '../src/shared/types';
-import { dateOfLocal } from '../src/shared/day';
-import { buildBomIndex, setBomIndex } from '../src/shared/bomIndex';
-import { buildPackIndex, setPackIndex, type PackRow } from '../src/shared/packIndex';
+// tsx require를 사용해 앱 ESM과 Functions CJS의 공용 TS 본문을 함께 읽는다.
+const require = createRequire(import.meta.url);
+const { auditDataIntegrity }: typeof import('../src/features/admin/dataIntegrityAudit') = require('../src/features/admin/dataIntegrityAudit.ts');
+const { companyOf }: typeof import('../src/shared/types') = require('../src/shared/types.ts');
+const { dateOfLocal }: typeof import('../src/shared/day') = require('../src/shared/day.ts');
+const { buildBomIndex, setBomIndex }: typeof import('../src/shared/bomIndex') = require('../src/shared/bomIndex.ts');
+const { buildPackIndex, setPackIndex }: typeof import('../src/shared/packIndex') = require('../src/shared/packIndex.ts');
+import type { PackRow } from '../src/shared/packIndex';
+import type { ReturnStockOperation } from '../src/shared/returnStockMovement';
+const { auditLedgerFile, dailyLedgerAudit, ledgerUnitInputs, partitionLedgerOrders }: typeof import('./todo011-daily-ledger') = require('./todo011-daily-ledger.ts');
+
+// 파일 모드는 인증 초기화 전에 끝낸다. DB 접근·원본 덮어쓰기 없음.
+if (process.argv[2] === '--input') {
+  try {
+    const [, , , inputPath, flag, outputPath, ...extra] = process.argv;
+    if (!inputPath || flag !== '--output' || !outputPath || extra.length) throw new Error('사용법: npm run audit:daily -- --input 입력.json --output 결과.json');
+    if (resolve(inputPath) === resolve(outputPath)) throw new Error('입력 파일을 결과로 덮어쓸 수 없습니다.');
+    const report = auditLedgerFile(JSON.parse(await readFile(inputPath, 'utf8')));
+    await writeFile(outputPath, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
+    console.log(`파일 재고 대조: ${report.rows.length}품목. DB 접근 없음.`);
+    process.exit(0);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : '파일 재고 대조 실패');
+    process.exit(1);
+  }
+}
 
 const root = resolve(import.meta.dirname, '..');
 const date = process.argv[2] || new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
@@ -27,7 +50,7 @@ const credential = keyPath ? cert(JSON.parse(await readFile(keyPath, 'utf8'))) :
 const app = getApps()[0] ?? initializeApp({ credential, projectId: 'taebaek-3abe4' });
 const db = getFirestore(app);
 
-const load = async <T>(name: string): Promise<T[]> => {
+const load = async <T,>(name: string): Promise<T[]> => {
   const snap = await db.collection(name).get();
   return snap.docs.map(row => ({ id: row.id, ...row.data() } as T));
 };
@@ -83,19 +106,33 @@ const actionOf = (issue: IntegrityIssue): string => {
 };
 
 try {
-  const [orders, items, itemBoms, itemPacks, purchaseOrders, itemReceipts, rawMaterialLedger, rawInventories, issuedStatements, productionSalesLogs, orderStatusAudits] = await Promise.all([
-    load<Order>('orders'), load<Item>('items'), load<ItemBom>('item_bom'), load<PackRow>('item_pack'), load<PurchaseOrder>('purchaseOrders'),
+  const readStartedAt = new Date().toISOString();
+  const [orders, items, itemBoms, itemPacks, purchaseOrders, itemReceipts, rawMaterialLedger, rawInventories, issuedStatements, productionSalesLogs, orderStatusAudits, returnOperations] = await Promise.all([
+    load<Order>('orders'), load<Item>('items'), load<ItemBom>('item_bom'), load<PackRow & { companyId?: CompanyId }>('item_pack'), load<PurchaseOrder>('purchaseOrders'),
     load<ItemReceipt>('itemReceipts'), load<RawMaterialEntry>('rawMaterialLedger'), load<RawInventoryState>('rawInventories'),
     load<IssuedStatement>('issuedStatements'), load<ProductionSalesLog>('productionSalesLogs'), load<OrderStatusAudit>('orderStatusAudits'),
+    load<ReturnStockOperation>('returnOperations'),
   ]);
+  const readFinishedAt = new Date().toISOString();
+  const snapshotDate = dateOfLocal(readFinishedAt);
   // 생산판매일지 화면과 같은 박스·세트 해체표를 사용해야 수량이 두 번 곱해지거나 묶음이
   // 상품명 한 줄로 남는 오탐이 생기지 않는다.
   setBomIndex(buildBomIndex(items, itemBoms));
   setPackIndex(buildPackIndex(itemPacks));
+  const orderInputs = partitionLedgerOrders(orders);
 
   const reports = (['taebaek', 'punghoe'] as CompanyId[]).map(companyId => {
-    const issues = auditDataIntegrity({ companyId, dateFrom: date, dateTo: date, orders, items, itemBoms, purchaseOrders, itemReceipts, rawMaterialLedger, rawInventories, issuedStatements, productionSalesLogs });
-    return { companyId, issues };
+    const inputDiagnostics = orderInputs.invalid.filter(row => row.companyId === companyId);
+    const issues: IntegrityIssue[] = [
+      ...inputDiagnostics.map(row => ({ id: `input-order:${row.id}`, area: '작업완료·BOM' as const, severity: 'error' as const,
+        title: '주문 입력 미확인', detail: `${row.reason}. 해당 원문은 점검에서 제외했고 전체 정상으로 판정하지 않습니다.`, reference: row.id })),
+      ...auditDataIntegrity({ companyId, dateFrom: date, dateTo: date, orders: orderInputs.valid, items, itemBoms, purchaseOrders, itemReceipts, rawMaterialLedger, rawInventories, issuedStatements, productionSalesLogs }),
+    ];
+    const itemLedgerAudit = dailyLedgerAudit({ companyId, snapshotDate, items, orders: orderInputs.valid, receipts: itemReceipts,
+      inventoryEntries: rawMaterialLedger, returnOperations, complete: true, physicalEvidence: [],
+      unitInputs: ledgerUnitInputs(companyId, items, itemBoms, itemPacks) }).map(row => inputDiagnostics.length
+        ? { ...row, status: '입력미확인', reason: '형식 불명 주문 제외로 회사 전체 흐름의 완전성 미확인; 표시 수치는 정상 입력만의 진단값' } : row);
+    return { companyId, issues, inputDiagnostics, itemLedgerAudit };
   });
   const all = reports.flatMap(report => report.issues.map(issue => ({ ...issue, companyId: report.companyId })));
   const errors = all.filter(issue => issue.severity === 'error').length;
@@ -136,6 +173,12 @@ try {
   }
   for (const report of reports) {
     lines.push(`## ${report.companyId === 'taebaek' ? '태백식품' : '풍회유통'}`, '');
+    lines.push('### 제품 원장 기록 대조', '', `- 현재 재고 기준일: ${snapshotDate} (점검 대상일 ${date}의 과거 종료 재고가 아님)`,
+      '- 전체 배열 수집 성공. 여러 컬렉션 읽기는 원자적 스냅샷이 아니며 내용 진실/실측 증명이 아닙니다.',
+      '- 실측 증빙 입력 없음: 앵커 이름만으로 실측 판정하지 않습니다. 원료는 기존 원료 점검을 따릅니다.', '',
+      '| 품목 | 판정 | 전산 계산 | 현재 | 차이 | 기준 시각 |', '|---|---|---:|---:|---:|---|');
+    for (const row of report.itemLedgerAudit) lines.push(`| ${[row.name, row.spec].filter(Boolean).join(' ').replace(/[|\r\n]/g, ' ')} | ${row.status} | ${'expectedStock' in row ? row.expectedStock : '—'} | ${row.stock} | ${'gap' in row ? row.gap : '—'} | ${'anchorAt' in row ? row.anchorAt ?? '—' : '—'} |`);
+    lines.push('');
     if (!report.issues.length) { lines.push('- 발견된 문제 없음', ''); continue; }
     const currentIssues = report.issues.filter(issue => !issue.date || issue.date.slice(0, 10) >= date);
     const ongoingIssues = report.issues.filter(issue => !!issue.date && issue.date.slice(0, 10) < date);
@@ -162,7 +205,9 @@ try {
   await mkdir(dir, { recursive: true });
   await Promise.all([
     writeFile(resolve(dir, `${date}.md`), lines.join('\n'), 'utf8'),
-    writeFile(resolve(dir, `${date}.json`), JSON.stringify({ date, createdAt: new Date().toISOString(), reports }, null, 2), 'utf8'),
+    writeFile(resolve(dir, `${date}.json`), JSON.stringify({ date, createdAt: new Date().toISOString(), readScope: {
+      readStartedAt, readFinishedAt, snapshotDate, atomicSnapshot: false, complete: '전체 컬렉션 읽기 성공; 내용 진실/실측 증명 아님',
+    }, reports }, null, 2), 'utf8'),
   ]);
   console.log(lines.join('\n'));
 } finally {

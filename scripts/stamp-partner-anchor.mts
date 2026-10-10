@@ -16,10 +16,16 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { buildJournals } from '../src/shared/buildJournals';
-import { buildPartnerAnchor, anchorId } from '../src/features/admin/partnerAnchor';
-import { companyOf, COMPANIES, type CompanyId } from '../src/shared/types';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { anchorId } = require('../src/features/admin/partnerAnchor.ts') as typeof import('../src/features/admin/partnerAnchor');
+import type { CompanyId } from '../src/shared/types';
+const { COMPANIES } = require('../src/shared/types.ts') as typeof import('../src/shared/types');
 
+const { buildVerifiedAnchor } = require('./shared/partnerAnchorDry.ts') as typeof import('./shared/partnerAnchorDry');
+const INPUT = (process.argv.find(a => a.startsWith('--input=')) ?? '').slice(8);
+if (INPUT && (process.argv.includes('--apply') || process.argv.includes('--undo'))) throw new Error('조회 파일은 미리보기 전용입니다.');
+const inputRows = INPUT ? JSON.parse(readFileSync(INPUT, 'utf8')) : undefined;
 const APPLY = process.argv.includes('--apply');
 const UNDO = process.argv.includes('--undo');
 const YEAR = (process.argv.find(a => a.startsWith('--year=')) ?? '').slice(7)
@@ -27,43 +33,35 @@ const YEAR = (process.argv.find(a => a.startsWith('--year=')) ?? '').slice(7)
 const BACKUP = `scripts/stamp-partner-anchor-${YEAR}-backup.json`;
 const COL = 'partnerBalanceSnapshots';
 
-const app = initializeApp({ apiKey: 'AIzaSyBOppTpeiRV1lQDU9ijQGVHQRS-zQW-OOE', authDomain: 'taebaek-3abe4.firebaseapp.com', projectId: 'taebaek-3abe4' });
-const db = getFirestore(app);
-await signInAnonymously(getAuth(app));
-const load = async (c: string) => (await getDocs(collection(db, c))).docs.map(d => ({ id: d.id, ...d.data() } as any));
+const app = inputRows ? undefined : initializeApp({ apiKey: 'AIzaSyBOppTpeiRV1lQDU9ijQGVHQRS-zQW-OOE', authDomain: 'taebaek-3abe4.firebaseapp.com', projectId: 'taebaek-3abe4' });
+const db = app ? getFirestore(app) : undefined;
+if (app) await signInAnonymously(getAuth(app));
+const load = async (c: string) => { if(inputRows){ if(!Array.isArray(inputRows[c])) throw new Error('전체 조회 자료 누락: '+c); return inputRows[c]; } return (await getDocs(collection(db!, c))).docs.map(d => ({ ...d.data(), id: d.id } as any)); };
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
 if (UNDO) {
   if (!existsSync(BACKUP)) { console.error(`✖ 백업이 없다: ${BACKUP}`); process.exit(1); }
   const prev = JSON.parse(readFileSync(BACKUP, 'utf8'));
   for (const [id, before] of Object.entries<any>(prev.before)) {
-    if (before) { const { id: _drop, ...rest } = before; await setDoc(doc(db, COL, id), rest); }
-    else await deleteDoc(doc(db, COL, id));
+    if (before) { const { id: _drop, ...rest } = before; await setDoc(doc(db!, COL, id), rest); }
+    else await deleteDoc(doc(db!, COL, id));
   }
   console.log('✅ 되돌림'); process.exit(0);
 }
 
-const [statements, cashEntries, settlements, accounts, existing, partners] = await Promise.all([
+const [statements, cashEntries, settlements, accounts, existing, partners, returnOperations, returnApplications, partnerAdvanceOperations] = await Promise.all([
   load('issuedStatements'), load('cashEntries'), load('settlements'),
-  load('accounts'), load(COL), load('partners'),
+  load('accounts'), load(COL), load('partners'), load('returnOperations'), load('returnApplications'), load('partnerAdvanceOperations'),
 ]);
-const nameOf = (pid: string) => partners.find((p: any) => p.id === pid)?.name;
 
-console.log(`\n━━ ${YEAR}년 말 거래처 앵커 ━━  (${APPLY ? '적용' : '미리보기 — 적용하려면 --apply'})\n`);
+console.log(`\n━━ ${YEAR}년 말 거래처 앵커 ━━  (${APPLY ? '적용' : '미리보기'})\n`);
 
 const before: Record<string, any> = {};
 const writes: { id: string; doc: any }[] = [];
 
 for (const co of COMPANIES) {
   const cid = co.id as CompanyId;
-  const myStmts = statements.filter((s: any) => companyOf(s) === cid);
-  const myCash = cashEntries.filter((e: any) => companyOf(e) === cid);
-  const { entries, skipped } = buildJournals({ statements: myStmts, cashEntries: myCash, accounts });
-  if (skipped.length) console.log(`   ⚠ ${co.name}: 분개 못 만든 것 ${skipped.length}건 — ${skipped.slice(0, 3).map((s: any) => s.reason).join(' / ')}`);
-
-  const anchor = buildPartnerAnchor(cid, YEAR, {
-    journals: entries, statements: myStmts, cashEntries: myCash, settlements, nameOf,
-  });
+  const anchor = await buildVerifiedAnchor(cid, YEAR, {issuedStatements:statements,cashEntries,settlements,accounts,partners,returnOperations,returnApplications,partnerAdvanceOperations});
 
   const id = anchorId(cid, YEAR);
   before[id] = existing.find((x: any) => x.id === id) ?? null;
@@ -94,6 +92,6 @@ for (const co of COMPANIES) {
 if (!APPLY) { console.log('미리보기만 했다. 적용하려면 --apply\n'); process.exit(0); }
 
 writeFileSync(BACKUP, JSON.stringify({ year: YEAR, at: new Date().toISOString(), before }, null, 2), 'utf8');
-for (const w of writes) { const { id: _drop, ...rest } = w.doc; await setDoc(doc(db, COL, w.id), rest); }
+for (const w of writes) { const { id: _drop, ...rest } = w.doc; await setDoc(doc(db!, COL, w.id), rest); }
 console.log(`✅ ${writes.length}건 박았다.  백업: ${BACKUP}  (되돌리기: --undo --year=${YEAR})\n`);
 process.exit(0);
