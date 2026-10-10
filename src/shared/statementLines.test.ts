@@ -394,3 +394,12 @@ it('옛 박스 주문의 포장표 환산은 명시 입력을 쓰고 저장 개�
  expect(orderLines(input)[0]).toMatchObject({qty:24,price:1000});
  expect(orderLines({...input,order:주문([{...item,unitsPerBox:10}])})[0]).toMatchObject({qty:20,price:1200});
 });
+
+it('명시 원가 kg는 거래 수량과 전표 금액을 바꾸지 않는다', () => {
+  const row = { itemId: 'raw', name: '원료 20kg포', spec: '20kg', qty: '2', price: '22000', isTaxExempt: false, purchaseQuantityKg: '40' };
+  const explicit = manualLines([row], '매입')[0];
+  const legacy = manualLines([{ ...row, purchaseQuantityKg: '' }], '매입')[0];
+  expect(explicit).toMatchObject({ qty: 2, price: 22000, supply: 40000, tax: 4000, total: 44000, purchaseQuantityKg: 40 });
+  expect(({ ...explicit, purchaseQuantityKg: undefined })).toEqual({ ...legacy, purchaseQuantityKg: undefined });
+  expect(manualLines([row], '매출')[0]).not.toHaveProperty('purchaseQuantityKg');
+});

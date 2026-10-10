@@ -95,6 +95,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
+  const [costInput, setCostInput] = useState(() =>
+    typeof initialData?.cost === 'number' && Number.isFinite(initialData.cost) ? String(initialData.cost) : '');
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     type: (initialData?.type as InventoryCategory) || 'product',
@@ -308,7 +310,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
       type: formData.type,
       ...(formData.category && { category: formData.category }),
       ...(formData.subtype && { subtype: formData.subtype }),
-      ...(formData.type === 'service' ? { cost: 0 } : formData.cost > 0 ? { cost: formData.cost } : {}),
+      ...(formData.type === 'service' ? { cost: 0 } : Number.isFinite(formData.cost) && (formData.cost > 0 || (formData.costSource === 'manual' && costInput.trim() !== '' && formData.cost === 0)) ? { cost: formData.cost } : {}),
       stock: formData.type === 'service' ? 0 : initialData?.stock ?? 0,
       minStock: formData.type === 'service' || formData.type === 'product' ? 0 : formData.minStock,
       unit: formData.type === 'service' ? '건' : formData.unit,
@@ -597,7 +599,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
                   <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                     {([['rollup', '롤업'], ['manual', '입력단가']] as const).map(([v, label]) => (
                       <button key={v} type="button"
-                        onClick={() => setFormData(fd => ({ ...fd, costSource: v, ...(v === 'manual' && !fd.cost ? { cost: rolled } : {}) }))}
+                        onClick={() => {
+                          if (v === 'manual' && !formData.cost && rolled > 0) setCostInput(String(rolled));
+                          setFormData(fd => ({ ...fd, costSource: v, ...(v === 'manual' && !fd.cost ? { cost: rolled } : {}) }));
+                        }}
                         className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${formData.costSource === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                         {label}
                       </button>
@@ -608,8 +613,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
                   <input
                     type="number"
                     min={0}
-                    value={formData.cost === 0 ? '' : formData.cost}
-                    onChange={(e) => setFormData({ ...formData, cost: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    value={costInput}
+                    onChange={(e) => {
+                      setCostInput(e.target.value);
+                      setFormData({ ...formData, cost: e.target.value === '' ? 0 : Number(e.target.value) });
+                    }}
                     placeholder="매입원가 직접 입력 (예: 380)"
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                   />

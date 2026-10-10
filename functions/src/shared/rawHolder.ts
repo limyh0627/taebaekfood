@@ -3,7 +3,7 @@ import { baseRawName, RM_LIST } from './formula';
 
 export type RawHolderItem = { id: string; name: string; companyId?: CompanyId; subtype?: string;
   phantom?: boolean; archived?: boolean; rawMaterialName?: string };
-export const isRawHolder = (item: RawHolderItem | undefined): boolean =>
+export const isRawHolder = (item: Partial<RawHolderItem> | undefined): boolean =>
   !!item && String(item.subtype ?? '') === '벌크' && !item.phantom && !item.archived;
 const companyOf = (item: RawHolderItem): CompanyId => item.companyId ?? 'taebaek';
 

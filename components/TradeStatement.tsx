@@ -29,6 +29,7 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { serviceStatementErrors } from '../src/shared/serviceStatement';
 import { isLatestForPartner } from '../src/shared/latestStatement';
+import { isRawPurchaseItem } from '../functions/src/shared/purchaseCost';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { buildStatementCommand, checkStatementCommand, type StatementCommand, type StatementRejectionCode } from '../src/features/statements/domain/statementCommand';
 import { 서류당사자ById, 서류당사자스냅샷우선 } from '../src/shared/docParty';
@@ -1192,6 +1193,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name,
         spec: i.spec,
         qty: String(i.qty),
+        ...(i.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: String(i.purchaseQuantityKg) } : {}),
         // 저장된 단가(부가세 포함)를 그대로 사용 — 수동입력 모드 supply=round(qty*price/1.1)와 일치
         price: String(i.price || (i.qty > 0 ? Math.round(i.total / i.qty) : 0)),
         isTaxExempt: i.isTaxExempt,
@@ -1375,6 +1377,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
   }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
 
+  const invalidPurchaseKg = lineItems.some(line => line.purchaseQuantityKg !== undefined &&
+    (!Number.isFinite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0
+      || !isRawPurchaseItem(allItems.find(item => item.id === line.itemId))));
   const 합계 = lineTotals(lineItems);
   const isTwoSided = 합계.isTwoSided;
   //  양변 전표는 차변만 센다 — 수량처럼 합계에 없는 값을 더할 때도 같은 규칙을 따라야 한다
@@ -1449,6 +1454,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!selectedClientId || lineItems.length === 0) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
+    if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return null; }
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
     if (걸린줄들('ZERO_PRICE').length) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
@@ -1643,6 +1649,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleSaveEdit = async () => {
     if (saveBusyRef.current) return;
     if (!editingStmt || lineItems.length === 0) return;
+    if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return; }
     const skipLinkIds = await confirmUnlinkedLines();
     if (!skipLinkIds) return;
     const proposed: Partial<IssuedStatement> = {
@@ -1660,7 +1667,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
-        ...(i.side ? { side: i.side } : {}),   // 양변 전표 — 없으면 분개가 안 선다
+        ...(i.side ? { side: i.side } : {}),
+        ...(stmtType === '매입' && i.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: i.purchaseQuantityKg } : {}),   // 양변 전표 — 없으면 분개가 안 선다
       })),
     };
     // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
@@ -2732,9 +2740,9 @@ ${names}
                             return searchableRows.filter(result => matchesSearch(result.product!.name, query))
                               .map(result => ({ pc: result.pc, product: result.product! }));
                           }} onSelect={setSelectedItemIdx}
-                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch}:row))}
+                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch,...('accountCode' in patch || 'itemId' in patch ? {purchaseQuantityKg:undefined} : {})}:row))}
                           onSearchFocus={setActiveSearchRow} onSearchBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
-                          onChooseProduct={(index,result)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
+                          onChooseProduct={(index,result)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,purchaseQuantityKg:undefined,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
                           onRemove={index=>setManualItems(prev=>prev.filter((_,i)=>i!==index))}/>
                         {!ro && <StatementExpensePresetRow presets={expensePresets} managing={manageExpense}
                           canAdd={!!onAddExpensePreset} canDelete={!!onDeleteExpensePreset} onAddRow={addExpenseRow}

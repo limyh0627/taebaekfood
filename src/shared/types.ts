@@ -1051,6 +1051,8 @@ export interface FixedCostTemplate {
 export type StatementLineKind = 'item' | 'account';
 
 export interface IssuedStatementItem {
+  /** 신규 원료 매입 줄에서 사용자가 직접 확인한 기본 kg 수량. 거래 qty와 별개이며 옛 줄은 없을 수 있다. */
+  purchaseQuantityKg?: number;
   /** 비용·옛 전표는 없을 수 있다. 이름으로 품목을 추정해 단가를 덮어쓰지 않는다. */
   itemId?: string;
   /** 품목 줄인가 계정 줄인가 — 2026-09-13부터 적는다. 옛 줄에는 없다. */

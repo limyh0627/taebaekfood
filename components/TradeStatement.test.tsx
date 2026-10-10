@@ -439,3 +439,23 @@ it('최초 명확한 송신 전 거절만 원문 대기를 해제해 입력 수�
  await waitFor(()=>expect(apply).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());
  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();
 });
+
+it('신규 원료 매입은 거래2포/확인40kg와 원가1000을 저장하고 unknown 재열기에도 원문을 보존한다', async () => {
+ const raw: Item = {...item,id:'raw-20kg',name:'원료 20kg포',spec:'20kg',type:'raw',subtype:'벌크',unit:'포',cost:80};
+ const rawPrice: PartnerItem = {...price,id:'raw-price',itemId:raw.id,price:22000};
+ const callback = vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>()
+   .mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce('duplicate');
+ const props={orders:[],allItems:[raw],partners:[partner],partnerItems:[rawPrice],issuedStatements:[],composerOnly:true,
+ pendingInvoice:{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:22000}]},onApplyStatement:callback};
+ const view=render(<TradeStatement {...props}/>);
+ fireEvent.change(await screen.findByLabelText('1행 원가 기준 수량 kg'),{target:{value:'40'}});
+ expect(screen.getByText('거래 수량 (포)')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(callback).toHaveBeenCalledOnce());
+ const sent=structuredClone(callback.mock.calls[0][0]);
+ expect(sent.statement.items[0]).toMatchObject({qty:2,price:22000,supply:40000,total:44000,purchaseQuantityKg:40});
+ expect(sent.costUpdates).toEqual([{itemId:raw.id,price:1000,beforeCost:80,sourceLineIndex:0}]);
+ expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'포'});
+ view.unmount();render(<TradeStatement {...props}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
+ expect(callback.mock.calls[1][0]).toEqual(sent);
+});

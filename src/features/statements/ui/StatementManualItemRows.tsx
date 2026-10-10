@@ -1,4 +1,5 @@
 import React from 'react';
+import { isRawPurchaseItem } from '../../../../functions/src/shared/purchaseCost';
 import { X } from 'lucide-react';
 import type { AccountCode, Item, PartnerItem } from '../../../../types';
 import { bomOf, type BomIndex } from '../../../shared/bomIndex';
@@ -18,7 +19,7 @@ interface Props {
   activeSearchIndex: number | null;
   statementType: string;
   accountCodes: AccountCode[];
-  items?: readonly Pick<Item, 'id' | 'type'>[];
+  items?: readonly Pick<Item, 'id' | 'type' | 'subtype' | 'unit' | 'phantom' | 'archived'>[];
   linked?: readonly { itemId: string; name: string }[];
   formatAmount: (value: number) => string;
   searchResults: (row: ManualRow) => StatementManualSearchResult[];
@@ -44,7 +45,7 @@ export default function StatementManualItemRows(props: Props) {
         <td className="px-3 py-2 relative min-w-[120px]">
           {props.readOnly ? <span className="font-black text-slate-800">{row.name}</span> : <>
             <input type="text" placeholder="제품명..." value={row.name}
-              onChange={e => props.onChange(index, { itemId: undefined, name: e.target.value })}
+              onChange={e => props.onChange(index, { itemId: undefined, purchaseQuantityKg: undefined, name: e.target.value })}
               onFocus={() => props.onSearchFocus(index)} onBlur={props.onSearchBlur}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 min-w-[120px]"/>
             {props.activeSearchIndex === index && results.length > 0 && (
@@ -68,10 +69,25 @@ export default function StatementManualItemRows(props: Props) {
           ? <span className="font-bold text-slate-700">{row.spec}</span>
           : <input type="text" placeholder="규격" value={row.spec} onChange={e => props.onChange(index, { spec: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>}</td>
-        <td className="px-3 py-2 w-16">{props.readOnly
+        <td className={`px-3 py-2 w-16 ${props.statementType === '매입' && isRawPurchaseItem(props.items?.find(item => item.id === row.itemId)) ? 'min-w-[160px]' : ''}`}>
+          {props.statementType === '매입' && isRawPurchaseItem(props.items?.find(item => item.id === row.itemId)) &&
+            <span className="mb-1 block text-[10px] text-slate-500">거래 수량 ({props.items?.find(item => item.id === row.itemId)?.unit || '품목 단위'})</span>}
+          {props.readOnly
           ? <span className="block text-right font-bold">{row.qty}</span>
           : <input type="text" inputMode="decimal" placeholder="0" value={row.qty} onChange={e => props.onChange(index, { qty: e.target.value })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}</td>
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
+          {props.statementType === '매입' && isRawPurchaseItem(props.items?.find(item => item.id === row.itemId)) && (
+            <label className="mt-2 block text-[10px] text-slate-500">
+              원료 벌크 원가 기준(kg) · 직접 확인
+              {props.readOnly ? <span className="block font-bold text-slate-700">{row.purchaseQuantityKg || '기존 수량 기준'}</span>
+                : <input aria-label={`${index + 1}행 원가 기준 수량 kg`} type="text" inputMode="decimal"
+                  value={row.purchaseQuantityKg ?? ''} placeholder="직접 확인한 전체 kg"
+                  onChange={e => props.onChange(index, { purchaseQuantityKg: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right"/>}
+              <span className="block">거래 수량·금액과 별개 · 미입력 시 기존 계산</span>
+            </label>
+          )}
+        </td>
         <td className="px-3 py-2 w-24">{props.readOnly
           ? <span className="block text-right font-bold">{props.formatAmount(Number(row.price) || 0)}</span>
           : <input type="text" inputMode="decimal" placeholder="0" value={row.price} onChange={e => props.onChange(index, { price: e.target.value })}

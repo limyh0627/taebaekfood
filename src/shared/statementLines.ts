@@ -19,6 +19,8 @@ export type StatementType = '매출' | '매입' | '비용';
 
 /** 손으로 적는 줄 — 화면의 입력칸 그대로라 전부 글자다. */
 export interface ManualRow {
+  /** 직접 확인한 원료 매입 전체 kg 수량. 빈칸은 기존 계산을 유지한다. */
+  purchaseQuantityKg?: string;
   itemId?: string;
   name: string; spec: string; qty: string; price: string;
   isTaxExempt: boolean; note?: string; accountCode?: string;
@@ -26,6 +28,7 @@ export interface ManualRow {
 }
 
 export interface LineItem {
+  purchaseQuantityKg?: number;
   itemId?: string;
   /**
    * 품목 줄(`item`)인가 계정 줄(`account`)인가 — 저장할 때 그대로 따라간다.
@@ -124,6 +127,7 @@ export function manualLines(
         ...(lineKind ? { lineKind } : {}),
         key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec,
         qty, price, supply, tax, total: supply + tax,
+        ...(stmtType === '매입' && item.purchaseQuantityKg?.trim() ? { purchaseQuantityKg: Number(item.purchaseQuantityKg) } : {}),
         isTaxExempt: item.isTaxExempt, side: item.side,
         accountCode,
       };

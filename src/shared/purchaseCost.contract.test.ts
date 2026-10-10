@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { costFromPurchaseLine as appCost } from './lineAmount';
-import { costFromPurchaseLine as sharedCost } from '../../functions/src/shared/purchaseCost';
+import { costFromPurchaseLine as sharedCost, isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
 // 실제 서버 소비자의 계산 선언을 실행하여 정책 배선까지 검증한다.
 const source = readFileSync('functions/src/tradeStatementIssue.ts', 'utf8');
 const declaration = source.match(/const purchaseCost = ([\s\S]*?);\r?\nconst oldCompany/)!;
@@ -25,4 +25,19 @@ describe('앱·서버 매입원가 공용 계산', () => {
     expect(appCost({})).toBeNull();
     expect(serverCost({price:0})).toBeNull();
   });
+});
+
+it('신규 명시 kg는 거래 수량과 별개의 원가 분모이고 앱/서버가 일치한다', () => {
+  const line = { qty: 2, price: 22000, supply: 40000, purchaseQuantityKg: 40 };
+  expect(appCost(line)).toBe(1000); expect(serverCost(line)).toBe(1000);
+  expect(appCost({ ...line, purchaseQuantityKg: 20 })).toBe(2000);
+  expect(appCost({ qty: 2, price: 22000, supply: 40000 })).toBe(20000);
+  for (const kg of [0, -1, NaN, Infinity]) expect(appCost({ ...line, purchaseQuantityKg: kg })).toBeNull();
+});
+
+it('명시 kg 원가는 현재 kg mirror 홀더만 허용한다', () => {
+  expect(isRawPurchaseItem({subtype:'벌크'})).toBe(true);
+  expect(isRawPurchaseItem({subtype:'낱개'})).toBe(false);
+  expect(isRawPurchaseItem({subtype:'벌크',phantom:true})).toBe(false);
+  expect(isRawPurchaseItem({subtype:'벌크',archived:true})).toBe(false);
 });

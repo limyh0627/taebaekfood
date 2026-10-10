@@ -39,6 +39,7 @@ export function buildIssuedStatementDraft(input: Input): IssuedStatement {
       supply: line.supply, tax: line.tax, total: line.total, isTaxExempt: line.isTaxExempt,
       accountCode: line.accountCode || undefined,
       ...(line.side ? { side: line.side } : {}),
+      ...(input.type === '매입' && line.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: line.purchaseQuantityKg } : {}),
     })),
     ...(input.type === '매입' ? {
       purchaseOrderIds: input.lines

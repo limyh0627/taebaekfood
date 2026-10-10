@@ -1,4 +1,4 @@
-import { costFromPurchaseLine } from './shared/purchaseCost';
+import { costFromPurchaseLine, isRawPurchaseItem } from './shared/purchaseCost';
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
 import { readStatementCreation } from './statementCreationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
@@ -72,6 +72,10 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     const supply = line.isTaxExempt ? gross : Math.round(gross / 1.1);
     return line.total !== gross || line.supply !== supply || line.tax !== gross - supply;
   })) bad('전표 줄이 잘못되었습니다.');
+  const kgLines = raw.items.filter((line: Row) => line.purchaseQuantityKg !== undefined);
+  if (kgLines.some((line: Row) => raw.type !== '매입' || typeof line.itemId !== 'string' || !line.itemId
+      || !finite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0 || line.qty <= 0))
+    bad('원가 기준 수량은 원료 매입의 직접 확인한 양수 kg여야 합니다.');
   if (newPo && newPo.items.some(item => !item || typeof item.itemId !== 'string'
     || !raw.items.some((line: Row) => line.itemId === item.itemId && line.qty === item.quantity)
     || !finite(item.quantity) || item.quantity <= 0 || item.isBox !== false)) bad('신규 발주 품목이 전표와 일치하지 않습니다.');
@@ -83,6 +87,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   for (const cost of costUpdates) {
     const line = raw.items[cost.sourceLineIndex];
     if (!line || line.itemId !== cost.itemId || !finite(cost.price) || !finite(cost.beforeCost)
+      || (line.purchaseQuantityKg !== undefined && purchaseCost(line) !== cost.price)
       || !raw.items.some((candidate: Row) => candidate.itemId === cost.itemId && purchaseCost(candidate) === cost.price)) {
       bad('전표 줄과 원가가 일치하지 않습니다.');
     }
@@ -99,6 +104,8 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const orderRefs = orderIds.map(id => db.collection('orders').doc(id));
   const poRefs = poIds.map(id => db.collection('purchaseOrders').doc(id));
   const newPoRef = newPo ? db.collection('purchaseOrders').doc(newPo.id) : null;
+  const kgItemRefs = [...new Set<string>(kgLines.map((line: Row) => line.itemId as string))]
+    .map(id => db.collection('items').doc(id));
   const costRefs = costUpdates.map(c => db.collection('items').doc(c.itemId));
   const newPoItemRefs = newPo ? [...new Set(newPo.items.map(item => item.itemId as string))]
     .map(id => db.collection('items').doc(id)) : [];
@@ -113,7 +120,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const releaseGate = releaseGateRef(db);
   return db.runTransaction(async tx => {
     const recordedAt = new Date().toISOString();
-    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, histories, cardNos, poReservation, codes, partnerStatements, releaseSnap] = await Promise.all([
+    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, histories, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems] = await Promise.all([
       tx.get(statementRef), tx.get(otherKindRef), tx.get(counterRef), tx.get(catchUpCounterRef), tx.get(partnerRef),
       Promise.all(orderRefs.map(ref => tx.get(ref))), Promise.all(poRefs.map(ref => tx.get(ref))),
       newPoRef ? tx.get(newPoRef) : Promise.resolve(null), Promise.all(costRefs.map(ref => tx.get(ref))),
@@ -123,6 +130,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       tx.get(accountCodesQuery),
       tx.get(partnerStatementsQuery),
       tx.get(releaseGate),
+      Promise.all(kgItemRefs.map(ref => tx.get(ref))),
     ]);
     assertReleaseActive(releaseSnap, input.releaseId);
     const mode = assertVoucherDateAllowed(releaseSnap, companyId, date, true);
@@ -205,6 +213,10 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       if (!snap.exists || oldCompany(snap.data()!) !== companyId
         || Number(snap.data()!.cost ?? 0) !== costUpdates[i].beforeCost
         || snap.data()!.type === 'service') conflict(`품목 ${costUpdates[i].itemId} 원가가 변경되었습니다.`);
+    });
+    kgItems.forEach(snap => {
+      if (!snap.exists || oldCompany(snap.data()!) !== companyId || !isRawPurchaseItem(snap.data()!))
+        conflict('원가 기준 kg 수량의 원료 품목이 변경되었습니다.');
     });
     const state = await readVoucherCounter(db, tx, sequence, releaseSnap, companyId, date, effectivePrefix);
     if (state.companyId !== companyId || state.tradeDate !== date || state.prefix !== effectivePrefix

@@ -1,5 +1,6 @@
 import type { PartnerItem, Item } from './types';
 import { costFromPurchaseLine } from './lineAmount';
+import { isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
 
 /**
  * **전표에 찍힌 단가·계정을 거래처 단가로 되민다.**
@@ -23,6 +24,7 @@ import { costFromPurchaseLine } from './lineAmount';
  * 이 함수는 **쓰지 않는다.** 무엇을 써야 하는지만 돌려준다 — 그래야 시험할 수 있다.
  */
 export interface PriceSyncLine {
+  purchaseQuantityKg?: number;
   /** 옛 전표·비용 줄은 없을 수 있다 — 이름으로 짐작해서 다른 품목을 고치지 않는다. */
   itemId?: string;
   name: string;
@@ -40,7 +42,7 @@ export interface PriceSyncInput {
   partnerId: string;
   lines: PriceSyncLine[];
   /** 품목 원장 — 전표 줄의 ID가 실제로 존재하는지 확인한다 */
-  items: Pick<Item, 'id' | 'type'>[];
+  items: Pick<Item, 'id' | 'type' | 'subtype' | 'phantom' | 'archived'>[];
   /** 이미 저장돼 있는 거래처 단가 (그 방향 것만 넘겨도 되고 전부 넘겨도 된다) */
   partnerItems: PartnerItem[];
   /**
@@ -120,7 +122,8 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
      * (2026-09-06 에 60개를 되돌렸는데 전표를 다시 끊자 되살아난 게 이 갈림 때문이다)
      * 셈은 [lineAmount.costFromPurchaseLine](./lineAmount.ts) 한 곳이다.
      */
-    if (type === '매입' && product.type !== 'service') {
+    if (type === '매입' && product.type !== 'service'
+        && (line.purchaseQuantityKg === undefined || isRawPurchaseItem(product))) {
       const cost = costFromPurchaseLine(line);
       if (cost != null) out.costUpdates.push({ itemId: product.id, price: cost });
     }

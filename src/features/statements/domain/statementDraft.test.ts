@@ -28,3 +28,13 @@ describe('buildIssuedStatementDraft', () => {
     expect((statement as typeof statement & { purchaseOrderIds?: string[] }).purchaseOrderIds).toEqual(['item-1']);
   });
 });
+
+it('신규 매입의 명시 기본 kg를 발행 원문에 보존한다', () => {
+  const statement = buildIssuedStatementDraft({
+    identity: { id: 'explicit-kg', docNo: 'preview' }, tradeDate: '2026-10-10', type: '매입',
+    partnerId: 'p', partnerName: '매입처', orderIds: [], memo: '', totals: { supply: 40000, tax: 4000, amount: 44000 },
+    partySnapshot: undefined, allItems: [], lines: [{ key: 'raw', no: 1, itemId: 'raw', name: '원료 20kg포', spec: '20kg',
+      qty: 2, price: 22000, supply: 40000, tax: 4000, total: 44000, isTaxExempt: false, accountCode: '500', purchaseQuantityKg: 40 }],
+  });
+  expect(statement.items[0]).toMatchObject({ qty: 2, total: 44000, purchaseQuantityKg: 40 });
+});

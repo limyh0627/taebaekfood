@@ -213,7 +213,6 @@ import {
   setDocument,
   fetchCollection,
   fetchWhereIn,
-  adjustItemStock,
   markNotificationForUser,
   claimOrderInventoryOperation,
   commitCompanyWrites,

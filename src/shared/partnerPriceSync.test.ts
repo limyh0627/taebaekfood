@@ -314,3 +314,16 @@ describe('매입 — 거래처 단가는 세포함, 품목 원가는 공급가�
     expect(r.costUpdates).toEqual([]);
   });
 });
+
+it('원료 매입의 확인된 kg만 원가 분모로 쓰고 거래 단가를 유지한다', () => {
+  const request = { type: '매입', partnerId: 'p1',
+    lines: [{ itemId: 'raw', name: '원료 20kg포', qty: 2, price: 22000, supply: 40000, isTaxExempt: false, purchaseQuantityKg: 40 }],
+    items: [{ id: 'raw', type: 'raw' as const, subtype: '벌크' }], partnerItems: [] };
+  const result = partnerPriceWrites(request);
+  expect(result.costUpdates).toEqual([{ itemId: 'raw', price: 1000 }]);
+  expect(result.upserts[0]).toMatchObject({ price: 22000, Direction: 'in', taxType: '과세' });
+  expect(partnerPriceWrites({ ...request, items: [{ id: 'raw', type: 'service' }] }).costUpdates).toEqual([]);
+  expect(partnerPriceWrites({ ...request, items: [{ id: 'raw', type: 'raw' }] }).costUpdates).toEqual([]);
+  const legacy = { ...request, lines: request.lines.map(({purchaseQuantityKg, ...line}) => line), items: [{id: 'raw',type: 'raw'}] };
+  expect(partnerPriceWrites(legacy).costUpdates).toEqual([{itemId: 'raw',price: 20000}]);
+});

@@ -39,6 +39,41 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it('신규 원료 거래2포/확인40kg를 원가1000으로 저장하고 번호·발주수량·동일원문을 보존한다', async () => {
+    await seed(); const id='explicit-raw-kg';
+    await db.collection('items').doc('raw-kg').set({companyId:'taebaek',name:'원료20kg포',type:'raw',subtype:'벌크',unit:'포',cost:80});
+    const line={itemId:'raw-kg',name:'원료20kg포',spec:'20kg',qty:2,price:22000,supply:40000,tax:4000,total:44000,
+      isTaxExempt:false,accountCode:'500',purchaseQuantityKg:40};
+    const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,items:[line]},
+      newPo:{id:`po-${id}`,cardNo:'PO-261003-090',items:[{itemId:'raw-kg',itemName:'원료20kg포',quantity:2,isBox:false,unit:'포'}]},
+      costUpdates:[{itemId:'raw-kg',price:1000,beforeCost:80,sourceLineIndex:0}]};
+    const first=await issue(request);
+    const saved=(await db.collection('issuedStatements').doc(id).get()).data()!;
+    const po=(await db.collection('purchaseOrders').doc(`po-${id}`).get()).data()!;
+    expect(saved.items[0]).toEqual(line);expect(saved.totalAmount).toBe(44000);
+    expect(po.items[0]).toMatchObject({quantity:2,unit:'포'});expect((await db.collection('items').doc('raw-kg').get()).data()?.cost).toBe(1000);
+    const counter=db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`),before=(await counter.get()).data();
+    expect(await issue(request)).toEqual({...first,status:'duplicate'});expect((await counter.get()).data()).toEqual(before);
+    await expect(issue({...request,statement:{...request.statement,items:[{...line,purchaseQuantityKg:20}]},
+      costUpdates:[{itemId:'raw-kg',price:2000,beforeCost:80,sourceLineIndex:0}]})).rejects.toThrow();
+    expect((await counter.get()).data()).toEqual(before);expect((await db.collection('issuedStatements').doc(id).get()).data()).toEqual(saved);
+  });
+
+  it('명시 kg의 타회사/일반품목 및 거래qty 분모 원가는 쓰기·번호 없이 거절한다',async()=>{
+    await seed();const counter=db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`),before=(await counter.get()).data();
+    for(const [index,itemData] of [{companyId:'punghoe',type:'raw',subtype:'벌크'},{companyId:'taebaek',type:'raw',subtype:'낱개'}].entries()){
+      const itemId=`invalid-kg-${index}`,id=`invalid-kg-statement-${index}`;
+      await db.collection('items').doc(itemId).set({...itemData,cost:80});
+      const line={...statement(id).items[0],itemId,accountCode:'500',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,purchaseQuantityKg:40};
+      const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,items:[line]},
+        costUpdates:[{itemId,price:1000,beforeCost:80,sourceLineIndex:0}]};
+      await expect(issue(request)).rejects.toThrow();expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
+      expect((await db.collection('items').doc(itemId).get()).data()?.cost).toBe(80);
+      await expect(issue({...request,costUpdates:[{...request.costUpdates[0],price:20000}]})).rejects.toThrow('전표 줄과 원가');
+    }
+    expect((await counter.get()).data()).toEqual(before);
+  });
+
   beforeAll(async () => { app = admin.initializeApp({ projectId }, projectId); db = admin.firestore(app); });
   afterAll(async () => { await app?.delete(); });
 
@@ -93,7 +128,11 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     await expect(issue(input('stmt-1'))).rejects.toThrow('주문 연결');
     await db.collection('orders').doc('o1').update({ linkedStatementId: 'stmt-1' });
     await db.collection('issuedStatements').doc('stmt-1').update({ totalAmount: 1 });
-    await expect(issue(input('stmt-1'))).rejects.toThrow('기존 전표');
+    const tamperedStatement = (await db.collection('issuedStatements').doc('stmt-1').get()).data();
+    const originalCounter = (await db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`).get()).data();
+    await expect(issue(input('stmt-1'))).rejects.toThrow('전표 원 발행과 변경 감사 사슬');
+    expect((await db.collection('issuedStatements').doc('stmt-1').get()).data()).toEqual(tamperedStatement);
+    expect((await db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`).get()).data()).toEqual(originalCounter);
     await expect(issue(input('stmt-2'))).rejects.toThrow('주문');
     expect((await db.collection('issuedStatements').doc('stmt-2').get()).exists).toBe(false);
   }, 20_000);

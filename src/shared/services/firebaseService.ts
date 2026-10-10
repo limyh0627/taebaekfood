@@ -399,45 +399,6 @@ export const markNotificationForUser = async (
   await updateDoc(doc(db, 'notifications', id), { [field]: arrayUnion(userId) });
 };
 
-/**
- * 원료(raw) 품목의 lots 배열을 트랜잭션으로 안전하게 수정한다.
- * 입고(로트 추가)·사용(차감)·순서변경(▲▼)이 동시에 일어나도 덮어쓰기 사고를 막는다.
- * @param rawItemId  원료 품목 문서 ID (예: 'raw-깨분참기름')
- * @param transform  현재 lots → 새 lots (순수 함수)
- * @param computeStock  새 lots → items.stock에 쓸 값(원료의 운영 단위). 미지정 시 stock은 그대로 둠.
- */
-/**
- * 재고를 **DB에서 읽어 더한다**(트랜잭션). delta는 증감분.
- *
- * `updateItem(col, id, { stock: 화면값 + delta })`가 하던 일을 대신한다.
- * 화면값은 클릭 순간의 React 상태라, 함수가 도는 몇 초 사이에 다른 쓰기가 끼면
- * **그 쓰기를 덮어써서 재고가 통째로 어긋난다.** 구독이 실시간이어도 소용없다 —
- * 이미 출발한 실행 안의 변수는 안 바뀌고, 자기가 방금 쓴 값도 왕복 전엔 안 돌아온다.
- * (2026-08 완제품 재고 22건이 음수로 간 경로가 이것이다)
- *
- * → 읽어서 보여주는 건 화면 상태, 계산해서 쓰는 건 DB.
- *
- * @returns 반영 뒤 재고. 문서가 없으면 null.
- */
-export const adjustItemStock = async (
-  collectionName: CollectionName,
-  itemId: string,
-  delta: number,
-): Promise<number | null> => {
-  if (!delta) return null;
-  return runTransaction(db, async (tx) => {
-    const ref = doc(db, collectionName, itemId);
-    const snap = await tx.get(ref);
-    if (!snap.exists()) return null;
-    const next = Math.round((Number(snap.data().stock ?? 0) + delta) * 1000) / 1000;
-    if (delta < 0 && next < 0) {
-      throw new Error(`${itemId} 재고가 부족합니다. 현재 ${Number(snap.data().stock ?? 0)}, 차감 ${Math.round(-delta * 1000) / 1000}`);
-    }
-    tx.update(ref, { stock: next });
-    return next;
-  });
-};
-
 export const subscribeToSubcollection = <T extends { id: string }>(
   parentCollection: string,
   parentId: string,
