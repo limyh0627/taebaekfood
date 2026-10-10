@@ -9,7 +9,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 import { issueTradeStatement } from './tradeStatementIssue';
 import { issueVoucher } from './voucherIssue';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+const available = /^(?:127\.0\.0\.1|localhost):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '');
 const projectId = `demo-trade-statement-${Math.random().toString(36).slice(2)}`;
 let app: admin.app.App;
 let db: admin.firestore.Firestore;
@@ -39,6 +39,33 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it('kg 미확인 벌크의 거래·발주는 발행하되 품목 원가와 원가 이력은 바꾸지 않는다', async () => {
+    await seed(); const id='raw-no-kg';
+    await db.collection('items').doc('raw-no-kg-item').set({companyId:'taebaek',name:'원료',type:'raw',subtype:'벌크',unit:'포',cost:80});
+    const line={itemId:'raw-no-kg-item',name:'원료',spec:'20kg',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500'};
+    const request={...input(id),statement:{...statement(id),type:'매입',orderId:'',items:[line],totalSupply:40000,totalTax:4000,totalAmount:44000},orderIds:[],
+      newPo:{id:'po-raw-no-kg',cardNo:'PO-261003-091',items:[{itemId:line.itemId,itemName:'원료',quantity:2,isBox:false,unit:'포'}]}};
+    const result=await issue(request);
+    expect((await db.collection('items').doc(line.itemId).get()).data()?.cost).toBe(80);
+    expect((await db.collection('itemCostHistory').doc(`${id}_${line.itemId}_0`).get()).exists).toBe(false);
+    expect((await db.collection('issuedStatements').doc(id).get()).data()?.items[0]).toEqual(line);
+    expect((await db.collection('purchaseOrders').doc(request.newPo.id).get()).data()?.items[0]).toMatchObject({quantity:2,unit:'포'});
+    expect(await issue(request)).toEqual({...result,status:'duplicate'});
+    expect((await db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`).get()).data()?.last).toBe(1);
+  },20_000);
+
+  it('kg 미확인 벌크에 거래 수량 분모 원가를 송신하면 번호·전표·품목 쓰기 모두 거절한다', async () => {
+    await seed(); const id='raw-no-kg-cost';
+    await db.collection('items').doc('raw-no-kg-cost-item').set({companyId:'taebaek',name:'원료',type:'raw',subtype:'벌크',cost:80});
+    const line={itemId:'raw-no-kg-cost-item',name:'원료',spec:'20kg',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500'};
+    await expect(issue({...input(id),statement:{...statement(id),type:'매입',orderId:'',items:[line],totalSupply:40000,totalTax:4000,totalAmount:44000},orderIds:[],
+      costUpdates:[{itemId:line.itemId,price:20000,beforeCost:80,sourceLineIndex:0}]})).rejects.toThrow('kg 수량');
+    expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
+    expect((await db.collection('items').doc(line.itemId).get()).data()?.cost).toBe(80);
+    expect((await db.collection('itemCostHistory').doc(`${id}_${line.itemId}_0`).get()).exists).toBe(false);
+    expect((await db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`).get()).data()?.last).toBe(0);
+  },20_000);
+
   it('신규 원료 거래2포/확인40kg를 원가1000으로 저장하고 번호·발주수량·동일원문을 보존한다', async () => {
     await seed(); const id='explicit-raw-kg';
     await db.collection('items').doc('raw-kg').set({companyId:'taebaek',name:'원료20kg포',type:'raw',subtype:'벌크',unit:'포',cost:80});

@@ -7,7 +7,8 @@ import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '..
 import { appConfirm } from '../src/shared/components/appDialog';
 import { OrderStatus, type Order } from '../src/shared/types';
 
-const issueMocks=vi.hoisted(()=>({payment:vi.fn()}));
+const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn()}));
+vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment}));
 vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
 
@@ -15,7 +16,7 @@ vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}
 vi.mock('../src/shared/services/firebaseService', () => ({ fetchCollection: vi.fn(async () => []) }));
 vi.mock('../src/features/admin/useVoucherLedger', () => ({
   useVoucherLedger: ({ issuedStatements }: { issuedStatements: IssuedStatement[] }) => ({
-    mergedStatements: issuedStatements, journalBySource: new Map(), partnerBalances: new Map(),
+    mergedStatements: issuedStatements, journalBySource: new Map(), partnerBalances: new Map(), partnerJournals: [],
     getBalance: (statement:IssuedStatement) => statement.totalAmount, canSettle: () => false, isVouchered: () => false,
     isFetchingHistory: false, forgetStatement: vi.fn(),
   }),
@@ -458,4 +459,88 @@ it('신규 원료 매입은 거래2포/확인40kg와 원가1000을 저장하고 
  view.unmount();render(<TradeStatement {...props}/>);
  fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
  expect(callback.mock.calls[1][0]).toEqual(sent);
+});
+
+
+it('신규 벌크 매입은 kg를 확인하지 않아도 정상 발행하며 원가 갱신만 하지 않는다', async () => {
+ const raw: Item = {...item,id:'raw-unknown-kg',name:'원료 20kg포',spec:'20kg',type:'raw',subtype:'벌크',unit:'포',cost:80};
+ const rawPrice={...price,itemId:raw.id,price:22000};
+ const apply=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>().mockResolvedValue('applied');
+ const updateCost=vi.fn(),upsertPrice=vi.fn();
+ render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[rawPrice]} issuedStatements={[]}
+   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:22000}]}} onApplyStatement={apply} onUpdateItemCost={updateCost} onUpsertPartnerItem={upsertPrice} composerOnly/>);
+ expect(await screen.findByLabelText('1행 원가 기준 수량 kg')).toHaveValue('');
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const sent=apply.mock.calls[0][0];
+ expect(sent.costUpdates).toEqual([]);
+ expect(sent.statement.items[0]).toMatchObject({qty:2,price:22000,supply:40000,total:44000});
+ expect(sent.statement.items[0].purchaseQuantityKg).toBeUndefined();
+ expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'포'});
+ await waitFor(()=>expect(upsertPrice).toHaveBeenCalled());expect(upsertPrice.mock.calls[0][0].price).toBe(22000);
+ expect(updateCost).not.toHaveBeenCalled();
+});
+
+
+it('입고 전표 상세 진입은 기존 매입 수정 모달을 보기로 열고 구형 규격은 표시만 보정한다', async () => {
+ const statement: IssuedStatement = {id:'inbound-view',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:'은하산업',tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'261010-001',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,
+ items:[{itemId:item.id,name:'생들기름-캔',spec:'16.5kgml',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500'}]};
+ const close=vi.fn(),composerClose=vi.fn();
+ render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} onComposerClose={composerClose} composerOnly/>);
+ const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});
+ expect(screen.queryByRole('dialog',{name:/발행 전표 상세/})).not.toBeInTheDocument();
+ expect(within(dialog).getByText('16.5kg')).toBeInTheDocument();expect(statement.items[0].spec).toBe('16.5kgml');
+ fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));
+ expect(within(dialog).getByDisplayValue('16.5kgml')).toHaveAttribute('placeholder','규격');
+ fireEvent.click(within(dialog).getByRole('button',{name:'매입 전표 수정 닫기'}));
+ expect(close).toHaveBeenCalledOnce();expect(composerClose).toHaveBeenCalledOnce();
+});
+
+
+it('외부 상세 선택 변경은 기존 composer에서 다른 전표로 바뀌고 닫힌 선택은 갱신 때 다시 열리지 않는다', async () => {
+ const first: IssuedStatement={id:'detail-a',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'A',orderId:'',items:[{name:'첫 품목',spec:'350ml',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true}],totalSupply:100,totalTax:0,totalAmount:100};
+ const second={...first,id:'detail-b',docNo:'B',items:[{...first.items[0],name:'둘째 품목'}]};
+ const close=vi.fn();const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[first,second],onDetailClose:close,composerOnly:true};
+ const view=render(<TradeStatement {...props} detailStatementId={first.id}/>);
+ expect(await screen.findByText('첫 품목')).toBeInTheDocument();
+ view.rerender(<TradeStatement {...props} detailStatementId={second.id}/>);
+ await waitFor(()=>expect(screen.getByText('둘째 품목')).toBeInTheDocument());
+ fireEvent.click(screen.getByRole('button',{name:'매입 전표 수정 닫기'}));
+ view.rerender(<TradeStatement {...props} issuedStatements={[{...first}, {...second}]} detailStatementId={second.id}/>);
+ expect(screen.queryByRole('dialog',{name:'매입 전표 수정'})).not.toBeInTheDocument();expect(close).toHaveBeenCalledOnce();
+ view.rerender(<TradeStatement {...props} companyId="punghoe" detailStatementId={first.id}/>);
+ expect(screen.queryByRole('dialog',{name:'매입 전표 수정'})).not.toBeInTheDocument();
+});
+it('외부 noncash 적용 전표 상세는 일반 composer 수정으로 확대하지 않고 기존 적용 취소를 유지한다',async()=>{
+ const statement: IssuedStatement={id:'noncash-view',companyId:'taebaek',type:'비용',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'N',orderId:'',items:[],totalSupply:100,totalTax:0,totalAmount:100,
+ noncashApplication:{kind:'advance-application',version:1,companyId:'taebaek',partnerId:partner.id,operationId:'apply',purpose:'합성',requestFingerprint:'hash',sourceFingerprints:{},targetFingerprints:{},allocations:[]}};
+ const close=vi.fn();render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} onDetailClose={close} composerOnly/>);
+ expect(await screen.findByRole('dialog',{name:`발행 전표 상세 — ${partner.name}`})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'적용 취소'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'수정'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:`발행 전표 상세 — ${partner.name} 닫기`}));expect(close).toHaveBeenCalledOnce();
+});
+
+
+it('저장 원문 금액이 수량×단가와 달라도 보기·인쇄는 그대로이고 수정 진입 뒤에만 계산한다',async()=>{
+ const statement: IssuedStatement={id:'original-rounding',companyId:'taebaek',type:'매입',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'261010-123',orderId:'',totalSupply:271,totalTax:28,totalAmount:299,
+ items:[{name:'원문 품목',spec:'350ml',qty:3,price:100,supply:271,tax:28,total:299,isTaxExempt:false,accountCode:'500'}]};
+ render(<TradeStatement orders={[]} allItems={[]} partners={[partner]} partnerItems={[]} issuedStatements={[statement]} detailStatementId={statement.id} composerOnly/>);
+ const dialog=await screen.findByRole('dialog',{name:'매입 전표 수정'});
+ const row=within(dialog).getByText('원문 품목').closest('tr')!;
+ expect(within(row).getByText('271')).toBeInTheDocument();expect(within(row).getByText('28')).toBeInTheDocument();expect(within(row).getByText('299')).toBeInTheDocument();
+ const totals=dialog.querySelector<HTMLTableRowElement>('tbody > tr:last-child')!;
+ expect(within(totals).getByText('271')).toBeInTheDocument();expect(within(totals).getByText('28')).toBeInTheDocument();expect(within(totals).getByText('299')).toBeInTheDocument();
+ fireEvent.click(within(dialog).getByRole('button',{name:'거래명세서'}));
+ const html=issueMocks.print.mock.calls.at(-1)?.[0];expect(html).toContain('261010-123');expect(html).toContain('299');expect(html).toContain('271');
+ fireEvent.click(within(dialog).getByRole('button',{name:'수정'}));
+ expect(within(row).queryByText('299')).not.toBeInTheDocument();expect(within(row).getByText('300')).toBeInTheDocument();expect(statement.totalAmount).toBe(299);
+});
+it('외부 일반 전표에서 적용 전표로 선택을 바꾸면 일반 composer는 남지 않는다',async()=>{
+ const first: IssuedStatement={id:'normal-before',companyId:'taebaek',type:'매출',partnerId:partner.id,partnerName:partner.name,tradeDate:'2026-10-10',issuedAt:'2026-10-10',docNo:'A',orderId:'',items:[],totalSupply:100,totalTax:0,totalAmount:100};
+ const special: IssuedStatement={...first,id:'special-after',noncashApplication:{kind:'advance-application',version:1,companyId:'taebaek',partnerId:partner.id,operationId:'apply',purpose:'합성',requestFingerprint:'hash',sourceFingerprints:{},targetFingerprints:{},allocations:[]}};
+ const props={orders:[],allItems:[],partners:[partner],partnerItems:[],issuedStatements:[first,special],composerOnly:true};
+ const view=render(<TradeStatement {...props} detailStatementId={first.id}/>);expect(await screen.findByRole('dialog',{name:'매출 전표 수정'})).toBeInTheDocument();
+ view.rerender(<TradeStatement {...props} detailStatementId={special.id}/>);
+ expect(await screen.findByRole('dialog',{name:`발행 전표 상세 — ${partner.name}`})).toBeInTheDocument();expect(screen.getAllByRole('dialog')).toHaveLength(1);
+ expect(screen.queryByRole('dialog',{name:'매출 전표 수정'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'적용 취소'})).toBeInTheDocument();
 });

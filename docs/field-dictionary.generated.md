@@ -437,8 +437,8 @@ COL 밖 정적 컬렉션 이름: `appMeta`, `authLoginAttempts`, `companyTransfe
 | functions/src/tradeStatementIssue.ts:115 | server | collection | root / top-level | 1 | appMeta | appMeta |
 | functions/src/tradeStatementIssue.ts:117 | server | collection | root / top-level | 1 | accountCodes |  |
 | functions/src/tradeStatementIssue.ts:119 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/tradeStatementIssue.ts:241 | server | doc | root / top-level-candidate | 미해석 | itemCostHistory/{`${raw.id}_${cost.itemId}_${cost.sourceLineIndex}`} |  |
-| functions/src/tradeStatementIssue.ts:241 | server | collection | root / top-level | 1 | itemCostHistory |  |
+| functions/src/tradeStatementIssue.ts:243 | server | doc | root / top-level-candidate | 미해석 | itemCostHistory/{`${raw.id}_${cost.itemId}_${cost.sourceLineIndex}`} |  |
+| functions/src/tradeStatementIssue.ts:243 | server | collection | root / top-level | 1 | itemCostHistory |  |
 | functions/src/oemFeeVoucher.ts:70 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
 | functions/src/oemFeeVoucher.ts:70 | server | collection | root / top-level | 1 | purchaseOrders |  |
 | functions/src/oemFeeVoucher.ts:71 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{`OEMFEE-${poId}`} |  |
@@ -1180,8 +1180,8 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | TimelineSort | src/shared/timelineColumnSort.ts:20 | interface | direct-properties-only | column, dir |
 | SortOptions | src/shared/timelineColumnSort.ts:67 | interface | direct-properties-only | textOf, signOf |
 | PriceSyncLine | src/shared/partnerPriceSync.ts:26 | interface | direct-properties-only | purchaseQuantityKg, itemId, name, price, accountCode, isTaxExempt, qty, supply |
-| PriceSyncInput | src/shared/partnerPriceSync.ts:40 | interface | direct-properties-only | type, partnerId, lines, items, partnerItems, noLinkIds, isLatest |
-| PriceSyncResult | src/shared/partnerPriceSync.ts:64 | interface | direct-properties-only | upserts, costUpdates |
+| PriceSyncInput | src/shared/partnerPriceSync.ts:40 | interface | direct-properties-only | newIssue, type, partnerId, lines, items, partnerItems, noLinkIds, isLatest |
+| PriceSyncResult | src/shared/partnerPriceSync.ts:66 | interface | direct-properties-only | upserts, costUpdates |
 | StatementLike | src/shared/latestStatement.ts:24 | interface | direct-properties-only | id, partnerId, type, tradeDate |
 | LatestInput | src/shared/latestStatement.ts:31 | interface | direct-properties-only | this, all |
 | MonthGroup | src/shared/groupByMonth.ts:10 | interface | direct-properties-only | month, rows |
@@ -1231,8 +1231,8 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | StatementItemPickerRow | src/features/statements/ui/StatementItemPicker.tsx:5 | interface | direct-properties-only | pc, product |
 | Props | src/features/statements/ui/StatementItemPicker.tsx:10 | interface | direct-properties-only | rows, search, quantities, priceEdits, linkedItemIds, priceSaveState, onSearchChange, onToggleItem, onQuantityChange, onPriceChange, onSavePrice, onSetTax, onClose, onConfirm |
 | Props | src/features/statements/ui/StatementOrderItemRows.tsx:5 | interface | direct-properties-only | items, selectedIndex, editablePrices, accountCodes, formatAmount, onSelect, onPriceChange, onTaxChange, onAccountChange |
-| StatementManualSearchResult | src/features/statements/ui/StatementManualItemRows.tsx:9 | interface | direct-properties-only | pc, product |
-| Props | src/features/statements/ui/StatementManualItemRows.tsx:14 | interface | direct-properties-only | bomIndex, rows, readOnly, selectedIndex, activeSearchIndex, statementType, accountCodes, items, linked, formatAmount, searchResults, onSelect, onChange, onSearchFocus, onSearchBlur, onChooseProduct, onRemove |
+| StatementManualSearchResult | src/features/statements/ui/StatementManualItemRows.tsx:10 | interface | direct-properties-only | pc, product |
+| Props | src/features/statements/ui/StatementManualItemRows.tsx:15 | interface | direct-properties-only | bomIndex, rows, savedLines, readOnly, selectedIndex, activeSearchIndex, statementType, accountCodes, items, linked, formatAmount, searchResults, onSelect, onChange, onSearchFocus, onSearchBlur, onChooseProduct, onRemove |
 | Props | src/features/statements/ui/StatementActionBar.tsx:4 | interface | direct-properties-only | editing, editMode, canIssue, saving, mode, issuePay, issuePayAmount, totalAmount, onIssuePayChange, onIssuePayAmountChange, onSaveEdit, onDelete, onEdit, onPrint, onIssue, onExcel |
 | Props | src/features/statements/ui/StatementSettlementSummary.tsx:4 | interface | direct-properties-only | type, totalAmount, balance, formatAmount, overLabel, onSettle |
 | Props | src/features/statements/ui/StatementExpensePresetRow.tsx:5 | interface | direct-properties-only | presets, managing, canAdd, canDelete, onAddRow, onCreatePreset, onDeletePreset, onToggleManaging, onAddBlankRow |
@@ -2008,15 +2008,15 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | components/TradeStatement.tsx:738 | row.transferOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
 | components/TradeStatement.tsx:739 | row.issueOperationId | Settlement & Record<string, unknown> | property-symbol-unresolved |
 | components/TradeStatement.tsx:739 | row.serverOwned | Settlement & Record<string, unknown> | property-symbol-unresolved |
-| components/TradeStatement.tsx:1217 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
-| components/TradeStatement.tsx:1217 | (st as any).purchaseOrderIds | any | any-receiver |
-| components/TradeStatement.tsx:1217 | (st as any).confirmedProductIds | any | any-receiver |
-| components/TradeStatement.tsx:1248 | (s as any).itemId | any | any-receiver |
-| components/TradeStatement.tsx:1250 | (ps as any).partnerId | any | any-receiver |
-| components/TradeStatement.tsx:1842 | e?.message | any | any-receiver |
-| components/TradeStatement.tsx:1860 | e?.message | any | any-receiver |
-| components/TradeStatement.tsx:2655 | error?.message | any | any-receiver |
-| components/TradeStatement.tsx:2830 | (purchaseOrder as any).id | any | any-receiver |
+| components/TradeStatement.tsx:1228 | ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach | any | any-receiver |
+| components/TradeStatement.tsx:1228 | (st as any).purchaseOrderIds | any | any-receiver |
+| components/TradeStatement.tsx:1228 | (st as any).confirmedProductIds | any | any-receiver |
+| components/TradeStatement.tsx:1259 | (s as any).itemId | any | any-receiver |
+| components/TradeStatement.tsx:1261 | (ps as any).partnerId | any | any-receiver |
+| components/TradeStatement.tsx:1856 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:1874 | e?.message | any | any-receiver |
+| components/TradeStatement.tsx:2669 | error?.message | any | any-receiver |
+| components/TradeStatement.tsx:2844 | (purchaseOrder as any).id | any | any-receiver |
 | components/ProfitAnalysis.tsx:392 | payload?.length | any | any-receiver |
 | components/ProfitAnalysis.tsx:396 | payload.map | any | any-receiver |
 | components/ProfitAnalysis.tsx:397 | p.name | any | any-receiver |
@@ -3064,16 +3064,18 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | functions/src/tradeStatementIssue.ts:209 | item.itemId | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:210 | item.itemName | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:210 | item.unit | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:228 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:216 | raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:216 | raw.items | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:230 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:231 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:234 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:234 | raw.partnerName | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:236 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:232 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:233 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:236 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:236 | raw.partnerName | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:238 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:241 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:244 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:247 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:240 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:246 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:249 | raw.id | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:12 | row.companyId | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:49 | stmt.id | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:49 | stmt.orderId | Row | property-symbol-unresolved |
@@ -3877,7 +3879,7 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1101 | 1 |
 | StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1102 | 1 |
 | IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1106 | 9 |
-| IssuedStatement | id | 필수 | string | src/shared/types.ts:1107 | 138 |
+| IssuedStatement | id | 필수 | string | src/shared/types.ts:1107 | 140 |
 | IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1109 | 4 |
 | IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1111 | 0 |
 | IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1112 | 0 |
@@ -3889,10 +3891,10 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1119 | 31 |
 | IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1120 | 8 |
 | IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1121 | 43 |
-| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1122 | 7 |
-| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1123 | 8 |
-| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1124 | 55 |
-| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1125 | 57 |
+| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1122 | 8 |
+| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1123 | 9 |
+| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1124 | 56 |
+| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1125 | 58 |
 | IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1127 | 3 |
 | IssuedStatement | memo | 선택 | string | src/shared/types.ts:1132 | 5 |
 | IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1140 | 4 |

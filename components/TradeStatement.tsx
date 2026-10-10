@@ -1069,10 +1069,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
-  useEffect(() => {
-    if (!detailStatementId) return;
-    setDetailStmt(mergedStatements.find(row => row.id === detailStatementId && companyOf(row) === companyId) ?? null);
-  }, [detailStatementId, mergedStatements, companyId]);
+  const openedDetailRef = useRef<string | null>(null);
   const closeDetail = () => { setDetailStmt(null); onDetailClose?.(); };
 
   // ── 발주확정 선택 / 매입 품목 검색 ──
@@ -1129,7 +1126,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; onComposerClose?.(); };
+  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setConfirmedLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; if (detailStatementId && editingStmt?.id === detailStatementId) onDetailClose?.(); onComposerClose?.(); };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1178,7 +1175,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [mergedStatements, isEditMode]);
 
   const openEdit = (stmt: IssuedStatement) => {
-    if (stmt.noncashApplication) { setDetailStmt(stmt); return; }
+    if (stmt.noncashApplication) { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setDetailStmt(stmt); return; }
     setEditingStmt(stmt);
     setIsEditMode(false);
     setCreateMode(stmt.type);
@@ -1208,6 +1205,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setActiveSearchRow(null);
   };
 
+
+  useEffect(() => {
+    if (!detailStatementId) { openedDetailRef.current = null; return; }
+    if ((editingStmt && companyOf(editingStmt) !== companyId) || (detailStmt && companyOf(detailStmt) !== companyId)) {
+      setCreateMode(null); setEditingStmt(null); setDetailStmt(null); setIsEditMode(false);
+    }
+    const key = `${companyId}:${detailStatementId}`;
+    if (openedDetailRef.current === key) return;
+    const statement = mergedStatements.find(row => row.id === detailStatementId && companyOf(row) === companyId);
+    if (!statement) return;
+    openedDetailRef.current = key;
+    setDetailStmt(null);
+    openEdit(statement);
+  }, [detailStatementId, mergedStatements, companyId]);
 
   // ── 매입전표 발행된 발주 품목 ID 집합 (발행완료/미발행 뱃지) ──
   const issuedPurchaseOrderIds = useMemo(() => {
@@ -1358,6 +1369,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .map(p => ({ itemId: p.id, name: p.name }));
   }, [allItems, partnerIn, partnerOut, selectedClientId, stmtType, companyId, orderUnitInputs]);
   const lineItems = useMemo((): LineItem[] => {
+    if (editingStmt && !isEditMode) return editingStmt.items.map((row, index) => ({ ...row, key: `${editingStmt.id}-${index}`, no: index + 1 }));
     if (manualMode) {
       //  드롭다운에서 안 고르고 이름만 친 줄도, 그 거래처 연결 품목과 **정확히 같으면** 이어 준다.
       //  안 이으면 `partnerPriceWrites` 가 그 줄을 건너뛰어 단가·과세면세가 조용히 안 저장된다.
@@ -1375,7 +1387,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       taxExemptOverrides,
       accountCodeOverrides,
     });
-  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
+  }, [editingStmt, isEditMode, manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
 
   const invalidPurchaseKg = lineItems.some(line => line.purchaseQuantityKg !== undefined &&
     (!Number.isFinite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0
@@ -1385,9 +1397,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //  양변 전표는 차변만 센다 — 수량처럼 합계에 없는 값을 더할 때도 같은 규칙을 따라야 한다
   const sumOf = (pick: (r: LineItem) => number) =>
     (isTwoSided ? lineItems.filter(r => r.side === '차변') : lineItems).reduce((s, r) => s + pick(r), 0);
-  const totalSupply = 합계.supply;
-  const totalTax    = 합계.tax;
-  const totalAmount = 합계.amount;
+  const totalSupply = editingStmt && !isEditMode ? editingStmt.totalSupply : 합계.supply;
+  const totalTax    = editingStmt && !isEditMode ? editingStmt.totalTax : 합계.tax;
+  const totalAmount = editingStmt && !isEditMode ? editingStmt.totalAmount : 합계.amount;
 
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
@@ -1432,7 +1444,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
-  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds) => {
+  const applyPriceSync = useCallback(async (type: string, skipLinkIds = noLinkIds, newIssue = false) => {
     if (!onUpsertPartnerItem) return;
     /*
      * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
@@ -1441,7 +1453,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
      */
     const 이번전표 = { id: editingStmt?.id, partnerId: selectedClientId, type, tradeDate };
     const { upserts, costUpdates } = partnerPriceWrites({
-      type, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
+      type, newIssue, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
       isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
     });
@@ -1499,6 +1511,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
     //  전표에 찍힌 단가·계정이 품목 원가로 가는 것(매입)은 명령과 같이 커밋한다.
     const { costUpdates: 계산된원가 } = partnerPriceWrites({
+      newIssue: true,
       type: stmtType, partnerId: selectedClientId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds: skipLinkIds,
       isLatest: isLatestForPartner({ this: { id: editingStmt?.id, partnerId: selectedClientId, type: stmtType, tradeDate }, all: mergedStatements }),
@@ -1524,7 +1537,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
     if (결과 === 'applied' || (typeof 결과 !== 'string' && 결과.status === 'applied')) {
       try {
-        await applyPriceSync(stmtType, skipLinkIds);
+        await applyPriceSync(stmtType, skipLinkIds, true);
       } catch (error) {
         console.error('전표 발행 후 거래처 단가 동기화 실패', error);
         alert(`전표 ${typeof 결과 === 'string' ? stmt.docNo : 결과.docNo} 발행은 완료됐지만 거래처 단가 동기화에 실패했습니다. 전표를 다시 발행하지 말고 단가를 확인해 주세요.`);
@@ -1718,6 +1731,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const handlePrint = () => {
+    if (editingStmt && !isEditMode) { handleDetailPrint(editingStmt); return; }
     const balance = printBalance(stmtType, selectedClient?.id || '', totalAmount, editingStmt ?? undefined);
     const html = buildStatementPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '', partySnapshot, { companyInfo, partners, allItems, balance });
     printStatementViaIframe(html, `${stmtType}전표`);
@@ -2730,9 +2744,9 @@ ${names}
                   <tbody className="divide-y divide-slate-50">
                     {manualMode ? (() => {
                       const ro=!!(editingStmt&&!isEditMode);
-                      const activeRows=ro?manualItems.filter(r=>r.name.trim()):manualItems;
+                      const activeRows=ro?lineItems.map(row=>({...row,qty:String(row.qty),price:String(row.price),purchaseQuantityKg:row.purchaseQuantityKg === undefined ? undefined : String(row.purchaseQuantityKg)})):manualItems;
                       return (<>
-                        <StatementManualItemRows bomIndex={orderUnitInputs?.bom} rows={activeRows} readOnly={ro} selectedIndex={selectedItemIdx}
+                        <StatementManualItemRows bomIndex={orderUnitInputs?.bom} rows={activeRows} savedLines={ro ? lineItems : undefined} readOnly={ro} selectedIndex={selectedItemIdx}
                           activeSearchIndex={activeSearchRow} statementType={stmtType} accountCodes={stmtCodes} items={allItems} linked={linkedManualItems}
                           formatAmount={fmt} searchResults={row=>{
                             if (!row.name.trim()) return [];

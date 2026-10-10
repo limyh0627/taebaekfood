@@ -213,6 +213,8 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       if (!snap.exists || oldCompany(snap.data()!) !== companyId
         || Number(snap.data()!.cost ?? 0) !== costUpdates[i].beforeCost
         || snap.data()!.type === 'service') conflict(`품목 ${costUpdates[i].itemId} 원가가 변경되었습니다.`);
+      if (isRawPurchaseItem(snap.data()!) && raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg === undefined)
+        conflict('원료 벌크 kg 수량을 확인하지 않은 원가는 갱신할 수 없습니다.');
     });
     kgItems.forEach(snap => {
       if (!snap.exists || oldCompany(snap.data()!) !== companyId || !isRawPurchaseItem(snap.data()!))

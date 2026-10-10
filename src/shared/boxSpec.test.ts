@@ -1,3 +1,4 @@
+import { displaySpec } from './boxSpec';
 import { describe, it, expect, afterEach } from 'vitest';
 import { specBase, boxSpecOf, boxSpecUpdates } from './boxSpec';
 import { setBomIndex, buildBomIndex, resetBomIndex } from './bomIndex';
@@ -95,4 +96,12 @@ describe('낱개를 고치면 박스가 따라온다', () => {
     세우기([낱개], []);
     expect(boxSpecUpdates(낱개, [낱개])).toEqual([]);
   });
+});
+
+
+it('구형 kgml는 표시만 kg로 보정하고 정상규격·박스꼬리·원문을 보존한다', () => {
+ const original='16.5kgml';expect(displaySpec(original)).toBe('16.5kg');expect(original).toBe('16.5kgml');
+ expect(displaySpec('16.5kgml * 2')).toBe('16.5kg * 2');
+ expect(displaySpec('350ml')).toBe('350ml');expect(displaySpec('16.5kg')).toBe('16.5kg');
+ expect(displaySpec('규격 미정')).toBe('규격 미정');
 });

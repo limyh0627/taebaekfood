@@ -327,3 +327,15 @@ it('원료 매입의 확인된 kg만 원가 분모로 쓰고 거래 단가를 �
   const legacy = { ...request, lines: request.lines.map(({purchaseQuantityKg, ...line}) => line), items: [{id: 'raw',type: 'raw'}] };
   expect(partnerPriceWrites(legacy).costUpdates).toEqual([{itemId: 'raw',price: 20000}]);
 });
+
+
+it('신규 벌크 매입의 kg 미확인은 원가만 건너뛰고 거래 단가와 기존 읽기 계산을 보존한다', () => {
+  const request = { type: '매입', partnerId: 'p1', newIssue: true,
+    lines: [{itemId: 'raw', name: '원료', qty: 2, price: 22000, supply: 40000}],
+    items: [{id: 'raw', type: 'raw' as const, subtype: '벌크'}], partnerItems: [] };
+  const result = partnerPriceWrites(request);
+  expect(result.costUpdates).toEqual([]);
+  expect(result.upserts[0].price).toBe(22000);
+  expect(partnerPriceWrites({...request,newIssue:false}).costUpdates).toEqual([{itemId:'raw',price:20000}]);
+  expect(partnerPriceWrites({...request,lines:[{...request.lines[0],purchaseQuantityKg:40}]}).costUpdates).toEqual([{itemId:'raw',price:1000}]);
+});

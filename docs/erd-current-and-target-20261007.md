@@ -190,3 +190,6 @@ flowchart LR
 실제 소비자는 day/shared calculation, voucherStamp와voucherIssue/shared voucherNumber, appautoVoucher와serverautoVoucherDraft/shared recurringVoucher, lineAmount와tradeStatementIssue/shared purchaseCost, ProfitAnalysis와index/shared inventoryValuation이다. BOM buildCostFn은 앱 단일본체이며 현재 서버 실제 소비가 없으므로 새 서버 소비자를 인수조건으로 만들지 않는다. 앱 invalid-date 번호 fallback과 매입원가의 기존 fallback 선택 차이는 명시 보존한 예외이며 모든 입력에서 앱/서버 결과가 같다고 주장하지 않는다. 과거 스냅샷 재계산·OEM가공원가 새 연결·전체 화면E2E는 이번 원본 판정 범위가 아니다. 근거 private work/todo023-acceptance-current-20261008.md와 실제 import/호출 독립 대조.
 
 사용자 최신 GitHub 푸시 보류를 준수한다. 현재 문서·미배포 후보를 원격 반영 완료로 표현하지 않으며 배포 검증은 계속한다.
+
+### 2026-10-10 원료 kg·입고 상세·구형 price 후속
+신규 원료 벌크 매입은 kg 기준이 미확인일 때 품목 원가 갱신만 생략하며 거래 수량·금액·거래처 단가는 유지한다. 입고·반품의 일반 전표 상세는 기존 전표 모달을 재사용하고 읽기 전용 행·합계·인쇄는 저장 원문을 사용한다. kgml 보정은 표시 함수이며 전표 원문을 이관하지 않는다. 공통 모달 초점 유지와 조건부 구형 price=0 필드 정리 도구를 추가했지만 새 컬렉션·새 활성화 설정은 없으며 정리 도구의 운영 실행은 하지 않았다.

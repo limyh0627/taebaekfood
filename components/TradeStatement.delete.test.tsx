@@ -26,9 +26,9 @@ it('입고 화면에서 전달한 전표 ID는 목록 없이 상세만 열고 �
   const onDetailClose = vi.fn();
   const issuedStatements = [stmt('A')];
   const { rerender } = render(<TradeStatement orders={[]} allItems={[]} partners={[]} partnerItems={[]} issuedStatements={issuedStatements} composerOnly detailStatementId="A" onDetailClose={onDetailClose} />);
-  expect(await screen.findByRole('dialog')).toHaveTextContent('발행 전표 상세 — A');
+  expect(await screen.findByRole('dialog')).toHaveTextContent('매출 전표 수정');
   expect(screen.queryByRole('button', { name: 'A 열기' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '✕' }));
+  fireEvent.click(screen.getByRole('button', { name: '매출 전표 수정 닫기' }));
   expect(onDetailClose).toHaveBeenCalledOnce();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   rerender(<TradeStatement orders={[]} allItems={[]} partners={[]} partnerItems={[]} issuedStatements={issuedStatements} composerOnly detailStatementId="A" companyId="punghoe" />);

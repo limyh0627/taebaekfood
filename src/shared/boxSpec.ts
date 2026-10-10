@@ -55,3 +55,9 @@ export function boxSpecUpdates(
   }
   return out;
 }
+
+
+/** 옛 숫자+단위 입력의 중복 꼬리만 표시에서 제거한다. 저장 원문과 환산은 바꾸지 않는다. */
+export function displaySpec(spec?: string): string {
+  return String(spec ?? '').replace(/^(\s*[\d.]+\s*kg)ml(?=\s*(?:$|[*x×]))/i, '$1');
+}

@@ -38,6 +38,8 @@ export interface PriceSyncLine {
 }
 
 export interface PriceSyncInput {
+  /** 신규 발행은 벌크 kg 확인이 없으면 품목 원가만 갱신하지 않는다. 옛 전표 읽기·수정은 기존 계약을 유지한다. */
+  newIssue?: boolean;
   type: '매출' | '매입' | string;
   partnerId: string;
   lines: PriceSyncLine[];
@@ -68,7 +70,7 @@ export interface PriceSyncResult {
 }
 
 export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
-  const { type, partnerId, lines, items, partnerItems, noLinkIds, isLatest } = input;
+  const { type, partnerId, lines, items, partnerItems, noLinkIds, isLatest, newIssue } = input;
   const out: PriceSyncResult = { upserts: [], costUpdates: [] };
   if (!partnerId || (type !== '매출' && type !== '매입')) return out;
   //  옛 전표를 고치는 중이면 거래처 단가는 안 건드린다 — 지난 거래가 지금 값을 덮으면 안 된다
@@ -123,6 +125,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
      * 셈은 [lineAmount.costFromPurchaseLine](./lineAmount.ts) 한 곳이다.
      */
     if (type === '매입' && product.type !== 'service'
+        && !(newIssue && isRawPurchaseItem(product) && line.purchaseQuantityKg === undefined)
         && (line.purchaseQuantityKg === undefined || isRawPurchaseItem(product))) {
       const cost = costFromPurchaseLine(line);
       if (cost != null) out.costUpdates.push({ itemId: product.id, price: cost });

@@ -1,10 +1,11 @@
+import { displaySpec } from '../../../shared/boxSpec';
 import React from 'react';
 import { isRawPurchaseItem } from '../../../../functions/src/shared/purchaseCost';
 import { X } from 'lucide-react';
 import type { AccountCode, Item, PartnerItem } from '../../../../types';
 import { bomOf, type BomIndex } from '../../../shared/bomIndex';
 import { lineAmountOf } from '../../../shared/lineAmount';
-import { manualAccountCode, type ManualRow, type StatementType } from '../../../shared/statementLines';
+import { manualAccountCode, type ManualRow, type LineItem, type StatementType } from '../../../shared/statementLines';
 
 export interface StatementManualSearchResult {
   pc: Pick<PartnerItem, 'id' | 'price' | 'taxType' | 'Account_Code'>;
@@ -14,6 +15,7 @@ export interface StatementManualSearchResult {
 interface Props {
   bomIndex?: BomIndex;
   rows: ManualRow[];
+  savedLines?: readonly LineItem[];
   readOnly: boolean;
   selectedIndex: number | null;
   activeSearchIndex: number | null;
@@ -34,7 +36,9 @@ interface Props {
 /** 직접 입력한 전표 줄. 주문 품목과 달리 이름·규격·수량까지 고칠 수 있다. */
 export default function StatementManualItemRows(props: Props) {
   return <>{props.rows.map((row, index) => {
-    const { supply, tax } = lineAmountOf(row.qty, row.price, row.isTaxExempt);
+    const saved = props.readOnly ? props.savedLines?.[index] : undefined;
+    const { supply, tax } = saved ?? lineAmountOf(row.qty, row.price, row.isTaxExempt);
+    const total = saved?.total ?? supply + tax;
     const selected = props.selectedIndex === index;
     const results = props.readOnly ? [] : props.searchResults(row);
     const negative = (parseFloat(row.qty) || 0) < 0;
@@ -66,7 +70,7 @@ export default function StatementManualItemRows(props: Props) {
           </>}
         </td>
         <td className="px-3 py-2 w-20">{props.readOnly
-          ? <span className="font-bold text-slate-700">{row.spec}</span>
+          ? <span className="font-bold text-slate-700">{displaySpec(row.spec)}</span>
           : <input type="text" placeholder="규격" value={row.spec} onChange={e => props.onChange(index, { spec: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>}</td>
         <td className={`px-3 py-2 w-16 ${props.statementType === '매입' && isRawPurchaseItem(props.items?.find(item => item.id === row.itemId)) ? 'min-w-[160px]' : ''}`}>
@@ -84,7 +88,7 @@ export default function StatementManualItemRows(props: Props) {
                   value={row.purchaseQuantityKg ?? ''} placeholder="직접 확인한 전체 kg"
                   onChange={e => props.onChange(index, { purchaseQuantityKg: e.target.value })}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right"/>}
-              <span className="block">거래 수량·금액과 별개 · 미입력 시 기존 계산</span>
+              <span className="block">거래 수량·금액과 별개 · {props.readOnly ? '저장된 원가 기준' : '미입력 시 신규 원가 갱신 안 함'}</span>
             </label>
           )}
         </td>
@@ -99,9 +103,9 @@ export default function StatementManualItemRows(props: Props) {
               className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all ${row.isTaxExempt ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
               {row.isTaxExempt ? '면세' : tax !== 0 ? props.formatAmount(tax) : '-'}
             </button>}</td>
-        <td className={`px-3 py-2 text-right font-black ${supply + tax < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{supply + tax !== 0 ? props.formatAmount(supply + tax) : '-'}</td>
+        <td className={`px-3 py-2 text-right font-black ${total < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{total !== 0 ? props.formatAmount(total) : '-'}</td>
         <td className="px-3 py-2 w-24">{props.readOnly
-          ? <span className="text-[10px] font-black text-slate-500">{manualAccountCode(row, props.statementType as StatementType, props.linked, props.items) || '-'}</span>
+          ? <span className="text-[10px] font-black text-slate-500">{saved ? saved.accountCode || '-' : manualAccountCode(row, props.statementType as StatementType, props.linked, props.items) || '-'}</span>
           : <select value={manualAccountCode(row, props.statementType as StatementType, props.linked, props.items) || ''} onClick={e => e.stopPropagation()}
               onChange={e => props.onChange(index, { accountCode: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-bold outline-none focus:ring-2 focus:ring-blue-300">
