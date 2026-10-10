@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-10T06:56:58.913Z",
-  "sourceFiles": 429,
+  "generatedAt": "2026-10-10T07:33:27.908Z",
+  "sourceFiles": 430,
   "unresolvedAccesses": 2036,
   "unresolvedPropertyAccesses": [
     {
@@ -14652,6 +14652,8 @@
         "components/OrdersList.tsx:952",
         "components/OrdersList.tsx:973",
         "components/OrdersList.tsx:981",
+        "components/ProductionCalculationEvidence.tsx:12",
+        "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:261",
         "components/ProductionManager.tsx:264",
         "components/ProductionManager.tsx:270",
@@ -14769,6 +14771,8 @@
         "components/OrdersList.tsx:892",
         "components/OrdersList.tsx:942",
         "components/OrdersList.tsx:971",
+        "components/ProductionCalculationEvidence.tsx:12",
+        "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:271",
         "components/ReceivingReturnsManager.tsx:162",
         "components/ReturnManager.tsx:139",
@@ -15778,7 +15782,7 @@
         "components/OrdersList.tsx:4105",
         "components/OrdersList.tsx:4148",
         "components/OrdersList.tsx:4182",
-        "components/OrdersList.tsx:4464",
+        "components/OrdersList.tsx:4466",
         "components/OrdersList.tsx:466",
         "components/PalletManager.tsx:113",
         "components/PalletManager.tsx:137",
@@ -15962,7 +15966,7 @@
         "components/OrdersList.tsx:4105",
         "components/OrdersList.tsx:4148",
         "components/OrdersList.tsx:4182",
-        "components/OrdersList.tsx:4464",
+        "components/OrdersList.tsx:4466",
         "components/OrdersList.tsx:469",
         "components/PalletManager.tsx:113",
         "components/PalletManager.tsx:138",
@@ -16326,6 +16330,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:209",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:31",
         "components/ProductionManager.tsx:101",
         "components/ProductionManager.tsx:135",
         "components/ProductionManager.tsx:99",
@@ -16399,6 +16404,7 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:217",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:31",
         "src/features/admin/dataIntegrityAudit.ts:286",
         "src/features/admin/orderInventoryCancellation.ts:258",
         "src/features/admin/rollbackSummary.ts:106",
@@ -16431,6 +16437,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:219",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:31",
         "components/ProductionManager.tsx:101",
         "components/ProductionManager.tsx:134",
         "components/ProductionManager.tsx:99"
@@ -16467,6 +16474,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:222",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:31",
         "components/ProductionManager.tsx:102",
         "components/ProductionManager.tsx:103",
         "src/features/admin/dataIntegrityAudit.ts:283",
@@ -16830,7 +16838,7 @@
         "components/OrdersList.tsx:4182",
         "components/OrdersList.tsx:4193",
         "components/OrdersList.tsx:4276",
-        "components/OrdersList.tsx:4464",
+        "components/OrdersList.tsx:4466",
         "components/OrdersList.tsx:466",
         "components/PalletManager.tsx:120",
         "components/PalletManager.tsx:226",
@@ -16909,7 +16917,7 @@
         "components/OrdersList.tsx:4105",
         "components/OrdersList.tsx:4148",
         "components/OrdersList.tsx:4182",
-        "components/OrdersList.tsx:4464",
+        "components/OrdersList.tsx:4466",
         "components/OrdersList.tsx:469",
         "components/PalletManager.tsx:121",
         "components/PalletManager.tsx:343",
@@ -17046,6 +17054,8 @@
         "components/OrdersList.tsx:963",
         "components/OrdersList.tsx:971",
         "components/PasteOrderModal.tsx:318",
+        "components/ProductionCalculationEvidence.tsx:12",
+        "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:260",
         "components/ReceivingReturnsManager.tsx:157",
         "components/ReturnManager.tsx:117",
@@ -17902,6 +17912,7 @@
       "type": "{\r\n    version: 1;\r\n    production?: OrderInventorySnapshot;\r\n    shipment?: OrderInventorySnapshot;\r\n  }",
       "declaration": "src/shared/types.ts:320",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:11",
         "src/features/admin/orderInventoryCancellation.ts:101",
         "src/features/admin/orderInventoryCancellation.ts:28",
         "src/features/admin/orderInventoryCancellation.ts:295",
@@ -17940,6 +17951,7 @@
       "type": "Record<string, OrderItemInventoryState>",
       "declaration": "src/shared/types.ts:330",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:12",
         "src/features/admin/AdminApp.tsx:1796",
         "src/features/admin/AdminApp.tsx:1838",
         "src/features/admin/AdminApp.tsx:1845",
@@ -18008,6 +18020,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:349",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:12",
         "src/features/admin/dataIntegrityAudit.ts:224"
       ]
     },
@@ -18018,6 +18031,7 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:350",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:12",
         "src/features/admin/AdminApp.tsx:1846",
         "src/features/admin/dataIntegrityAudit.ts:220",
         "src/features/admin/orderInventoryCancellation.ts:100",
@@ -18124,6 +18138,7 @@
       "type": "OrderInventorySnapshot",
       "declaration": "src/shared/types.ts:357",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:12",
         "src/features/admin/AdminApp.tsx:1854",
         "src/features/admin/AdminApp.tsx:1855",
         "src/features/admin/dataIntegrityAudit.ts:217",
@@ -18201,7 +18216,9 @@
       "optional": false,
       "type": "string",
       "declaration": "src/shared/types.ts:367",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:22"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18209,7 +18226,9 @@
       "optional": false,
       "type": "string",
       "declaration": "src/shared/types.ts:368",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:22"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18217,7 +18236,9 @@
       "optional": false,
       "type": "number",
       "declaration": "src/shared/types.ts:369",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:22"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18225,7 +18246,9 @@
       "optional": false,
       "type": "string",
       "declaration": "src/shared/types.ts:370",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:23"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18233,7 +18256,9 @@
       "optional": false,
       "type": "number",
       "declaration": "src/shared/types.ts:371",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:23"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18241,7 +18266,9 @@
       "optional": false,
       "type": "'bom-direct' | 'bom-formula' | 'formula-fallback' | 'bulk'",
       "declaration": "src/shared/types.ts:372",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:22"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18249,7 +18276,9 @@
       "optional": true,
       "type": "string",
       "declaration": "src/shared/types.ts:373",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:24"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18257,7 +18286,9 @@
       "optional": true,
       "type": "number",
       "declaration": "src/shared/types.ts:374",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:24"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18265,7 +18296,9 @@
       "optional": true,
       "type": "string",
       "declaration": "src/shared/types.ts:375",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:25"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18273,7 +18306,9 @@
       "optional": true,
       "type": "number",
       "declaration": "src/shared/types.ts:376",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:25"
+      ]
     },
     {
       "model": "OrderRawCalculationEvidence",
@@ -18281,7 +18316,9 @@
       "optional": true,
       "type": "number",
       "declaration": "src/shared/types.ts:377",
-      "references": []
+      "references": [
+        "components/ProductionCalculationEvidence.tsx:26"
+      ]
     },
     {
       "model": "OrderInventorySnapshot",
@@ -18290,6 +18327,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:381",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:19",
         "src/features/admin/AdminApp.tsx:1854",
         "src/features/admin/dataIntegrityAudit.ts:217",
         "src/features/admin/dataIntegrityAudit.ts:229",
@@ -18312,6 +18350,8 @@
       "type": "OrderRawCalculationEvidence[]",
       "declaration": "src/shared/types.ts:382",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:20",
+        "components/ProductionCalculationEvidence.tsx:21",
         "src/features/admin/orderStockEngine.ts:389"
       ]
     },
@@ -18362,6 +18402,7 @@
       "type": "Order['rawConsumedLots']",
       "declaration": "src/shared/types.ts:385",
       "references": [
+        "components/ProductionCalculationEvidence.tsx:31",
         "src/features/admin/dataIntegrityAudit.ts:228",
         "src/features/admin/dataIntegrityAudit.ts:232",
         "src/features/admin/dataIntegrityAudit.ts:237",
@@ -36027,7 +36068,7 @@
     },
     {
       "model": "Props",
-      "declaration": "components/OrderActivityLogModal.tsx:12",
+      "declaration": "components/OrderActivityLogModal.tsx:14",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -36035,31 +36076,43 @@
           "field": "partnerName",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderActivityLogModal.tsx:13"
+          "declaration": "components/OrderActivityLogModal.tsx:15"
+        },
+        {
+          "field": "order",
+          "optional": true,
+          "type": "Order",
+          "declaration": "components/OrderActivityLogModal.tsx:16"
+        },
+        {
+          "field": "companyId",
+          "optional": true,
+          "type": "CompanyId",
+          "declaration": "components/OrderActivityLogModal.tsx:17"
         },
         {
           "field": "rows",
           "optional": false,
           "type": "OrderActivityRow[]",
-          "declaration": "components/OrderActivityLogModal.tsx:14"
+          "declaration": "components/OrderActivityLogModal.tsx:18"
         },
         {
           "field": "loading",
           "optional": false,
           "type": "boolean",
-          "declaration": "components/OrderActivityLogModal.tsx:15"
+          "declaration": "components/OrderActivityLogModal.tsx:19"
         },
         {
           "field": "error",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrderActivityLogModal.tsx:16"
+          "declaration": "components/OrderActivityLogModal.tsx:20"
         },
         {
           "field": "onClose",
           "optional": false,
           "type": "() => void",
-          "declaration": "components/OrderActivityLogModal.tsx:17"
+          "declaration": "components/OrderActivityLogModal.tsx:21"
         }
       ]
     },
@@ -51354,7 +51407,7 @@
         {
           "field": "onApplyStatement",
           "optional": true,
-          "type": "(input: {\r\n    command: StatementCommand;\r\n    statement: IssuedStatement;\r\n    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];\r\n    poIds: string[];\r\n    newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];\r\n  }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>",
+          "type": "(input: {\n    command: StatementCommand;\n    statement: IssuedStatement;\n    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];\n    poIds: string[];\n    newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];\n  }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>",
           "declaration": "components/TradeStatement.tsx:141"
         },
         {

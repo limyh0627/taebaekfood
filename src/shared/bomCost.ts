@@ -171,7 +171,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
    */
   const rollup = (item: Item) => cost(item, new Set<string>());
   const fn = ((item: Item) =>
-    (item.costSource === 'manual' && (item.cost ?? 0) > 0 ? item.cost! : rollup(item))) as CostFn;
+    (item.costSource === 'manual' && typeof item.cost === 'number' && Number.isFinite(item.cost) && item.cost >= 0 ? item.cost : rollup(item))) as CostFn;
   fn.rollup = rollup;
   return fn;
 }

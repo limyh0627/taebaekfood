@@ -1,5 +1,7 @@
 import React from 'react';
 import { CirclePlus, ArrowRightLeft, CheckCircle2, Tag, MessageSquare, Truck, TriangleAlert, PencilLine } from 'lucide-react';
+import ProductionCalculationEvidence from './ProductionCalculationEvidence';
+import type { Order, CompanyId } from '../src/shared/types';
 import type { OrderActivityRow } from '../src/shared/orderActivityLog';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
 
@@ -11,6 +13,8 @@ import LargeModalShell from '../src/shared/components/LargeModalShell';
  */
 interface Props {
   partnerName: string;
+  order?: Order;
+  companyId?: CompanyId;
   rows: OrderActivityRow[];
   loading: boolean;
   error?: string;
@@ -38,9 +42,10 @@ export const 로그시각 = (iso?: string) => {
   return `${p(d.getFullYear() % 100)}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-const OrderActivityLogModal: React.FC<Props> = ({ partnerName, rows, loading, error, onClose }) => (
+const OrderActivityLogModal: React.FC<Props> = ({ partnerName, order, companyId, rows, loading, error, onClose }) => (
   <LargeModalShell title={`주문 로그 · ${partnerName}`} onClose={onClose}>
         {error && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{error}</p>}
+        {order && companyId && <ProductionCalculationEvidence order={order} companyId={companyId} />}
         <ol className="space-y-2.5">
           {rows.map((row, index) => {
             const Icon = 아이콘[row.kind];

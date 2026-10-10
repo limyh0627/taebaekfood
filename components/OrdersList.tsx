@@ -4461,6 +4461,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
         if (!로그주문) return null;
         return (
           <OrderActivityLogModal
+            order={로그주문}
+            companyId={companyId}
             partnerName={로그주문.partnerName || partners.find(partner => partner.id === 로그주문.partnerId)?.name || '이름 없음'}
             rows={buildOrderActivityLog(로그주문, logAudits, 사번이름, logEdits)}
             loading={logLoading}

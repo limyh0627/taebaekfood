@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 74개, 선언 필드 717개, 운영 소스 429개를 분석했다.
+COL 74개, 선언 필드 717개, 운영 소스 430개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -886,7 +886,7 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | OrderListHeadSort | src/shared/orderListSort.ts:22 | interface | direct-properties-only | key, dir |
 | ListFilterState | src/shared/orderListFilterChips.ts:15 | interface | direct-properties-only | dateFrom, dateTo, defaultFrom, defaultTo, filterFieldLabel, filterValue, partnerName, searchTerm, statusLabel, sortLabel, defaultSortLabel, headSort |
 | ListFilterChip | src/shared/orderListFilterChips.ts:32 | interface | direct-properties-only | key, name, value |
-| Props | components/OrderActivityLogModal.tsx:12 | interface | direct-properties-only | partnerName, rows, loading, error, onClose |
+| Props | components/OrderActivityLogModal.tsx:14 | interface | direct-properties-only | partnerName, order, companyId, rows, loading, error, onClose |
 | StatusColumnStyle | src/shared/orderStatusStyle.ts:190 | interface | direct-properties-only | color, bgColor, borderColor, textColor |
 | CalendarDayCountBadgeProps | components/CalendarDayCountBadge.tsx:3 | interface | direct-properties-only | count |
 | CalendarViewProps | components/CalendarView.tsx:7 | interface | direct-properties-only | orders, onUpdateDeliveryDate, onOrderClick |
@@ -3429,8 +3429,8 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | 모델 | 필드 | 입력 | 선언 타입 | 선언 위치 | 정적 사용처 |
 | --- | --- | --- | --- | --- | --- |
 | OrderItem | lineId | 선택 | string | src/shared/types.ts:22 | 39 |
-| OrderItem | itemId | 필수 | string | src/shared/types.ts:23 | 118 |
-| OrderItem | name | 필수 | string | src/shared/types.ts:24 | 61 |
+| OrderItem | itemId | 필수 | string | src/shared/types.ts:23 | 120 |
+| OrderItem | name | 필수 | string | src/shared/types.ts:24 | 63 |
 | OrderItem | orderedAs | 선택 | string | src/shared/types.ts:38 | 0 |
 | OrderItem | quantity | 필수 | number | src/shared/types.ts:39 | 41 |
 | OrderItem | price | 필수 | number | src/shared/types.ts:40 | 7 |
@@ -3488,16 +3488,16 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | Partner | companyId | 선택 | CompanyId | src/shared/types.ts:174 | 2 |
 | Partner | isOemFactory | 선택 | boolean | src/shared/types.ts:175 | 1 |
 | Partner | purchaseItems | 선택 | PurchaseItem[] | src/shared/types.ts:176 | 0 |
-| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:209 | 8 |
+| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:209 | 9 |
 | OrderRawInventoryTrace | rawItemId | 선택 | string | src/shared/types.ts:211 | 10 |
 | OrderRawInventoryTrace | operationId | 선택 | string | src/shared/types.ts:213 | 17 |
 | OrderRawInventoryTrace | ledgerId | 선택 | string | src/shared/types.ts:215 | 2 |
-| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:217 | 6 |
+| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:217 | 7 |
 | OrderRawInventoryTrace | lotId | 선택 | string | src/shared/types.ts:218 | 8 |
-| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:219 | 3 |
+| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:219 | 4 |
 | OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:220 | 3 |
 | OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:221 | 3 |
-| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:222 | 10 |
+| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:222 | 11 |
 | Order | id | 필수 | string | src/shared/types.ts:226 | 254 |
 | Order | companyId | 선택 | CompanyId | src/shared/types.ts:228 | 2 |
 | Order | cardNo | 선택 | string | src/shared/types.ts:239 | 4 |
@@ -3505,7 +3505,7 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:246 | 1 |
 | Order | partnerId | 선택 | string | src/shared/types.ts:247 | 58 |
 | Order | partnerName | 필수 | string | src/shared/types.ts:248 | 89 |
-| Order | items | 필수 | OrderItem[] | src/shared/types.ts:249 | 146 |
+| Order | items | 필수 | OrderItem[] | src/shared/types.ts:249 | 148 |
 | Order | note | 선택 | string | src/shared/types.ts:251 | 14 |
 | Order | noteImportant | 선택 | boolean | src/shared/types.ts:252 | 4 |
 | Order | noteBy | 선택 | string | src/shared/types.ts:253 | 2 |
@@ -3541,38 +3541,38 @@ shared/types.ts 외 interface/type alias 690개를 별도 목록에 기록한다
 | Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:312 | 15 |
 | Order | producedAt | 선택 | string | src/shared/types.ts:314 | 22 |
 | Order | shippedOut | 선택 | boolean | src/shared/types.ts:315 | 15 |
-| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:320 | 29 |
-| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:330 | 17 |
+| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:320 | 30 |
+| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:330 | 18 |
 | Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:332 | 13 |
 | OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:347 | 0 |
 | OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:348 | 3 |
-| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:349 | 1 |
-| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:350 | 13 |
+| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:349 | 2 |
+| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:350 | 14 |
 | OrderItemInventoryState | attempt | 필수 | number | src/shared/types.ts:351 | 5 |
 | OrderItemInventoryState | completedAt | 선택 | string | src/shared/types.ts:352 | 8 |
 | OrderItemInventoryState | reversedAt | 선택 | string | src/shared/types.ts:353 | 0 |
 | OrderItemInventoryState | rawConsumedLots | 필수 | OrderRawInventoryTrace[] | src/shared/types.ts:354 | 9 |
 | OrderItemInventoryState | autoBuilt | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:355 | 4 |
 | OrderItemInventoryState | producedUnits | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:356 | 5 |
-| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:357 | 19 |
+| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:357 | 20 |
 | OrderInventoryAdjustment | itemId | 필수 | string | src/shared/types.ts:361 | 18 |
 | OrderInventoryAdjustment | delta | 필수 | number | src/shared/types.ts:362 | 14 |
-| OrderRawCalculationEvidence | productId | 필수 | string | src/shared/types.ts:367 | 0 |
-| OrderRawCalculationEvidence | spec | 필수 | string | src/shared/types.ts:368 | 0 |
-| OrderRawCalculationEvidence | units | 필수 | number | src/shared/types.ts:369 | 0 |
-| OrderRawCalculationEvidence | raw | 필수 | string | src/shared/types.ts:370 | 0 |
-| OrderRawCalculationEvidence | kg | 필수 | number | src/shared/types.ts:371 | 0 |
-| OrderRawCalculationEvidence | path | 필수 | 'bom-direct' \| 'bom-formula' \| 'formula-fallback' \| 'bulk' | src/shared/types.ts:372 | 0 |
-| OrderRawCalculationEvidence | childItemId | 선택 | string | src/shared/types.ts:373 | 0 |
-| OrderRawCalculationEvidence | bomQuantityKg | 선택 | number | src/shared/types.ts:374 | 0 |
-| OrderRawCalculationEvidence | formulaName | 선택 | string | src/shared/types.ts:375 | 0 |
-| OrderRawCalculationEvidence | ratio | 선택 | number | src/shared/types.ts:376 | 0 |
-| OrderRawCalculationEvidence | convertedKg | 선택 | number | src/shared/types.ts:377 | 0 |
-| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:381 | 13 |
-| OrderInventorySnapshot | rawCalculationEvidence | 선택 | OrderRawCalculationEvidence[] | src/shared/types.ts:382 | 1 |
+| OrderRawCalculationEvidence | productId | 필수 | string | src/shared/types.ts:367 | 1 |
+| OrderRawCalculationEvidence | spec | 필수 | string | src/shared/types.ts:368 | 1 |
+| OrderRawCalculationEvidence | units | 필수 | number | src/shared/types.ts:369 | 1 |
+| OrderRawCalculationEvidence | raw | 필수 | string | src/shared/types.ts:370 | 1 |
+| OrderRawCalculationEvidence | kg | 필수 | number | src/shared/types.ts:371 | 1 |
+| OrderRawCalculationEvidence | path | 필수 | 'bom-direct' \| 'bom-formula' \| 'formula-fallback' \| 'bulk' | src/shared/types.ts:372 | 1 |
+| OrderRawCalculationEvidence | childItemId | 선택 | string | src/shared/types.ts:373 | 1 |
+| OrderRawCalculationEvidence | bomQuantityKg | 선택 | number | src/shared/types.ts:374 | 1 |
+| OrderRawCalculationEvidence | formulaName | 선택 | string | src/shared/types.ts:375 | 1 |
+| OrderRawCalculationEvidence | ratio | 선택 | number | src/shared/types.ts:376 | 1 |
+| OrderRawCalculationEvidence | convertedKg | 선택 | number | src/shared/types.ts:377 | 1 |
+| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:381 | 14 |
+| OrderInventorySnapshot | rawCalculationEvidence | 선택 | OrderRawCalculationEvidence[] | src/shared/types.ts:382 | 3 |
 | OrderInventorySnapshot | stockDeltas | 필수 | OrderInventoryAdjustment[] | src/shared/types.ts:383 | 19 |
 | OrderInventorySnapshot | bomLines | 필수 | { parentItemId: string; childItemId: string; quantity: number }[] | src/shared/types.ts:384 | 3 |
-| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:385 | 10 |
+| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:385 | 11 |
 | OrderInventorySnapshot | productConsumedLots | 선택 | Order['productConsumedLots'] | src/shared/types.ts:386 | 6 |
 | OrderInventorySnapshot | productProducedLots | 선택 | { itemId: string; lotId: string; qty: number }[] | src/shared/types.ts:387 | 6 |
 | OrderInventorySnapshot | rawLedgerIds | 선택 | string[] | src/shared/types.ts:388 | 4 |

@@ -227,3 +227,25 @@ describe('원가는 부가세를 안 얹는다', () => {
     expect(c2(과세품)).toBeCloseTo(4105 / 0.5, 0);
   });
 });
+
+
+describe('확인된 수동0 원가', () => {
+  it.each(['taebaek', 'punghoe'] as const)('회사 %s의 수동0은 유지하고 명시 rollup은 계산한다', companyId => {
+    const zero = mk({...낱개, id:'zero', companyId, costSource:'manual', cost:0});
+    const c = buildCostFn({allItems:[...allItems,zero], formulaOf,itemBoms});
+    expect(c(zero)).toBe(0);
+    expect(c.rollup(zero)).toBe(5100);
+    expect(c({...zero,costSource:'rollup'})).toBe(5100);
+    expect(c({...zero,cost:999})).toBe(999);
+  });
+  it.each([undefined, NaN, Infinity])('미확인 수동 원가 %s는 기존 구성 계산으로 대체한다', stored => {
+    const unknown = mk({...낱개,id:'unknown',costSource:'manual',cost:stored});
+    const c = buildCostFn({allItems:[...allItems,unknown],formulaOf,itemBoms});
+    expect(c(unknown)).toBe(5100);
+  });
+  it('부자재의 확인0을 포함한 박스 구성 계산은 보존한다', () => {
+    const zeroBox = {...육호박스,cost:0,costSource:'manual' as const};
+    const c = buildCostFn({allItems:allItems.map(p=>p.id===zeroBox.id?zeroBox:p),formulaOf,itemBoms});
+    expect(c(박스)).toBe(51000);
+  });
+});
