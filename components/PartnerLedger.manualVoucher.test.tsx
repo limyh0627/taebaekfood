@@ -22,7 +22,7 @@ const original=(partnerId:string):IssuedStatement=>({id:'old-'+partnerId,company
 beforeEach(()=>{localStorage.clear();vi.spyOn(window,'alert').mockImplementation(()=>{});});
 function setup(save=vi.fn().mockResolvedValue({id:'saved'}),cashSave=vi.fn().mockResolvedValue({id:'cash'})){
  function Host(){const [statements,setStatements]=useState([original('a'),original('b')]);const [entries,setEntries]=useState<CashEntry[]>([]);const [companyId,setCompanyId]=useState<'taebaek'|'punghoe'>('taebaek');return <><button onClick={()=>setCompanyId('punghoe')}>풍회로 전환</button><button onClick={()=>setCompanyId('taebaek')}>태백으로 전환</button><PartnerLedger key={companyId} companyId={companyId} partners={partners} issuedStatements={statements} cashEntries={entries} cashAccounts={[bank]} accountCodes={accounts} accountGroups={[]} onAddIssuedStatement={async statement=>{await save(statement);setStatements(rows=>[...rows,{...statement,docNo:'new-manual'}]);}} onIssueCashEntry={async entry=>{await cashSave(entry);setEntries(rows=>[...rows,entry]);}} onAddCashEntry={cashSave}/></>;}
- return {...render(<Host/>),save,cashSave};
+ const view=render(<Host/>);fireEvent.click(screen.getByRole('button',{name:'매출 (미수)'}));return {...view,save,cashSave};
 }
 async function enter(debit='133',credit='375'){
  fireEvent.click(screen.getByRole('button',{name:'수동 전표 작성'}));
@@ -40,6 +40,7 @@ describe('거래처 원장의 실제 수동 전표 작성',()=>{
   await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
   expect(save.mock.calls[0][0]).toMatchObject({partnerId:'a',companyId:'taebaek',type:'비용',totalAmount:100,items:[{accountCode:'133',side:'차변',total:100},{accountCode:'375',side:'대변',total:100}]});
   expect(cashSave).not.toHaveBeenCalled();await waitFor(()=>expect(screen.queryByRole('button',{name:'저장'})).toBeNull());
+  fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
   expect(within(screen.getByRole('table',{name:'거래처 전체 전표'})).getByText('new-manual')).toBeTruthy();
   expect(within(screen.getByRole('table',{name:'거래처 계정별 잔액'})).getByText(/133 선급금/)).toBeTruthy();
  });

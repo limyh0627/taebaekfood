@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStatementPrintHtml } from './statementPrint';
+import { buildStatementPrintHtml, buildReceiptHtml } from './statementPrint';
 
 describe('거래명세서 인쇄 계좌정보', () => {
   it('기존 태백식품 설정이어도 비고 아래 양쪽 용지에 계좌를 한 줄씩 표시한다', () => {
@@ -35,4 +35,20 @@ describe('거래명세서 인쇄 계좌정보', () => {
     expect(html.match(/410,000/g)).toHaveLength(2);
     expect(html).toContain("font-size:13px");
   });
+});
+
+
+it('저장된 kgml 규격은 명세서·영수증에 kg로만 표시하고 원문과 저장 금액을 보존한다', () => {
+  const line = { key: 'stored', no: 1, name: '생들기름-캔', spec: '16.5kgml', qty: 3, price: 100,
+    supply: 271, tax: 28, total: 299, isTaxExempt: false, accountCode: '500' };
+  const original = JSON.stringify(line);
+  const statement = buildStatementPrintHtml([line], 271, 28, 299, '매입', '은하산업', '261010-001', '2026년 10월 10일', '', '', undefined, { partners: [], allItems: [] });
+  const receipt = buildReceiptHtml({ tradeDate: '2026-10-10', docNo: '261010-001', partnerName: '은하산업', items: [line], totals: { supply: 271, tax: 28, amount: 299 } });
+  for (const html of [statement, receipt]) {
+    expect(html).toContain('16.5kg');
+    expect(html).not.toContain('16.5kgml');
+    expect(html).toContain('299');
+  }
+  expect(JSON.stringify(line)).toBe(original);
+  expect(line.spec).toBe('16.5kgml');
 });

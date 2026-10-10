@@ -102,31 +102,34 @@ const api = node => {
   if (evidence || /\b(Firestore|CollectionReference|DocumentReference)\b/.test(type))
     return { name: node.expression.name.text, style: 'method', evidence: evidence ? 'Firestore SDK declaration' : `receiver type: ${type}` };
 };
-const literalParts = (node, seen = new Set()) => {
+const literalParts = (node, seen = new Set(), bindings = new Map()) => {
   if (!node) return [{ expression: '<auto-id>', kind: 'dynamic' }];
   if (ts.isStringLiteralLike(node)) return node.text.split('/').map(value => ({ value, kind: 'literal' }));
-  if (ts.isParenthesizedExpression(node)) return literalParts(node.expression, seen);
+  if (ts.isParenthesizedExpression(node)) return literalParts(node.expression, seen, bindings);
   if (ts.isPropertyAccessExpression(node) && node.expression.getText() === 'COL') {
     const symbol = checker.getSymbolAtLocation(node.name);
     const declaration = symbol?.valueDeclaration;
     if (declaration && ts.isPropertyAssignment(declaration)
       && declaration.getSourceFile().fileName.replaceAll('\\', '/').endsWith('/src/shared/collections.ts'))
-      return literalParts(declaration.initializer, seen).map(part => ({ ...part, kind: 'COL', key: node.name.text }));
+      return literalParts(declaration.initializer, seen, bindings).map(part => ({ ...part, kind: 'COL', key: node.name.text }));
   }
   if (ts.isIdentifier(node) && !seen.has(node)) {
+    const parameter = checker.getSymbolAtLocation(node)?.valueDeclaration;
+    const argument = bindings.get(parameter);
+    if (argument) return literalParts(argument, new Set([...seen, node]), bindings);
     const value = initializer(node);
-    if (value) return literalParts(value, new Set([...seen, node]));
+    if (value) return literalParts(value, new Set([...seen, node]), bindings);
   }
   return [{ expression: node.getText(), kind: 'dynamic' }];
 };
-const referencePath = (node, seen = new Set()) => {
+const referencePath = (node, seen = new Set(), bindings = new Map()) => {
   if (!node || seen.has(node)) return { segments: [], context: 'unresolved-parent' };
   const nextSeen = new Set([...seen, node]);
-  if (ts.isParenthesizedExpression(node)) return referencePath(node.expression, nextSeen);
+  if (ts.isParenthesizedExpression(node)) return referencePath(node.expression, nextSeen, bindings);
   if (ts.isIdentifier(node)) {
     const value = initializer(node);
     if (value) {
-      const resolved = referencePath(value, nextSeen);
+      const resolved = referencePath(value, nextSeen, bindings);
       if (resolved.context !== 'unresolved-parent') return resolved;
     }
   }
@@ -136,13 +139,14 @@ const referencePath = (node, seen = new Set()) => {
   if (!callApi) return { segments: [], context: 'unresolved-parent', parentExpression: node.getText(), parentType: type };
   const parent = callApi.style === 'modular' ? node.arguments[0] : node.expression.expression;
   const args = callApi.style === 'modular' ? [...node.arguments].slice(1) : [...node.arguments];
-  if (callApi.name === 'collectionGroup') return { segments: args.flatMap(arg => literalParts(arg)), context: 'collection-group' };
-  const base = referencePath(parent, nextSeen);
-  const parts = args.length ? args.flatMap(arg => literalParts(arg)) : literalParts(undefined);
+  if (callApi.name === 'collectionGroup') return { segments: args.flatMap(arg => literalParts(arg, new Set(), bindings)), context: 'collection-group' };
+  const base = referencePath(parent, nextSeen, bindings);
+  const parts = args.length ? args.flatMap(arg => literalParts(arg, new Set(), bindings)) : literalParts(undefined);
   return { ...base, segments: [...base.segments, ...parts] };
 };
 const label = parts => parts.map(part => part.value ?? `{${part.expression}}`).join('/');
 const dynamicWrappers = new Map();
+const wrapperSdkNodes = new Map();
 // 익명 callback은 넘기고 SDK 호출을 소유한 가장 가까운 명명 함수를 찾는다.
 const namedOwner = node => {
   for (let parent = node.parent; parent; parent = parent.parent) {
@@ -178,6 +182,8 @@ for (const file of program.getSourceFiles()) {
           parameters: owner.node.parameters.map(parameter => parameter.name.getText()),
         });
         dynamicWrappers.get(owner.node).sdkLocations.push(location(node));
+        if (!wrapperSdkNodes.has(owner.node)) wrapperSdkNodes.set(owner.node, []);
+        wrapperSdkNodes.get(owner.node).push(node);
       }
       pathCalls.push({ location: location(node), runtime: file.fileName.replaceAll('\\', '/').includes('/functions/src/') ? 'server' : 'client',
         api: callApi.name, style: callApi.style, evidence: callApi.evidence, expression: node.getText(),
@@ -206,12 +212,26 @@ for (const file of program.getSourceFiles()) {
   const visit = node => {
     if (ts.isCallExpression(node)) {
       const wrapper = dynamicWrappers.get(checker.getResolvedSignature(node)?.declaration);
-      if (wrapper) wrapper.callers.push({ location: location(node), callee: node.expression.getText(),
-        argumentExpressions: node.arguments.map((argument, index) => ({
-          parameter: wrapper.parameters[index] ?? String(index), expression: argument.getText().slice(0, 240),
-          truncated: argument.getText().length > 240,
-          staticString: ts.isStringLiteralLike(argument) ? argument.text : undefined,
-        })) });
+      if (wrapper) {
+        const declaration = checker.getResolvedSignature(node).declaration;
+        const bindings = new Map(declaration.parameters.map((parameter, index) => [parameter, node.arguments[index]]));
+        const resolvedPaths = wrapperSdkNodes.get(declaration).map(sdkNode => {
+          const resolved = referencePath(sdkNode, new Set(), bindings);
+          const first = resolved.segments[0];
+          // 컬렉션 첫 인수만 확정한다. 문서 ID·회사 조건·런타임 분기는 추론하지 않는다.
+          const known = resolved.context === 'root' && first?.value !== undefined;
+          return { sdkLocation: location(sdkNode), path: label(resolved.segments),
+            collection: known ? first.value : undefined,
+            collectionKind: known ? first.kind : 'dynamic',
+            resolutionKind: known ? 'known-wrapper-collection' : 'dynamic-wrapper-collection' };
+        });
+        wrapper.callers.push({ location: location(node), callee: node.expression.getText(), resolvedPaths,
+          argumentExpressions: node.arguments.map((argument, index) => ({
+            parameter: wrapper.parameters[index] ?? String(index), expression: argument.getText().slice(0, 240),
+            truncated: argument.getText().length > 240,
+            staticString: ts.isStringLiteralLike(argument) ? argument.text : undefined,
+          })) });
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -233,6 +253,22 @@ if (process.argv.includes('--self-check')) {
   assert(unresolvedPropertyAccesses.every(access => access.location && access.expression && access.receiverType));
   assert(pathCalls.some(call => call.resolutionKind === 'known-collection-dynamic-document'));
   assert([...dynamicWrappers.values()].some(wrapper => wrapper.name === 'fetchCollection' && wrapper.callers.length > 0));
+  const wrapperPaths = [...dynamicWrappers.values()].flatMap(wrapper => wrapper.callers.flatMap(caller => caller.resolvedPaths));
+  assert(wrapperPaths.some(path => path.resolutionKind === 'known-wrapper-collection' && path.collectionKind === 'literal'));
+  assert(wrapperPaths.some(path => path.resolutionKind === 'known-wrapper-collection' && path.collectionKind === 'COL'));
+  assert(wrapperPaths.some(path => path.resolutionKind === 'dynamic-wrapper-collection'));
+  assert(wrapperPaths.filter(path => path.resolutionKind === 'dynamic-wrapper-collection').every(path => path.collection === undefined));
+  const fetchDeclaration = [...dynamicWrappers.keys()].find(declaration => dynamicWrappers.get(declaration).name === 'fetchCollection');
+  const argsFixture = ts.createSourceFile('arguments.ts', "const known = 'orders'; const otherCompany = 'punghoe'; const unknown = runtimeCollection;", ts.ScriptTarget.Latest, true);
+  const args = argsFixture.statements.map(statement => statement.declarationList.declarations[0].initializer);
+  const fetchSdk = wrapperSdkNodes.get(fetchDeclaration)[0];
+  const knownPath = referencePath(fetchSdk, new Set(), new Map([[fetchDeclaration.parameters[0], args[0]], [fetchDeclaration.parameters[1], args[1]]]));
+  assert.equal(knownPath.segments[0].value, 'orders');
+  const unknownPath = referencePath(fetchSdk, new Set(), new Map([[fetchDeclaration.parameters[0], args[2]], [fetchDeclaration.parameters[1], args[1]]]));
+  assert.equal(unknownPath.segments[0].kind, 'dynamic');
+  assert.equal(unknownPath.segments[0].value, undefined); // 다른 인수의 회사 리터럴은 컬렉션이 아니다.
+  const foreignCol = ts.createSourceFile('foreign.ts', 'const x = COL.orders;', ts.ScriptTarget.Latest, true);
+  assert.equal(literalParts(foreignCol.statements[0].declarationList.declarations[0].initializer)[0].kind, 'dynamic');
   console.log('필드 사전 검증 통과: 리터럴·동적식·COL·서버 경로·별도 모델·기존 필드 집계');
 }
 const report = { generatedAt: new Date().toISOString(), sourceFiles: files.length, unresolvedAccesses, unresolvedPropertyAccesses,
@@ -252,10 +288,10 @@ writeFileSync('docs/field-dictionary.generated.md', [
   '## Firestore 경로 보완', '',
   `SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 ${pathCalls.length}건. 동적 문서 ID도 미해석으로 보존하며, 미해석 ${report.firestorePaths.unresolvedLocations.length}건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 ${candidateCalls.length}건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.`, '',
   `COL 밖 정적 컬렉션 이름: ${report.firestorePaths.outsideRegistry.map(name => '`' + name + '`').join(', ') || '없음'}. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.`, '',
-  `동적 컬렉션 호출 ${pathCalls.filter(call => call.resolutionKind === 'dynamic-collection').length}건과 정적 컬렉션의 동적 문서 경로 ${pathCalls.filter(call => call.resolutionKind === 'known-collection-dynamic-document').length}건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, 런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.`, '',
+  `동적 컬렉션 호출 ${pathCalls.filter(call => call.resolutionKind === 'dynamic-collection').length}건과 정적 컬렉션의 동적 문서 경로 ${pathCalls.filter(call => call.resolutionKind === 'known-collection-dynamic-document').length}건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.`, '',
   '| 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |',
   '| --- | --- | --- | --- |',
-  ...report.firestorePaths.dynamicWrappers.map(wrapper => `| ${wrapper.name} | ${wrapper.declaration} | ${wrapper.sdkLocations.join(', ')} | ${wrapper.callers.map(caller => caller.location).join(', ') || '정적 호출 연결 없음'} |`), '',
+  ...report.firestorePaths.dynamicWrappers.map(wrapper => `| ${wrapper.name} | ${wrapper.declaration} | ${wrapper.sdkLocations.join(', ')} | ${wrapper.callers.map(caller => `${caller.location}: ${caller.resolvedPaths.map(path => path.collection ?? '미해석').join(', ')}`).join('; ') || '정적 호출 연결 없음'} |`), '',
   '| 위치 | 실행 | API | 문맥 | 깊이 | 경로 (중괄호는 동적식) | COL 밖 |',
   '| --- | --- | --- | --- | --- | --- | --- |',
   ...pathCalls.map(call => `| ${call.location} | ${call.runtime} | ${call.api} | ${call.context} / ${call.pathKind} | ${call.depth ?? '미해석'} | ${call.path.replaceAll('|', '\\|').replaceAll('\n', ' ')} | ${call.outsideRegistry.join(', ')} |`), '',
@@ -275,4 +311,5 @@ writeFileSync('docs/field-dictionary.generated.md', [
 ].join('\n'));
 }
 console.log(JSON.stringify({ collections: collections.length, fields: fields.length, sourceFiles: files.length,
-  fieldsWithReferences: fields.filter(field => field.references.length).length, unresolvedAccesses }));
+  fieldsWithReferences: fields.filter(field => field.references.length).length, unresolvedAccesses,
+  knownWrapperCollections: [...dynamicWrappers.values()].flatMap(wrapper => wrapper.callers.flatMap(caller => caller.resolvedPaths)).filter(path => path.collection !== undefined).length }));

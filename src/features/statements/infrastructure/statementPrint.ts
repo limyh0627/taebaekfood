@@ -3,6 +3,7 @@ import type { LineItem, StatementType } from '../../../shared/statementLines';
 import { withDocNames } from '../../../shared/docName';
 import { 서류당사자스냅샷우선 } from '../../../shared/docParty';
 import { bankAccountOf } from '../../../shared/companyInfo';
+import { displaySpec } from '../../../shared/boxSpec';
 
 interface StatementPrintDeps {
   companyInfo?: CompanyInfo | null;
@@ -115,7 +116,7 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         return `<tr style="height:5.5mm;background:${bg};">
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
           <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
-          <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${item.spec||''}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${displaySpec(item.spec)}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${(item as any).unit||'개'}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.qty)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.price)}</td>
@@ -271,7 +272,7 @@ export function buildReceiptHtml(input: {
   <div style="margin-bottom:1mm;border-bottom:1px solid #000;padding-bottom:1mm;font-weight:bold;"><span>거래처: ${input.partnerName}</span></div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:2mm;font-size:8px;"><thead><tr style="background:#f0f0f0;">
     <th style="border:1px solid #ccc;padding:1px 3px;text-align:left;">품목</th><th style="border:1px solid #ccc;padding:1px 3px;text-align:center;">수량</th><th style="border:1px solid #ccc;padding:1px 3px;text-align:right;">금액</th>
-  </tr></thead><tbody>${input.items.map(item=>`<tr><td style="border:1px solid #ccc;padding:1px 3px;">${item.name}${item.spec?' ('+item.spec+')':''}</td><td style="border:1px solid #ccc;padding:1px 3px;text-align:center;">${fmt(item.qty)}</td><td style="border:1px solid #ccc;padding:1px 3px;text-align:right;">${fmt(item.total)}</td></tr>`).join('')}</tbody></table>
+  </tr></thead><tbody>${input.items.map(item=>`<tr><td style="border:1px solid #ccc;padding:1px 3px;">${item.name}${item.spec?' ('+displaySpec(item.spec)+')':''}</td><td style="border:1px solid #ccc;padding:1px 3px;text-align:center;">${fmt(item.qty)}</td><td style="border:1px solid #ccc;padding:1px 3px;text-align:right;">${fmt(item.total)}</td></tr>`).join('')}</tbody></table>
   <div style="border-top:2px solid #000;padding-top:2mm;"><div style="display:flex;justify-content:space-between;"><span>공급가액</span><span>${fmt(input.totals.supply)}원</span></div><div style="display:flex;justify-content:space-between;"><span>부가세</span><span>${fmt(input.totals.tax)}원</span></div><div style="display:flex;justify-content:space-between;font-size:11px;font-weight:900;margin-top:1mm;border-top:1px solid #000;padding-top:1mm;"><span>합계</span><span>${fmt(input.totals.amount)}원</span></div></div>
   <div style="margin-top:4mm;text-align:center;font-size:7px;color:#888;">위 금액을 정히 영수합니다</div><div style="margin-top:6mm;text-align:right;">서&nbsp;&nbsp;명:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
 </div>`;

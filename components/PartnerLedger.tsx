@@ -142,28 +142,41 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
     }
   };
 
+  const allPartners = useMemo(() => {
+    const names = new Map<string, string>();
+    const directionCodes = type === '매출' ? ['108', '254'] : ['251', '253', '133'];
+    const relevant = new Set<string>();
+    const directionStatements = issuedStatements.filter(row => row.type === type || (row.type === '비용' && (row.items.some(line => directionCodes.includes(String(line.accountCode))) || (type === '매입' && settlementTypeOf(row) === '매입'))));
+    const oppositeCodes = type === '매출' ? ['251', '253', '133'] : ['108', '254'];
+    const directionCash = cashEntries.filter(row => row.dir === (type === '매출' ? '입금' : '출금') && ![row.accountCode, ...(row.lines?.map(line => line.accountCode) ?? [])].some(code => oppositeCodes.includes(String(code))));
+    for (const record of [...issuedStatements, ...cashEntries]) if (record.partnerId)
+      names.set(record.partnerId, record.partnerName || names.get(record.partnerId) || `(ID: ${record.partnerId})`);
+    for (const record of [...directionStatements, ...directionCash]) if (record.partnerId) relevant.add(record.partnerId);
+    for (const journal of journals) for (const line of journal.lines) if (line.partnerId && directionCodes.includes(String(line.accountCode))) {
+      relevant.add(line.partnerId);
+      if (!names.has(line.partnerId)) names.set(line.partnerId, `(ID: ${line.partnerId})`);
+    }
+    for (const partner of partners) if (companyOf(partner) === companyId) {
+      const relation = partner.partnerType ?? '매출처';
+      if (relation === '매출+매입처' || relation === (type === '매출' ? '매출처' : '매입처')) relevant.add(partner.id);
+      names.set(partner.id, partner.name);
+    }
+    return [...relevant].map(partnerId => ({ partnerId, partnerName: names.get(partnerId) || `(ID: ${partnerId})`,
+      balance: balances.find(b => b.partnerId === partnerId)?.balance ?? 0,
+      count: directionStatements.filter(row => row.partnerId === partnerId).length + directionCash.filter(row => row.partnerId === partnerId).length,
+    })).sort((a, b) => a.partnerName.localeCompare(b.partnerName, 'ko'));
+  }, [issuedStatements, cashEntries, journals, balances, type, partners, companyId]);
+  const shown = allPartners.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
+  const sel = shown.find(b => b.partnerId === selId) ?? shown[0];
   /**
    * 전표 하나에 **얼마가 남았나** — 거래명세서 화면과 같은 셈(`allocatePartnerCash`).
    * 받은 돈이 어느 청구서를 갚았는지는 오래된 것부터 맞춘다.
    */
   const openByStmt = useMemo(() => {
-    if (!selId) return new Map<string, number>();
-    return allocatePartnerCash(selId, type, issuedStatements, cashEntries, settlements, undefined, returnOperations, { statements: advanceStatements });
-  }, [selId, type, issuedStatements, cashEntries, settlements, returnOperations, advanceStatements]);
+    if (!sel?.partnerId) return new Map<string, number>();
+    return allocatePartnerCash(sel.partnerId, type, issuedStatements, cashEntries, settlements, undefined, returnOperations, { statements: advanceStatements });
+  }, [sel?.partnerId, type, issuedStatements, cashEntries, settlements, returnOperations, advanceStatements]);
 
-  const allPartners = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const record of [...issuedStatements, ...cashEntries]) if (record.partnerId)
-      names.set(record.partnerId, record.partnerName || names.get(record.partnerId) || `(ID: ${record.partnerId})`);
-    for (const je of journals) for (const line of je.lines) if (line.partnerId && !names.has(line.partnerId))
-      names.set(line.partnerId, `(ID: ${line.partnerId})`);
-    return [...names].map(([partnerId, partnerName]) => ({ partnerId, partnerName,
-      balance: balances.find(b => b.partnerId === partnerId)?.balance ?? 0,
-      count: issuedStatements.filter(s => s.partnerId === partnerId).length + cashEntries.filter(e => e.partnerId === partnerId).length,
-    })).sort((a, b) => a.partnerName.localeCompare(b.partnerName, 'ko'));
-  }, [issuedStatements, cashEntries, journals, balances]);
-  const shown = allPartners.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
-  const sel = shown.find(b => b.partnerId === selId) ?? shown[0];
   const accountHistory = useMemo(() => sel ? partnerAccountHistory(sel.partnerId, issuedStatements, cashEntries,
     journals, journalResult.skipped, companyId) : null, [sel?.partnerId, issuedStatements, cashEntries, journals, journalResult.skipped, companyId]);
   const accountBalances = useMemo(() => partnerAccountBalances(accountHistory?.rows ?? [], accountCodes, periodRange?.from, periodRange?.to),
@@ -286,47 +299,14 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
         </div>
 
         <div className="space-y-4 min-w-0">
-          <section aria-label="전체 거래처 원장" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-              <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
-              {sel && onAddIssuedStatement && <button type="button" onClick={() => { setManualAccountId(defaultCashAccountId(activeCashAccounts, companyId)); setManualVoucher({companyId, partnerId: sel.partnerId}); }} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">수동 전표 작성</button>}
-              <select aria-label="계정 필터" value={activeAccount} onChange={e => setSelectedAccount(e.target.value)}
-                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
-                <option value="">모든 계정</option>
-                {historyCodes.map(code => <option key={code} value={code}>{code} {codeName.get(code) ?? accountBalances.find(row => row.code === code)?.name ?? '계정 미정'}</option>)}
-              </select>
-            </div>
-            <div className="overflow-x-auto p-4">
-              <table aria-label="거래처 계정별 잔액" className="w-full min-w-[600px] text-xs text-right">
-                <thead className="text-slate-400"><tr><th className="text-left p-2">계정</th><th>기초</th><th>차변</th><th>대변</th><th>기말 잔액</th></tr></thead>
-                <tbody>{accountBalances.filter(row => !activeAccount || row.code === activeAccount).map(row => <tr key={row.code} className="border-t border-slate-100 tabular-nums">
-                  <th scope="row" className="text-left p-2 font-bold">{row.code} {row.name}<span className="ml-1 text-[10px] text-slate-400">({row.normalBalance === 'credit' ? '대변' : '차변'} 잔액)</span></th>
-                  <td>{fmt(row.opening)}</td><td>{fmt(row.debit)}</td><td>{fmt(row.credit)}</td><td className="font-black">{fmt(row.closing)}</td>
-                </tr>)}</tbody>
-              </table>
-              <p className="mt-2 text-[10px] text-slate-400">잔액은 거래처가 연결된 계정별로 표시합니다. 선급·선수금 대체전표는 원본 거래처를 확인하며, 자산과 부채를 합산하지 않습니다.</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table aria-label="거래처 전체 전표" className="w-full min-w-[780px] text-xs">
-                <thead className="bg-slate-50 text-slate-400"><tr>{['일자', '구분', '적요', '전표번호', '계정 내역', '확인'].map(title => <th key={title} className="text-left px-4 py-2.5 whitespace-nowrap">{title}</th>)}</tr></thead>
-                <tbody className="divide-y divide-slate-100">{visibleHistory.map(row => <tr key={row.key}>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.date}</td><td className="px-4 py-3">{row.kind}</td><td className="px-4 py-3">{row.label}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><button type="button" className="text-indigo-600 underline font-bold"
-                    onClick={() => setOpenVoucher({ companyId, sourceType: row.sourceType, sourceId: row.sourceId, docNo: row.docNo || row.sourceId })}>{row.docNo || '상세 보기'}</button></td>
-                  <td className="px-4 py-3">{row.lines.length ? row.lines.filter(line => !activeAccount || line.accountCode === activeAccount).map((line, index) => <div key={index} className="whitespace-nowrap tabular-nums">
-                    {line.accountCode} {codeName.get(line.accountCode) ?? ''} · {line.debit ? `차변 ${fmt(line.debit)}` : `대변 ${fmt(line.credit)}`}
-                  </div>) : row.accounts.map(code => `${code} ${codeName.get(code) ?? ''}`).join(', ') || '계정 미정'}</td>
-                  <td className="px-4 py-3 text-amber-700">{row.warning ? `${row.warning} · 잔액 제외` : ''}</td>
-                </tr>)}{visibleHistory.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">거래 내역이 없습니다</td></tr>}</tbody>
-              </table>
-            </div>
-          </section>
+
         {/* 기존 결제 원장은 같은 화면에서 펼친다. 전체 이력과 별도 탭으로 갈라 놓지 않는다. */}
-        <details open className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-          <summary className="px-5 py-3 cursor-pointer text-xs font-black text-slate-600">미수·미지급 결제 원장</summary>
+        <section aria-label="거래처 업무 원장" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <h2 className="px-5 py-3 text-sm font-black text-slate-800">{type === '매입' ? '매입·지불 원장' : '매출·수금 원장'}</h2>
         <div>
           <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-3 flex-wrap">
             <span className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'}</span>
+              {sel && onAddIssuedStatement && <button type="button" onClick={() => { setManualAccountId(defaultCashAccountId(activeCashAccounts, companyId)); setManualVoucher({companyId, partnerId: sel.partnerId}); }} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">수동 전표 작성</button>}
             {ledger && (
               /* 기초 + 발생 − 결제 = 잔액. 기초를 발생에 뭉치면 이번 달에 새로 산 것처럼 보인다 —
                  청양식품은 넘어온 5,800만원이 8월 매입으로 보였다.
@@ -380,7 +360,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                한글이 한 글자씩 세로로 쌓여 아예 못 읽는다(2026-09-03 사장님 지적).
                최소 너비를 줘야 `overflow-x-auto` 가 실제로 넘쳐서 스크롤이 생긴다. */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-xs">
+            <table aria-label="거래처 업무 원장" className="w-full min-w-[980px] text-xs">
               <thead className="bg-slate-50/70 text-slate-400">
                 <tr>
                   <th className="px-2 sm:px-4 py-2.5 text-left font-black whitespace-nowrap">일자</th>
@@ -391,7 +371,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
                   <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">전표번호</th>
                   <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">발생</th>
                   <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">결제</th>
-                  <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">잔액</th>
+                  <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">누적잔액</th>
                   {/*  남은 금액이 있는 전표에 수금·지불 단추 — 거래명세서 화면과 같다(2026-09-03 사장님) */}
                   <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">남은</th>
                 </tr>
@@ -455,11 +435,46 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
 
           <p className="px-5 py-3 border-t border-slate-50 text-[10px] text-slate-400 leading-snug">
             결제는 <b>위 수금·지불 단추</b>로 넣으세요 — 자금원장에 적히고, 어느 전표를 갚았는지는
-            오래된 것부터 저절로 맞춰집니다. 거래명세서의 지불·수금처리는 <b>옛 방식</b>이라
-            같은 결제를 두 곳에 적으면 이중으로 빠집니다.
+            오래된 것부터 저절로 맞춰집니다. 같은 실제 결제를 다시 입력하지 마세요. 선급·선수금은 아래 계정별 상세에서 따로 확인합니다.
           </p>
         </div>
-        </details>
+        </section>
+          <details aria-label="전체 거래처 원장" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <summary className="px-5 py-3 cursor-pointer text-xs font-black text-slate-600">계정별 잔액·전체 전표 상세</summary>
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'} 전체 전표</h2>
+
+              <select aria-label="계정 필터" value={activeAccount} onChange={e => setSelectedAccount(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
+                <option value="">모든 계정</option>
+                {historyCodes.map(code => <option key={code} value={code}>{code} {codeName.get(code) ?? accountBalances.find(row => row.code === code)?.name ?? '계정 미정'}</option>)}
+              </select>
+            </div>
+            <div className="overflow-x-auto p-4">
+              <table aria-label="거래처 계정별 잔액" className="w-full min-w-[600px] text-xs text-right">
+                <thead className="text-slate-400"><tr><th className="text-left p-2">계정</th><th>기초</th><th>차변</th><th>대변</th><th>기말 잔액</th></tr></thead>
+                <tbody>{accountBalances.filter(row => !activeAccount || row.code === activeAccount).map(row => <tr key={row.code} className="border-t border-slate-100 tabular-nums">
+                  <th scope="row" className="text-left p-2 font-bold">{row.code} {row.name}<span className="ml-1 text-[10px] text-slate-400">({row.normalBalance === 'credit' ? '대변' : '차변'} 잔액)</span></th>
+                  <td>{fmt(row.opening)}</td><td>{fmt(row.debit)}</td><td>{fmt(row.credit)}</td><td className="font-black">{fmt(row.closing)}</td>
+                </tr>)}</tbody>
+              </table>
+              <p className="mt-2 text-[10px] text-slate-400">잔액은 거래처가 연결된 계정별로 표시합니다. 선급·선수금 대체전표는 원본 거래처를 확인하며, 자산과 부채를 합산하지 않습니다.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table aria-label="거래처 전체 전표" className="w-full min-w-[780px] text-xs">
+                <thead className="bg-slate-50 text-slate-400"><tr>{['일자', '구분', '적요', '전표번호', '계정 내역', '확인'].map(title => <th key={title} className="text-left px-4 py-2.5 whitespace-nowrap">{title}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">{visibleHistory.map(row => <tr key={row.key}>
+                  <td className="px-4 py-3 whitespace-nowrap">{row.date}</td><td className="px-4 py-3">{row.kind}</td><td className="px-4 py-3">{row.label}</td>
+                  <td className="px-4 py-3 whitespace-nowrap"><button type="button" className="text-indigo-600 underline font-bold"
+                    onClick={() => setOpenVoucher({ companyId, sourceType: row.sourceType, sourceId: row.sourceId, docNo: row.docNo || row.sourceId })}>{row.docNo || '상세 보기'}</button></td>
+                  <td className="px-4 py-3">{row.lines.length ? row.lines.filter(line => !activeAccount || line.accountCode === activeAccount).map((line, index) => <div key={index} className="whitespace-nowrap tabular-nums">
+                    {line.accountCode} {codeName.get(line.accountCode) ?? ''} · {line.debit ? `차변 ${fmt(line.debit)}` : `대변 ${fmt(line.credit)}`}
+                  </div>) : row.accounts.map(code => `${code} ${codeName.get(code) ?? ''}`).join(', ') || '계정 미정'}</td>
+                  <td className="px-4 py-3 text-amber-700">{row.warning ? `${row.warning} · 잔액 제외` : ''}</td>
+                </tr>)}{visibleHistory.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400">거래 내역이 없습니다</td></tr>}</tbody>
+              </table>
+            </div>
+          </details>
         </div>
       </div>
       {/*  전표 상세 — 원장에서 번호를 누르면 그 자리에서 뜬다.
@@ -625,7 +640,7 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
           renderJournal={(je, _compact, meta) => <VoucherSlip je={je} partnerName={new Map(partners.map(p => [p.id, p.name]))} headPartner={partners.find(p => p.id === manualVoucher.partnerId)?.name} date={meta?.date ?? today()} docNo={meta?.docNo ?? ''} codeName={codeName} />}
         />
       </React.Suspense>}
-      {advanceOpen && sel && <PartnerAdvanceModal key={`${companyId}:${selId}`} companyId={companyId} partnerId={selId} partnerName={sel.partnerName} onClose={() => setAdvanceOpen(false)} />}
+      {advanceOpen && sel && <PartnerAdvanceModal key={`${companyId}:${sel.partnerId}`} companyId={companyId} partnerId={sel.partnerId} partnerName={sel.partnerName} onClose={() => setAdvanceOpen(false)} />}
     </div>
   );
 }

@@ -82,6 +82,8 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
       { ...전표, id: 'no-id', partnerId: '', docNo: 'NO-PARTNER-ID' }]}
       cashEntries={[cash]} cashAccounts={accounts} accountCodes={계정} />);
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
+    fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
     const history = screen.getByRole('table', { name: '거래처 전체 전표' });
     expect(within(history).getAllByRole('button', { name: '260810-01' })).toHaveLength(1);
     expect(within(history).getAllByRole('button', { name: 'CASH-SAME' })).toHaveLength(1);
@@ -104,6 +106,8 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
       cashEntries: [cash], cashAccounts: accounts, accountCodes: 계정 };
     const { rerender } = render(<PartnerLedger companyId="taebaek" {...props} />);
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
+    fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
     fireEvent.click(within(screen.getByRole('table', { name: '거래처 전체 전표' })).getByRole('button', { name: 'CASH-SAME' }));
     const dialog = screen.getByRole('dialog', { name: '전표 CASH-SAME' });
     expect(within(dialog).getAllByText('자금 선급').length).toBeGreaterThan(0);
@@ -119,6 +123,8 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
         { ...전표, companyId: 'punghoe' as const, docNo: 'FOREIGN' }] };
     const { rerender } = render(<PartnerLedger companyId="taebaek" {...props} />);
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
+    fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
     fireEvent.click(screen.getByRole('button', { name: '살림터' }));
     fireEvent.change(screen.getByRole('combobox', { name: '계정 필터' }), { target: { value: '900' } });
     fireEvent.click(screen.getByRole('button', { name: '새거래처' }));
@@ -135,6 +141,8 @@ describe('거래처 전체 전표와 계정별 잔액', () => {
     render(<PartnerLedger companyId="taebaek" issuedStatements={[{ ...전표, items: [{ ...전표.items[0], accountCode: undefined }] }]}
       cashEntries={[]} cashAccounts={accounts} accountCodes={계정} />);
     fireEvent.click(screen.getByRole('button', { name: '전체' }));
+    fireEvent.click(screen.getByRole('button', { name: '매출 (미수)' }));
+    fireEvent.click(screen.getByText('계정별 잔액·전체 전표 상세'));
     const history = screen.getByRole('table', { name: '거래처 전체 전표' });
     expect(within(history).getByRole('button', { name: '260810-01' })).toBeInTheDocument();
     expect(within(history).getByText(/분개 확인 필요:.*잔액 제외/)).toBeInTheDocument();

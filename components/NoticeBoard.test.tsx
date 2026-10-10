@@ -120,3 +120,33 @@ it('위험한 링크와 HTML 문자는 실행하거나 저장하지 않는다',a
  expect(screen.getByText('<script>alert(1)</script>')).toBeInTheDocument();expect(document.querySelector('script')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'등록'}));await Promise.resolve();expect(add).not.toHaveBeenCalled();
 });
+
+it.each(['paste','drop','file'] as const)('본문 커서 %s 사진은 앞뒤 글과 기존 블록 순서를 보존한다',async(mode)=>{
+ const add=vi.fn().mockResolvedValue(undefined);
+ render(<NoticeBoard posts={[]} companyId="taebaek" onAddPost={add}/>);
+ fireEvent.click(screen.getByRole('button',{name:'공지 추가'}));
+ fireEvent.change(screen.getByPlaceholderText('제목'),{target:{value:'커서 사진'}});
+ const text=screen.getByLabelText('글 단락 1') as HTMLTextAreaElement;
+ fireEvent.change(text,{target:{value:'앞문장뒤문장'}});
+ text.setSelectionRange(3,3);fireEvent.select(text);
+ fireEvent.click(screen.getByRole('button',{name:'글 단락 추가'}));
+ fireEvent.change(screen.getByLabelText('글 단락 2'),{target:{value:'다음 단락'}});
+ const file=new File(['image'],'photo.png',{type:'image/png'});
+ if(mode==='paste')fireEvent.paste(text,{clipboardData:{files:[file]}});
+ else if(mode==='drop')fireEvent.drop(text,{dataTransfer:{files:[file]}});
+ else fireEvent.change(screen.getByLabelText('단락 1 사진 넣기'),{target:{files:[file]}});
+ await waitFor(()=>expect(screen.getByAltText('첨부 사진')).toBeInTheDocument());
+ fireEvent.click(screen.getByRole('button',{name:'등록'}));
+ await waitFor(()=>expect(add).toHaveBeenCalledOnce());
+ expect(add.mock.calls[0][0].blocks).toEqual([{type:'text',text:'앞문장'},expect.objectContaining({type:'image'}),{type:'text',text:'뒤문장'},{type:'text',text:'다음 단락'}]);
+ expect(uploadNoticeImage).toHaveBeenCalledWith('taebaek',expect.any(String),file);
+ expect(screen.queryByRole('heading',{name:'공지 작성'})).toBeNull();
+});
+it('일반 텍스트 붙여넣기는 사진 업로드하지 않는다',()=>{
+ render(<NoticeBoard posts={[]} companyId="taebaek" onAddPost={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'공지 추가'}));
+ fireEvent.paste(screen.getByLabelText('글 단락 1'),{clipboardData:{files:[]}});
+ expect(uploadNoticeImage).not.toHaveBeenCalled();
+ expect(screen.getByRole('button',{name:'등록'}).closest('footer')).not.toBeNull();
+ expect(screen.getByRole('button',{name:'취소'}).closest('footer')).not.toBeNull();
+});

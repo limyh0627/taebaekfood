@@ -66,6 +66,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
   const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const insertionRef = useRef<{ index: number; offset: number } | undefined>(undefined);
   const userId=auth.currentUser?.uid;
   const scope = useRef({companyId,userId});
   if(scope.current.companyId!==companyId || scope.current.userId!==userId) scope.current={companyId,userId};
@@ -76,6 +77,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
   const [draftId, setDraftId] = useState(() => `notice-${crypto.randomUUID()}`);
   const resetDraft = () => {
     pendingRef.current=null; setPending(null);
+    insertionRef.current = undefined;
     setBlocks([]); setNewImages([]); setEditing(null); setPreview(false); setPinned(false);
     setForm({title:'',content:'',author:'',tag:'공지'}); setDraftId(`notice-${crypto.randomUUID()}`); setShowForm(false);
   };
@@ -104,16 +106,29 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
     catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(String(error)); }
     finally { if(scope.current===token && auth.currentUser?.uid===token.userId){busyRef.current=false;setBusy(false);} }
   };
-  const uploadPhotos = async (files: File[]) => {
+  const uploadPhotos = async (files: File[], insertion = insertionRef.current) => {
     if (!companyId || busyRef.current || pendingRef.current) return;
     const token=scope.current;busyRef.current=true;setBusy(true);
+    let nextIndex: number | undefined;
     try {
       // Retain each successful upload even if a later image fails, so cancel can clean it up.
       for (const file of files) {
         if((scope.current!==token || auth.currentUser?.uid!==token.userId)) return;
         const image = await uploadNoticeImage(companyId, draftId, file);
         if((scope.current!==token || auth.currentUser?.uid!==token.userId)) { await deleteNoticeImages([image],companyId,draftId); return; }
-        setBlocks(previous => [...previous, image]);
+        const target = nextIndex === undefined ? insertion : undefined;
+        const at = nextIndex;
+        setBlocks(previous => {
+          if (target && previous[target.index]?.type === 'text') {
+            const text = previous[target.index] as Extract<NoticeBlocks[number], {type:'text'}>;
+            const offset = Math.min(target.offset, text.text.length);
+            return [...previous.slice(0, target.index), {...text, text:text.text.slice(0, offset)}, image,
+              {...text, text:text.text.slice(offset)}, ...previous.slice(target.index + 1)];
+          }
+          const index = at ?? previous.length;
+          return [...previous.slice(0,index), image, ...previous.slice(index)];
+        });
+        nextIndex = nextIndex === undefined ? (insertion ? insertion.index + 2 : blocks.length + 1) : nextIndex + 1;
         setNewImages(previous => [...previous, image]);
       }
     } catch (error) { if(scope.current===token && auth.currentUser?.uid===token.userId) await appNotice(error instanceof Error ? error.message : String(error)); }
@@ -221,7 +236,16 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
 
       {/* 공지 작성 모달 */}
       {showForm && (editing ? onUpdatePost : onAddPost) && (
-        <ModalShell title={editing ? "공지 수정" : "공지 작성"} className="!max-w-5xl" onClose={() => { void closeDraft(); }} subtitle="글과 사진을 원하는 순서로 배치해 주세요.">
+        <ModalShell title={editing ? "공지 수정" : "공지 작성"} size="large" className="!max-w-7xl md:!h-[90vh] md:!max-h-[90vh]" onClose={() => { void closeDraft(); }} subtitle="본문 커서 위치에 사진을 붙여넣거나 끌어 놓을 수 있습니다." footer={<div className="flex gap-3 pt-2">
+              <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
+              <button
+                disabled={busy}
+                onClick={() => { void savePost(); }}
+                className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
+              >
+                {busy ? '처리 중…' : pending ? '같은 내용 다시 저장' : editing ? '수정 저장' : '등록'}
+              </button>
+            </div>}>
           <div className="space-y-5">
             <fieldset disabled={busy || !!pending || pendingCorrupt} className="space-y-4 min-w-0">
               <input
@@ -240,8 +264,13 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
                 <label className="text-sm"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} /> 상단 고정</label>
               </div>
               <button type="button" onClick={()=>setPreview(!preview)} className="rounded-lg border px-3 py-2 text-sm font-bold">{preview ? '편집으로 돌아가기' : '미리보기'}</button>
-              {preview ? <article aria-label="공지 미리보기" className="mx-auto max-w-3xl bg-white p-6 md:p-10 shadow-sm"><h1 className="mb-8 text-3xl font-bold">{form.title || '제목'}</h1><NoticeContent blocks={bodyBlocks} content=""/></article> : <div className="mx-auto max-w-3xl space-y-4 bg-white p-4 md:p-8 shadow-sm">{blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
-                {block.type === 'text' ? <><div className="flex flex-wrap gap-2"><select aria-label={`단락 ${index+1} 형식`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={block.format||'paragraph'} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,format:e.target.value as typeof block.format}:b))}><option value="paragraph">본문</option><option value="heading">제목</option><option value="subheading">소제목</option><option value="list">목록</option></select><label><input type="checkbox" checked={!!block.bold} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,bold:e.target.checked}:b))}/> 굵게</label><input aria-label={`단락 ${index+1} 링크`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="링크 주소 (선택)" value={block.link||''} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,link:e.target.value}:b))}/></div><textarea aria-label={`글 단락 ${index + 1}`} rows={4} value={block.text} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full min-h-40 resize-y border-0 border-b border-slate-100 p-3 text-base leading-8 outline-none focus:border-indigo-300" /></> : <>
+              {preview ? <article aria-label="공지 미리보기" className="mx-auto max-w-3xl bg-white p-6 md:p-10 shadow-sm"><h1 className="mb-8 text-3xl font-bold">{form.title || '제목'}</h1><NoticeContent blocks={bodyBlocks} content=""/></article> : <div className="w-full space-y-4 bg-white p-4 md:p-8 shadow-sm">{blocks.map((block, index) => <div key={block.type === 'image' ? block.path : index} className="space-y-2 border rounded-xl p-3">
+                {block.type === 'text' ? <><div className="flex flex-wrap gap-2"><select aria-label={`단락 ${index+1} 형식`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" value={block.format||'paragraph'} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,format:e.target.value as typeof block.format}:b))}><option value="paragraph">본문</option><option value="heading">제목</option><option value="subheading">소제목</option><option value="list">목록</option></select><label><input type="checkbox" checked={!!block.bold} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,bold:e.target.checked}:b))}/> 굵게</label><input aria-label={`단락 ${index+1} 링크`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="링크 주소 (선택)" value={block.link||''} onChange={e=>setBlocks(blocks.map((b,i)=>i===index?{...block,link:e.target.value}:b))}/></div><textarea aria-label={`글 단락 ${index + 1}`} rows={10} value={block.text}
+                  onFocus={e=>{insertionRef.current={index,offset:e.currentTarget.selectionStart};}}
+                  onSelect={e=>{insertionRef.current={index,offset:e.currentTarget.selectionStart};}}
+                  onPaste={e=>{const files=Array.from(e.clipboardData.files).filter(file=>file.type.startsWith('image/'));if(files.length){e.preventDefault();void uploadPhotos(files,{index,offset:e.currentTarget.selectionStart});}}}
+                  onDragOver={e=>{if(Array.from(e.dataTransfer.items).some(item=>item.kind==='file'&&item.type.startsWith('image/')))e.preventDefault();}}
+                  onDrop={e=>{const files=Array.from(e.dataTransfer.files).filter(file=>file.type.startsWith('image/'));if(files.length){e.preventDefault();void uploadPhotos(files,{index,offset:e.currentTarget.selectionStart});}}} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, text: e.target.value } : b))} className="w-full min-h-72 resize-y border-0 border-b border-slate-100 p-3 text-base leading-8 outline-none focus:border-indigo-300" /><label className="inline-flex cursor-pointer rounded-lg border px-3 py-2 text-sm">커서 위치에 사진 넣기<input aria-label={`단락 ${index+1} 사진 넣기`} type="file" className="hidden" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{void uploadPhotos(Array.from(e.target.files??[]), insertionRef.current?.index===index ? insertionRef.current : {index,offset:block.text.length});e.target.value='';}}/></label></> : <>
                   <img src={block.url} alt={block.caption || '첨부 사진'} className="max-h-80 mx-auto rounded-lg" />
                   <input aria-label={`사진 설명 ${index + 1}`} placeholder="사진 설명" value={block.caption} onChange={e => setBlocks(blocks.map((b, i) => i === index ? { ...block, caption: e.target.value } : b))} className="w-full border rounded-lg p-2" />
                 </>}
@@ -270,16 +299,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, companyId, onAddPost, 
 
             </fieldset>
             {pending && !busy && <p className="text-sm text-amber-700">저장 완료를 확인하지 못했습니다. 아래 버튼으로 같은 내용의 저장을 다시 확인하세요.</p>}
-            <div className="flex gap-3 pt-2">
-              <button disabled={busy} onClick={() => { void closeDraft(); }} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
-              <button
-                disabled={busy}
-                onClick={() => { void savePost(); }}
-                className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
-              >
-                {busy ? '처리 중…' : pending ? '같은 내용 다시 저장' : editing ? '수정 저장' : '등록'}
-              </button>
-            </div>
+
           </div>
         </ModalShell>
       )}
