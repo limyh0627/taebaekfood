@@ -362,8 +362,24 @@ export interface OrderInventoryAdjustment {
   delta: number;
 }
 
+/** 실제 생산 계산 순간의 입력과 결과. 과거 기록에는 없을 수 있다. */
+export interface OrderRawCalculationEvidence {
+  productId: string;
+  spec: string;
+  units: number;
+  raw: string;
+  kg: number;
+  path: 'bom-direct' | 'bom-formula' | 'formula-fallback' | 'bulk';
+  childItemId?: string;
+  bomQuantityKg?: number;
+  formulaName?: string;
+  ratio?: number;
+  convertedKg?: number;
+}
+
 export interface OrderInventorySnapshot {
   capturedAt: string;
+  rawCalculationEvidence?: OrderRawCalculationEvidence[];
   stockDeltas: OrderInventoryAdjustment[];
   bomLines: { parentItemId: string; childItemId: string; quantity: number }[];
   rawConsumedLots?: Order['rawConsumedLots'];

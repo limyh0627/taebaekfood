@@ -46,7 +46,32 @@ it('미확인 원가의 0원 계약과 명시적 수동 덮어쓰기를 유지�
   render(<ProfitAnalysis {...props} items={[item('unknown', 0)]}
     inventorySnapshots={[{ id: 'existing', yearMonth: today().slice(0, 7), value: 99, recordedAt: '2026-10-01' }]}
     onSaveInventorySnapshot={save} />);
-  expect(screen.getByText(/원가가 없는 품목은 0원/)).toBeInTheDocument();
+  expect(screen.getByText(/미확인 품목은 평가액에 포함되지/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '덮어쓰기' }));
   expect(save.mock.calls[0][0]).toMatchObject({ value: 0, items: [] });
+});
+
+
+it('저장 원가 미확인과 명시0을 분리하고 수량을 품목별로 표시한다', () => {
+  const save = vi.fn();
+  const items = [item('확인품', 10, {stock: 2}), item('영원가', 0, {stock: 3}),
+    item('미확인kg', undefined as unknown as number, {stock: 4, unit: 'kg'}),
+    item('미확인박스', NaN, {stock: 5, unit: '박스'}),
+    item('미확인벌크L', undefined as unknown as number, {stock: 6, unit: 'L', subtype: '벌크'}),
+    item('타사', undefined as unknown as number, {stock: 99, companyId: 'punghoe'})];
+  const view = render(<ProfitAnalysis {...props} items={items} costOf={() => 100} onSaveInventorySnapshot={save} />);
+  expect(screen.getByText('확인된 저장 원가 평가액')).toBeInTheDocument();
+  expect(screen.getByText('20원')).toBeInTheDocument();
+  expect(screen.getByText('저장 원가 0원')).toBeInTheDocument();
+  expect(screen.getByText('저장 원가 미확인 3품목')).toBeInTheDocument();
+  expect(screen.getByText('미확인kg: 4 kg')).toBeInTheDocument();
+  expect(screen.getByText('미확인박스: 5 박스')).toBeInTheDocument();
+  expect(screen.getByText('미확인벌크L: 6 kg')).toBeInTheDocument();
+  expect(screen.queryByText('미확인벌크L: 6 L')).not.toBeInTheDocument();
+  expect(screen.queryByText('영원가: 3')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', {name:'기말재고 기록'})).toBeDisabled();
+  view.rerender(<ProfitAnalysis {...props} companyId="punghoe" items={items} />);
+  expect(screen.getByText('저장 원가 미확인 1품목')).toBeInTheDocument();
+  expect(screen.queryByText('미확인kg: 4 kg')).not.toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
 });

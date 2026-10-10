@@ -71,7 +71,7 @@ describe('옛 배열을 다시 읽지 않는다', () => {
     );
     const purchase = service.slice(
       service.indexOf('export const setProductSuppliers'),
-      service.indexOf('export const syncInitialData'),
+      service.indexOf('export const fetchWhere'),
     );
 
     // Firestore 규칙은 필터가 아니므로 companyId 없는 컬렉션 질의는 결과가 같은 회사뿐이어도 거부된다.

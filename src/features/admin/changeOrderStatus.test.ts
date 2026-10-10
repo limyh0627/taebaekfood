@@ -64,8 +64,8 @@ const 주문 = (over: Partial<Order> = {}): Order =>
   } as unknown as Order);
 
 /** 엔진 한 벌 — 재고 조정은 부르는지만 세고, 실제 셈은 다른 테스트가 본다 */
-function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => []) {
-  setBomIndex(buildBomIndex(items, []));
+function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => [], bomRows: Parameters<typeof buildBomIndex>[1] = []) {
+  setBomIndex(buildBomIndex(items, bomRows));
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, order);
   const 알림: any[] = [];
@@ -76,6 +76,14 @@ function harness(items: Item[], order: Order, formula: () => { raw: string; rati
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
     buildFormula: formula,
+    runRawInventoryJob: async input => ({
+      job: { status: 'completed' } as never,
+      results: input.commands.map(command => ({ input: command, result: {
+        status: 'applied', movement: { id: command.command.operationId,
+          reportedDeltaKg: -('kg' in command.command ? command.command.kg : 0),
+          lotChanges: [{ lotId: 'raw-lot', deltaKg: -('kg' in command.command ? command.command.kg : 0) }] },
+      } as never })),
+    }),
     createProductionRecordsForOrder: async () => { 생산기록++; },
     updateItem: async (col, id, data: any) => {
       if (col === 'orders') {
@@ -344,4 +352,51 @@ describe('삭제 서비스 진입은 void 성공으로 처리하지 않는다', 
     expect(result).toMatchObject({ status: 'blocked', deleted: false, inventoryApplied: 'none' });
     await changing;
   });
+});
+
+
+describe('생산 순간 원료 계산 증거', () => {
+  const raw = (): Item => ({ ...상품(), id: 'raw', name: '깨분', type: 'raw', subtype: '벌크', unit: 'kg', stock: 100 });
+  it.each(['whole', 'line'])('%s 생산의 당시 환산·배합 결과는 배합 변경/같은 완료 재시도에도 보존된다', async mode => {
+    const product = { ...상품(), stock: 0 };
+    const order = 주문({ items: [{ itemId: product.id, name: product.name, quantity: 10, checked: mode === 'whole' } as any] });
+    let ratio = 0.5;
+    const { engine } = harness([product, raw()], order, () => [{ raw: '깨분', ratio }]);
+    if (mode === 'whole') await engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED);
+    else await engine.changeOrderItemCompletion(order.id, 0, order.items.map(i => ({ ...i, checked: true })), OrderStatus.DISPATCHED);
+    const snapshot = mode === 'whole' ? order.inventorySnapshots!.production! : Object.values(order.itemInventory!)[0].production;
+    const evidence = structuredClone(snapshot.rawCalculationEvidence!);
+    expect(evidence).toEqual([expect.objectContaining({ productId: product.id, spec: '180ml', units: 10,
+      path: 'formula-fallback', raw: '깨분', ratio: 0.5 })]);
+    expect(evidence[0].kg).toBe(evidence[0].convertedKg! * 0.5);
+    expect(evidence.reduce((sum, row) => sum + row.kg, 0)).toBeCloseTo(snapshot.rawConsumedLots!.reduce((sum, row) => sum + row.kg, 0), 3);
+    ratio = 0.9;
+    if (mode === 'whole') await engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED);
+    else await engine.changeOrderItemCompletion(order.id, 0, order.items.map(i => ({ ...i, checked: true })), OrderStatus.DISPATCHED);
+    const after = mode === 'whole' ? order.inventorySnapshots!.production! : Object.values(order.itemInventory!)[0].production;
+    expect(after.rawCalculationEvidence).toEqual(evidence);
+  });
+  it('기존 재고로 전량 충당하면 계산 증거를 만들지 않는다', async () => {
+    const order = 주문(); const { engine } = harness([상품()], order, () => [{ raw: '깨분', ratio: 1 }]);
+    await engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED);
+    expect(order.inventorySnapshots!.production!.rawCalculationEvidence).toEqual([]);
+  });
+});
+
+
+it.each([false, true])('벌크 BOM phantom=%s는 실제 kg 입력만 보존한다', async phantom => {
+  const product = { ...상품(), stock: 0 };
+  const holder: Item = { ...상품(), id: 'raw-holder', name: '깨분', type: 'raw', subtype: '벌크', unit: 'kg', stock: 100 };
+  const component: Item = { ...holder, id: 'component', name: phantom ? '참기름 배합' : '깨분', phantom };
+  const order = 주문();
+  const { engine } = harness([product, holder, component], order, () => [{ raw: '깨분', ratio: 0.5 }],
+    [{ parent_id: product.id, child_id: component.id, quantity: 0.321 }]);
+  await engine.changeOrderStatus(order.id, OrderStatus.DISPATCHED);
+  const snapshot = order.inventorySnapshots!.production!;
+  expect(snapshot.rawCalculationEvidence).toEqual([{
+    productId: product.id, spec: '180ml', units: 10, raw: '깨분', kg: 0.321 * 10 * (phantom ? 0.5 : 1),
+    path: phantom ? 'bom-formula' : 'bom-direct', childItemId: component.id, bomQuantityKg: 0.321,
+    ...(phantom ? { formulaName: component.name, ratio: 0.5 } : {}),
+  }]);
+  expect(snapshot.rawConsumedLots!.reduce((sum, row) => sum + row.kg, 0)).toBeCloseTo(snapshot.rawCalculationEvidence![0].kg, 3);
 });

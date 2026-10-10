@@ -25,6 +25,7 @@ import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
+import { isRawHolder } from '../src/shared/rawHolder';
 import { valueInventoryForCompany } from '../functions/src/shared/inventoryValuation';
 import ModalShell from '../src/shared/components/ModalShell';
 import LargeModalShell from '../src/shared/components/LargeModalShell';
@@ -1451,6 +1452,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           .sort((a, b) => b.value - a.value);
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
+        const storedCostKnown = (p: Item) => typeof p.cost === 'number' && Number.isFinite(p.cost);
+        const unknownCostRows = rows.filter(p => p.stock !== 0 && !storedCostKnown(p));
+        const knownStoredValue = Math.round(rows.reduce((sum, p) =>
+          storedCostKnown(p) ? sum + p.stock * p.cost! : sum, 0));
         // 장부 기록은 월말 서버와 같은 저장 원가 기준이다. 아래 상세는 현재 BOM 추정을 유지한다.
         let bookValue = 0;
         let bookLines: ReturnType<typeof valueInventoryForCompany>;
@@ -1505,6 +1510,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         return (
           <div className="space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 space-y-2">
+              <p className="text-sm font-bold text-slate-700">확인된 저장 원가 평가액 <span>{fmt(knownStoredValue)}원</span></p>
+              {unknownCostRows.length > 0 && <>
+                <p className="text-sm font-bold text-amber-700">저장 원가 미확인 {unknownCostRows.length}품목</p>
+                <ul className="text-xs text-amber-700 space-y-1">
+                  {unknownCostRows.map(p => <li key={p.id}>{p.name}: {p.stock.toLocaleString()} {isRawHolder(p) ? 'kg' : p.unit}</li>)}
+                </ul>
+                <p className="text-xs text-slate-500">미확인 품목은 위 평가액에 포함하지 않았습니다. 명시된 0원 원가는 확인값입니다.</p>
+              </>}
+            </div>
             {/* 재고총액 + 기말재고 기록 */}
             <div className="flex gap-3 flex-wrap">
               <div className="flex-1 bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4 flex items-center justify-between">
@@ -1525,7 +1540,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   ) : (
                     <span className="text-xs text-slate-400">저장 원가 기준 {fmt(bookValue)}원으로 기록합니다</span>
                   )}
-                  <p className="text-xs text-slate-500">장부 기록은 저장 원가 기준입니다. 원가가 없는 품목은 0원으로 계산합니다.</p>
+                  <p className="text-xs text-slate-500">장부 기록은 저장 원가 확인분의 평가액입니다. 미확인 품목은 평가액에 포함되지 않으며, 실제 원가가 0원이라는 뜻은 아닙니다.</p>
                   {valuationError && <p className="text-xs text-red-600">{valuationError}</p>}
                   <button
                     disabled={!!valuationError}
@@ -1686,6 +1701,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             </td>
                             <td className="px-4 py-3 text-xs text-right text-slate-600">{p.stock.toLocaleString()} {p.unit}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-500">
+                              {!storedCostKnown(p) && <span className="block text-amber-700">저장 원가 미확인</span>}
+                              {storedCostKnown(p) && p.cost === 0 && <span className="block">저장 원가 0원</span>}
                               {p.unitCost > 0
                                 ? <>{fmt(Math.round(p.unitCost))}원{(p.cost == null || p.cost === 0) && <span className="ml-1 text-[10px] font-black text-teal-500" title="BOM 롤업 원가">롤업</span>}</>
                                 : <span className="text-slate-300">-</span>}

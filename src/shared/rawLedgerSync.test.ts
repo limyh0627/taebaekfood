@@ -9,7 +9,7 @@ import type { RawMaterialEntry, RawMaterialLot } from './types';
  *
  * 셋의 관계:
  *   로트합   = lotKgRemaining(lots)          — active 로트의 잔여 합
- *   stock    = 로트합                         — mutateRawMaterialLots의 computeStock이 이 값을 쓴다(파생)
+ *   stock    = 로트합                         — 이 순수 시나리오가 로트합으로 계산하는 파생값
  *   원장 잔량 = ledgerBalanceKg(entries)       — 첫 줄부터 누적, 실사(targetKg)에서 리셋
  *
  * **실제 원장의 줄과 로트 변화는 1:1이어야 한다.** 한쪽만 움직이면 그만큼 영구히 벌어진다.
@@ -24,7 +24,7 @@ class Warehouse {
 
   constructor(readonly material = '참깨', public stock = 0) {}
 
-  /** items.stock — 로트합에서 계산되는 파생값(mutateRawMaterialLots의 computeStock) */
+  /** items.stock — 이 순수 시나리오에서 로트합으로 계산하는 파생값 */
   private syncStock() { this.stock = lotKgRemaining(this.lots); }
 
   private row(e: Partial<RawMaterialEntry>): RawMaterialEntry {
@@ -36,7 +36,7 @@ class Warehouse {
   }
 
   /** 로트를 건드리기 전에 이월이 생기는지 보고, 생기면 원장에 기초이월을 남긴다.
-   *  = firebaseService.mutateRawMaterialLots가 하는 일 */
+   *  과거 로트 도입 모델을 재현하며 현재 원자 서비스 호출 검증은 아니다 */
   private carryOver() {
     if (this.lots.length > 0 || this.stock <= 0) return;
     this.ledger.push(this.row({ received: this.stock, note: '기초이월 (로트 도입 전 재고)', type: 'manual' }));

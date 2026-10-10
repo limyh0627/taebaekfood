@@ -28,9 +28,9 @@ import {
 import { auth, authReady, db, functions } from "../firebase";
 import { httpsCallable } from 'firebase/functions';
 import { today, isCalendarDay } from '../day';
-import type { Order, OrderStatus, RawMaterialLot, PurchaseOrder, IssuedStatement, PendingStatementEdit } from "../types";
+import type { Order, OrderStatus, PurchaseOrder, IssuedStatement, PendingStatementEdit } from "../types";
 import { requireActiveReleaseId } from '../releaseGate';
-import { pruneDepletedLots, buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
+import { buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
 import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock } from '../itemTaxonomy';
 import { itemKg, type OrderUnitInputs } from '../orderUnits';
@@ -438,38 +438,6 @@ export const adjustItemStock = async (
   });
 };
 
-export const mutateRawMaterialLots = async (
-  rawItemId: string,
-  transform: (currentLots: RawMaterialLot[], currentStock: number) => RawMaterialLot[],
-  computeStock?: (lots: RawMaterialLot[]) => number,
-): Promise<RawMaterialLot[]> => {
-  /**
-   * Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
-   *
-   * **재고는 언제나 로트 합계다**(2026-09-16). 예전엔 `lotsAreTotal` 원료만 예외로
-   * 빼 뒀다 — "로트는 통틀어, stock 은 벌크만" 이라는 우회였는데, 그 예외를 켠 품목
-   * (볶음참깨)만 장부가 깨져 있었다. 품목마다 로트를 나눠 다는 이관이 끝나 예외를 없앴다.
-   */
-  const buildPatch = (next: RawMaterialLot[]): { lots: RawMaterialLot[]; stock?: number } => {
-    const patch: { lots: RawMaterialLot[]; stock?: number } = { lots: stripUndefined(next) };
-    if (computeStock) patch.stock = computeStock(next);
-    return patch;
-  };
-  const next = await runTransaction(db, async (tx) => {
-    const ref = doc(db, "items", rawItemId);
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
-    const data = snap.data();
-    const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
-    const stockBefore = Number(data.stock ?? 0);
-    // #1 로트 배열 무한 증가 방지 — 오래된 depleted 로트 정리(모든 로트 쓰기 경로가 이 함수를 지남)
-    const next = pruneDepletedLots(transform(current, stockBefore));
-    tx.update(ref, buildPatch(next));
-    return next;
-  });
-  return next;
-};
-
 export const subscribeToSubcollection = <T extends { id: string }>(
   parentCollection: string,
   parentId: string,
@@ -589,13 +557,6 @@ export const setProductSuppliers = async (itemId: string, inboundPartnerIds: str
   }
 
   await commitCompanyWrites(ops);
-};
-
-export const syncInitialData = async (collectionName: CollectionName, initialData: any[]) => {
-  // This is a helper to seed data if needed
-  for (const item of initialData) {
-    await addItem(collectionName, item);
-  }
 };
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -895,26 +856,6 @@ export async function deletePendingPurchaseOrderWithDb(store: Firestore, claim: 
 export const writeMany = async (
   ops: { collection: CollectionName; id: string; data: Record<string, unknown>; merge?: boolean }[],
 ): Promise<void> => commitCompanyWrites(ops.map(op => ({ kind: 'set' as const, ...op })));
-
-/**
- * 읽고 고쳐 쓰는 걸 **한 덩어리로** — 그 사이 남이 고치면 다시 돈다.
- * 두 사람이 같은 재고를 동시에 깎을 때 하나가 사라지는 걸 막는다.
- *
- * @param read  지금 값을 읽어 온다(없으면 undefined)
- * @param write 그 값으로 무엇을 쓸지 정한다. undefined를 주면 아무것도 안 쓴다.
- */
-export const mutateDoc = async <T>(
-  collectionName: CollectionName,
-  id: string,
-  next: (_cur: T | undefined) => Record<string, unknown> | undefined,
-): Promise<void> => {
-  const ref = doc(db, collectionName, id);
-  await runTransaction(db, async tx => {
-    const snap = await tx.get(ref);
-    const data = next(snap.exists() ? ({ id: snap.id, ...snap.data() } as T) : undefined);
-    if (data) tx.set(ref, data, { merge: true });
-  });
-};
 
 /**
  * 주문 상태·재고 작업을 DB에서 선점한다. 화면별 메모리 잠금만으로는 다른 탭의 동시 승인을

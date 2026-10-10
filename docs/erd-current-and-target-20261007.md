@@ -2,6 +2,9 @@
 
 기준: 기존 통합 저장소 534b67fa 이후 문서 보완. 원료·주문 관계는 제품 변경 955e4ab8을 기준으로 확인했고, 이어 거래처 원장 조회 화면을 보완했다. 이 문서는 **코드에서 확인한 관계**이며 Firestore 전 문서 실측, 외래키 강제, 모든 읽기·쓰기 완전 추적을 주장하지 않는다. registry와 생성기 결과는 field-dictionary.generated.md/json에서 재생성한다.
 
+## 2026-10-10 생산 근거·미사용 경로 후속
+
+생산 스냅샷에 optional rawCalculationEvidence가 추가됐다. 실제 생산 계산 입력만 저장하며 원료 취소는 기존 operation trace를 사용한다. 미사용 원료 writer와 입고 fallback 제거 후 공식 사전은 소스429·COL74·선언716·참조602·미해석 속성2023, SDK643·동적 collection39·미해석 경로327·별도 모델690이다. 이는 운영 문서 백필이나 필드 삭제 실측이 아니다. 현재 배포 확인은 todo-production-valuation-followup-20261010.md의 후속 결과와 구분한다.
 ## 2026-10-09 동결 소스 사전 갱신
 
 정적 사전은 2026-10-10 현재 checkout에서 미사용 statementWrites 계획과 전용 시험을 제거한 뒤 공식 생성기로 재생성했다. tests/spec 제외 분석 소스429·COL74·직접 선언704·참조601·미해석 속성2023, SDK645·registry밖12·wrapper24·동적collection40·미해석경로329·별도모델691이다. 이전 배포8858eb21 사전의 소스430·별도모델694와 구분한다. 직접 선언3개 증가는 RawMaterialEntry.kind/reversalOf와 PurchaseOrder.duplicateReceiptCorrection에 대응하며 이번 미사용 경로 제거는 운영 DB 필드 삭제가 아니다. 생성8529/d4b9f9 self-check exit0, 실제 전표 명령·재시도19회귀 통과를 확인했다. 미해석은 별도 목록이며 DB실측/삭제 근거가 아니다.

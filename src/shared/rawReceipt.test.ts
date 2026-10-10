@@ -15,7 +15,6 @@ import type { Item } from './types';
 const 기록 = vi.hoisted(() => ({ 명령: [] as any[], 옵션: [] as any[] }));
 vi.mock('./services/firebaseService', () => ({
   addItem: async () => {},
-  mutateRawMaterialLots: async () => [],
 }));
 //  이제 입고는 **한 명령**으로 나간다 — 로트와 원장이 한 트랜잭션에 같이 들어간다.
 vi.mock('./services/rawInventoryService', () => ({

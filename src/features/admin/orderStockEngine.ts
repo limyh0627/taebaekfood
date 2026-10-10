@@ -4,7 +4,7 @@ import { doc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem, isGoodsItem, holdsUnitStock } from '../../shared/itemTaxonomy';
 import { goodsShipQty, shipQtyOfLine } from '../../shared/shipDeduction';
 import { bomOf, getBomIndex } from '../../shared/bomIndex';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderStatusAudit, OrderItemInventoryState, companyOf } from '../../shared/types';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, OrderInventorySnapshot, OrderRawCalculationEvidence, OrderStatusAudit, OrderItemInventoryState, companyOf } from '../../shared/types';
 import { toKg, baseRawName, unitToKg } from '../../constants/formula';
 import { runRawInventoryJob } from '../../shared/services/rawInventoryJob';
 import { bomQty } from '../../shared/bom';
@@ -145,7 +145,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   //  · BOM에 반제품이 없으면 품목 원료식으로 폴백(미이관 품목).
   //  여기서 쓰는 건 **실제 원장**(rawMaterialLedger) — 실제로 차감이 일어난 시점의 기록이다.
   //  관청에 내는 원료수불부는 **서류용 원장**(rawDocEntries)으로 서류 탭에서 따로 만든다(docOil.ts).
-  const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>) => {
+  const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>, evidence: OrderRawCalculationEvidence[]) => {
     // 조립 반제품(개 단위 wip = 무라벨 병 등): 오일 구성품 수량은 그 오일의 단위(L)로 직접 입력한 값.
     // → L×밀도(unitToKg)로 환산. 일반 완제품은 기존대로 용량(spec)이 오일량을 준다.
     const isAssembly = product.type === 'wip' && product.unit === '개';
@@ -163,21 +163,34 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
             const kg = isAssembly
               ? qty * units * f.ratio                                // qty는 이미 kg
               : perUnitKg() * units * f.ratio;
-            if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+            if (kg > 0) {
+              rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+              evidence.push({ productId: product.id, spec: product.spec || '', units, raw: f.raw, kg,
+                path: 'bom-formula', childItemId: comp.id, bomQuantityKg: qty, formulaName: comp.name, ratio: f.ratio });
+            }
           }
         } else {
           const raw = baseRawName(comp.name);
           const kg = isAssembly
             ? qty * units
             : perUnitKg() * units;
-          if (kg > 0) rawUsage[raw] = (rawUsage[raw] ?? 0) + kg;
+          if (kg > 0) {
+            rawUsage[raw] = (rawUsage[raw] ?? 0) + kg;
+            evidence.push({ productId: product.id, spec: product.spec || '', units, raw, kg,
+              path: 'bom-direct', childItemId: comp.id, bomQuantityKg: qty });
+          }
         }
       }
       return;
     }
     for (const f of buildFormula(docName(product))) {
-      const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
-      if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+      const convertedKg = toKg(product.spec || '', f.raw, units);
+      const kg = convertedKg * f.ratio;
+      if (kg > 0) {
+        rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+        evidence.push({ productId: product.id, spec: product.spec || '', units, raw: f.raw, kg,
+          path: 'formula-fallback', formulaName: docName(product), ratio: f.ratio, convertedKg });
+      }
     }
   };
 
@@ -208,6 +221,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
     stockCap?: Map<string, number>,
     stockOf?: (item: Item) => number,
+    evidence: OrderRawCalculationEvidence[] = [],
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
     for (const line of bomOf(product.id)) {
@@ -235,8 +249,8 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           addDelta(deltas, comp.id, short);
           autoBuilt.push({ itemId: comp.id, qty: short });
           const beforeRawKg = rawUsageKg(rawUsage);
-          accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1, undefined, stockOf);
-          accrueRaw(comp, short, rawUsage);
+          accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1, undefined, stockOf, evidence);
+          accrueRaw(comp, short, rawUsage, evidence);
           requireRawForProduction(comp, beforeRawKg, rawUsage);
         }
       }
@@ -272,6 +286,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       return stock;
     };
     const rawUsage: Record<string, number> = {};
+    const rawCalculationEvidence: OrderRawCalculationEvidence[] = [];
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
     const producedByItem = new Map<string, number>();        // 실제 생산량 — 되돌리기용
@@ -292,7 +307,10 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         const raw = baseRawName(product.name);
         const usedKg = unitToKg(stockUnits(item, product, inputs), raw);
         if (usedKg > 0) {
-          rawUsage[raw] = Math.round(((rawUsage[raw] ?? 0) + usedKg) * 1000) / 1000;
+          const previousKg = rawUsage[raw] ?? 0;
+          rawUsage[raw] = Math.round((previousKg + usedKg) * 1000) / 1000;
+          rawCalculationEvidence.push({ productId: product.id, spec: product.spec || '',
+            units: stockUnits(item, product, inputs), raw, kg: rawUsage[raw] - previousKg, path: 'bulk', convertedKg: usedKg });
           //  **재고는 따로 안 뺀다** — 로트를 깎으면 `mutateRawMaterialLots` 가 stock 을
           //  로트 합계로 맞춘다(2026-09-16 `lotsAreTotal` 예외를 걷어냈다). 여기서 또
           //  빼면 **두 번 빠진다.**
@@ -327,15 +345,16 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
 
       const beforeRawKg = rawUsageKg(rawUsage);
-      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf);
+      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap, stockOf, rawCalculationEvidence);
       // 구성품에 완제품이 있으면 accrueBom이 그 완제품을 따라 내려가며 원료를 뺀다.
-      if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage);
+      if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage, rawCalculationEvidence);
       requireRawForProduction(product, beforeRawKg, rawUsage);
       addDelta(deltas, product.id, toProduce);
       producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
     }
     return {
       rawUsage,
+      rawCalculationEvidence,
       rawUsageLedgerOnly,
       autoBuilt,
       producedUnits: [...producedByItem].map(([itemId, qty]) => ({ itemId, qty })),
@@ -367,6 +386,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         producedUnits: freshOrder.producedUnits ?? [],
         attempt: freshOrder.rawInventoryAttempt ?? 0,
         alreadyProduced: true,
+        rawCalculationEvidence: freshOrder.inventorySnapshots?.production?.rawCalculationEvidence,
         productionDeltas: undefined,
         previousProducedLots: undefined,
         previousConsumedLots: undefined,
@@ -555,7 +575,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (needsForwardProduction) {
         inventoryMayHaveChanged = true;
         if (!reservation) throw new Error(`주문 재고 예약이 없습니다: ${order.id}`);
-        const { consumedLots, autoBuilt, producedUnits, attempt, alreadyProduced, productionDeltas, previousProducedLots, previousConsumedLots } = await produceOrder(
+        const { consumedLots, autoBuilt, producedUnits, rawCalculationEvidence, attempt, alreadyProduced, productionDeltas, previousProducedLots, previousConsumedLots } = await produceOrder(
           order, deltas, reservation.stockSnapshot, plan,
         );
         if (!alreadyProduced) {
@@ -580,6 +600,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
               stockDeltas: deltaRows(productionDeltas!),
               productProducedLots: productLots.traces,
               productConsumedLots: productLots.consumedLots,
+              rawCalculationEvidence: rawCalculationEvidence ?? [],
               bomLines: bomSnapshotOf(order),
               rawConsumedLots: consumedLots,
               rawLedgerIds: rawLedgerDocIds(consumedLots),
@@ -783,6 +804,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
             stockDeltas: deltaRows(rowDeltas),
             productProducedLots: productLots.traces,
             productConsumedLots: productLots.consumedLots,
+            rawCalculationEvidence: production.rawCalculationEvidence,
             bomLines: bomSnapshotOf(single),
             rawConsumedLots: consumedLots,
             rawLedgerIds: rawLedgerDocIds(consumedLots),
