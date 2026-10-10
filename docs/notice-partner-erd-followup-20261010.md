@@ -1,10 +1,14 @@
-# 공지 작성·거래처 원장·필드 사전 후속 — 배포 준비 검증
+# 공지 작성·거래처 원장·필드 사전 후속 — 배포 검증 결과
 
-2026-10-10 다섯째 묶음 준비 기록이다. 배포 전이며 원본 전체21완료22잔여를 유지한다.
+2026-10-10 다섯째 묶음 배포 확정 기록이다. 원본 전체21완료22잔여·우선15 중11완료4잔여를 유지한다.
 
 - 공지 작성창을 대형으로 넓히고 글쓰기 공간을 확보했다. 기존 사진 업로드·블록 순서·서식·취소 청소·미확인 저장 재개는 유지하며 본문 커서에서 앞뒤 글을 나눠 사진 선택/클립보드 붙여넣기/파일 드롭으로 사진을 삽입한다. 취소·등록은 기존 ModalShell footer로 고정했다. 실제 업로드·저장은 mock만 사용했다. 정확2파일 회귀12PASS63365, 원본 복사본에서 신규 커서 삽입3FAIL 검출 후 원복. 로컬 mock 360/390/1440 화면에서 처음·긴 글100줄·본문 스크롤 이후에도 등록 버튼이 보이고 클릭 가능하며 가로 넘침과 pageerror는0이었다. 실기기 가상 키보드는 미검증이다.
 - 거래처원장의 매출/매입 거래처 목록을 해당 방향의 계정·전표·관계 기준으로 나누고 기존 전체 분개 확인 흐름을 유지했다. 정확4파일 최종15PASS47335와 소스 동결 근거가 있다. 새 금융 전표·잔액 정정은 없다.
 - 필드 사전 생성기는 실제 SDK 컬렉션 인수에 대응하는 함수 선언의 파라미터에만 실제 호출 인수를 대입한다. literal/COL로 확인된 첫 컬렉션을 승격하고 미확정 인수·동적 문서 경로는 계속 미해석으로 남긴다. 회사·문서 ID·런타임 전체 경로를 추정 확정하지 않는다. generator 단일파일 self-check 및 변이 검출 근거가 있다. 파생 사전은 루트 최종 생성 결과로 확인한다.
 - 인쇄2파일 회귀3PASS 근거는 별도로 보존하며 위 화면·사전 시험과 중복 합산하지 않는다.
 
-실제 Node22 단일 threads 최종 집중 검증80077은5파일30PASS(Notice12+Partner15+print3) exit0이다. 타입19408·사전35350·양앱 빌드91644 모두 exit0. 사전은 COL74/필드717/소스430/참조614/미해석2038이고520은 caller-SDK 해석 결과 수이며 컬렉션 수가 아니다. 전체 threads 시험85077은 진행 중이며 baseline collections2/LoanTemplateLink2FAIL은 별도 원본 검증82608/26617과 대조한다. 전체 PASS라고 주장하지 않는다. 앞선 forks timeout 중단15681/79771, SDK11199, outputs 포함53336은 성공 근거가 아니다. 기존 실패와 이번 제품 변경을 구분하여 Hosting 배포 준비를 진행하며 Hosting·원격 파일 확인은 아직 미확정이다. 신규 Functions/Rules 변경은0이다. 운영DB·새 설정·Notion/Figma 쓰기·GitHub push는0이다. AGENTS44개는 날짜별 프로젝트 복사본(동일41/버전차3)으로 확인돼 삭제하지 않는다. 이 문서는 아직 커밋하지 않았다.
+실제 Node22 단일 threads 집중 검증80077은5파일30PASS(Notice12+Partner15+print3) exit0이다. 타입19408·사전35350·양앱 빌드91644 모두 exit0. 사전은 COL74/필드717/소스430/참조614/미해석2038이고520은 caller-SDK 해석 결과 수이며 컬렉션 수가 아니다.
+
+소스4cc21755 정확13파일은 한국어 로컬 커밋8336 exit0으로 보존했다. 양Hosting84430 exit0, 원격29782 exit0에서 HTML2+JS115+CSS2 총119개 SHA가 모두 일치했다. 근거는 계획 작업공간 work/fifth-hosting-verification-20261010.json이다. 이번 새 Functions/Rules 배포·운영DB·gate·Notion/Figma 쓰기·GitHub push는0이다.
+
+전체 threads85077은 최종 총계 미확정이다. 현재 collections2/LoanTemplateLink2/Admin.orderAsksCompany6 실패10건을 원본과 대조 중이며, 신규 PartnerLedger.business 시험의 jsdom pragma 누락으로 기본 node 환경에서 발생한5FAIL은 별도 시험 구성 결함이다. 집중 jsdom30PASS 근거는 유효하나 기본 환경 pragma1줄 보완 뒤86586 기본config30PASS exit0으로 확인했다. 새 accountCodeWiring1FAIL은 directionCodes literal의 공통상수 규칙 후속이며 baseline10과 구분한다. ReceivingReturns companyDraft suite 오류는 원인 대조 중이다. 전체 PASS로 표현하지 않는다. 앞선 forks timeout 중단15681/79771, SDK11199, outputs 포함53336은 성공 근거가 아니다. 제품 배포 소스와 후속 시험 구성 수정은 구분한다. AGENTS44개는 날짜별 프로젝트 복사본(동일41/버전차3)이므로 삭제하지 않는다.
