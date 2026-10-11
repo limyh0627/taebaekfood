@@ -39,3 +39,8 @@ orderLockRecoveryOperations는 서버 전용 복구 영수증 컬렉션으로 �
 
 소스 d388dd09ee6f7c32715bf3b29e6fe6105ca2618c GitHub main푸시·원격HEAD일치. recoverOrderInventoryLockCommand 단독 생성 배포84321 exit0·ACTIVE/nodejs22. 관리자·직원 Hosting53242 exit0, 원격72731에서 HTML2/JS113/CSS2 총117파일 SHA일치. Rules/운영자료/활성화설정쓰기0. private records/order-unlock의 실행로그·검증JSON을 보존한다. 원본 전체21완료22잔여를 유지하며 각 관리키의 후속 배포를 전체완료3건으로 더하지 않는다.
 
+
+## 복구 영수증 규칙 보완 · 2026-10-11
+
+배포 후 Rules 재검토에서 새 orderLockRecoveryOperations가 포괄 직원 규칙의 client writer에 포함되는 누락을 발견했다. 서버 감사 컬렉션 목록에 등록해 포괄 규칙을 제외하고, 같은 회사 관리자 조회만 허용하며 클라이언트 생성·수정·삭제를 모두 거절한다. sourceee37463 GitHub푸시 및 Rules단독배포99228 exit0·release complete. 실제Rules4PASS, 보호 제거 변이4FAIL, 원복 후 feeSDK16+Rules4 총20PASS31707 exit0. 기존 source배포 때 Rules변경0은 당시기록이며 이 추가보완은 Rules배포1회다. 운영데이터쓰기0.
+
