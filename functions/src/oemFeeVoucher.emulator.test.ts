@@ -1,3 +1,4 @@
+import { buildOemBatchCostPreview } from './shared/oemBatchCost';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as admin from 'firebase-admin';
 
@@ -221,5 +222,26 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
         { name: '별도 낱개', spec: '2kg', qty: 1, price: 909, supply: 909, tax: 91, total: 1000, isTaxExempt: false, accountCode: '540' }] } };
     expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-13');
     expect((await db.collection('issuedStatements').doc('OEMFEE-po-13').get()).data()?.items).toEqual(request.statement.items);
+  });
+  it.each(['issue','receipt'])('신규 %s 확인 근거와 발행 공급가를 배치·입고로트에 원자 확정하고 재시도 변조를 거절한다',async source=>{
+    const poId=`po-confirmed-cost-${source}`,itemId=`confirmed-cost-product-${source}`;await seed([poId]);
+    const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'own-raw',kg:12,supplyAmount:24000}],packaging:{confirmed:true,supplyAmount:3000},capturedAt:'2026-10-03T00:00:00Z'};
+    const sent=[{rawItemId:'own-raw',kg:12}];const preview=buildOemBatchCostPreview(evidence,{companyId:'taebaek',sent},[{itemId,kg:10}]);
+    await db.collection('items').doc(itemId).set({companyId:'taebaek',name:'원가 완제품',spec:'1kg',unit:'개',packageKg:1,cost:123,stock:10,lots:[{id:`lot-oem-${poId}-${itemId}`,poId,kgIn:10,kgRemaining:10,qtyIn:10,qtyRemaining:10,unitKg:1}]});
+    await db.collection('purchaseOrders').doc(poId).update({partnerId:'factory',oemIssueDate:date,oemIssueFingerprint:JSON.stringify({companyId:'taebaek',partnerId:'factory',sent,date,note:'',oemCostEvidence:evidence}),oemSent:sent,oemCostEvidence:evidence,oemBatchCost:preview,items:[{itemId,name:'원가 완제품',quantity:10,unit:'개'}]});
+    if(source==='receipt'){
+      const receiptId=`oem-receive:${poId}`;
+      await db.collection('purchaseOrders').doc(poId).update({oemCostEvidenceSource:'receipt',oemReceiptOperationId:receiptId,oemIssueFingerprint:admin.firestore.FieldValue.delete()});
+      await db.collection('oemReceiptOperations').doc(receiptId).set({companyId:'taebaek',poId,oemCostEvidence:evidence});
+    }
+    const request={...command(poId),statement:{...statement(poId),items:[{name:'원가 완제품',spec:'1kg',qty:10,price:455,supply:4545,tax:455,total:5000,isTaxExempt:false,accountCode:'540'}]}};
+    expect(await issueOemFeeVoucher(db,'taebaek',request)).toBe(`OEMFEE-${poId}`);
+    const cost=(await db.collection('purchaseOrders').doc(poId).get()).get('oemBatchCost');
+    expect(cost).toMatchObject({status:'confirmed',rawSupplyAmount:24000,packagingSupplyAmount:3000,feeSupplyAmount:4545,totalSupplyAmount:31545,costPerKg:3154.5});
+    const item=(await db.collection('items').doc(itemId).get()).data()!;expect(item.cost).toBe(123);expect(item.stock).toBe(10);expect(item.lots[0].oemBatchCost).toMatchObject({allocatedSupplyAmount:31545,costPerKg:3154.5});
+    expect(await issueOemFeeVoucher(db,'taebaek',request)).toBe(`OEMFEE-${poId}`);
+    await db.collection('purchaseOrders').doc(poId).update({'oemBatchCost.totalSupplyAmount':1});
+    await expect(issueOemFeeVoucher(db,'taebaek',request)).rejects.toThrow('원가 확인 근거');
+    expect((await db.collection('appMeta').doc(counterId).get()).get('last')).toBe(1);
   });
 });

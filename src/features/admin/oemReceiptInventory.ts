@@ -1,3 +1,4 @@
+import type { OemCostEvidence } from '../../shared/oemBatchCost';
 import { collection, doc, getDocs, query, runTransaction, where, type Firestore } from 'firebase/firestore';
 import { pruneDepletedLots, withCarryOverProductLot } from '../../shared/lotUtils';
 import { companyOf, type AdjustmentRequest, type CompanyId, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
@@ -11,6 +12,7 @@ export interface OemReceiptItemChange {
 }
 
 export interface OemReceiptInventoryInput {
+  oemCostEvidence?: OemCostEvidence;
   companyId: CompanyId;
   poId: string;
   operationId: string;

@@ -1058,6 +1058,16 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const PAGE_SIZE = 24;
 
   const productMap = useMemo(() => new Map(items.map(p => [p.id, p])), [items]);
+  const hasPendingOemReceipt = (po: PurchaseOrder): boolean => {
+    if (companyOf(po) !== companyId || po.poType !== 'oem' || !['invoiced','received'].includes(po.status) || po.oemCancelledAt || po.oemCancelOperationId) return false;
+    try {
+      const value = JSON.parse(sessionStorage.getItem('oem-receipt-pending:'+companyId+':'+po.id) ?? 'null');
+      if (!value || typeof value !== 'object' || value.po?.id !== po.id || value.po?.companyId !== companyId || value.po?.poType !== 'oem' || !['invoiced','received'].includes(value.po?.status) || value.po?.oemCancelledAt || value.po?.oemCancelOperationId) return false;
+      const returnsOk = Array.isArray(value.returns) && value.returns.every((row: any) => typeof row.itemId === 'string' && row.itemId && Number.isFinite(row.qty) && row.qty > 0);
+      const bulkOk = Array.isArray(value.bulk) && value.bulk.every((row: any) => typeof row.material === 'string' && row.material && Number.isFinite(row.kg) && row.kg > 0);
+      return returnsOk && bulkOk && value.returns.length + value.bulk.length > 0 && Number.isFinite(value.unitPricePerKg) && value.unitPricePerKg >= 0 && typeof value.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.date);
+    } catch { return false; }
+  };
   const oemControlsReady = !!(oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg);
   const oemSummary = (po: PurchaseOrder) => {
     const sent = po.oemSent ?? [];
@@ -1671,7 +1681,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                           onRequestPurchaseInvoice(partnerId, partnerName, lines.map(line => ({ itemId: line.itemId, name: line.name || productMap.get(line.itemId)?.name || '', spec: productMap.get(line.itemId)?.spec || '', qty: line.quantity, price: 0 })), [po.id]);
                         }} className="font-bold text-rose-600 underline">발행하기</button>;
                       })()}</td>
-                      <td className="px-3 py-3 text-center">{row.type === '입고' && (row.source as PurchaseOrder).poType === 'oem' ? (!(row.source as PurchaseOrder).oemCancelledAt && (row.source as PurchaseOrder).status === 'invoiced' && <button type="button" disabled={!oemControlsReady} onClick={event => { event.stopPropagation(); if (companyOf(row.source) === companyId) setOemReceiveTarget(row.source as PurchaseOrder); }} className="rounded-lg border border-violet-200 px-2 py-1 text-xs font-bold text-violet-600 disabled:opacity-40">가공입고</button>) : row.status !== '완료' && <button type="button" disabled={flowSaving || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))} onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
+                      <td className="px-3 py-3 text-center">{row.type === '입고' && (row.source as PurchaseOrder).poType === 'oem' ? (!(row.source as PurchaseOrder).oemCancelledAt && !(row.source as PurchaseOrder).oemCancelOperationId && ((row.source as PurchaseOrder).status === 'invoiced' || hasPendingOemReceipt(row.source as PurchaseOrder)) && <button type="button" disabled={!oemControlsReady} onClick={event => { event.stopPropagation(); if (companyOf(row.source) === companyId) setOemReceiveTarget(row.source as PurchaseOrder); }} className="rounded-lg border border-violet-200 px-2 py-1 text-xs font-bold text-violet-600 disabled:opacity-40">{hasPendingOemReceipt(row.source as PurchaseOrder) ? '입고 요청 재개' : '가공입고'}</button>) : row.status !== '완료' && <button type="button" disabled={flowSaving || (row.type === '입고' && row.status === '대기' && !canConfirmReceipt(row.source as PurchaseOrder))} onClick={event => { event.stopPropagation(); requestTransition(row); }} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-bold text-indigo-600">{row.type === '반품' ? '반품 처리' : row.status === '예정' ? '발주확정' : '입고확정'}</button>}</td>
                     </tr>
                   ))}
                   {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-16 text-center text-sm font-bold text-slate-300">해당하는 입고·반품 내역이 없습니다.</td></tr>}
@@ -1742,7 +1752,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 finally { oemCancelBusy.current = false; if (active()) setFlowSaving(false); }
               }} className="min-w-20 flex-1 rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">삭제</button>}
               <button type="button" disabled={flowSaving} onClick={() => setFlowDetail(null)} className="min-w-20 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-slate-600 disabled:opacity-40">닫기</button>
-              {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'invoiced' && isAdmin && onOemCancel && <button type="button" disabled={flowSaving} onClick={async () => {
+              {po?.poType === 'oem' && !po.oemCancelledAt && !po.oemCancelOperationId && po.status === 'invoiced' && isAdmin && onOemCancel && <button type="button" disabled={flowSaving} onClick={async () => {
                 if (oemCancelBusy.current) return;
                 oemCancelBusy.current = true;
                 const detail = flowDetail;
@@ -1756,7 +1766,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 } catch (error) { if (active()) alert(`외주 발주를 취소하지 못했습니다. 같은 발주에서 다시 시도하세요: ${error instanceof Error ? error.message : String(error)}`); }
                 finally { oemCancelBusy.current = false; if (active()) setFlowSaving(false); }
               }} className="rounded-xl border border-rose-200 px-3 py-2.5 text-xs font-black text-rose-600 disabled:opacity-40">외주 발주 취소</button>}
-              {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'invoiced' && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemReceiveTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">가공입고</button>}
+              {po?.poType === 'oem' && !po.oemCancelledAt && !po.oemCancelOperationId && (po.status === 'invoiced' || hasPendingOemReceipt(po)) && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemReceiveTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">{hasPendingOemReceipt(po) ? '입고 요청 재개' : '가공입고'}</button>}
               {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'received' && !po.linkedStatementId && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemFeeTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">가공비 발행</button>}
               {po && po.poType !== 'oem' && pending && <button type="button" disabled={flowSaving || sourceChanged || !canReceive} onClick={async () => {
                 setFlowSaving(true);

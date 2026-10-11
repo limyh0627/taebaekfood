@@ -1,3 +1,4 @@
+import { readOemCostInvalidation, writeOemCostInvalidation } from './oemBatchCostInvalidation';
 import { readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
 import { isRawPurchaseItem } from './shared/purchaseCost';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -156,7 +157,7 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
           if (linked.length > 1) throw new HttpsError('failed-precondition', '원료에 연결된 여러 발주를 먼저 확인해 주세요.');
           if (returnRows.docs.some(row => companyOf(row.data().companyId) === claims.companyId
             && row.data().items?.some((item: Record<string, any>) => item.itemId === line.itemId && (item.sourceLineIndex === undefined || item.sourceLineIndex === sourceIndex))))
-            throw new HttpsError('failed-precondition', '반품이 연결된 원료의 매입 단위·수량은 변경할 수 없습니다. 반품 취소 후 확인해 주세요.');
+            throw new HttpsError('failed-precondition', '반품이 연결된 원료의 매입 단위·수량은 변경할 수 없습니다. 연결된 반품 내역을 확인해 주세요.');
           if (linked.some(({po}) => !['pending','invoiced'].includes(po.data().status)))
             throw new HttpsError('failed-precondition', '이미 입고된 원료의 매입 단위·수량은 입고 취소 후 변경해 주세요.');
           if (!readPurchaseUnitSnapshot(previous) && linked.length !== 1)
@@ -189,6 +190,9 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     const after = { ...old, ...patch, mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId };
     const editProof = { statementId, uid: request.auth!.uid, companyId: claims.companyId, kind: 'issuedStatements', status: 'applied',
       action: 'edit-statement', expectedRevision, revision: revision + 1, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after) };
+    const feeChanged = ['totalSupply','totalTax','totalAmount','partnerId','items'].some(key => key in patch && hash(patch[key]) !== hash(old[key]));
+    const oemCostInvalidation = feeChanged ? await readOemCostInvalidation(db, tx, claims.companyId, statementId, 'fee-changed') : [];
+    if (oemCostInvalidation.length + purchaseOrderUpdates.length + (approval ? 3 : 2) > 500) throw new HttpsError('failed-precondition', '연결된 원가 근거가 너무 많습니다.');
     const advanceSnapshot = old.partnerId ? await readPartnerAdvanceSnapshot(db, tx, claims.companyId, old.partnerId) : null;
     const affected = advanceSnapshot ? activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any, claims.companyId, old.partnerId)
       .filter(row => row.noncashApplication.kind === 'advance-application' && row.noncashApplication.allocations.some(allocation => allocation.statementId === statementId)) : [];
@@ -218,9 +222,10 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
           advanceMutations.push(reapplied); projected.rows.issuedStatements.push(reapplied.statement); projected.rows.partnerAdvanceOperations.push(reapplied.operation);
         }
       }
-      if (advanceMutations.length * 2 + (approval ? 5 : 4) > 500) throw new HttpsError('failed-precondition', '연결된 적용 내역이 너무 많습니다.');
+      if (advanceMutations.length * 2 + oemCostInvalidation.length + purchaseOrderUpdates.length + (approval ? 5 : 4) > 500) throw new HttpsError('failed-precondition', '연결된 적용 내역이 너무 많습니다.');
       writePartnerAdvanceMutations(tx, advanceSnapshot!, advanceScope, advanceMutations);
     }
+    writeOemCostInvalidation(tx, oemCostInvalidation);
     for (const update of purchaseOrderUpdates) tx.update(update.ref,{items:update.items,...(next.partnerId !== old.partnerId ? {partnerId:next.partnerId,partnerName:next.partnerName}: {})});
     tx.update(statementRef, { ...patch, mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId });
     if (approval && editRef) tx.update(editRef, { status: 'approved', approvalOperationId: operationId,

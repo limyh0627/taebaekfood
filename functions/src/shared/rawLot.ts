@@ -14,6 +14,8 @@ export interface RawMaterialLot {
   status: 'active' | 'depleted';
   poId?: string;              // 원본 입고 전표(purchaseOrders) 참조 — OEM 박스 로트는 가공 배치 id
   createdAt: string;
+  /** OEM 입고 배치의 확인 공급가 배분. 현재 품목 원가나 과거 FIFO 단가가 아니다. */
+  oemBatchCost?: { poId: string; feeStatementId: string; receivedKg: number; totalSupplyAmount: number; allocatedSupplyAmount: number; costPerKg: number };
 
   // ── 물질 축 ──────────────────────────────────────────────────────────
   /**
@@ -68,6 +70,8 @@ export function buildReceiveLot(params: {
   id: string;
   /** 만든 시각을 밖에서 정해 넣는다 — 위와 같은 이유. */
   createdAt: string;
+  /** OEM 입고 배치의 확인 공급가 배분. 현재 품목 원가나 과거 FIFO 단가가 아니다. */
+  oemBatchCost?: { poId: string; feeStatementId: string; receivedKg: number; totalSupplyAmount: number; allocatedSupplyAmount: number; costPerKg: number };
 }): RawMaterialLot {
   const now = params.createdAt;
   return {
@@ -171,4 +175,3 @@ export function deductFromLots(
     shortageKg: round3(Math.max(0, remaining)),
   };
 }
-

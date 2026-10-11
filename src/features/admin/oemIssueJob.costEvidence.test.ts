@@ -1,0 +1,10 @@
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+const h=vi.hoisted(()=>({data:null as any,writes:0}));
+vi.mock('firebase/firestore',()=>({doc:(_db:any,_collection:string,id:string)=>({id}),runTransaction:async(_db:any,callback:any)=>callback({get:async(ref:any)=>({id:ref.id,exists:()=>!!h.data,data:()=>h.data}),set:(_ref:any,value:any)=>{h.writes++;h.data=structuredClone(value)},update:()=>{}})}));
+import {firestoreOemIssuePorts,runOemIssueJob,type OemIssueInput} from './oemIssueJob';
+const command=():OemIssueInput=>({jobId:'job',companyId:'taebaek',partnerId:'oem',partnerName:'외주',date:'2026-10-11',sent:[{rawItemId:'raw',material:'들깨',kg:100}],oemCostEvidence:{version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:220000}],packaging:{confirmed:true,supplyAmount:0},capturedAt:'2026-10-11T00:00:00Z'}});
+beforeEach(()=>{h.data=null;h.writes=0;});
+describe('OEM 실제 draft 저장 포트의 근거 보존',()=>{
+ it('확인 근거를 실제 draft 문서에 보존하고 동일 재시도는 문서를 다시 생성하지 않는다',async()=>{const input=command();const ports=firestoreOemIssuePorts({} as any);await runOemIssueJob(input,{...ports,runRawSteps:async()=>{},missingRawSteps:async()=>[],finalizeDraft:async()=>{}});expect(h.data.oemCostEvidence).toEqual(input.oemCostEvidence);expect(h.data.oemIssueFingerprint).toContain('220000');await ports.prepareDraft(command());expect(h.writes).toBe(1);});
+ it('같은 작업번호로 확인 금액 또는 확인 시각을 바꾸면 기존 draft를 유지하고 거절한다',async()=>{const ports=firestoreOemIssuePorts({} as any);await ports.prepareDraft(command());for(const change of ['amount','timestamp']){const next=command();if(change==='amount')next.oemCostEvidence!.rawMaterials[0].supplyAmount=221000;else next.oemCostEvidence!.capturedAt='2026-10-11T00:01:00Z';await expect(ports.prepareDraft(next)).rejects.toThrow('내용이 다릅니다');}expect(h.writes).toBe(1);expect(h.data.oemCostEvidence.rawMaterials[0].supplyAmount).toBe(220000);});
+});

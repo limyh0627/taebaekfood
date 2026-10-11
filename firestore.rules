@@ -154,7 +154,8 @@ service cloud.firestore {
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.itemId == resource.data.itemId
         && request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isAdmin() && deleteOk();
+      allow delete: if isAdmin() && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
     }
     // 현금 내역은 서버 원자 명령만 저장한다. 기존 회사별 관리자 조회는 유지한다.
     match /cashEntries/{id} {
@@ -268,7 +269,8 @@ service cloud.firestore {
     match /employees/{employeeId} {
       allow read: if readOk();
       allow create: if isAdmin() && canSee(request.resource.data.companyId);
-      allow delete: if isAdmin() && deleteOk();
+      allow delete: if isAdmin() && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
       allow update: if (isAdmin() && createUpdateOk())
                     || (isEmployee()
                         && me() == employeeId
@@ -301,7 +303,8 @@ service cloud.firestore {
                         && request.resource.data.companyId == resource.data.companyId
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['startDate', 'endDate', 'days', 'reason', 'type', 'note', 'updatedAt']));
-      allow delete: if (isAdmin() && deleteOk())
+      allow delete: if (isAdmin() && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null))
                             || (isEmployee()
                                 && resource.data.employeeId == me()
                                 && canSee(resource.data.companyId)
@@ -328,7 +331,8 @@ service cloud.firestore {
                         && request.resource.data.requestedBy == resource.data.requestedBy
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['qty', 'quantity', 'reason', 'note', 'type', 'updatedAt']));
-      allow delete: if isAdmin() && deleteOk();
+      allow delete: if isAdmin() && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
     }
 
     // ── 오피스톡 방 ────────────────────────────────────────────
@@ -387,7 +391,8 @@ service cloud.firestore {
     match /notices/{id} {
       allow read: if readOk();
       allow create, update: if isAdmin() && createUpdateOk();
-      allow delete: if isAdmin() && deleteOk();
+      allow delete: if isAdmin() && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
     }
 
     // 전환 문서는 회사 없는 서버 공통 설정이라 관리자 단건 조회만 예외로 연다.
@@ -412,6 +417,21 @@ service cloud.firestore {
         || !(get(gate).data.firstYearMonth is string);
     }
 
+    // 새 OEM 원가 근거는 발주 때 고정하고 확정 원가는 서버 거래만 저장한다.
+    function oemCostFieldsOk(c) {
+      return c != 'purchaseOrders'
+        || (resource == null
+          ? !request.resource.data.keys().hasAny(['oemBatchCost', 'oemCostEvidenceSource'])
+          : request.resource.data.get('oemBatchCost', null) == resource.data.get('oemBatchCost', null)
+            && request.resource.data.get('oemCostEvidence', null) == resource.data.get('oemCostEvidence', null)
+            && request.resource.data.get('oemCostEvidenceSource', null) == resource.data.get('oemCostEvidenceSource', null)
+            && (resource.data.get('oemBatchCost', null) == null
+              || request.resource.data.get('linkedStatementId', null) == resource.data.get('linkedStatementId', null)
+                && request.resource.data.get('linkedStatementAt', null) == resource.data.get('linkedStatementAt', null))
+            && (resource.data.get('oemCostEvidence', null) == null
+              || request.resource.data.get('oemIssueFingerprint', null) == resource.data.get('oemIssueFingerprint', null)
+                && request.resource.data.get('oemSent', null) == resource.data.get('oemSent', null)));
+    }
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
     //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워
     //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
@@ -428,10 +448,12 @@ service cloud.firestore {
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
                             && inventoryQuantityOk(collection)
+                            && oemCostFieldsOk(collection)
                             && payrollWriteAllowed(collection);
       allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk()
+                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null)
                     && payrollWriteAllowed(collection);
     }
   }

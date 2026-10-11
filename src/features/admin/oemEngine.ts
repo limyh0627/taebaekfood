@@ -1,3 +1,5 @@
+import {sumOemReceivedKg} from '../../shared/oemBatchCost';
+import { validateAndMergeOemCostEvidence, type OemCostEvidence } from './oemCostEvidence';
 
 import { stampFor } from '../../shared/voucherStamp';
 import { companyOf, type CompanyId, type Item, type IssuedStatement, type Partner, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
@@ -80,6 +82,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     date: string;   // YYYY-MM-DD
     addedBy?: string;
     note?: string;
+    oemCostEvidence?: OemCostEvidence;
   }): Promise<{ poId: string }> {
     const clean = input.sent.filter(s => s.material && s.kg > 0);
     if (clean.length === 0) throw new Error('내보낼 원료가 없습니다.');
@@ -98,9 +101,11 @@ export function createOemEngine(deps: OemEngineDeps) {
       const previous = sent.get(holder.id);
       sent.set(holder.id, { material: row.material, rawItemId: holder.id, kg: (previous?.kg ?? 0) + row.kg });
     });
+    const sentRows=[...sent.values()].map(row=>input.oemCostEvidence ? {...row,kg:Math.round(row.kg*1000)/1000} : row);
     return issueOemBatchJob({
       jobId: input.jobId, companyId, partnerId: partner.id, partnerName: partner.name,
-      sent: [...sent.values()], date: input.date, note: input.note, addedBy: input.addedBy,
+      sent: sentRows, date: input.date, note: input.note, addedBy: input.addedBy,
+      ...(input.oemCostEvidence ? {oemCostEvidence:validateAndMergeOemCostEvidence(input.oemCostEvidence,companyId,sentRows)} : {}),
     });
   }
 
@@ -116,6 +121,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     /** 벌크(포장 안 한 상태)로 돌아온 kg — 원료 홀더 로트에 그대로 쌓는다.
      *  우리가 소분·포장하는 몫이라 재고가 우리 로트에 있어야 한다. */
     bulk?: { material: string; kg: number }[];
+    oemCostEvidence?: OemCostEvidence;
     unitPricePerKg?: number;                       // 가공단가(원/kg) — 전표 발행 때 쓰려고 배치에 저장
     date: string;
     addedBy?: string;
@@ -188,7 +194,12 @@ export function createOemEngine(deps: OemEngineDeps) {
       receiptItems.push({ itemId: item.id, qty: r.qty, ...(productLot && material ? { lot: productLot, material, unitKg } : {}) });
     }
 
-    receivedKg = Math.round(receivedKg * 1000) / 1000;
+    receivedKg = po.oemCostEvidence || input.oemCostEvidence
+      ? sumOemReceivedKg(lines.map(row => {
+          const product = items.find(item => item.id === row.itemId)!;
+          return itemKg(product, deps.orderUnitInputs) * row.qty;
+        }))
+      : Math.round(receivedKg * 1000) / 1000;
 
     //  **완포장 서류용 원장 줄(`rm-oem-...`)은 더 이상 만들지 않는다**(2026-09-10 원자화 5단계).
     //   `rawMaterialLedger` 는 실제 원료 재고가 움직인 자리만 남긴다. 완포장은 원료 홀더가
@@ -209,6 +220,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       reason: `${po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
       status: 'pending', requestedAt: new Date().toISOString(),
     };
+    const receiptEvidence = !po.oemCostEvidence && input.oemCostEvidence ? validateAndMergeOemCostEvidence(input.oemCostEvidence, companyId, (po.oemSent ?? []).map(row => ({rawItemId: row.rawItemId ?? '', kg: row.kg}))) : undefined;
     const receipt = await applyOemReceiptInventory({
       companyId,
       poId: po.id,
@@ -216,6 +228,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       date: input.date,
       items: receiptItems,
       feeRequest,
+      ...(receiptEvidence ? {oemCostEvidence: receiptEvidence} : {}),
       poPatch: {
         status: 'received', receivedAt: new Date().toISOString(),
         oemReceivedKg: receivedKg, items: poItems,

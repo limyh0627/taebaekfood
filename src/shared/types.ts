@@ -1,3 +1,5 @@
+import type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
+export type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
 import type { PurchaseUnitSnapshot } from './purchaseUnit';
 export type { ItemPurchaseUnit, PurchaseUnitSnapshot } from './purchaseUnit';
 import type { AP, OTHER_PAYABLE } from './autoJournal';
@@ -1181,7 +1183,7 @@ export interface PurchaseOrderItem extends Partial<PurchaseUnitSnapshot> {
   sourceLineIndex?: number;
   itemId: string;
   name: string;
-  /** **언제나 그 품목의 재고 단위.** 박스로 골랐어도 담을 때 낱개로 풀어 넣는다. */
+  /** 기존 줄은 재고 단위. 매입단위 스냅샷이 있는 원료 줄은 거래 수량이며 kg는 inventoryQty를 사용한다. */
   quantity: number;
   unit: string;
   /**
@@ -1213,7 +1215,7 @@ export interface PurchaseOrder {
    * 카드 id 는 만든 순간(ms)이라 사람이 못 읽는다. 화면끼리 같은 카드를 가리키려면 번호가 있어야 한다.
    */
   cardNo?: string;
-  linkedStatementAt?: string;   // 전표 발행(연결) 시각 — 선입고 이력 1일 뒤 자동삭제 기준
+  linkedStatementAt?: string;   // 전표 발행·연결 시각 — 입고 이력은 계속 보존
   createdAt: string;
   invoicedAt?: string;
   receivedAt?: string;
@@ -1224,6 +1226,12 @@ export interface PurchaseOrder {
   //   발주(sent): 내보낸 원료를 oemSent에 기록하며 본재고→외주재고 이동(전표 없음).
   //   가공입고(received): items[]에 돌아온 완제품/벌크, 외주재고 정리, 가공비 매입전표(linkedStatementId).
   poType?: 'oem';
+  /** 새 발주에서 사용자가 확인한 원물·부자재 공급금액. 과거 품목 단가로 채우지 않는다. */
+  oemCostEvidence?: OemCostEvidence;
+  /** issue는 발주 확인값, receipt는 최초 입고 거래에서 확인해 고정한 값. */
+  oemCostEvidenceSource?: 'issue' | 'receipt';
+  /** 받은 kg와 실제 가공비 전표 공급액을 연결한 배치 원가. */
+  oemBatchCost?: OemBatchCostPreview | OemBatchCostBlocked | OemBatchCost;
   oemPartnerId?: string;                          // 외주공장 (거래처)
   oemSent?: { material: string; kg: number; rawItemId?: string }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
   oemSentAt?: string;                             // 외주 출고 시각

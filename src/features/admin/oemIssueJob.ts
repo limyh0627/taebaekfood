@@ -1,3 +1,4 @@
+import { validateAndMergeOemCostEvidence, type OemCostEvidence } from './oemCostEvidence';
 import { doc, runTransaction, type Firestore } from 'firebase/firestore';
 import { COL } from '../../shared/collections';
 import type { RawInventoryCommand } from '../../shared/rawInventoryCore';
@@ -14,6 +15,7 @@ export interface OemIssueInput {
   date: string;
   note?: string;
   addedBy?: string;
+  oemCostEvidence?: OemCostEvidence;
 }
 
 export type OemIssueDraft = PurchaseOrder & {
@@ -30,6 +32,7 @@ export const oemIssueFingerprint = (input: OemIssueInput): string => JSON.string
   sent: input.sent,
   date: input.date,
   note: input.note ?? '',
+  ...(input.oemCostEvidence ? {oemCostEvidence:input.oemCostEvidence} : {}),
 });
 
 export const recoverableOemDrafts = (orders: readonly PurchaseOrder[], companyId: CompanyId): PurchaseOrder[] =>
@@ -49,6 +52,7 @@ export async function runOemIssueJob(input: OemIssueInput, ports: OemIssuePorts)
   if (!input.jobId || !input.sent.length || new Set(input.sent.map(row => row.rawItemId)).size !== input.sent.length) {
     throw new Error('OEM 작업번호 또는 원료 목록이 잘못되었습니다. 같은 원료는 한 줄로 합쳐야 합니다.');
   }
+  if(input.oemCostEvidence) input={...input,oemCostEvidence:validateAndMergeOemCostEvidence(input.oemCostEvidence,input.companyId,input.sent)};
   const draft = await ports.prepareDraft(input);
   if (draft.oemIssueStatus === 'complete' && draft.status === 'invoiced') {
     const missing = await ports.missingRawSteps(draft);
@@ -103,6 +107,7 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
         ...(input.addedBy ? { oemIssuedBy: input.addedBy } : {}),
         partnerId: input.partnerId, partnerName: input.partnerName, oemPartnerId: input.partnerId,
         oemSent: input.sent,
+        ...(input.oemCostEvidence ? {oemCostEvidence:input.oemCostEvidence} : {}),
         itemId: '', itemName: '', quantity: 0, items: [], createdAt: now,
         ...(input.note ? { note: input.note } : {}),
       };

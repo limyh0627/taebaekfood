@@ -1,3 +1,4 @@
+import {readOemCostInvalidation,writeOemCostInvalidation} from './oemBatchCostInvalidation';
 import * as admin from 'firebase-admin';
 import {readStatementCreation} from './statementCreationReceipt';
 import {createHash} from 'crypto';
@@ -95,6 +96,7 @@ export async function deleteIssuedStatement(db:admin.firestore.Firestore,company
   const snapshots=await Promise.all(refs.flat().map(ref=>tx.get(ref)));
   const links:Link[]=snapshots.filter(snap=>snap.exists).map(snap=>({kind:snap.ref.parent.id as Link['kind'],id:snap.id,data:snap.data()!}));
   const plan=planStatementDeletion(companyId,input.statementId,original,links,state?.exists?state.data()!:null);
+  const oemCostInvalidation=await readOemCostInvalidation(db,tx,companyId,input.statementId,'fee-deleted');
   const advanceSnapshot=partnerId?await readPartnerAdvanceSnapshot(db,tx,companyId as 'taebaek'|'punghoe',partnerId):null;
   const affected=advanceSnapshot?activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any,companyId as 'taebaek'|'punghoe',partnerId)
     .filter(row=>row.noncashApplication.kind==='advance-application'&&row.noncashApplication.allocations.some(allocation=>allocation.statementId===input.statementId
@@ -104,8 +106,9 @@ export async function deleteIssuedStatement(db:admin.firestore.Firestore,company
   const advanceMutations=[];
   for(const application of affected)advanceMutations.push(await prepareAdvanceCancellation(db,tx,advanceSnapshot!,application.id,{
     operationId:'delete-advance-'+statementDeletionHash([input.operationId,application.id]),date:cancelDate,reason:'원전표 삭제에 따른 적용 취소',actorId},advanceScope!));
-  if(plan.clear.length+plan.remove.length+(partnerId?3:2)+advanceMutations.length*2+(advanceScope?1:0)>500)fail('연결 문서가 너무 많아 삭제할 수 없습니다.');
+  if(plan.clear.length+plan.remove.length+(partnerId?3:2)+advanceMutations.length*2+oemCostInvalidation.length+(advanceScope?1:0)>500)fail('연결 문서가 너무 많아 삭제할 수 없습니다.');
   writesStarted=true;
+  writeOemCostInvalidation(tx,oemCostInvalidation);
   if(advanceScope)writePartnerAdvanceMutations(tx,advanceSnapshot!,advanceScope,advanceMutations,{writePartnerRevision:false});
   for(const row of plan.clear)tx.update(db.collection(row.kind).doc(row.id),{linkedStatementId:admin.firestore.FieldValue.delete(),linkedStatementAt:admin.firestore.FieldValue.delete()});
   for(const row of plan.remove)tx.delete(db.collection('settlements').doc(row.id));

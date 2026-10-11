@@ -159,4 +159,52 @@ describe('OEM finished-goods server transaction', () => {
     await db.doc('appMeta/releaseCutover').update({ status: 'paused' });
     await expect(receiveOemFinishedGoods(db, 'taebaek', input())).rejects.toThrow('활성화');
   });
+  it('명시 원가 배치는 소수 중량 두 로트의 합계를 PO·preview·가공비에 동일하게 저장한다',async()=>{
+    await db.doc('appMeta/releaseCutover').update({status:'active',releaseId:prefix,oemLotCutoverDate:date});
+    const po=`${poId}-fraction`,operation=`oem-receive:${po}`,products=[`${prefix}-fraction-a`,`${prefix}-fraction-b`];
+    paths.push(`purchaseOrders/${po}`,`oemReceiptOperations/${operation}`,`adjustmentRequests/OEMFEE-${po}`);
+    const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw-fraction',kg:1,supplyAmount:1000}],packaging:{confirmed:true,supplyAmount:0},capturedAt:'2026-10-03T00:00:00Z'};
+    for(const product of products){
+      paths.push(`items/${product}`,`item_formula/${product}`);
+      await db.doc(`items/${product}`).create({companyId:'taebaek',name:product,procureType:'임가공',unit:'개',packageKg:0.3333,stock:0,lots:[],testRunId:prefix});
+      await db.doc(`item_formula/${product}`).create({parent_key:product,child_name:material,ratio:1,yield_rate:1,testRunId:prefix});
+    }
+    await db.doc(`purchaseOrders/${po}`).create({companyId:'taebaek',poType:'oem',status:'invoiced',oemPartnerId:partnerId,oemSent:[{material,rawItemId:'raw-fraction',kg:1}],testRunId:prefix});
+    const result=await receiveOemFinishedGoods(db,'taebaek',{...input(),poId:po,operationId:operation,returns:products.map(itemId=>({itemId,qty:1})),unitPricePerKg:1000,oemCostEvidence:evidence});
+    const stored=await saved(`purchaseOrders/${po}`);
+    const lots=await Promise.all(products.map(async product=>(await saved(`items/${product}`))?.lots[0]));
+    expect(result.receivedKg).toBe(0.666);
+    expect(lots.map(lot=>lot.kgIn)).toEqual([0.333,0.333]);
+    expect(stored?.oemReceivedKg).toBe(0.666);
+    expect(stored?.oemBatchCost.receivedKg).toBe(0.666);
+    expect(stored?.oemBatchCost.rows.reduce((sum:number,row:{kg:number})=>sum+row.kg,0)).toBe(0.666);
+    expect((await saved(`adjustmentRequests/OEMFEE-${po}`))?.oemTotal).toBe(666);
+  });  it('신규 원가 근거는 미확정 preview로 고정하고 변조·증가수율과 누락을 구분한다',async()=>{
+    await db.doc('appMeta/releaseCutover').update({status:'active',releaseId:prefix,oemLotCutoverDate:date});
+    for(const mode of ['confirmed','yield','missing','receipt']){
+      const newPo=`${poId}-cost-${mode}`,newOperation=`oem-receive:${newPo}`;
+      paths.push(`purchaseOrders/${newPo}`,`oemReceiptOperations/${newOperation}`,`adjustmentRequests/OEMFEE-${newPo}`);
+      const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw-source',kg:6,supplyAmount:12000}],packaging:{confirmed:true,supplyAmount:3000},capturedAt:'2026-10-03T00:00:00Z'};
+      await db.doc(`purchaseOrders/${newPo}`).create({companyId:'taebaek',poType:'oem',status:'invoiced',oemPartnerId:partnerId,partnerName:'demo OEM',oemSent:[{material,rawItemId:'raw-source',kg:6}],...(['missing','receipt'].includes(mode)?{}:{oemCostEvidence:evidence}),testRunId:prefix});
+      if(!['missing','receipt'].includes(mode))await db.doc(`purchaseOrders/${newPo}`).update({partnerId,oemIssueDate:date,oemIssueFingerprint:JSON.stringify({companyId:'taebaek',partnerId,sent:[{material,rawItemId:'raw-source',kg:6}],date,note:'',oemCostEvidence:evidence})});
+      const request={...input(),poId:newPo,operationId:newOperation,returns:[{itemId,qty:mode==='yield'?7:5}],...(mode==='receipt'?{oemCostEvidence:evidence}:{})};
+      const beforeCost=(await saved(`items/${itemId}`))?.cost;
+      expect((await receiveOemFinishedGoods(db,'taebaek',request)).status).toBe('applied');
+      const cost=(await saved(`purchaseOrders/${newPo}`))?.oemBatchCost;
+      expect(cost).toMatchObject(['confirmed','receipt'].includes(mode)?{status:'pending-fee',rawSupplyAmount:12000,packagingSupplyAmount:3000,receivedKg:5,lossKg:1}:{status:'blocked',reason:mode==='yield'?'yield-unconfirmed':'missing-evidence'});
+      expect(cost.totalSupplyAmount).toBeUndefined();expect((await saved(`items/${itemId}`))?.cost).toBe(beforeCost);
+      expect((await receiveOemFinishedGoods(db,'taebaek',request)).status).toBe('duplicate');
+      if(mode==='receipt'){
+        expect((await saved(`purchaseOrders/${newPo}`))?.oemCostEvidenceSource).toBe('receipt');
+        expect((await saved(`oemReceiptOperations/${newOperation}`))?.oemCostEvidence).toEqual(evidence);
+        await expect(receiveOemFinishedGoods(db,'taebaek',{...request,oemCostEvidence:{...evidence,capturedAt:'2026-10-04T00:00:00Z'}})).rejects.toThrow();
+        await db.doc(`oemReceiptOperations/${newOperation}`).update({'oemCostEvidence.rawMaterials':[{rawItemId:'raw-source',kg:6,supplyAmount:1}]});
+        await expect(receiveOemFinishedGoods(db,'taebaek',request)).rejects.toThrow('고정한 원가 근거');
+      }
+      if(mode==='confirmed'){
+        await db.doc(`purchaseOrders/${newPo}`).update({'oemCostEvidence.rawMaterials':[{rawItemId:'raw-source',kg:6,supplyAmount:1}]});
+        await expect(receiveOemFinishedGoods(db,'taebaek',request)).rejects.toThrow('원가 입력 근거');
+      }
+    }
+  });
 });

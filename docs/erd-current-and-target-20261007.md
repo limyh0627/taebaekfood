@@ -225,3 +225,5 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 매입 단위는 품목 배열이 아닌 item_purchase_unit 별도 컬렉션으로 관리한다. 매입 전표·발주 줄은 purchaseUnitId/purchaseUnit/purchaseQty/unitKg/inventoryQty 다섯 필드를 함께 저장하며 sourceLineIndex로 같은 품목의 다른 단위 줄을 구분한다. 과거 원가용 purchaseQuantityKg는 입고 확정 kg로 전환하지 않는다. 현재 표를 수정해도 이미 저장된 거래의 환산값은 바뀌지 않는다.
 
 필드 사전은 기존 직접 선언 통계와 별도로 TypeScript가 해석한 모델 필드를 제공한다. 상속, Partial, intersection의 필드·선택 여부·원본 선언 위치를 표시한다. union/any는 임의의 데이터베이스 구조로 펼치지 않는다. 자체 검증과 독립 fixture 3개를 통과했으며 새 컬렉션 이외의 운영 자료나 Figma 보류 범위를 변경하지 않았다.
+
+2026-10-11 OEM 신규 원가 근거: PurchaseOrder의 oemCostEvidence·oemCostEvidenceSource·oemBatchCost는 발주 또는 최초 입고 원문과 receiptOperation provenance를 고정한다. 실제 fee 전표 공급액으로 확정하고 해당 RawMaterialLot.oemBatchCost로 배분한다. 가공비 수정·삭제 시 blocked/previousConfirmed로 보존하며 로트 금액 표시만 해제한다. 과거 원가 자동 역산은 하지 않는다.
