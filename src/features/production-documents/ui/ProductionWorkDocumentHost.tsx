@@ -3,10 +3,11 @@ import type { CompanyId } from '../../../shared/types';
 import ProductionWorkDocumentEditor from './ProductionWorkDocumentEditor';
 import { loadProductionWorkDocument, loadProductionWorkEvidence, saveProductionWorkDocument } from '../infrastructure/productionWorkDocumentRepository';
 // 이 진입점을 AdminApp 생산 작업일지 분기에 연결한다. 날짜 선택 UI와 기존 다른 서류는 보존한다.
-export default function ProductionWorkDocumentHost(props: { companyId: CompanyId; date: string; actorId: string }) {
+type HostProps = { companyId: CompanyId; date: string; actorId: string; onStateChange?: (state: { dirty: boolean; busy: boolean }) => void };
+export default function ProductionWorkDocumentHost(props: HostProps) {
   return <Session key={JSON.stringify([props.companyId, props.date, props.actorId])} {...props} />;
 }
-function Session({ companyId, date, actorId }: { companyId: CompanyId; date: string; actorId: string }) {
+function Session({ companyId, date, actorId, onStateChange }: HostProps) {
   const [loaded, setLoaded] = useState<Awaited<ReturnType<typeof loadProductionWorkDocument>> | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -21,5 +22,5 @@ function Session({ companyId, date, actorId }: { companyId: CompanyId; date: str
   if (error) return <p role="alert">{error}</p>;
   if (!loaded) return <p role="status">생산작업일지를 불러오는 중입니다.</p>;
   return <ProductionWorkDocumentEditor initialDocument={loaded.document} initialLines={loaded.lines}
-    loadEvidence={() => loadProductionWorkEvidence(companyId, date)} onSave={saveProductionWorkDocument} />;
+    loadEvidence={() => loadProductionWorkEvidence(companyId, date)} onSave={saveProductionWorkDocument} onStateChange={onStateChange} />;
 }

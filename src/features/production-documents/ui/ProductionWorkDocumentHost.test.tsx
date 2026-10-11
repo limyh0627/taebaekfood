@@ -20,8 +20,9 @@ describe('생산 문서 회사·날짜 세션',()=>{
  });
  it('회사 변경 뒤 늦은 저장 실패는 새 회사에 안내하지 않는다',async()=>{
   const old=deferred<any>();mocks.load.mockResolvedValueOnce(result('taebaek')).mockResolvedValueOnce(result('punghoe'));mocks.save.mockReturnValueOnce(old.promise);
-  const view=render(<ProductionWorkDocumentHost companyId="taebaek" date="2026-10-07" actorId="actor"/>);await screen.findByLabelText('특이사항');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
-  view.rerender(<ProductionWorkDocumentHost companyId="punghoe" date="2026-10-07" actorId="actor"/>);await screen.findByLabelText('특이사항');await act(async()=>{old.reject(new Error('태백 늦은 실패'));await old.promise.catch(()=>{});});expect(mocks.notice).not.toHaveBeenCalled();
+  const state=vi.fn();
+  const view=render(<ProductionWorkDocumentHost companyId="taebaek" date="2026-10-07" actorId="actor" onStateChange={state}/>);await screen.findByLabelText('특이사항');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
+  view.rerender(<ProductionWorkDocumentHost companyId="punghoe" date="2026-10-07" actorId="actor" onStateChange={state}/>);await screen.findByLabelText('특이사항');state.mockClear();await act(async()=>{old.reject(new Error('태백 늦은 실패'));await old.promise.catch(()=>{});});expect(mocks.notice).not.toHaveBeenCalled();expect(state).not.toHaveBeenCalled();
  });
  it('같은 회사의 날짜 변경은 새 초안을 열고 이전 근거 결과를 버린다',async()=>{
   const old=deferred<any[]>();mocks.load.mockResolvedValueOnce(result('taebaek')).mockResolvedValueOnce(result('taebaek','2026-10-08'));mocks.evidence.mockReturnValueOnce(old.promise);

@@ -10,6 +10,8 @@ import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
 import { inspectStoredOemCostDisplay, reconcileOemBatch } from '../src/features/admin/oemReconciliation';
+import { readOemExternalStockEvidence } from '../src/shared/services/oemExternalStockEvidence';
+import type { OemExternalRow } from '../src/features/admin/oemExternalStock';
 import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 
 /**
@@ -23,6 +25,7 @@ interface Props {
   partners: Partner[];
   rawStockKg: (material: string) => number;
   issueDrafts: PurchaseOrder[];
+  purchaseOrders?: PurchaseOrder[];
   issueOpen: boolean;
   receiveTarget: PurchaseOrder | null;
   feeTarget: PurchaseOrder | null;
@@ -70,7 +73,7 @@ export default function OemManager(props: Props) {
 }
 
 function OemSession({
-  companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
+  companyId, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
 }: Props) {
   const receiptKey = 'oem-receipt-pending:'+companyId+':'+(receiveTarget?.id ?? '');
   const [receiptStored, setReceiptStored] = useState(() => readPending(receiptKey,
@@ -144,7 +147,7 @@ function OemSession({
   return (
     <>
       {issueOpen && (
-        <IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} pendingIssue={pendingIssue} busy={busy}
+        <IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} purchaseOrders={purchaseOrders} pendingIssue={pendingIssue} busy={busy}
           pendingError={issueStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
           onClose={close} onSubmit={(v) => {
             if (busyRef.current) return;
@@ -198,9 +201,10 @@ function OemSession({
 }
 
 // ── 외주 발주 (원료 내보내기) ────────────────────────────────────────────────
-function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pendingIssue, pendingError, storageNotice, busy, onClose, onSubmit }: {
+function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, purchaseOrders, pendingIssue, pendingError, storageNotice, busy, onClose, onSubmit }: {
   pendingError?: string; storageNotice?: string;
   companyId:CompanyId; partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; pendingIssue: IssueInput | null; busy: boolean;
+  purchaseOrders?: PurchaseOrder[];
   onClose: () => void;
   onSubmit: (v: IssueInput) => void;
 }) {
@@ -221,6 +225,7 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pe
 
   return (
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
+        <ExternalDispatchEvidence companyId={companyId} orders={purchaseOrders ?? issueDrafts} />
         {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
         {(issueDrafts.length > 0 || pendingIssue) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
@@ -322,6 +327,33 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pe
         </div>
     </ModalShell>
   );
+}
+
+function ExternalDispatchEvidence({ companyId, orders }: { companyId: CompanyId; orders: PurchaseOrder[] }) {
+  const [state, setState] = useState<{busy:boolean;rows:OemExternalRow[];error:string}>({busy:false,rows:[],error:''});
+  const generation = useRef(0);
+  const inFlight = useRef(false);
+  const key = JSON.stringify([companyId, orders]);
+  React.useLayoutEffect(() => { generation.current++; inFlight.current=false;setState({busy:false,rows:[],error:''});return()=>{generation.current++;}; }, [key]);
+  const inspect = async () => {
+    if(inFlight.current)return;
+    inFlight.current=true; const captured=generation.current;
+    setState({busy:true,rows:[],error:''});
+    try {
+      const rows=await readOemExternalStockEvidence(companyId,orders);
+      if(captured===generation.current)setState({busy:false,rows,error:''});
+    } catch(error) {
+      if(captured===generation.current)setState({busy:false,rows:[],error:error instanceof Error?error.message:'송출 근거 조회 실패'});
+    } finally { if(captured===generation.current)inFlight.current=false; }
+  };
+  const labels:Record<OemExternalRow['state'],string>={confirmed:'송출 근거 확인',partial:'일부 확인',unknown:'미확인',cancelled:'취소 근거 확인',received:'PO 입고 완료 표시 · 송출 근거 확인'};
+  return <section aria-label="외주송출근거현황" className="rounded-xl border border-slate-200 p-3 space-y-2 text-xs">
+    <div className="flex items-center justify-between gap-2"><strong>외주송출근거현황</strong><button type="button" disabled={state.busy} onClick={inspect} className="rounded-lg border px-3 py-2">{state.busy?'조회 중':'송출 근거 조회'}</button></div>
+    <p className="text-slate-500">장부 송출 증거를 확인합니다. 물리 창고의 실측량이나 소유재고 잔량 확정이 아닙니다.</p>
+    {state.error&&<p role="alert">{state.error} · 근거 미확인</p>}
+    {state.rows.map(row=><div key={row.poId} className="rounded-lg bg-slate-50 p-2"><strong>{row.partnerName} · {row.poId} · {labels[row.state]}</strong>
+      {row.reason&&<p>{row.reason}</p>}{row.rows.map(raw=><p key={raw.rawItemId}>{raw.material} · 요청 {raw.requestedKg}kg · {raw.reportedKg===undefined?'송출 미확인':`장부 송출 ${raw.reportedKg}kg · 당시 재고 반영 ${raw.appliedKg}kg`}{raw.reason?` · ${raw.reason}`:''}</p>)}</div>)}
+  </section>;
 }
 
 // ── 가공입고 (완제품 받기) ───────────────────────────────────────────────────

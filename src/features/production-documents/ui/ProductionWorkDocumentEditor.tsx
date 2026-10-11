@@ -13,6 +13,7 @@ export interface ProductionWorkDocumentEditorProps {
   initialDocument: ProductionWorkDocument;
   initialLines: ProductionWorkDocumentLine[];
   loadEvidence: () => Promise<ProductionWorkEvidence[]>;
+  onStateChange?: (state: { dirty: boolean; busy: boolean }) => void;
   onSave: (document: ProductionWorkDocument, lines: ProductionWorkDocumentLine[], expectedRevision: number) =>
     Promise<{ document: ProductionWorkDocument; lines: ProductionWorkDocumentLine[] }>;
 }
@@ -34,11 +35,12 @@ const fields: Array<{ key: keyof ProductionWorkFields; label: string; type?: 'da
 const INPUT = 'h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-bold';
 
 // 날짜를 바꿀 때는 부모가 document.id를 key로 사용해 저장하지 않은 다른 날짜와 섞이지 않게 한다.
-export default function ProductionWorkDocumentEditor({ initialDocument, initialLines, loadEvidence, onSave }: ProductionWorkDocumentEditorProps) {
+export default function ProductionWorkDocumentEditor({ initialDocument, initialLines, loadEvidence, onSave, onStateChange }: ProductionWorkDocumentEditorProps) {
   const [document, setDocument] = useState(initialDocument);
   const [lines, setLines] = useState(initialLines);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  useEffect(() => { onStateChange?.({ dirty, busy }); }, [dirty, busy, onStateChange]);
   const [preview, setPreview] = useState(false);
   const operation = useRef(false);
   const alive = useRef(true);

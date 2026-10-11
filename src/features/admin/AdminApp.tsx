@@ -467,6 +467,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const markDocLogMonth = (v: string) => { docLogMonthTouched.current = true; setDocLogMonth(v); };
   const [bulkMfgDate, setBulkMfgDate] = useState(() => today());
   const [productionDocumentDate, setProductionDocumentDate] = useState(() => today());
+  const [, refreshProductionDocumentState] = useState(0);
+  const productionDocumentScope = useRef({ key: '', generation: 0, selection: 0, dirty: false, busy: false });
+  const productionDocumentKey = JSON.stringify([companyId, currentUser.id, auth.currentUser?.uid, productionDocumentDate]);
+  if (productionDocumentScope.current.key !== productionDocumentKey) {
+    productionDocumentScope.current = { key: productionDocumentKey, generation: productionDocumentScope.current.generation + 1, selection: 0, dirty: false, busy: false };
+  }
+  const productionDocumentSession = productionDocumentScope.current;
+  const reportProductionDocumentState = (state: { dirty: boolean; busy: boolean }) => {
+    const scope = productionDocumentScope.current;
+    if (scope !== productionDocumentSession || (scope.dirty === state.dirty && scope.busy === state.busy)) return;
+    scope.dirty = state.dirty; scope.busy = state.busy;
+    refreshProductionDocumentState(value => value + 1);
+  };
+  const changeProductionDocumentDate = async (date: string) => {
+    const scope = productionDocumentScope.current;
+    const selection = ++scope.selection;
+    const uid = auth.currentUser?.uid;
+    if (!date || date === productionDocumentDate || scope.busy) return;
+    if (scope.dirty && !await appConfirm({ title: '저장하지 않은 변경', message: '저장하지 않은 생산일지 내용이 있습니다. 현재 입력을 버리고 날짜를 바꿀까요?', confirmText: '날짜 변경' })) return;
+    if (productionDocumentScope.current !== scope || scope.selection !== selection || auth.currentUser?.uid !== uid || scope.busy) return;
+    setProductionDocumentDate(date);
+  };
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
   const notifBtnRef = useRef<HTMLButtonElement>(null);
@@ -4176,8 +4198,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
                 {docTab === '생산작업일지' && <div className="space-y-4">
-                  <label className="text-sm font-bold">작성일 <input aria-label="생산작업일지 작성일" type="date" value={productionDocumentDate} onChange={event => { if (event.target.value) setProductionDocumentDate(event.target.value); }} className="rounded-lg border p-2" /></label>
-                  <ProductionWorkDocumentHost companyId={companyId} date={productionDocumentDate} actorId={currentUser.id} />
+                  <label className="text-sm font-bold">작성일 <input aria-label="생산작업일지 작성일" type="date" value={productionDocumentDate} disabled={productionDocumentScope.current.busy} onChange={event => { void changeProductionDocumentDate(event.target.value); }} className="rounded-lg border p-2" /></label>
+                  <ProductionWorkDocumentHost key={productionDocumentKey} companyId={companyId} date={productionDocumentDate} actorId={currentUser.id} onStateChange={reportProductionDocumentState} />
                 </div>}
 
 

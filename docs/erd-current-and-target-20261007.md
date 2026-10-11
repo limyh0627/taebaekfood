@@ -273,3 +273,9 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 품목 원가 모델은 Item.cost이며 거래처·주문·전표의 price는 거래 단가다. 일반 품목 생성·수정·병합·배치 서비스에서 items의 옛 최상위 price를 payload에서 제외하는 경계를 구현한다. 다른 컬렉션의 거래 단가나 cost0·원가 부재는 변경하지 않는다. 생략은 이미 저장된 운영 필드의 삭제가 아니므로 데이터 이관과 구형 클라이언트/직접 SDK 통제는 별도다.
 
 현재 수불·입고·OEM·반품 transaction은 필요한 stock/lots/cost patch를 저장하며 전체 품목 원문을 복원하지 않는다. 옛 fix-spec-loose-bulk의 전체 품목 규격 교정과 무조건 복원은 현재 규격 편집 경로가 아니므로 안내로 종료한다. 현재 BOM·item_pack·과거 백업과 기록은 보존한다. 새 관계·컬렉션·운영 쓰기는 없다. 검증과 제한은 [품목 중복 가격 저장 경로 후속](item-price-write-boundary-followup-20261012.md)에 기록한다.
+
+## 2026-10-12 외주 송출 근거와 생산일지 후속 · 구현 중
+
+6a1455c의 품목 가격 저장 경계와 옛 규격 CLI 종료는 일반4310PASS·타입/양빌드 exit0·GitHub main 일치를 확인했다. 다음 외주 현황은 기존 PO 배열과 rawInventoryJobs/rawMaterialLedger/rawInventoryReversalGuards의 결정적 작업 근거를 연결하는 읽기 전용 화면이다. 회사·요청 지문·출처·원료·업무 송출량을 대조하며 외주창고의 물리 실측·소유 잔량 모델로 확대하지 않는다. 기존 pending/failed 배치의 예정 전량을 실제 송출로 합산하지 않는다.
+
+생산일지 문서 헤더/행 저장 모델은 유지한다. 날짜 전환에 현재 Editor의 dirty/busy 세대를 연결해 미저장 수동 내용 유실을 보완한다. 직원의 다른 회사 문서나 다른 사용자의 초안을 노출하지 않으며 저장 revision·생산/원료 계산은 바꾸지 않는다. 새 컬렉션·Rules·운영 재고 쓰기는 없다. 원양식 및 하남댁 실제 제출 자료 인수는 별도 미확인이다. [외주 송출·생산일지 후속](oem-warehouse-production-followup-20261012.md)에 실제 검증과 제한을 기록한다.

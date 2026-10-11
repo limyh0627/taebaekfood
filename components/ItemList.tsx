@@ -1894,6 +1894,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           partners={partners.filter(partner => companyOf(partner) === companyId) as any}
           rawStockKg={rawStockKg}
           issueDrafts={oemIssueDrafts}
+          purchaseOrders={[...orderRequests, ...confirmedOrders, ...receivedOrders, ...oemIssueDrafts].filter(po => companyOf(po) === companyId)}
           issueOpen={oemIssueOpen}
           receiveTarget={!oemReceiveTarget?.oemCancelledAt && oemReceiveTarget && companyOf(oemReceiveTarget) === companyId ? oemReceiveTarget : null}
           feeTarget={!oemFeeTarget?.oemCancelledAt && oemFeeTarget && companyOf(oemFeeTarget) === companyId ? oemFeeTarget : null}

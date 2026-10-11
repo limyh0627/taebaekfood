@@ -26,12 +26,14 @@ describe('직원 생산작업일지 작성', () => {
   });
   it('저장 충돌 시 입력 내용을 유지하고 성공으로 표시하지 않는다', async () => {
     const save = vi.fn().mockRejectedValue(new Error('다른 직원이 먼저 저장했습니다.'));
-    render(<ProductionWorkDocumentEditor initialDocument={document} initialLines={[]} loadEvidence={async () => []} onSave={save} />);
+    const state = vi.fn();
+    render(<ProductionWorkDocumentEditor initialDocument={document} initialLines={[]} loadEvidence={async () => []} onSave={save} onStateChange={state} />);
     fireEvent.change(screen.getByLabelText('특이사항'), { target: { value: '보존할 내용' } });
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(save).toHaveBeenCalledOnce());
     expect((screen.getByLabelText('특이사항') as HTMLTextAreaElement).value).toBe('보존할 내용');
     expect(screen.getByRole('status').textContent).toContain('저장하지 않은 변경 있음');
+    await waitFor(() => expect(state).toHaveBeenLastCalledWith({ dirty: true, busy: false }));
   });
   it('같은 생산의 원료 행을 추가하면 생산량을 공유하고 원료 칸은 따로 받는다', async () => {
     const save = vi.fn<ProductionWorkDocumentEditorProps['onSave']>(async (doc, lines, _revision) => ({ document: doc, lines }));
