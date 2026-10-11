@@ -7,7 +7,7 @@ export interface OrderInventoryRecoveryResult {status:'ready'|'blocked'|'recover
 export async function recoverOrderInventoryLock(companyId:CompanyId,action:'inspect'|'recover',orderId:string,failedOperationId:string,failedStartedAt:string,expectedSaved:string|null=null):Promise<OrderInventoryRecoveryResult>{
  await authReady;const user=auth.currentUser;if(!user)throw Error('로그인을 확인한 뒤 다시 처리하세요.');
  const uid=user.uid;const assertActor=()=>{if(auth.currentUser?.uid!==uid)throw Error('로그인 사용자가 변경되어 작업을 중단했습니다.');};
- const token=await user.getIdTokenResult();assertActor();if(token.claims.companyId!==companyId||token.claims.isAdmin!==true)throw Error('현재 회사의 관리자만 작업 잠금을 확인할 수 있습니다.');
+ const token=await user.getIdTokenResult();assertActor();if(token.claims.companyId!==companyId||typeof token.claims.employeeId!=='string'||!token.claims.employeeId.trim())throw Error('현재 회사의 직원만 작업 잠금을 확인할 수 있습니다.');
  if(!orderId||!failedOperationId||!failedStartedAt)throw Error('주문과 실패 작업번호를 확인하세요.');
  const gate=await getDoc(doc(db,'appMeta','releaseCutover'));assertActor();const releaseId=requireActiveReleaseId(gate.data());
  if(action==='recover') savePendingRecovery({version:1,companyId,uid,orderId,failedOperationId,failedStartedAt,expectedSaved});

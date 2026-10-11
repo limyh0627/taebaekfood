@@ -88,6 +88,27 @@ export function orderStockTouchedIds(order: Pick<Order, 'items'>, bomIndex?: Bom
  * 저장도 품목별 transaction을 차례로 열지 않는다. 세 품목 중 둘만 반영된 뒤 셋째가 실패하면
  * 주문 재고가 반쪽만 움직이므로, 모든 문서를 먼저 읽고 한 transaction에서 함께 갱신한다.
  */
+/** 예약과 사전검사가 같은 전체 가용량·부족 판정을 쓴다. 이 함수는 저장하지 않는다. */
+export function planOrderStockReservation(orderId:string, dataByItem:ReadonlyMap<string,Record<string,any>>, planDeltas:(stock:ReadonlyMap<string,number>)=>ReadonlyMap<string,number>, options:{preserveOwnAllocation?:boolean;nowMs?:number}={}) {
+ const activeByItem=new Map<string,ItemInventoryReservation[]>(),previousReservations=new Map<string,ItemInventoryReservation[]>(),available=new Map<string,number>();
+ const nowMs=options.nowMs??Date.now();
+ for(const [itemId,data] of dataByItem){
+  const active=liveItemInventoryReservations(data.inventoryReservations,nowMs),own=active.filter(row=>row.orderId===orderId),others=active.filter(row=>row.orderId!==orderId);
+  previousReservations.set(itemId,own);activeByItem.set(itemId,others);
+  const ownAllocated=options.preserveOwnAllocation?own.filter(row=>row.state==='allocated').reduce((sum,row)=>sum+Number(row.qty),0):0;
+  available.set(itemId,stock3(Math.max(0,Number(data.stock??0)-others.reduce((sum,row)=>sum+Number(row.qty),0)-ownAllocated)));
+ }
+ const planned=planDeltas(available),outside=[...planned.keys()].filter(id=>!available.has(id));
+ if(outside.length)throw Error('주문 재고 예약 범위에 없는 품목이 계산되었습니다: '+outside.join(', '));
+ const quantities=new Map<string,number>(),shortages:{itemId:string;current:number;other:number;required:number;missing:number}[]=[];
+ for(const [itemId,data] of dataByItem){
+  const previousQty=options.preserveOwnAllocation?(previousReservations.get(itemId)??[]).filter(row=>row.state==='allocated').reduce((sum,row)=>sum+Number(row.qty),0):0;
+  const qty=stock3(previousQty+Math.max(0,-(planned.get(itemId)??0))),current=Number(data.stock??0),other=(activeByItem.get(itemId)??[]).reduce((sum,row)=>sum+Number(row.qty),0);
+  if(qty>0){quantities.set(itemId,qty);if(stock3(current-other-qty)<0)shortages.push({itemId,current,other:stock3(other),required:qty,missing:stock3(qty+other-current)});}
+ }
+ return {activeByItem,previousReservations,available,quantities,shortages};
+}
+
 export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
   const { db, allItems, bomIndex } = deps;
 
@@ -119,44 +140,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         throw new Error(`주문 재고 예약 중 품목을 찾을 수 없습니다: ${missing.join(', ')}`);
       }
 
-      const activeByItem = new Map<string, ItemInventoryReservation[]>();
-      const previousReservations = new Map<string, ItemInventoryReservation[]>();
-      const available = new Map<string, number>();
-      ids.forEach((itemId, index) => {
-        const data = snapshots[index]!.data() ?? {};
-        const active = liveItemInventoryReservations(data.inventoryReservations, nowMs);
-        const own = active.filter(row => row.orderId === order.id);
-        const others = active.filter(row => row.orderId !== order.id);
-        previousReservations.set(itemId, own);
-        activeByItem.set(itemId, others);
-        const ownAllocated = options.preserveOwnAllocation
-          ? own.filter(row => row.state === 'allocated').reduce((sum, row) => sum + Number(row.qty), 0)
-          : 0;
-        const reserved = others.reduce((sum, row) => sum + Number(row.qty), 0) + ownAllocated;
-        available.set(itemId, stock3(Math.max(0, Number(data.stock ?? 0) - reserved)));
-      });
-
-      const planned = planDeltas(available);
-      const outside = [...planned.keys()].filter(itemId => !available.has(itemId));
-      if (outside.length > 0) {
-        throw new Error(`주문 재고 예약 범위에 없는 품목이 계산되었습니다: ${outside.join(', ')}`);
-      }
-      const quantities = new Map<string, number>();
-      ids.forEach((itemId, index) => {
-        const previousQty = options.preserveOwnAllocation
-          ? (previousReservations.get(itemId) ?? [])
-              .filter(row => row.state === 'allocated')
-              .reduce((sum, row) => sum + Number(row.qty), 0)
-          : 0;
-        const qty = stock3(previousQty + Math.max(0, -(planned.get(itemId) ?? 0)));
-        const currentStock = Number(snapshots[index]!.data()?.stock ?? 0);
-        const otherQty = (activeByItem.get(itemId) ?? []).reduce((sum, row) => sum + Number(row.qty), 0);
-        if (qty > 0 && stock3(currentStock - otherQty - qty) < 0) {
-          const item = allItems.find(candidate => candidate.id === itemId);
-          throw new OrderInventoryPreconditionError(`${item?.name ?? itemId} 재고가 부족합니다. 현재 ${currentStock}, 다른 주문 예약 ${stock3(otherQty)}, 이번 주문 ${qty}`);
-        }
-        if (qty > 0) quantities.set(itemId, qty);
-      });
+      const {activeByItem,previousReservations,available,quantities,shortages}=planOrderStockReservation(order.id,new Map(ids.map((id,index)=>[id,snapshots[index]!.data()??{}])),planDeltas,{...options,nowMs});
+      if(shortages.length){const row=shortages[0],item=allItems.find(candidate=>candidate.id===row.itemId);throw new OrderInventoryPreconditionError(`${item?.name??row.itemId} 재고가 부족합니다. 현재 ${row.current}, 다른 주문 예약 ${row.other}, 이번 주문 ${row.required}`);}
 
       ids.forEach((itemId, index) => {
         const data = snapshots[index]!.data() ?? {};

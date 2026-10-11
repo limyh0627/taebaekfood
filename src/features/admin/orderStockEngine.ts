@@ -13,10 +13,11 @@ import { getPackIndex } from '../../shared/packIndex';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import { buildRollbackPlan, type RollbackPlan } from './rollbackSummary';
-import { hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
-import { createOrderRawInventoryOperations, oemLedgerKg, rawLedgerDocIds } from './orderRawInventory';
+import { canResumeFailedInventoryOperation, hasCompleteOrderItems, isWorkCompletedState, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
+import { buildOrderRawCommands, createOrderRawInventoryOperations, oemLedgerKg, rawLedgerDocIds } from './orderRawInventory';
 import { combineProductLotMutations, createOrderProductLotOperations, OrderInventoryPreconditionError, productionProductLots, reverseProductionProductLots, type OrderProductLotMutation } from './orderProductLots';
 import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
+import { inspectOrderProduction, OrderProductionPreflightError } from './orderProductionPreflight';
 import { aggregateOrderLineInventory, ensureOrderLineIds } from '../../shared/orderLineInventory';
 
 /**
@@ -279,11 +280,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     deltas: Map<string, number>,
     stockSnapshot: ReadonlyMap<string, number>,
     plan?: StockUsePlan,
+    allocatedOutput:Map<string,number>=new Map(),
   ) => {
     const stockOf = (item: Item) => {
       const stock = stockSnapshot.get(item.id);
       if (stock === undefined) throw new Error(`주문 재고 스냅샷에 품목이 없습니다: ${item.id}`);
-      return stock;
+      // 앞선 줄의 최종 출력 몫은 재사용 재고가 아니다. 음수 중간값을 유지해 생산 deltas와 상쇄한다.
+      return stock-(allocatedOutput.get(item.id)??0);
     };
     const rawUsage: Record<string, number> = {};
     const rawCalculationEvidence: OrderRawCalculationEvidence[] = [];
@@ -321,23 +324,25 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       //  `type === 'product'` 로만 보다가 캔을 반제품으로 옮기면 생산이 조용히 멈춘다.
       if (!holdsUnitStock(product)) continue;
       const units = stockUnits(item, product, inputs);   // 박스 품목이면 박스 개수
+      const allocateOutput=()=>addDelta(allocatedOutput,product.id,units);
 
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
         for (const [raw, kg] of Object.entries(oemLedgerKg(product, units, buildFormula(docName(product)), inputs)))
           rawUsageLedgerOnly[raw] = (rawUsageLedgerOnly[raw] ?? 0) + kg;
+        allocateOutput();
         continue;
       }
 
-      if (isGoodsItem(product)) continue;
+      if (isGoodsItem(product)) {allocateOutput();continue;}
 
       // 이 품목 자신의 재고로 충당할 몫. 앞선 라인이 이미 쓴 만큼(deltas)은 빠진 값으로 본다.
       const onHand = Math.max(0, stockOf(product) + (deltas.get(product.id) ?? 0));
       const choice = plan?.[idx];
       const own = isStockProduction(order) ? 0 : Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
       const toProduce = Math.round((units - own) * 1000) / 1000;
-      if (toProduce <= 0) continue;
+      if (toProduce <= 0) {allocateOutput();continue;}
 
       // 박스 품목이면 낱개 재고 사용량도 사용자가 정한 만큼으로 묶는다.
       const looseId = unpackComponent(product, inputs)?.itemId;
@@ -351,6 +356,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       requireRawForProduction(product, beforeRawKg, rawUsage);
       addDelta(deltas, product.id, toProduce);
       producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
+      allocateOutput();
     }
     return {
       rawUsage,
@@ -359,6 +365,34 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       autoBuilt,
       producedUnits: [...producedByItem].map(([itemId, qty]) => ({ itemId, qty })),
     };
+  };
+
+  /** claim 앞에서도 예약과 실제 생산의 공용 셈을 쓴다. 역변경은 기존 저장 스냅샷 경로다. */
+  const preflightProduction = async (order:Order, rows:readonly {item:OrderItem;index:number}[], plan?:StockUsePlan, selectedIndex?:number) => {
+    const targets={...order,items:rows.map(row=>row.item)};
+    const extra=Object.values(order.itemInventory??{}).flatMap(state=>state.production.stockDeltas.map(row=>row.itemId));
+    const problems=await inspectOrderProduction({db,order,itemIds:[...orderStockTouchedIds(order,inputs.bom),...extra],preserveOwnAllocation:selectedIndex!==undefined,
+      preview:stock=>{
+        const deltas=new Map<string,number>(),commands:import('../../shared/services/rawInventoryJob').JobCommandInput[]=[],mutations:OrderProductLotMutation[]=[];
+        if(selectedIndex===undefined){
+          const production=planOrderProduction(targets,deltas,stock,plan);
+          commands.push(...buildOrderRawCommands({order:targets,physicalUsage:production.rawUsage,ledgerOnlyUsage:production.rawUsageLedgerOnly,attempt:(order.rawInventoryAttempt??0)+1,allItems,partners,actorName}).commands);
+          mutations.push(...productionProductLots(allItems,deltas,'preflight-'+order.id,inputs).mutations);
+          if(!isStockProduction(order))shipOrder(targets,deltas);
+        }else{
+          const allocated=new Map<string,number>();
+          for(const row of rows){
+            const single={...order,items:[row.item]},before=new Map(deltas);
+            const production=planOrderProduction(single,deltas,stock,row.index===selectedIndex?plan:undefined,allocated);
+            const difference=new Map<string,number>();for(const [id,value] of deltas)addDelta(difference,id,value-(before.get(id)??0));
+            mutations.push(...productionProductLots(allItems,difference,'preflight-'+order.id+'-'+row.item.lineId,inputs).mutations);
+            commands.push(...buildOrderRawCommands({order:single,physicalUsage:production.rawUsage,ledgerOnlyUsage:production.rawUsageLedgerOnly,attempt:(order.itemInventory?.[row.item.lineId!]?.attempt??0)+1,lineId:row.item.lineId,allItems,partners,actorName}).commands);
+          }
+          if(!isStockProduction(order))for(const row of rows)shipOrder({...order,items:[row.item]},deltas);
+        }
+        return {deltas,commands,lotMutations:mutations};
+      }});
+    if(problems.length)throw new OrderProductionPreflightError(problems);
   };
 
   // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +(생산분). → 소비 로트 스냅샷 반환.
@@ -698,6 +732,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     inFlightOrders.add(id);
     let reservation: Awaited<ReturnType<typeof reserveOrderStock>> | undefined;
     let stockCommitted = false;
+    let claimed = false;
     let live: Order | undefined;
     let failureStage: NonNullable<Order['inventoryOperation']>['stage'] = 'claim';
     try {
@@ -711,6 +746,17 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const lineId = after.lineId!;
       const applying = after.checked === true;
 
+      const initialItems=ensureOrderLineIds(live.items);
+      const beforeClaim=initialItems[itemIndex];
+      if(!beforeClaim||beforeClaim.itemId!==after.itemId||beforeClaim.lineId!==after.lineId)throw Error('주문 품목 순서가 이미 변경되었습니다.');
+      const existing=live.inventoryOperation;
+      const blockedExisting=existing?.state==='processing'||(existing?.state==='failed'&&!canResumeFailedInventoryOperation(existing,{kind:'line'} as NonNullable<Order['inventoryOperation']>));
+      const knownLineResume=existing?.state==='failed'&&canResumeFailedInventoryOperation(existing,{kind:'line'} as NonNullable<Order['inventoryOperation']>);
+      // 이전 실패의 부분 수불은 부족 사전검사로 새 작업처럼 판정하지 않는다. 기존 claim/재개 계약으로 넘긴다.
+      if(!blockedExisting&&!knownLineResume&&applying&&(!live.producedAt||!!live.itemInventory)){
+        const checked=initialItems.map((item,index)=>({item:index===itemIndex?after:item,index})).filter(row=>row.item.checked&&!live!.itemInventory?.[row.item.lineId!]?.applied);
+        if(checked.length)await preflightProduction(live,checked,plan,itemIndex);
+      }
       const now = new Date().toISOString();
       const operationId = `order-line-${id}-${lineId}-${Date.now()}`;
       const operation = {
@@ -719,6 +765,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
+      claimed = true;
       const operationOrder = live;
 
       // claim이 돌려준 DB 최신 줄과 스냅샷으로 다시 판정한다. 다른 창이 같은 상태 안에서
@@ -763,12 +810,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         stockSnapshot => {
           const preview = new Map<string, number>();
           if (applying) {
+            const allocated=new Map<string,number>();
             for (const row of pendingApplyRows) {
               const single = { ...operationOrder, items: [row.item] };
-              planOrderProduction(single, preview, stockSnapshot, row.index === itemIndex ? plan : undefined);
+              planOrderProduction(single, preview, stockSnapshot, row.index === itemIndex ? plan : undefined,allocated);
               // 생산 순변화만 예약하면 이 줄이 쓸 기존 완제품이 보호되지 않는다.
-              if (!isStockProduction(operationOrder)) shipOrder(single, preview);
             }
+            if(!isStockProduction(operationOrder))for(const row of pendingApplyRows)shipOrder({...operationOrder,items:[row.item]},preview);
           }
           return preview;
         },
@@ -779,6 +827,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const deltas = new Map<string, number>();
       const productLotMutations: OrderProductLotMutation[] = [];
       const states = { ...currentStates };
+      const allocatedOutput=new Map<string,number>();
       if (applying) {
         for (const row of pendingApplyRows) {
           const rowLineId = row.item.lineId!;
@@ -787,7 +836,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           const attempt = (previous?.attempt ?? 0) + 1;
           const single = { ...operationOrder, items: [row.item] };
           const production = planOrderProduction(
-            single, deltas, reservation.stockSnapshot, row.index === itemIndex ? plan : undefined,
+            single, deltas, reservation.stockSnapshot, row.index === itemIndex ? plan : undefined,allocatedOutput,
           );
           failureStage = 'raw-inventory';
           const consumedLots = await applyOrderRawUsage(
@@ -871,7 +920,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       }
       // 재개 가능한 품목 작업은 새 실패 단계까지 남겨, 다음 재시도가 어디부터 이어지는지 알 수 있게 한다.
       const existingFailure = live?.inventoryOperation?.state === 'failed';
-      if (!existingFailure && error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
+      if (claimed && !(error instanceof OrderProductionPreflightError) && !existingFailure && error instanceof Error && error.message !== 'LEGACY_ORDER_ROLLBACK_REQUIRED') {
         await updateItem('orders', id, {
           inventoryOperation: {
             id: `order-line-failed-${Date.now()}`, kind: 'line', lineId: requestedItems[itemIndex]?.lineId,
@@ -931,6 +980,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         if (result.status !== 'completed') throw new Error(`출고 취소에 실패했습니다: ${result.code ?? result.status}`);
         return;
       }
+      if(STATUS_WANT_PRODUCED.has(status)&&!live.producedAt&&live.inventoryOperation?.state!=='failed'&&live.inventoryOperation?.state!=='processing')await preflightProduction(live,live.items.map((item,index)=>({item,index})),plan);
       const approvedAt = context.approvedAt ?? new Date().toISOString();
       const approvedBy = context.approvedBy ?? actorName ?? '미기록';
       const auditId = `order-status-${id}-${Date.now()}`;

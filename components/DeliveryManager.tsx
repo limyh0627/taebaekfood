@@ -24,7 +24,7 @@ import { Order, Partner, OrderStatus, Item, ItemBom, PartnerItem, PalletStock, O
 import { statusChip, statusLabel, STATUS_CARD_BORDER, STATUS_HEAD_LINE } from '../src/shared/orderStatusStyle';
 import { X } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
-import OrdersList, { OrderCard } from './OrdersList';
+import OrdersList, { OrderCard, OrderRecoveryEntry } from './OrdersList';
 import PageHeader from './PageHeader';
 import CalendarDayCountBadge from './CalendarDayCountBadge';
 import OrderEditModalShell from './OrderEditModalShell';
@@ -42,6 +42,8 @@ import { companySettingDocId, companySettingPatch } from '../src/shared/companyS
 import { OrderItem, InvoiceType } from '../types';
 
 interface DeliveryManagerProps {
+  renderOrderRecovery?: (order: Order) => React.ReactNode;
+  orderRecoveryOrphans?: React.ReactNode;
   companyId: CompanyId;
   /**
    * **캘린더만 그린다** — 주문·배송을 한 화면으로 합칠 때 쓴다(2026-09-11 사장님).
@@ -89,7 +91,7 @@ const WorkCheckWarning: React.FC<{ order: Order; className?: string }> = ({ orde
   ) : null
 );
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOnly = false, sortMode = 'delivery', orders: sourceOrders, partners, items, itemBoms = [], partnerItems = [], palletStocks = [], currentUserName, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onUpdateNote, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, renderOrderRecovery, orderRecoveryOrphans }) => {
   // Compute derived variables
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -644,6 +646,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
              거래처명을 밀어냈다. 테두리와 거래처명 색이 이미 같은 말을 하고 있다
              (`STATUS_CARD_BORDER`·`STATUS_HEAD_LINE`). 마우스를 올리면 글자로도 나온다. */}
         {opt.drag?.draggable && <GripVertical size={10} className="shrink-0 text-slate-300" />}
+        <div onClick={event=>event.stopPropagation()}><OrderRecoveryEntry order={o} renderOrderRecovery={renderOrderRecovery} /></div>
       </div>
     );
   };
@@ -992,6 +995,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
+      {!calendarOnly && orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {!calendarOnly && <PageHeader
         title="배송 관리"
         subtitle="배송 일정과 출고 진행 상태를 관리합니다."
@@ -1082,6 +1086,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
       {!calendarOnly && deliveryTab === '리스트' && (
         <div className="order-5">
         <OrdersList
+          renderOrderRecovery={renderOrderRecovery}
           companyId={companyId}
           title="배송 목록"
           subtitle="오늘 나갈 주문 — 대기중부터 출고완료까지"
@@ -1542,6 +1547,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                           )}
                         </button>
                         <div className={`flex-1 transition-all rounded-2xl ${isChecked ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+                          <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
                           <OrderCard
                             readOnly
                             tintedHeader
@@ -1613,7 +1619,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                   {shippedOrders.length === 0 ? (
                     <p className="col-span-1 text-center text-[11px] text-slate-300 font-bold py-10">주문이 없습니다</p>
                   ) : shippedOrders.map(order => (
-                    <OrderCard
+                    <div key={order.id}><OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} /><OrderCard
                       readOnly
                       tintedHeader
                       key={order.id}
@@ -1631,7 +1637,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                       onUpdateStatus={onUpdateStatus!}
                       onToggleItemChecked={onToggleItemChecked}
                       onDeleteOrder={onDeleteOrder ?? (() => {})}
-                    />
+                    /></div>
                   ))}
                 </div>
               </div>
@@ -1653,7 +1659,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                   {onHoldOrders.length === 0 ? (
                     <p className="col-span-1 text-center text-[11px] text-slate-300 font-bold py-10">보류 중인 주문이 없습니다</p>
                   ) : onHoldOrders.map(order => (
-                    <OrderCard
+                    <div key={order.id}><OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} /><OrderCard
                       readOnly
                       tintedHeader
                       key={order.id}
@@ -1671,7 +1677,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ companyId, calendarOn
                       onUpdateStatus={onUpdateStatus!}
                       onToggleItemChecked={onToggleItemChecked}
                       onDeleteOrder={onDeleteOrder ?? (() => {})}
-                    />
+                    /></div>
                   ))}
                 </div>
               </div>

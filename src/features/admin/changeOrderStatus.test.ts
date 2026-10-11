@@ -1,3 +1,4 @@
+import {emptyRawInventory,inventoryDocId} from '../../shared/rawInventoryCore';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 
@@ -16,7 +17,7 @@ import { OrderStatus, type Item, type Order } from '../../shared/types';
  */
 
 const dbx = vi.hoisted(() => ({
-  stock: new Map<string, number>(),
+  rawStates: new Map<string, any>(), stock: new Map<string, number>(),
   orders: new Map<string, any>(),
   /** 재고 DB 경계를 지난 횟수 — 예약 transaction과 최종 반영 transaction을 센다. */
   조정: 0,
@@ -38,7 +39,7 @@ vi.mock('firebase/firestore', () => ({
     return { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) };
   },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => (dbx.조정++, fn)({
-    get: async (ref: any) => ref.col === 'items' ? ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) })
+    get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>dbx.rawStates.has(ref.id),data:()=>dbx.rawStates.get(ref.id)}) : ref.col === 'items' ? ({ exists: () => dbx.stock.has(ref.id), data: () => ({ stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id) }) })
       : ref.col === 'orders' ? ({ exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) })
         : ({ exists: () => dbx.audits.has(ref.id), data: () => dbx.audits.get(ref.id) }),
     set: (ref: any, data: any) => dbx.audits.set(ref.id, data),
@@ -66,6 +67,13 @@ const 주문 = (over: Partial<Order> = {}): Order =>
 /** 엔진 한 벌 — 재고 조정은 부르는지만 세고, 실제 셈은 다른 테스트가 본다 */
 function harness(items: Item[], order: Order, formula: () => { raw: string; ratio: number }[] = () => [], bomRows: Parameters<typeof buildBomIndex>[1] = []) {
   setBomIndex(buildBomIndex(items, bomRows));
+  dbx.rawStates.clear();
+  for(const raw of items.filter(item=>item.subtype==='벌크'&&!item.phantom)){
+    const state=emptyRawInventory('taebaek',raw.id,raw.name,'2026-10-01T00:00:00Z');state.stockKg=Number(raw.stock??0);
+    state.activeLots=(raw.lots?.length?structuredClone(raw.lots):[{id:'fixture-'+raw.id,material:raw.name,supplierName:'합성 이관',receivedDate:'2026-10-01',qtyIn:0,kgIn:state.stockKg,kgRemaining:state.stockKg,status:'active',createdAt:'2026-10-01T00:00:00Z'}]) as typeof state.activeLots;
+    dbx.rawStates.set(inventoryDocId('taebaek',raw.id),state);
+  }
+
   for (const i of items) dbx.stock.set(i.id, i.stock ?? 0);
   dbx.orders.set(order.id, order);
   const 알림: any[] = [];
@@ -164,8 +172,9 @@ describe('③ 이미 배송완료된 주문은 재고를 다시 안 만진다', 
 
     await engine.changeOrderStatus('o1', OrderStatus.DELIVERED);
 
-    // 기존 재고 예약 1회 + 실제 재고 확정 1회다.
-    expect(조정()).toBe(2);
+    // 미생산 상태의 직접 배송완료도 읽기 전용 사전검사 1회 + 예약 1회 + 재고 확정 1회다.
+    expect(조정()).toBe(3);
+    expect(dbx.stock.get('p1')).toBe(90);
   });
 });
 

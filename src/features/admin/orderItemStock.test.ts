@@ -279,3 +279,9 @@ describe('주문 품목 재고 DB 경계', () => {
     ]);
   });
 });
+import {planOrderStockReservation} from './orderItemStock';
+it('공용 예약 판정은 모든 부족·다른 주문·기존 own 배정을 계산하고 원문은 바꾸지 않는다',()=>{
+ const data=new Map([['a',{stock:5,inventoryReservations:[{orderId:'other',operationId:'other',qty:3,createdAt:'2026-10-12T00:00:00Z',state:'allocated'}]}],['b',{stock:1,inventoryReservations:[{orderId:'order',operationId:'own',qty:1,createdAt:'2026-10-12T00:00:00Z',state:'allocated'}]}]]);
+ const before=structuredClone(data);const result=planOrderStockReservation('order',data,()=>new Map([['a',-4],['b',-1]]),{preserveOwnAllocation:true});
+ expect(result.shortages).toHaveLength(2);expect(result.quantities.get('b')).toBe(2);expect(result.available.get('a')).toBe(2);expect(data).toEqual(before);
+});

@@ -1655,7 +1655,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [cancellationRevision, setCancellationRevision] = useState(0);
   const [pendingCancellations, setPendingCancellations] = useState<string[]>([]);
   const [pendingInventoryRecoveries,setPendingInventoryRecoveries] = useState<PendingOrderInventoryRecovery[]>([]);
-  const failedInventoryOrders = allOrders.filter(order => companyOf(order) === companyId && order.inventoryOperation?.state === 'failed');
   useEffect(() => {
     // 삭제 응답을 잃으면 주문 자체가 목록에서 사라질 수 있어 별도 재조회 진입점을 남긴다.
     const refresh = () => {
@@ -1783,6 +1782,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return false;
     }
   };
+
+  // 주문 복구는 해당 카드에서만 확인한다. 원 주문이 사라진 응답 유실 기록은 목록 기록카드로 남긴다.
+  const recoveryDisplayScope=cancellationScope.current;
+  const recoveryActorUid=auth.currentUser?.uid??'';
+  const renderOrderRecoveryForId=(orderId:string,order?:Order):React.ReactNode=>{
+    const pending=pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid&&row.orderId===orderId);
+    const hasCancellation=pendingCancellations.includes(orderId)||processingCancellationIds.includes(orderId);
+    if(!hasCancellation&&!pending.length&&order?.inventoryOperation?.state!=='failed')return null;
+    return <div key={companyId+':'+recoveryActorUid+':'+orderId} aria-label={'주문 처리 확인 '+orderId}>
+      {hasCancellation&&<button type="button" disabled={processingCancellationIds.includes(orderId)} className="mt-2 text-sm font-bold text-indigo-700 underline"
+        onClick={()=>{if(auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope)void handleDeleteOrder(orderId);}}>{processingCancellationIds.includes(orderId)?'확인·처리 중':'처리 결과 확인'}</button>}
+      <OrderInventoryRecoveryPanel companyId={companyId} actorUid={recoveryActorUid} orders={order?[order]:[]} pending={pending}
+        isCurrentActor={()=>auth.currentUser?.uid===recoveryActorUid&&cancellationScope.current===recoveryDisplayScope} onRecovered={(result,expectedSaved)=>{
+        if(auth.currentUser?.uid!==recoveryActorUid||cancellationScope.current!==recoveryDisplayScope||result.orderId!==orderId)return;
+        clearRecoveredOrderCancellation(companyId,recoveryActorUid,result,expectedSaved);
+        setCancellationRevision(value=>value+1);
+      }}/>
+    </div>;
+  };
+  const renderOrderRecovery=(order:Order):React.ReactNode=>companyOf(order)===companyId?renderOrderRecoveryForId(order.id,order):null;
+  const orderRecoveryOrphanIds=[...new Set([...pendingCancellations,...processingCancellationIds,...pendingInventoryRecoveries.filter(row=>row.companyId===companyId&&row.uid===recoveryActorUid).map(row=>row.orderId)])]
+    .filter(id=>!allOrders.some(order=>order.id===id&&companyOf(order)===companyId));
+  const orderRecoveryOrphans=orderRecoveryOrphanIds.length>0?<>{orderRecoveryOrphanIds.map(id=><div key={id} className="rounded-lg border border-amber-200 p-2"><p className="text-xs font-bold">원 주문을 찾을 수 없는 처리 기록 · {id}</p>{renderOrderRecoveryForId(id)}</div>)}</>:null;
 
   // 입고대기 발주카드 수정: 새 수량으로 즉시 입고확정(received+재고 반영) + 연결된 매입전표 수정 요청 생성
   const handleRequestPoEdit = async (poId: string, newLines: { itemId: string; quantity: number }[], reason: string) => {
@@ -2179,21 +2201,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
-      {(pendingCancellations.length > 0 || processingCancellationIds.length > 0 || ((isAdmin || isAdminAuthenticated) && (failedInventoryOrders.length > 0 || pendingInventoryRecoveries.length > 0))) && (
-        <section aria-label="미확인 주문 처리" className="fixed bottom-4 right-4 z-[90] max-h-48 max-w-sm overflow-auto rounded-xl border border-amber-300 bg-amber-50 p-3 shadow-lg">
-          <p className="text-sm font-bold" role="status">{processingCancellationIds.length ? '주문 처리 확인 중' : '주문 처리 결과 확인 필요'}</p>
-          <p className="text-xs">자동 재실행하지 않습니다. 완료 기록부터 확인합니다.</p>
-          {[...new Set([...pendingCancellations, ...processingCancellationIds])].map(id => <button key={id} type="button"
-            disabled={processingCancellationIds.includes(id)}
-            className="mt-2 block text-sm font-bold text-indigo-700 underline"
-            onClick={() => { void handleDeleteOrder(id); }}>{processingCancellationIds.includes(id) ? '확인·처리 중' : '처리 결과 확인'} · {id}</button>)}
-          {(isAdmin || isAdminAuthenticated) && <OrderInventoryRecoveryPanel key={companyId+':'+(auth.currentUser?.uid ?? '')} companyId={companyId} actorUid={auth.currentUser?.uid ?? ''} orders={failedInventoryOrders} pending={pendingInventoryRecoveries} onRecovered={(result,expectedSaved) => {
-            const uid=auth.currentUser?.uid;
-            if(uid) clearRecoveredOrderCancellation(companyId,uid,result,expectedSaved);
-            setCancellationRevision(value=>value+1);
-          }}/>}
-        </section>
-      )}
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
         className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 xl:hidden ${
@@ -2566,6 +2573,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'shipping' && (
             <DeliveryManager
+              renderOrderRecovery={renderOrderRecovery}
+              orderRecoveryOrphans={orderRecoveryOrphans}
               companyId={companyId}
               orders={orders.filter(order => !isStockProduction(order))}
               partners={partners}
@@ -2589,6 +2598,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'orders' && (
             <OrdersList
+              renderOrderRecovery={renderOrderRecovery}
+              orderRecoveryOrphans={orderRecoveryOrphans}
               companyId={companyId}
               orderUnitInputs={appData.orderUnitInputs}
               //  주문 로그가 `createdBy`(사번)를 이름으로 풀 때 쓴다.
@@ -2599,6 +2610,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   오전·오후 시간대, 배송 순서 번호, 주소까지 배송 쪽 기능이 다 따라온다. */
               calendarSlot={sort => (
                 <DeliveryManager
+                  renderOrderRecovery={renderOrderRecovery}
+                  orderRecoveryOrphans={orderRecoveryOrphans}
                   companyId={companyId}
                   calendarOnly
                   sortMode={sort}

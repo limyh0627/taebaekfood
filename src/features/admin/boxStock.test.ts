@@ -1,3 +1,4 @@
+import {emptyRawInventory,inventoryDocId} from '../../shared/rawInventoryCore';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
 import { buildStockUseRows, resolveStockUse, toStockUsePlan } from './stockUseRows';
@@ -21,7 +22,7 @@ const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
  * 재고는 **DB에서 읽어 더한다**(트랜잭션) — 화면 상태에 더해 덮어쓰면 앞선 쓰기가 날아간다.
  * 그래서 여기 가짜 DB도 진짜처럼 자기가 들고 있는 값을 읽어 준다.
  */
-const store = vi.hoisted(() => ({ stock: new Map<string, number>(), orders: new Map<string, any>(), lots: new Map<string, any[]>() }));
+const store = vi.hoisted(() => ({ rawStates: new Map<string, any>(), stock: new Map<string, number>(), orders: new Map<string, any>(), lots: new Map<string, any[]>() }));
 vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, col?: string, id?: string) => ({ col, id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
@@ -30,7 +31,7 @@ vi.mock('firebase/firestore', () => ({
     ? { exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }) }
     : { exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) },
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ref.col === 'items' ? ({
+    get: async (ref: any) => ref.col === 'rawInventories' ? ({exists:()=>store.rawStates.has(ref.id),data:()=>store.rawStates.get(ref.id)}) : ref.col === 'items' ? ({
       exists: () => store.stock.has(ref.id), data: () => ({ stock: store.stock.get(ref.id), lots: store.lots.get(ref.id) }),
     }) : ({ exists: () => store.orders.has(ref.id), data: () => store.orders.get(ref.id) }),
     update: (ref: any, data: any) => {
@@ -81,6 +82,13 @@ function harness(
   const productionLines: Array<{ itemId?: string; qty: number }> = [];
   const 주문쓰기: Array<{ id: string; data: unknown }> = [];
   setBomIndex(buildBomIndex(items, BOMS));
+  store.rawStates.clear();
+  for(const raw of items.filter(item=>item.subtype==='벌크'&&!item.phantom)){
+    const state=emptyRawInventory('taebaek',raw.id,raw.name,'2026-10-01T00:00:00Z');state.stockKg=Number(raw.stock??0);
+    state.activeLots=(raw.lots?.length?structuredClone(raw.lots):[{id:'fixture-'+raw.id,material:raw.name,supplierName:'합성 이관',receivedDate:'2026-10-01',qtyIn:0,kgIn:state.stockKg,kgRemaining:state.stockKg,status:'active',createdAt:'2026-10-01T00:00:00Z'}]) as typeof state.activeLots;
+    store.rawStates.set(inventoryDocId('taebaek',raw.id),state);
+  }
+
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
   store.orders.clear();

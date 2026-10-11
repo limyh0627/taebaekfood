@@ -226,7 +226,19 @@ const seoulWeekStart = () => {
 
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
+export function OrderRecoveryEntry({order,renderOrderRecovery}:{order:Order;renderOrderRecovery?: (order:Order)=>React.ReactNode}) {
+  const failed=order.inventoryOperation?.state==='failed';
+  const action=order.inventoryOperation?.state==='processing' ? null : renderOrderRecovery?.(order);
+  if(!failed&&!action)return null;
+  return <section aria-label="주문 재고 작업 상태" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
+    {failed&&<><p className="font-bold text-amber-900">재고 작업 실패</p><p className="mt-1 break-words">{order.inventoryOperation?.error||'실패 작업의 처리 결과를 확인해 주세요.'}</p></>}
+    {action}
+  </section>;
+}
+
 interface OrdersListProps {
+  renderOrderRecovery?: (order: Order) => React.ReactNode;
+  orderRecoveryOrphans?: React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
   companyId: CompanyId;
   title: string;
@@ -293,6 +305,7 @@ interface OrdersListProps {
 }
 
 interface OrderCardProps {
+  renderOrderRecovery?: (order: Order) => React.ReactNode;
   orderUnitInputs?: OrderUnitInputs;
   order: Order;
   partners: Partner[];
@@ -412,7 +425,7 @@ export const OrderCard = memo<OrderCardProps>(({
   //  이름+연필을 누르면 이걸 부른다 — 리스트와 같은 '거래처 주문 수정' 창을 여는 문.
   onEditOrder,
   //  작업완료 카드의 출고 방식을 누르면 이걸 부른다 — 확인창은 부른 쪽이 띄운다(2026-09-15).
-  onRequestShip,
+  onRequestShip, renderOrderRecovery,
 }) => {
   // Compute derived variables
   const products = items;
@@ -529,6 +542,7 @@ export const OrderCard = memo<OrderCardProps>(({
       {/*  머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다.
            **바탕색도 아래 선도 뺐다**(2026-09-12 사장님) — 상태는 **글자색으로만** 알린다.
            색을 통째로 깔면 정작 거래처명이 안 읽혔다. */}
+      <OrderRecoveryEntry order={order} renderOrderRecovery={readOnly ? undefined : renderOrderRecovery} />
       <div className={`flex flex-col rounded-t-2xl ${STATUS_HEAD_LINE[order.status] ?? 'text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         {/*  **첫 줄은 주문번호와 상태, 둘째 줄은 거래처명 통째로**(2026-09-14 사장님:
@@ -1572,7 +1586,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   ordersMonths,
   onChangeOrdersMonths,
   embeddedListOnly = false,
-  calendarSlot,
+  calendarSlot, renderOrderRecovery, orderRecoveryOrphans,
 }) => {
   // Compute derived variables
   const products = items;
@@ -2205,6 +2219,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
+    renderOrderRecovery,
     partners, items, partnerItems, palletStocks, itemBoms, orderUnitInputs,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
@@ -2341,6 +2356,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
+      {orderRecoveryOrphans && <section aria-label="주문 없는 처리 확인 기록" className="rounded-xl border border-amber-200 bg-white p-3">{orderRecoveryOrphans}</section>}
       {/*  **최상단 헤더는 없앴다**(2026-09-11 사장님: "주문배송 메뉴의 최상단 헤더도 중복되니까
            제거하고"). 바로 아래에 '전체 주문 관리' 제목이 또 있어 같은 말이 두 번 나왔다.
            `주문 생성` 단추는 금일 작업순서 밑으로 내렸다(아래 `order-3`). */}
@@ -3222,6 +3238,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       <span>주문 {fmtYYMMDD(new Date(order.createdAt))}</span>
                       <span>출고예정 {fmtYYMMDD(new Date(order.deliveryDate))}</span>
                     </div>
+                    <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
                     <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
                       {visibleItems.map((item, index) => <div key={`${item.itemId}-${index}`} className="flex justify-between gap-2 text-xs"><span className="min-w-0 font-bold text-slate-700">{item.name}</span><span className="shrink-0 font-black text-indigo-600">{item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}박스` : `${item.quantity}${items.find(product => product.id === item.itemId)?.unit || '개'}`}</span></div>)}
                     </div>
@@ -3324,6 +3341,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                             </span>
                             {!embeddedListOnly && <Edit2 size={12} className="shrink-0 text-slate-300 group-hover:text-indigo-500" aria-hidden="true" />}
                           </button>
+                          <OrderRecoveryEntry order={order} renderOrderRecovery={renderOrderRecovery} />
                         </div>
                         {embeddedListOnly && <div role="cell" className="flex min-w-0 items-center border-r border-slate-300 px-3 text-[10px] font-bold text-slate-600">
                           <span className="truncate" title={partnerAddress || '주소 미등록'}>{partnerAddress || '주소 미등록'}</span>

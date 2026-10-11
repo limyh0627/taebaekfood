@@ -57,23 +57,12 @@ export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): stri
  * 깎으면 실물을 두 번 뺀다. 그래서 일반 생산은 `consume`, 임가공 판매는 `ledger-consume`으로
  * 나누되 둘 다 같은 job·operationId·reverse 체계 안에서 처리한다.
  */
-export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
-  const {
-    actorName, allItems, partners, db, addNotification,
-    runRawInventoryJob: runRawJob = runRawInventoryJob,
-  } = deps;
-
-  const applyOrderRawUsage = async (
-    order: Order,
-    physicalUsage: RawUsageKg,
-    attempt: number,
-    ledgerOnlyUsage: RawUsageKg = {},
-    lineId?: string,
-  ): Promise<OrderRawInventoryTrace[]> => {
-    const traces: OrderRawInventoryTrace[] = [];
+/** 원료 계획의 단위·작업번호·혼합 설정을 실제 적용과 사전검사가 함께 고정한다. */
+export function buildOrderRawCommands(input:{order:Order;physicalUsage:RawUsageKg;ledgerOnlyUsage?:RawUsageKg;attempt:number;lineId?:string;allItems:Item[];partners:Partner[];actorName?:string}) {
+ const {order,physicalUsage,attempt,lineId,allItems,partners,actorName}=input,ledgerOnlyUsage=input.ledgerOnlyUsage??{};
     const physicalNames = Object.keys(physicalUsage).filter(raw => kg3(physicalUsage[raw]) > 0);
     const ledgerOnlyNames = Object.keys(ledgerOnlyUsage).filter(raw => kg3(ledgerOnlyUsage[raw]) > 0);
-    if (physicalNames.length === 0 && ledgerOnlyNames.length === 0) return traces;
+
 
     const date = dateOfLocal(order.deliveredAt) || today();
     const customerName = partners.find(partner => partner.id === order.partnerId)?.name
@@ -142,6 +131,27 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
         },
       });
     }
+
+
+ return {commands,holderByMaterial,companyId,customerName};
+}
+
+export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
+  const {
+    actorName, allItems, partners, db, addNotification,
+    runRawInventoryJob: runRawJob = runRawInventoryJob,
+  } = deps;
+
+  const applyOrderRawUsage = async (
+    order: Order,
+    physicalUsage: RawUsageKg,
+    attempt: number,
+    ledgerOnlyUsage: RawUsageKg = {},
+    lineId?: string,
+  ): Promise<OrderRawInventoryTrace[]> => {
+    const traces: OrderRawInventoryTrace[] = [];
+    const {commands,holderByMaterial,companyId,customerName}=buildOrderRawCommands({order,physicalUsage,ledgerOnlyUsage,attempt,lineId,allItems,partners,actorName});
+    if(commands.length===0)return traces;
 
     const { job, results } = await runRawJob({
       jobId: `production:${order.id}${lineId ? `:${lineId}` : ''}:a${attempt}`,

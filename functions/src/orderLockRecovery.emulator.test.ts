@@ -2,7 +2,6 @@ import {afterAll,beforeAll,describe,it,expect,vi} from 'vitest';
 import {randomUUID,createHash} from 'crypto';
 import * as admin from 'firebase-admin';
 import {cancellationEvidenceText} from './shared/orderCancellationEvidence';
-vi.mock('firebase-functions/v2/https',()=>({HttpsError:class extends Error{constructor(public code:string,message:string){super(message);}},onCall:(_options:unknown,handler:unknown)=>handler}));
 import {recoverOrderInventoryLock,recoverOrderInventoryLockCommand} from './orderLockRecovery';
 const available=['127.0.0.1:8182','127.0.0.1:8082'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
 const run='unlock-'+randomUUID(),tracked=new Set<string>();let app:admin.app.App,db:admin.firestore.Firestore;
@@ -16,12 +15,23 @@ async function seed(suffix:string,action:'cancel-shipment'|'delete'='cancel-ship
  tracked.add(`orderStatusAudits/${failedOperationId}`);tracked.add('orderLockRecoveryOperations/order-unlock-'+digest(JSON.stringify(['taebaek',orderId,failedOperationId,operation.startedAt])));
  return {orderId,failedOperationId,evidence,action,operation,order,input:{action:'recover' as const,orderId,failedOperationId,failedStartedAt:operation.startedAt,releaseId:run}};
 }
-describe.skipIf(!available)('관리자 원자 취소 잠금 복구 SDK 거래',{timeout:30000},()=>{
- beforeAll(()=>{app=admin.initializeApp({projectId:'demo-'+run},run);db=app.firestore();});
- afterAll(async()=>{for(const path of tracked)await db.doc(path).delete();await app?.delete();});
- it('로그인·관리자 회사 claim 없이 복구하지 않는다',async()=>{
-  const call=recoverOrderInventoryLockCommand as unknown as (request:any)=>Promise<any>;
-  await expect(call({data:{}})).rejects.toThrow('로그인');await expect(call({auth:{uid:'staff',token:{companyId:'taebaek'}},data:{}})).rejects.toThrow('관리자');
+describe.skipIf(!available)('같은 회사 사용자 원자 취소 잠금 복구 SDK 거래',{timeout:30000},()=>{
+ beforeAll(()=>{app=admin.initializeApp({projectId:'demo-'+run});db=app.firestore();});
+ afterAll(async()=>{for(const path of tracked){await db.doc(path).delete();expect((await db.doc(path).get()).exists).toBe(false);}await app?.delete();});
+ it('로그인·회사 claim 없이 복구하지 않는다',async()=>{
+  const call=(request:any)=>(recoverOrderInventoryLockCommand as any).run(request);
+  await expect(call({data:{}})).rejects.toThrow('로그인');await expect(call({auth:{uid:'staff',token:{}},data:{}})).rejects.toThrow('현재 회사');
+ });
+ it('실제 등록된 callable handler도 같은 회사 직원의 inspect·recover만 허용한다',async()=>{
+  const f=await seed('staff-callable'),call=(request:any)=>(recoverOrderInventoryLockCommand as any).run(request);
+  // 플랫폼이 전달하는 인증 metadata는 합성이다. Admin Firestore SDK·실제 등록 handler/TX를 검증한다.
+  const auth={uid:'staff',token:{companyId:'taebaek',employeeId:'staff-employee',isAdmin:false}};
+  expect(await call({auth,data:{...f.input,action:'inspect'}})).toMatchObject({status:'ready',inventoryApplied:'none'});
+  await expect(call({auth:{uid:'foreign',token:{companyId:'punghoe',employeeId:'foreign-employee'}},data:f.input})).rejects.toMatchObject({code:'permission-denied'});
+  expect((await ref('orders/'+f.orderId).get()).get('inventoryOperation')).toEqual(f.operation);
+  expect(await call({auth,data:f.input})).toMatchObject({status:'recovered',inventoryApplied:'none'});
+  const receipt=(await ref('orderLockRecoveryOperations/order-unlock-'+digest(JSON.stringify(['taebaek',f.orderId,f.failedOperationId,f.operation.startedAt]))).get()).data();
+  expect(receipt?.recoveredBy).toBe('staff');
  });
  it.each(['cancel-shipment','delete'] as const)('%s 실패는 원문을 읽고 잠금·복구영수증만 변경한다',async(action)=>{
   const f=await seed(action,action),orderRef=ref(`orders/${f.orderId}`),before=await orderRef.get();

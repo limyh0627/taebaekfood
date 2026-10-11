@@ -58,7 +58,7 @@ export async function recoverOrderInventoryLock(db:admin.firestore.Firestore,com
 export const recoverOrderInventoryLockCommand=onCall({region:'asia-northeast3'},async request=>{
  if(!request.auth)throw new HttpsError('unauthenticated','로그인이 필요합니다.');
  const companyId=request.auth.token.companyId;
- if(request.auth.token.isAdmin!==true||!['taebaek','punghoe'].includes(companyId))throw new HttpsError('permission-denied','현재 회사 관리자만 주문 잠금을 복구할 수 있습니다.');
+ if(!['taebaek','punghoe'].includes(companyId)||typeof request.auth.token.employeeId!=='string'||!request.auth.token.employeeId.trim())throw new HttpsError('permission-denied','현재 회사 직원만 주문 잠금을 복구할 수 있습니다.');
  return recoverOrderInventoryLock(admin.firestore(),companyId,request.auth.uid,request.data as Input);
 });
 

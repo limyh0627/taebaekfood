@@ -290,3 +290,7 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 ## 2026-10-12 신규 압착 pair 취소 후속 · 구현 중
 
 a025c9b의 표시·옛 CLI2종 종료는 일반4435건·타입·양 앱 빌드 및 GitHub main 일치를 확인했다. 다음 신규 압착 취소는 원료/기름 두 reverse와 기존 rawInventoryJobs 원 job의 optional cancellation 완료 근거를 같은 거래에 보존한다. 공용 rawInventory 계산·원래 로트·앵커·소비 입고 계약을 유지하며 과거 부분 자료를 자동 보완하지 않는다. 옛 고정 정정 CLI3종을 추가 종료한다. 새 collection·Rules·운영 자료 수정은 없으며 [후속 범위](raw-press-cancel-and-legacy-followup-20261012.md) 검증 뒤 실제 사전을 갱신한다.
+
+## 2026-10-12 주문 카드 복구·완료 전 부족 검사 · 구현 중
+
+6b34dd6의 압착 취소·옛 CLI3종 종료는 일반4486시험·앱/서버 타입·양 앱 빌드와 GitHub main 일치를 확인했다. 현재 후속은 전역 떠 있는 패널을 주문·배송·달력 카드의 공용 복구 행동으로 이동하고, 같은 회사 employeeId 인증 직원까지 기존 미반영 증거 판정에 따른 해제를 허용한다. 원문 pending과 원주문이 사라진 처리 기록의 확인 경로는 유지한다. 상태 변경은 claim 전에 공용 생산 계획·예약 판정·원료 명령 준비를 읽기 전용으로 검사하며, 반복품목의 앞선 출력 배정도 공용 계획에서 제외한다. 새 collection·Rules·재고 수율·BOM 비율·운영 기록은 바꾸지 않는다. [카드와 사용자 복구](office-talk-order-notice-followup-20261012.md), [원료·부자재 사전 검사](order-completion-preflight-followup-20261012.md)는 최종 검증 전 범위다.
