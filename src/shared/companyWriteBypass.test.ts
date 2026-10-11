@@ -16,6 +16,8 @@ const reviewedTransactionWriters = new Set([
   // 명령/상태 계약 자체에 companyId가 있고 서로 다르면 트랜잭션 전에 거부한다.
   'src/shared/services/rawInventoryJob.ts',
   'src/shared/services/rawInventoryService.ts',
+  // 압착 양 품목·명령·state·job의 회사와 최초 UID를 대조하며 실제 Auth SDK의 타회사 거절을 검증했다.
+  'src/shared/services/rawPressService.ts',
   // 캔·벌크의 companyId가 같은지 확인하고 회사가 박힌 rawInventories 열쇠만 쓴다.
   'src/shared/services/unpackService.ts',
   // 박스·낱개의 회사를 읽어 대조한 뒤 회사가 박힌 이동 기록과 두 품목을 한 거래로 쓴다.

@@ -279,3 +279,6 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 6a1455c의 품목 가격 저장 경계와 옛 규격 CLI 종료는 일반4310PASS·타입/양빌드 exit0·GitHub main 일치를 확인했다. 다음 외주 현황은 기존 PO 배열과 rawInventoryJobs/rawMaterialLedger/rawInventoryReversalGuards의 결정적 작업 근거를 연결하는 읽기 전용 화면이다. 회사·요청 지문·출처·원료·업무 송출량을 대조하며 외주창고의 물리 실측·소유 잔량 모델로 확대하지 않는다. 기존 pending/failed 배치의 예정 전량을 실제 송출로 합산하지 않는다.
 
 생산일지 문서 헤더/행 저장 모델은 유지한다. 날짜 전환에 현재 Editor의 dirty/busy 세대를 연결해 미저장 수동 내용 유실을 보완한다. 직원의 다른 회사 문서나 다른 사용자의 초안을 노출하지 않으며 저장 revision·생산/원료 계산은 바꾸지 않는다. 새 컬렉션·Rules·운영 재고 쓰기는 없다. 원양식 및 하남댁 실제 제출 자료 인수는 별도 미확인이다. [외주 송출·생산일지 후속](oem-warehouse-production-followup-20261012.md)에 실제 검증과 제한을 기록한다.
+# 2026-10-12 신규 압착 원자화 재발 후속
+
+실제 원료 사용 진입점의 별도 소모/파생 transaction과 매 제출 신규 ID를 확인하여 TODO005를 재개한다. 기존 rawInventoryJobs에 압착 승인 원문·두 결과를 같은 거래로 보존하는 후보이며 새로운 collection/Rules/재고 코어 계산 변경은 없다. 구현 중 필드는 생성 사전의 현재 완성 필드로 미리 주장하지 않는다. [범위와 검증](raw-press-atomic-followup-20261012.md)을 따른다.

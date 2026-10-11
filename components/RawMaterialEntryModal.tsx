@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { today as todayStr } from '../src/shared/day';
 import { Sparkles } from 'lucide-react';
 import { RawMaterialEntry, RawMaterialLot } from '../types';
 import { unitOf, DENSITY } from '../src/constants/formula';
 import ModalShell from '../src/shared/components/ModalShell';
+import type { CompanyId } from '../src/shared/types';
+import { readRawPressAttempt, rawPressYieldKg, rawPressText } from '../src/shared/rawPressAttempt';
 
+export type RawEntrySubmitResult=boolean|void|{ok:false;canEditRetry?:boolean;reason?:string};
 interface Props {
   open: boolean;
   mode: 'inbound' | 'usage';
@@ -13,39 +16,39 @@ interface Props {
   currentUserName?: string;
   lotsForMaterial?: (material: string) => RawMaterialLot[];
   onClose: () => void;
-  onSubmit: (entry: RawMaterialEntry) => boolean | void | Promise<boolean | void>;
+  onSubmit: (entry: RawMaterialEntry) => RawEntrySubmitResult | Promise<RawEntrySubmitResult>;
+  companyId?: CompanyId;
+  actorUid?: string;
+  getActorUid?: () => string | undefined;
+  rawYieldRules?: Record<string, { product: string; rate: number }>;
 }
 
 // 사용 시 수율 자동 입고 매핑 (AdminApp.onAddRawMaterialEntry와 동일 — 안내용)
-const YIELD_HINT: Record<string, { product: string; rate: number }> = {
-  '참깨':   { product: '통깨참기름', rate: 0.45 },
-  '깨분':   { product: '깨분참기름', rate: 0.45 },
-  '들깨':   { product: '통들깨들기름', rate: 0.37 },
-  '검정깨': { product: '볶음검정참깨', rate: 0.95 },
-};
-
-
 const RawMaterialEntryModal: React.FC<Props> = ({
-  open, mode, materials, defaultMaterial, currentUserName, lotsForMaterial, onClose, onSubmit,
-}) => {
-  const [date, setDate] = useState(todayStr());
-  const [material, setMaterial] = useState(defaultMaterial ?? materials[0] ?? '');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [targetLotId, setTargetLotId] = useState('');
+  ...props
+}) => <RawEntrySession key={JSON.stringify([props.open,props.mode,props.companyId,props.actorUid])} {...props}/>;
 
-  // 모달 열릴 때 폼 초기화
-  useEffect(() => {
-    if (!open) return;
-    setDate(todayStr());
-    setMaterial(defaultMaterial ?? materials[0] ?? '');
-    setAmount('');
-    setNote('');
-    const initialMaterial = defaultMaterial ?? materials[0] ?? '';
-    setTargetLotId(lotsForMaterial?.(initialMaterial).find(lot => lot.status !== 'depleted')?.id ?? '');
-    setSubmitting(false);
-  }, [open, defaultMaterial, materials, lotsForMaterial]);
+function RawEntrySession({
+  open, mode, materials, defaultMaterial, currentUserName, lotsForMaterial, onClose, onSubmit,
+  companyId='taebaek', actorUid, getActorUid, rawYieldRules={},
+}:Props) {
+  const initial = useMemo(() => {
+    try { return { entry: mode==='usage'&&actorUid ? readRawPressAttempt(companyId,actorUid)?.request.entry ?? null : null, error:'' }; }
+    catch { return {entry:null,error:'보존된 압착 요청을 읽을 수 없습니다. 원문을 유지했습니다.'}; }
+  }, []);
+  const [retainedEntry,setRetainedEntry]=useState<RawMaterialEntry|null>(initial.entry);
+  const submittedEntry=useRef<RawMaterialEntry|null>(initial.entry);
+  const [notice,setNotice]=useState(initial.error);
+  const busyRef=useRef(false),alive=useRef(true);
+  React.useLayoutEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+  const sameScope=()=>alive.current && (!getActorUid || getActorUid()===actorUid);
+  const close=()=>{if(!busyRef.current&&sameScope())onClose();};
+  const [date, setDate] = useState(initial.entry?.date??todayStr());
+  const [material, setMaterial] = useState(initial.entry?.material??defaultMaterial??materials[0]??'');
+  const [amount, setAmount] = useState(initial.entry?String(initial.entry.originalAmount??initial.entry.used):'');
+  const [note, setNote] = useState(initial.entry?.note??'');
+  const [submitting, setSubmitting] = useState(false);
+  const [targetLotId, setTargetLotId] = useState(()=>initial.entry?.targetLotId??lotsForMaterial?.(defaultMaterial ?? materials[0] ?? '').find(lot=>lot.status!=='depleted')?.id??'');
 
   const activeLots = useMemo(() => (lotsForMaterial?.(material) ?? []).filter(lot => lot.status !== 'depleted'), [lotsForMaterial, material]);
 
@@ -54,53 +57,73 @@ const RawMaterialEntryModal: React.FC<Props> = ({
 
   const yieldHint = useMemo(() => {
     if (mode !== 'usage') return null;
-    const m = YIELD_HINT[material];
+    const m = rawYieldRules[material];
     if (!m) return null;
-    const productUnit = unitOf(m.product);
+    const productUnit = 'kg';
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return { product: m.product, rate: m.rate, derived: null, productUnit };
-    return { product: m.product, rate: m.rate, derived: Math.round(amt * m.rate * 1000) / 1000, productUnit };
-  }, [mode, material, amount]);
+    const sourceKg=unit==='L'?Math.round(amt*(DENSITY[material]??1)*1000)/1000:amt;
+    return { product: m.product, rate: m.rate, derived: rawPressYieldKg(sourceKg,m.rate), productUnit };
+  }, [mode, material, amount, rawYieldRules]);
 
   if (!open) return null;
 
   const handleSubmit = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
+    if(busyRef.current||!sameScope()||initial.error)return;
+    let pending:RawMaterialEntry|null=null;
+    try { pending=mode==='usage'&&actorUid?readRawPressAttempt(companyId,actorUid)?.request.entry??null:null; }
+    catch {setNotice('보존된 압착 요청을 읽을 수 없습니다. 원문을 유지했습니다.');return;}
+    if(pending && submittedEntry.current && rawPressText(pending)!==rawPressText(submittedEntry.current)){setNotice('보존된 요청 원문이 변경되었습니다. 다른 요청으로 대체하지 않았습니다.');return;}
+    const fixed=pending??submittedEntry.current;
     const amt = parseFloat(amount);
-    if (!material) { alert('원료를 선택해주세요.'); return; }
-    if (!amt || amt <= 0) { alert(`양(${unit})을 0보다 큰 값으로 입력해주세요.`); return; }
-    if (mode === 'usage' && !targetLotId) { alert('사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.'); return; }
+    if (!fixed && !material) { alert('원료를 선택해주세요.'); return; }
+    if (!fixed && (!Number.isFinite(amt) || amt <= 0)) { alert(`양(${unit})을 0보다 큰 값으로 입력해주세요.`); return; }
+    if (!fixed && mode === 'usage' && !targetLotId) { alert('사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.'); return; }
+    busyRef.current=true;
     setSubmitting(true);
     try {
-      const id = mode === 'inbound' ? `rm-in-${Date.now()}` : `rm-use-${Date.now()}`;
+      const id = `${mode==='inbound'?'rm-in':'rm-use'}-${crypto.randomUUID()}`;
       // L 입력은 저장 시 kg으로 환산. 비고에 원본 입력값 자동 추가
       const density = DENSITY[material] ?? 1.0;
       const amtKg = unit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
       const inputTag = unit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
       const finalNote = (note.trim() + inputTag).trim();
-      const saved = await onSubmit({
+      const createdAt=new Date().toISOString();
+      const entry=fixed??{
         id,
+        companyId,
         material,
         date,
         received: mode === 'inbound' ? amtKg : 0,
         used:     mode === 'usage'   ? amtKg : 0,
         note: finalNote,
-        createdAt: new Date().toISOString(),
-        type: 'manual',
+        createdAt,
+        effectiveAt: date===todayStr()?createdAt:`${date}T12:00:00+09:00`,
+        type: 'manual' as const,
         addedBy: currentUserName,
         unit: 'kg',          // canonical
         originalAmount: amt, // 사용자 원본 값
         originalUnit: unit,  // 'kg' or 'L'
         ...(mode === 'usage' && targetLotId ? { targetLotId } : {}),
-      });
-      if (saved === false) return;
+      };
+      submittedEntry.current=entry;
+      setRetainedEntry(entry);
+      const saved = await onSubmit(entry);
+      if(!sameScope())return;
+      if (saved === false || typeof saved==='object'&&saved.ok===false) {
+        if(typeof saved==='object'&&saved.canEditRetry){
+          const stillPending=mode==='usage'&&actorUid?readRawPressAttempt(companyId,actorUid):null;
+          if(!stillPending){submittedEntry.current=null;setRetainedEntry(null);setNotice(saved.reason??'저장하지 않았습니다. 입력을 수정해서 다시 저장해주세요.');return;}
+        }
+        setNotice(typeof saved==='object'&&saved.reason?saved.reason:'저장 결과가 확인되지 않았습니다. 보존된 원문으로 다시 확인해주세요.');return;
+      }
       onClose();
     } catch (err) {
       // 저장 실패를 조용히 묻지 않음 — 예전엔 throw 시 모달이 안 닫히고 멈춘 듯 보였다(모바일).
-      console.error('[원료 기록 저장 실패]', err);
-      alert('저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.');
+      if(sameScope())setNotice(err instanceof Error?err.message:'저장 결과가 확인되지 않았습니다. 보존된 원문으로 재개해주세요.');
     } finally {
-      setSubmitting(false);
+      if(sameScope()){busyRef.current=false;setSubmitting(false);}
     }
   };
 
@@ -110,13 +133,17 @@ const RawMaterialEntryModal: React.FC<Props> = ({
     : { bg: 'bg-rose-500',    hover: 'hover:bg-rose-600',    tint: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' };
 
   return (
-    <ModalShell title={isInbound ? '원료 입고 기록' : '원료 사용 기록'} onClose={onClose} bodyClassName="!p-0">
+    <ModalShell title={isInbound ? '원료 입고 기록' : '원료 사용 기록'} onClose={close} bodyClassName="!p-0">
       <form onSubmit={handleSubmit}>
+        {notice&&<p role="alert" className="px-5 pt-3 text-xs text-amber-800">{notice}</p>}
+        {retainedEntry&&<p className="px-5 pt-3 text-xs font-bold">보존 요청 · {retainedEntry.material} · {retainedEntry.date} · 사용 {retainedEntry.used}kg / 입고 {retainedEntry.received}kg</p>}
+        <fieldset disabled={submitting||!!retainedEntry||!!initial.error}>
         <div className="px-5 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-black text-slate-500 mb-1.5">날짜</label>
               <input
+                aria-label="날짜"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -126,6 +153,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
             <div>
               <label className="block text-[11px] font-black text-slate-500 mb-1.5">원료</label>
               <select
+                aria-label="원료"
                 value={material}
                 onChange={(e) => {
                   const next = e.target.value;
@@ -144,7 +172,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           {!isInbound && activeLots.length > 0 && (
             <div>
               <label className="mb-1.5 block text-[11px] font-black text-slate-500">사용 로트</label>
-              <select value={targetLotId} onChange={event => setTargetLotId(event.target.value)}
+              <select aria-label="사용 로트" value={targetLotId} onChange={event => setTargetLotId(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400">
                 {activeLots.map((lot, index) => (
                   <option key={lot.id} value={lot.id}>
@@ -167,6 +195,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
             </label>
             <div className="relative">
               <input
+                aria-label={isInbound?'입고량':'사용량'}
                 type="number"
                 min="0"
                 step="0.001"
@@ -183,6 +212,7 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           <div>
             <label className="block text-[11px] font-black text-slate-500 mb-1.5">비고 (선택)</label>
             <input
+              aria-label="비고"
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -203,10 +233,10 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/60">
+        </fieldset><div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/60">
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             disabled={submitting}
             className="px-4 py-2 rounded-xl text-xs font-black text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-50"
           >
@@ -214,15 +244,15 @@ const RawMaterialEntryModal: React.FC<Props> = ({
           </button>
           <button
             type="submit"
-            disabled={submitting || (!isInbound && !targetLotId)}
+            disabled={submitting || !!initial.error || (!retainedEntry && !isInbound && !targetLotId)}
             className={`px-5 py-2 rounded-xl text-xs font-black text-white ${accent.bg} ${accent.hover} transition-colors disabled:opacity-50`}
           >
-            {submitting ? '저장 중...' : '저장'}
+            {submitting ? '저장 중...' : retainedEntry ? '이전 요청 재개' : '저장'}
           </button>
         </div>
       </form>
     </ModalShell>
   );
-};
+}
 
 export default RawMaterialEntryModal;

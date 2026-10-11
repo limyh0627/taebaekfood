@@ -46,6 +46,8 @@ import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
+import { executeRawPress } from '../../shared/services/rawPressService';
+import { readRawPressAttempt, rawPressText, rawPressYieldKg, type RawPressRequest } from '../../shared/rawPressAttempt';
 import { adjustStockByQty, durableProductStocktake as stocktakeByQty } from '../../shared/services/unpackService';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 import { createPortal } from 'react-dom';
@@ -2704,8 +2706,42 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onOpenVoucher={(_docNo, statementId) => setInboundDetailId(statementId)}
               rawMaterialLedger={mergedRawMaterialLedger}
               linesUsingRaw={linesUsingRaw}
+              rawYieldRules={yieldRules}
               
               onAddRawMaterialEntry={async (entry) => {
+                // 재개는 현재 수율·품목으로 다시 만들지 않고 최초 원문만 확인한다.
+                if (entry.type === 'manual' && entry.used > 0 && entry.targetKg == null) {
+                  const uid = auth.currentUser?.uid;
+                  if (!uid) return { ok: false, reason: '로그인을 확인해 주세요.' };
+                  const pending = readRawPressAttempt(companyId, uid);
+                  if (pending || yieldRules[entry.material]) {
+                    let request: RawPressRequest;
+                    if (pending) {
+                      if (rawPressText(pending.request.entry) !== rawPressText(entry)) return { ok: false, reason: '이전 압착 요청의 최초 원문으로 재개해 주세요.' };
+                      request = pending.request;
+                    } else {
+                      const source = rawHolderByName(allItems, entry.material, entry.companyId ?? companyId);
+                      const rule = yieldRules[entry.material];
+                      const derived = rawHolderByName(allItems, rule.product, companyId);
+                      if (!source || !derived || source.id === derived.id) return { ok: false, reason: '서로 다른 원료와 파생 입고 품목을 확인해 주세요.', canEditRetry: true as const };
+                      if (!entry.targetLotId || !entry.effectiveAt) return { ok: false, reason: '사용 로트와 최초 시각을 확인해 주세요.', canEditRetry: true as const };
+                      request = {
+                        version: 1, companyId, actorUid: uid, entry, yieldRule: rule,
+                        sourceCommand: { ...rawLedgerKeys(source), operationId: entry.id, materialSnapshot: entry.material,
+                          effectiveAt: entry.effectiveAt, source: { type: 'manual', id: entry.id }, kind: 'consume-lot', kg: entry.used, lotId: entry.targetLotId,
+                          ...(entry.addedBy ? { actorName: entry.addedBy } : {}) },
+                        derivedCommand: { ...rawLedgerKeys(derived), operationId: `yield:${entry.id}`, materialSnapshot: rule.product,
+                          effectiveAt: entry.effectiveAt, source: { type: 'manual', id: entry.id }, kind: 'receive', kg: rawPressYieldKg(entry.used, rule.rate),
+                          lot: { supplierName: `${entry.material} 압착`, qtyIn: 0 }, ...(entry.addedBy ? { actorName: entry.addedBy } : {}) },
+                        sourceLegacy: { note: entry.note, type: entry.type, ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
+                          ...(entry.originalAmount != null ? { originalAmount: entry.originalAmount } : {}), ...(entry.originalUnit ? { originalUnit: entry.originalUnit } : {}) },
+                        derivedLegacy: { note: `${entry.material} 압착 (수율 ${rule.rate * 100}%)`, type: 'auto', ...(entry.addedBy ? { addedBy: entry.addedBy } : {}) },
+                      };
+                    }
+                    const outcome = await executeRawPress(request);
+                    return outcome.status === 'blocked' ? { ok: false, reason: outcome.reason, ...(!outcome.retainPending ? { canEditRetry: true as const } : {}) } : { ok: true, appliedKg: outcome.sourceAppliedKg };
+                  }
+                }
                 /**
                  * **손입력·실사 — 로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
                  *
@@ -2727,7 +2763,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   materialSnapshot: entry.material,
                   effectiveAt: entry.targetKg != null
                     ? new Date().toISOString()
-                    : (entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`),
+                    : (entry.effectiveAt ?? (entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`)),
                   ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
                 };
                 const 옛칸 = {
@@ -2764,42 +2800,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (r.status === 'conflict') return { ok: false, reason: '같은 작업 번호로 다른 내용이 이미 저장돼 있습니다.' };
                 const applied = r.status === 'applied' ? r.movement.appliedDeltaKg : 0;
 
-                /**
-                 * 수율 파생 입고 — 압착하면 기름이 나온다. 규칙은 `item_formula`(yieldRules).
-                 * **실제 사용(압착)에만** 붙인다. 실사·정정(correction)은 실물이 안 움직인 것이라 뺀다.
-                 * 소급이라 재고가 안 움직였으면(applied 0) 기름도 안 나온다.
-                 */
-                if ((entry.used ?? 0) > 0 && yieldRules[entry.material] && entry.type !== 'correction' && applied !== 0) {
-                  const { product, rate } = yieldRules[entry.material];
-                  const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
-                  const 파생홀더 = rawHolderByName(allItems, product, companyOf(홀더));
-                  if (파생홀더 && derivedKg > 0) {
-                    const 파생id = `yield:${entry.id}`;
-                    const dr = await executeRawInventoryCommand({
-                      operationId: 파생id,
-                      ...rawLedgerKeys(파생홀더),
-                      materialSnapshot: product,
-                      effectiveAt: entry.date === today() ? new Date().toISOString() : `${entry.date}T12:00:00+09:00`,
-                      ...(entry.addedBy ? { actorName: entry.addedBy } : {}),
-                      source: { type: 'manual', id: entry.id },
-                      kind: 'receive',
-                      kg: derivedKg,
-                      lot: { supplierName: `${entry.material} 압착`, qtyIn: 0 },
-                    }, {
-                      newLotId: `lot-${파생id}`,
-                      legacy: {
-                        note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
-                        type: 'auto',
-                        ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
-                      },
-                    });
-                    //  파생이 실패해도 본 사용은 이미 들어갔다. 조용히 넘기지 않고 알린다(§14).
-                    if (dr.status === 'rejected' || dr.status === 'conflict') {
-                      const 이유 = dr.status === 'rejected' ? dr.message : '같은 작업 번호의 내용이 다릅니다.';
-                      await awaitNotice(`⚠ ${product} 압착 입고가 안 들어갔습니다: ${이유}\n\n원료 사용은 기록됐습니다. 압착분은 손으로 넣어 주세요.`);
-                    }
-                  }
-                }
                 return { ok: true, appliedKg: applied };
               }}
               onDeleteRawMaterialEntry={async (id) => {

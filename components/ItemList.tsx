@@ -235,7 +235,7 @@ interface ItemListProps {
   onOpenVoucher?: (docNo: string, statementId: string) => void;
   issuedStatements?: IssuedStatement[];
   /** 원료 손입력·실사 — 로트·원장·품목재고를 **한 트랜잭션**에 넣는다(AdminApp 이 명령을 부른다). */
-  onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string }>;
+  onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string; canEditRetry?:boolean }>;
   onDeleteRawMaterialEntry: (id: string) => void;
   onLedgerChanged?: () => void;   // 원장 쓰기 후 상위(AdminApp) 재조회 트리거
   currentUser?: { name: string; id: string } | null;
@@ -251,6 +251,7 @@ interface ItemListProps {
   oemEnabled?: boolean;
   oemIssueDrafts?: PurchaseOrder[];
   rawStockKg?: (material: string) => number;
+  rawYieldRules?: Record<string,{product:string;rate:number}>;
   onOemIssue?: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
   onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onOemCancel?: (po: PurchaseOrder) => Promise<unknown>;
@@ -362,7 +363,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   onRequestPurchaseInvoice,
   onOpenVoucher,
   issuedStatements = [],
-  onAddRawMaterialEntry,
+  onAddRawMaterialEntry, rawYieldRules,
   onLedgerChanged,
   onDeleteRawMaterialEntry,
   currentUser,
@@ -389,7 +390,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
     return () => { unpackMounted.current = false; };
   }, []);
   const inventoryItems = useMemo(() => items.filter(isPhysicalInventoryItem), [items]);
-  const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material)?.lots ?? [], [items]);
+  const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material, companyId)?.lots ?? [], [items,companyId]);
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const scheduledOutboundQty = useMemo(() => {
     const result = new Map<string, number>();
@@ -626,6 +627,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const closeOem = () => { setOemIssueOpen(false); setOemReceiveTarget(null); setOemFeeTarget(null); };
   // 원료재고 입고/사용 기록 모달
   const [rawEntryModal, setRawEntryModal] = useState<{ mode: 'inbound' | 'usage' } | null>(null);
+  const rawEntryGeneration=useRef(0);
+  React.useLayoutEffect(()=>{rawEntryGeneration.current++;return()=>{rawEntryGeneration.current++;};},[companyId,rawEntryModal]);
   // 저장 완료 토스트 (원료 입출고 기록 등)
   const [toast, setToast] = useState<{ message: string } | null>(null);
   React.useEffect(() => {
@@ -3413,9 +3416,14 @@ const ItemListContent: React.FC<ItemListProps> = ({
         mode={rawEntryModal?.mode ?? 'inbound'}
         materials={RM_LIST as unknown as string[]}
         currentUserName={currentUser?.name}
+        companyId={companyId}
+        actorUid={auth.currentUser?.uid}
+        getActorUid={()=>auth.currentUser?.uid}
+        rawYieldRules={rawYieldRules}
         lotsForMaterial={rawLotsForMaterial}
         onClose={() => setRawEntryModal(null)}
         onSubmit={async (entry) => {
+          const generation=rawEntryGeneration.current,uid=auth.currentUser?.uid;
           /**
            * **로트·원장·재고가 한 트랜잭션에서 같이 움직인다**(설계 §6, 이관 5단계).
            *
@@ -3428,8 +3436,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
            * 화면이 든 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
            */
           const r = await onAddRawMaterialEntry(entry);
+          if(generation!==rawEntryGeneration.current||uid!==auth.currentUser?.uid)return false;
           if (!r.ok) {
             setToast({ message: `${entry.material} 기록 실패 — ${r.reason}` });
+            if(r.canEditRetry)return {ok:false as const,canEditRetry:true,reason:r.reason};
             return false;
           }
           if (r.appliedKg === 0 && (entry.received > 0 || entry.used > 0)) {
