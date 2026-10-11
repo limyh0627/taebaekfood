@@ -141,6 +141,14 @@ export const DOC_RECALC_RAWS = new Set(
 export const docPumok = (품목?: string | null): string =>
   (품목 && DOC_PUMOK_MERGE[품목]) || 품목 || '';
 
+/** 서류 날짜에 유효한 품목 이력만 읽는다. 날짜 없으면 현재 품목을 사용한다. */
+export const docPumokAt = (item: Pick<Item, '품목' | '품목이력'> | undefined, at?: string): string => {
+  const 그때 = at
+    ? (item?.품목이력 ?? []).filter(h => at < h.until).sort((a, b) => a.until.localeCompare(b.until))[0]
+    : undefined;
+  return docPumok(그때 ? 그때.품목 : item?.품목);
+};
+
 /**
  * 판매 1줄 → 서류상 기름 kg.
  *  · 규격이 kg(캔·벌크)이면 그 자체가 기름 무게다 → 그대로 쓴다.
@@ -241,9 +249,10 @@ export const docSaleLines = (
   quantity: number,
   findItem: (id: string) => Item | undefined,
   inputs?: OrderUnitInputs,
+  at?: string,
 ): { 품목: string; spec: string; qty: number }[] =>
   docUnpack(product, quantity, findItem, inputs)
-    .map(u => ({ 품목: docPumok(u.item.품목), spec: u.item.spec ?? '', qty: u.qty }))
+    .map(u => ({ 품목: docPumokAt(u.item, at), spec: u.item.spec ?? '', qty: u.qty }))
     .filter(l => l.품목);
 
 /**
@@ -258,6 +267,7 @@ export const journalSaleLines = (
   orderItem: Pick<OrderItem, 'quantity' | 'boxQuantity' | 'isBoxUnit' | 'name' | 'displaySize'>,
   findItem: (id: string) => Item | undefined,
   inputs?: OrderUnitInputs,
+  at?: string,
 ): { 품목: string; spec: string; qty: number }[] => {
   // 주문 quantity는 이미 낱개로 환산돼 있을 수 있다. 박스 수로 정규화한 뒤 BOM을 한 번 푼다.
   const quantity = stockUnits(orderItem, product, inputs);
@@ -266,7 +276,7 @@ export const journalSaleLines = (
   return rows.map(row => {
     const base = row.item ?? product;
     return {
-      품목: docPumok(base?.품목) || base?.name || orderItem.name || '',
+      품목: docPumokAt(base, at) || base?.name || orderItem.name || '',
       spec: docSpec(base?.spec) || orderItem.displaySize || '',
       qty: row.qty,
     };

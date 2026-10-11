@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel } from './docOil';
+import { docPumokAt, docPumok, docOilKg, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec, rawDocMaterials, rawDocTabs, rawDocTabLabel } from './docOil';
 import { buildBomIndex, getBomIndex, setBomIndex } from './bomIndex';
 import { buildPackIndex } from './packIndex';
 
@@ -362,5 +362,45 @@ describe('명시 BOM 입력으로 서류 환산', () => {
       expect(getBomIndex()).toBe(foreign);
       expect(docSaleLines(box, 1, find)).toEqual([]);
     } finally { setBomIndex(previous); }
+  });
+});
+
+describe('docPumokAt — 품목을 바꿔도 그 전 날짜 서류는 그대로', () => {
+  const 바뀐것 = { 품목: '시골향들기름3', 품목이력: [{ 품목: '시골향들기름2', until: '2026-10-09' }] };
+
+  it('until 전날까지는 예전 품목, until 날부터 지금 품목', () => {
+    expect(docPumokAt(바뀐것, '2026-08-31')).toBe('시골향들기름2');
+    expect(docPumokAt(바뀐것, '2026-10-08')).toBe('시골향들기름2');
+    expect(docPumokAt(바뀐것, '2026-10-09')).toBe('시골향들기름3');
+  });
+
+  it('날짜가 없거나 이력이 없으면 지금 품목', () => {
+    expect(docPumokAt(바뀐것)).toBe('시골향들기름3');
+    expect(docPumokAt({ 품목: '시골향들기름2' }, '2026-08-01')).toBe('시골향들기름2');
+    expect(docPumokAt(undefined, '2026-08-01')).toBe('');
+  });
+
+  it('두 번 바꿨으면 그 날짜 뒤에 끝나는 것 중 가장 이른 것', () => {
+    const 두번 = { 품목: 'C', 품목이력: [{ 품목: 'B', until: '2026-12-01' }, { 품목: 'A', until: '2026-11-01' }] };
+    expect(docPumokAt(두번, '2026-10-15')).toBe('A');
+    expect(docPumokAt(두번, '2026-11-15')).toBe('B');
+    expect(docPumokAt(두번, '2026-12-01')).toBe('C');
+  });
+
+  it('새싹 → 하남댁 묶음은 예전 품목에도 똑같이 걸린다', () => {
+    expect(docPumokAt({ 품목: '해달참기름', 품목이력: [{ 품목: '새싹참기름', until: '2026-10-09' }] }, '2026-10-01')).toBe('하남댁참기름');
+  });
+
+  it('박스·판매일지 줄도 서류 날짜의 품목으로 적힌다', () => {
+    const loose = { id: 'h-loose', name: '들기름/1800ml', type: 'product', spec: '1800ml', ...바뀐것 } as import('./types').Item;
+    const box = { id: 'h-box', name: '들기름/1800ml', type: 'product', spec: '1800ml * 10' } as import('./types').Item;
+    const items = [loose, box];
+    const inputs = { bom: buildBomIndex(items, [{ parent_id: box.id, child_id: loose.id, quantity: 10 }]), pack: buildPackIndex() };
+    const find = (id: string) => items.find(item => item.id === id);
+    expect(docSaleLines(box, 2, find, inputs, '2026-09-15')).toEqual([{ 품목: '시골향들기름2', spec: '1800ml', qty: 20 }]);
+    expect(docSaleLines(box, 2, find, inputs, '2026-10-09')).toEqual([{ 품목: '시골향들기름3', spec: '1800ml', qty: 20 }]);
+    const 일지줄 = { quantity: 20, boxQuantity: 2, name: '들기름/1800ml' };
+    expect(journalSaleLines(box, 일지줄, find, inputs, '2026-10-08')[0].품목).toBe('시골향들기름2');
+    expect(journalSaleLines(box, 일지줄, find, inputs, '2026-10-09')[0].품목).toBe('시골향들기름3');
   });
 });

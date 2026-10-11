@@ -574,6 +574,8 @@ export interface Item {
   //  boxSize 는 걷어냈다(2026-09-02) — 개입수의 근거는 **BOM 아니면 item_pack** 둘뿐이다.
   //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
   품목?: string;
+  /** until 이전 서류에 사용할 예전 품목. 과거 재고·배합을 변경하지 않는다. */
+  품목이력?: { 품목: string; until: string }[];
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
   isSmartStore?: boolean;
   smartStorePrice?: number;

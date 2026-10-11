@@ -541,6 +541,11 @@ describe('auditDataIntegrity — 주문·판매일지·서류수불부 대조', 
     expect(ids.filter(id => id.startsWith('sales-log-'))).toEqual([]);
   });
 
+  it('현재 품목을 바꿔도 이전 서류 날짜의 저장 일지는 기존 품목으로 대조한다', () => {
+    const changed = { ...journalItem, 품목: '현재품목', 품목이력: [{ 품목: formulaItem, until: '2026-09-17' }] } as Item;
+    const ids = auditDataIntegrity(input({ items: [changed], orders: [deliveredOrder()], productionSalesLogs: [matchingLog()] })).map(issue => issue.id);
+    expect(ids.filter(id => id.startsWith('sales-log-'))).toEqual([]);
+  });
   it('5박스의 이미 환산된 100개를 2000개로 다시 곱하지 않고 과거 과다 일지는 잡는다', () => {
     const box = productItem({ id: 'box-20', name: '20개입 박스', spec: '' });
     const items = [box, journalItem];
