@@ -6,6 +6,7 @@
  */
 import { access, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { applicationDefault, cert, deleteApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { createRequire } from 'node:module';
@@ -15,6 +16,7 @@ import type { RawInventoryState } from '../src/shared/rawInventoryCore';
 import type { CompanyId, IssuedStatement, Item, ItemBom, Order, OrderStatusAudit, ProductionSalesLog, PurchaseOrder, RawMaterialEntry } from '../src/shared/types';
 // tsx require를 사용해 앱 ESM과 Functions CJS의 공용 TS 본문을 함께 읽는다.
 const require = createRequire(import.meta.url);
+const { adminCredentialPath }: typeof import('./adminCredentialPath') = require('./adminCredentialPath.ts');
 const { auditDataIntegrity }: typeof import('../src/features/admin/dataIntegrityAudit') = require('../src/features/admin/dataIntegrityAudit.ts');
 const { companyOf }: typeof import('../src/shared/types') = require('../src/shared/types.ts');
 const { dateOfLocal }: typeof import('../src/shared/day') = require('../src/shared/day.ts');
@@ -47,8 +49,8 @@ const root = resolve(import.meta.dirname, '..');
 const date = process.argv[2] || new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
 if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`날짜 형식이 잘못됐습니다: ${date}`);
 
-const defaultKeyPath = 'C:\\Users\\TAEBAEK\\.secrets\\taebaek-admin.json';
-const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || await access(defaultKeyPath).then(() => defaultKeyPath).catch(() => undefined);
+const keyPath = await adminCredentialPath(process.env.GOOGLE_APPLICATION_CREDENTIALS, homedir(),
+  path => access(path).then(() => true).catch(() => false));
 const credential = keyPath ? cert(JSON.parse(await readFile(keyPath, 'utf8'))) : applicationDefault();
 const app = getApps()[0] ?? initializeApp({ credential, projectId: 'taebaek-3abe4' });
 const db = getFirestore(app);
