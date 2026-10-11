@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { beforeEach, expect, it, vi } from 'vitest';
 import { clearRawPressAttempt, readRawPressAttempt, saveRawPressAttempt, rawPressText, rawPressYieldKg, validateRawPressRequest, rawPressAttemptKey, type RawPressRequest } from './rawPressAttempt';
+import { makeRawPressCancellationRequest,readRawPressCancellationAttempt,saveRawPressCancellationAttempt,clearRawPressCancellationAttempt,rawPressCancellationAttemptKey } from './rawPressAttempt';
 const request = (): RawPressRequest => ({ version: 1, companyId: 'taebaek', actorUid: 'uid',
   entry: { id:'press', material:'참깨', date:'2026-10-12', received:0, used:10, note:'메모', createdAt:'2026-10-12T01:00:00Z', effectiveAt:'2026-10-12T01:00:00Z', targetLotId:'lot',type:'manual' },
   yieldRule:{product:'통깨참기름',rate:0.48}, sourceCommand:{kind:'consume-lot',companyId:'taebaek',rawItemId:'source',operationId:'press',materialSnapshot:'참깨',effectiveAt:'2026-10-12T01:00:00Z',source:{type:'manual',id:'press'},kg:10,lotId:'lot'},
@@ -25,3 +26,5 @@ it('회사·동일 홀더·시각·원료 사용·파생 양·source 변조는 �
 it('키순서는 무관하고 기존 kg 수율은 round3만 적용한다',()=>{
  const r=request();expect(rawPressText(Object.fromEntries(Object.entries(r).reverse()))).toBe(rawPressText(r));expect(rawPressYieldKg(10,0.48)).toBe(4.8);expect(rawPressYieldKg(0.001,0.48)).toBe(0);
 });
+it('취소 첫 원문은 ID·회사·현재 행동자·시각을 고정하고 재개에 다시 쓰지 않는다',()=>{const cancel=makeRawPressCancellationRequest(request(),'other-admin','cancel-first','2026-10-13T00:00:00Z');const first=saveRawPressCancellationAttempt(cancel);const set=vi.spyOn(Storage.prototype,'setItem');expect(saveRawPressCancellationAttempt(cancel)).toEqual(first);expect(set).not.toHaveBeenCalled();expect(readRawPressCancellationAttempt('taebaek','uid','press')).toBeNull();expect(()=>saveRawPressCancellationAttempt(makeRawPressCancellationRequest(request(),'other-admin','new-id','2026-10-13T01:00:00Z'))).toThrow();set.mockRestore();expect(()=>clearRawPressCancellationAttempt(cancel,'different')).toThrow();clearRawPressCancellationAttempt(cancel,first.encoded);expect(readRawPressCancellationAttempt('taebaek','other-admin','press')).toBeNull();});
+it.each(['','{bad'])('손상 취소 저장값 %s은 보존하고 새 취소로 덮지 않는다',encoded=>{localStorage.setItem(rawPressCancellationAttemptKey('taebaek','uid','press'),encoded);expect(()=>readRawPressCancellationAttempt('taebaek','uid','press')).toThrow('손상');expect(()=>saveRawPressCancellationAttempt(makeRawPressCancellationRequest(request(),'uid','new','2026-10-13T00:00:00Z'))).toThrow();expect(localStorage.getItem(rawPressCancellationAttemptKey('taebaek','uid','press'))).toBe(encoded);});

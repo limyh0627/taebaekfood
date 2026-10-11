@@ -286,3 +286,7 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 ## 2026-10-12 원료수불부 표시와 옛 정정 도구 후속 · 구현 중
 
 원료수불부는 merged 원장의 실제 적용량0 및 정확한 파생 영수증 근거를 읽어 표시용 가상 입고만 배제한다. 저장된 movement·job·현재 재고 모델을 바꾸지 않는다. 회사 검증·원자 상태를 우회하는 옛 생들기름/수입들기름 일회성 정정 도구2종은 안내 경로로 종료한다. 역사 백업을 삭제하거나 운영 수량을 새 수치로 추정하지 않는다. [현재 범위](raw-doc-and-legacy-ledger-followup-20261012.md)의 실제 구현 및 검증 뒤 사전을 갱신한다.
+
+## 2026-10-12 신규 압착 pair 취소 후속 · 구현 중
+
+a025c9b의 표시·옛 CLI2종 종료는 일반4435건·타입·양 앱 빌드 및 GitHub main 일치를 확인했다. 다음 신규 압착 취소는 원료/기름 두 reverse와 기존 rawInventoryJobs 원 job의 optional cancellation 완료 근거를 같은 거래에 보존한다. 공용 rawInventory 계산·원래 로트·앵커·소비 입고 계약을 유지하며 과거 부분 자료를 자동 보완하지 않는다. 옛 고정 정정 CLI3종을 추가 종료한다. 새 collection·Rules·운영 자료 수정은 없으며 [후속 범위](raw-press-cancel-and-legacy-followup-20261012.md) 검증 뒤 실제 사전을 갱신한다.

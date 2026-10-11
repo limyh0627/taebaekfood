@@ -70,3 +70,42 @@ export function clearRawPressAttempt(companyId: CompanyId, actorUid: string, enc
   if (localStorage.getItem(key) !== encoded) throw Error('압착 재개 원문이 달라 정리하지 않았습니다.');
   localStorage.removeItem(key);
 }
+export interface RawPressCancellationRequest {
+  version:1; companyId:CompanyId; actorUid:string; originalOperationId:string;
+  cancellationId:string; effectiveAt:string; createdAt:string; original:RawPressRequest;
+  sourceReverse:Extract<RawInventoryCommand,{kind:'reverse'}>;
+  derivedReverse:Extract<RawInventoryCommand,{kind:'reverse'}>;
+}
+export function makeRawPressCancellationRequest(original:RawPressRequest,actorUid:string,cancellationId:string,effectiveAt:string):RawPressCancellationRequest {
+  const reverse=(command:RawInventoryCommand,side:string):Extract<RawInventoryCommand,{kind:'reverse'}>=>({
+    kind:'reverse',companyId:original.companyId,rawItemId:command.rawItemId,materialSnapshot:command.materialSnapshot,
+    operationId:`${cancellationId}:${side}`,effectiveAt,source:{type:'reversal',id:command.operationId},originalOperationId:command.operationId,
+  });
+  return {version:1,companyId:original.companyId,actorUid,originalOperationId:original.entry.id,cancellationId,effectiveAt,createdAt:effectiveAt,original,
+    sourceReverse:reverse(original.sourceCommand,'source'),derivedReverse:reverse(original.derivedCommand,'derived')};
+}
+export function validateRawPressCancellationRequest(request:RawPressCancellationRequest):void {
+  validateRawPressRequest(request?.original);
+  if(request.version!==1||request.companyId!==request.original.companyId||!request.actorUid||!request.cancellationId
+    ||request.originalOperationId!==request.original.entry.id||!Number.isFinite(Date.parse(request.effectiveAt))||request.createdAt!==request.effectiveAt
+    ||rawPressText(request)!==rawPressText(makeRawPressCancellationRequest(request.original,request.actorUid,request.cancellationId,request.effectiveAt)))throw Error('압착 취소 최초 원문을 확인해 주세요.');
+}
+export const rawPressCancellationAttemptKey=(companyId:CompanyId,actorUid:string,originalOperationId:string)=>`raw-press-cancel:${encodeURIComponent(actorUid)}:${companyId}:${encodeURIComponent(originalOperationId)}`;
+export function readRawPressCancellationAttempt(companyId:CompanyId,actorUid:string,originalOperationId:string):{request:RawPressCancellationRequest;encoded:string}|null {
+  const encoded=localStorage.getItem(rawPressCancellationAttemptKey(companyId,actorUid,originalOperationId));
+  if(encoded===null)return null;
+  try{const request=JSON.parse(encoded);validateRawPressCancellationRequest(request);if(request.companyId!==companyId||request.actorUid!==actorUid||request.originalOperationId!==originalOperationId)throw Error();return {request,encoded};}
+  catch{throw Error('저장된 압착 취소 요청이 손상되었습니다. 최초 원문을 보존했습니다.');}
+}
+export function saveRawPressCancellationAttempt(request:RawPressCancellationRequest):{request:RawPressCancellationRequest;encoded:string} {
+  validateRawPressCancellationRequest(request);
+  const existing=readRawPressCancellationAttempt(request.companyId,request.actorUid,request.originalOperationId);
+  if(existing){if(rawPressText(existing.request)!==rawPressText(request))throw Error('이전 압착 취소 요청을 먼저 재개해 주세요.');return existing;}
+  const key=rawPressCancellationAttemptKey(request.companyId,request.actorUid,request.originalOperationId),encoded=JSON.stringify(request);
+  if(localStorage.getItem(key)!==null)throw Error('다른 압착 취소 요청이 있습니다.');
+  localStorage.setItem(key,encoded);return {request,encoded};
+}
+export function clearRawPressCancellationAttempt(request:RawPressCancellationRequest,encoded:string):void {
+  const key=rawPressCancellationAttemptKey(request.companyId,request.actorUid,request.originalOperationId);
+  if(localStorage.getItem(key)!==encoded)throw Error('압착 취소 원문이 달라 정리하지 않았습니다.');localStorage.removeItem(key);
+}

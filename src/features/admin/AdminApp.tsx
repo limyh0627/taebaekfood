@@ -46,7 +46,7 @@ import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
-import { executeRawPress } from '../../shared/services/rawPressService';
+import { executeRawPress, executeRawPressCancellation } from '../../shared/services/rawPressService';
 import { readRawPressAttempt, rawPressText, rawPressYieldKg, type RawPressRequest } from '../../shared/rawPressAttempt';
 import { derivedRawDocEntries } from '../../shared/derivedRawDocEntries';
 import { adjustStockByQty, durableProductStocktake as stocktakeByQty } from '../../shared/services/unpackService';
@@ -583,6 +583,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 원료 입출고도 회사별 — 풍회 창고에서 짠 깨분이 태백 수불부에 뜨면 안 된다
     return Array.from(map.values()).filter(e => companyOf(e) === companyId);
   }, [rawMaterialLedger, extraRawMaterialLedger, companyId]);
+  const rawCancelScopeRef = useRef({companyId,uid:auth.currentUser?.uid});
+  if(rawCancelScopeRef.current.companyId!==companyId||rawCancelScopeRef.current.uid!==auth.currentUser?.uid)rawCancelScopeRef.current={companyId,uid:auth.currentUser?.uid};
+  const rawCancelScope=rawCancelScopeRef.current;
+  const rawCancelAlive=useRef(true);
+  useEffect(()=>{rawCancelAlive.current=true;return()=>{rawCancelAlive.current=false;};},[]);
+  const cancelRawLedgerEntry = async (id:string) => {
+    const active=()=>rawCancelAlive.current&&rawCancelScopeRef.current===rawCancelScope&&auth.currentUser?.uid===rawCancelScope.uid;
+    if(!active()||!rawCancelScope.uid)return;
+    const entry=mergedRawMaterialLedger.find(row=>row.id===id);
+    const original=(entry as {operationId?:string}|undefined)?.operationId;
+    if(!entry||!original){alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.');return;}
+    try{
+      const pair=await executeRawPressCancellation({companyId,actorUid:rawCancelScope.uid,originalOperationId:original});
+      if(!active())return;
+      if(pair.status==='blocked'){alert(`압착 취소 실패 — ${pair.reason}`);return;}
+      if(pair.status==='already-cancelled')alert(pair.reason);
+      if(pair.status!=='legacy'){setLedgerReloadKey(k=>k+1);return;}
+      const holder=resolveRawHolder(allItems,{rawItemId:entry.rawItemId,material:entry.material,companyId:entry.companyId});
+      if(!holder){alert('원료 홀더를 찾지 못했습니다.');return;}
+      const result=await executeRawInventoryCommand({operationId:`reverse:${original}`,...rawLedgerKeys(holder),materialSnapshot:entry.material,
+        effectiveAt:new Date().toISOString(),...(currentUser?.name?{actorName:currentUser.name}:{}),source:{type:'reversal',id:original},kind:'reverse',originalOperationId:original},
+        {legacy:{note:`원장 기록 취소 (${entry.note??''})`.trim(),type:'correction',...(currentUser?.name?{addedBy:currentUser.name}:{})}});
+      if(!active())return;
+      if(result.status==='rejected'){alert(`취소 실패 — ${result.code}: ${result.message}`);return;}
+      if(result.status==='conflict'){alert('같은 취소 번호의 내용이 다릅니다.');return;}
+      setLedgerReloadKey(k=>k+1);
+    }catch(error){if(active())alert(`취소 완료 여부를 확인하지 못했습니다. 같은 기록에서 재개해 주세요: ${(error as Error).message}`);}
+  };
 
   // 원료수불부는 배송일 기준 월 조회이므로 생성일 창 밖의 경계 주문도 함께 조회한다.
   //   6월말 생성·7월초 배송 같은 경계 주문이 창 밖으로 빠져 누락. 해당 월 배송을 커버하도록
@@ -2740,6 +2768,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       };
                     }
                     const outcome = await executeRawPress(request);
+                    if(outcome.status==='cancelled')return {ok:false,reason:outcome.reason,canEditRetry:true as const};
                     return outcome.status === 'blocked' ? { ok: false, reason: outcome.reason, ...(!outcome.retainPending ? { canEditRetry: true as const } : {}) } : { ok: true, appliedKg: outcome.sourceAppliedKg };
                   }
                 }
@@ -2803,43 +2832,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 return { ok: true, appliedKg: applied };
               }}
-              onDeleteRawMaterialEntry={async (id) => {
-                /**
-                 * **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9, 2026-09-10 원자화 5단계).
-                 *
-                 * 예전엔 `adjustRawLots` 로 로트를 손으로 되돌리고 `deleteItem` 으로 원장 줄을
-                 * 지웠다 — 감사가 사라지고 서로 다른 취소가 원본을 두 번 되돌릴 수 있었다.
-                 * 이제 원본 `operationId` 에 `reverse` 명령을 보내면 서비스가 `ReversalGuard` 로
-                 * 두 번째 취소를 막고, 이력·상태·품목을 한 트랜잭션에 갱신한다.
-                 */
-                const entry = mergedRawMaterialLedger.find(e => e.id === id);
-                if (!entry) return;
-                const original = (entry as { operationId?: string }).operationId;
-                if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
-                const holder = resolveRawHolder(allItems, {
-                  rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
-                });
-                if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
-                const opId = `reverse:${original}`;
-                const r = await executeRawInventoryCommand({
-                  operationId: opId,
-                  ...rawLedgerKeys(holder),
-                  materialSnapshot: entry.material,
-                  effectiveAt: new Date().toISOString(),
-                  ...(currentUser?.name ? { actorName: currentUser.name } : {}),
-                  source: { type: 'reversal', id: original },
-                  kind: 'reverse', originalOperationId: original,
-                }, {
-                  legacy: {
-                    note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
-                    type: 'correction',
-                    ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
-                  },
-                });
-                if (r.status === 'rejected') { alert(`취소 실패 — ${r.code}: ${r.message}`); return; }
-                if (r.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
-                setLedgerReloadKey(k => k + 1);
-              }}
+              onDeleteRawMaterialEntry={async (id) => { await cancelRawLedgerEntry(id); }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
               receivedOrders={receivedOrders}
@@ -4029,33 +4022,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             //  **원장은 지우지 않고 취소 이력을 뒤에 쌓는다**(설계 §9).
                                             //  같은 취소가 두 번 눌려도 `ReversalGuard` 가 막는다.
                                             if (!await appConfirm('이 기록을 취소할까요? (지우지 않고 뒤에 취소 줄이 쌓입니다)')) return;
-                                            const entry = mergedRawMaterialLedger.find(e => e.id === row.delId);
-                                            if (!entry) return;
-                                            const original = (entry as { operationId?: string }).operationId;
-                                            if (!original) { alert('옛 원장 기록은 원자 명령 번호가 없어 자동 취소할 수 없습니다. 정정으로 맞춰 주세요.'); return; }
-                                            const holder = resolveRawHolder(allItems, {
-                                              rawItemId: entry.rawItemId, material: entry.material, companyId: entry.companyId,
-                                            });
-                                            if (!holder) { alert('원료 홀더를 찾지 못했습니다.'); return; }
-                                            const opId = `reverse:${original}`;
-                                            const cr = await executeRawInventoryCommand({
-                                              operationId: opId,
-                                              ...rawLedgerKeys(holder),
-                                              materialSnapshot: entry.material,
-                                              effectiveAt: new Date().toISOString(),
-                                              ...(currentUser?.name ? { actorName: currentUser.name } : {}),
-                                              source: { type: 'reversal', id: original },
-                                              kind: 'reverse', originalOperationId: original,
-                                            }, {
-                                              legacy: {
-                                                note: `원장 기록 취소 (${entry.note ?? ''})`.trim(),
-                                                type: 'correction',
-                                                ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
-                                              },
-                                            });
-                                            if (cr.status === 'rejected') { alert(`취소 실패 — ${cr.code}: ${cr.message}`); return; }
-                                            if (cr.status === 'conflict') { alert('같은 취소 번호의 내용이 다릅니다.'); return; }
-                                            setLedgerReloadKey(k => k + 1);
+                                            await cancelRawLedgerEntry(row.delId!);
                                           }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors"
                                         >취소</button>

@@ -1,0 +1,24 @@
+/** @vitest-environment jsdom */
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import { beforeEach,expect,it,vi } from 'vitest';
+const source=readFileSync('src/features/admin/AdminApp.tsx','utf8'),ast=ts.createSourceFile('AdminApp.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+const callbacks=new Map<string,string>();let handlerEnd=0,handlerStart=source.indexOf('  const rawCancelScopeRef =');
+function visit(node:ts.Node){if(ts.isVariableDeclaration(node)&&node.name.getText(ast)==='cancelRawLedgerEntry')handlerEnd=node.parent.parent.end;if(ts.isJsxAttribute(node)&&node.initializer&&ts.isJsxExpression(node.initializer)&&node.initializer.expression){const name=node.name.getText(ast),text=node.initializer.expression.getText(ast);if(name==='onDeleteRawMaterialEntry')callbacks.set('inventory',text);if(name==='onClick'&&text.includes('await cancelRawLedgerEntry(row.delId!);'))callbacks.set('document',text);}ts.forEachChild(node,visit);}visit(ast);
+const transpile=(text:string)=>ts.transpileModule(text,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+const executeRawPressCancellation=vi.fn(),executeRawInventoryCommand=vi.fn(),alert=vi.fn(),reload=vi.fn(),confirm=vi.fn();
+let uid='uid';const refs:any[]=[];let cursor=0;const effects:(()=>void)[]=[];
+function render(companyId='taebaek'){
+ cursor=0;const text=source.slice(handlerStart,handlerEnd)+'\nreturn cancelRawLedgerEntry;';
+ const names=['companyId','auth','useRef','useEffect','mergedRawMaterialLedger','executeRawPressCancellation','executeRawInventoryCommand','resolveRawHolder','allItems','rawLedgerKeys','currentUser','setLedgerReloadKey','alert'];
+ const fn=new Function(...names,transpile(text))(companyId,{get currentUser(){return {uid};}},(value:any)=>refs[cursor++]??(refs[cursor-1]={current:value}),(effect:any)=>{const cleanup=effect();if(cleanup)effects.push(cleanup);},[{id:'row',operationId:'press',rawItemId:'raw',material:'참깨',companyId,note:'원문'}],executeRawPressCancellation,executeRawInventoryCommand,()=>({id:'raw',companyId}),[],(holder:any)=>({companyId:holder.companyId,rawItemId:holder.id}),{name:'관리자'},reload,alert);
+ const inventory=new Function('cancelRawLedgerEntry','return '+transpile('const callback='+callbacks.get('inventory')).replace(/^const callback\s*=\s*/, '').replace(/;\s*$/,''))(fn);
+ const document=new Function('cancelRawLedgerEntry','appConfirm','row',transpile('const callback='+callbacks.get('document'))+';return callback;')(fn,confirm,{delId:'row'});
+ return {inventory,document};
+}
+beforeEach(()=>{vi.clearAllMocks();refs.length=0;effects.length=0;uid='uid';executeRawPressCancellation.mockResolvedValue({status:'cancelled'});executeRawInventoryCommand.mockResolvedValue({status:'applied'});confirm.mockResolvedValue(true);});
+it.each(['inventory','document'] as const)('실제 %s 콜백은 pair 취소를 먼저 실행하고 단건을 호출하지 않는다',async name=>{const callbacks=render();await callbacks[name]('row');expect(executeRawPressCancellation).toHaveBeenCalledWith({companyId:'taebaek',actorUid:'uid',originalOperationId:'press'});expect(executeRawInventoryCommand).not.toHaveBeenCalled();expect(reload).toHaveBeenCalledTimes(1);});
+it.each(['inventory','document'] as const)('실제 %s 콜백은 job 없는 legacy만 기존 역수불로 처리한다',async name=>{executeRawPressCancellation.mockResolvedValue({status:'legacy'});await render()[name]('row');expect(executeRawInventoryCommand).toHaveBeenCalledWith(expect.objectContaining({kind:'reverse',operationId:'reverse:press',originalOperationId:'press'}),expect.anything());});
+it('확인 대기 중 회사 변경은 옛 서류 취소를 실행하지 않는다',async()=>{let answer:(v:boolean)=>void=()=>{};confirm.mockImplementation(()=>new Promise(resolve=>{answer=resolve;}));const old=render();const pending=old.document();render('punghoe');answer(true);await pending;expect(executeRawPressCancellation).not.toHaveBeenCalled();expect(reload).not.toHaveBeenCalled();});
+it.each(['uid','company','unmount'] as const)('응답 대기 중 %s 변경은 새 화면의 완료·실패 표시를 바꾸지 않는다',async change=>{let answer:(v:any)=>void=()=>{};executeRawPressCancellation.mockImplementation(()=>new Promise(resolve=>{answer=resolve;}));const old=render();const pending=old.inventory('row');if(change==='uid'){uid='other';render();}if(change==='company')render('punghoe');if(change==='unmount')effects.forEach(fn=>fn());answer({status:'cancelled'});await pending;expect(reload).not.toHaveBeenCalled();expect(alert).not.toHaveBeenCalled();});
+it('손상·부분 취소와 unknown은 단건 fallback하지 않고 동일 기록 재개를 안내한다',async()=>{executeRawPressCancellation.mockResolvedValue({status:'blocked',reason:'부분 취소'});await render().inventory('row');expect(alert).toHaveBeenCalledWith(expect.stringContaining('부분 취소'));executeRawPressCancellation.mockRejectedValue(Error('응답 유실'));await render().inventory('row');expect(alert).toHaveBeenLastCalledWith(expect.stringContaining('같은 기록에서 재개'));expect(executeRawInventoryCommand).not.toHaveBeenCalled();});
