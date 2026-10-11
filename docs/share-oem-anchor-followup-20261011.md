@@ -35,3 +35,10 @@ oemCostEvidence가 없는 기존 배치는 기존 계산을 유지한다. 확인
 최초 전체 회귀의 새 서비스 등록 누락1FAIL은 수정 후 전체4073PASS로 해소했다. 모델시험을 node --test로 실행한 도구 선택 오류는 Vitest 실행으로 정정했고, 추가 UI시험 배열 타입도 보완 후 최종 타입 exit0. 인증 생성파일4개 SHA 보존. 데이터사전 self-check 통과: 87컬렉션/724필드/449소스/620참조필드/2277미해석접근/519wrapper경로; 동적 접근 전체 수용을 뜻하지 않는다. 독립검토 미해결P1/P2없음.
 
 Android 실기기 공유 시트(026), 과거 OEM 원가 정책과 근거(028), 연말 실제자료 dry 검토·승인 적용(043)은 여전히 전체 수용 잔여다. 운영자료 정정이나 설정 활성화는 이번 변경에 없다. 원본43개 집계21완료22잔여 유지.
+## 운영 배포 결과
+
+소스 27b5383759fc987a29b7c793d7ba8a833ac3a434 GitHub main 푸시·원격SHA 일치. 선택 Functions issueOemFeeVoucherCommand와 Firestore Rules 배포62085 exit0, fee함수 ACTIVE/nodejs22. 관리자·직원 Hosting90898 exit0. 원격 HTML2/JS113/CSS2 총117개 SHA256가 로컬 최종 빌드와 일치(24357 exit0). predeploy 이후 인증 생성파일4개 보존 확인, 다른 인증함수 배포 없음.
+
+Notion026 검수/028 진행/043 진행의 배포·검증 속성을 갱신하고 fresh fetch3 확인했다. 21완료22잔여와 새whole완료0을 유지한다. 운영 업무자료·계좌·재고·설정gate·Figma 쓰기 없음. private 증거 records/share-oem-anchor에 일반/집중/Rules변이/원복/빌드/서버Rules배포/Hosting배포/함수상태/원격해시가 있다.
+
+다음 후보019 늦은AI응답의 사람이수정한입력 보존, 030 과거 Item.price분류/이관검증 잔여, 생산일지 전체인수격차를 읽기조사 중이다. 사용자 최신 지시로 도움말 챗봇은 남은 TODO22개 전체 완료 후로 보류한다.
