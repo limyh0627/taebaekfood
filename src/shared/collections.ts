@@ -104,7 +104,6 @@ export const COL = {
   fileCabinetCategories: 'fileCabinetCategories',
   fileCabinetSubCategories: 'fileCabinetSubCategories',
   fileCabinetDocs: 'fileCabinetDocs',
-  docSheetTitles: 'docSheetTitles',
   dashboardLinks: 'dashboardLinks',
 
   // ── HACCP ──

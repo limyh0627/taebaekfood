@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-11T14:19:40.659Z",
-  "sourceFiles": 449,
+  "generatedAt": "2026-10-11T14:42:07.153Z",
+  "sourceFiles": 448,
   "unresolvedAccesses": 2277,
   "unresolvedPropertyAccesses": [
     {
@@ -2713,21 +2713,21 @@
       "reason": "any-receiver"
     },
     {
-      "location": "components/PasteOrderModal.tsx:203",
+      "location": "components/PasteOrderModal.tsx:213",
       "expression": "r.partnerId",
       "receiverExpression": "r",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/PasteOrderModal.tsx:203",
+      "location": "components/PasteOrderModal.tsx:213",
       "expression": "r.Direction",
       "receiverExpression": "r",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/PasteOrderModal.tsx:205",
+      "location": "components/PasteOrderModal.tsx:215",
       "expression": "r.itemId",
       "receiverExpression": "r",
       "receiverType": "any",
@@ -5016,105 +5016,105 @@
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:427",
+      "location": "src/features/admin/AdminApp.tsx:426",
       "expression": "e?.message",
       "receiverExpression": "e",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:606",
+      "location": "src/features/admin/AdminApp.tsx:600",
       "expression": "(pc as any).itemId",
       "receiverExpression": "(pc as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:607",
+      "location": "src/features/admin/AdminApp.tsx:601",
       "expression": "(pc as any).partnerId",
       "receiverExpression": "(pc as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:999",
+      "location": "src/features/admin/AdminApp.tsx:993",
       "expression": "e.data?.type",
       "receiverExpression": "e.data",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:999",
+      "location": "src/features/admin/AdminApp.tsx:993",
       "expression": "e.data.view",
       "receiverExpression": "e.data",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:999",
+      "location": "src/features/admin/AdminApp.tsx:993",
       "expression": "e.data.view",
       "receiverExpression": "e.data",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1126",
+      "location": "src/features/admin/AdminApp.tsx:1120",
       "expression": "(s as any).itemId",
       "receiverExpression": "(s as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1127",
+      "location": "src/features/admin/AdminApp.tsx:1121",
       "expression": "(ps as any)?.partnerId",
       "receiverExpression": "(ps as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1189",
+      "location": "src/features/admin/AdminApp.tsx:1183",
       "expression": "(s as any).itemId",
       "receiverExpression": "(s as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1190",
+      "location": "src/features/admin/AdminApp.tsx:1184",
       "expression": "(ps as any)?.partnerId",
       "receiverExpression": "(ps as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1218",
+      "location": "src/features/admin/AdminApp.tsx:1212",
       "expression": "(s as any).itemId",
       "receiverExpression": "(s as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:1219",
+      "location": "src/features/admin/AdminApp.tsx:1213",
       "expression": "(ps as any)?.partnerId",
       "receiverExpression": "(ps as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:2632",
+      "location": "src/features/admin/AdminApp.tsx:2614",
       "expression": "patch.sortIndex",
       "receiverExpression": "patch",
       "receiverType": "Record<string, unknown>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:4997",
+      "location": "src/features/admin/AdminApp.tsx:4689",
       "expression": "error?.message",
       "receiverExpression": "error",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/features/admin/AdminApp.tsx:5007",
+      "location": "src/features/admin/AdminApp.tsx:4699",
       "expression": "error?.message",
       "receiverExpression": "error",
       "receiverType": "any",
@@ -16250,10 +16250,6 @@
       "collection": "fileCabinetDocs"
     },
     {
-      "key": "docSheetTitles",
-      "collection": "docSheetTitles"
-    },
-    {
       "key": "dashboardLinks",
       "collection": "dashboardLinks"
     },
@@ -16302,9 +16298,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:27",
       "references": [
-        "src/features/admin/AdminApp.tsx:1245",
-        "src/features/admin/AdminApp.tsx:1808",
-        "src/features/admin/AdminApp.tsx:1857",
+        "src/features/admin/AdminApp.tsx:1239",
+        "src/features/admin/AdminApp.tsx:1802",
+        "src/features/admin/AdminApp.tsx:1851",
         "src/features/admin/dataIntegrityAudit.ts:217",
         "src/features/admin/dataIntegrityAudit.ts:221",
         "src/features/admin/dataIntegrityAudit.ts:222",
@@ -16408,20 +16404,18 @@
         "components/SmartStoreAnalytics.tsx:201",
         "components/SmartStoreAnalytics.tsx:70",
         "components/TradeStatement.tsx:2011",
-        "src/features/admin/AdminApp.tsx:1026",
-        "src/features/admin/AdminApp.tsx:1232",
-        "src/features/admin/AdminApp.tsx:1236",
-        "src/features/admin/AdminApp.tsx:1549",
-        "src/features/admin/AdminApp.tsx:1870",
-        "src/features/admin/AdminApp.tsx:1875",
-        "src/features/admin/AdminApp.tsx:1903",
-        "src/features/admin/AdminApp.tsx:3179",
-        "src/features/admin/AdminApp.tsx:3361",
-        "src/features/admin/AdminApp.tsx:3590",
-        "src/features/admin/AdminApp.tsx:4342",
-        "src/features/admin/AdminApp.tsx:813",
-        "src/features/admin/AdminApp.tsx:815",
-        "src/features/admin/AdminApp.tsx:835",
+        "src/features/admin/AdminApp.tsx:1020",
+        "src/features/admin/AdminApp.tsx:1226",
+        "src/features/admin/AdminApp.tsx:1230",
+        "src/features/admin/AdminApp.tsx:1543",
+        "src/features/admin/AdminApp.tsx:1864",
+        "src/features/admin/AdminApp.tsx:1869",
+        "src/features/admin/AdminApp.tsx:1897",
+        "src/features/admin/AdminApp.tsx:3161",
+        "src/features/admin/AdminApp.tsx:3343",
+        "src/features/admin/AdminApp.tsx:807",
+        "src/features/admin/AdminApp.tsx:809",
+        "src/features/admin/AdminApp.tsx:829",
         "src/features/admin/catalogItemDelete.ts:33",
         "src/features/admin/dataIntegrityAudit.ts:225",
         "src/features/admin/dataIntegrityAudit.ts:526",
@@ -16518,10 +16512,10 @@
         "components/ReturnManager.tsx:297",
         "components/SmartStoreAnalytics.tsx:133",
         "components/TradeStatement.tsx:2012",
-        "src/features/admin/AdminApp.tsx:1870",
-        "src/features/admin/AdminApp.tsx:3363",
-        "src/features/admin/AdminApp.tsx:3411",
-        "src/features/admin/AdminApp.tsx:835",
+        "src/features/admin/AdminApp.tsx:1864",
+        "src/features/admin/AdminApp.tsx:3345",
+        "src/features/admin/AdminApp.tsx:3393",
+        "src/features/admin/AdminApp.tsx:829",
         "src/features/admin/dataIntegrityAudit.ts:222",
         "src/features/admin/dataIntegrityAudit.ts:225",
         "src/features/admin/dataIntegrityAudit.ts:230",
@@ -16587,8 +16581,8 @@
         "components/SmartStoreAnalytics.tsx:202",
         "components/SmartStoreAnalytics.tsx:203",
         "components/SmartStoreAnalytics.tsx:71",
-        "src/features/admin/AdminApp.tsx:1037",
-        "src/features/admin/AdminApp.tsx:3411",
+        "src/features/admin/AdminApp.tsx:1031",
+        "src/features/admin/AdminApp.tsx:3393",
         "src/features/admin/dataIntegrityAudit.ts:222",
         "src/features/admin/dataIntegrityAudit.ts:544",
         "src/features/admin/itemLedger.ts:127",
@@ -16648,9 +16642,9 @@
         "components/OrdersList.tsx:900",
         "components/OrdersList.tsx:935",
         "components/OrdersList.tsx:964",
-        "src/features/admin/AdminApp.tsx:1803",
-        "src/features/admin/AdminApp.tsx:1825",
-        "src/features/admin/AdminApp.tsx:1998",
+        "src/features/admin/AdminApp.tsx:1797",
+        "src/features/admin/AdminApp.tsx:1819",
+        "src/features/admin/AdminApp.tsx:1992",
         "src/features/admin/dataIntegrityAudit.ts:216",
         "src/features/admin/orderStockEngine.ts:712",
         "src/features/admin/orderStockEngine.ts:738",
@@ -16713,10 +16707,8 @@
         "components/OrdersList.tsx:889",
         "components/OrdersList.tsx:895",
         "components/OrdersList.tsx:897",
-        "src/features/admin/AdminApp.tsx:3185",
-        "src/features/admin/AdminApp.tsx:3362",
-        "src/features/admin/AdminApp.tsx:3597",
-        "src/features/admin/AdminApp.tsx:4349",
+        "src/features/admin/AdminApp.tsx:3167",
+        "src/features/admin/AdminApp.tsx:3344",
         "src/shared/orderActivityLog.ts:117",
         "src/shared/stampOrderItemEdits.ts:32"
       ]
@@ -16815,7 +16807,7 @@
         "components/OrdersList.tsx:741",
         "components/OrdersList.tsx:950",
         "components/OrdersList.tsx:979",
-        "src/features/admin/AdminApp.tsx:1033",
+        "src/features/admin/AdminApp.tsx:1027",
         "src/shared/orderUnits.ts:154",
         "src/shared/shipDeduction.ts:32",
         "src/shared/statementLines.ts:178"
@@ -16843,8 +16835,8 @@
         "components/OrdersList.tsx:951",
         "components/OrdersList.tsx:979",
         "components/OrdersList.tsx:980",
-        "src/features/admin/AdminApp.tsx:1033",
-        "src/features/admin/AdminApp.tsx:1034",
+        "src/features/admin/AdminApp.tsx:1027",
+        "src/features/admin/AdminApp.tsx:1028",
         "src/shared/orderUnits.ts:142",
         "src/shared/orderUnits.ts:154",
         "src/shared/orderUnits.ts:155",
@@ -16924,8 +16916,8 @@
         "components/PalletManager.tsx:124",
         "components/PalletManager.tsx:235",
         "components/PalletManager.tsx:344",
-        "components/PasteOrderModal.tsx:649",
-        "components/PasteOrderModal.tsx:653"
+        "components/PasteOrderModal.tsx:690",
+        "components/PasteOrderModal.tsx:695"
       ]
     },
     {
@@ -16949,8 +16941,8 @@
         "components/PalletManager.tsx:232",
         "components/PalletManager.tsx:319",
         "components/PalletManager.tsx:344",
-        "components/PasteOrderModal.tsx:641",
-        "components/PasteOrderModal.tsx:649",
+        "components/PasteOrderModal.tsx:682",
+        "components/PasteOrderModal.tsx:690",
         "src/shared/newOrderDraft.ts:59"
       ]
     },
@@ -17032,9 +17024,9 @@
         "components/AddOrderModal.tsx:649",
         "components/AddOrderModal.tsx:656",
         "components/AddOrderModal.tsx:91",
-        "components/PasteOrderModal.tsx:147",
-        "components/PasteOrderModal.tsx:393",
-        "components/PasteOrderModal.tsx:395",
+        "components/PasteOrderModal.tsx:155",
+        "components/PasteOrderModal.tsx:432",
+        "components/PasteOrderModal.tsx:434",
         "src/shared/components/ShipToEditor.tsx:37",
         "src/shared/components/ShipToEditor.tsx:40",
         "src/shared/components/ShipToEditor.tsx:44",
@@ -17060,7 +17052,7 @@
         "components/DeliveryManager.tsx:569",
         "components/OrderPicker.tsx:465",
         "components/OrdersList.tsx:469",
-        "components/PasteOrderModal.tsx:396",
+        "components/PasteOrderModal.tsx:435",
         "components/TradeStatement.tsx:616",
         "src/shared/components/ShipToEditor.tsx:30",
         "src/shared/components/ShipToEditor.tsx:76",
@@ -17111,7 +17103,7 @@
         "components/TradeStatement.tsx:1885",
         "components/TradeStatement.tsx:1889",
         "components/TradeStatement.tsx:1891",
-        "src/features/admin/AdminApp.tsx:402",
+        "src/features/admin/AdminApp.tsx:401",
         "src/features/admin/catalogItemDelete.ts:73",
         "src/features/statements/ui/StatementItemPicker.tsx:71",
         "src/features/statements/ui/StatementItemPicker.tsx:82",
@@ -17173,17 +17165,17 @@
         "components/TradeStatement.tsx:1899",
         "components/TradeStatement.tsx:2005",
         "components/TradeStatement.tsx:2618",
-        "src/features/admin/AdminApp.tsx:1126",
+        "src/features/admin/AdminApp.tsx:1120",
+        "src/features/admin/AdminApp.tsx:1177",
         "src/features/admin/AdminApp.tsx:1183",
-        "src/features/admin/AdminApp.tsx:1189",
-        "src/features/admin/AdminApp.tsx:1218",
-        "src/features/admin/AdminApp.tsx:410",
-        "src/features/admin/AdminApp.tsx:4990",
-        "src/features/admin/AdminApp.tsx:5002",
-        "src/features/admin/AdminApp.tsx:5011",
-        "src/features/admin/AdminApp.tsx:5018",
-        "src/features/admin/AdminApp.tsx:5034",
-        "src/features/admin/AdminApp.tsx:606",
+        "src/features/admin/AdminApp.tsx:1212",
+        "src/features/admin/AdminApp.tsx:409",
+        "src/features/admin/AdminApp.tsx:4682",
+        "src/features/admin/AdminApp.tsx:4694",
+        "src/features/admin/AdminApp.tsx:4703",
+        "src/features/admin/AdminApp.tsx:4710",
+        "src/features/admin/AdminApp.tsx:4726",
+        "src/features/admin/AdminApp.tsx:600",
         "src/features/admin/catalogItemDelete.ts:73",
         "src/shared/newOrderDraft.ts:41",
         "src/shared/partnerPrice.ts:116",
@@ -17249,17 +17241,17 @@
         "components/TradeStatement.tsx:1836",
         "components/TradeStatement.tsx:2005",
         "components/TradeStatement.tsx:2618",
-        "src/features/admin/AdminApp.tsx:1127",
-        "src/features/admin/AdminApp.tsx:1183",
-        "src/features/admin/AdminApp.tsx:1190",
-        "src/features/admin/AdminApp.tsx:1219",
-        "src/features/admin/AdminApp.tsx:410",
-        "src/features/admin/AdminApp.tsx:4990",
-        "src/features/admin/AdminApp.tsx:5002",
-        "src/features/admin/AdminApp.tsx:5011",
-        "src/features/admin/AdminApp.tsx:5018",
-        "src/features/admin/AdminApp.tsx:5034",
-        "src/features/admin/AdminApp.tsx:607",
+        "src/features/admin/AdminApp.tsx:1121",
+        "src/features/admin/AdminApp.tsx:1177",
+        "src/features/admin/AdminApp.tsx:1184",
+        "src/features/admin/AdminApp.tsx:1213",
+        "src/features/admin/AdminApp.tsx:409",
+        "src/features/admin/AdminApp.tsx:4682",
+        "src/features/admin/AdminApp.tsx:4694",
+        "src/features/admin/AdminApp.tsx:4703",
+        "src/features/admin/AdminApp.tsx:4710",
+        "src/features/admin/AdminApp.tsx:4726",
+        "src/features/admin/AdminApp.tsx:601",
         "src/shared/newOrderDraft.ts:28",
         "src/shared/partnerPrice.ts:115",
         "src/shared/partnerPrice.ts:153",
@@ -17297,13 +17289,13 @@
         "components/TradeStatement.tsx:1270",
         "components/TradeStatement.tsx:1868",
         "components/TradeStatement.tsx:1887",
+        "src/features/admin/AdminApp.tsx:377",
         "src/features/admin/AdminApp.tsx:378",
-        "src/features/admin/AdminApp.tsx:379",
-        "src/features/admin/AdminApp.tsx:410",
-        "src/features/admin/AdminApp.tsx:5011",
-        "src/features/admin/AdminApp.tsx:5018",
-        "src/features/admin/AdminApp.tsx:5034",
-        "src/features/admin/AdminApp.tsx:5047",
+        "src/features/admin/AdminApp.tsx:409",
+        "src/features/admin/AdminApp.tsx:4703",
+        "src/features/admin/AdminApp.tsx:4710",
+        "src/features/admin/AdminApp.tsx:4726",
+        "src/features/admin/AdminApp.tsx:4739",
         "src/shared/newOrderDraft.ts:28",
         "src/shared/partnerPrice.ts:11",
         "src/shared/partnerPriceSync.ts:81",
@@ -17544,15 +17536,15 @@
         "components/PartnerSignupApproval.tsx:163",
         "components/PartnerSignupApproval.tsx:164",
         "components/PartnerSignupApproval.tsx:55",
-        "components/PasteOrderModal.tsx:142",
-        "components/PasteOrderModal.tsx:172",
-        "components/PasteOrderModal.tsx:203",
-        "components/PasteOrderModal.tsx:206",
-        "components/PasteOrderModal.tsx:263",
-        "components/PasteOrderModal.tsx:431",
-        "components/PasteOrderModal.tsx:432",
-        "components/PasteOrderModal.tsx:446",
-        "components/PasteOrderModal.tsx:448",
+        "components/PasteOrderModal.tsx:150",
+        "components/PasteOrderModal.tsx:181",
+        "components/PasteOrderModal.tsx:213",
+        "components/PasteOrderModal.tsx:216",
+        "components/PasteOrderModal.tsx:296",
+        "components/PasteOrderModal.tsx:470",
+        "components/PasteOrderModal.tsx:471",
+        "components/PasteOrderModal.tsx:485",
+        "components/PasteOrderModal.tsx:487",
         "components/ProfitAnalysis.tsx:909",
         "components/QuotationManager.tsx:428",
         "components/ReceivingReturnsManager.tsx:197",
@@ -17609,13 +17601,13 @@
         "components/voucher/VoucherComposer.tsx:360",
         "components/voucher/VoucherComposer.tsx:937",
         "components/voucher/VoucherComposer.tsx:938",
-        "src/features/admin/AdminApp.tsx:1128",
-        "src/features/admin/AdminApp.tsx:1183",
-        "src/features/admin/AdminApp.tsx:1191",
-        "src/features/admin/AdminApp.tsx:1220",
-        "src/features/admin/AdminApp.tsx:1426",
-        "src/features/admin/AdminApp.tsx:3029",
-        "src/features/admin/AdminApp.tsx:3176",
+        "src/features/admin/AdminApp.tsx:1122",
+        "src/features/admin/AdminApp.tsx:1177",
+        "src/features/admin/AdminApp.tsx:1185",
+        "src/features/admin/AdminApp.tsx:1214",
+        "src/features/admin/AdminApp.tsx:1420",
+        "src/features/admin/AdminApp.tsx:3011",
+        "src/features/admin/AdminApp.tsx:3158",
         "src/features/admin/oemEngine.ts:106",
         "src/features/admin/oemEngine.ts:64",
         "src/features/admin/orderRawInventory.ts:79",
@@ -17729,12 +17721,12 @@
         "components/PartnerSignupApproval.tsx:168",
         "components/PartnerSignupApproval.tsx:183",
         "components/PartnerSignupApproval.tsx:62",
-        "components/PasteOrderModal.tsx:219",
-        "components/PasteOrderModal.tsx:227",
-        "components/PasteOrderModal.tsx:228",
-        "components/PasteOrderModal.tsx:374",
-        "components/PasteOrderModal.tsx:433",
-        "components/PasteOrderModal.tsx:451",
+        "components/PasteOrderModal.tsx:242",
+        "components/PasteOrderModal.tsx:250",
+        "components/PasteOrderModal.tsx:251",
+        "components/PasteOrderModal.tsx:413",
+        "components/PasteOrderModal.tsx:472",
+        "components/PasteOrderModal.tsx:490",
         "components/ProfitAnalysis.tsx:913",
         "components/QuotationManager.tsx:426",
         "components/QuotationManager.tsx:428",
@@ -17802,11 +17794,11 @@
         "components/voucher/VoucherComposer.tsx:598",
         "components/voucher/VoucherComposer.tsx:929",
         "components/voucher/VoucherComposer.tsx:940",
-        "src/features/admin/AdminApp.tsx:1128",
-        "src/features/admin/AdminApp.tsx:1191",
-        "src/features/admin/AdminApp.tsx:1220",
-        "src/features/admin/AdminApp.tsx:1426",
-        "src/features/admin/AdminApp.tsx:3177",
+        "src/features/admin/AdminApp.tsx:1122",
+        "src/features/admin/AdminApp.tsx:1185",
+        "src/features/admin/AdminApp.tsx:1214",
+        "src/features/admin/AdminApp.tsx:1420",
+        "src/features/admin/AdminApp.tsx:3159",
         "src/features/admin/oemEngine.ts:106",
         "src/features/admin/orderRawInventory.ts:79",
         "src/features/items/PurchaseUnitManagerModal.tsx:34",
@@ -17875,10 +17867,10 @@
         "components/PartnerManager.tsx:67",
         "components/PartnerPortal.tsx:107",
         "components/PartnerPortal.tsx:194",
-        "components/PasteOrderModal.tsx:174",
-        "components/PasteOrderModal.tsx:211",
-        "components/PasteOrderModal.tsx:375",
-        "components/PasteOrderModal.tsx:443",
+        "components/PasteOrderModal.tsx:183",
+        "components/PasteOrderModal.tsx:221",
+        "components/PasteOrderModal.tsx:414",
+        "components/PasteOrderModal.tsx:482",
         "components/SmartStoreAnalytics.tsx:42",
         "src/shared/newOrderDraft.ts:49"
       ]
@@ -17896,7 +17888,7 @@
         "components/AddOrderModal.tsx:628",
         "components/PartnerManager.tsx:195",
         "components/PartnerPortal.tsx:108",
-        "components/PasteOrderModal.tsx:377",
+        "components/PasteOrderModal.tsx:416",
         "src/shared/newOrderDraft.ts:58"
       ]
     },
@@ -18427,18 +18419,18 @@
         "components/TradeStatement.tsx:2571",
         "components/TradeStatement.tsx:2865",
         "components/TradeStatement.tsx:616",
-        "src/features/admin/AdminApp.tsx:1245",
-        "src/features/admin/AdminApp.tsx:1509",
-        "src/features/admin/AdminApp.tsx:1655",
-        "src/features/admin/AdminApp.tsx:1798",
-        "src/features/admin/AdminApp.tsx:1914",
-        "src/features/admin/AdminApp.tsx:1953",
-        "src/features/admin/AdminApp.tsx:1983",
-        "src/features/admin/AdminApp.tsx:3185",
-        "src/features/admin/AdminApp.tsx:3427",
-        "src/features/admin/AdminApp.tsx:3432",
-        "src/features/admin/AdminApp.tsx:3433",
-        "src/features/admin/AdminApp.tsx:3782",
+        "src/features/admin/AdminApp.tsx:1239",
+        "src/features/admin/AdminApp.tsx:1503",
+        "src/features/admin/AdminApp.tsx:1649",
+        "src/features/admin/AdminApp.tsx:1792",
+        "src/features/admin/AdminApp.tsx:1908",
+        "src/features/admin/AdminApp.tsx:1947",
+        "src/features/admin/AdminApp.tsx:1977",
+        "src/features/admin/AdminApp.tsx:3167",
+        "src/features/admin/AdminApp.tsx:3409",
+        "src/features/admin/AdminApp.tsx:3414",
+        "src/features/admin/AdminApp.tsx:3415",
+        "src/features/admin/AdminApp.tsx:3632",
         "src/features/admin/catalogItemDelete.ts:34",
         "src/features/admin/companyOrders.ts:7",
         "src/features/admin/companyOrders.ts:8",
@@ -18623,9 +18615,9 @@
         "components/SmartStoreAnalytics.tsx:79",
         "components/SmartStoreAnalytics.tsx:94",
         "components/TradeStatement.tsx:2005",
-        "src/features/admin/AdminApp.tsx:1426",
-        "src/features/admin/AdminApp.tsx:1450",
-        "src/features/admin/AdminApp.tsx:3176",
+        "src/features/admin/AdminApp.tsx:1420",
+        "src/features/admin/AdminApp.tsx:1444",
+        "src/features/admin/AdminApp.tsx:3158",
         "src/features/admin/orderRawInventory.ts:79",
         "src/shared/statementOrders.ts:59",
         "src/shared/statementOrders.ts:94"
@@ -18701,19 +18693,19 @@
         "components/SmartStoreAnalytics.tsx:166",
         "components/SmartStoreAnalytics.tsx:174",
         "components/SmartStoreAnalytics.tsx:79",
-        "src/features/admin/AdminApp.tsx:1252",
-        "src/features/admin/AdminApp.tsx:1427",
-        "src/features/admin/AdminApp.tsx:1556",
-        "src/features/admin/AdminApp.tsx:1577",
-        "src/features/admin/AdminApp.tsx:1590",
-        "src/features/admin/AdminApp.tsx:1831",
-        "src/features/admin/AdminApp.tsx:1878",
-        "src/features/admin/AdminApp.tsx:1894",
-        "src/features/admin/AdminApp.tsx:3177",
-        "src/features/admin/AdminApp.tsx:3410",
-        "src/features/admin/AdminApp.tsx:3432",
-        "src/features/admin/AdminApp.tsx:3433",
-        "src/features/admin/AdminApp.tsx:969",
+        "src/features/admin/AdminApp.tsx:1246",
+        "src/features/admin/AdminApp.tsx:1421",
+        "src/features/admin/AdminApp.tsx:1550",
+        "src/features/admin/AdminApp.tsx:1571",
+        "src/features/admin/AdminApp.tsx:1584",
+        "src/features/admin/AdminApp.tsx:1825",
+        "src/features/admin/AdminApp.tsx:1872",
+        "src/features/admin/AdminApp.tsx:1888",
+        "src/features/admin/AdminApp.tsx:3159",
+        "src/features/admin/AdminApp.tsx:3392",
+        "src/features/admin/AdminApp.tsx:3414",
+        "src/features/admin/AdminApp.tsx:3415",
+        "src/features/admin/AdminApp.tsx:963",
         "src/features/admin/catalogItemDelete.ts:34",
         "src/features/admin/dataIntegrityAudit.ts:547",
         "src/features/admin/itemLedger.ts:110",
@@ -18825,7 +18817,7 @@
         "components/OrdersList.tsx:942",
         "components/OrdersList.tsx:963",
         "components/OrdersList.tsx:971",
-        "components/PasteOrderModal.tsx:318",
+        "components/PasteOrderModal.tsx:357",
         "components/ProductionCalculationEvidence.tsx:12",
         "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:260",
@@ -18837,27 +18829,25 @@
         "components/SmartStoreAnalytics.tsx:198",
         "components/SmartStoreAnalytics.tsx:69",
         "components/TradeStatement.tsx:2003",
-        "src/features/admin/AdminApp.tsx:1231",
-        "src/features/admin/AdminApp.tsx:1436",
-        "src/features/admin/AdminApp.tsx:1450",
-        "src/features/admin/AdminApp.tsx:1510",
-        "src/features/admin/AdminApp.tsx:1534",
-        "src/features/admin/AdminApp.tsx:1537",
-        "src/features/admin/AdminApp.tsx:1538",
-        "src/features/admin/AdminApp.tsx:1548",
-        "src/features/admin/AdminApp.tsx:1800",
-        "src/features/admin/AdminApp.tsx:1998",
-        "src/features/admin/AdminApp.tsx:2010",
-        "src/features/admin/AdminApp.tsx:2018",
-        "src/features/admin/AdminApp.tsx:3178",
-        "src/features/admin/AdminApp.tsx:3360",
-        "src/features/admin/AdminApp.tsx:3411",
-        "src/features/admin/AdminApp.tsx:3589",
-        "src/features/admin/AdminApp.tsx:3784",
-        "src/features/admin/AdminApp.tsx:4341",
-        "src/features/admin/AdminApp.tsx:692",
-        "src/features/admin/AdminApp.tsx:812",
-        "src/features/admin/AdminApp.tsx:834",
+        "src/features/admin/AdminApp.tsx:1225",
+        "src/features/admin/AdminApp.tsx:1430",
+        "src/features/admin/AdminApp.tsx:1444",
+        "src/features/admin/AdminApp.tsx:1504",
+        "src/features/admin/AdminApp.tsx:1528",
+        "src/features/admin/AdminApp.tsx:1531",
+        "src/features/admin/AdminApp.tsx:1532",
+        "src/features/admin/AdminApp.tsx:1542",
+        "src/features/admin/AdminApp.tsx:1794",
+        "src/features/admin/AdminApp.tsx:1992",
+        "src/features/admin/AdminApp.tsx:2004",
+        "src/features/admin/AdminApp.tsx:2012",
+        "src/features/admin/AdminApp.tsx:3160",
+        "src/features/admin/AdminApp.tsx:3342",
+        "src/features/admin/AdminApp.tsx:3393",
+        "src/features/admin/AdminApp.tsx:3634",
+        "src/features/admin/AdminApp.tsx:686",
+        "src/features/admin/AdminApp.tsx:806",
+        "src/features/admin/AdminApp.tsx:828",
         "src/features/admin/catalogItemDelete.ts:33",
         "src/features/admin/dataIntegrityAudit.ts:215",
         "src/features/admin/dataIntegrityAudit.ts:525",
@@ -19041,28 +19031,26 @@
         "components/PalletManager.tsx:341",
         "components/ProductionManager.tsx:247",
         "components/ReturnManager.tsx:124",
-        "src/features/admin/AdminApp.tsx:1516",
-        "src/features/admin/AdminApp.tsx:1526",
-        "src/features/admin/AdminApp.tsx:1527",
-        "src/features/admin/AdminApp.tsx:1543",
-        "src/features/admin/AdminApp.tsx:1547",
-        "src/features/admin/AdminApp.tsx:1556",
-        "src/features/admin/AdminApp.tsx:1564",
-        "src/features/admin/AdminApp.tsx:1574",
-        "src/features/admin/AdminApp.tsx:1576",
-        "src/features/admin/AdminApp.tsx:1577",
-        "src/features/admin/AdminApp.tsx:1659",
+        "src/features/admin/AdminApp.tsx:1510",
+        "src/features/admin/AdminApp.tsx:1520",
+        "src/features/admin/AdminApp.tsx:1521",
+        "src/features/admin/AdminApp.tsx:1537",
+        "src/features/admin/AdminApp.tsx:1541",
+        "src/features/admin/AdminApp.tsx:1550",
+        "src/features/admin/AdminApp.tsx:1558",
+        "src/features/admin/AdminApp.tsx:1568",
+        "src/features/admin/AdminApp.tsx:1570",
+        "src/features/admin/AdminApp.tsx:1571",
+        "src/features/admin/AdminApp.tsx:1653",
+        "src/features/admin/AdminApp.tsx:1818",
         "src/features/admin/AdminApp.tsx:1824",
-        "src/features/admin/AdminApp.tsx:1830",
-        "src/features/admin/AdminApp.tsx:1848",
-        "src/features/admin/AdminApp.tsx:1878",
-        "src/features/admin/AdminApp.tsx:1954",
-        "src/features/admin/AdminApp.tsx:1997",
-        "src/features/admin/AdminApp.tsx:2011",
-        "src/features/admin/AdminApp.tsx:2013",
-        "src/features/admin/AdminApp.tsx:3584",
-        "src/features/admin/AdminApp.tsx:4336",
-        "src/features/admin/AdminApp.tsx:831",
+        "src/features/admin/AdminApp.tsx:1842",
+        "src/features/admin/AdminApp.tsx:1872",
+        "src/features/admin/AdminApp.tsx:1948",
+        "src/features/admin/AdminApp.tsx:1991",
+        "src/features/admin/AdminApp.tsx:2005",
+        "src/features/admin/AdminApp.tsx:2007",
+        "src/features/admin/AdminApp.tsx:825",
         "src/features/admin/catalogItemDelete.ts:32",
         "src/features/admin/catalogItemDelete.ts:34",
         "src/features/admin/dataIntegrityAudit.ts:516",
@@ -19143,7 +19131,7 @@
         "components/SmartStoreAnalytics.tsx:78",
         "components/SmartStoreAnalytics.tsx:80",
         "components/SmartStoreAnalytics.tsx:89",
-        "src/features/admin/AdminApp.tsx:1442",
+        "src/features/admin/AdminApp.tsx:1436",
         "src/features/admin/itemLedger.ts:115",
         "src/features/admin/itemLedger.ts:120",
         "src/features/admin/itemLedger.ts:128",
@@ -19452,7 +19440,7 @@
         "components/OrdersList.tsx:4072",
         "components/OrdersList.tsx:4114",
         "components/ProductionManager.tsx:269",
-        "src/features/admin/AdminApp.tsx:1247",
+        "src/features/admin/AdminApp.tsx:1241",
         "src/features/admin/itemLedger.ts:128",
         "src/features/admin/orderRawInventory.ts:78",
         "src/features/admin/orderStockEngine.ts:964",
@@ -19627,10 +19615,10 @@
       "declaration": "src/shared/types.ts:319",
       "references": [
         "components/ProductionCalculationEvidence.tsx:11",
-        "src/features/admin/AdminApp.tsx:1527",
-        "src/features/admin/AdminApp.tsx:1587",
-        "src/features/admin/AdminApp.tsx:1809",
-        "src/features/admin/AdminApp.tsx:811",
+        "src/features/admin/AdminApp.tsx:1521",
+        "src/features/admin/AdminApp.tsx:1581",
+        "src/features/admin/AdminApp.tsx:1803",
+        "src/features/admin/AdminApp.tsx:805",
         "src/features/admin/itemLedger.ts:115",
         "src/features/admin/itemLedger.ts:120",
         "src/features/admin/itemLedger.ts:136",
@@ -19658,7 +19646,7 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:320",
       "references": [
-        "src/features/admin/AdminApp.tsx:811",
+        "src/features/admin/AdminApp.tsx:805",
         "src/features/admin/itemLedger.ts:123",
         "src/features/admin/orderInventoryCancellation.ts:34",
         "src/features/admin/orderInventoryCancellation.ts:38",
@@ -19721,9 +19709,9 @@
       "declaration": "src/shared/types.ts:335",
       "references": [
         "components/ProductionCalculationEvidence.tsx:12",
-        "src/features/admin/AdminApp.tsx:1809",
-        "src/features/admin/AdminApp.tsx:1851",
-        "src/features/admin/AdminApp.tsx:1858",
+        "src/features/admin/AdminApp.tsx:1803",
+        "src/features/admin/AdminApp.tsx:1845",
+        "src/features/admin/AdminApp.tsx:1852",
         "src/features/admin/dataIntegrityAudit.ts:217",
         "src/features/admin/orderInventoryCancellation.ts:35",
         "src/features/admin/orderInventoryCancellation.ts:40",
@@ -19749,7 +19737,7 @@
       "references": [
         "components/OrderInventoryRecoveryPanel.tsx:12",
         "components/OrderInventoryRecoveryPanel.tsx:28",
-        "src/features/admin/AdminApp.tsx:1600",
+        "src/features/admin/AdminApp.tsx:1594",
         "src/features/admin/dataIntegrityAudit.ts:212",
         "src/features/admin/dataIntegrityAudit.ts:213",
         "src/features/admin/orderInventoryCancellation.ts:168",
@@ -19807,7 +19795,7 @@
       "declaration": "src/shared/types.ts:355",
       "references": [
         "components/ProductionCalculationEvidence.tsx:12",
-        "src/features/admin/AdminApp.tsx:1859",
+        "src/features/admin/AdminApp.tsx:1853",
         "src/features/admin/dataIntegrityAudit.ts:221",
         "src/features/admin/orderInventoryCancellation.ts:35",
         "src/features/admin/orderInventoryCancellation.ts:92",
@@ -19845,7 +19833,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:357",
       "references": [
-        "src/features/admin/AdminApp.tsx:1867",
+        "src/features/admin/AdminApp.tsx:1861",
         "src/features/admin/dataIntegrityAudit.ts:218",
         "src/features/admin/dataIntegrityAudit.ts:225",
         "src/features/admin/dataIntegrityAudit.ts:230",
@@ -19870,7 +19858,7 @@
       "type": "OrderRawInventoryTrace[]",
       "declaration": "src/shared/types.ts:359",
       "references": [
-        "src/features/admin/AdminApp.tsx:1863",
+        "src/features/admin/AdminApp.tsx:1857",
         "src/features/admin/dataIntegrityAudit.ts:228",
         "src/features/admin/dataIntegrityAudit.ts:275",
         "src/features/admin/orderInventoryCancellation.ts:41",
@@ -19888,7 +19876,7 @@
       "type": "{ itemId: string; qty: number }[]",
       "declaration": "src/shared/types.ts:360",
       "references": [
-        "src/features/admin/AdminApp.tsx:1864",
+        "src/features/admin/AdminApp.tsx:1858",
         "src/features/admin/dataIntegrityAudit.ts:228",
         "src/features/admin/dataIntegrityAudit.ts:249",
         "src/shared/orderLineInventory.ts:44"
@@ -19901,7 +19889,7 @@
       "type": "{ itemId: string; qty: number }[]",
       "declaration": "src/shared/types.ts:361",
       "references": [
-        "src/features/admin/AdminApp.tsx:1862",
+        "src/features/admin/AdminApp.tsx:1856",
         "src/features/admin/dataIntegrityAudit.ts:228",
         "src/features/admin/dataIntegrityAudit.ts:249",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:63",
@@ -19916,8 +19904,8 @@
       "declaration": "src/shared/types.ts:362",
       "references": [
         "components/ProductionCalculationEvidence.tsx:12",
-        "src/features/admin/AdminApp.tsx:1867",
-        "src/features/admin/AdminApp.tsx:1868",
+        "src/features/admin/AdminApp.tsx:1861",
+        "src/features/admin/AdminApp.tsx:1862",
         "src/features/admin/dataIntegrityAudit.ts:218",
         "src/features/admin/dataIntegrityAudit.ts:227",
         "src/features/admin/orderInventoryCancellation.ts:41",
@@ -20111,7 +20099,7 @@
       "declaration": "src/shared/types.ts:386",
       "references": [
         "components/ProductionCalculationEvidence.tsx:19",
-        "src/features/admin/AdminApp.tsx:1867",
+        "src/features/admin/AdminApp.tsx:1861",
         "src/features/admin/dataIntegrityAudit.ts:218",
         "src/features/admin/dataIntegrityAudit.ts:230",
         "src/features/admin/dataIntegrityAudit.ts:231",
@@ -20969,10 +20957,11 @@
         "components/PartnerPortal.tsx:75",
         "components/PartnerPortal.tsx:77",
         "components/PartnerPortal.tsx:86",
-        "components/PasteOrderModal.tsx:211",
-        "components/PasteOrderModal.tsx:553",
-        "components/PasteOrderModal.tsx:576",
-        "components/PasteOrderModal.tsx:601",
+        "components/PasteOrderModal.tsx:221",
+        "components/PasteOrderModal.tsx:229",
+        "components/PasteOrderModal.tsx:592",
+        "components/PasteOrderModal.tsx:616",
+        "components/PasteOrderModal.tsx:642",
         "components/PasteOrderModal.tsx:80",
         "components/ProductLotPanel.tsx:38",
         "components/ProductionManager.tsx:118",
@@ -21082,72 +21071,68 @@
         "components/TradeStatement.tsx:2777",
         "components/TradeStatement.tsx:385",
         "components/TradeStatement.tsx:390",
-        "src/features/admin/AdminApp.tsx:1026",
-        "src/features/admin/AdminApp.tsx:1031",
-        "src/features/admin/AdminApp.tsx:1038",
+        "src/features/admin/AdminApp.tsx:1020",
+        "src/features/admin/AdminApp.tsx:1025",
+        "src/features/admin/AdminApp.tsx:1032",
+        "src/features/admin/AdminApp.tsx:1052",
+        "src/features/admin/AdminApp.tsx:1053",
         "src/features/admin/AdminApp.tsx:1058",
-        "src/features/admin/AdminApp.tsx:1059",
-        "src/features/admin/AdminApp.tsx:1064",
-        "src/features/admin/AdminApp.tsx:1069",
+        "src/features/admin/AdminApp.tsx:1063",
+        "src/features/admin/AdminApp.tsx:1095",
+        "src/features/admin/AdminApp.tsx:1100",
         "src/features/admin/AdminApp.tsx:1101",
-        "src/features/admin/AdminApp.tsx:1106",
-        "src/features/admin/AdminApp.tsx:1107",
-        "src/features/admin/AdminApp.tsx:1125",
-        "src/features/admin/AdminApp.tsx:1199",
-        "src/features/admin/AdminApp.tsx:1232",
-        "src/features/admin/AdminApp.tsx:1236",
-        "src/features/admin/AdminApp.tsx:1245",
-        "src/features/admin/AdminApp.tsx:1248",
-        "src/features/admin/AdminApp.tsx:1361",
-        "src/features/admin/AdminApp.tsx:1549",
-        "src/features/admin/AdminApp.tsx:1745",
-        "src/features/admin/AdminApp.tsx:1747",
-        "src/features/admin/AdminApp.tsx:1870",
-        "src/features/admin/AdminApp.tsx:1875",
-        "src/features/admin/AdminApp.tsx:1903",
-        "src/features/admin/AdminApp.tsx:2655",
-        "src/features/admin/AdminApp.tsx:3116",
-        "src/features/admin/AdminApp.tsx:3124",
-        "src/features/admin/AdminApp.tsx:3128",
-        "src/features/admin/AdminApp.tsx:3179",
-        "src/features/admin/AdminApp.tsx:3183",
-        "src/features/admin/AdminApp.tsx:3361",
-        "src/features/admin/AdminApp.tsx:3590",
-        "src/features/admin/AdminApp.tsx:3592",
-        "src/features/admin/AdminApp.tsx:408",
-        "src/features/admin/AdminApp.tsx:411",
-        "src/features/admin/AdminApp.tsx:4342",
-        "src/features/admin/AdminApp.tsx:4344",
-        "src/features/admin/AdminApp.tsx:4560",
+        "src/features/admin/AdminApp.tsx:1119",
+        "src/features/admin/AdminApp.tsx:1193",
+        "src/features/admin/AdminApp.tsx:1226",
+        "src/features/admin/AdminApp.tsx:1230",
+        "src/features/admin/AdminApp.tsx:1239",
+        "src/features/admin/AdminApp.tsx:1242",
+        "src/features/admin/AdminApp.tsx:1355",
+        "src/features/admin/AdminApp.tsx:1543",
+        "src/features/admin/AdminApp.tsx:1739",
+        "src/features/admin/AdminApp.tsx:1741",
+        "src/features/admin/AdminApp.tsx:1864",
+        "src/features/admin/AdminApp.tsx:1869",
+        "src/features/admin/AdminApp.tsx:1897",
+        "src/features/admin/AdminApp.tsx:2637",
+        "src/features/admin/AdminApp.tsx:3098",
+        "src/features/admin/AdminApp.tsx:3106",
+        "src/features/admin/AdminApp.tsx:3110",
+        "src/features/admin/AdminApp.tsx:3161",
+        "src/features/admin/AdminApp.tsx:3165",
+        "src/features/admin/AdminApp.tsx:3343",
+        "src/features/admin/AdminApp.tsx:407",
+        "src/features/admin/AdminApp.tsx:410",
+        "src/features/admin/AdminApp.tsx:4252",
+        "src/features/admin/AdminApp.tsx:4292",
+        "src/features/admin/AdminApp.tsx:4587",
+        "src/features/admin/AdminApp.tsx:4596",
         "src/features/admin/AdminApp.tsx:4600",
-        "src/features/admin/AdminApp.tsx:4895",
-        "src/features/admin/AdminApp.tsx:4904",
-        "src/features/admin/AdminApp.tsx:4908",
-        "src/features/admin/AdminApp.tsx:5248",
-        "src/features/admin/AdminApp.tsx:5250",
-        "src/features/admin/AdminApp.tsx:5255",
-        "src/features/admin/AdminApp.tsx:5266",
-        "src/features/admin/AdminApp.tsx:5279",
-        "src/features/admin/AdminApp.tsx:5308",
-        "src/features/admin/AdminApp.tsx:5311",
-        "src/features/admin/AdminApp.tsx:5312",
-        "src/features/admin/AdminApp.tsx:5318",
-        "src/features/admin/AdminApp.tsx:5320",
-        "src/features/admin/AdminApp.tsx:5321",
-        "src/features/admin/AdminApp.tsx:620",
-        "src/features/admin/AdminApp.tsx:706",
-        "src/features/admin/AdminApp.tsx:707",
-        "src/features/admin/AdminApp.tsx:710",
-        "src/features/admin/AdminApp.tsx:711",
-        "src/features/admin/AdminApp.tsx:734",
-        "src/features/admin/AdminApp.tsx:746",
-        "src/features/admin/AdminApp.tsx:747",
-        "src/features/admin/AdminApp.tsx:751",
-        "src/features/admin/AdminApp.tsx:768",
-        "src/features/admin/AdminApp.tsx:787",
-        "src/features/admin/AdminApp.tsx:813",
-        "src/features/admin/AdminApp.tsx:835",
-        "src/features/admin/AdminApp.tsx:840",
+        "src/features/admin/AdminApp.tsx:4940",
+        "src/features/admin/AdminApp.tsx:4942",
+        "src/features/admin/AdminApp.tsx:4947",
+        "src/features/admin/AdminApp.tsx:4958",
+        "src/features/admin/AdminApp.tsx:4971",
+        "src/features/admin/AdminApp.tsx:5000",
+        "src/features/admin/AdminApp.tsx:5003",
+        "src/features/admin/AdminApp.tsx:5004",
+        "src/features/admin/AdminApp.tsx:5010",
+        "src/features/admin/AdminApp.tsx:5012",
+        "src/features/admin/AdminApp.tsx:5013",
+        "src/features/admin/AdminApp.tsx:614",
+        "src/features/admin/AdminApp.tsx:700",
+        "src/features/admin/AdminApp.tsx:701",
+        "src/features/admin/AdminApp.tsx:704",
+        "src/features/admin/AdminApp.tsx:705",
+        "src/features/admin/AdminApp.tsx:728",
+        "src/features/admin/AdminApp.tsx:740",
+        "src/features/admin/AdminApp.tsx:741",
+        "src/features/admin/AdminApp.tsx:745",
+        "src/features/admin/AdminApp.tsx:762",
+        "src/features/admin/AdminApp.tsx:781",
+        "src/features/admin/AdminApp.tsx:807",
+        "src/features/admin/AdminApp.tsx:829",
+        "src/features/admin/AdminApp.tsx:834",
         "src/features/admin/catalogItemDelete.ts:56",
         "src/features/admin/costCalc.ts:84",
         "src/features/admin/dataIntegrityAudit.ts:139",
@@ -21350,6 +21335,7 @@
       "type": "CompanyId",
       "declaration": "src/shared/types.ts:512",
       "references": [
+        "components/PasteOrderModal.tsx:229",
         "components/ReceivingReturnsManager.tsx:180",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:50"
       ]
@@ -21498,9 +21484,10 @@
         "components/OrdersList.tsx:852",
         "components/PartnerPortal.tsx:231",
         "components/PartnerPortal.tsx:89",
-        "components/PasteOrderModal.tsx:576",
-        "components/PasteOrderModal.tsx:603",
-        "components/PasteOrderModal.tsx:607",
+        "components/PasteOrderModal.tsx:230",
+        "components/PasteOrderModal.tsx:616",
+        "components/PasteOrderModal.tsx:644",
+        "components/PasteOrderModal.tsx:648",
         "components/ProductionManager.tsx:228",
         "components/ProductionManager.tsx:230",
         "components/ProductionManager.tsx:271",
@@ -21547,30 +21534,30 @@
         "components/TradeStatement.tsx:2772",
         "components/TradeStatement.tsx:2777",
         "components/TradeStatement.tsx:391",
-        "src/features/admin/AdminApp.tsx:1038",
-        "src/features/admin/AdminApp.tsx:1064",
-        "src/features/admin/AdminApp.tsx:1081",
-        "src/features/admin/AdminApp.tsx:1108",
-        "src/features/admin/AdminApp.tsx:1117",
-        "src/features/admin/AdminApp.tsx:1130",
-        "src/features/admin/AdminApp.tsx:1202",
-        "src/features/admin/AdminApp.tsx:1249",
-        "src/features/admin/AdminApp.tsx:1369",
-        "src/features/admin/AdminApp.tsx:1374",
-        "src/features/admin/AdminApp.tsx:1552",
-        "src/features/admin/AdminApp.tsx:1870",
-        "src/features/admin/AdminApp.tsx:1931",
-        "src/features/admin/AdminApp.tsx:1939",
-        "src/features/admin/AdminApp.tsx:3118",
-        "src/features/admin/AdminApp.tsx:3129",
-        "src/features/admin/AdminApp.tsx:413",
-        "src/features/admin/AdminApp.tsx:4602",
-        "src/features/admin/AdminApp.tsx:4900",
-        "src/features/admin/AdminApp.tsx:4909",
-        "src/features/admin/AdminApp.tsx:5255",
-        "src/features/admin/AdminApp.tsx:662",
-        "src/features/admin/AdminApp.tsx:749",
-        "src/features/admin/AdminApp.tsx:835",
+        "src/features/admin/AdminApp.tsx:1032",
+        "src/features/admin/AdminApp.tsx:1058",
+        "src/features/admin/AdminApp.tsx:1075",
+        "src/features/admin/AdminApp.tsx:1102",
+        "src/features/admin/AdminApp.tsx:1111",
+        "src/features/admin/AdminApp.tsx:1124",
+        "src/features/admin/AdminApp.tsx:1196",
+        "src/features/admin/AdminApp.tsx:1243",
+        "src/features/admin/AdminApp.tsx:1363",
+        "src/features/admin/AdminApp.tsx:1368",
+        "src/features/admin/AdminApp.tsx:1546",
+        "src/features/admin/AdminApp.tsx:1864",
+        "src/features/admin/AdminApp.tsx:1925",
+        "src/features/admin/AdminApp.tsx:1933",
+        "src/features/admin/AdminApp.tsx:3100",
+        "src/features/admin/AdminApp.tsx:3111",
+        "src/features/admin/AdminApp.tsx:412",
+        "src/features/admin/AdminApp.tsx:4294",
+        "src/features/admin/AdminApp.tsx:4592",
+        "src/features/admin/AdminApp.tsx:4601",
+        "src/features/admin/AdminApp.tsx:4947",
+        "src/features/admin/AdminApp.tsx:656",
+        "src/features/admin/AdminApp.tsx:743",
+        "src/features/admin/AdminApp.tsx:829",
         "src/features/admin/bom.ts:32",
         "src/features/admin/catalogItemDelete.ts:56",
         "src/features/admin/costCalc.ts:116",
@@ -21752,7 +21739,8 @@
         "components/OrdersList.tsx:925",
         "components/OrdersList.tsx:926",
         "components/PartnerPortal.tsx:53",
-        "components/PasteOrderModal.tsx:210",
+        "components/PasteOrderModal.tsx:220",
+        "components/PasteOrderModal.tsx:230",
         "components/ProductionManager.tsx:162",
         "components/ProductionManager.tsx:167",
         "components/ProductionManager.tsx:190",
@@ -21766,14 +21754,14 @@
         "components/TradeStatement.tsx:1813",
         "components/TradeStatement.tsx:1834",
         "components/TradeStatement.tsx:2777",
-        "src/features/admin/AdminApp.tsx:1062",
-        "src/features/admin/AdminApp.tsx:1233",
-        "src/features/admin/AdminApp.tsx:3283",
+        "src/features/admin/AdminApp.tsx:1056",
+        "src/features/admin/AdminApp.tsx:1227",
+        "src/features/admin/AdminApp.tsx:3265",
+        "src/features/admin/AdminApp.tsx:349",
         "src/features/admin/AdminApp.tsx:350",
-        "src/features/admin/AdminApp.tsx:351",
-        "src/features/admin/AdminApp.tsx:5212",
-        "src/features/admin/AdminApp.tsx:795",
-        "src/features/admin/AdminApp.tsx:808",
+        "src/features/admin/AdminApp.tsx:4904",
+        "src/features/admin/AdminApp.tsx:789",
+        "src/features/admin/AdminApp.tsx:802",
         "src/features/admin/costCalc.ts:96",
         "src/features/admin/dataIntegrityAudit.ts:533",
         "src/features/admin/dataIntegrityAudit.ts:539",
@@ -21834,11 +21822,11 @@
         "components/OrdersList.tsx:2472",
         "components/OrdersList.tsx:2487",
         "components/OrdersList.tsx:755",
-        "components/PasteOrderModal.tsx:602",
+        "components/PasteOrderModal.tsx:643",
         "components/ProfitAnalysis.tsx:1474",
         "components/TradeStatement.tsx:1814",
-        "src/features/admin/AdminApp.tsx:1030",
-        "src/features/admin/AdminApp.tsx:807",
+        "src/features/admin/AdminApp.tsx:1024",
+        "src/features/admin/AdminApp.tsx:801",
         "src/features/admin/dataIntegrityAudit.ts:528",
         "src/features/statements/ui/StatementManualItemRows.tsx:74",
         "src/features/statements/ui/StatementManualItemRows.tsx:75",
@@ -21898,8 +21886,8 @@
         "components/QuotationManager.tsx:219",
         "components/TradeStatement.tsx:1537",
         "components/TradeStatement.tsx:2596",
-        "src/features/admin/AdminApp.tsx:1251",
-        "src/features/admin/AdminApp.tsx:733",
+        "src/features/admin/AdminApp.tsx:1245",
+        "src/features/admin/AdminApp.tsx:727",
         "src/shared/bomCost.ts:108",
         "src/shared/bomCost.ts:174",
         "src/shared/bomCost.ts:45"
@@ -21976,13 +21964,13 @@
         "components/OrdersList.tsx:1975",
         "components/OrdersList.tsx:3032",
         "components/ProfitAnalysis.tsx:1433",
-        "src/features/admin/AdminApp.tsx:1070",
-        "src/features/admin/AdminApp.tsx:1077",
-        "src/features/admin/AdminApp.tsx:1082",
-        "src/features/admin/AdminApp.tsx:1086",
-        "src/features/admin/AdminApp.tsx:1098",
-        "src/features/admin/AdminApp.tsx:1711",
-        "src/features/admin/AdminApp.tsx:795",
+        "src/features/admin/AdminApp.tsx:1064",
+        "src/features/admin/AdminApp.tsx:1071",
+        "src/features/admin/AdminApp.tsx:1076",
+        "src/features/admin/AdminApp.tsx:1080",
+        "src/features/admin/AdminApp.tsx:1092",
+        "src/features/admin/AdminApp.tsx:1705",
+        "src/features/admin/AdminApp.tsx:789",
         "src/features/admin/dataIntegrityAudit.ts:179",
         "src/features/admin/dataIntegrityAudit.ts:187",
         "src/features/admin/itemLedger.ts:177",
@@ -22038,8 +22026,8 @@
         "components/ItemList.tsx:900",
         "components/ItemList.tsx:921",
         "components/ItemManager.tsx:247",
-        "src/features/admin/AdminApp.tsx:3122",
-        "src/features/admin/AdminApp.tsx:4903",
+        "src/features/admin/AdminApp.tsx:3104",
+        "src/features/admin/AdminApp.tsx:4595",
         "src/shared/orderUnits.ts:205",
         "src/shared/services/firebaseService.ts:729"
       ]
@@ -22072,7 +22060,7 @@
         "components/ItemList.tsx:3178",
         "components/ItemList.tsx:3204",
         "components/ItemList.tsx:901",
-        "src/features/admin/AdminApp.tsx:795"
+        "src/features/admin/AdminApp.tsx:789"
       ]
     },
     {
@@ -22149,6 +22137,7 @@
         "components/OrdersList.tsx:952",
         "components/OrdersList.tsx:981",
         "components/PartnerPortal.tsx:235",
+        "components/PasteOrderModal.tsx:230",
         "components/ProductionManager.tsx:370",
         "components/ProductionManager.tsx:659",
         "components/ProfitAnalysis.tsx:1518",
@@ -22165,10 +22154,10 @@
         "components/TradeStatement.tsx:1320",
         "components/TradeStatement.tsx:1326",
         "components/TradeStatement.tsx:1516",
-        "src/features/admin/AdminApp.tsx:1202",
-        "src/features/admin/AdminApp.tsx:1552",
-        "src/features/admin/AdminApp.tsx:1880",
-        "src/features/admin/AdminApp.tsx:1907",
+        "src/features/admin/AdminApp.tsx:1196",
+        "src/features/admin/AdminApp.tsx:1546",
+        "src/features/admin/AdminApp.tsx:1874",
+        "src/features/admin/AdminApp.tsx:1901",
         "src/features/admin/costCalc.ts:118",
         "src/features/admin/dataIntegrityAudit.ts:144",
         "src/features/admin/dataIntegrityAudit.ts:191",
@@ -22270,9 +22259,9 @@
         "components/ItemList.tsx:88",
         "components/QuotationManager.tsx:288",
         "components/TradeStatement.tsx:2648",
-        "src/features/admin/AdminApp.tsx:3283",
-        "src/features/admin/AdminApp.tsx:3285",
-        "src/features/admin/AdminApp.tsx:3286",
+        "src/features/admin/AdminApp.tsx:3265",
+        "src/features/admin/AdminApp.tsx:3267",
+        "src/features/admin/AdminApp.tsx:3268",
         "src/shared/docOil.ts:149"
       ]
     },
@@ -22348,6 +22337,7 @@
         "components/OrdersList.tsx:736",
         "components/OrdersList.tsx:945",
         "components/OrdersList.tsx:974",
+        "components/PasteOrderModal.tsx:230",
         "components/ProductionManager.tsx:146",
         "components/ProfitAnalysis.tsx:1551",
         "components/ProfitAnalysis.tsx:1648",
@@ -22366,9 +22356,9 @@
         "components/TradeStatement.tsx:2661",
         "components/TradeStatement.tsx:2777",
         "components/TradeStatement.tsx:392",
-        "src/features/admin/AdminApp.tsx:1052",
-        "src/features/admin/AdminApp.tsx:3283",
-        "src/features/admin/AdminApp.tsx:3286",
+        "src/features/admin/AdminApp.tsx:1046",
+        "src/features/admin/AdminApp.tsx:3265",
+        "src/features/admin/AdminApp.tsx:3268",
         "src/features/admin/costCalc.ts:117",
         "src/features/admin/dataIntegrityAudit.ts:504",
         "src/features/admin/oemEngine.ts:269",
@@ -22425,8 +22415,8 @@
       "declaration": "src/shared/types.ts:588",
       "references": [
         "components/OemManager.tsx:57",
-        "src/features/admin/AdminApp.tsx:1046",
-        "src/features/admin/AdminApp.tsx:809",
+        "src/features/admin/AdminApp.tsx:1040",
+        "src/features/admin/AdminApp.tsx:803",
         "src/features/admin/orderStockEngine.ts:327",
         "src/features/admin/orderStockEngine.ts:432"
       ]
@@ -22511,9 +22501,9 @@
         "components/ProductLotPanel.tsx:24",
         "components/RawMaterialLotPanel.tsx:39",
         "components/RawMaterialLotPanel.tsx:59",
-        "src/features/admin/AdminApp.tsx:1098",
-        "src/features/admin/AdminApp.tsx:1711",
-        "src/features/admin/AdminApp.tsx:3123",
+        "src/features/admin/AdminApp.tsx:1092",
+        "src/features/admin/AdminApp.tsx:1705",
+        "src/features/admin/AdminApp.tsx:3105",
         "src/features/admin/dataIntegrityAudit.ts:194",
         "src/features/admin/dataIntegrityAudit.ts:195",
         "src/features/admin/orderInventoryCancellation.ts:100",
@@ -22585,7 +22575,7 @@
         "components/FinancialReports.tsx:143",
         "components/ItemList.tsx:2954",
         "components/OemManager.tsx:59",
-        "src/features/admin/AdminApp.tsx:661",
+        "src/features/admin/AdminApp.tsx:655",
         "src/features/admin/bom.ts:32",
         "src/features/admin/orderStockEngine.ts:161",
         "src/shared/rawUsers.ts:51",
@@ -22628,7 +22618,7 @@
         "components/OrdersList.tsx:1022",
         "components/OrdersList.tsx:1023",
         "components/OrdersList.tsx:4192",
-        "components/PasteOrderModal.tsx:210",
+        "components/PasteOrderModal.tsx:220",
         "components/ProductionManager.tsx:162",
         "components/ProductionManager.tsx:167",
         "src/shared/docName.ts:33",
@@ -22676,11 +22666,11 @@
         "components/PalletManager.tsx:864",
         "components/PalletManager.tsx:97",
         "components/PalletManager.tsx:991",
-        "components/PasteOrderModal.tsx:649",
-        "components/PasteOrderModal.tsx:653",
-        "components/PasteOrderModal.tsx:654",
-        "components/PasteOrderModal.tsx:658",
-        "src/features/admin/AdminApp.tsx:3064"
+        "components/PasteOrderModal.tsx:690",
+        "components/PasteOrderModal.tsx:695",
+        "components/PasteOrderModal.tsx:696",
+        "components/PasteOrderModal.tsx:700",
+        "src/features/admin/AdminApp.tsx:3046"
       ]
     },
     {
@@ -22711,10 +22701,10 @@
         "components/PalletManager.tsx:864",
         "components/PalletManager.tsx:97",
         "components/PalletManager.tsx:991",
-        "components/PasteOrderModal.tsx:647",
-        "components/PasteOrderModal.tsx:660",
-        "components/PasteOrderModal.tsx:664",
-        "components/PasteOrderModal.tsx:666"
+        "components/PasteOrderModal.tsx:688",
+        "components/PasteOrderModal.tsx:702",
+        "components/PasteOrderModal.tsx:706",
+        "components/PasteOrderModal.tsx:708"
       ]
     },
     {
@@ -22773,8 +22763,8 @@
         "components/OrdersList.tsx:4397",
         "components/OrdersList.tsx:4417",
         "components/PalletManager.tsx:103",
-        "components/PasteOrderModal.tsx:636",
-        "components/PasteOrderModal.tsx:646"
+        "components/PasteOrderModal.tsx:677",
+        "components/PasteOrderModal.tsx:687"
       ]
     },
     {
@@ -23489,40 +23479,40 @@
         "components/OfficeTalk.tsx:911",
         "components/OfficeTalk.tsx:936",
         "components/OfficeTalk.tsx:948",
-        "src/features/admin/AdminApp.tsx:1440",
-        "src/features/admin/AdminApp.tsx:1460",
-        "src/features/admin/AdminApp.tsx:1596",
-        "src/features/admin/AdminApp.tsx:1617",
-        "src/features/admin/AdminApp.tsx:2196",
-        "src/features/admin/AdminApp.tsx:2265",
-        "src/features/admin/AdminApp.tsx:2346",
-        "src/features/admin/AdminApp.tsx:2417",
-        "src/features/admin/AdminApp.tsx:2421",
-        "src/features/admin/AdminApp.tsx:2841",
-        "src/features/admin/AdminApp.tsx:3039",
-        "src/features/admin/AdminApp.tsx:3047",
-        "src/features/admin/AdminApp.tsx:3074",
-        "src/features/admin/AdminApp.tsx:3079",
-        "src/features/admin/AdminApp.tsx:3102",
-        "src/features/admin/AdminApp.tsx:3869",
-        "src/features/admin/AdminApp.tsx:4316",
-        "src/features/admin/AdminApp.tsx:4489",
-        "src/features/admin/AdminApp.tsx:4844",
-        "src/features/admin/AdminApp.tsx:4855",
-        "src/features/admin/AdminApp.tsx:4932",
-        "src/features/admin/AdminApp.tsx:4944",
-        "src/features/admin/AdminApp.tsx:4952",
-        "src/features/admin/AdminApp.tsx:4958",
-        "src/features/admin/AdminApp.tsx:5116",
-        "src/features/admin/AdminApp.tsx:5433",
-        "src/features/admin/AdminApp.tsx:5439",
-        "src/features/admin/AdminApp.tsx:5443",
-        "src/features/admin/AdminApp.tsx:5474",
-        "src/features/admin/AdminApp.tsx:944",
-        "src/features/admin/AdminApp.tsx:947",
-        "src/features/admin/AdminApp.tsx:949",
-        "src/features/admin/AdminApp.tsx:979",
-        "src/features/admin/AdminApp.tsx:984",
+        "src/features/admin/AdminApp.tsx:1434",
+        "src/features/admin/AdminApp.tsx:1454",
+        "src/features/admin/AdminApp.tsx:1590",
+        "src/features/admin/AdminApp.tsx:1611",
+        "src/features/admin/AdminApp.tsx:2178",
+        "src/features/admin/AdminApp.tsx:2247",
+        "src/features/admin/AdminApp.tsx:2328",
+        "src/features/admin/AdminApp.tsx:2399",
+        "src/features/admin/AdminApp.tsx:2403",
+        "src/features/admin/AdminApp.tsx:2823",
+        "src/features/admin/AdminApp.tsx:3021",
+        "src/features/admin/AdminApp.tsx:3029",
+        "src/features/admin/AdminApp.tsx:3056",
+        "src/features/admin/AdminApp.tsx:3061",
+        "src/features/admin/AdminApp.tsx:3084",
+        "src/features/admin/AdminApp.tsx:3719",
+        "src/features/admin/AdminApp.tsx:4166",
+        "src/features/admin/AdminApp.tsx:4181",
+        "src/features/admin/AdminApp.tsx:4536",
+        "src/features/admin/AdminApp.tsx:4547",
+        "src/features/admin/AdminApp.tsx:4624",
+        "src/features/admin/AdminApp.tsx:4636",
+        "src/features/admin/AdminApp.tsx:4644",
+        "src/features/admin/AdminApp.tsx:4650",
+        "src/features/admin/AdminApp.tsx:4808",
+        "src/features/admin/AdminApp.tsx:5125",
+        "src/features/admin/AdminApp.tsx:5131",
+        "src/features/admin/AdminApp.tsx:5135",
+        "src/features/admin/AdminApp.tsx:5166",
+        "src/features/admin/AdminApp.tsx:938",
+        "src/features/admin/AdminApp.tsx:941",
+        "src/features/admin/AdminApp.tsx:943",
+        "src/features/admin/AdminApp.tsx:973",
+        "src/features/admin/AdminApp.tsx:978",
         "src/shared/chatParticipants.ts:13",
         "src/shared/employeeSession.ts:23",
         "src/shared/employeeSession.ts:6",
@@ -23593,61 +23583,61 @@
         "components/OfficeTalk.tsx:709",
         "components/OfficeTalk.tsx:716",
         "components/OfficeTalk.tsx:948",
-        "src/features/admin/AdminApp.tsx:1270",
-        "src/features/admin/AdminApp.tsx:1560",
-        "src/features/admin/AdminApp.tsx:1580",
-        "src/features/admin/AdminApp.tsx:1585",
-        "src/features/admin/AdminApp.tsx:1587",
-        "src/features/admin/AdminApp.tsx:1589",
-        "src/features/admin/AdminApp.tsx:1720",
-        "src/features/admin/AdminApp.tsx:1767",
-        "src/features/admin/AdminApp.tsx:1801",
-        "src/features/admin/AdminApp.tsx:1958",
-        "src/features/admin/AdminApp.tsx:2010",
-        "src/features/admin/AdminApp.tsx:2021",
-        "src/features/admin/AdminApp.tsx:2092",
-        "src/features/admin/AdminApp.tsx:2099",
-        "src/features/admin/AdminApp.tsx:2419",
-        "src/features/admin/AdminApp.tsx:2422",
-        "src/features/admin/AdminApp.tsx:2531",
-        "src/features/admin/AdminApp.tsx:2535",
-        "src/features/admin/AdminApp.tsx:2565",
-        "src/features/admin/AdminApp.tsx:2569",
-        "src/features/admin/AdminApp.tsx:2598",
-        "src/features/admin/AdminApp.tsx:2602",
-        "src/features/admin/AdminApp.tsx:2813",
-        "src/features/admin/AdminApp.tsx:2820",
-        "src/features/admin/AdminApp.tsx:2841",
-        "src/features/admin/AdminApp.tsx:2851",
-        "src/features/admin/AdminApp.tsx:2860",
-        "src/features/admin/AdminApp.tsx:3039",
-        "src/features/admin/AdminApp.tsx:3047",
-        "src/features/admin/AdminApp.tsx:3079",
-        "src/features/admin/AdminApp.tsx:3102",
-        "src/features/admin/AdminApp.tsx:3124",
-        "src/features/admin/AdminApp.tsx:3401",
-        "src/features/admin/AdminApp.tsx:3428",
-        "src/features/admin/AdminApp.tsx:3869",
-        "src/features/admin/AdminApp.tsx:3877",
-        "src/features/admin/AdminApp.tsx:4179",
-        "src/features/admin/AdminApp.tsx:4186",
-        "src/features/admin/AdminApp.tsx:4256",
-        "src/features/admin/AdminApp.tsx:4261",
-        "src/features/admin/AdminApp.tsx:4502",
-        "src/features/admin/AdminApp.tsx:4531",
-        "src/features/admin/AdminApp.tsx:4548",
-        "src/features/admin/AdminApp.tsx:4581",
-        "src/features/admin/AdminApp.tsx:4719",
-        "src/features/admin/AdminApp.tsx:4753",
-        "src/features/admin/AdminApp.tsx:4830",
-        "src/features/admin/AdminApp.tsx:4844",
-        "src/features/admin/AdminApp.tsx:4855",
-        "src/features/admin/AdminApp.tsx:4872",
-        "src/features/admin/AdminApp.tsx:4904",
-        "src/features/admin/AdminApp.tsx:4932",
-        "src/features/admin/AdminApp.tsx:4958",
-        "src/features/admin/AdminApp.tsx:5116",
-        "src/features/admin/AdminApp.tsx:5425",
+        "src/features/admin/AdminApp.tsx:1264",
+        "src/features/admin/AdminApp.tsx:1554",
+        "src/features/admin/AdminApp.tsx:1574",
+        "src/features/admin/AdminApp.tsx:1579",
+        "src/features/admin/AdminApp.tsx:1581",
+        "src/features/admin/AdminApp.tsx:1583",
+        "src/features/admin/AdminApp.tsx:1714",
+        "src/features/admin/AdminApp.tsx:1761",
+        "src/features/admin/AdminApp.tsx:1795",
+        "src/features/admin/AdminApp.tsx:1952",
+        "src/features/admin/AdminApp.tsx:2004",
+        "src/features/admin/AdminApp.tsx:2015",
+        "src/features/admin/AdminApp.tsx:2074",
+        "src/features/admin/AdminApp.tsx:2081",
+        "src/features/admin/AdminApp.tsx:2401",
+        "src/features/admin/AdminApp.tsx:2404",
+        "src/features/admin/AdminApp.tsx:2513",
+        "src/features/admin/AdminApp.tsx:2517",
+        "src/features/admin/AdminApp.tsx:2547",
+        "src/features/admin/AdminApp.tsx:2551",
+        "src/features/admin/AdminApp.tsx:2580",
+        "src/features/admin/AdminApp.tsx:2584",
+        "src/features/admin/AdminApp.tsx:2795",
+        "src/features/admin/AdminApp.tsx:2802",
+        "src/features/admin/AdminApp.tsx:2823",
+        "src/features/admin/AdminApp.tsx:2833",
+        "src/features/admin/AdminApp.tsx:2842",
+        "src/features/admin/AdminApp.tsx:3021",
+        "src/features/admin/AdminApp.tsx:3029",
+        "src/features/admin/AdminApp.tsx:3061",
+        "src/features/admin/AdminApp.tsx:3084",
+        "src/features/admin/AdminApp.tsx:3106",
+        "src/features/admin/AdminApp.tsx:3383",
+        "src/features/admin/AdminApp.tsx:3410",
+        "src/features/admin/AdminApp.tsx:3719",
+        "src/features/admin/AdminApp.tsx:3727",
+        "src/features/admin/AdminApp.tsx:4029",
+        "src/features/admin/AdminApp.tsx:4036",
+        "src/features/admin/AdminApp.tsx:4106",
+        "src/features/admin/AdminApp.tsx:4111",
+        "src/features/admin/AdminApp.tsx:4194",
+        "src/features/admin/AdminApp.tsx:4223",
+        "src/features/admin/AdminApp.tsx:4240",
+        "src/features/admin/AdminApp.tsx:4273",
+        "src/features/admin/AdminApp.tsx:4411",
+        "src/features/admin/AdminApp.tsx:4445",
+        "src/features/admin/AdminApp.tsx:4522",
+        "src/features/admin/AdminApp.tsx:4536",
+        "src/features/admin/AdminApp.tsx:4547",
+        "src/features/admin/AdminApp.tsx:4564",
+        "src/features/admin/AdminApp.tsx:4596",
+        "src/features/admin/AdminApp.tsx:4624",
+        "src/features/admin/AdminApp.tsx:4650",
+        "src/features/admin/AdminApp.tsx:4808",
+        "src/features/admin/AdminApp.tsx:5117",
         "src/shared/chatParticipants.ts:19",
         "src/shared/employeeSession.ts:23",
         "src/shared/employeeSession.ts:8"
@@ -24157,7 +24147,7 @@
         "components/HRManager.tsx:241",
         "components/HRManager.tsx:443",
         "components/LeaveManager.tsx:637",
-        "src/features/admin/AdminApp.tsx:2254"
+        "src/features/admin/AdminApp.tsx:2236"
       ]
     },
     {
@@ -24185,7 +24175,7 @@
         "components/LeaveManager.tsx:625",
         "components/LeaveManager.tsx:647",
         "components/LeaveManager.tsx:934",
-        "src/features/admin/AdminApp.tsx:4953"
+        "src/features/admin/AdminApp.tsx:4645"
       ]
     },
     {
@@ -24201,7 +24191,7 @@
         "components/LeaveManager.tsx:354",
         "components/LeaveManager.tsx:449",
         "components/LeaveManager.tsx:473",
-        "src/features/admin/AdminApp.tsx:4951",
+        "src/features/admin/AdminApp.tsx:4643",
         "src/shared/leave.ts:148"
       ]
     },
@@ -24217,7 +24207,7 @@
         "components/HRManager.tsx:447",
         "components/LeaveManager.tsx:356",
         "components/LeaveManager.tsx:450",
-        "src/features/admin/AdminApp.tsx:4948"
+        "src/features/admin/AdminApp.tsx:4640"
       ]
     },
     {
@@ -24235,7 +24225,7 @@
         "components/LeaveManager.tsx:627",
         "components/LeaveManager.tsx:910",
         "components/LeaveManager.tsx:932",
-        "src/features/admin/AdminApp.tsx:4948",
+        "src/features/admin/AdminApp.tsx:4640",
         "src/shared/leave.ts:19"
       ]
     },
@@ -24260,7 +24250,7 @@
         "components/LeaveManager.tsx:630",
         "components/LeaveManager.tsx:643",
         "components/LeaveManager.tsx:910",
-        "src/features/admin/AdminApp.tsx:4948",
+        "src/features/admin/AdminApp.tsx:4640",
         "src/shared/leave.ts:137",
         "src/shared/leave.ts:149"
       ]
@@ -24282,7 +24272,7 @@
         "components/LeaveManager.tsx:630",
         "components/LeaveManager.tsx:643",
         "components/LeaveManager.tsx:910",
-        "src/features/admin/AdminApp.tsx:4948"
+        "src/features/admin/AdminApp.tsx:4640"
       ]
     },
     {
@@ -24328,7 +24318,7 @@
         "components/LeaveManager.tsx:635",
         "components/LeaveManager.tsx:636",
         "components/LeaveManager.tsx:640",
-        "src/features/admin/AdminApp.tsx:2254",
+        "src/features/admin/AdminApp.tsx:2236",
         "src/shared/leave.ts:148",
         "src/shared/leave.ts:252"
       ]
@@ -24361,7 +24351,7 @@
         "components/LeaveManager.tsx:479",
         "components/LeaveManager.tsx:480",
         "components/LeaveManager.tsx:482",
-        "src/features/admin/AdminApp.tsx:4948",
+        "src/features/admin/AdminApp.tsx:4640",
         "src/shared/leave.ts:154"
       ]
     },
@@ -24400,7 +24390,7 @@
         "components/HRManager.tsx:483",
         "components/HRManager.tsx:485",
         "components/LeaveManager.tsx:637",
-        "src/features/admin/AdminApp.tsx:2254"
+        "src/features/admin/AdminApp.tsx:2236"
       ]
     },
     {
@@ -24490,8 +24480,8 @@
       "references": [
         "components/OfficeTalk.tsx:242",
         "components/OfficeTalk.tsx:466",
-        "src/features/admin/AdminApp.tsx:5105",
-        "src/features/admin/AdminApp.tsx:5123",
+        "src/features/admin/AdminApp.tsx:4797",
+        "src/features/admin/AdminApp.tsx:4815",
         "src/shared/services/sharedChatMessageService.ts:25",
         "src/shared/services/sharedChatMessageService.ts:35",
         "src/shared/sharedChatAttempt.ts:24"
@@ -24506,9 +24496,9 @@
       "references": [
         "components/OfficeTalk.tsx:1085",
         "components/OfficeTalk.tsx:1090",
-        "src/features/admin/AdminApp.tsx:5111",
-        "src/features/admin/AdminApp.tsx:5114",
-        "src/features/admin/AdminApp.tsx:5122",
+        "src/features/admin/AdminApp.tsx:4803",
+        "src/features/admin/AdminApp.tsx:4806",
+        "src/features/admin/AdminApp.tsx:4814",
         "src/shared/messageActions.ts:31",
         "src/shared/services/sharedChatMessageService.ts:25",
         "src/shared/services/sharedChatMessageService.ts:30",
@@ -24528,8 +24518,8 @@
         "components/OfficeTalk.tsx:1280",
         "components/OfficeTalk.tsx:1539",
         "components/OfficeTalk.tsx:643",
-        "src/features/admin/AdminApp.tsx:5121",
-        "src/features/admin/AdminApp.tsx:5131",
+        "src/features/admin/AdminApp.tsx:4813",
+        "src/features/admin/AdminApp.tsx:4823",
         "src/shared/messageActions.ts:47",
         "src/shared/services/sharedChatMessageService.ts:25",
         "src/shared/sharedChatAttempt.ts:24"
@@ -24552,10 +24542,10 @@
         "components/OfficeTalk.tsx:664",
         "components/OfficeTalk.tsx:665",
         "components/OfficeTalk.tsx:689",
-        "src/features/admin/AdminApp.tsx:5109",
-        "src/features/admin/AdminApp.tsx:5118",
-        "src/features/admin/AdminApp.tsx:5128",
-        "src/features/admin/AdminApp.tsx:5132",
+        "src/features/admin/AdminApp.tsx:4801",
+        "src/features/admin/AdminApp.tsx:4810",
+        "src/features/admin/AdminApp.tsx:4820",
+        "src/features/admin/AdminApp.tsx:4824",
         "src/shared/messageActions.ts:30",
         "src/shared/messageActions.ts:44",
         "src/shared/roomNotice.ts:25",
@@ -24725,10 +24715,10 @@
         "components/OfficeTalk.tsx:860",
         "components/OfficeTalk.tsx:869",
         "components/OfficeTalk.tsx:993",
-        "src/features/admin/AdminApp.tsx:5105",
-        "src/features/admin/AdminApp.tsx:5108",
-        "src/features/admin/AdminApp.tsx:986",
-        "src/features/admin/AdminApp.tsx:987"
+        "src/features/admin/AdminApp.tsx:4797",
+        "src/features/admin/AdminApp.tsx:4800",
+        "src/features/admin/AdminApp.tsx:980",
+        "src/features/admin/AdminApp.tsx:981"
       ]
     },
     {
@@ -24749,7 +24739,7 @@
         "components/OfficeTalk.tsx:804",
         "components/OfficeTalk.tsx:936",
         "components/OfficeTalk.tsx:991",
-        "src/features/admin/AdminApp.tsx:5115"
+        "src/features/admin/AdminApp.tsx:4807"
       ]
     },
     {
@@ -24785,10 +24775,10 @@
         "components/OfficeTalk.tsx:313",
         "components/OfficeTalk.tsx:651",
         "components/OfficeTalk.tsx:948",
-        "src/features/admin/AdminApp.tsx:2265",
-        "src/features/admin/AdminApp.tsx:2346",
-        "src/features/admin/AdminApp.tsx:5114",
-        "src/features/admin/AdminApp.tsx:5115"
+        "src/features/admin/AdminApp.tsx:2247",
+        "src/features/admin/AdminApp.tsx:2328",
+        "src/features/admin/AdminApp.tsx:4806",
+        "src/features/admin/AdminApp.tsx:4807"
       ]
     },
     {
@@ -24819,8 +24809,8 @@
         "components/OfficeTalk.tsx:273",
         "components/OfficeTalk.tsx:829",
         "components/OfficeTalk.tsx:866",
-        "src/features/admin/AdminApp.tsx:2265",
-        "src/features/admin/AdminApp.tsx:2346"
+        "src/features/admin/AdminApp.tsx:2247",
+        "src/features/admin/AdminApp.tsx:2328"
       ]
     },
     {
@@ -24848,9 +24838,9 @@
       "references": [
         "components/OfficeTalk.tsx:205",
         "components/OfficeTalk.tsx:829",
-        "src/features/admin/AdminApp.tsx:2265",
-        "src/features/admin/AdminApp.tsx:2346",
-        "src/features/admin/AdminApp.tsx:5111"
+        "src/features/admin/AdminApp.tsx:2247",
+        "src/features/admin/AdminApp.tsx:2328",
+        "src/features/admin/AdminApp.tsx:4803"
       ]
     },
     {
@@ -25148,7 +25138,7 @@
       "declaration": "src/shared/types.ts:967",
       "references": [
         "components/VoucherTemplateManager.tsx:53",
-        "src/features/admin/AdminApp.tsx:648",
+        "src/features/admin/AdminApp.tsx:642",
         "src/shared/autoVoucher.ts:54"
       ]
     },
@@ -25677,7 +25667,7 @@
         "components/ReceivingReturnsManager.tsx:341",
         "components/ReturnManager.tsx:119",
         "components/TradeStatement.tsx:1198",
-        "src/features/admin/AdminApp.tsx:1745",
+        "src/features/admin/AdminApp.tsx:1739",
         "src/features/admin/dataIntegrityAudit.ts:500",
         "src/features/admin/dataIntegrityAudit.ts:501",
         "src/features/admin/dataIntegrityAudit.ts:503",
@@ -25716,8 +25706,8 @@
         "components/TradeStatement.tsx:1199",
         "components/TradeStatement.tsx:2511",
         "components/voucher/VoucherComposer.tsx:768",
-        "src/features/admin/AdminApp.tsx:1746",
-        "src/features/admin/AdminApp.tsx:1749",
+        "src/features/admin/AdminApp.tsx:1740",
+        "src/features/admin/AdminApp.tsx:1743",
         "src/features/admin/cashLedger.ts:127",
         "src/features/admin/cashLedger.ts:286",
         "src/features/admin/dataIntegrityAudit.ts:500",
@@ -25759,9 +25749,9 @@
         "components/TradeStatement.tsx:1201",
         "components/TradeStatement.tsx:1206",
         "components/TradeStatement.tsx:2513",
-        "src/features/admin/AdminApp.tsx:1748",
-        "src/features/admin/AdminApp.tsx:1749",
-        "src/features/admin/AdminApp.tsx:1751",
+        "src/features/admin/AdminApp.tsx:1742",
+        "src/features/admin/AdminApp.tsx:1743",
+        "src/features/admin/AdminApp.tsx:1745",
         "src/features/admin/purchaseReturnRequest.ts:23",
         "src/features/admin/purchaseReturnRequest.ts:39",
         "src/features/admin/purchaseReturnRequest.ts:43",
@@ -25796,8 +25786,8 @@
       "declaration": "src/shared/types.ts:1073",
       "references": [
         "components/TradeStatement.tsx:2515",
+        "src/features/admin/AdminApp.tsx:1745",
         "src/features/admin/AdminApp.tsx:1751",
-        "src/features/admin/AdminApp.tsx:1757",
         "src/features/admin/dataIntegrityAudit.ts:350",
         "src/features/admin/dataIntegrityAudit.ts:351",
         "src/features/admin/dataIntegrityAudit.ts:353",
@@ -25822,7 +25812,7 @@
       "declaration": "src/shared/types.ts:1074",
       "references": [
         "components/TradeStatement.tsx:2516",
-        "src/features/admin/AdminApp.tsx:1758",
+        "src/features/admin/AdminApp.tsx:1752",
         "src/features/admin/purchaseReturnRequest.ts:24",
         "src/features/admin/purchaseReturnRequest.ts:26",
         "src/features/admin/purchaseReturnRequest.ts:43",
@@ -25875,7 +25865,7 @@
       "references": [
         "components/TradeStatement.tsx:1207",
         "components/TradeStatement.tsx:2516",
-        "src/features/admin/AdminApp.tsx:1753",
+        "src/features/admin/AdminApp.tsx:1747",
         "src/shared/mergeStatementItems.ts:43"
       ]
     },
@@ -26106,11 +26096,11 @@
         "components/TradeStatement.tsx:754",
         "components/voucher/CashEntryModal.tsx:114",
         "components/voucher/CashEntryModal.tsx:197",
-        "src/features/admin/AdminApp.tsx:1736",
-        "src/features/admin/AdminApp.tsx:1761",
-        "src/features/admin/AdminApp.tsx:3139",
-        "src/features/admin/AdminApp.tsx:360",
-        "src/features/admin/AdminApp.tsx:4572",
+        "src/features/admin/AdminApp.tsx:1730",
+        "src/features/admin/AdminApp.tsx:1755",
+        "src/features/admin/AdminApp.tsx:3121",
+        "src/features/admin/AdminApp.tsx:359",
+        "src/features/admin/AdminApp.tsx:4264",
         "src/features/admin/cashLedger.ts:114",
         "src/features/admin/cashLedger.ts:116",
         "src/features/admin/cashLedger.ts:125",
@@ -26193,8 +26183,8 @@
       "declaration": "src/shared/types.ts:1118",
       "references": [
         "components/TaxStatement.tsx:258",
-        "src/features/admin/AdminApp.tsx:3142",
-        "src/features/admin/AdminApp.tsx:362",
+        "src/features/admin/AdminApp.tsx:3124",
+        "src/features/admin/AdminApp.tsx:361",
         "src/features/tax-documents/infrastructure/applyTaxIssueWrites.ts:32"
       ]
     },
@@ -26318,7 +26308,7 @@
         "components/voucher/CashEntryModal.tsx:142",
         "components/voucher/VoucherComposer.tsx:410",
         "components/voucher/VoucherComposer.tsx:766",
-        "src/features/admin/AdminApp.tsx:1764",
+        "src/features/admin/AdminApp.tsx:1758",
         "src/features/admin/cashLedger.ts:126",
         "src/features/admin/cashLedger.ts:277",
         "src/features/admin/cashLedger.ts:515",
@@ -26400,7 +26390,7 @@
         "components/TradeStatement.tsx:2291",
         "components/TradeStatement.tsx:2299",
         "components/TradeStatement.tsx:2482",
-        "src/features/admin/AdminApp.tsx:1761",
+        "src/features/admin/AdminApp.tsx:1755",
         "src/features/admin/cashLedger.ts:127",
         "src/features/admin/cashLedger.ts:475",
         "src/features/admin/cashLedger.ts:85",
@@ -26491,7 +26481,7 @@
         "components/voucher/CashEntryModal.tsx:107",
         "components/voucher/CashEntryModal.tsx:115",
         "components/voucher/VoucherComposer.tsx:409",
-        "src/features/admin/AdminApp.tsx:1764",
+        "src/features/admin/AdminApp.tsx:1758",
         "src/features/admin/cashLedger.ts:125",
         "src/features/admin/cashLedger.ts:145",
         "src/features/admin/cashLedger.ts:163",
@@ -26555,8 +26545,8 @@
         "components/TradeStatement.tsx:648",
         "components/voucher/CashEntryModal.tsx:142",
         "components/voucher/VoucherComposer.tsx:694",
-        "src/features/admin/AdminApp.tsx:1762",
-        "src/features/admin/AdminApp.tsx:1764",
+        "src/features/admin/AdminApp.tsx:1756",
+        "src/features/admin/AdminApp.tsx:1758",
         "src/features/admin/cashLedger.ts:127",
         "src/features/admin/cashLedger.ts:645",
         "src/features/statements/domain/statementHistoryRowView.ts:58",
@@ -26617,8 +26607,8 @@
         "components/TradeStatement.tsx:2484",
         "components/TradeStatement.tsx:2539",
         "components/TradeStatement.tsx:691",
-        "src/features/admin/AdminApp.tsx:1761",
-        "src/features/admin/AdminApp.tsx:4563",
+        "src/features/admin/AdminApp.tsx:1755",
+        "src/features/admin/AdminApp.tsx:4255",
         "src/features/admin/cashLedger.ts:126",
         "src/features/admin/cashLedger.ts:152",
         "src/features/admin/cashLedger.ts:168",
@@ -26765,7 +26755,7 @@
         "components/TradeStatement.tsx:2767",
         "components/voucher/VoucherComposer.tsx:686",
         "components/voucher/VoucherComposer.tsx:768",
-        "src/features/admin/AdminApp.tsx:1740",
+        "src/features/admin/AdminApp.tsx:1734",
         "src/features/admin/cashLedger.ts:127",
         "src/features/admin/cashLedger.ts:128",
         "src/features/admin/cashLedger.ts:286",
@@ -26842,9 +26832,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1149",
       "references": [
-        "src/features/admin/AdminApp.tsx:4531",
-        "src/features/admin/AdminApp.tsx:4548",
-        "src/features/admin/AdminApp.tsx:4719",
+        "src/features/admin/AdminApp.tsx:4223",
+        "src/features/admin/AdminApp.tsx:4240",
+        "src/features/admin/AdminApp.tsx:4411",
         "src/features/statements/domain/statementHistoryRowView.ts:58"
       ]
     },
@@ -27108,19 +27098,19 @@
         "components/TradeStatement.tsx:1266",
         "components/TradeStatement.tsx:1270",
         "components/TradeStatement.tsx:1318",
-        "src/features/admin/AdminApp.tsx:1155",
-        "src/features/admin/AdminApp.tsx:1164",
-        "src/features/admin/AdminApp.tsx:1176",
-        "src/features/admin/AdminApp.tsx:1216",
-        "src/features/admin/AdminApp.tsx:1218",
-        "src/features/admin/AdminApp.tsx:1731",
-        "src/features/admin/AdminApp.tsx:2668",
-        "src/features/admin/AdminApp.tsx:2669",
-        "src/features/admin/AdminApp.tsx:2671",
-        "src/features/admin/AdminApp.tsx:2855",
-        "src/features/admin/AdminApp.tsx:3108",
-        "src/features/admin/AdminApp.tsx:4592",
-        "src/features/admin/AdminApp.tsx:4885",
+        "src/features/admin/AdminApp.tsx:1149",
+        "src/features/admin/AdminApp.tsx:1158",
+        "src/features/admin/AdminApp.tsx:1170",
+        "src/features/admin/AdminApp.tsx:1210",
+        "src/features/admin/AdminApp.tsx:1212",
+        "src/features/admin/AdminApp.tsx:1725",
+        "src/features/admin/AdminApp.tsx:2650",
+        "src/features/admin/AdminApp.tsx:2651",
+        "src/features/admin/AdminApp.tsx:2653",
+        "src/features/admin/AdminApp.tsx:2837",
+        "src/features/admin/AdminApp.tsx:3090",
+        "src/features/admin/AdminApp.tsx:4284",
+        "src/features/admin/AdminApp.tsx:4577",
         "src/features/admin/dataIntegrityAudit.ts:390",
         "src/features/admin/dataIntegrityAudit.ts:398",
         "src/features/admin/dataIntegrityAudit.ts:417",
@@ -27178,7 +27168,7 @@
         "components/ItemList.tsx:1171",
         "components/ItemList.tsx:2102",
         "components/TradeStatement.tsx:1403",
-        "src/features/admin/AdminApp.tsx:1218",
+        "src/features/admin/AdminApp.tsx:1212",
         "src/shared/types.ts:1257"
       ]
     },
@@ -27209,7 +27199,7 @@
         "components/OrderPicker.tsx:397",
         "components/OrderPicker.tsx:408",
         "components/OrderPicker.tsx:417",
-        "src/features/admin/AdminApp.tsx:1223",
+        "src/features/admin/AdminApp.tsx:1217",
         "src/features/admin/oemEngine.ts:189",
         "src/features/admin/oemEngine.ts:277",
         "src/features/admin/oemEngine.ts:70",
@@ -27262,9 +27252,9 @@
         "components/ItemList.tsx:3451",
         "components/TradeStatement.tsx:1320",
         "components/TradeStatement.tsx:1326",
-        "src/features/admin/AdminApp.tsx:2668",
-        "src/features/admin/AdminApp.tsx:2669",
-        "src/features/admin/AdminApp.tsx:2671",
+        "src/features/admin/AdminApp.tsx:2650",
+        "src/features/admin/AdminApp.tsx:2651",
+        "src/features/admin/AdminApp.tsx:2653",
         "src/shared/types.ts:1257"
       ]
     },
@@ -27314,13 +27304,13 @@
         "components/ItemList.tsx:1780",
         "components/ItemList.tsx:1910",
         "components/TradeStatement.tsx:1403",
-        "src/features/admin/AdminApp.tsx:2256",
-        "src/features/admin/AdminApp.tsx:2279",
-        "src/features/admin/AdminApp.tsx:2351",
-        "src/features/admin/AdminApp.tsx:3094",
-        "src/features/admin/AdminApp.tsx:346",
-        "src/features/admin/AdminApp.tsx:790",
-        "src/features/admin/AdminApp.tsx:792",
+        "src/features/admin/AdminApp.tsx:2238",
+        "src/features/admin/AdminApp.tsx:2261",
+        "src/features/admin/AdminApp.tsx:2333",
+        "src/features/admin/AdminApp.tsx:3076",
+        "src/features/admin/AdminApp.tsx:345",
+        "src/features/admin/AdminApp.tsx:784",
+        "src/features/admin/AdminApp.tsx:786",
         "src/features/admin/dataIntegrityAudit.ts:388",
         "src/features/admin/oem.ts:56",
         "src/features/admin/oem.ts:63",
@@ -27367,7 +27357,7 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:1211",
       "references": [
-        "src/features/admin/AdminApp.tsx:1177"
+        "src/features/admin/AdminApp.tsx:1171"
       ]
     },
     {
@@ -27391,10 +27381,10 @@
         "components/OrderPicker.tsx:365",
         "components/OrderPicker.tsx:396",
         "components/TradeStatement.tsx:1403",
-        "src/features/admin/AdminApp.tsx:1736",
-        "src/features/admin/AdminApp.tsx:2256",
-        "src/features/admin/AdminApp.tsx:2279",
-        "src/features/admin/AdminApp.tsx:2351",
+        "src/features/admin/AdminApp.tsx:1730",
+        "src/features/admin/AdminApp.tsx:2238",
+        "src/features/admin/AdminApp.tsx:2261",
+        "src/features/admin/AdminApp.tsx:2333",
         "src/features/admin/oemEngine.ts:259",
         "src/features/admin/oemReceiptInventory.ts:78",
         "src/features/admin/oemReconciliation.ts:46",
@@ -27480,10 +27470,10 @@
         "components/AdminChecklist.tsx:503",
         "components/ItemList.tsx:1074",
         "components/TradeStatement.tsx:1403",
-        "src/features/admin/AdminApp.tsx:1157",
-        "src/features/admin/AdminApp.tsx:1158",
-        "src/features/admin/AdminApp.tsx:1166",
-        "src/features/admin/AdminApp.tsx:1167",
+        "src/features/admin/AdminApp.tsx:1151",
+        "src/features/admin/AdminApp.tsx:1152",
+        "src/features/admin/AdminApp.tsx:1160",
+        "src/features/admin/AdminApp.tsx:1161",
         "src/features/admin/oemEngine.ts:266",
         "src/features/admin/oemReconciliation.ts:16",
         "src/features/admin/oemReconciliation.ts:17",
@@ -27537,7 +27527,7 @@
         "components/ItemList.tsx:1786",
         "components/ItemList.tsx:1788",
         "components/ItemList.tsx:1791",
-        "src/features/admin/AdminApp.tsx:790",
+        "src/features/admin/AdminApp.tsx:784",
         "src/features/admin/dataIntegrityAudit.ts:388",
         "src/features/admin/oem.ts:55",
         "src/features/admin/oem.ts:63",
@@ -27785,7 +27775,7 @@
       "declaration": "src/shared/types.ts:1284",
       "references": [
         "components/QuotationManager.tsx:714",
-        "src/features/admin/AdminApp.tsx:2179",
+        "src/features/admin/AdminApp.tsx:2161",
         "src/features/statements/infrastructure/statementPrint.ts:269",
         "src/shared/docParty.ts:66"
       ]
@@ -27897,8 +27887,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1294",
       "references": [
-        "src/features/admin/AdminApp.tsx:5149",
-        "src/features/admin/AdminApp.tsx:5150"
+        "src/features/admin/AdminApp.tsx:4841",
+        "src/features/admin/AdminApp.tsx:4842"
       ]
     },
     {
@@ -27959,11 +27949,11 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1307",
       "references": [
-        "src/features/admin/AdminApp.tsx:1016",
-        "src/features/admin/AdminApp.tsx:5439",
-        "src/features/admin/AdminApp.tsx:5442",
-        "src/features/admin/AdminApp.tsx:5456",
-        "src/features/admin/AdminApp.tsx:5488"
+        "src/features/admin/AdminApp.tsx:1010",
+        "src/features/admin/AdminApp.tsx:5131",
+        "src/features/admin/AdminApp.tsx:5134",
+        "src/features/admin/AdminApp.tsx:5148",
+        "src/features/admin/AdminApp.tsx:5180"
       ]
     },
     {
@@ -27973,13 +27963,13 @@
       "type": "'new_order' | 'confirmation' | 'mention' | 'leave_request' | 'inventory_shortage'",
       "declaration": "src/shared/types.ts:1308",
       "references": [
-        "src/features/admin/AdminApp.tsx:5458",
-        "src/features/admin/AdminApp.tsx:5461",
-        "src/features/admin/AdminApp.tsx:5464",
-        "src/features/admin/AdminApp.tsx:5466",
-        "src/features/admin/AdminApp.tsx:5475",
-        "src/features/admin/AdminApp.tsx:5499",
-        "src/features/admin/AdminApp.tsx:5505",
+        "src/features/admin/AdminApp.tsx:5150",
+        "src/features/admin/AdminApp.tsx:5153",
+        "src/features/admin/AdminApp.tsx:5156",
+        "src/features/admin/AdminApp.tsx:5158",
+        "src/features/admin/AdminApp.tsx:5167",
+        "src/features/admin/AdminApp.tsx:5191",
+        "src/features/admin/AdminApp.tsx:5197",
         "src/shared/bellNotifications.ts:14"
       ]
     },
@@ -27990,7 +27980,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1309",
       "references": [
-        "src/features/admin/AdminApp.tsx:5496"
+        "src/features/admin/AdminApp.tsx:5188"
       ]
     },
     {
@@ -28000,9 +27990,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1310",
       "references": [
-        "src/features/admin/AdminApp.tsx:5499",
-        "src/features/admin/AdminApp.tsx:5500",
-        "src/features/admin/AdminApp.tsx:5501"
+        "src/features/admin/AdminApp.tsx:5191",
+        "src/features/admin/AdminApp.tsx:5192",
+        "src/features/admin/AdminApp.tsx:5193"
       ]
     },
     {
@@ -28012,9 +28002,9 @@
       "type": "string[]",
       "declaration": "src/shared/types.ts:1311",
       "references": [
-        "src/features/admin/AdminApp.tsx:2417",
-        "src/features/admin/AdminApp.tsx:5443",
-        "src/features/admin/AdminApp.tsx:5474",
+        "src/features/admin/AdminApp.tsx:2399",
+        "src/features/admin/AdminApp.tsx:5135",
+        "src/features/admin/AdminApp.tsx:5166",
         "src/shared/bellNotifications.ts:17"
       ]
     },
@@ -28035,9 +28025,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1313",
       "references": [
-        "src/features/admin/AdminApp.tsx:1015",
-        "src/features/admin/AdminApp.tsx:5453",
-        "src/features/admin/AdminApp.tsx:5503"
+        "src/features/admin/AdminApp.tsx:1009",
+        "src/features/admin/AdminApp.tsx:5145",
+        "src/features/admin/AdminApp.tsx:5195"
       ]
     },
     {
@@ -28047,10 +28037,10 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1314",
       "references": [
-        "src/features/admin/AdminApp.tsx:5458",
-        "src/features/admin/AdminApp.tsx:5460",
-        "src/features/admin/AdminApp.tsx:5461",
-        "src/features/admin/AdminApp.tsx:5463"
+        "src/features/admin/AdminApp.tsx:5150",
+        "src/features/admin/AdminApp.tsx:5152",
+        "src/features/admin/AdminApp.tsx:5153",
+        "src/features/admin/AdminApp.tsx:5155"
       ]
     },
     {
@@ -28068,7 +28058,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1316",
       "references": [
-        "src/features/admin/AdminApp.tsx:2417",
+        "src/features/admin/AdminApp.tsx:2399",
         "src/shared/bellNotifications.ts:15"
       ]
     },
@@ -28087,19 +28077,19 @@
         "components/RawLedgerList.tsx:285",
         "components/RawLedgerList.tsx:303",
         "components/RawLedgerList.tsx:310",
-        "src/features/admin/AdminApp.tsx:2731",
-        "src/features/admin/AdminApp.tsx:2732",
-        "src/features/admin/AdminApp.tsx:2734",
-        "src/features/admin/AdminApp.tsx:2737",
-        "src/features/admin/AdminApp.tsx:2746",
-        "src/features/admin/AdminApp.tsx:2762",
-        "src/features/admin/AdminApp.tsx:2769",
-        "src/features/admin/AdminApp.tsx:2799",
-        "src/features/admin/AdminApp.tsx:3932",
-        "src/features/admin/AdminApp.tsx:3937",
-        "src/features/admin/AdminApp.tsx:4165",
-        "src/features/admin/AdminApp.tsx:561",
-        "src/features/admin/AdminApp.tsx:562",
+        "src/features/admin/AdminApp.tsx:2713",
+        "src/features/admin/AdminApp.tsx:2714",
+        "src/features/admin/AdminApp.tsx:2716",
+        "src/features/admin/AdminApp.tsx:2719",
+        "src/features/admin/AdminApp.tsx:2728",
+        "src/features/admin/AdminApp.tsx:2744",
+        "src/features/admin/AdminApp.tsx:2751",
+        "src/features/admin/AdminApp.tsx:2781",
+        "src/features/admin/AdminApp.tsx:3782",
+        "src/features/admin/AdminApp.tsx:3787",
+        "src/features/admin/AdminApp.tsx:4015",
+        "src/features/admin/AdminApp.tsx:555",
+        "src/features/admin/AdminApp.tsx:556",
         "src/features/admin/dataIntegrityAudit.ts:166",
         "src/features/admin/dataIntegrityAudit.ts:169",
         "src/features/admin/dataIntegrityAudit.ts:321",
@@ -28130,9 +28120,9 @@
       "type": "CompanyId",
       "declaration": "src/shared/types.ts:1336",
       "references": [
-        "src/features/admin/AdminApp.tsx:2707",
-        "src/features/admin/AdminApp.tsx:2804",
-        "src/features/admin/AdminApp.tsx:4170",
+        "src/features/admin/AdminApp.tsx:2689",
+        "src/features/admin/AdminApp.tsx:2786",
+        "src/features/admin/AdminApp.tsx:4020",
         "src/features/admin/dataIntegrityAudit.ts:289",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:46"
       ]
@@ -28147,8 +28137,8 @@
         "components/ItemLedger.tsx:66",
         "components/ItemList.tsx:1991",
         "components/LotTimeline.tsx:61",
-        "src/features/admin/AdminApp.tsx:2804",
-        "src/features/admin/AdminApp.tsx:4170",
+        "src/features/admin/AdminApp.tsx:2786",
+        "src/features/admin/AdminApp.tsx:4020",
         "src/features/admin/dataIntegrityAudit.ts:294",
         "src/features/admin/dataIntegrityAudit.ts:431",
         "src/features/admin/savedRawCalculationAudit.ts:80",
@@ -28220,22 +28210,22 @@
         "components/RawLedgerList.tsx:276",
         "components/RawLedgerList.tsx:293",
         "components/RawLedgerList.tsx:69",
-        "src/features/admin/AdminApp.tsx:2707",
-        "src/features/admin/AdminApp.tsx:2708",
-        "src/features/admin/AdminApp.tsx:2712",
-        "src/features/admin/AdminApp.tsx:2757",
+        "src/features/admin/AdminApp.tsx:2689",
+        "src/features/admin/AdminApp.tsx:2690",
+        "src/features/admin/AdminApp.tsx:2694",
+        "src/features/admin/AdminApp.tsx:2739",
+        "src/features/admin/AdminApp.tsx:2740",
+        "src/features/admin/AdminApp.tsx:2754",
         "src/features/admin/AdminApp.tsx:2758",
-        "src/features/admin/AdminApp.tsx:2772",
-        "src/features/admin/AdminApp.tsx:2776",
-        "src/features/admin/AdminApp.tsx:2804",
-        "src/features/admin/AdminApp.tsx:2811",
-        "src/features/admin/AdminApp.tsx:3899",
-        "src/features/admin/AdminApp.tsx:3905",
-        "src/features/admin/AdminApp.tsx:3927",
-        "src/features/admin/AdminApp.tsx:4170",
-        "src/features/admin/AdminApp.tsx:4177",
-        "src/features/admin/AdminApp.tsx:864",
-        "src/features/admin/AdminApp.tsx:867",
+        "src/features/admin/AdminApp.tsx:2786",
+        "src/features/admin/AdminApp.tsx:2793",
+        "src/features/admin/AdminApp.tsx:3749",
+        "src/features/admin/AdminApp.tsx:3755",
+        "src/features/admin/AdminApp.tsx:3777",
+        "src/features/admin/AdminApp.tsx:4020",
+        "src/features/admin/AdminApp.tsx:4027",
+        "src/features/admin/AdminApp.tsx:858",
+        "src/features/admin/AdminApp.tsx:861",
         "src/features/admin/dataIntegrityAudit.ts:324",
         "src/features/admin/dataIntegrityAudit.ts:331",
         "src/features/admin/itemLedger.ts:158",
@@ -28260,15 +28250,15 @@
         "components/LotTimeline.tsx:94",
         "components/LotTimeline.tsx:95",
         "components/RawLedgerList.tsx:89",
-        "src/features/admin/AdminApp.tsx:2715",
-        "src/features/admin/AdminApp.tsx:2767",
-        "src/features/admin/AdminApp.tsx:3905",
-        "src/features/admin/AdminApp.tsx:3909",
-        "src/features/admin/AdminApp.tsx:3937",
-        "src/features/admin/AdminApp.tsx:536",
-        "src/features/admin/AdminApp.tsx:865",
-        "src/features/admin/AdminApp.tsx:866",
-        "src/features/admin/AdminApp.tsx:867",
+        "src/features/admin/AdminApp.tsx:2697",
+        "src/features/admin/AdminApp.tsx:2749",
+        "src/features/admin/AdminApp.tsx:3755",
+        "src/features/admin/AdminApp.tsx:3759",
+        "src/features/admin/AdminApp.tsx:3787",
+        "src/features/admin/AdminApp.tsx:530",
+        "src/features/admin/AdminApp.tsx:859",
+        "src/features/admin/AdminApp.tsx:860",
+        "src/features/admin/AdminApp.tsx:861",
         "src/features/admin/itemLedger.ts:156",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:109",
         "src/shared/lastStocktake.ts:12",
@@ -28292,12 +28282,12 @@
         "components/RawLedgerList.tsx:277",
         "components/RawLedgerList.tsx:306",
         "components/RawLedgerList.tsx:309",
-        "src/features/admin/AdminApp.tsx:2733",
-        "src/features/admin/AdminApp.tsx:2734",
-        "src/features/admin/AdminApp.tsx:3907",
-        "src/features/admin/AdminApp.tsx:3935",
-        "src/features/admin/AdminApp.tsx:864",
-        "src/features/admin/AdminApp.tsx:867",
+        "src/features/admin/AdminApp.tsx:2715",
+        "src/features/admin/AdminApp.tsx:2716",
+        "src/features/admin/AdminApp.tsx:3757",
+        "src/features/admin/AdminApp.tsx:3785",
+        "src/features/admin/AdminApp.tsx:858",
+        "src/features/admin/AdminApp.tsx:861",
         "src/features/admin/itemLedger.ts:47",
         "src/shared/rawLedgerBalance.ts:40",
         "src/shared/rawLedgerBalance.ts:65"
@@ -28317,14 +28307,14 @@
         "components/RawLedgerList.tsx:131",
         "components/RawLedgerList.tsx:277",
         "components/RawLedgerList.tsx:306",
-        "src/features/admin/AdminApp.tsx:2735",
-        "src/features/admin/AdminApp.tsx:2737",
-        "src/features/admin/AdminApp.tsx:2742",
-        "src/features/admin/AdminApp.tsx:2757",
-        "src/features/admin/AdminApp.tsx:2759",
-        "src/features/admin/AdminApp.tsx:3899",
-        "src/features/admin/AdminApp.tsx:3901",
-        "src/features/admin/AdminApp.tsx:3936",
+        "src/features/admin/AdminApp.tsx:2717",
+        "src/features/admin/AdminApp.tsx:2719",
+        "src/features/admin/AdminApp.tsx:2724",
+        "src/features/admin/AdminApp.tsx:2739",
+        "src/features/admin/AdminApp.tsx:2741",
+        "src/features/admin/AdminApp.tsx:3749",
+        "src/features/admin/AdminApp.tsx:3751",
+        "src/features/admin/AdminApp.tsx:3786",
         "src/shared/rawLedgerBalance.ts:40",
         "src/shared/rawLedgerBalance.ts:65"
       ]
@@ -28338,12 +28328,12 @@
       "references": [
         "components/LotTimeline.tsx:82",
         "components/ProductionManager.tsx:139",
-        "src/features/admin/AdminApp.tsx:2719",
-        "src/features/admin/AdminApp.tsx:2734",
-        "src/features/admin/AdminApp.tsx:2818",
-        "src/features/admin/AdminApp.tsx:3906",
-        "src/features/admin/AdminApp.tsx:3937",
-        "src/features/admin/AdminApp.tsx:4184",
+        "src/features/admin/AdminApp.tsx:2701",
+        "src/features/admin/AdminApp.tsx:2716",
+        "src/features/admin/AdminApp.tsx:2800",
+        "src/features/admin/AdminApp.tsx:3756",
+        "src/features/admin/AdminApp.tsx:3787",
+        "src/features/admin/AdminApp.tsx:4034",
         "src/features/admin/itemLedger.ts:158",
         "src/features/admin/itemLedger.ts:41",
         "src/features/admin/itemLedger.ts:48",
@@ -28363,8 +28353,8 @@
         "components/LotTimeline.tsx:94",
         "components/RawLedgerList.tsx:272",
         "components/RawLedgerList.tsx:278",
-        "src/features/admin/AdminApp.tsx:3909",
-        "src/features/admin/AdminApp.tsx:3937",
+        "src/features/admin/AdminApp.tsx:3759",
+        "src/features/admin/AdminApp.tsx:3787",
         "src/features/admin/itemLedger.ts:158",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:120",
         "src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:98",
@@ -28438,11 +28428,11 @@
       "references": [
         "components/LotTimeline.tsx:82",
         "components/RawLedgerList.tsx:115",
-        "src/features/admin/AdminApp.tsx:2716",
-        "src/features/admin/AdminApp.tsx:2721",
-        "src/features/admin/AdminApp.tsx:2768",
-        "src/features/admin/AdminApp.tsx:2778",
-        "src/features/admin/AdminApp.tsx:3937",
+        "src/features/admin/AdminApp.tsx:2698",
+        "src/features/admin/AdminApp.tsx:2703",
+        "src/features/admin/AdminApp.tsx:2750",
+        "src/features/admin/AdminApp.tsx:2760",
+        "src/features/admin/AdminApp.tsx:3787",
         "src/shared/ledgerTrace.ts:69"
       ]
     },
@@ -28462,10 +28452,10 @@
         "components/RawLedgerList.tsx:280",
         "components/RawLedgerList.tsx:303",
         "components/RawLedgerList.tsx:88",
-        "src/features/admin/AdminApp.tsx:2720",
-        "src/features/admin/AdminApp.tsx:2757",
-        "src/features/admin/AdminApp.tsx:3899",
-        "src/features/admin/AdminApp.tsx:3937"
+        "src/features/admin/AdminApp.tsx:2702",
+        "src/features/admin/AdminApp.tsx:2739",
+        "src/features/admin/AdminApp.tsx:3749",
+        "src/features/admin/AdminApp.tsx:3787"
       ]
     },
     {
@@ -28475,7 +28465,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1367",
       "references": [
-        "src/features/admin/AdminApp.tsx:3937",
+        "src/features/admin/AdminApp.tsx:3787",
         "src/shared/ledgerTrace.ts:58"
       ]
     },
@@ -28486,8 +28476,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1368",
       "references": [
-        "src/features/admin/AdminApp.tsx:2722",
-        "src/features/admin/AdminApp.tsx:2734"
+        "src/features/admin/AdminApp.tsx:2704",
+        "src/features/admin/AdminApp.tsx:2716"
       ]
     },
     {
@@ -28497,8 +28487,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1369",
       "references": [
-        "src/features/admin/AdminApp.tsx:2723",
-        "src/features/admin/AdminApp.tsx:2734"
+        "src/features/admin/AdminApp.tsx:2705",
+        "src/features/admin/AdminApp.tsx:2716"
       ]
     },
     {
@@ -28508,8 +28498,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1370",
       "references": [
-        "src/features/admin/AdminApp.tsx:2722",
-        "src/features/admin/AdminApp.tsx:2734",
+        "src/features/admin/AdminApp.tsx:2704",
+        "src/features/admin/AdminApp.tsx:2716",
         "src/features/admin/itemLedger.ts:153",
         "src/features/admin/itemLedger.ts:45"
       ]
@@ -28525,7 +28515,7 @@
         "components/RawLedgerList.tsx:275",
         "components/RawLedgerList.tsx:276",
         "components/RawLedgerList.tsx:87",
-        "src/features/admin/AdminApp.tsx:3934",
+        "src/features/admin/AdminApp.tsx:3784",
         "src/shared/rawLedgerBalance.ts:39",
         "src/shared/rawLedgerBalance.ts:64"
       ]
@@ -28537,7 +28527,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1373",
       "references": [
-        "src/features/admin/AdminApp.tsx:2724"
+        "src/features/admin/AdminApp.tsx:2706"
       ]
     },
     {
@@ -28547,7 +28537,7 @@
       "type": "'kg' | 'L'",
       "declaration": "src/shared/types.ts:1374",
       "references": [
-        "src/features/admin/AdminApp.tsx:2725"
+        "src/features/admin/AdminApp.tsx:2707"
       ]
     },
     {
@@ -28562,11 +28552,11 @@
         "components/RawLedgerList.tsx:293",
         "components/RawLedgerList.tsx:307",
         "components/RawLedgerList.tsx:88",
+        "src/features/admin/AdminApp.tsx:2695",
+        "src/features/admin/AdminApp.tsx:2711",
         "src/features/admin/AdminApp.tsx:2713",
-        "src/features/admin/AdminApp.tsx:2729",
-        "src/features/admin/AdminApp.tsx:2731",
-        "src/features/admin/AdminApp.tsx:2732",
-        "src/features/admin/AdminApp.tsx:3937",
+        "src/features/admin/AdminApp.tsx:2714",
+        "src/features/admin/AdminApp.tsx:3787",
         "src/shared/lastStocktake.ts:11",
         "src/shared/rawLedgerBalance.ts:38",
         "src/shared/rawLedgerBalance.ts:63",
@@ -28580,10 +28570,10 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1377",
       "references": [
-        "src/features/admin/AdminApp.tsx:2730",
-        "src/features/admin/AdminApp.tsx:2731",
-        "src/features/admin/AdminApp.tsx:2736",
-        "src/features/admin/AdminApp.tsx:2737"
+        "src/features/admin/AdminApp.tsx:2712",
+        "src/features/admin/AdminApp.tsx:2713",
+        "src/features/admin/AdminApp.tsx:2718",
+        "src/features/admin/AdminApp.tsx:2719"
       ]
     },
     {
@@ -28593,7 +28583,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1385",
       "references": [
-        "src/features/admin/AdminApp.tsx:5219"
+        "src/features/admin/AdminApp.tsx:4911"
       ]
     },
     {
@@ -28606,10 +28596,10 @@
         "components/AddItemModal.tsx:206",
         "components/AddItemModal.tsx:705",
         "components/BomIntegrityPanel.tsx:62",
-        "src/features/admin/AdminApp.tsx:5218",
-        "src/features/admin/AdminApp.tsx:5228",
-        "src/features/admin/AdminApp.tsx:666",
-        "src/features/admin/AdminApp.tsx:667",
+        "src/features/admin/AdminApp.tsx:4910",
+        "src/features/admin/AdminApp.tsx:4920",
+        "src/features/admin/AdminApp.tsx:660",
+        "src/features/admin/AdminApp.tsx:661",
         "src/features/admin/bom.ts:24",
         "src/features/admin/bom.ts:31",
         "src/features/admin/bom.ts:45"
@@ -28624,8 +28614,8 @@
       "references": [
         "components/AddItemModal.tsx:208",
         "components/AddItemModal.tsx:768",
-        "src/features/admin/AdminApp.tsx:666",
-        "src/features/admin/AdminApp.tsx:667",
+        "src/features/admin/AdminApp.tsx:660",
+        "src/features/admin/AdminApp.tsx:661",
         "src/features/admin/bom.ts:25",
         "src/features/admin/bom.ts:31"
       ]
@@ -28639,7 +28629,7 @@
       "references": [
         "components/AddItemModal.tsx:208",
         "components/AddItemModal.tsx:769",
-        "src/features/admin/AdminApp.tsx:667",
+        "src/features/admin/AdminApp.tsx:661",
         "src/features/admin/bom.ts:25",
         "src/features/admin/bom.ts:31"
       ]
@@ -28652,7 +28642,7 @@
       "declaration": "src/shared/types.ts:1389",
       "references": [
         "components/AddItemModal.tsx:208",
-        "src/features/admin/AdminApp.tsx:667",
+        "src/features/admin/AdminApp.tsx:661",
         "src/features/admin/bom.ts:25",
         "src/features/admin/bom.ts:31"
       ]
@@ -28664,7 +28654,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1394",
       "references": [
-        "src/features/admin/AdminApp.tsx:5309",
+        "src/features/admin/AdminApp.tsx:5001",
         "src/features/admin/catalogItemDelete.ts:72",
         "src/features/admin/dataIntegrityAudit.ts:619",
         "src/shared/itemCompany.ts:28"
@@ -28679,9 +28669,9 @@
       "references": [
         "components/OrdersList.tsx:758",
         "components/OrdersList.tsx:778",
-        "src/features/admin/AdminApp.tsx:5308",
-        "src/features/admin/AdminApp.tsx:5318",
-        "src/features/admin/AdminApp.tsx:710",
+        "src/features/admin/AdminApp.tsx:5000",
+        "src/features/admin/AdminApp.tsx:5010",
+        "src/features/admin/AdminApp.tsx:704",
         "src/features/admin/catalogItemDelete.ts:55",
         "src/features/admin/catalogItemDelete.ts:58",
         "src/features/admin/catalogItemDelete.ts:59",
@@ -28896,7 +28886,7 @@
       "type": "CompanyId",
       "declaration": "src/shared/types.ts:1420",
       "references": [
-        "src/features/admin/AdminApp.tsx:1261",
+        "src/features/admin/AdminApp.tsx:1255",
         "src/features/admin/purchaseReturnRows.ts:7",
         "src/features/admin/returnCommands.ts:12",
         "src/shared/services/returnRequestCancellation.ts:70"
@@ -28994,9 +28984,9 @@
         "components/ReturnManager.tsx:525",
         "components/ReturnManager.tsx:530",
         "components/ReturnManager.tsx:538",
-        "src/features/admin/AdminApp.tsx:2279",
-        "src/features/admin/AdminApp.tsx:2351",
-        "src/features/admin/AdminApp.tsx:2831",
+        "src/features/admin/AdminApp.tsx:2261",
+        "src/features/admin/AdminApp.tsx:2333",
+        "src/features/admin/AdminApp.tsx:2813",
         "src/features/admin/purchaseReturnRows.ts:7",
         "src/shared/pendingFlowQuantity.ts:24",
         "src/shared/services/returnRequestCancellation.ts:70"
@@ -29078,9 +29068,9 @@
         "components/ReturnManager.tsx:260",
         "components/ReturnManager.tsx:530",
         "components/ReturnManager.tsx:538",
-        "src/features/admin/AdminApp.tsx:2279",
-        "src/features/admin/AdminApp.tsx:2351",
-        "src/features/admin/AdminApp.tsx:2831"
+        "src/features/admin/AdminApp.tsx:2261",
+        "src/features/admin/AdminApp.tsx:2333",
+        "src/features/admin/AdminApp.tsx:2813"
       ]
     },
     {
@@ -29152,7 +29142,7 @@
         "components/AdminChecklist.tsx:79",
         "components/AdminChecklist.tsx:81",
         "components/AdminChecklist.tsx:82",
-        "src/features/admin/AdminApp.tsx:3143",
+        "src/features/admin/AdminApp.tsx:3125",
         "src/shared/services/firebaseService.ts:124"
       ]
     },
@@ -29163,8 +29153,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1442",
       "references": [
-        "src/features/admin/AdminApp.tsx:3139",
-        "src/features/admin/AdminApp.tsx:3141"
+        "src/features/admin/AdminApp.tsx:3121",
+        "src/features/admin/AdminApp.tsx:3123"
       ]
     },
     {
@@ -29206,7 +29196,7 @@
       "references": [
         "components/AdminChecklist.tsx:532",
         "components/AdminChecklist.tsx:550",
-        "src/features/admin/AdminApp.tsx:3141"
+        "src/features/admin/AdminApp.tsx:3123"
       ]
     },
     {
@@ -30226,12 +30216,12 @@
         "components/voucher/CashEntryModal.tsx:436",
         "components/voucher/CashEntryModal.tsx:449",
         "components/voucher/VoucherComposer.tsx:1450",
-        "src/features/admin/AdminApp.tsx:370",
-        "src/features/admin/AdminApp.tsx:450",
-        "src/features/admin/AdminApp.tsx:4508",
-        "src/features/admin/AdminApp.tsx:453",
-        "src/features/admin/AdminApp.tsx:4756",
-        "src/features/admin/AdminApp.tsx:4764",
+        "src/features/admin/AdminApp.tsx:369",
+        "src/features/admin/AdminApp.tsx:4200",
+        "src/features/admin/AdminApp.tsx:4448",
+        "src/features/admin/AdminApp.tsx:4456",
+        "src/features/admin/AdminApp.tsx:449",
+        "src/features/admin/AdminApp.tsx:452",
         "src/features/admin/cashLedger.ts:115",
         "src/features/admin/cashLedger.ts:117",
         "src/features/admin/cashLedger.ts:130",
@@ -30309,7 +30299,7 @@
       "references": [
         "components/CashLedger.tsx:616",
         "components/voucher/VoucherComposer.tsx:240",
-        "src/features/admin/AdminApp.tsx:2094",
+        "src/features/admin/AdminApp.tsx:2076",
         "src/features/statements/infrastructure/voucherIssuePending.ts:14",
         "src/shared/loanLedger.ts:28",
         "src/shared/services/loanCashAdapter.ts:10",
@@ -30419,7 +30409,7 @@
         "components/CashLedger.tsx:75",
         "components/TradeStatement.tsx:483",
         "components/voucher/CashEntryModal.tsx:283",
-        "src/features/admin/AdminApp.tsx:2092",
+        "src/features/admin/AdminApp.tsx:2074",
         "src/features/admin/cashMutationCommands.ts:49",
         "src/features/statements/infrastructure/voucherIssuePending.ts:14",
         "src/shared/autoJournal.ts:215",
@@ -30456,7 +30446,7 @@
         "components/voucher/CashEntryModal.tsx:283",
         "components/voucher/VoucherComposer.tsx:1282",
         "components/voucher/VoucherComposer.tsx:133",
-        "src/features/admin/AdminApp.tsx:2092",
+        "src/features/admin/AdminApp.tsx:2074",
         "src/features/admin/cashLedger.ts:132",
         "src/features/admin/cashLedger.ts:613",
         "src/features/admin/cashLedger.ts:695",
@@ -30555,12 +30545,12 @@
         "components/voucher/CashEntryModal.tsx:261",
         "components/voucher/CashEntryModal.tsx:264",
         "components/voucher/CashEntryModal.tsx:268",
-        "src/features/admin/AdminApp.tsx:4509",
-        "src/features/admin/AdminApp.tsx:4511",
-        "src/features/admin/AdminApp.tsx:4757",
-        "src/features/admin/AdminApp.tsx:4759",
-        "src/features/admin/AdminApp.tsx:4765",
-        "src/features/admin/AdminApp.tsx:4767",
+        "src/features/admin/AdminApp.tsx:4201",
+        "src/features/admin/AdminApp.tsx:4203",
+        "src/features/admin/AdminApp.tsx:4449",
+        "src/features/admin/AdminApp.tsx:4451",
+        "src/features/admin/AdminApp.tsx:4457",
+        "src/features/admin/AdminApp.tsx:4459",
         "src/features/admin/cashLedger.ts:130",
         "src/features/admin/cashLedger.ts:145",
         "src/features/admin/cashLedger.ts:163",
@@ -30750,9 +30740,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1594",
       "references": [
-        "src/features/admin/AdminApp.tsx:2092",
-        "src/features/admin/AdminApp.tsx:4502",
-        "src/features/admin/AdminApp.tsx:4753",
+        "src/features/admin/AdminApp.tsx:2074",
+        "src/features/admin/AdminApp.tsx:4194",
+        "src/features/admin/AdminApp.tsx:4445",
         "src/features/statements/domain/statementHistoryRowView.ts:41",
         "src/features/statements/domain/statementHistoryRowView.ts:49"
       ]
@@ -30769,10 +30759,10 @@
         "components/TradeStatement.tsx:747",
         "components/TradeStatement.tsx:763",
         "components/TradeStatement.tsx:783",
-        "src/features/admin/AdminApp.tsx:4507",
-        "src/features/admin/AdminApp.tsx:4512",
-        "src/features/admin/AdminApp.tsx:4763",
-        "src/features/admin/AdminApp.tsx:4768"
+        "src/features/admin/AdminApp.tsx:4199",
+        "src/features/admin/AdminApp.tsx:4204",
+        "src/features/admin/AdminApp.tsx:4455",
+        "src/features/admin/AdminApp.tsx:4460"
       ]
     },
     {
@@ -30790,12 +30780,12 @@
         "components/TradeStatement.tsx:745",
         "components/TradeStatement.tsx:763",
         "components/TradeStatement.tsx:783",
-        "src/features/admin/AdminApp.tsx:4508",
-        "src/features/admin/AdminApp.tsx:4512",
-        "src/features/admin/AdminApp.tsx:4756",
-        "src/features/admin/AdminApp.tsx:4760",
-        "src/features/admin/AdminApp.tsx:4764",
-        "src/features/admin/AdminApp.tsx:4768",
+        "src/features/admin/AdminApp.tsx:4200",
+        "src/features/admin/AdminApp.tsx:4204",
+        "src/features/admin/AdminApp.tsx:4448",
+        "src/features/admin/AdminApp.tsx:4452",
+        "src/features/admin/AdminApp.tsx:4456",
+        "src/features/admin/AdminApp.tsx:4460",
         "src/features/admin/cashLedger.ts:56",
         "src/features/admin/cashLedger.ts:569",
         "src/features/admin/cashLedger.ts:95"
@@ -30813,9 +30803,9 @@
         "components/CashLedger.tsx:355",
         "components/TradeStatement.tsx:1746",
         "components/TradeStatement.tsx:749",
-        "src/features/admin/AdminApp.tsx:4512",
-        "src/features/admin/AdminApp.tsx:4760",
-        "src/features/admin/AdminApp.tsx:4768",
+        "src/features/admin/AdminApp.tsx:4204",
+        "src/features/admin/AdminApp.tsx:4452",
+        "src/features/admin/AdminApp.tsx:4460",
         "src/features/admin/cashLedger.ts:55",
         "src/features/admin/cashLedger.ts:569",
         "src/features/admin/cashLedger.ts:570",
@@ -30834,9 +30824,9 @@
         "components/CashLedger.tsx:354",
         "components/TradeStatement.tsx:1747",
         "components/TradeStatement.tsx:749",
-        "src/features/admin/AdminApp.tsx:4513",
-        "src/features/admin/AdminApp.tsx:4760",
-        "src/features/admin/AdminApp.tsx:4768",
+        "src/features/admin/AdminApp.tsx:4205",
+        "src/features/admin/AdminApp.tsx:4452",
+        "src/features/admin/AdminApp.tsx:4460",
         "src/features/admin/cashLedger.ts:57",
         "src/features/admin/cashLedger.ts:571",
         "src/features/admin/cashLedger.ts:96"
@@ -30886,7 +30876,7 @@
         "components/ProfitAnalysis.tsx:1629",
         "components/ProfitAnalysis.tsx:317",
         "components/ProfitAnalysis.tsx:323",
-        "src/features/admin/AdminApp.tsx:4658"
+        "src/features/admin/AdminApp.tsx:4350"
       ]
     },
     {
@@ -31038,7 +31028,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1635",
       "references": [
-        "src/features/admin/AdminApp.tsx:3715",
+        "src/features/admin/AdminApp.tsx:3565",
         "src/features/admin/dataIntegrityAudit.ts:572",
         "src/features/admin/dataIntegrityAudit.ts:583",
         "src/features/admin/dataIntegrityAudit.ts:587",
@@ -31067,11 +31057,11 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1637",
       "references": [
-        "src/features/admin/AdminApp.tsx:2891",
-        "src/features/admin/AdminApp.tsx:2897",
-        "src/features/admin/AdminApp.tsx:3690",
-        "src/features/admin/AdminApp.tsx:3716",
-        "src/features/admin/AdminApp.tsx:509",
+        "src/features/admin/AdminApp.tsx:2873",
+        "src/features/admin/AdminApp.tsx:2879",
+        "src/features/admin/AdminApp.tsx:3540",
+        "src/features/admin/AdminApp.tsx:3566",
+        "src/features/admin/AdminApp.tsx:503",
         "src/features/admin/dataIntegrityAudit.ts:559",
         "src/features/admin/dataIntegrityAudit.ts:563",
         "src/features/admin/dataIntegrityAudit.ts:564",
@@ -31088,8 +31078,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1638",
       "references": [
-        "src/features/admin/AdminApp.tsx:3689",
-        "src/features/admin/AdminApp.tsx:3719"
+        "src/features/admin/AdminApp.tsx:3539",
+        "src/features/admin/AdminApp.tsx:3569"
       ]
     },
     {
@@ -31099,8 +31089,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1639",
       "references": [
-        "src/features/admin/AdminApp.tsx:2892",
-        "src/features/admin/AdminApp.tsx:3717"
+        "src/features/admin/AdminApp.tsx:2874",
+        "src/features/admin/AdminApp.tsx:3567"
       ]
     },
     {
@@ -31110,8 +31100,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1640",
       "references": [
-        "src/features/admin/AdminApp.tsx:2892",
-        "src/features/admin/AdminApp.tsx:3718",
+        "src/features/admin/AdminApp.tsx:2874",
+        "src/features/admin/AdminApp.tsx:3568",
         "src/features/admin/dataIntegrityAudit.ts:585"
       ]
     },
@@ -31122,8 +31112,8 @@
       "type": "{ groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[]",
       "declaration": "src/shared/types.ts:1642",
       "references": [
-        "src/features/admin/AdminApp.tsx:2898",
-        "src/features/admin/AdminApp.tsx:2927"
+        "src/features/admin/AdminApp.tsx:2880",
+        "src/features/admin/AdminApp.tsx:2909"
       ]
     },
     {
@@ -31133,8 +31123,8 @@
       "type": "{ 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[]",
       "declaration": "src/shared/types.ts:1644",
       "references": [
-        "src/features/admin/AdminApp.tsx:2882",
-        "src/features/admin/AdminApp.tsx:2885"
+        "src/features/admin/AdminApp.tsx:2864",
+        "src/features/admin/AdminApp.tsx:2867"
       ]
     },
     {
@@ -31144,8 +31134,8 @@
       "type": "{ 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[]",
       "declaration": "src/shared/types.ts:1646",
       "references": [
-        "src/features/admin/AdminApp.tsx:2883",
-        "src/features/admin/AdminApp.tsx:2885",
+        "src/features/admin/AdminApp.tsx:2865",
+        "src/features/admin/AdminApp.tsx:2867",
         "src/features/admin/dataIntegrityAudit.ts:574",
         "src/features/admin/dataIntegrityAudit.ts:591",
         "src/features/admin/dataIntegrityAudit.ts:609"
@@ -31158,7 +31148,7 @@
       "type": "{ 품목: string; 용량: string; 수량: number; 거래처: string }[]",
       "declaration": "src/shared/types.ts:1648",
       "references": [
-        "src/features/admin/AdminApp.tsx:2884"
+        "src/features/admin/AdminApp.tsx:2866"
       ]
     },
     {
@@ -31168,7 +31158,7 @@
       "type": "{ partnerName: string; items: { name: string; qty: number }[] }[]",
       "declaration": "src/shared/types.ts:1650",
       "references": [
-        "src/features/admin/AdminApp.tsx:2996"
+        "src/features/admin/AdminApp.tsx:2978"
       ]
     },
     {
@@ -31192,10 +31182,10 @@
         "components/ConfirmationItems.tsx:203",
         "components/ConfirmationItems.tsx:86",
         "components/ConfirmationItems.tsx:89",
-        "src/features/admin/AdminApp.tsx:3112",
-        "src/features/admin/AdminApp.tsx:3135",
-        "src/features/admin/AdminApp.tsx:4890",
-        "src/features/admin/AdminApp.tsx:4924",
+        "src/features/admin/AdminApp.tsx:3094",
+        "src/features/admin/AdminApp.tsx:3117",
+        "src/features/admin/AdminApp.tsx:4582",
+        "src/features/admin/AdminApp.tsx:4616",
         "src/features/admin/oemReceiptInventory.ts:72"
       ]
     },
@@ -31218,13 +31208,13 @@
       "references": [
         "components/AdminChecklist.tsx:374",
         "components/ConfirmationItems.tsx:34",
-        "src/features/admin/AdminApp.tsx:1073",
-        "src/features/admin/AdminApp.tsx:1101",
-        "src/features/admin/AdminApp.tsx:3108",
-        "src/features/admin/AdminApp.tsx:3116",
-        "src/features/admin/AdminApp.tsx:4885",
-        "src/features/admin/AdminApp.tsx:4895",
-        "src/features/admin/AdminApp.tsx:4922"
+        "src/features/admin/AdminApp.tsx:1067",
+        "src/features/admin/AdminApp.tsx:1095",
+        "src/features/admin/AdminApp.tsx:3090",
+        "src/features/admin/AdminApp.tsx:3098",
+        "src/features/admin/AdminApp.tsx:4577",
+        "src/features/admin/AdminApp.tsx:4587",
+        "src/features/admin/AdminApp.tsx:4614"
       ]
     },
     {
@@ -31265,11 +31255,11 @@
         "components/AdminChecklist.tsx:397",
         "components/ConfirmationItems.tsx:129",
         "components/ConfirmationItems.tsx:136",
-        "src/features/admin/AdminApp.tsx:3117",
-        "src/features/admin/AdminApp.tsx:3122",
-        "src/features/admin/AdminApp.tsx:3130",
-        "src/features/admin/AdminApp.tsx:4903",
-        "src/features/admin/AdminApp.tsx:4910"
+        "src/features/admin/AdminApp.tsx:3099",
+        "src/features/admin/AdminApp.tsx:3104",
+        "src/features/admin/AdminApp.tsx:3112",
+        "src/features/admin/AdminApp.tsx:4595",
+        "src/features/admin/AdminApp.tsx:4602"
       ]
     },
     {
@@ -31303,13 +31293,13 @@
         "components/ConfirmationItems.tsx:177",
         "components/ConfirmationItems.tsx:179",
         "components/ConfirmationItems.tsx:38",
-        "src/features/admin/AdminApp.tsx:1073",
-        "src/features/admin/AdminApp.tsx:1101",
-        "src/features/admin/AdminApp.tsx:3107",
-        "src/features/admin/AdminApp.tsx:3117",
-        "src/features/admin/AdminApp.tsx:4884",
-        "src/features/admin/AdminApp.tsx:4898",
-        "src/features/admin/AdminApp.tsx:4915"
+        "src/features/admin/AdminApp.tsx:1067",
+        "src/features/admin/AdminApp.tsx:1095",
+        "src/features/admin/AdminApp.tsx:3089",
+        "src/features/admin/AdminApp.tsx:3099",
+        "src/features/admin/AdminApp.tsx:4576",
+        "src/features/admin/AdminApp.tsx:4590",
+        "src/features/admin/AdminApp.tsx:4607"
       ]
     },
     {
@@ -31339,10 +31329,10 @@
         "components/ConfirmationItems.tsx:167",
         "components/ConfirmationItems.tsx:190",
         "components/ConfirmationItems.tsx:43",
-        "src/features/admin/AdminApp.tsx:1073",
-        "src/features/admin/AdminApp.tsx:1101",
-        "src/features/admin/AdminApp.tsx:2255",
-        "src/features/admin/AdminApp.tsx:912"
+        "src/features/admin/AdminApp.tsx:1067",
+        "src/features/admin/AdminApp.tsx:1095",
+        "src/features/admin/AdminApp.tsx:2237",
+        "src/features/admin/AdminApp.tsx:906"
       ]
     },
     {
@@ -31366,8 +31356,8 @@
       "declaration": "src/shared/types.ts:1668",
       "references": [
         "components/ConfirmationItems.tsx:193",
-        "src/features/admin/AdminApp.tsx:913",
-        "src/features/admin/AdminApp.tsx:914"
+        "src/features/admin/AdminApp.tsx:907",
+        "src/features/admin/AdminApp.tsx:908"
       ]
     },
     {
@@ -31390,8 +31380,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1671",
       "references": [
-        "src/features/admin/AdminApp.tsx:3108",
-        "src/features/admin/AdminApp.tsx:4885",
+        "src/features/admin/AdminApp.tsx:3090",
+        "src/features/admin/AdminApp.tsx:4577",
         "src/features/admin/oemReceiptInventory.ts:72"
       ]
     },
@@ -31404,9 +31394,9 @@
       "references": [
         "components/AdminChecklist.tsx:383",
         "components/ConfirmationItems.tsx:121",
-        "src/features/admin/AdminApp.tsx:1703",
-        "src/features/admin/AdminApp.tsx:3110",
-        "src/features/admin/AdminApp.tsx:4888"
+        "src/features/admin/AdminApp.tsx:1697",
+        "src/features/admin/AdminApp.tsx:3092",
+        "src/features/admin/AdminApp.tsx:4580"
       ]
     },
     {
@@ -34315,7 +34305,7 @@
     },
     {
       "model": "CollectionName",
-      "declaration": "src/shared/collections.ts:122",
+      "declaration": "src/shared/collections.ts:121",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -55700,7 +55690,7 @@
     },
     {
       "model": "AdminAppProps",
-      "declaration": "src/features/admin/AdminApp.tsx:254",
+      "declaration": "src/features/admin/AdminApp.tsx:253",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -55708,79 +55698,79 @@
           "field": "currentUser",
           "optional": false,
           "type": "Employee",
-          "declaration": "src/features/admin/AdminApp.tsx:255"
+          "declaration": "src/features/admin/AdminApp.tsx:254"
         },
         {
           "field": "companyId",
           "optional": false,
           "type": "CompanyId",
-          "declaration": "src/features/admin/AdminApp.tsx:256"
+          "declaration": "src/features/admin/AdminApp.tsx:255"
         },
         {
           "field": "isAdmin",
           "optional": false,
           "type": "boolean",
-          "declaration": "src/features/admin/AdminApp.tsx:257"
+          "declaration": "src/features/admin/AdminApp.tsx:256"
         },
         {
           "field": "isAdminAuthenticated",
           "optional": false,
           "type": "boolean",
-          "declaration": "src/features/admin/AdminApp.tsx:258"
+          "declaration": "src/features/admin/AdminApp.tsx:257"
         },
         {
           "field": "onAdminAuth",
           "optional": false,
           "type": "(v: boolean) => void",
-          "declaration": "src/features/admin/AdminApp.tsx:259"
+          "declaration": "src/features/admin/AdminApp.tsx:258"
         },
         {
           "field": "currentView",
           "optional": false,
           "type": "ViewType",
-          "declaration": "src/features/admin/AdminApp.tsx:260"
+          "declaration": "src/features/admin/AdminApp.tsx:259"
         },
         {
           "field": "setCurrentView",
           "optional": false,
           "type": "(view: ViewType) => void",
-          "declaration": "src/features/admin/AdminApp.tsx:261"
+          "declaration": "src/features/admin/AdminApp.tsx:260"
         },
         {
           "field": "onLogout",
           "optional": false,
           "type": "() => void",
-          "declaration": "src/features/admin/AdminApp.tsx:262"
+          "declaration": "src/features/admin/AdminApp.tsx:261"
         },
         {
           "field": "appData",
           "optional": false,
           "type": "AppData",
-          "declaration": "src/features/admin/AdminApp.tsx:263"
+          "declaration": "src/features/admin/AdminApp.tsx:262"
         },
         {
           "field": "adminData",
           "optional": false,
           "type": "AdminData",
-          "declaration": "src/features/admin/AdminApp.tsx:264"
+          "declaration": "src/features/admin/AdminApp.tsx:263"
         },
         {
           "field": "onPreviewStaff",
           "optional": true,
           "type": "() => void",
-          "declaration": "src/features/admin/AdminApp.tsx:265"
+          "declaration": "src/features/admin/AdminApp.tsx:264"
         },
         {
           "field": "onExitPreview",
           "optional": true,
           "type": "() => void",
-          "declaration": "src/features/admin/AdminApp.tsx:266"
+          "declaration": "src/features/admin/AdminApp.tsx:265"
         }
       ]
     },
     {
       "model": "NewOrderDraft",
-      "declaration": "src/features/admin/AdminApp.tsx:1422",
+      "declaration": "src/features/admin/AdminApp.tsx:1416",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -55788,7 +55778,7 @@
     },
     {
       "model": "RightRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3174",
+      "declaration": "src/features/admin/AdminApp.tsx:3156",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -55796,75 +55786,49 @@
           "field": "상호",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "품목",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "spec",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "수량",
           "optional": false,
           "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "소비기한",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "제조일자",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         },
         {
           "field": "orderItems",
           "optional": false,
           "type": "Array<{orderId: string; itemIdx: number}>",
-          "declaration": "src/features/admin/AdminApp.tsx:3174"
-        }
-      ]
-    },
-    {
-      "model": "WRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3581",
-      "kind": "type-alias",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "spec",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3581"
-        },
-        {
-          "field": "수량",
-          "optional": false,
-          "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:3581"
-        },
-        {
-          "field": "mfgDate",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3581"
+          "declaration": "src/features/admin/AdminApp.tsx:3156"
         }
       ]
     },
     {
       "model": "UsageRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3886",
+      "declaration": "src/features/admin/AdminApp.tsx:3736",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -55872,87 +55836,61 @@
           "field": "date",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "received",
           "optional": false,
           "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "used",
           "optional": false,
           "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "note",
           "optional": false,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "type",
           "optional": false,
           "type": "'auto' | 'manual' | 'correction'",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "id",
           "optional": true,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "createdAt",
           "optional": true,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "targetKg",
           "optional": true,
           "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "addedBy",
           "optional": true,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         },
         {
           "field": "orderId",
           "optional": true,
           "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:3886"
-        }
-      ]
-    },
-    {
-      "model": "WRow",
-      "declaration": "src/features/admin/AdminApp.tsx:4333",
-      "kind": "type-alias",
-      "scope": "direct-properties-only",
-      "fields": [
-        {
-          "field": "spec",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:4333"
-        },
-        {
-          "field": "수량",
-          "optional": false,
-          "type": "number",
-          "declaration": "src/features/admin/AdminApp.tsx:4333"
-        },
-        {
-          "field": "mfgDate",
-          "optional": false,
-          "type": "string",
-          "declaration": "src/features/admin/AdminApp.tsx:4333"
+          "declaration": "src/features/admin/AdminApp.tsx:3736"
         }
       ]
     },
@@ -70526,7 +70464,7 @@
     },
     {
       "model": "CollectionName",
-      "declaration": "src/shared/collections.ts:122",
+      "declaration": "src/shared/collections.ts:121",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
@@ -104894,7 +104832,7 @@
     },
     {
       "model": "AdminAppProps",
-      "declaration": "src/features/admin/AdminApp.tsx:254",
+      "declaration": "src/features/admin/AdminApp.tsx:253",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -104902,7 +104840,7 @@
           "optional": false,
           "type": "Employee",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:255"
+            "src/features/admin/AdminApp.tsx:254"
           ],
           "inherited": false
         },
@@ -104911,7 +104849,7 @@
           "optional": false,
           "type": "CompanyId",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:256"
+            "src/features/admin/AdminApp.tsx:255"
           ],
           "inherited": false
         },
@@ -104920,7 +104858,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:257"
+            "src/features/admin/AdminApp.tsx:256"
           ],
           "inherited": false
         },
@@ -104929,7 +104867,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:258"
+            "src/features/admin/AdminApp.tsx:257"
           ],
           "inherited": false
         },
@@ -104938,7 +104876,7 @@
           "optional": false,
           "type": "(v: boolean) => void",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:259"
+            "src/features/admin/AdminApp.tsx:258"
           ],
           "inherited": false
         },
@@ -104947,7 +104885,7 @@
           "optional": false,
           "type": "ViewType",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:260"
+            "src/features/admin/AdminApp.tsx:259"
           ],
           "inherited": false
         },
@@ -104956,7 +104894,7 @@
           "optional": false,
           "type": "(view: ViewType) => void",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:261"
+            "src/features/admin/AdminApp.tsx:260"
           ],
           "inherited": false
         },
@@ -104965,7 +104903,7 @@
           "optional": false,
           "type": "() => void",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:262"
+            "src/features/admin/AdminApp.tsx:261"
           ],
           "inherited": false
         },
@@ -104974,7 +104912,7 @@
           "optional": false,
           "type": "AppData",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:263"
+            "src/features/admin/AdminApp.tsx:262"
           ],
           "inherited": false
         },
@@ -104983,7 +104921,7 @@
           "optional": false,
           "type": "AdminData",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:264"
+            "src/features/admin/AdminApp.tsx:263"
           ],
           "inherited": false
         },
@@ -104992,7 +104930,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:265"
+            "src/features/admin/AdminApp.tsx:264"
           ],
           "inherited": false
         },
@@ -105001,7 +104939,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:266"
+            "src/features/admin/AdminApp.tsx:265"
           ],
           "inherited": false
         }
@@ -105009,7 +104947,7 @@
     },
     {
       "model": "NewOrderDraft",
-      "declaration": "src/features/admin/AdminApp.tsx:1422",
+      "declaration": "src/features/admin/AdminApp.tsx:1416",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -105412,7 +105350,7 @@
     },
     {
       "model": "RightRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3174",
+      "declaration": "src/features/admin/AdminApp.tsx:3156",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -105420,7 +105358,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105429,7 +105367,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105438,7 +105376,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105447,7 +105385,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105456,7 +105394,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105465,7 +105403,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         },
@@ -105474,41 +105412,7 @@
           "optional": false,
           "type": "{ orderId: string; itemIdx: number; }[]",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3174"
-          ],
-          "inherited": false
-        }
-      ]
-    },
-    {
-      "model": "WRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3581",
-      "scope": "checker-resolved-properties-only",
-      "fields": [
-        {
-          "field": "spec",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:3581"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "수량",
-          "optional": false,
-          "type": "number",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:3581"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "mfgDate",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:3581"
+            "src/features/admin/AdminApp.tsx:3156"
           ],
           "inherited": false
         }
@@ -105516,7 +105420,7 @@
     },
     {
       "model": "UsageRow",
-      "declaration": "src/features/admin/AdminApp.tsx:3886",
+      "declaration": "src/features/admin/AdminApp.tsx:3736",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -105524,7 +105428,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105533,7 +105437,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105542,7 +105446,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105551,7 +105455,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105560,7 +105464,7 @@
           "optional": false,
           "type": "\"manual\" | \"auto\" | \"correction\"",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105569,7 +105473,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105578,7 +105482,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105587,7 +105491,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105596,7 +105500,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         },
@@ -105605,41 +105509,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/features/admin/AdminApp.tsx:3886"
-          ],
-          "inherited": false
-        }
-      ]
-    },
-    {
-      "model": "WRow",
-      "declaration": "src/features/admin/AdminApp.tsx:4333",
-      "scope": "checker-resolved-properties-only",
-      "fields": [
-        {
-          "field": "spec",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:4333"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "수량",
-          "optional": false,
-          "type": "number",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:4333"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "mfgDate",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/features/admin/AdminApp.tsx:4333"
+            "src/features/admin/AdminApp.tsx:3736"
           ],
           "inherited": false
         }
@@ -113584,28 +113454,6 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/features/admin/useDocSheetTitles.ts:12",
-        "runtime": "client",
-        "api": "collection",
-        "style": "modular",
-        "evidence": "firebase/firestore import",
-        "expression": "collection(db, 'docSheetTitles')",
-        "path": "docSheetTitles",
-        "segments": [
-          {
-            "value": "docSheetTitles",
-            "kind": "literal"
-          }
-        ],
-        "context": "root",
-        "pathKind": "top-level",
-        "depth": 1,
-        "argumentDepthCandidate": 1,
-        "outsideRegistry": [],
-        "unresolved": false,
-        "resolutionKind": "static-path"
-      },
-      {
         "location": "src/shared/services/unpackService.ts:60",
         "runtime": "client",
         "api": "doc",
@@ -115745,7 +115593,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/features/admin/AdminApp.tsx:493",
+        "location": "src/features/admin/AdminApp.tsx:487",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -115767,7 +115615,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "src/features/admin/AdminApp.tsx:547",
+        "location": "src/features/admin/AdminApp.tsx:541",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -115789,7 +115637,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "src/features/admin/AdminApp.tsx:548",
+        "location": "src/features/admin/AdminApp.tsx:542",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -115811,7 +115659,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "src/features/admin/AdminApp.tsx:5028",
+        "location": "src/features/admin/AdminApp.tsx:4720",
         "runtime": "client",
         "api": "collection",
         "style": "modular",
@@ -115833,7 +115681,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "src/features/admin/AdminApp.tsx:5057",
+        "location": "src/features/admin/AdminApp.tsx:4749",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -129046,7 +128894,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:398",
+            "location": "src/features/admin/AdminApp.tsx:397",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -129077,38 +128925,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2038",
-            "callee": "setDocument",
-            "resolvedPaths": [
-              {
-                "sdkLocation": "src/shared/services/firebaseService.ts:159",
-                "path": "docSheetTitles/{cat}",
-                "collection": "docSheetTitles",
-                "collectionKind": "literal",
-                "resolutionKind": "known-wrapper-collection"
-              }
-            ],
-            "argumentExpressions": [
-              {
-                "parameter": "collectionName",
-                "expression": "'docSheetTitles'",
-                "truncated": false,
-                "staticString": "docSheetTitles"
-              },
-              {
-                "parameter": "docId",
-                "expression": "cat",
-                "truncated": false
-              },
-              {
-                "parameter": "data",
-                "expression": "{ title }",
-                "truncated": false
-              }
-            ]
-          },
-          {
-            "location": "src/features/admin/AdminApp.tsx:4614",
+            "location": "src/features/admin/AdminApp.tsx:4306",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -129139,7 +128956,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4798",
+            "location": "src/features/admin/AdminApp.tsx:4490",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -130803,7 +130620,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:533",
+            "location": "src/features/admin/AdminApp.tsx:527",
             "callee": "fetchCollection",
             "resolvedPaths": [
               {
@@ -130829,7 +130646,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:546",
+            "location": "src/features/admin/AdminApp.tsx:540",
             "callee": "fetchCollection",
             "resolvedPaths": [
               {
@@ -132430,7 +132247,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:765",
+            "location": "src/features/admin/AdminApp.tsx:759",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132484,7 +132301,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1078",
+            "location": "src/features/admin/AdminApp.tsx:1072",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132538,7 +132355,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1090",
+            "location": "src/features/admin/AdminApp.tsx:1084",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132592,7 +132409,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1105",
+            "location": "src/features/admin/AdminApp.tsx:1099",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132646,7 +132463,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1117",
+            "location": "src/features/admin/AdminApp.tsx:1111",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132700,7 +132517,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1255",
+            "location": "src/features/admin/AdminApp.tsx:1249",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132754,7 +132571,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1458",
+            "location": "src/features/admin/AdminApp.tsx:1452",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132808,7 +132625,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1759",
+            "location": "src/features/admin/AdminApp.tsx:1753",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132862,7 +132679,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2020",
+            "location": "src/features/admin/AdminApp.tsx:2014",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132916,7 +132733,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2621",
+            "location": "src/features/admin/AdminApp.tsx:2603",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -132970,7 +132787,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2657",
+            "location": "src/features/admin/AdminApp.tsx:2639",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133023,7 +132840,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2678",
+            "location": "src/features/admin/AdminApp.tsx:2660",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133077,7 +132894,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3029",
+            "location": "src/features/admin/AdminApp.tsx:3011",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133131,7 +132948,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3055",
+            "location": "src/features/admin/AdminApp.tsx:3037",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133185,7 +133002,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3065",
+            "location": "src/features/admin/AdminApp.tsx:3047",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133239,7 +133056,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3075",
+            "location": "src/features/admin/AdminApp.tsx:3057",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133293,7 +133110,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3083",
+            "location": "src/features/admin/AdminApp.tsx:3065",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133347,7 +133164,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3393",
+            "location": "src/features/admin/AdminApp.tsx:3375",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133401,7 +133218,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4520",
+            "location": "src/features/admin/AdminApp.tsx:4212",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133455,7 +133272,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4524",
+            "location": "src/features/admin/AdminApp.tsx:4216",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133509,7 +133326,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4573",
+            "location": "src/features/admin/AdminApp.tsx:4265",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133563,7 +133380,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4641",
+            "location": "src/features/admin/AdminApp.tsx:4333",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133617,7 +133434,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4651",
+            "location": "src/features/admin/AdminApp.tsx:4343",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133671,7 +133488,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4653",
+            "location": "src/features/admin/AdminApp.tsx:4345",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133725,7 +133542,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4658",
+            "location": "src/features/admin/AdminApp.tsx:4350",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133779,7 +133596,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4720",
+            "location": "src/features/admin/AdminApp.tsx:4412",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133833,7 +133650,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4869",
+            "location": "src/features/admin/AdminApp.tsx:4561",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133887,7 +133704,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4943",
+            "location": "src/features/admin/AdminApp.tsx:4635",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133941,7 +133758,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4945",
+            "location": "src/features/admin/AdminApp.tsx:4637",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -133995,7 +133812,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5079",
+            "location": "src/features/admin/AdminApp.tsx:4771",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -134049,7 +133866,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5098",
+            "location": "src/features/admin/AdminApp.tsx:4790",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -134103,7 +133920,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5120",
+            "location": "src/features/admin/AdminApp.tsx:4812",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -134157,7 +133974,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5129",
+            "location": "src/features/admin/AdminApp.tsx:4821",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -134211,7 +134028,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5241",
+            "location": "src/features/admin/AdminApp.tsx:4933",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -134265,7 +134082,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5296",
+            "location": "src/features/admin/AdminApp.tsx:4988",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -135130,7 +134947,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:734",
+            "location": "src/features/admin/AdminApp.tsx:728",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135161,7 +134978,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:786",
+            "location": "src/features/admin/AdminApp.tsx:780",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135192,7 +135009,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1150",
+            "location": "src/features/admin/AdminApp.tsx:1144",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135223,7 +135040,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1158",
+            "location": "src/features/admin/AdminApp.tsx:1152",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135254,7 +135071,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1160",
+            "location": "src/features/admin/AdminApp.tsx:1154",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135285,7 +135102,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1169",
+            "location": "src/features/admin/AdminApp.tsx:1163",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135316,7 +135133,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1177",
+            "location": "src/features/admin/AdminApp.tsx:1171",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135347,7 +135164,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1221",
+            "location": "src/features/admin/AdminApp.tsx:1215",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135378,7 +135195,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2014",
+            "location": "src/features/admin/AdminApp.tsx:2008",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135409,7 +135226,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2532",
+            "location": "src/features/admin/AdminApp.tsx:2514",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135440,7 +135257,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2535",
+            "location": "src/features/admin/AdminApp.tsx:2517",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135471,7 +135288,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2536",
+            "location": "src/features/admin/AdminApp.tsx:2518",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135502,7 +135319,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2537",
+            "location": "src/features/admin/AdminApp.tsx:2519",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135533,7 +135350,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2538",
+            "location": "src/features/admin/AdminApp.tsx:2520",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135564,7 +135381,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2566",
+            "location": "src/features/admin/AdminApp.tsx:2548",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135595,7 +135412,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2569",
+            "location": "src/features/admin/AdminApp.tsx:2551",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135626,7 +135443,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2570",
+            "location": "src/features/admin/AdminApp.tsx:2552",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135657,7 +135474,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2571",
+            "location": "src/features/admin/AdminApp.tsx:2553",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135688,7 +135505,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2572",
+            "location": "src/features/admin/AdminApp.tsx:2554",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135719,7 +135536,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2593",
+            "location": "src/features/admin/AdminApp.tsx:2575",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135750,7 +135567,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2594",
+            "location": "src/features/admin/AdminApp.tsx:2576",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135781,7 +135598,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2598",
+            "location": "src/features/admin/AdminApp.tsx:2580",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135812,7 +135629,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2599",
+            "location": "src/features/admin/AdminApp.tsx:2581",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135843,7 +135660,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2600",
+            "location": "src/features/admin/AdminApp.tsx:2582",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135874,7 +135691,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2601",
+            "location": "src/features/admin/AdminApp.tsx:2583",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135905,7 +135722,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2639",
+            "location": "src/features/admin/AdminApp.tsx:2621",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135936,7 +135753,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2655",
+            "location": "src/features/admin/AdminApp.tsx:2637",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135966,7 +135783,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2673",
+            "location": "src/features/admin/AdminApp.tsx:2655",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -135997,7 +135814,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2828",
+            "location": "src/features/admin/AdminApp.tsx:2810",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136028,7 +135845,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3029",
+            "location": "src/features/admin/AdminApp.tsx:3011",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136059,7 +135876,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3055",
+            "location": "src/features/admin/AdminApp.tsx:3037",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136090,7 +135907,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3064",
+            "location": "src/features/admin/AdminApp.tsx:3046",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136121,7 +135938,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3074",
+            "location": "src/features/admin/AdminApp.tsx:3056",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136152,7 +135969,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3078",
+            "location": "src/features/admin/AdminApp.tsx:3060",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136183,7 +136000,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3080",
+            "location": "src/features/admin/AdminApp.tsx:3062",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136214,7 +136031,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3101",
+            "location": "src/features/admin/AdminApp.tsx:3083",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136245,7 +136062,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3103",
+            "location": "src/features/admin/AdminApp.tsx:3085",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136276,7 +136093,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3112",
+            "location": "src/features/admin/AdminApp.tsx:3094",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136307,7 +136124,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3135",
+            "location": "src/features/admin/AdminApp.tsx:3117",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136338,7 +136155,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3146",
+            "location": "src/features/admin/AdminApp.tsx:3128",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136369,7 +136186,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3786",
+            "location": "src/features/admin/AdminApp.tsx:3636",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136400,7 +136217,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4517",
+            "location": "src/features/admin/AdminApp.tsx:4209",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136431,7 +136248,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4521",
+            "location": "src/features/admin/AdminApp.tsx:4213",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136462,7 +136279,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4529",
+            "location": "src/features/admin/AdminApp.tsx:4221",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136493,7 +136310,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4594",
+            "location": "src/features/admin/AdminApp.tsx:4286",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136524,7 +136341,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4642",
+            "location": "src/features/admin/AdminApp.tsx:4334",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136555,7 +136372,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4650",
+            "location": "src/features/admin/AdminApp.tsx:4342",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136586,7 +136403,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4654",
+            "location": "src/features/admin/AdminApp.tsx:4346",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136617,7 +136434,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4746",
+            "location": "src/features/admin/AdminApp.tsx:4438",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136648,7 +136465,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4839",
+            "location": "src/features/admin/AdminApp.tsx:4531",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136679,7 +136496,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4871",
+            "location": "src/features/admin/AdminApp.tsx:4563",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136710,7 +136527,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4881",
+            "location": "src/features/admin/AdminApp.tsx:4573",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136741,7 +136558,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4890",
+            "location": "src/features/admin/AdminApp.tsx:4582",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136772,7 +136589,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4924",
+            "location": "src/features/admin/AdminApp.tsx:4616",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136803,7 +136620,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4957",
+            "location": "src/features/admin/AdminApp.tsx:4649",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136834,7 +136651,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4959",
+            "location": "src/features/admin/AdminApp.tsx:4651",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136865,7 +136682,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5080",
+            "location": "src/features/admin/AdminApp.tsx:4772",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136896,7 +136713,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5083",
+            "location": "src/features/admin/AdminApp.tsx:4775",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136927,7 +136744,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5108",
+            "location": "src/features/admin/AdminApp.tsx:4800",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136958,7 +136775,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5279",
+            "location": "src/features/admin/AdminApp.tsx:4971",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -136988,7 +136805,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5291",
+            "location": "src/features/admin/AdminApp.tsx:4983",
             "callee": "updateItem",
             "resolvedPaths": [
               {
@@ -137394,7 +137211,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1016",
+            "location": "src/features/admin/AdminApp.tsx:1010",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137420,7 +137237,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1146",
+            "location": "src/features/admin/AdminApp.tsx:1140",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137446,7 +137263,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1168",
+            "location": "src/features/admin/AdminApp.tsx:1162",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137472,7 +137289,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1171",
+            "location": "src/features/admin/AdminApp.tsx:1165",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137498,7 +137315,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:2617",
+            "location": "src/features/admin/AdminApp.tsx:2599",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137524,7 +137341,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3029",
+            "location": "src/features/admin/AdminApp.tsx:3011",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137550,7 +137367,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3055",
+            "location": "src/features/admin/AdminApp.tsx:3037",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137576,7 +137393,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3076",
+            "location": "src/features/admin/AdminApp.tsx:3058",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137602,7 +137419,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3081",
+            "location": "src/features/admin/AdminApp.tsx:3063",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137628,7 +137445,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:3104",
+            "location": "src/features/admin/AdminApp.tsx:3086",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137654,7 +137471,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4522",
+            "location": "src/features/admin/AdminApp.tsx:4214",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137680,7 +137497,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4525",
+            "location": "src/features/admin/AdminApp.tsx:4217",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137706,7 +137523,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4643",
+            "location": "src/features/admin/AdminApp.tsx:4335",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137732,7 +137549,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4652",
+            "location": "src/features/admin/AdminApp.tsx:4344",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137758,7 +137575,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4655",
+            "location": "src/features/admin/AdminApp.tsx:4347",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137784,7 +137601,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4870",
+            "location": "src/features/admin/AdminApp.tsx:4562",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137810,7 +137627,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4922",
+            "location": "src/features/admin/AdminApp.tsx:4614",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137836,7 +137653,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:4927",
+            "location": "src/features/admin/AdminApp.tsx:4619",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137862,7 +137679,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5081",
+            "location": "src/features/admin/AdminApp.tsx:4773",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137888,7 +137705,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5238",
+            "location": "src/features/admin/AdminApp.tsx:4930",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -137914,7 +137731,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5266",
+            "location": "src/features/admin/AdminApp.tsx:4958",
             "callee": "deleteItem",
             "resolvedPaths": [
               {
@@ -138435,7 +138252,7 @@
         ],
         "callers": [
           {
-            "location": "src/features/admin/AdminApp.tsx:1354",
+            "location": "src/features/admin/AdminApp.tsx:1348",
             "callee": "fetchWhereIn",
             "resolvedPaths": [
               {
@@ -138603,7 +138420,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:1404",
+            "location": "src/features/admin/AdminApp.tsx:1398",
             "callee": "commitCompanyWrites",
             "resolvedPaths": [
               {
@@ -138622,7 +138439,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5043",
+            "location": "src/features/admin/AdminApp.tsx:4735",
             "callee": "commitCompanyWrites",
             "resolvedPaths": [
               {
@@ -138641,7 +138458,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5224",
+            "location": "src/features/admin/AdminApp.tsx:4916",
             "callee": "commitCompanyWrites",
             "resolvedPaths": [
               {
@@ -138660,7 +138477,7 @@
             ]
           },
           {
-            "location": "src/features/admin/AdminApp.tsx:5314",
+            "location": "src/features/admin/AdminApp.tsx:5006",
             "callee": "commitCompanyWrites",
             "resolvedPaths": [
               {
@@ -139299,7 +139116,7 @@
       "components/HaccpChecklist.tsx:4468",
       "src/shared/services/interCompanyTransferService.ts:21",
       "src/shared/services/confirmedCashBalance.ts:9",
-      "src/features/admin/AdminApp.tsx:5057",
+      "src/features/admin/AdminApp.tsx:4749",
       "src/shared/employeeAuth.ts:19",
       "functions/src/oemBatchCostInvalidation.ts:13",
       "functions/src/oemBatchCostInvalidation.ts:30",

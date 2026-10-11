@@ -129,8 +129,16 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const savingRef = useRef(false);
+  const aiRequest = useRef({ generation: 0, sequence: 0, inFlight: 0, snapshot: '', open: true });
+  const invalidateAiRead = () => { aiRequest.current.generation += 1; };
+  const closeModal = () => { aiRequest.current.open = false; invalidateAiRead(); onClose(); };
+  const backModal = () => { aiRequest.current.open = false; invalidateAiRead(); onBack?.(); };
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) onClose(); };
+    aiRequest.current.open = true;
+    return () => { aiRequest.current.open = false; invalidateAiRead(); };
+  }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) closeModal(); };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
   }, [isSaving, onClose]);
@@ -169,6 +177,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [noteImportant, setNoteImportant] = useState(false);
 
   const selectClient = (client: Partner) => {
+    invalidateAiRead();
     setSelectedClientId(client.id);
     setShipToId(defaultShipToId(client));
     setIsDelivery(client.type === '택배' || client.type === '스마트스토어');
@@ -177,6 +186,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   };
 
   const changeClient = () => {
+    invalidateAiRead();
     setSelectedClientId(null);
     setPasteText('');
     setParsedLines([]);
@@ -212,6 +222,19 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     return linked.length ? linked : catalog;
   }, [items, partnerOutIds, selectedClient, shipToId]);
 
+  // 요청 당시의 회사·거래처·주소·원문과 검토 내용을 함께 견준다. 같은 ID 원본이
+  // 구독으로 바뀌어도 예전 회사·배송지에 대한 AI 답으로 최신 입력을 갈아 끼우지 않는다.
+  const aiSnapshot = JSON.stringify({
+    step, pasteText, client: selectedClient, shipToId: shipToId ?? null,
+    catalog: productPool.map(item => ({ id: item.id, companyId: item.companyId ?? null,
+      name: item.name, spec: item.spec, unit: item.unit, type: item.type })),
+    parsedLines, orderDate, deadline, orderNote, noteImportant, isDelivery, pallets,
+  });
+  if (aiRequest.current.snapshot !== aiSnapshot) {
+    aiRequest.current.snapshot = aiSnapshot;
+    aiRequest.current.generation += 1;
+  }
+
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
     return partners.filter(c =>
@@ -230,6 +253,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   }, [partners]);
 
   const analyze = () => {
+    invalidateAiRead();
     const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
     setParsedLines(lines.map(l => parseLine(l, productPool)));
     setAiNote(null);
@@ -249,9 +273,18 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
    * 열쇠는 앱에 없다. Cloud Function(`extractOrder`)이 서버 시크릿으로 부른다.
    */
   const aiRead = async () => {
-    if (aiBusy) return;
+    if (aiBusy || aiRequest.current.inFlight || !aiRequest.current.open || savingRef.current) return;
     const 글 = pasteText.trim();
     if (!글 || !productPool.length) return;
+    const requestId = ++aiRequest.current.sequence;
+    aiRequest.current.inFlight = requestId;
+    const captured = { generation: aiRequest.current.generation, snapshot: aiRequest.current.snapshot };
+    const current = () => aiRequest.current.open && aiRequest.current.inFlight === requestId &&
+      aiRequest.current.generation === captured.generation && aiRequest.current.snapshot === captured.snapshot;
+    const preserveInput = () => {
+      if (aiRequest.current.open && aiRequest.current.inFlight === requestId)
+        setAiNote({ tone: 'warn', text: 'AI가 읽는 동안 주문 입력이 바뀌어 응답을 적용하지 않았습니다. 현재 입력을 보존했습니다.' });
+    };
     setAiBusy(true);
     setAiNote(null);
     try {
@@ -264,6 +297,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         //  거래처는 이미 골라 놓고 오는 화면이라 목록을 안 보낸다 — 값만 비싸진다.
         today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()),
       });
+      if (!current()) { preserveInput(); return; }
       const 읽은것 = validateExtract(답.data as Record<string, unknown>, productPool);
 
       if (!읽은것.lines.length) {
@@ -294,11 +328,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         ].filter(Boolean).join(' · '),
       });
     } catch (error) {
+      if (!current()) { preserveInput(); return; }
       console.error('[주문 AI 읽기] 실패', error);
       const 사유 = error instanceof Error ? error.message : String(error);
       setAiNote({ tone: 'bad', text: `읽지 못했습니다 — ${사유}` });
     } finally {
-      setAiBusy(false);
+      if (aiRequest.current.inFlight === requestId) {
+        aiRequest.current.inFlight = 0;
+        if (aiRequest.current.open) setAiBusy(false);
+      }
     }
   };
   const matchedLineCount = parsedLines.filter(line => !!line.selectedProductId).length;
@@ -306,6 +344,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   const handleSubmit = async () => {
     if (savingRef.current || !orderDate || !deadline || !selectedClient) return;
+    invalidateAiRead();
     const draft = buildNewOrderDraft({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
       lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
@@ -343,12 +382,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold text-slate-600">주문일</span>
-          <input type="date" required value={orderDate} onChange={event => setOrderDate(event.target.value)}
+          <input type="date" required value={orderDate} onChange={event => { invalidateAiRead(); setOrderDate(event.target.value); }}
             className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold text-slate-600">출고예정일</span>
-          <input type="date" required min={orderDate} value={deadline} onChange={event => setDeadline(event.target.value)}
+          <input type="date" required min={orderDate} value={deadline} onChange={event => { invalidateAiRead(); setDeadline(event.target.value); }}
             className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
         </label>
       </div>
@@ -377,9 +416,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             {selectedClient.region && <span className="text-[10px] font-medium text-indigo-500">{selectedClient.region}</span>}
           </div>
           <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
-            <button type="button" onClick={() => setIsDelivery(false)} aria-pressed={!isDelivery}
+            <button type="button" onClick={() => { invalidateAiRead(); setIsDelivery(false); }} aria-pressed={!isDelivery}
               className={`min-h-8 rounded-md px-2.5 text-[11px] font-bold transition-colors ${!isDelivery ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>일반</button>
-            <button type="button" onClick={() => setIsDelivery(true)} aria-pressed={isDelivery}
+            <button type="button" onClick={() => { invalidateAiRead(); setIsDelivery(true); }} aria-pressed={isDelivery}
               className={`flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[11px] font-bold transition-colors ${isDelivery ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
               <Truck size={12} aria-hidden="true" />택배
             </button>
@@ -390,7 +429,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">배송지</p>
             <div className="flex flex-wrap gap-1.5">
               {activeShipTos(selectedClient).map(st => (
-                <button key={st.id} type="button" onClick={() => setShipToId(st.id)} aria-pressed={shipToId === st.id}
+                <button key={st.id} type="button" onClick={() => { invalidateAiRead(); setShipToId(st.id); }} aria-pressed={shipToId === st.id}
                   className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
                     shipToId === st.id ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100'}`}
                 >{st.name}</button>
@@ -408,8 +447,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   };
 
   return (
-    <ModalShell title="주문 등록 · 주문 내역 붙여넣기" onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
-        {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-5 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
+    <ModalShell title="주문 등록 · 주문 내역 붙여넣기" onClose={() => { if (!savingRef.current) closeModal(); }} bodyClassName="!p-0">
+        {onBack && <button type="button" onClick={() => { if (!savingRef.current) backModal(); }} className="mx-5 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         {/* 스텝 인디케이터 */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -469,7 +508,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                 <textarea
                   autoFocus
                   value={pasteText}
-                  onChange={e => setPasteText(e.target.value)}
+                  onChange={e => { invalidateAiRead(); setPasteText(e.target.value); }}
                   placeholder={"주문 내용을 그대로 붙여넣으세요.\n\n예)\n청정 검정깨 3박스\n검정깨가루 3박스\n탈피들깨 5박스\n들깨중간 1kg 3박스"}
                   className="w-full h-52 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-violet-400 resize-none placeholder:text-slate-300 leading-relaxed"
                 />
@@ -490,7 +529,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   <h3 id="original-order-title" className="text-sm font-black text-slate-700">원본 주문</h3>
                   <button
                     type="button"
-                    onClick={() => setStep('paste')}
+                    onClick={() => { invalidateAiRead(); setStep('paste'); }}
                     className="shrink-0 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
                   >
                     원문 수정
@@ -506,7 +545,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   <h3 className="text-sm font-black">주문 품목</h3>
                   <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-600">필수</span>
                 </div>
-                <button type="button" onClick={() => setStep('paste')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+                <button type="button" onClick={() => { invalidateAiRead(); setStep('paste'); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
                   <ClipboardPaste size={14} aria-hidden="true" />
                   주문 내용 다시 입력
                 </button>
@@ -566,6 +605,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                         <select
                           value={line.selectedProductId ?? ''}
                           onChange={e => {
+                            invalidateAiRead();
                             const val = e.target.value || null;
                             setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val } : l));
                           }}
@@ -581,6 +621,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                       <div className="flex shrink-0 items-center gap-2">
                         <input type="number" min={1} value={line.qty}
                           onChange={e => {
+                            invalidateAiRead();
                             const qty = Math.max(1, parseInt(e.target.value) || 1);
                             setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty } : l));
                           }}
@@ -589,7 +630,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                         <div className="flex h-11 items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
                           {(['박스', '개'] as const).map(unit => (
                             <button key={unit} type="button"
-                              onClick={() => setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스' } : l))}
+                              onClick={() => { invalidateAiRead(); setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스' } : l)); }}
                               className={`h-9 min-w-12 rounded-lg px-2.5 text-xs font-bold transition-colors ${(unit === '박스') === line.isBox ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                             >{unit}</button>
                           ))}
@@ -624,11 +665,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
               <section className="space-y-2 border-t border-slate-200 pt-5">
                 <label htmlFor="pasted-order-note" className="text-sm font-black text-slate-700">주문 비고</label>
-                <textarea id="pasted-order-note" value={orderNote} onChange={event => setOrderNote(clampNote(event.target.value))}
+                <textarea id="pasted-order-note" value={orderNote} onChange={event => { invalidateAiRead(); setOrderNote(clampNote(event.target.value)); }}
                   maxLength={NOTE_MAX} rows={2} placeholder="주문 전체에 전달할 내용을 적어 주세요."
                   className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400" />
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                  <input type="checkbox" checked={noteImportant} onChange={event => setNoteImportant(event.target.checked)} className="accent-rose-500" />
+                  <input type="checkbox" checked={noteImportant} onChange={event => { invalidateAiRead(); setNoteImportant(event.target.checked); }} className="accent-rose-500" />
                   중요 비고
                 </label>
               </section>
@@ -648,6 +689,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                       .map(stock => {
                         const current = pallets.find(pallet => pallet.type === stock.id)?.quantity ?? 0;
                         const update = (quantity: number) => {
+                          invalidateAiRead();
                           const next = Math.max(0, quantity);
                           setPallets(previous => {
                             const rest = previous.filter(pallet => pallet.type !== stock.id);
@@ -685,12 +727,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         <div className="rounded-b-3xl">
           {step === 'partner' && (
             <ModalActionFooter
-              onCancel={() => { if (!savingRef.current) onClose(); }}
+              onCancel={() => { if (!savingRef.current) closeModal(); }}
             />
           )}
           {step === 'paste' && (
             <ModalActionFooter
-              onCancel={() => { if (!savingRef.current) onClose(); }}
+              onCancel={() => { if (!savingRef.current) closeModal(); }}
               onPrimary={analyze}
               primaryLabel="분석하기"
               primaryDisabled={!orderDate || !deadline || !pasteText.trim()}
@@ -698,7 +740,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
           )}
           {step === 'review' && (
             <ModalActionFooter
-              onCancel={() => { if (!savingRef.current) onClose(); }}
+              onCancel={() => { if (!savingRef.current) closeModal(); }}
               onPrimary={handleSubmit}
               primaryLabel={isSaving ? '저장 중…' : `주문 생성 (${parsedLines.filter(line => line.selectedProductId).length}건)`}
               primaryDisabled={isSaving || !orderDate || !deadline || !parsedLines.some(line => line.selectedProductId && line.qty > 0)}

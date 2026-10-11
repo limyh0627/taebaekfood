@@ -15,7 +15,6 @@ import ConfirmModal from '../../shared/components/ConfirmModal';
 import { hasCompleteOrderItems, planOrderItemToggle, requiresCompleteItemsForStatusChange, workStatusFromItems } from '../../shared/orderCompletion';
 import { ensureOrderLineIds } from '../../shared/orderLineInventory';
 import { mergeCompanyOrders } from './companyOrders';
-import { useDocSheetTitles } from './useDocSheetTitles';
 import { useProductionSalesHistory } from './useProductionSalesHistory';
 import { updateCashAccountOpening } from '../../shared/services/cashAccountOpeningUpdate';
 ﻿
@@ -197,7 +196,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db, auth } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, isSalesJournalProduct, journalSaleLines, docDateOf, findDocDrops, DOC_RECALC_RAWS, mixLabel, rawDocMaterials, rawDocTabs, rawDocTabLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, lotMixSettingOf } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { buildPaymentEntry } from '../../shared/payment';
@@ -454,7 +453,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       expectedRevision: counterpart.expectedRevision, expectedCashHash: counterpart.expectedCashHash } : counterpart);
     await mutateCash(companyId, original, 'delete', undefined, undefined, transfer);
   }, [companyId]);
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업일지' | '벤조피렌' | 'haccp'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업일지' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   /**
    * 생산판매기록부 이력을 볼 달 — **기록이 있는 마지막 달**로 연다.
@@ -466,12 +465,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   /** 달을 손으로 움직이면 표식을 남긴다 — 그 뒤엔 자동으로 안 옮긴다 */
   const markDocLogMonth = (v: string) => { docLogMonthTouched.current = true; setDocLogMonth(v); };
   const [bulkMfgDate, setBulkMfgDate] = useState(() => today());
-  const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
-  // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
-  const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
-  const [sheetTitles, setSheetTitles] = useDocSheetTitles(companyId);
   const [productionDocumentDate, setProductionDocumentDate] = useState(() => today());
-  const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
   const notifBtnRef = useRef<HTMLButtonElement>(null);
@@ -525,7 +519,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   전역 7일 구독을 제거했으므로, 이 화면 진입 시 재조회가 유일한 최신화 경로 —
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
-    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory' && currentView !== 'item-ledger' && currentView !== 'lot-management') return;
+    if (docTab !== '원료수불부' && currentView !== 'inventory' && currentView !== 'item-ledger' && currentView !== 'lot-management') return;
     let cancelled = false;
     const to = today();
     // 전체 이력이 필요한 화면이라 회사 범위만 서버에서 제한하고 날짜는 클라이언트에서 거른다.
@@ -564,18 +558,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return Array.from(map.values()).filter(e => companyOf(e) === companyId);
   }, [rawMaterialLedger, extraRawMaterialLedger, companyId]);
 
-  // 생산작업기록부/2 는 '배송일' 기준 월 조회인데 orders는 '생성일(createdAt)' 창으로 잘림 →
+  // 원료수불부는 배송일 기준 월 조회이므로 생성일 창 밖의 경계 주문도 함께 조회한다.
   //   6월말 생성·7월초 배송 같은 경계 주문이 창 밖으로 빠져 누락. 해당 월 배송을 커버하도록
   //   이력 주문을 로드(생성일 버퍼: 전월 1일 ~ 당월 말일). allOrders에 병합돼 표시됨.
   useEffect(() => {
-    if (docTab !== '생산작업기록부' && docTab !== '원료수불부') return;
-    const ym = docTab === '생산작업기록부' ? productionWorkMonth : docYearMonth;
+    if (docTab !== '원료수불부') return;
+    const ym = docYearMonth;
     const [y, m] = ym.split('-').map(Number);
     if (!y || !m) return;
     const start = `${addMonths(`${y}-${String(m).padStart(2, '0')}`, -1)}-01`; // 전월 1일 (생성일 버퍼)
     const end = endOfMonth(`${y}-${String(m).padStart(2, '0')}`);               // 당월 말일
     loadHistoricalOrders(start, end);
-  }, [docTab, productionWorkMonth, docYearMonth]);
+  }, [docTab, docYearMonth]);
 
   // 거래명세서(전표): 미발행 주문은 예전 배송완료까지 다 떠야 하므로 주문 전체를 로드한다.
   //   orders 날짜창은 읽기 몇 백 건 아끼자고 건 건데, 그 때문에 미발행이 안 보이면 손해라 여기선 전체 조회.
@@ -2028,18 +2022,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-  // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
-  const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
-  const renameSheet = async (cat: string) => {
-    const askScope = orderAskScope.current.token;
-    const next = await appPrompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
-    if (next == null || orderAskScope.current.token !== askScope) return;
-    const title = next.trim();
-    await setDocument('docSheetTitles', cat, { title });
-    if (orderAskScope.current.token !== askScope) return;
-    setSheetTitles(prev => ({ ...prev, [cat]: title }));
-  };
-
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
   const seedItemFormulas = async () => {
     if (itemFormulas.length > 0) {
@@ -3484,10 +3466,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={() => setDocTab('원료수불부')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >원료수불부</button>
-                        <button
-                          onClick={() => setDocTab('생산작업기록부')}
-                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >생산작업기록부</button>
+
                         <button onClick={() => setDocTab('생산작업일지')} className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold ${docTab === '생산작업일지' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>생산작업일지</button>
                       </>)}
                     </div>
@@ -3551,136 +3530,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </button>
                       </div>
                     )}
-                    {docTab === '생산작업기록부' && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
-                          <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
-                          <input
-                            type="month"
-                            value={productionWorkMonth}
-                            onChange={e => setProductionWorkMonth(e.target.value)}
-                            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
-                          />
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const ExcelJS = (await import('exceljs')).default;
-                            const wb = new ExcelJS.Workbook();
-                            // 시트 목록은 화면과 같은 정의를 쓴다(예전엔 엑셀에만 8종이라 5종이 빠졌다)
-                            const ALL_CATS = DOC_SHEET_CATS;
-                            const [wy, wm] = productionWorkMonth.split('-').map(Number);
-                            const daysInMonth = new Date(wy, wm, 0).getDate();
-                            const thin: Partial<ExcelJSType.Borders> = {
-                              top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
-                            };
-                            const hFill: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
-                            const center = { horizontal: 'center' as const, vertical: 'middle' as const };
-                            const left = { horizontal: 'left' as const, vertical: 'middle' as const };
 
-                            for (const cat of ALL_CATS) {
-                              type WRow = { spec: string; 수량: number; mfgDate: string };
-                              const dayMap: Record<number, WRow[]> = {};
-                              orders
-                                .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
-                                .forEach(order => {
-                                  const ds = docDateOf(order);   // 판매기록부와 같은 기준일
-                                  if (ds.slice(0, 7) !== `${wy}-${String(wm).padStart(2, '0')}`) return;
-                                  const day = Number(ds.slice(8, 10));
-                                  order.items.forEach(item => {
-                                    const p = allItems.find(pr => pr.id === item.itemId);
-                                    // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                                    for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs, ds)) {
-                                      if (line.품목 !== cat) continue;
-                                      if (!dayMap[day]) dayMap[day] = [];
-                                      const existing = dayMap[day].find(r => r.spec === line.spec);
-                                      if (existing) existing.수량 += line.qty;
-                                      else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
-                                    }
-                                  });
-                                });
-                              const ws = wb.addWorksheet(cat);
-                              ws.columns = [
-                                { width: 6 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 10 },
-                              ];
-                              ws.pageSetup = {
-                                paperSize: 9, orientation: 'portrait',
-                                fitToPage: true, fitToWidth: 1, fitToHeight: 1,
-                                margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
-                              };
-                              // 헤더 행 추가 후 셀 병합
-                              const r1 = ws.addRow([`년 월 : ${wy}년 ${wm}월`, '', '', '', '', `관리자 : 임 기 주`, '']);
-                              ws.mergeCells(`A1:E1`);
-                              ws.mergeCells(`F1:G1`);
-                              r1.getCell(1).alignment = left; r1.getCell(1).font = { bold: true, size: 9 };
-                              r1.getCell(6).alignment = center; r1.getCell(6).font = { bold: true, size: 9 };
-
-                              const r2 = ws.addRow([`품 목 : ${sheetTitleOf(cat)}`, '', '', '', '', '', '']);
-                              ws.mergeCells(`A2:G2`);
-                              r2.getCell(1).alignment = left; r2.getCell(1).font = { bold: true, size: 9 };
-
-                              const r3 = ws.addRow([`담당자 : 이 은 경`, '', '', '', '', `( 단 위 : Kg )`, '']);
-                              ws.mergeCells(`A3:E3`);
-                              ws.mergeCells(`F3:G3`);
-                              r3.getCell(1).alignment = left; r3.getCell(1).font = { bold: true, size: 9 };
-                              r3.getCell(6).alignment = center; r3.getCell(6).font = { size: 9 };
-
-                              ws.addRow([]);
-                              const hRow = ws.addRow(['일 자', '투입량(Kg)', '생산품목', '생산수량(개)', '생산량', '유통기한', '비고']);
-                              hRow.eachCell(cell => {
-                                cell.font = { bold: true, size: 9 };
-                                cell.fill = hFill;
-                                cell.border = thin;
-                                cell.alignment = center;
-                              });
-                              hRow.height = 18;
-                              let totalInput = 0;
-                              for (let d = 1; d <= daysInMonth; d++) {
-                                const rows = (dayMap[d] || []).sort((a, b) => a.spec.localeCompare(b.spec));
-                                if (rows.length === 0) {
-                                  const r = ws.addRow([d, '-', '', '', '-', '', '']);
-                                  r.eachCell((cell, col) => {
-                                    cell.border = thin;
-                                    cell.alignment = col === 1 ? center : left;
-                                    cell.font = { size: 9 };
-                                  });
-                                } else {
-                                  rows.forEach((row, i) => {
-                                    // 서류 공용 환산 — kg 규격(캔)은 그 자체가 기름 무게라 밀도를 곱하지 않는다
-                                    const inputKg = Math.round(docOilKg(row.spec, row.수량));
-                                    totalInput += inputKg;
-                                    const sp = parseSpecUnit(row.spec);
-                                    const dv = sp && sp.unit === 'ml' && sp.value >= 1000 ? `${sp.value / 1000}l` : row.spec;
-                                    const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
-                                    const r = ws.addRow([i === 0 ? d : '', inputKg, dv, row.수량, inputKg, sobiDisp, '']);
-                                    r.eachCell((cell, col) => {
-                                      cell.border = thin;
-                                      cell.alignment = [1,2,4,5].includes(col) ? center : left;
-                                      cell.font = { size: 9 };
-                                    });
-                                  });
-                                }
-                              }
-                              const totRow = ws.addRow(['총 량', totalInput, '', '', '', '', '']);
-                              totRow.eachCell(cell => {
-                                cell.border = thin;
-                                cell.font = { bold: true, size: 9 };
-                                cell.fill = hFill;
-                                cell.alignment = center;
-                              });
-                            }
-                            const buf = await wb.xlsx.writeBuffer();
-                            const a = document.createElement('a');
-                            a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-                            a.download = `생산작업기록부_${productionWorkMonth}.xlsx`;
-                            a.click();
-                          }}
-                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
-                        >
-                          <FileText size={16} />
-                          <span>엑셀 저장</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -4316,165 +4166,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <ProductionWorkDocumentHost companyId={companyId} date={productionDocumentDate} actorId={currentUser.id} />
                 </div>}
 
-                {docTab === '생산작업기록부' && (() => {
-                  const displayVol = (vol: string) => {
-                    const sp = parseSpecUnit(vol);
-                    return sp && sp.unit === 'ml' && sp.value >= 1000 ? `${sp.value / 1000}l` : vol;
-                  };
-                  const calcExpiry = (mfgDate: string) => {
-                    if (!mfgDate) return '';
-                    const d = new Date(mfgDate);
-                    d.setDate(d.getDate() + 365);
-                    return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
-                  };
-                  const [wy, wm] = productionWorkMonth.split('-').map(Number);
-                  const daysInMonth = new Date(wy, wm, 0).getDate();
-                  // 해당 카테고리 + 해당 월의 데이터 수집
-                  type WRow = { spec: string; 수량: number; mfgDate: string };
-                  const dayMap: Record<number, WRow[]> = {};
-                  allOrders
-                    .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
-                    .forEach(order => {
-                      const ds = docDateOf(order);   // 판매기록부와 같은 기준일
-                      if (ds.slice(0, 7) !== `${wy}-${String(wm).padStart(2, '0')}`) return;
-                      const day = Number(ds.slice(8, 10));
-                      order.items.forEach(item => {
-                        const p = allItems.find(pr => pr.id === item.itemId);
-                        // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                        for (const line of docSaleLines(p, stockUnits(item, p, appData.orderUnitInputs), id => allItems.find(x => x.id === id), appData.orderUnitInputs, ds)) {
-                          if (line.품목 !== productionWorkCat) continue;
-                          if (!dayMap[day]) dayMap[day] = [];
-                          const existing = dayMap[day].find(r => r.spec === line.spec);
-                          if (existing) existing.수량 += line.qty;
-                          else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
-                        }
-                      });
-                    });
-                  let totalInput = 0;
-                  let totalQty = 0;
-                  return (
-                    <div className="space-y-4">
-                      {/* 시트 목록 — 브랜드로 접어둔다. 선택된 시트가 든 그룹만 펼쳐진 채로 시작. */}
-                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
-                        {DOC_SHEET_GROUPS.map(({ brand, cats }) => {
-                          const open = openSheetBrand === brand;
-                          const hasActive = cats.includes(productionWorkCat);
-                          return (
-                            <div key={brand}>
-                              <button
-                                onClick={() => setOpenSheetBrand(open ? null : brand)}
-                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors ${open ? 'bg-slate-50' : 'hover:bg-slate-50/60'}`}
-                              >
-                                <ChevronRight size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
-                                <span className="text-xs font-black text-slate-600">{brand}</span>
-                                <span className="text-[10px] font-bold text-slate-300">{cats.length}</span>
-                                {hasActive && !open && (
-                                  <span className="ml-auto text-[10px] font-black text-indigo-600 truncate">
-                                    {sheetTitleOf(productionWorkCat)}
-                                  </span>
-                                )}
-                              </button>
-                              {open && (
-                                <div className="px-3 pb-3 pt-0.5 space-y-1">
-                                  {cats.map(cat => (
-                                    <div key={cat} className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => setProductionWorkCat(cat)}
-                                        className={`flex-1 min-w-0 text-left px-3 py-2 rounded-xl transition-all ${productionWorkCat === cat ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                                      >
-                                        <span className="block text-xs font-bold truncate">{sheetTitleOf(cat)}</span>
-                                        <span className={`block text-[10px] font-bold truncate ${productionWorkCat === cat ? 'text-indigo-200' : 'text-slate-300'}`}>
-                                          {mixLabel(cat) || '배합 미설정'}
-                                        </span>
-                                      </button>
-                                      <button
-                                        onClick={() => renameSheet(cat)}
-                                        title="시트 제목 수정"
-                                        className="shrink-0 p-2 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                                      >
-                                        <Tag size={13} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {/* 문서 헤더 */}
-                      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-sm font-bold text-slate-700">년 월 : {wy}년 {wm}월</span>
-                          <span className="text-sm font-bold text-slate-700">관리자 : 임 기 주</span>
-                        </div>
-                        <div className="text-sm font-bold text-slate-700 mb-1">품 목 : {sheetTitleOf(productionWorkCat)}</div>
-                        <div className="flex justify-between items-start">
-                          <span className="text-sm font-bold text-slate-700">담당자 : 이 은 경</span>
-                          <span className="text-xs text-slate-400 font-bold">( 단 위 : Kg )</span>
-                        </div>
-                      </div>
-                      {/* 테이블 */}
-                      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-                        <table className="text-xs border-collapse w-full min-w-[640px]">
-                          <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                              {['일 자', '투입량(Kg)', '생산품목', '생산수량(개)', '생산량', '유통기한', '비고'].map(h => (
-                                <th key={h} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 border border-slate-200">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Array.from({ length: daysInMonth }, (_, i) => i + 1).flatMap(day => {
-                              const rows = (dayMap[day] || []).sort((a, b) => a.spec.localeCompare(b.spec));
-                              if (rows.length === 0) {
-                                return [(
-                                  <tr key={day} className="border-b border-slate-100">
-                                    <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100 w-12">{day}</td>
-                                    <td className="px-3 py-1.5 text-center text-slate-300 border border-slate-100">-</td>
-                                    <td className="border border-slate-100" />
-                                    <td className="border border-slate-100" />
-                                    <td className="px-3 py-1.5 text-center text-slate-300 border border-slate-100">-</td>
-                                    <td className="border border-slate-100" />
-                                    <td className="border border-slate-100" />
-                                  </tr>
-                                )];
-                              }
-                              return rows.map((row, i) => {
-                                // 서류 공용 환산 — kg 규격(캔)은 그 자체가 기름 무게라 밀도를 곱하지 않는다
-                                const inputKg = Math.round(docOilKg(row.spec, row.수량));
-                                totalInput += inputKg;
-                                const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
-                                return (
-                                  <tr key={`${day}-${i}`} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100">
-                                      {i === 0 ? day : ''}
-                                    </td>
-                                    <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
-                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{displayVol(row.spec)}</td>
-                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{row.수량}</td>
-                                    <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
-                                    <td className="px-3 py-1.5 text-center text-slate-600 border border-slate-100">{sobiDisp}</td>
-                                    <td className="border border-slate-100" />
-                                  </tr>
-                                );
-                              });
-                            })}
-                            <tr className="bg-slate-50 font-bold">
-                              <td className="px-3 py-2 text-center text-slate-700 border border-slate-200">총 량</td>
-                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{totalInput}</td>
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
+
 
               </div>
             );
