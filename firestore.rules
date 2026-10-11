@@ -154,8 +154,7 @@ service cloud.firestore {
         && request.resource.data.companyId == resource.data.companyId
         && request.resource.data.itemId == resource.data.itemId
         && request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isAdmin() && deleteOk()
-                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
+      allow delete: if isAdmin() && deleteOk();
     }
     // 현금 내역은 서버 원자 명령만 저장한다. 기존 회사별 관리자 조회는 유지한다.
     match /cashEntries/{id} {
@@ -269,8 +268,7 @@ service cloud.firestore {
     match /employees/{employeeId} {
       allow read: if readOk();
       allow create: if isAdmin() && canSee(request.resource.data.companyId);
-      allow delete: if isAdmin() && deleteOk()
-                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
+      allow delete: if isAdmin() && deleteOk();
       allow update: if (isAdmin() && createUpdateOk())
                     || (isEmployee()
                         && me() == employeeId
@@ -303,8 +301,7 @@ service cloud.firestore {
                         && request.resource.data.companyId == resource.data.companyId
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['startDate', 'endDate', 'days', 'reason', 'type', 'note', 'updatedAt']));
-      allow delete: if (isAdmin() && deleteOk()
-                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null))
+      allow delete: if (isAdmin() && deleteOk())
                             || (isEmployee()
                                 && resource.data.employeeId == me()
                                 && canSee(resource.data.companyId)
@@ -331,8 +328,7 @@ service cloud.firestore {
                         && request.resource.data.requestedBy == resource.data.requestedBy
                         && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['qty', 'quantity', 'reason', 'note', 'type', 'updatedAt']));
-      allow delete: if isAdmin() && deleteOk()
-                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
+      allow delete: if isAdmin() && deleteOk();
     }
 
     // ── 오피스톡 방 ────────────────────────────────────────────
@@ -391,8 +387,7 @@ service cloud.firestore {
     match /notices/{id} {
       allow read: if readOk();
       allow create, update: if isAdmin() && createUpdateOk();
-      allow delete: if isAdmin() && deleteOk()
-                    && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null);
+      allow delete: if isAdmin() && deleteOk();
     }
 
     // 전환 문서는 회사 없는 서버 공통 설정이라 관리자 단건 조회만 예외로 연다.
