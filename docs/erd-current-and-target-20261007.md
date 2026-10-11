@@ -245,6 +245,6 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 복구영수증 보호 추가: sourceee37463에서 serverAuditCollection 등록으로 포괄 client writer를 차단했다. Rules단독배포0·실제Rules4PASS/보호제거변이4FAIL·원복20PASS(SDK16포함). 운영자료쓰기0.
 
 
-## 2026-10-12 반품 승인 원문·결과 재개 후속 작업중
+## 2026-10-12 반품 승인 원문·결과 재개 후속 배포
 
-현재배포 fa484cf에서 반품 처리는 최신 returnRequests로 기존 businessHash를 만들며 최초 UI 승인 원문과 비교하는 입력은 없다. 새 shared business evidence/optional expectedBusinessHash와 local pending v2는 구현되었고 실제 서버 TX 28건·service/pure 16건을 검증했다. v1은 원명령 그대로 보존하고 결과 재개와 회사·UID·actor 확인을 보강한다. 서버 분개·수불 계획과 운영 gate는 유지한다. 아직 새 반품 계약 배포 완료가 아니며 실제 관계와 제한은 [반품 처리 근거 후속](return-processing-evidence-followup-20261012.md)에 정리한다.
+이전 fa484cf는 최초 UI 승인 원문과 비교하는 입력이 없었으며, 현재 소스06795ef는 그 경계를 보완했다. 새 shared business evidence/optional expectedBusinessHash와 local pending v2는 구현되었고 실제 서버 TX 28건·service/pure 17건을 검증했다. v1은 원명령 그대로 보존하고 결과 재개와 회사·UID·actor 확인을 보강한다. 서버 분개·수불 계획과 운영 gate는 유지한다. 반품함수2825·양Hosting56764 exit0 및 원격117SHA 일치로 배포를 확인했다. 실제 관계와 제한은 [반품 처리 근거 후속](return-processing-evidence-followup-20261012.md)에 정리한다.
