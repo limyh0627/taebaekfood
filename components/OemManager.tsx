@@ -1,11 +1,11 @@
 import { captureOemCostEvidence, type OemCostEvidence } from '../src/features/admin/oemCostEvidence';
 import { rawHolderByName } from '../src/shared/rawHolder';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { today } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import ModalShell from '../src/shared/components/ModalShell';
-import { Item, Partner, PurchaseOrder, type CompanyId } from '../src/shared/types';
+import { companyOf, Item, Partner, PurchaseOrder, type CompanyId } from '../src/shared/types';
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
@@ -34,25 +34,95 @@ interface Props {
 
 type IssueInput = Parameters<Props['onIssue']>[0];
 type ReceiveInput = Parameters<Props['onReceive']>[0];
+type StoredPending<T> = { value: T | null; encoded: string | null; error: string };
+const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const text = (value: unknown): value is string => typeof value === 'string';
+const numeric = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+// 재개할 요청의 구조만 확인한다. 재고·원가 유효성은 기존 저장 명령이 판단한다.
+const issuePending = (value: unknown): value is IssueInput => object(value)
+  && text(value.jobId) && !!value.jobId && text(value.oemPartnerId) && text(value.partnerName) && text(value.date)
+  && Array.isArray(value.sent) && value.sent.every(row => object(row) && text(row.material) && numeric(row.kg));
+const receiptPending = (value: unknown, companyId: CompanyId, poId?: string): value is ReceiveInput => object(value)
+  && object(value.po) && value.po.id === poId && companyOf(value.po as Partial<PurchaseOrder>) === companyId
+  && text(value.date) && numeric(value.unitPricePerKg)
+  && Array.isArray(value.returns) && value.returns.every(row => object(row) && text(row.itemId) && numeric(row.qty))
+  && Array.isArray(value.bulk) && value.bulk.every(row => object(row) && text(row.material) && numeric(row.kg));
+function readPending<T>(key: string, accept: (value: unknown) => value is T): StoredPending<T> {
+  let encoded: string | null = null;
+  try {
+    encoded = sessionStorage.getItem(key);
+    if (encoded === null) return { value: null, encoded, error: '' };
+    const value: unknown = JSON.parse(encoded);
+    if (!accept(value)) throw new Error('요청 구조 불일치');
+    return { value, encoded, error: '' };
+  } catch {
+    return { value: null, encoded, error: '보존된 OEM 요청을 읽을 수 없습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.' };
+  }
+}
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function OemManager({
+export default function OemManager(props: Props) {
+  // 닫았다 같은 배치를 다시 열어도 이전 요청과 새 화면은 다른 세대다.
+  // 품목 조회 갱신만으로 입력을 버리지 않도록 업무 진입 키만 사용한다.
+  const sessionKey = JSON.stringify([props.companyId, props.issueOpen, props.receiveTarget?.id ?? null, props.feeTarget?.id ?? null]);
+  return <OemSession key={sessionKey} {...props} />;
+}
+
+function OemSession({
   companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
 }: Props) {
   const receiptKey = 'oem-receipt-pending:'+companyId+':'+(receiveTarget?.id ?? '');
-  const [pendingReceipt, setPendingReceipt] = useState<ReceiveInput|null>(()=>{try{return JSON.parse(sessionStorage.getItem(receiptKey)??'null');}catch{return null;}});
-  useEffect(()=>{try{setPendingReceipt(JSON.parse(sessionStorage.getItem(receiptKey)??'null'));}catch{setPendingReceipt(null);}},[receiptKey]);
+  const [receiptStored, setReceiptStored] = useState(() => readPending(receiptKey,
+    (value): value is ReceiveInput => receiptPending(value, companyId, receiveTarget?.id)));
+  const pendingReceipt = receiptStored.value;
+  const [storageNotice, setStorageNotice] = useState({ message: '', blocked: false });
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const alive = useRef(true);
+  // 새 화면이 커밋되는 순간 이전 세대를 닫아, 늦은 Promise가 화면 정리를 먼저 하지 못하게 한다.
+  React.useLayoutEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  const close = () => { if (alive.current && !busyRef.current) onClose(); };
+  // 완료 응답은 자신이 보존한 원문만 정리한다. 다른 탭/재개가 바꾼 원문은 남긴다.
+  const clearPending = (key: string, encoded: string, clear: () => void) => {
+    if (!alive.current) return false;
+    try {
+      if (sessionStorage.getItem(key) !== encoded) {
+        setStorageNotice({ message: '보존된 요청이 변경되었습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.', blocked: true });
+        return false;
+      }
+      sessionStorage.removeItem(key);
+      clear();
+      setStorageNotice({ message: '', blocked: false });
+      return true;
+    } catch {
+      setStorageNotice({ message: '처리 결과는 확인됐지만 보존 요청을 정리하지 못했습니다. 같은 요청을 재개해 다시 확인해주세요.', blocked: false });
+      return false;
+    }
+  };
   const pendingKey = `oem-issue-pending:${companyId}`;
-  const [pendingIssue, setPendingIssue] = useState<IssueInput | null>(() => {
-    try { return JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null') as IssueInput | null; } catch { return null; }
-  });
-  useEffect(() => {
-    try { setPendingIssue(JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null') as IssueInput | null); }
-    catch { setPendingIssue(null); }
-  }, [pendingKey]);
+  const [issueStored, setIssueStored] = useState(() => readPending(pendingKey, issuePending));
+  const pendingIssue = issueStored.value;
+  const savePending = <T,>(key: string, before: StoredPending<T>, value: T): string | null => {
+    if (!alive.current || before.error || storageNotice.blocked) return null;
+    try {
+      if (sessionStorage.getItem(key) !== before.encoded) {
+        setStorageNotice({ message: '보존된 요청이 변경되었습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.', blocked: true });
+        return null;
+      }
+      // 재개는 최초 원문을 다시 쓰지 않는다. 저장 성공 전에 업무 명령을 보내지 않는다.
+      const encoded = before.encoded ?? JSON.stringify(value);
+      if (before.encoded === null) sessionStorage.setItem(key, encoded);
+      setStorageNotice({ message: '', blocked: false });
+      return encoded;
+    } catch {
+      setStorageNotice({ message: '요청 원문을 보존하지 못해 전송하지 않았습니다. 입력은 남아 있습니다. 다시 시도해주세요.', blocked: false });
+      return null;
+    }
+  };
 
   const oemItems = useMemo(() => items.filter(i => !i.archived && i.procureType === '임가공'), [items]);
   const rawItems = useMemo(
@@ -60,34 +130,42 @@ export default function OemManager({
     [items],
   );
 
-  const run = async (fn: () => Promise<void>) => {
-    if (busyRef.current) return;
+  const run = async (fn: () => Promise<void | boolean>) => {
+    if (!alive.current || busyRef.current) return;
     busyRef.current = true; // React 재렌더 전의 연속 클릭도 같은 작업으로 묶는다.
     setBusy(true);
-    try { await fn(); onClose(); } catch { /* 호출부가 오류를 알려 준다. 초안은 남겨 재개한다. */ }
-    finally { busyRef.current = false; setBusy(false); }
+    try {
+      const cleaned = await fn();
+      if (alive.current && cleaned !== false) onClose();
+    } catch { /* 호출부가 오류를 알려 준다. 초안은 남겨 재개한다. */ }
+    finally { if (alive.current) { busyRef.current = false; setBusy(false); } }
   };
 
   return (
     <>
       {issueOpen && (
         <IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} pendingIssue={pendingIssue} busy={busy}
-          onClose={() => { if (!busyRef.current) onClose(); }} onSubmit={(v) => {
+          pendingError={issueStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
+          onClose={close} onSubmit={(v) => {
             if (busyRef.current) return;
-            setPendingIssue(v);
-            sessionStorage.setItem(pendingKey, JSON.stringify(v));
+            if (pendingIssue && pendingIssue.jobId !== v.jobId) {
+              setStorageNotice({ message: '보존된 발주 요청을 먼저 확인해주세요. 다른 발주로 원문을 바꾸지 않았습니다.', blocked: true });
+              return;
+            }
+            const payload = pendingIssue ?? v;
+            const encoded = savePending(pendingKey, issueStored, payload);
+            if (encoded === null) return;
+            setIssueStored({ value: payload, encoded, error: '' });
             run(async () => {
               try {
-                await onIssue(v);
-                setPendingIssue(null);
-                sessionStorage.removeItem(pendingKey);
+                await onIssue(payload);
+                return clearPending(pendingKey, encoded, () => setIssueStored({ value: null, encoded: null, error: '' }));
               } catch (error) {
                 // 이 오류는 발주 초안을 만들기 전의 입력 검사에서만 나온다.
                 // 네트워크/부분 출고 실패는 상태가 불확실하므로 작업번호를 그대로 보존한다.
                 const message = error instanceof Error ? error.message : String(error);
                 if (/^(내보낼 원료가 없습니다|다른 회사이거나 없는 OEM 거래처입니다|현재 회사의 원료 홀더를 찾을 수 없습니다)/.test(message)) {
-                  setPendingIssue(null);
-                  sessionStorage.removeItem(pendingKey);
+                  clearPending(pendingKey, encoded, () => setIssueStored({ value: null, encoded: null, error: '' }));
                 }
                 throw error;
               }
@@ -97,25 +175,31 @@ export default function OemManager({
       {receiveTarget && (
         <>
         <ReceiveModal companyId={companyId} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs}
-          pendingReceipt={pendingReceipt} onClose={onClose} onSubmit={(v) => {
+          pendingError={receiptStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
+          pendingReceipt={pendingReceipt} onClose={close} onSubmit={(v) => {
             if (busyRef.current) return;
             const payload=pendingReceipt ?? {po:receiveTarget,...v};
-            setPendingReceipt(payload);
-            sessionStorage.setItem(receiptKey,JSON.stringify(payload));
-            run(async()=>{await onReceive(payload);setPendingReceipt(null);sessionStorage.removeItem(receiptKey);});
+            const encoded = savePending(receiptKey, receiptStored, payload);
+            if (encoded === null) return;
+            setReceiptStored({ value: payload, encoded, error: '' });
+            run(async () => {
+              await onReceive(payload);
+              return clearPending(receiptKey, encoded, () => setReceiptStored({ value: null, encoded: null, error: '' }));
+            });
           }} />
         </>
       )}
       {feeTarget && (
         <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy} orderUnitInputs={orderUnitInputs}
-          onClose={onClose} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
+          onClose={close} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
       )}
     </>
   );
 }
 
 // ── 외주 발주 (원료 내보내기) ────────────────────────────────────────────────
-function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pendingIssue, busy, onClose, onSubmit }: {
+function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pendingIssue, pendingError, storageNotice, busy, onClose, onSubmit }: {
+  pendingError?: string; storageNotice?: string;
   companyId:CompanyId; partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; pendingIssue: IssueInput | null; busy: boolean;
   onClose: () => void;
   onSubmit: (v: IssueInput) => void;
@@ -133,23 +217,24 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pe
   const partner = partners.find(p => p.id === partnerId);
   const sent = rows.filter(r => r.material && Number(r.kg) > 0).map(r => ({ material: r.material, kg: Number(r.kg) }));
   const shortage = sent.filter(s => s.kg > rawStockKg(s.material));
-  const canSave = !!partnerId && sent.length > 0 && !busy;
+  const canSave = !!partnerId && sent.length > 0 && !busy && !pendingError;
 
   return (
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
+        {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
         {(issueDrafts.length > 0 || pendingIssue) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
             <p className="text-xs font-bold text-amber-900">{busy ? '외주 발주 처리 중입니다. 완료될 때까지 기다려 주세요.' : '완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.'}</p>
             {pendingIssue && !issueDrafts.some(draft => draft.id === pendingIssue.jobId) && (
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate text-slate-700">{pendingIssue.partnerName} · {pendingIssue.date} · 원료 {pendingIssue.sent.length}종</span>
-                <button type="button" disabled={busy} onClick={() => onSubmit(pendingIssue)} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
+                <button type="button" disabled={busy || !!pendingError} onClick={() => onSubmit(pendingIssue)} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
               </div>
             )}
             {issueDrafts.map(draft => (
               <div key={draft.id} className="flex items-center justify-between gap-2 text-xs">
                 <span className="min-w-0 truncate text-slate-700">{draft.partnerName} · {draft.oemIssueDate} · 원료 {draft.oemSent?.length ?? 0}종</span>
-                <button type="button" disabled={busy} onClick={() => onSubmit({
+                <button type="button" disabled={busy || !!pendingError || (!!pendingIssue && pendingIssue.jobId !== draft.id)} onClick={() => onSubmit({
                   jobId: draft.id, oemPartnerId: draft.oemPartnerId ?? draft.partnerId ?? '', partnerName: draft.partnerName ?? '',
                   sent: (draft.oemSent ?? []).map(row => ({ material: row.material, kg: row.kg })),
                   ...(draft.oemCostEvidence ? {oemCostEvidence:draft.oemCostEvidence} : {}),
@@ -240,7 +325,8 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pe
 }
 
 // ── 가공입고 (완제품 받기) ───────────────────────────────────────────────────
-function ReceiveModal({ pendingReceipt, companyId, po, oemItems, bulkItems, busy, onClose, onSubmit, orderUnitInputs }: {
+function ReceiveModal({ pendingReceipt, pendingError, storageNotice, companyId, po, oemItems, bulkItems, busy, onClose, onSubmit, orderUnitInputs }: {
+  pendingError?: string; storageNotice?: string;
   orderUnitInputs?: OrderUnitInputs;
   pendingReceipt: ReceiveInput|null; companyId: CompanyId; po: PurchaseOrder; oemItems: Item[]; bulkItems: Item[]; busy: boolean;
   onClose: () => void;
@@ -273,10 +359,11 @@ function ReceiveModal({ pendingReceipt, companyId, po, oemItems, bulkItems, busy
   const s = sentKg(po.oemSent);
   const loss = batchLoss(po.oemSent, receivedKg);
   const money = processingFee(receivedKg, Number(fee) || 0);
-  const canSave = (!!pendingReceipt || returns.length > 0 || bulk.length > 0) && !busy;
+  const canSave = (!!pendingReceipt || returns.length > 0 || bulk.length > 0) && !busy && !pendingError;
 
   return (
     <ModalShell title="가공입고" onClose={onClose} bodyClassName="space-y-4">
+        {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
         {pendingReceipt && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">이전 입고 요청의 완료 여부를 확인해야 합니다. 재개하면 당시 수량·날짜·원가 근거 그대로 다시 확인합니다. 화면에서 바꾼 입력은 재개 요청에 적용하지 않습니다.</p>}
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-3">
@@ -376,7 +463,7 @@ function ReceiveModal({ pendingReceipt, companyId, po, oemItems, bulkItems, busy
         </p>
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
           <button onClick={() => onSubmit({ returns, bulk, unitPricePerKg: Number(fee) || 0, date, ...(receiptCost.evidence ? {oemCostEvidence: receiptCost.evidence} : {}) })} disabled={!canSave}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-30">
             {busy ? '처리 중…' : pendingReceipt ? '입고 요청 재개' : '가공입고'}
@@ -437,7 +524,7 @@ function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderUnitInpu
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
           <button onClick={() => onSubmit({ unitPricePerKg: Number(fee) || 0, date })} disabled={busy || kg <= 0}
             className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 disabled:opacity-30">
             {busy ? '발행 중…' : '전표 발행'}

@@ -714,7 +714,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 718개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 719개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -989,6 +989,7 @@ shared/types.ts 외 interface/type alias 718개를 별도 목록에 기록한다
 | Props | components/OemManager.tsx:19 | interface | direct-properties-only | orderUnitInputs, companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee |
 | IssueInput | components/OemManager.tsx:35 | type-alias | non-object-alias-not-expanded |  |
 | ReceiveInput | components/OemManager.tsx:36 | type-alias | non-object-alias-not-expanded |  |
+| StoredPending | components/OemManager.tsx:37 | type-alias | direct-properties-only | value, encoded, error |
 | Props | components/CategoryManager.tsx:14 | interface | direct-properties-only | onClose, onSaved, usage, companyId |
 | StockClosingRow | components/ItemList.tsx:183 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
 | StockClosing | components/ItemList.tsx:184 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
@@ -1007,11 +1008,11 @@ shared/types.ts 외 interface/type alias 718개를 별도 목록에 기록한다
 | OrderItemLinesProps | src/shared/components/OrderItemLines.tsx:5 | interface | direct-properties-only | orderItems, itemById, className |
 | NewOrderLineInput | src/shared/newOrderDraft.ts:7 | interface | direct-properties-only | itemId, quantity, isBoxUnit, unitsPerBox, boxType, boxSubId, displaySize, orderedAs |
 | AddOrderModalProps | components/AddOrderModal.tsx:27 | interface | direct-properties-only | mode, orderUnitInputs, items, orders, partners, partnerItems, palletStocks, submaterials, onClose, onBack, onSave |
-| RawExtracted | src/shared/orderExtract.ts:24 | interface | direct-properties-only | partnerId, deliveryDate, lines, note |
-| ExtractedLine | src/shared/orderExtract.ts:31 | interface | direct-properties-only | itemId, name, qty, isBox, source |
-| ExtractResult | src/shared/orderExtract.ts:42 | interface | direct-properties-only | partnerId, partnerName, deliveryDate, note, lines, rejected |
-| CatalogItem | src/shared/orderExtract.ts:52 | interface | direct-properties-only | id, name, spec |
-| CatalogPartner | src/shared/orderExtract.ts:53 | interface | direct-properties-only | id, name |
+| RawExtracted | src/shared/orderExtract.ts:26 | interface | direct-properties-only | partnerId, deliveryDate, lines, note |
+| ExtractedLine | src/shared/orderExtract.ts:33 | interface | direct-properties-only | itemId, name, qty, isBox, source |
+| ExtractResult | src/shared/orderExtract.ts:44 | interface | direct-properties-only | partnerId, partnerName, deliveryDate, note, lines, rejected |
+| CatalogItem | src/shared/orderExtract.ts:54 | interface | direct-properties-only | id, name, spec |
+| CatalogPartner | src/shared/orderExtract.ts:55 | interface | direct-properties-only | id, name |
 | HistoryOrder | src/shared/orderExtract.ts:172 | interface | direct-properties-only | partnerId, createdAt, items |
 | ParsedLine | components/PasteOrderModal.tsx:53 | type-alias | direct-properties-only | rawText, rawName, qty, isBox, selectedProductId |
 | PasteOrderModalProps | components/PasteOrderModal.tsx:103 | interface | direct-properties-only | orderUnitInputs, items, partners, orders, partnerItems, palletStocks, initialText, onClose, onBack, onSave |
@@ -1799,6 +1800,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Props | components/OemManager.tsx:19 | checker-resolved-properties-only | 13 |
 | IssueInput | components/OemManager.tsx:35 | checker-resolved-properties-only | 7 |
 | ReceiveInput | components/OemManager.tsx:36 | checker-resolved-properties-only | 6 |
+| StoredPending | components/OemManager.tsx:37 | checker-resolved-properties-only | 3 |
 | Props | components/CategoryManager.tsx:14 | checker-resolved-properties-only | 4 |
 | StockClosingRow | components/ItemList.tsx:183 | checker-resolved-properties-only | 7 |
 | StockClosing | components/ItemList.tsx:184 | checker-resolved-properties-only | 6 |
@@ -1817,11 +1819,11 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderItemLinesProps | src/shared/components/OrderItemLines.tsx:5 | checker-resolved-properties-only | 3 |
 | NewOrderLineInput | src/shared/newOrderDraft.ts:7 | checker-resolved-properties-only | 8 |
 | AddOrderModalProps | components/AddOrderModal.tsx:27 | checker-resolved-properties-only | 11 |
-| RawExtracted | src/shared/orderExtract.ts:24 | checker-resolved-properties-only | 4 |
-| ExtractedLine | src/shared/orderExtract.ts:31 | checker-resolved-properties-only | 5 |
-| ExtractResult | src/shared/orderExtract.ts:42 | checker-resolved-properties-only | 6 |
-| CatalogItem | src/shared/orderExtract.ts:52 | checker-resolved-properties-only | 3 |
-| CatalogPartner | src/shared/orderExtract.ts:53 | checker-resolved-properties-only | 2 |
+| RawExtracted | src/shared/orderExtract.ts:26 | checker-resolved-properties-only | 4 |
+| ExtractedLine | src/shared/orderExtract.ts:33 | checker-resolved-properties-only | 5 |
+| ExtractResult | src/shared/orderExtract.ts:44 | checker-resolved-properties-only | 6 |
+| CatalogItem | src/shared/orderExtract.ts:54 | checker-resolved-properties-only | 3 |
+| CatalogPartner | src/shared/orderExtract.ts:55 | checker-resolved-properties-only | 2 |
 | HistoryOrder | src/shared/orderExtract.ts:172 | checker-resolved-properties-only | 3 |
 | ParsedLine | components/PasteOrderModal.tsx:53 | checker-resolved-properties-only | 5 |
 | PasteOrderModalProps | components/PasteOrderModal.tsx:103 | checker-resolved-properties-only | 10 |
@@ -2591,6 +2593,29 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/LotTimeline.tsx:35 | parts.day | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.hour | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.minute | { [k: string]: string; } | property-symbol-unresolved |
+| components/OemManager.tsx:43 | value.jobId | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:43 | value.jobId | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:43 | value.oemPartnerId | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:43 | value.partnerName | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:43 | value.date | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:44 | value.sent | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:44 | value.sent | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:44 | row.material | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:44 | row.kg | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:46 | value.po | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:46 | value.po.id | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:46 | value.po | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:46 | value.po | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:47 | value.date | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:47 | value.unitPricePerKg | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:48 | value.returns | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:48 | value.returns | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:48 | row.itemId | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:48 | row.qty | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:49 | value.bulk | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:49 | value.bulk | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:49 | row.material | Record<string, unknown> | property-symbol-unresolved |
+| components/OemManager.tsx:49 | row.kg | Record<string, unknown> | property-symbol-unresolved |
 | components/ItemList.tsx:326 | (p?.lots ?? []).length | any | any-receiver |
 | components/ItemList.tsx:326 | p?.lots | any | any-receiver |
 | components/ItemList.tsx:327 | p.lots | any | any-receiver |
@@ -5023,12 +5048,12 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | IssuedStatement | exemptIssuedAt | 선택 | string | src/shared/types.ts:1167 | 0 |
 | IssuedStatement | cashDir | 선택 | '입금' \| '출금' | src/shared/types.ts:1168 | 0 |
 | PurchaseOrderItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1186 | 4 |
-| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1187 | 49 |
+| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1187 | 50 |
 | PurchaseOrderItem | name | 필수 | string | src/shared/types.ts:1188 | 24 |
 | PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1190 | 29 |
 | PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1191 | 12 |
 | PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1197 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1201 | 84 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1201 | 87 |
 | PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1203 | 5 |
 | PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1204 | 5 |
 | PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1205 | 1 |
@@ -5037,7 +5062,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1208 | 11 |
 | PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1209 | 1 |
 | PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1211 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1212 | 55 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1212 | 56 |
 | PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1213 | 2 |
 | PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1214 | 1 |
 | PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1215 | 22 |
@@ -5050,9 +5075,9 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1226 | 0 |
 | PurchaseOrder | note | 선택 | string | src/shared/types.ts:1227 | 1 |
 | PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1231 | 32 |
-| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1233 | 5 |
+| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1233 | 7 |
 | PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1235 | 0 |
-| PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1237 | 1 |
+| PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1237 | 2 |
 | PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1238 | 4 |
 | PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1239 | 14 |
 | PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1240 | 1 |

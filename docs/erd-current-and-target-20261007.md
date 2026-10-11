@@ -248,3 +248,16 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 ## 2026-10-12 반품 승인 원문·결과 재개 후속 배포
 
 이전 fa484cf는 최초 UI 승인 원문과 비교하는 입력이 없었으며, 현재 소스06795ef는 그 경계를 보완했다. 새 shared business evidence/optional expectedBusinessHash와 local pending v2는 구현되었고 실제 서버 TX 28건·service/pure 17건을 검증했다. v1은 원명령 그대로 보존하고 결과 재개와 회사·UID·actor 확인을 보강한다. 서버 분개·수불 계획과 운영 gate는 유지한다. 반품함수2825·양Hosting56764 exit0 및 원격117SHA 일치로 배포를 확인했다. 실제 관계와 제한은 [반품 처리 근거 후속](return-processing-evidence-followup-20261012.md)에 정리한다.
+
+## 2026-10-12 OEM 모달 응답 세대 후속 · 구현 중
+
+기준09408ee의 저장 원입고 중량 대조는 source 구현·검증·GitHub 통합을 완료했으며 해당 화면 배포 확인은 별도로 대기한다. 다음 OEM UI의 모달 세대 보호는 records/todo-next-oem-lifecycle에서 구현 중이다. 모달 메모리 세대·회사·모드·배치가 다른 응답은 새 모달 닫기와 busy 변경에 사용하지 않는다. 이 UI 경계는 서버의 실제 회사·UID·operation 및 원문 증명을 대신하지 않는다.
+
+| 경계 | 현재 역할과 구분 |
+|---|---|
+| OemManager 메모리 세대 | 해당 모달의 비동기 결과·후행 close/busy 처리만 제어한다. DB operation ID가 아니다. |
+| sessionStorage OEM 발주·입고 pending | 최초 요청의 재개 근거이며 회사별 key로 읽는다. 다른 원문으로 바뀐 pending을 이전 응답으로 삭제하지 않는다. 실제 적용 증명은 서버 결과와 원문 계약에서 확인한다. |
+| purchaseOrders OEM 원문 | 회사·송출·저장 입고 구성과 가공비/원가 연결을 보존한다. UI가 모달 닫기 보호를 이유로 금액·재고를 재계산하지 않는다. |
+| 원자 입고·가공비 operation | 기존 서버 명령의 최신 문서·회사·요청 증명을 유지한다. UI 생명주기 수정에 새 컬렉션을 추가하지 않는다. |
+
+현재 boxSize는 공용 환산 근거가 아니다. 현재 환산은 BOM·item_pack의 unitsPerBoxOf를 사용하며 옛 fix-boxsize-restore CLI의 고정값 부활/무조건 삭제 경로를 종료하는 후속을 구현했다. 기존 DB-CHANGELOG 역사와 백업·실제 포장 관계는 보존한다. 최종 검증·배포 여부는 [OEM 모달 세대 후속](oem-modal-generation-followup-20261012.md)에 별도로 기록한다.

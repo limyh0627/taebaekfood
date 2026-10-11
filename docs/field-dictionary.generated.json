@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-11T16:38:21.084Z",
+  "generatedAt": "2026-10-11T17:19:21.859Z",
   "sourceFiles": 452,
-  "unresolvedAccesses": 2289,
+  "unresolvedAccesses": 2312,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:104",
@@ -2367,6 +2367,167 @@
       "expression": "parts.minute",
       "receiverExpression": "parts",
       "receiverType": "{ [k: string]: string; }",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:43",
+      "expression": "value.jobId",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:43",
+      "expression": "value.jobId",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:43",
+      "expression": "value.oemPartnerId",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:43",
+      "expression": "value.partnerName",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:43",
+      "expression": "value.date",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:44",
+      "expression": "value.sent",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:44",
+      "expression": "value.sent",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:44",
+      "expression": "row.material",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:44",
+      "expression": "row.kg",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:46",
+      "expression": "value.po",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:46",
+      "expression": "value.po.id",
+      "receiverExpression": "value.po",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:46",
+      "expression": "value.po",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:46",
+      "expression": "value.po",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:47",
+      "expression": "value.date",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:47",
+      "expression": "value.unitPricePerKg",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:48",
+      "expression": "value.returns",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:48",
+      "expression": "value.returns",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:48",
+      "expression": "row.itemId",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:48",
+      "expression": "row.qty",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:49",
+      "expression": "value.bulk",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:49",
+      "expression": "value.bulk",
+      "receiverExpression": "value",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:49",
+      "expression": "row.material",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "components/OemManager.tsx:49",
+      "expression": "row.kg",
+      "receiverExpression": "row",
+      "receiverType": "Record<string, unknown>",
       "reason": "property-symbol-unresolved"
     },
     {
@@ -17569,8 +17730,8 @@
         "components/ItemManager.tsx:663",
         "components/ItemManager.tsx:872",
         "components/LoanManager.tsx:201",
-        "components/OemManager.tsx:133",
-        "components/OemManager.tsx:175",
+        "components/OemManager.tsx:217",
+        "components/OemManager.tsx:260",
         "components/OrderPicker.tsx:397",
         "components/OrderPicker.tsx:417",
         "components/OrderPicker.tsx:432",
@@ -17757,8 +17918,8 @@
         "components/ItemManager.tsx:670",
         "components/ItemManager.tsx:872",
         "components/LoanManager.tsx:201",
-        "components/OemManager.tsx:175",
-        "components/OemManager.tsx:232",
+        "components/OemManager.tsx:260",
+        "components/OemManager.tsx:317",
         "components/OrderPicker.tsx:397",
         "components/OrderPicker.tsx:417",
         "components/OrderPicker.tsx:433",
@@ -18129,7 +18290,7 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:181",
       "references": [
-        "components/OemManager.tsx:174"
+        "components/OemManager.tsx:259"
       ]
     },
     {
@@ -20975,13 +21136,13 @@
         "components/LotTimeline.tsx:134",
         "components/LotTimeline.tsx:61",
         "components/LotTimeline.tsx:90",
-        "components/OemManager.tsx:130",
-        "components/OemManager.tsx:195",
-        "components/OemManager.tsx:260",
-        "components/OemManager.tsx:268",
-        "components/OemManager.tsx:305",
-        "components/OemManager.tsx:312",
-        "components/OemManager.tsx:334",
+        "components/OemManager.tsx:214",
+        "components/OemManager.tsx:280",
+        "components/OemManager.tsx:346",
+        "components/OemManager.tsx:354",
+        "components/OemManager.tsx:392",
+        "components/OemManager.tsx:399",
+        "components/OemManager.tsx:421",
         "components/OrderPicker.tsx:110",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
@@ -21263,7 +21424,7 @@
         "src/features/admin/oemEngine.ts:194",
         "src/features/admin/oemEngine.ts:199",
         "src/features/admin/oemEngine.ts:267",
-        "src/features/admin/oemReconciliation.ts:18",
+        "src/features/admin/oemReconciliation.ts:27",
         "src/features/admin/orderInventoryCancellation.ts:100",
         "src/features/admin/orderInventoryCancellation.ts:102",
         "src/features/admin/orderInventoryCancellation.ts:80",
@@ -21556,9 +21717,9 @@
         "components/ItemManager.tsx:541",
         "components/ItemManager.tsx:696",
         "components/ItemManager.tsx:707",
-        "components/OemManager.tsx:195",
-        "components/OemManager.tsx:312",
-        "components/OemManager.tsx:334",
+        "components/OemManager.tsx:280",
+        "components/OemManager.tsx:399",
+        "components/OemManager.tsx:421",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
         "components/OrdersList.tsx:1024",
@@ -21665,7 +21826,7 @@
         "src/features/admin/dataIntegrityAudit.ts:539",
         "src/features/admin/itemLedger.ts:97",
         "src/features/admin/oemEngine.ts:171",
-        "src/features/admin/oemReconciliation.ts:20",
+        "src/features/admin/oemReconciliation.ts:29",
         "src/features/admin/orderItemStock.ts:156",
         "src/features/admin/orderItemStock.ts:274",
         "src/features/admin/orderItemStock.ts:284",
@@ -22216,7 +22377,7 @@
         "components/ItemManager.tsx:1903",
         "components/ItemManager.tsx:249",
         "components/LotTimeline.tsx:180",
-        "components/OemManager.tsx:312",
+        "components/OemManager.tsx:399",
         "components/OrdersList.tsx:1058",
         "components/OrdersList.tsx:2681",
         "components/OrdersList.tsx:2985",
@@ -22421,7 +22582,7 @@
         "components/ItemManager.tsx:702",
         "components/ItemManager.tsx:706",
         "components/ItemManager.tsx:707",
-        "components/OemManager.tsx:312",
+        "components/OemManager.tsx:399",
         "components/OrdersList.tsx:1024",
         "components/OrdersList.tsx:1058",
         "components/OrdersList.tsx:1059",
@@ -22510,7 +22671,7 @@
       "type": "'완사입' | '임가공'",
       "declaration": "src/shared/types.ts:591",
       "references": [
-        "components/OemManager.tsx:57",
+        "components/OemManager.tsx:127",
         "src/features/admin/AdminApp.tsx:1041",
         "src/features/admin/AdminApp.tsx:804",
         "src/features/admin/orderStockEngine.ts:327",
@@ -22670,7 +22831,7 @@
         "components/BomIntegrityPanel.tsx:46",
         "components/FinancialReports.tsx:143",
         "components/ItemList.tsx:3041",
-        "components/OemManager.tsx:59",
+        "components/OemManager.tsx:129",
         "src/features/admin/AdminApp.tsx:656",
         "src/features/admin/bom.ts:32",
         "src/features/admin/orderStockEngine.ts:161",
@@ -22709,8 +22870,8 @@
         "components/ItemManager.tsx:494",
         "components/ItemManager.tsx:495",
         "components/ItemManager.tsx:694",
-        "components/OemManager.tsx:57",
-        "components/OemManager.tsx:59",
+        "components/OemManager.tsx:127",
+        "components/OemManager.tsx:129",
         "components/OrdersList.tsx:1022",
         "components/OrdersList.tsx:1023",
         "components/OrdersList.tsx:4192",
@@ -27033,10 +27194,11 @@
         "src/features/admin/oemEngine.ts:267",
         "src/features/admin/oemEngine.ts:268",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:18",
-        "src/features/admin/oemReconciliation.ts:20",
-        "src/features/admin/oemReconciliation.ts:21",
-        "src/features/admin/oemReconciliation.ts:22",
+        "src/features/admin/oemReconciliation.ts:27",
+        "src/features/admin/oemReconciliation.ts:28",
+        "src/features/admin/oemReconciliation.ts:29",
+        "src/features/admin/oemReconciliation.ts:30",
+        "src/features/admin/oemReconciliation.ts:31",
         "src/shared/pendingFlowQuantity.ts:18",
         "src/shared/services/firebaseService.ts:700",
         "src/shared/services/firebaseService.ts:703",
@@ -27077,7 +27239,7 @@
         "src/features/admin/dataIntegrityAudit.ts:480",
         "src/features/admin/dataIntegrityAudit.ts:490",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:20"
+        "src/features/admin/oemReconciliation.ts:29"
       ]
     },
     {
@@ -27104,7 +27266,7 @@
         "src/features/admin/dataIntegrityAudit.ts:145",
         "src/features/admin/dataIntegrityAudit.ts:407",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:22",
+        "src/features/admin/oemReconciliation.ts:31",
         "src/shared/pendingFlowQuantity.ts:18",
         "src/shared/services/firebaseService.ts:710",
         "src/shared/services/firebaseService.ts:717",
@@ -27135,7 +27297,7 @@
         "src/features/admin/dataIntegrityAudit.ts:425",
         "src/features/admin/dataIntegrityAudit.ts:480",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:22",
+        "src/features/admin/oemReconciliation.ts:31",
         "src/shared/services/firebaseService.ts:724"
       ]
     },
@@ -27182,10 +27344,13 @@
         "components/ItemList.tsx:3529",
         "components/ItemList.tsx:3530",
         "components/ItemList.tsx:4048",
-        "components/OemManager.tsx:143",
-        "components/OemManager.tsx:150",
-        "components/OemManager.tsx:153",
-        "components/OemManager.tsx:43",
+        "components/OemManager.tsx:228",
+        "components/OemManager.tsx:235",
+        "components/OemManager.tsx:237",
+        "components/OemManager.tsx:238",
+        "components/OemManager.tsx:68",
+        "components/OemManager.tsx:75",
+        "components/OemManager.tsx:77",
         "components/OrderPicker.tsx:305",
         "components/OrderPicker.tsx:342",
         "components/OrderPicker.tsx:368",
@@ -27235,7 +27400,7 @@
         "src/features/admin/oemIssueJob.ts:71",
         "src/features/admin/oemIssueJob.ts:77",
         "src/features/admin/oemIssueJob.ts:83",
-        "src/features/admin/oemReconciliation.ts:41",
+        "src/features/admin/oemReconciliation.ts:50",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:19",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:21"
       ]
@@ -27289,7 +27454,7 @@
         "components/AdminChecklist.tsx:507",
         "components/ItemList.tsx:1613",
         "components/ItemList.tsx:1741",
-        "components/OemManager.tsx:153",
+        "components/OemManager.tsx:238",
         "components/OrderPicker.tsx:293",
         "components/OrderPicker.tsx:294",
         "components/OrderPicker.tsx:397",
@@ -27316,10 +27481,10 @@
         "components/ItemList.tsx:1644",
         "components/ItemList.tsx:1742",
         "components/ItemList.tsx:1850",
-        "components/OemManager.tsx:151",
-        "components/OemManager.tsx:153",
-        "components/OemManager.tsx:284",
-        "components/OemManager.tsx:409",
+        "components/OemManager.tsx:236",
+        "components/OemManager.tsx:238",
+        "components/OemManager.tsx:371",
+        "components/OemManager.tsx:496",
         "components/OrderPicker.tsx:397",
         "components/OrderPicker.tsx:417",
         "src/features/admin/oemEngine.ts:189",
@@ -27418,15 +27583,16 @@
         "src/features/admin/oemIssueJob.ts:57",
         "src/features/admin/oemReceiptInventory.ts:75",
         "src/features/admin/oemReceiptInventory.ts:82",
-        "src/features/admin/oemReconciliation.ts:16",
-        "src/features/admin/oemReconciliation.ts:17",
-        "src/features/admin/oemReconciliation.ts:24",
+        "src/features/admin/oemReconciliation.ts:12",
         "src/features/admin/oemReconciliation.ts:25",
         "src/features/admin/oemReconciliation.ts:26",
-        "src/features/admin/oemReconciliation.ts:36",
-        "src/features/admin/oemReconciliation.ts:41",
-        "src/features/admin/oemReconciliation.ts:44",
-        "src/features/admin/oemReconciliation.ts:46",
+        "src/features/admin/oemReconciliation.ts:33",
+        "src/features/admin/oemReconciliation.ts:34",
+        "src/features/admin/oemReconciliation.ts:35",
+        "src/features/admin/oemReconciliation.ts:45",
+        "src/features/admin/oemReconciliation.ts:50",
+        "src/features/admin/oemReconciliation.ts:54",
+        "src/features/admin/oemReconciliation.ts:56",
         "src/shared/pendingFlowQuantity.ts:16",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:20",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:40",
@@ -27485,7 +27651,7 @@
         "src/features/admin/AdminApp.tsx:2344",
         "src/features/admin/oemEngine.ts:259",
         "src/features/admin/oemReceiptInventory.ts:78",
-        "src/features/admin/oemReconciliation.ts:46",
+        "src/features/admin/oemReconciliation.ts:56",
         "src/shared/services/firebaseService.ts:818"
       ]
     },
@@ -27575,8 +27741,8 @@
         "src/features/admin/AdminApp.tsx:1161",
         "src/features/admin/AdminApp.tsx:1162",
         "src/features/admin/oemEngine.ts:266",
-        "src/features/admin/oemReconciliation.ts:16",
-        "src/features/admin/oemReconciliation.ts:17",
+        "src/features/admin/oemReconciliation.ts:25",
+        "src/features/admin/oemReconciliation.ts:26",
         "src/shared/pendingFlowQuantity.ts:19",
         "src/shared/pendingFlowQuantity.ts:20",
         "src/shared/types.ts:1258",
@@ -27598,7 +27764,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1227",
       "references": [
-        "components/OemManager.tsx:156"
+        "components/OemManager.tsx:241"
       ]
     },
     {
@@ -27635,7 +27801,7 @@
         "src/features/admin/oemEngine.ts:254",
         "src/features/admin/oemIssueJob.ts:39",
         "src/features/admin/oemIssueJob.ts:97",
-        "src/features/admin/oemReconciliation.ts:6",
+        "src/features/admin/oemReconciliation.ts:7",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:20",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:39",
         "src/shared/services/firebaseService.ts:691",
@@ -27649,11 +27815,13 @@
       "type": "OemCostEvidence",
       "declaration": "src/shared/types.ts:1233",
       "references": [
-        "components/OemManager.tsx:155",
-        "components/OemManager.tsx:255",
-        "components/OemManager.tsx:351",
+        "components/OemManager.tsx:240",
+        "components/OemManager.tsx:341",
+        "components/OemManager.tsx:438",
         "src/features/admin/oemEngine.ts:197",
-        "src/features/admin/oemEngine.ts:223"
+        "src/features/admin/oemEngine.ts:223",
+        "src/features/admin/oemReconciliation.ts:10",
+        "src/features/admin/oemReconciliation.ts:14"
       ]
     },
     {
@@ -27671,7 +27839,8 @@
       "type": "OemBatchCostPreview | OemBatchCostBlocked | OemBatchCost",
       "declaration": "src/shared/types.ts:1237",
       "references": [
-        "components/OemManager.tsx:451"
+        "components/OemManager.tsx:538",
+        "src/features/admin/oemReconciliation.ts:14"
       ]
     },
     {
@@ -27681,7 +27850,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1238",
       "references": [
-        "components/OemManager.tsx:153",
+        "components/OemManager.tsx:238",
         "src/features/admin/oemEngine.ts:189",
         "src/features/admin/oemEngine.ts:277",
         "src/features/admin/oemEngine.ts:70"
@@ -27695,19 +27864,19 @@
       "declaration": "src/shared/types.ts:1239",
       "references": [
         "components/ItemList.tsx:1142",
-        "components/OemManager.tsx:151",
-        "components/OemManager.tsx:154",
-        "components/OemManager.tsx:250",
-        "components/OemManager.tsx:254",
-        "components/OemManager.tsx:273",
-        "components/OemManager.tsx:274",
-        "components/OemManager.tsx:410",
+        "components/OemManager.tsx:236",
+        "components/OemManager.tsx:239",
+        "components/OemManager.tsx:336",
+        "components/OemManager.tsx:340",
+        "components/OemManager.tsx:359",
+        "components/OemManager.tsx:360",
+        "components/OemManager.tsx:497",
         "src/features/admin/oem.ts:56",
         "src/features/admin/oem.ts:64",
         "src/features/admin/oemEngine.ts:223",
         "src/features/admin/oemEngine.ts:271",
         "src/features/admin/oemIssueJob.ts:76",
-        "src/features/admin/oemReconciliation.ts:9"
+        "src/features/admin/oemReconciliation.ts:18"
       ]
     },
     {
@@ -27717,7 +27886,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1240",
       "references": [
-        "components/OemManager.tsx:285"
+        "components/OemManager.tsx:372"
       ]
     },
     {
@@ -27793,8 +27962,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1246",
       "references": [
-        "components/OemManager.tsx:151",
-        "components/OemManager.tsx:156",
+        "components/OemManager.tsx:236",
+        "components/OemManager.tsx:241",
         "src/features/admin/oemIssueJob.ts:81"
       ]
     },
@@ -27824,11 +27993,11 @@
       "declaration": "src/shared/types.ts:1249",
       "references": [
         "components/ItemList.tsx:1148",
-        "components/OemManager.tsx:398",
-        "components/OemManager.tsx:411",
+        "components/OemManager.tsx:485",
+        "components/OemManager.tsx:498",
         "src/features/admin/oemEngine.ts:261",
-        "src/features/admin/oemReconciliation.ts:36",
-        "src/features/admin/oemReconciliation.ts:38"
+        "src/features/admin/oemReconciliation.ts:45",
+        "src/features/admin/oemReconciliation.ts:47"
       ]
     },
     {
@@ -27840,9 +28009,9 @@
       "references": [
         "components/ItemList.tsx:1144",
         "src/features/admin/oemEngine.ts:272",
-        "src/features/admin/oemReconciliation.ts:16",
-        "src/features/admin/oemReconciliation.ts:24",
-        "src/features/admin/oemReconciliation.ts:25"
+        "src/features/admin/oemReconciliation.ts:25",
+        "src/features/admin/oemReconciliation.ts:33",
+        "src/features/admin/oemReconciliation.ts:34"
       ]
     },
     {
@@ -27852,8 +28021,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1251",
       "references": [
-        "components/OemManager.tsx:257",
-        "components/OemManager.tsx:397",
+        "components/OemManager.tsx:343",
+        "components/OemManager.tsx:484",
         "src/features/admin/oemEngine.ts:262"
       ]
     },
@@ -27866,7 +28035,7 @@
       "references": [
         "src/features/admin/oemEngine.ts:134",
         "src/features/admin/oemReceiptInventory.ts:76",
-        "src/features/admin/oemReconciliation.ts:25"
+        "src/features/admin/oemReconciliation.ts:34"
       ]
     },
     {
@@ -31836,7 +32005,7 @@
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
-      "type": "Omit<OemBatchCostPreview,'status'> & { status: 'confirmed'; feeStatementId: string; feeSupplyAmount: number;\n  totalSupplyAmount: number; costPerKg: number; allocations: (OemCostRow & { supplyAmount: number; costPerKg: number })[] }"
+      "type": "Omit<OemBatchCostPreview,'status'> & { status: 'confirmed'; feeStatementId: string; feeSupplyAmount: number;\r\n  totalSupplyAmount: number; costPerKg: number; allocations: (OemCostRow & { supplyAmount: number; costPerKg: number })[] }"
     },
     {
       "model": "CompanyId",
@@ -41324,7 +41493,7 @@
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
-      "type": "PurchaseOrder & {\n  oemIssueStatus: 'processing' | 'failed' | 'complete';\n  oemIssueFingerprint: string;\n  oemIssueDate: string;\n  oemIssuedBy?: string;\n  oemSent: OemIssueLine[];\n}"
+      "type": "PurchaseOrder & {\r\n  oemIssueStatus: 'processing' | 'failed' | 'complete';\r\n  oemIssueFingerprint: string;\r\n  oemIssueDate: string;\r\n  oemIssuedBy?: string;\r\n  oemSent: OemIssueLine[];\r\n}"
     },
     {
       "model": "OemIssuePorts",
@@ -41453,7 +41622,7 @@
         {
           "field": "applyOemReceiptInventory",
           "optional": false,
-          "type": "(input: OemReceiptInventoryInput) => Promise<{\n    status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string>;\n  }>",
+          "type": "(input: OemReceiptInventoryInput) => Promise<{\r\n    status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string>;\r\n  }>",
           "declaration": "src/features/admin/oemEngine.ts:43"
         },
         {
@@ -41577,6 +41746,32 @@
       "scope": "non-object-alias-not-expanded",
       "fields": [],
       "type": "Parameters<Props['onReceive']>[0]"
+    },
+    {
+      "model": "StoredPending",
+      "declaration": "components/OemManager.tsx:37",
+      "kind": "type-alias",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "value",
+          "optional": false,
+          "type": "T | null",
+          "declaration": "components/OemManager.tsx:37"
+        },
+        {
+          "field": "encoded",
+          "optional": false,
+          "type": "string | null",
+          "declaration": "components/OemManager.tsx:37"
+        },
+        {
+          "field": "error",
+          "optional": false,
+          "type": "string",
+          "declaration": "components/OemManager.tsx:37"
+        }
+      ]
     },
     {
       "model": "Props",
@@ -42450,7 +42645,7 @@
     },
     {
       "model": "RawExtracted",
-      "declaration": "src/shared/orderExtract.ts:24",
+      "declaration": "src/shared/orderExtract.ts:26",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42458,31 +42653,31 @@
           "field": "partnerId",
           "optional": true,
           "type": "unknown",
-          "declaration": "src/shared/orderExtract.ts:25"
+          "declaration": "src/shared/orderExtract.ts:27"
         },
         {
           "field": "deliveryDate",
           "optional": true,
           "type": "unknown",
-          "declaration": "src/shared/orderExtract.ts:26"
+          "declaration": "src/shared/orderExtract.ts:28"
         },
         {
           "field": "lines",
           "optional": true,
           "type": "unknown",
-          "declaration": "src/shared/orderExtract.ts:27"
+          "declaration": "src/shared/orderExtract.ts:29"
         },
         {
           "field": "note",
           "optional": true,
           "type": "unknown",
-          "declaration": "src/shared/orderExtract.ts:28"
+          "declaration": "src/shared/orderExtract.ts:30"
         }
       ]
     },
     {
       "model": "ExtractedLine",
-      "declaration": "src/shared/orderExtract.ts:31",
+      "declaration": "src/shared/orderExtract.ts:33",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42490,37 +42685,37 @@
           "field": "itemId",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:32"
+          "declaration": "src/shared/orderExtract.ts:34"
         },
         {
           "field": "name",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:34"
+          "declaration": "src/shared/orderExtract.ts:36"
         },
         {
           "field": "qty",
           "optional": false,
           "type": "number",
-          "declaration": "src/shared/orderExtract.ts:35"
+          "declaration": "src/shared/orderExtract.ts:37"
         },
         {
           "field": "isBox",
           "optional": true,
           "type": "boolean",
-          "declaration": "src/shared/orderExtract.ts:37"
+          "declaration": "src/shared/orderExtract.ts:39"
         },
         {
           "field": "source",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:39"
+          "declaration": "src/shared/orderExtract.ts:41"
         }
       ]
     },
     {
       "model": "ExtractResult",
-      "declaration": "src/shared/orderExtract.ts:42",
+      "declaration": "src/shared/orderExtract.ts:44",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42528,43 +42723,43 @@
           "field": "partnerId",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:43"
+          "declaration": "src/shared/orderExtract.ts:45"
         },
         {
           "field": "partnerName",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:44"
+          "declaration": "src/shared/orderExtract.ts:46"
         },
         {
           "field": "deliveryDate",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:45"
+          "declaration": "src/shared/orderExtract.ts:47"
         },
         {
           "field": "note",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:46"
+          "declaration": "src/shared/orderExtract.ts:48"
         },
         {
           "field": "lines",
           "optional": false,
           "type": "ExtractedLine[]",
-          "declaration": "src/shared/orderExtract.ts:47"
+          "declaration": "src/shared/orderExtract.ts:49"
         },
         {
           "field": "rejected",
           "optional": false,
           "type": "{ text: string; reason: string }[]",
-          "declaration": "src/shared/orderExtract.ts:49"
+          "declaration": "src/shared/orderExtract.ts:51"
         }
       ]
     },
     {
       "model": "CatalogItem",
-      "declaration": "src/shared/orderExtract.ts:52",
+      "declaration": "src/shared/orderExtract.ts:54",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42572,25 +42767,25 @@
           "field": "id",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:52"
+          "declaration": "src/shared/orderExtract.ts:54"
         },
         {
           "field": "name",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:52"
+          "declaration": "src/shared/orderExtract.ts:54"
         },
         {
           "field": "spec",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:52"
+          "declaration": "src/shared/orderExtract.ts:54"
         }
       ]
     },
     {
       "model": "CatalogPartner",
-      "declaration": "src/shared/orderExtract.ts:53",
+      "declaration": "src/shared/orderExtract.ts:55",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42598,13 +42793,13 @@
           "field": "id",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:53"
+          "declaration": "src/shared/orderExtract.ts:55"
         },
         {
           "field": "name",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/orderExtract.ts:53"
+          "declaration": "src/shared/orderExtract.ts:55"
         }
       ]
     },
@@ -54187,7 +54382,7 @@
         {
           "field": "balance",
           "optional": true,
-          "type": "{\n    previous: number;\n    currentTrade: number;\n    received: number;\n    closing: number;\n  }",
+          "type": "{\r\n    previous: number;\r\n    currentTrade: number;\r\n    received: number;\r\n    closing: number;\r\n  }",
           "declaration": "src/features/statements/infrastructure/statementPrint.ts:12"
         }
       ]
@@ -54765,7 +54960,7 @@
         {
           "field": "onApplyStatement",
           "optional": true,
-          "type": "(input: {\n    command: StatementCommand;\n    statement: IssuedStatement;\n    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number; sourceLineIndices?: number[] }[];\n    poIds: string[];\n    newPoItems: ({ itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string; sourceLineIndex?: number } & Partial<PurchaseUnitSnapshot>)[];\n  }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>",
+          "type": "(input: {\r\n    command: StatementCommand;\r\n    statement: IssuedStatement;\r\n    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number; sourceLineIndices?: number[] }[];\r\n    poIds: string[];\r\n    newPoItems: ({ itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string; sourceLineIndex?: number } & Partial<PurchaseUnitSnapshot>)[];\r\n  }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>",
           "declaration": "components/TradeStatement.tsx:145"
         },
         {
@@ -82337,6 +82532,40 @@
       ]
     },
     {
+      "model": "StoredPending",
+      "declaration": "components/OemManager.tsx:37",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "value",
+          "optional": false,
+          "type": "T | null",
+          "declarations": [
+            "components/OemManager.tsx:37"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "encoded",
+          "optional": false,
+          "type": "string | null",
+          "declarations": [
+            "components/OemManager.tsx:37"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "error",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "components/OemManager.tsx:37"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
       "model": "Props",
       "declaration": "components/CategoryManager.tsx:14",
       "scope": "checker-resolved-properties-only",
@@ -83547,29 +83776,11 @@
     },
     {
       "model": "RawExtracted",
-      "declaration": "src/shared/orderExtract.ts:24",
+      "declaration": "src/shared/orderExtract.ts:26",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
           "field": "partnerId",
-          "optional": true,
-          "type": "unknown",
-          "declarations": [
-            "src/shared/orderExtract.ts:25"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "deliveryDate",
-          "optional": true,
-          "type": "unknown",
-          "declarations": [
-            "src/shared/orderExtract.ts:26"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "lines",
           "optional": true,
           "type": "unknown",
           "declarations": [
@@ -83578,11 +83789,29 @@
           "inherited": false
         },
         {
-          "field": "note",
+          "field": "deliveryDate",
           "optional": true,
           "type": "unknown",
           "declarations": [
             "src/shared/orderExtract.ts:28"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "lines",
+          "optional": true,
+          "type": "unknown",
+          "declarations": [
+            "src/shared/orderExtract.ts:29"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "note",
+          "optional": true,
+          "type": "unknown",
+          "declarations": [
+            "src/shared/orderExtract.ts:30"
           ],
           "inherited": false
         }
@@ -83590,20 +83819,11 @@
     },
     {
       "model": "ExtractedLine",
-      "declaration": "src/shared/orderExtract.ts:31",
+      "declaration": "src/shared/orderExtract.ts:33",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
           "field": "itemId",
-          "optional": false,
-          "type": "string",
-          "declarations": [
-            "src/shared/orderExtract.ts:32"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "name",
           "optional": false,
           "type": "string",
           "declarations": [
@@ -83612,11 +83832,20 @@
           "inherited": false
         },
         {
+          "field": "name",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/orderExtract.ts:36"
+          ],
+          "inherited": false
+        },
+        {
           "field": "qty",
           "optional": false,
           "type": "number",
           "declarations": [
-            "src/shared/orderExtract.ts:35"
+            "src/shared/orderExtract.ts:37"
           ],
           "inherited": false
         },
@@ -83625,7 +83854,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "src/shared/orderExtract.ts:37"
+            "src/shared/orderExtract.ts:39"
           ],
           "inherited": false
         },
@@ -83634,7 +83863,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/orderExtract.ts:39"
+            "src/shared/orderExtract.ts:41"
           ],
           "inherited": false
         }
@@ -83642,29 +83871,11 @@
     },
     {
       "model": "ExtractResult",
-      "declaration": "src/shared/orderExtract.ts:42",
+      "declaration": "src/shared/orderExtract.ts:44",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
           "field": "partnerId",
-          "optional": true,
-          "type": "string | undefined",
-          "declarations": [
-            "src/shared/orderExtract.ts:43"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "partnerName",
-          "optional": true,
-          "type": "string | undefined",
-          "declarations": [
-            "src/shared/orderExtract.ts:44"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "deliveryDate",
           "optional": true,
           "type": "string | undefined",
           "declarations": [
@@ -83673,7 +83884,7 @@
           "inherited": false
         },
         {
-          "field": "note",
+          "field": "partnerName",
           "optional": true,
           "type": "string | undefined",
           "declarations": [
@@ -83682,11 +83893,29 @@
           "inherited": false
         },
         {
+          "field": "deliveryDate",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "src/shared/orderExtract.ts:47"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "note",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "src/shared/orderExtract.ts:48"
+          ],
+          "inherited": false
+        },
+        {
           "field": "lines",
           "optional": false,
           "type": "ExtractedLine[]",
           "declarations": [
-            "src/shared/orderExtract.ts:47"
+            "src/shared/orderExtract.ts:49"
           ],
           "inherited": false
         },
@@ -83695,7 +83924,7 @@
           "optional": false,
           "type": "{ text: string; reason: string; }[]",
           "declarations": [
-            "src/shared/orderExtract.ts:49"
+            "src/shared/orderExtract.ts:51"
           ],
           "inherited": false
         }
@@ -83703,7 +83932,7 @@
     },
     {
       "model": "CatalogItem",
-      "declaration": "src/shared/orderExtract.ts:52",
+      "declaration": "src/shared/orderExtract.ts:54",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -83711,7 +83940,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/orderExtract.ts:52"
+            "src/shared/orderExtract.ts:54"
           ],
           "inherited": false
         },
@@ -83720,7 +83949,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/orderExtract.ts:52"
+            "src/shared/orderExtract.ts:54"
           ],
           "inherited": false
         },
@@ -83729,7 +83958,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/orderExtract.ts:52"
+            "src/shared/orderExtract.ts:54"
           ],
           "inherited": false
         }
@@ -83737,7 +83966,7 @@
     },
     {
       "model": "CatalogPartner",
-      "declaration": "src/shared/orderExtract.ts:53",
+      "declaration": "src/shared/orderExtract.ts:55",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -83745,7 +83974,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/orderExtract.ts:53"
+            "src/shared/orderExtract.ts:55"
           ],
           "inherited": false
         },
@@ -83754,7 +83983,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/orderExtract.ts:53"
+            "src/shared/orderExtract.ts:55"
           ],
           "inherited": false
         }
@@ -87176,7 +87405,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.es5.d.ts:1329"
+            "../../taebaekfood/node_modules/typescript/lib/lib.es5.d.ts:1329"
           ],
           "inherited": true
         },
@@ -87185,7 +87414,7 @@
           "optional": false,
           "type": "{ [x: number]: boolean | undefined; length?: boolean | undefined; toString?: boolean | undefined; toLocaleString?: boolean | undefined; pop?: boolean | undefined; push?: boolean | undefined; ... 35 more ...; readonly [Symbol.unscopables]?: boolean | undefined; }",
           "declarations": [
-            "node_modules/typescript/lib/lib.es2015.symbol.wellknown.d.ts:97"
+            "../../taebaekfood/node_modules/typescript/lib/lib.es2015.symbol.wellknown.d.ts:97"
           ],
           "inherited": true
         }
@@ -91058,7 +91287,7 @@
           "optional": false,
           "type": "Navigator",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36364"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36364"
           ],
           "inherited": true
         },
@@ -91067,7 +91296,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36370"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36370"
           ],
           "inherited": true
         },
@@ -91076,7 +91305,7 @@
           "optional": false,
           "type": "CookieStore",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36376"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36376"
           ],
           "inherited": true
         },
@@ -91085,7 +91314,7 @@
           "optional": false,
           "type": "CustomElementRegistry",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36382"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36382"
           ],
           "inherited": true
         },
@@ -91094,7 +91323,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36388"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36388"
           ],
           "inherited": true
         },
@@ -91103,7 +91332,7 @@
           "optional": false,
           "type": "Document",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36394"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36394"
           ],
           "inherited": true
         },
@@ -91112,7 +91341,7 @@
           "optional": false,
           "type": "Event | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36401"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36401"
           ],
           "inherited": true
         },
@@ -91121,7 +91350,7 @@
           "optional": false,
           "type": "External",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36408"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36408"
           ],
           "inherited": true
         },
@@ -91130,7 +91359,7 @@
           "optional": false,
           "type": "Element | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36414"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36414"
           ],
           "inherited": true
         },
@@ -91139,7 +91368,7 @@
           "optional": false,
           "type": "Window",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36420"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36420"
           ],
           "inherited": true
         },
@@ -91148,7 +91377,7 @@
           "optional": false,
           "type": "History",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36426"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36426"
           ],
           "inherited": true
         },
@@ -91157,7 +91386,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36432"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36432"
           ],
           "inherited": true
         },
@@ -91166,7 +91395,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36438"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36438"
           ],
           "inherited": true
         },
@@ -91175,7 +91404,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36444"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36444"
           ],
           "inherited": true
         },
@@ -91184,7 +91413,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36457"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36457"
           ],
           "inherited": true
         },
@@ -91193,7 +91422,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36463"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36463"
           ],
           "inherited": true
         },
@@ -91202,7 +91431,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36469"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36469"
           ],
           "inherited": true
         },
@@ -91211,7 +91440,7 @@
           "optional": false,
           "type": "Navigator",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36475"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36475"
           ],
           "inherited": true
         },
@@ -91220,7 +91449,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceMotionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36481"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36481"
           ],
           "inherited": true
         },
@@ -91229,7 +91458,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceOrientationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36487"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36487"
           ],
           "inherited": true
         },
@@ -91238,7 +91467,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceOrientationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36493"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36493"
           ],
           "inherited": true
         },
@@ -91247,7 +91476,7 @@
           "optional": false,
           "type": "((this: Window, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36499"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36499"
           ],
           "inherited": true
         },
@@ -91256,7 +91485,7 @@
           "optional": false,
           "type": "any",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36505"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36505"
           ],
           "inherited": true
         },
@@ -91265,7 +91494,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36512"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36512"
           ],
           "inherited": true
         },
@@ -91274,7 +91503,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36518"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36518"
           ],
           "inherited": true
         },
@@ -91283,7 +91512,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36524"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36524"
           ],
           "inherited": true
         },
@@ -91292,7 +91521,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36530"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36530"
           ],
           "inherited": true
         },
@@ -91301,7 +91530,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36532"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36532"
           ],
           "inherited": true
         },
@@ -91310,7 +91539,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36534"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36534"
           ],
           "inherited": true
         },
@@ -91319,7 +91548,7 @@
           "optional": false,
           "type": "Window",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36540"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36540"
           ],
           "inherited": true
         },
@@ -91328,7 +91557,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36546"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36546"
           ],
           "inherited": true
         },
@@ -91337,7 +91566,7 @@
           "optional": false,
           "type": "Screen",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36552"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36552"
           ],
           "inherited": true
         },
@@ -91346,7 +91575,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36558"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36558"
           ],
           "inherited": true
         },
@@ -91355,7 +91584,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36564"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36564"
           ],
           "inherited": true
         },
@@ -91364,7 +91593,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36570"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36570"
           ],
           "inherited": true
         },
@@ -91373,7 +91602,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36576"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36576"
           ],
           "inherited": true
         },
@@ -91382,7 +91611,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36582"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36582"
           ],
           "inherited": true
         },
@@ -91391,7 +91620,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36588"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36588"
           ],
           "inherited": true
         },
@@ -91400,7 +91629,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36594"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36594"
           ],
           "inherited": true
         },
@@ -91409,7 +91638,7 @@
           "optional": false,
           "type": "Window & typeof globalThis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36600"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36600"
           ],
           "inherited": true
         },
@@ -91418,7 +91647,7 @@
           "optional": false,
           "type": "SpeechSynthesis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36606"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36606"
           ],
           "inherited": true
         },
@@ -91427,7 +91656,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36613"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36613"
           ],
           "inherited": true
         },
@@ -91436,7 +91665,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36619"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36619"
           ],
           "inherited": true
         },
@@ -91445,7 +91674,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36625"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36625"
           ],
           "inherited": true
         },
@@ -91454,7 +91683,7 @@
           "optional": false,
           "type": "Window | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36631"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36631"
           ],
           "inherited": true
         },
@@ -91463,7 +91692,7 @@
           "optional": false,
           "type": "VisualViewport | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36637"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36637"
           ],
           "inherited": true
         },
@@ -91472,7 +91701,7 @@
           "optional": false,
           "type": "Window & typeof globalThis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36643"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36643"
           ],
           "inherited": true
         },
@@ -91490,7 +91719,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2919"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -91499,7 +91728,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2920"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -91508,7 +91737,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2921"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -91517,7 +91746,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2922"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -91526,7 +91755,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2923"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -91535,7 +91764,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2924"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -91544,7 +91773,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2925"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -91553,7 +91782,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:3397"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -91571,7 +91800,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: UIEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12743"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12743"
           ],
           "inherited": true
         },
@@ -91580,7 +91809,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12745"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12745"
           ],
           "inherited": true
         },
@@ -91589,7 +91818,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12747"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12747"
           ],
           "inherited": true
         },
@@ -91598,7 +91827,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12749"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12749"
           ],
           "inherited": true
         },
@@ -91607,7 +91836,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12751"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12751"
           ],
           "inherited": true
         },
@@ -91616,7 +91845,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12753"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12753"
           ],
           "inherited": true
         },
@@ -91625,7 +91854,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: InputEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12755"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12755"
           ],
           "inherited": true
         },
@@ -91634,7 +91863,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12757"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12757"
           ],
           "inherited": true
         },
@@ -91643,7 +91872,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ToggleEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12759"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12759"
           ],
           "inherited": true
         },
@@ -91652,7 +91881,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FocusEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12761"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12761"
           ],
           "inherited": true
         },
@@ -91661,7 +91890,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12763"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12763"
           ],
           "inherited": true
         },
@@ -91670,7 +91899,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12765"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12765"
           ],
           "inherited": true
         },
@@ -91679,7 +91908,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12767"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12767"
           ],
           "inherited": true
         },
@@ -91688,7 +91917,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12769"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12769"
           ],
           "inherited": true
         },
@@ -91697,7 +91926,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12771"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12771"
           ],
           "inherited": true
         },
@@ -91706,7 +91935,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12773"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12773"
           ],
           "inherited": true
         },
@@ -91715,7 +91944,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12775"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12775"
           ],
           "inherited": true
         },
@@ -91724,7 +91953,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12777"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12777"
           ],
           "inherited": true
         },
@@ -91733,7 +91962,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12779"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12779"
           ],
           "inherited": true
         },
@@ -91742,7 +91971,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12781"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12781"
           ],
           "inherited": true
         },
@@ -91751,7 +91980,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12783"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12783"
           ],
           "inherited": true
         },
@@ -91760,7 +91989,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12785"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12785"
           ],
           "inherited": true
         },
@@ -91769,7 +91998,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12787"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12787"
           ],
           "inherited": true
         },
@@ -91778,7 +92007,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12789"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12789"
           ],
           "inherited": true
         },
@@ -91787,7 +92016,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12791"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12791"
           ],
           "inherited": true
         },
@@ -91796,7 +92025,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12793"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12793"
           ],
           "inherited": true
         },
@@ -91805,7 +92034,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12795"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12795"
           ],
           "inherited": true
         },
@@ -91814,7 +92043,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12797"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12797"
           ],
           "inherited": true
         },
@@ -91823,7 +92052,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12799"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12799"
           ],
           "inherited": true
         },
@@ -91832,7 +92061,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12801"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12801"
           ],
           "inherited": true
         },
@@ -91841,7 +92070,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12803"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12803"
           ],
           "inherited": true
         },
@@ -91850,7 +92079,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12805"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12805"
           ],
           "inherited": true
         },
@@ -91859,7 +92088,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12807"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12807"
           ],
           "inherited": true
         },
@@ -91868,7 +92097,7 @@
           "optional": false,
           "type": "OnErrorEventHandler",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12809"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12809"
           ],
           "inherited": true
         },
@@ -91877,7 +92106,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FocusEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12811"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12811"
           ],
           "inherited": true
         },
@@ -91886,7 +92115,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FormDataEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12813"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12813"
           ],
           "inherited": true
         },
@@ -91895,7 +92124,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12815"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12815"
           ],
           "inherited": true
         },
@@ -91904,7 +92133,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12817"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12817"
           ],
           "inherited": true
         },
@@ -91913,7 +92142,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12819"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12819"
           ],
           "inherited": true
         },
@@ -91922,7 +92151,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12821"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12821"
           ],
           "inherited": true
         },
@@ -91931,7 +92160,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12827"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12827"
           ],
           "inherited": true
         },
@@ -91940,7 +92169,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12829"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12829"
           ],
           "inherited": true
         },
@@ -91949,7 +92178,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12831"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12831"
           ],
           "inherited": true
         },
@@ -91958,7 +92187,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12833"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12833"
           ],
           "inherited": true
         },
@@ -91967,7 +92196,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12835"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12835"
           ],
           "inherited": true
         },
@@ -91976,7 +92205,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12837"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12837"
           ],
           "inherited": true
         },
@@ -91985,7 +92214,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12839"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12839"
           ],
           "inherited": true
         },
@@ -91994,7 +92223,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12841"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12841"
           ],
           "inherited": true
         },
@@ -92003,7 +92232,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12843"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12843"
           ],
           "inherited": true
         },
@@ -92012,7 +92241,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12845"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12845"
           ],
           "inherited": true
         },
@@ -92021,7 +92250,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12847"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12847"
           ],
           "inherited": true
         },
@@ -92030,7 +92259,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12849"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12849"
           ],
           "inherited": true
         },
@@ -92039,7 +92268,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12851"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12851"
           ],
           "inherited": true
         },
@@ -92048,7 +92277,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12853"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12853"
           ],
           "inherited": true
         },
@@ -92057,7 +92286,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12855"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12855"
           ],
           "inherited": true
         },
@@ -92066,7 +92295,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12857"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12857"
           ],
           "inherited": true
         },
@@ -92075,7 +92304,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12859"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12859"
           ],
           "inherited": true
         },
@@ -92084,7 +92313,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12861"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12861"
           ],
           "inherited": true
         },
@@ -92093,7 +92322,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12863"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12863"
           ],
           "inherited": true
         },
@@ -92102,7 +92331,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12865"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12865"
           ],
           "inherited": true
         },
@@ -92111,7 +92340,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12867"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12867"
           ],
           "inherited": true
         },
@@ -92120,7 +92349,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12869"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12869"
           ],
           "inherited": true
         },
@@ -92129,7 +92358,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12871"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12871"
           ],
           "inherited": true
         },
@@ -92138,7 +92367,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12873"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12873"
           ],
           "inherited": true
         },
@@ -92147,7 +92376,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12875"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12875"
           ],
           "inherited": true
         },
@@ -92156,7 +92385,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12881"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12881"
           ],
           "inherited": true
         },
@@ -92165,7 +92394,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12883"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12883"
           ],
           "inherited": true
         },
@@ -92174,7 +92403,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ProgressEvent<EventTarget>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12885"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12885"
           ],
           "inherited": true
         },
@@ -92183,7 +92412,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12887"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12887"
           ],
           "inherited": true
         },
@@ -92192,7 +92421,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12889"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12889"
           ],
           "inherited": true
         },
@@ -92201,7 +92430,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: UIEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12891"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12891"
           ],
           "inherited": true
         },
@@ -92210,7 +92439,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12893"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12893"
           ],
           "inherited": true
         },
@@ -92219,7 +92448,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12895"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12895"
           ],
           "inherited": true
         },
@@ -92228,7 +92457,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: SecurityPolicyViolationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12897"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12897"
           ],
           "inherited": true
         },
@@ -92237,7 +92466,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12899"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12899"
           ],
           "inherited": true
         },
@@ -92246,7 +92475,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12901"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12901"
           ],
           "inherited": true
         },
@@ -92255,7 +92484,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12903"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12903"
           ],
           "inherited": true
         },
@@ -92264,7 +92493,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12905"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12905"
           ],
           "inherited": true
         },
@@ -92273,7 +92502,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12907"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12907"
           ],
           "inherited": true
         },
@@ -92282,7 +92511,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12909"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12909"
           ],
           "inherited": true
         },
@@ -92291,7 +92520,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12911"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12911"
           ],
           "inherited": true
         },
@@ -92300,7 +92529,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: SubmitEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12913"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12913"
           ],
           "inherited": true
         },
@@ -92309,7 +92538,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12915"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12915"
           ],
           "inherited": true
         },
@@ -92318,7 +92547,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12917"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12917"
           ],
           "inherited": true
         },
@@ -92327,7 +92556,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ToggleEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12919"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12919"
           ],
           "inherited": true
         },
@@ -92336,7 +92565,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12921"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12921"
           ],
           "inherited": true
         },
@@ -92345,7 +92574,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12923"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12923"
           ],
           "inherited": true
         },
@@ -92354,7 +92583,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12925"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12925"
           ],
           "inherited": true
         },
@@ -92363,7 +92592,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12927"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12927"
           ],
           "inherited": true
         },
@@ -92372,7 +92601,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12929"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12929"
           ],
           "inherited": true
         },
@@ -92381,7 +92610,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12931"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12931"
           ],
           "inherited": true
         },
@@ -92390,7 +92619,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12933"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12933"
           ],
           "inherited": true
         },
@@ -92399,7 +92628,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12935"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12935"
           ],
           "inherited": true
         },
@@ -92408,7 +92637,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12937"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12937"
           ],
           "inherited": true
         },
@@ -92417,7 +92646,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12939"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12939"
           ],
           "inherited": true
         },
@@ -92426,7 +92655,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12945"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12945"
           ],
           "inherited": true
         },
@@ -92435,7 +92664,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12951"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12951"
           ],
           "inherited": true
         },
@@ -92444,7 +92673,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12957"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12957"
           ],
           "inherited": true
         },
@@ -92453,7 +92682,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12963"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12963"
           ],
           "inherited": true
         },
@@ -92462,7 +92691,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: WheelEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12965"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12965"
           ],
           "inherited": true
         },
@@ -92471,7 +92700,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36832"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36832"
           ],
           "inherited": true
         },
@@ -92480,7 +92709,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36834"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36834"
           ],
           "inherited": true
         },
@@ -92489,7 +92718,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: BeforeUnloadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36836"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36836"
           ],
           "inherited": true
         },
@@ -92498,7 +92727,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: GamepadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36838"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36838"
           ],
           "inherited": true
         },
@@ -92507,7 +92736,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: GamepadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36840"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36840"
           ],
           "inherited": true
         },
@@ -92516,7 +92745,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: HashChangeEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36842"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36842"
           ],
           "inherited": true
         },
@@ -92525,7 +92754,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36844"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36844"
           ],
           "inherited": true
         },
@@ -92534,7 +92763,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: MessageEvent<any>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36846"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36846"
           ],
           "inherited": true
         },
@@ -92543,7 +92772,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: MessageEvent<any>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36848"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36848"
           ],
           "inherited": true
         },
@@ -92552,7 +92781,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36850"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36850"
           ],
           "inherited": true
         },
@@ -92561,7 +92790,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36852"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36852"
           ],
           "inherited": true
         },
@@ -92570,7 +92799,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageTransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36854"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36854"
           ],
           "inherited": true
         },
@@ -92579,7 +92808,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageRevealEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36856"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36856"
           ],
           "inherited": true
         },
@@ -92588,7 +92817,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageTransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36858"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36858"
           ],
           "inherited": true
         },
@@ -92597,7 +92826,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageSwapEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36860"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36860"
           ],
           "inherited": true
         },
@@ -92606,7 +92835,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PopStateEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36862"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36862"
           ],
           "inherited": true
         },
@@ -92615,7 +92844,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PromiseRejectionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36864"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36864"
           ],
           "inherited": true
         },
@@ -92624,7 +92853,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: StorageEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36866"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36866"
           ],
           "inherited": true
         },
@@ -92633,7 +92862,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PromiseRejectionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36868"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36868"
           ],
           "inherited": true
         },
@@ -92642,7 +92871,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36874"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36874"
           ],
           "inherited": true
         },
@@ -92651,7 +92880,7 @@
           "optional": false,
           "type": "Storage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36883"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36883"
           ],
           "inherited": true
         },
@@ -92660,7 +92889,7 @@
           "optional": false,
           "type": "CacheStorage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36892"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36892"
           ],
           "inherited": true
         },
@@ -92669,7 +92898,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36894"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36894"
           ],
           "inherited": true
         },
@@ -92678,7 +92907,7 @@
           "optional": false,
           "type": "Crypto",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36896"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36896"
           ],
           "inherited": true
         },
@@ -92687,7 +92916,7 @@
           "optional": false,
           "type": "IDBFactory",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36898"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36898"
           ],
           "inherited": true
         },
@@ -92696,7 +92925,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36900"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36900"
           ],
           "inherited": true
         },
@@ -92705,7 +92934,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36902"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36902"
           ],
           "inherited": true
         },
@@ -92714,7 +92943,7 @@
           "optional": false,
           "type": "Performance",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36904"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36904"
           ],
           "inherited": true
         },
@@ -92723,7 +92952,7 @@
           "optional": false,
           "type": "Storage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36932"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36932"
           ],
           "inherited": true
         }
@@ -97836,7 +98065,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.es2015.collection.d.ts:59"
+            "../../taebaekfood/node_modules/typescript/lib/lib.es2015.collection.d.ts:59"
           ],
           "inherited": true
         }
@@ -106242,7 +106471,7 @@
           "optional": false,
           "type": "Navigator",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36364"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36364"
           ],
           "inherited": true
         },
@@ -106251,7 +106480,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36370"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36370"
           ],
           "inherited": true
         },
@@ -106260,7 +106489,7 @@
           "optional": false,
           "type": "CookieStore",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36376"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36376"
           ],
           "inherited": true
         },
@@ -106269,7 +106498,7 @@
           "optional": false,
           "type": "CustomElementRegistry",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36382"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36382"
           ],
           "inherited": true
         },
@@ -106278,7 +106507,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36388"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36388"
           ],
           "inherited": true
         },
@@ -106287,7 +106516,7 @@
           "optional": false,
           "type": "Document",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36394"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36394"
           ],
           "inherited": true
         },
@@ -106296,7 +106525,7 @@
           "optional": false,
           "type": "Event | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36401"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36401"
           ],
           "inherited": true
         },
@@ -106305,7 +106534,7 @@
           "optional": false,
           "type": "External",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36408"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36408"
           ],
           "inherited": true
         },
@@ -106314,7 +106543,7 @@
           "optional": false,
           "type": "Element | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36414"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36414"
           ],
           "inherited": true
         },
@@ -106323,7 +106552,7 @@
           "optional": false,
           "type": "Window",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36420"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36420"
           ],
           "inherited": true
         },
@@ -106332,7 +106561,7 @@
           "optional": false,
           "type": "History",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36426"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36426"
           ],
           "inherited": true
         },
@@ -106341,7 +106570,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36432"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36432"
           ],
           "inherited": true
         },
@@ -106350,7 +106579,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36438"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36438"
           ],
           "inherited": true
         },
@@ -106359,7 +106588,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36444"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36444"
           ],
           "inherited": true
         },
@@ -106368,7 +106597,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36457"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36457"
           ],
           "inherited": true
         },
@@ -106377,7 +106606,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36463"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36463"
           ],
           "inherited": true
         },
@@ -106386,7 +106615,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36469"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36469"
           ],
           "inherited": true
         },
@@ -106395,7 +106624,7 @@
           "optional": false,
           "type": "Navigator",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36475"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36475"
           ],
           "inherited": true
         },
@@ -106404,7 +106633,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceMotionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36481"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36481"
           ],
           "inherited": true
         },
@@ -106413,7 +106642,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceOrientationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36487"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36487"
           ],
           "inherited": true
         },
@@ -106422,7 +106651,7 @@
           "optional": false,
           "type": "((this: Window, ev: DeviceOrientationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36493"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36493"
           ],
           "inherited": true
         },
@@ -106431,7 +106660,7 @@
           "optional": false,
           "type": "((this: Window, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36499"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36499"
           ],
           "inherited": true
         },
@@ -106440,7 +106669,7 @@
           "optional": false,
           "type": "any",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36505"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36505"
           ],
           "inherited": true
         },
@@ -106449,7 +106678,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36512"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36512"
           ],
           "inherited": true
         },
@@ -106458,7 +106687,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36518"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36518"
           ],
           "inherited": true
         },
@@ -106467,7 +106696,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36524"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36524"
           ],
           "inherited": true
         },
@@ -106476,7 +106705,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36530"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36530"
           ],
           "inherited": true
         },
@@ -106485,7 +106714,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36532"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36532"
           ],
           "inherited": true
         },
@@ -106494,7 +106723,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36534"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36534"
           ],
           "inherited": true
         },
@@ -106503,7 +106732,7 @@
           "optional": false,
           "type": "Window",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36540"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36540"
           ],
           "inherited": true
         },
@@ -106512,7 +106741,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36546"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36546"
           ],
           "inherited": true
         },
@@ -106521,7 +106750,7 @@
           "optional": false,
           "type": "Screen",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36552"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36552"
           ],
           "inherited": true
         },
@@ -106530,7 +106759,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36558"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36558"
           ],
           "inherited": true
         },
@@ -106539,7 +106768,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36564"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36564"
           ],
           "inherited": true
         },
@@ -106548,7 +106777,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36570"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36570"
           ],
           "inherited": true
         },
@@ -106557,7 +106786,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36576"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36576"
           ],
           "inherited": true
         },
@@ -106566,7 +106795,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36582"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36582"
           ],
           "inherited": true
         },
@@ -106575,7 +106804,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36588"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36588"
           ],
           "inherited": true
         },
@@ -106584,7 +106813,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36594"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36594"
           ],
           "inherited": true
         },
@@ -106593,7 +106822,7 @@
           "optional": false,
           "type": "Window & typeof globalThis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36600"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36600"
           ],
           "inherited": true
         },
@@ -106602,7 +106831,7 @@
           "optional": false,
           "type": "SpeechSynthesis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36606"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36606"
           ],
           "inherited": true
         },
@@ -106611,7 +106840,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36613"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36613"
           ],
           "inherited": true
         },
@@ -106620,7 +106849,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36619"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36619"
           ],
           "inherited": true
         },
@@ -106629,7 +106858,7 @@
           "optional": false,
           "type": "BarProp",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36625"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36625"
           ],
           "inherited": true
         },
@@ -106638,7 +106867,7 @@
           "optional": false,
           "type": "Window | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36631"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36631"
           ],
           "inherited": true
         },
@@ -106647,7 +106876,7 @@
           "optional": false,
           "type": "VisualViewport | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36637"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36637"
           ],
           "inherited": true
         },
@@ -106656,7 +106885,7 @@
           "optional": false,
           "type": "Window & typeof globalThis",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36643"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36643"
           ],
           "inherited": true
         },
@@ -106674,7 +106903,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2919"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -106683,7 +106912,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2920"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -106692,7 +106921,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2921"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -106701,7 +106930,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2922"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -106710,7 +106939,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2923"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -106719,7 +106948,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2924"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -106728,7 +106957,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2925"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -106737,7 +106966,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:3397"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -106755,7 +106984,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: UIEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12743"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12743"
           ],
           "inherited": true
         },
@@ -106764,7 +106993,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12745"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12745"
           ],
           "inherited": true
         },
@@ -106773,7 +107002,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12747"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12747"
           ],
           "inherited": true
         },
@@ -106782,7 +107011,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12749"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12749"
           ],
           "inherited": true
         },
@@ -106791,7 +107020,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: AnimationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12751"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12751"
           ],
           "inherited": true
         },
@@ -106800,7 +107029,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12753"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12753"
           ],
           "inherited": true
         },
@@ -106809,7 +107038,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: InputEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12755"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12755"
           ],
           "inherited": true
         },
@@ -106818,7 +107047,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12757"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12757"
           ],
           "inherited": true
         },
@@ -106827,7 +107056,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ToggleEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12759"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12759"
           ],
           "inherited": true
         },
@@ -106836,7 +107065,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FocusEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12761"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12761"
           ],
           "inherited": true
         },
@@ -106845,7 +107074,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12763"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12763"
           ],
           "inherited": true
         },
@@ -106854,7 +107083,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12765"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12765"
           ],
           "inherited": true
         },
@@ -106863,7 +107092,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12767"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12767"
           ],
           "inherited": true
         },
@@ -106872,7 +107101,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12769"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12769"
           ],
           "inherited": true
         },
@@ -106881,7 +107110,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12771"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12771"
           ],
           "inherited": true
         },
@@ -106890,7 +107119,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12773"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12773"
           ],
           "inherited": true
         },
@@ -106899,7 +107128,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12775"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12775"
           ],
           "inherited": true
         },
@@ -106908,7 +107137,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12777"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12777"
           ],
           "inherited": true
         },
@@ -106917,7 +107146,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12779"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12779"
           ],
           "inherited": true
         },
@@ -106926,7 +107155,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12781"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12781"
           ],
           "inherited": true
         },
@@ -106935,7 +107164,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12783"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12783"
           ],
           "inherited": true
         },
@@ -106944,7 +107173,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12785"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12785"
           ],
           "inherited": true
         },
@@ -106953,7 +107182,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12787"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12787"
           ],
           "inherited": true
         },
@@ -106962,7 +107191,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12789"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12789"
           ],
           "inherited": true
         },
@@ -106971,7 +107200,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12791"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12791"
           ],
           "inherited": true
         },
@@ -106980,7 +107209,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12793"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12793"
           ],
           "inherited": true
         },
@@ -106989,7 +107218,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12795"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12795"
           ],
           "inherited": true
         },
@@ -106998,7 +107227,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12797"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12797"
           ],
           "inherited": true
         },
@@ -107007,7 +107236,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12799"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12799"
           ],
           "inherited": true
         },
@@ -107016,7 +107245,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: DragEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12801"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12801"
           ],
           "inherited": true
         },
@@ -107025,7 +107254,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12803"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12803"
           ],
           "inherited": true
         },
@@ -107034,7 +107263,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12805"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12805"
           ],
           "inherited": true
         },
@@ -107043,7 +107272,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12807"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12807"
           ],
           "inherited": true
         },
@@ -107052,7 +107281,7 @@
           "optional": false,
           "type": "OnErrorEventHandler",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12809"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12809"
           ],
           "inherited": true
         },
@@ -107061,7 +107290,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FocusEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12811"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12811"
           ],
           "inherited": true
         },
@@ -107070,7 +107299,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: FormDataEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12813"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12813"
           ],
           "inherited": true
         },
@@ -107079,7 +107308,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12815"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12815"
           ],
           "inherited": true
         },
@@ -107088,7 +107317,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12817"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12817"
           ],
           "inherited": true
         },
@@ -107097,7 +107326,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12819"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12819"
           ],
           "inherited": true
         },
@@ -107106,7 +107335,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12821"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12821"
           ],
           "inherited": true
         },
@@ -107115,7 +107344,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12827"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12827"
           ],
           "inherited": true
         },
@@ -107124,7 +107353,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: KeyboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12829"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12829"
           ],
           "inherited": true
         },
@@ -107133,7 +107362,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12831"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12831"
           ],
           "inherited": true
         },
@@ -107142,7 +107371,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12833"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12833"
           ],
           "inherited": true
         },
@@ -107151,7 +107380,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12835"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12835"
           ],
           "inherited": true
         },
@@ -107160,7 +107389,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12837"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12837"
           ],
           "inherited": true
         },
@@ -107169,7 +107398,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12839"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12839"
           ],
           "inherited": true
         },
@@ -107178,7 +107407,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12841"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12841"
           ],
           "inherited": true
         },
@@ -107187,7 +107416,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12843"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12843"
           ],
           "inherited": true
         },
@@ -107196,7 +107425,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12845"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12845"
           ],
           "inherited": true
         },
@@ -107205,7 +107434,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12847"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12847"
           ],
           "inherited": true
         },
@@ -107214,7 +107443,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12849"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12849"
           ],
           "inherited": true
         },
@@ -107223,7 +107452,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12851"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12851"
           ],
           "inherited": true
         },
@@ -107232,7 +107461,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: MouseEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12853"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12853"
           ],
           "inherited": true
         },
@@ -107241,7 +107470,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ClipboardEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12855"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12855"
           ],
           "inherited": true
         },
@@ -107250,7 +107479,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12857"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12857"
           ],
           "inherited": true
         },
@@ -107259,7 +107488,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12859"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12859"
           ],
           "inherited": true
         },
@@ -107268,7 +107497,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12861"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12861"
           ],
           "inherited": true
         },
@@ -107277,7 +107506,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12863"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12863"
           ],
           "inherited": true
         },
@@ -107286,7 +107515,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12865"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12865"
           ],
           "inherited": true
         },
@@ -107295,7 +107524,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12867"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12867"
           ],
           "inherited": true
         },
@@ -107304,7 +107533,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12869"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12869"
           ],
           "inherited": true
         },
@@ -107313,7 +107542,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12871"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12871"
           ],
           "inherited": true
         },
@@ -107322,7 +107551,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12873"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12873"
           ],
           "inherited": true
         },
@@ -107331,7 +107560,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12875"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12875"
           ],
           "inherited": true
         },
@@ -107340,7 +107569,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12881"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12881"
           ],
           "inherited": true
         },
@@ -107349,7 +107578,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: PointerEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12883"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12883"
           ],
           "inherited": true
         },
@@ -107358,7 +107587,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ProgressEvent<EventTarget>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12885"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12885"
           ],
           "inherited": true
         },
@@ -107367,7 +107596,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12887"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12887"
           ],
           "inherited": true
         },
@@ -107376,7 +107605,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12889"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12889"
           ],
           "inherited": true
         },
@@ -107385,7 +107614,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: UIEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12891"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12891"
           ],
           "inherited": true
         },
@@ -107394,7 +107623,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12893"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12893"
           ],
           "inherited": true
         },
@@ -107403,7 +107632,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12895"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12895"
           ],
           "inherited": true
         },
@@ -107412,7 +107641,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: SecurityPolicyViolationEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12897"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12897"
           ],
           "inherited": true
         },
@@ -107421,7 +107650,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12899"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12899"
           ],
           "inherited": true
         },
@@ -107430,7 +107659,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12901"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12901"
           ],
           "inherited": true
         },
@@ -107439,7 +107668,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12903"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12903"
           ],
           "inherited": true
         },
@@ -107448,7 +107677,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12905"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12905"
           ],
           "inherited": true
         },
@@ -107457,7 +107686,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12907"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12907"
           ],
           "inherited": true
         },
@@ -107466,7 +107695,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12909"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12909"
           ],
           "inherited": true
         },
@@ -107475,7 +107704,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12911"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12911"
           ],
           "inherited": true
         },
@@ -107484,7 +107713,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: SubmitEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12913"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12913"
           ],
           "inherited": true
         },
@@ -107493,7 +107722,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12915"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12915"
           ],
           "inherited": true
         },
@@ -107502,7 +107731,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12917"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12917"
           ],
           "inherited": true
         },
@@ -107511,7 +107740,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: ToggleEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12919"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12919"
           ],
           "inherited": true
         },
@@ -107520,7 +107749,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12921"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12921"
           ],
           "inherited": true
         },
@@ -107529,7 +107758,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12923"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12923"
           ],
           "inherited": true
         },
@@ -107538,7 +107767,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12925"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12925"
           ],
           "inherited": true
         },
@@ -107547,7 +107776,7 @@
           "optional": true,
           "type": "((this: GlobalEventHandlers, ev: TouchEvent) => any) | null | undefined",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12927"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12927"
           ],
           "inherited": true
         },
@@ -107556,7 +107785,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12929"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12929"
           ],
           "inherited": true
         },
@@ -107565,7 +107794,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12931"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12931"
           ],
           "inherited": true
         },
@@ -107574,7 +107803,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12933"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12933"
           ],
           "inherited": true
         },
@@ -107583,7 +107812,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: TransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12935"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12935"
           ],
           "inherited": true
         },
@@ -107592,7 +107821,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12937"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12937"
           ],
           "inherited": true
         },
@@ -107601,7 +107830,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12939"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12939"
           ],
           "inherited": true
         },
@@ -107610,7 +107839,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12945"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12945"
           ],
           "inherited": true
         },
@@ -107619,7 +107848,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12951"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12951"
           ],
           "inherited": true
         },
@@ -107628,7 +107857,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12957"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12957"
           ],
           "inherited": true
         },
@@ -107637,7 +107866,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12963"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12963"
           ],
           "inherited": true
         },
@@ -107646,7 +107875,7 @@
           "optional": false,
           "type": "((this: GlobalEventHandlers, ev: WheelEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:12965"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:12965"
           ],
           "inherited": true
         },
@@ -107655,7 +107884,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36832"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36832"
           ],
           "inherited": true
         },
@@ -107664,7 +107893,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36834"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36834"
           ],
           "inherited": true
         },
@@ -107673,7 +107902,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: BeforeUnloadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36836"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36836"
           ],
           "inherited": true
         },
@@ -107682,7 +107911,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: GamepadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36838"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36838"
           ],
           "inherited": true
         },
@@ -107691,7 +107920,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: GamepadEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36840"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36840"
           ],
           "inherited": true
         },
@@ -107700,7 +107929,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: HashChangeEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36842"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36842"
           ],
           "inherited": true
         },
@@ -107709,7 +107938,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36844"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36844"
           ],
           "inherited": true
         },
@@ -107718,7 +107947,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: MessageEvent<any>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36846"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36846"
           ],
           "inherited": true
         },
@@ -107727,7 +107956,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: MessageEvent<any>) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36848"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36848"
           ],
           "inherited": true
         },
@@ -107736,7 +107965,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36850"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36850"
           ],
           "inherited": true
         },
@@ -107745,7 +107974,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36852"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36852"
           ],
           "inherited": true
         },
@@ -107754,7 +107983,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageTransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36854"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36854"
           ],
           "inherited": true
         },
@@ -107763,7 +107992,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageRevealEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36856"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36856"
           ],
           "inherited": true
         },
@@ -107772,7 +108001,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageTransitionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36858"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36858"
           ],
           "inherited": true
         },
@@ -107781,7 +108010,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PageSwapEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36860"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36860"
           ],
           "inherited": true
         },
@@ -107790,7 +108019,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PopStateEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36862"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36862"
           ],
           "inherited": true
         },
@@ -107799,7 +108028,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PromiseRejectionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36864"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36864"
           ],
           "inherited": true
         },
@@ -107808,7 +108037,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: StorageEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36866"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36866"
           ],
           "inherited": true
         },
@@ -107817,7 +108046,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: PromiseRejectionEvent) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36868"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36868"
           ],
           "inherited": true
         },
@@ -107826,7 +108055,7 @@
           "optional": false,
           "type": "((this: WindowEventHandlers, ev: Event) => any) | null",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36874"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36874"
           ],
           "inherited": true
         },
@@ -107835,7 +108064,7 @@
           "optional": false,
           "type": "Storage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36883"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36883"
           ],
           "inherited": true
         },
@@ -107844,7 +108073,7 @@
           "optional": false,
           "type": "CacheStorage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36892"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36892"
           ],
           "inherited": true
         },
@@ -107853,7 +108082,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36894"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36894"
           ],
           "inherited": true
         },
@@ -107862,7 +108091,7 @@
           "optional": false,
           "type": "Crypto",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36896"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36896"
           ],
           "inherited": true
         },
@@ -107871,7 +108100,7 @@
           "optional": false,
           "type": "IDBFactory",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36898"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36898"
           ],
           "inherited": true
         },
@@ -107880,7 +108109,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36900"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36900"
           ],
           "inherited": true
         },
@@ -107889,7 +108118,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36902"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36902"
           ],
           "inherited": true
         },
@@ -107898,7 +108127,7 @@
           "optional": false,
           "type": "Performance",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36904"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36904"
           ],
           "inherited": true
         },
@@ -107907,7 +108136,7 @@
           "optional": false,
           "type": "Storage",
           "declarations": [
-            "node_modules/typescript/lib/lib.dom.d.ts:36932"
+            "../../taebaekfood/node_modules/typescript/lib/lib.dom.d.ts:36932"
           ],
           "inherited": true
         }
@@ -130715,7 +130944,7 @@
               },
               {
                 "parameter": "callback",
-                "expression": "rows => {\n      if (active) setReturnRequests(rows);\n    }",
+                "expression": "rows => {\r\n      if (active) setReturnRequests(rows);\r\n    }",
                 "truncated": false
               },
               {
