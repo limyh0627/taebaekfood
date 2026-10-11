@@ -1,3 +1,7 @@
+/** 오래된 알림·탭 저장값도 현재 품목 관리로 연결해 구 원가 쓰기 화면을 열지 않는다. */
+export function normalizeViewAlias(view:string):string {
+  return view === 'item-price-management' ? 'item-management' : view;
+}
 /**
  * **앱을 켤 때 어느 화면을 여나.**
  *
@@ -16,7 +20,7 @@ export function loadStartView<T extends string>(key: string, 첫화면: T): T {
   try {
     //  옛 방식이 남아 있으면 지운다 — 안 지우면 예전에 적힌 화면이 계속 따라온다.
     localStorage.removeItem(key);
-    return (sessionStorage.getItem(key) as T) || 첫화면;
+    return normalizeViewAlias(sessionStorage.getItem(key) || 첫화면) as T;
   } catch {
     return 첫화면;   // 사생활 보호 모드 등에서 저장소가 막힌다
   }
@@ -24,5 +28,5 @@ export function loadStartView<T extends string>(key: string, 첫화면: T): T {
 
 /** 화면을 옮길 때마다 적어 둔다 — 새로고침에 자리를 지키려고. */
 export function saveView(key: string, view: string): void {
-  try { sessionStorage.setItem(key, view); } catch { /* 저장소가 막혀도 앱은 돌아야 한다 */ }
+  try { sessionStorage.setItem(key, normalizeViewAlias(view)); } catch { /* 저장소가 막혀도 앱은 돌아야 한다 */ }
 }

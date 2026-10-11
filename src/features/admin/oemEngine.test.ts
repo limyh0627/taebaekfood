@@ -233,7 +233,15 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     expect(result.total).toBe(2_800_000);
   });
 
-  it('전표는 연결됐지만 확인요청 완료 표시가 실패한 경우 같은 전표를 재확인한다', async () => {
+  it('소수 제품 두 줄은 원 kg 합계의 1원 잔차를 마지막 줄에만 남긴다',async()=>{
+    const {deps,adds}=makeDeps();
+    deps.items=[...items,item({id:'fraction-a',name:'A',packageKg:0.3333}),item({id:'fraction-b',name:'B',packageKg:0.3333})];
+    const po:PurchaseOrder={...receivedPo,oemReceivedKg:0.667,items:[{itemId:'fraction-a',name:'A',quantity:1,unit:'개'},{itemId:'fraction-b',name:'B',quantity:1,unit:'개'}]};
+    const result=await createOemEngine(deps as any).issueOemFeeStatement({po,unitPricePerKg:1000,date:'2026-07-17'});
+    const stmt=adds.find(row=>row.c==='issuedStatements')!.d;
+    expect(stmt.items.map((row:any)=>row.total)).toEqual([333,334]);expect(stmt.items.map((row:any)=>row.supply)).toEqual([303,304]);
+    expect(result).toMatchObject({supply:607,tax:60,total:667});
+  });  it('전표는 연결됐지만 확인요청 완료 표시가 실패한 경우 같은 전표를 재확인한다', async () => {
     const { deps } = makeDeps();
     let attempted = 0;
     deps.applyOemFeeStatement = async (input: any) => { attempted++; return input.statement.id; };

@@ -1,3 +1,4 @@
+import {normalizeViewAlias} from '../../shared/startView';
 import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
 import { isStockProduction } from '../../shared/orderPurpose';
@@ -156,7 +157,6 @@ import { buildCostFn } from '../../shared/bomCost';
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
-const ItemPriceManager = React.lazy(() => import('../../../components/ItemPriceManager'));
 const TaxStatement = React.lazy(() => import('../../../components/TaxStatement'));
 import OfficeTalk from '../../../components/OfficeTalk';
 import { extractedOfficeTalkMessageIds } from '../../shared/officeTalkOrder';
@@ -990,14 +990,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
    *  꺼져 있었으면 주소로(`?notif=`), 열려 있었으면 서비스워커가 보낸 쪽지로 온다. */
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get('notif');
-    if (q) { setCurrentView(q as ViewType); window.history.replaceState(null, '', window.location.pathname); }
+    if (q) { setCurrentView(normalizeViewAlias(q) as ViewType); window.history.replaceState(null, '', window.location.pathname); }
 
     const 쪽지 = (e: MessageEvent) => {
-      if (e.data?.type === 'notif-open' && e.data.view) setCurrentView(e.data.view as ViewType);
+      if (e.data?.type === 'notif-open' && e.data.view) setCurrentView(normalizeViewAlias(e.data.view) as ViewType);
     };
     navigator.serviceWorker?.addEventListener('message', 쪽지);
     return () => navigator.serviceWorker?.removeEventListener('message', 쪽지);
   }, []);
+
+  // 상위 상태에 남은 옛 탭 이름도 현재 화면으로 정리한다. 렌더 분기는 즉시 현재 화면을 사용한다.
+  useEffect(() => {
+    const resolved = normalizeViewAlias(currentView) as ViewType;
+    if (resolved !== currentView) setCurrentView(resolved);
+  }, [currentView, setCurrentView]);
 
   // 2주 지난 알림 자동 삭제
   useEffect(() => {
@@ -4941,7 +4947,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
             />
           )}
-          {currentView === 'item-management' && (
+          {normalizeViewAlias(currentView) === 'item-management' && (
             <div className="flex flex-col h-full overflow-y-auto">
               {true && (
                 <ItemManager
@@ -5042,18 +5048,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 />
               )}
             </div>
-          )}
-
-          {currentView === 'item-price-management' && (
-            <ItemPriceManager
-              orderUnitInputs={appData.orderUnitInputs}
-              items={allItems}
-              onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-              onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteItem={requestCatalogItemDelete}
-              onUpdateCost={(itemId, cost) => updateItem('items', itemId, { cost })}
-              partnerItems={partnerItems}
-            />
           )}
 
           {currentView === 'mypage' && (

@@ -6,11 +6,11 @@ import { companyOf, type CompanyId, type Item, type IssuedStatement, type Partne
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
 import { parsePackageKg, parseSpecCount } from '../../constants/formula';
 import { itemKg, type OrderUnitInputs } from '../../shared/orderUnits';
-import { lineAmount } from '../../shared/lineAmount';
+import { buildOemFeePlan } from '../../shared/oemFeePlan';
 export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
 import { buildProductLot } from '../../shared/lotUtils';
-import { processingFee, sentKg } from './oem';
+import { sentKg } from './oem';
 import type { CollectionName } from '../../shared/collections';
 import { docName } from '../../shared/docName';
 import type { OemReceiptInventoryInput } from './oemReceiptInventory';
@@ -260,56 +260,15 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     const receivedKg = po.oemReceivedKg ?? 0;
     const perKg = input.unitPricePerKg ?? po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
-    const fee = processingFee(receivedKg, perKg, input.taxable ?? true);
-
     const taxable = input.taxable ?? true;
-    // 돌아온 완제품을 품목별 가공비 라인으로 — 수량=받은 개수, 규격=품목 spec.
-    //  가공단가(perKg)는 세금포함 기준(processingFee와 동일): 1개 세포함가 = 개당kg × perKg → 공급가 = ÷1.1.
-    const productFeeLines = (po.items ?? []).map(pi => {
+    // 회사·현재 단위중량은 기존 앱 경로에서 해석하고 전표 줄 계산은 서버와 공유한다.
+    const products = (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
       if (!it || companyOf(it) !== companyId) throw new Error(`현재 회사의 OEM 전표 품목을 찾을 수 없습니다: ${pi.itemId}`);
-      const unitTotal = Math.round((it ? itemKg(it, deps.orderUnitInputs) : 0) * perKg);       // 1개당 가공비(세포함)
-      const q = pi.quantity ?? 0;
-      //  줄의 공급가·세액은 **합계에서** 푼다 — 개당으로 풀어 곱하면 개수만큼 오차가 쌓인다
-      const { supply: lineSupply, tax: lineTax, gross: lineGross } = lineAmount(q, unitTotal, !taxable);
-      //  단가 칸에는 개당 공급가를 적는다(이 화면의 표기 규약)
-      const unitSupply = lineAmount(1, unitTotal, !taxable).supply;
-      return {
-        name: pi.name, spec: it?.spec ?? pi.unit ?? '', qty: q,
-        price: unitSupply, supply: lineSupply, tax: lineTax, total: lineGross,
-        isTaxExempt: !taxable, accountCode: feeCode,
-      };
-    }).filter(l => l.qty > 0 && l.total > 0);
-    // 받은 총중량에는 벌크도 들어간다. 완제품 줄만 전표로 쓰면 벌크 가공비가 빠진다.
-    const bulkFeeLines = (po.oemReceivedBulk ?? []).filter(b => b.kg > 0).map(b => {
-      const { supply, tax, gross } = lineAmount(b.kg, perKg, !taxable);
-      return {
-        name: `${b.material} 벌크 가공비`, spec: 'kg', qty: b.kg,
-        price: lineAmount(1, perKg, !taxable).supply,
-        supply, tax, total: gross, isTaxExempt: !taxable, accountCode: feeCode,
-      };
+      return {name:pi.name,spec:it.spec ?? pi.unit ?? '',qty:pi.quantity ?? 0,unitKg:itemKg(it,deps.orderUnitInputs)};
     });
-    const feeLines = [...productFeeLines, ...bulkFeeLines];
-    // 품목 라인이 없으면(옛 배치 등) 종전처럼 한 줄로 폴백.
-    const lines: IssuedStatement['items'] = feeLines.length > 0 ? feeLines : [{
-      name: `외주가공비 (${sentKg(po.oemSent)}kg→${receivedKg}kg)`, spec: '', qty: 1,
-      price: fee.supply, supply: fee.supply, tax: fee.tax, total: fee.total,
-      isTaxExempt: !taxable, accountCode: feeCode,
-    }];
-    // 품목별 반올림 합과 총 받은 kg 기준 합계가 다를 수 있어 마지막 줄에서 원단위를 맞춘다.
-    const grossGap = fee.total - lines.reduce((sum, line) => sum + line.total, 0);
-    if (grossGap !== 0) {
-      const last = lines[lines.length - 1]!;
-      const corrected = lineAmount(last.total + grossGap, 1, !taxable);
-      if (corrected.gross < 0) throw new Error('받은 중량과 가공비 전표 줄이 일치하지 않습니다.');
-      lines[lines.length - 1] = {
-        ...last, supply: corrected.supply, tax: corrected.tax, total: corrected.gross,
-        price: Math.round(corrected.supply / last.qty),
-      };
-    }
-    const totalSupply = lines.reduce((s, l) => s + l.supply, 0);
-    const totalTax = lines.reduce((s, l) => s + l.tax, 0);
-
+    const {lines,totalSupply,totalTax} = buildOemFeePlan({receivedKg,sentKg:sentKg(po.oemSent),perKg,
+      exempt:!taxable,accountCode:feeCode,products,bulk:po.oemReceivedBulk ?? []});
     const statement: IssuedStatement = {
       id: statementId,
       companyId,

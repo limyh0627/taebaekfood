@@ -1,3 +1,6 @@
+import {lineAmount,VAT_RATE,type LineAmount} from '../../functions/src/shared/lineAmount';
+export {lineAmount,VAT_RATE};
+export type {LineAmount};
 /**
  * **세금 포함 단가에서 공급가액과 세액을 푼다.**
  *
@@ -40,15 +43,8 @@
  * **반품은 음수 그대로 둔다.** 수량이 음수면 공급가액·세액·합계가 다 음수다.
  * `> 0`으로 거르면 반품 전표의 세 칸이 통째로 비어 보인다.
  */
-export interface LineAmount {
-  /** 세금 포함 합계 (수량 × 단가) */
-  gross: number;
-  supply: number;
-  tax: number;
-}
-
 /** 부가가치세율 — 한 곳에만 적는다 */
-export const VAT_RATE = 0.1;
+
 
 /**
  * **매입 단가(세포함) → 품목 원가(공급가액).**
@@ -85,14 +81,6 @@ export { costFromPurchaseLine } from '../../functions/src/shared/purchaseCost';
  * @param price    **세금 포함** 단가
  * @param exempt   면세면 true
  */
-export function lineAmount(qty: number, price: number, exempt?: boolean): LineAmount {
-  const gross = Math.round((Number(qty) || 0) * (Number(price) || 0));
-  if (exempt) return { gross, supply: gross, tax: 0 };
-  const supply = Math.round(gross / (1 + VAT_RATE));
-  //  세액은 빼서 낸다 — 따로 반올림하면 공급가액 + 세액 ≠ 합계 가 된다
-  return { gross, supply, tax: gross - supply };
-}
-
 /** 글자로 들어오는 자리가 많다(입력칸은 전부 글자다) */
 export function lineAmountOf(
   qty: string | number, price: string | number, exempt?: boolean,

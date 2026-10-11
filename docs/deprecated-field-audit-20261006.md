@@ -117,3 +117,12 @@ scripts/fix-sesame-lots.mts에는 lotsAreTotal false 정정 및 원문 undo writ
 ## 2026-10-11 OEM 서버 잔존 읽기 제거
 
 앞선 제품 reader 제거 기록 뒤에도 oemReceiptCommand와 oemFeeVoucher의 상자 판정에 unpackTo.count 호환 읽기 두 곳이 남아 있었다. 두 곳을 제거하고 현재 완제품 자식 BOM·박스 단위·packageKg 기준은 유지했다. 실제 Firestore 에뮬레이터 시험에서 옛 unpackTo.count=12만 있는 일반 품목은 2kg로, 현재 박스 BOM이 12인 품목은 24kg로 처리되는 입고·로트·가공비 결과를 확인했다. 운영 필드 수는 10월 9일 과거 감사 근거이며 이번 운영 DB 재조회·수정은 없다. partnerIds/lotsAreTotal/inUse/noncash 후속은 남아 있어 039 전체 완료로 세지 않는다.
+
+## 2026-10-11 구 품목 가격 화면 후속 후보
+
+메뉴에는 item-management만 있지만 AdminApp에 item-price-management의 lazy import와 렌더 분기가 남아 있으며 notif URL·서비스워커 메시지·시작 화면 저장값으로 실행된다. 구 ItemPriceManager의 한글 고정 CATEGORIES는 현재 product/goods/submaterial과 직접 비교해 분류 결과를 누락하고, 별도 updateItem(cost) 경로를 사용한다. 다음 구현은 저장/알림/상위 prop의 옛 view를 공용 함수로 현재 item-management에 연결하고 구 lazy/render writer를 종료한다. 현재 ItemManager의 회사·BOM·매출단가·편집 계약을 유지한다. 운영 자료의 deprecated 분류 값 또는 InventoryCategory union을 이 변경만으로 삭제하지 않는다.
+
+현대 화면 기준 회귀: 시작화면·분류·거래처 연결필터·회사별 명시 BOM4파일12PASS. 후보 records/todo039-old-item-view를 검토 중이며 이 절은 아직 배포 결과가 아니다.
+
+
+최종 합류4파일17PASS·타입0. 저장값·notif URL·SW·상위prop alias는 공용 정규화, 현대 ItemManager 수정콜백 확인. 시험은 실제effect/분기를 사용하는 Host 검증이며 전체 AdminApp mount는 아니다. redirect 제거 변이는 실패를 검출하고 복구 후17PASS. 전체참조 검색에서 구 컴포넌트 소비는 본체/전용시험뿐이므로 components/ItemPriceManager.tsx와 전용bomInputs시험도 제거했다. 현대 ItemManager의 회사별/BOM시험은 유지한다.

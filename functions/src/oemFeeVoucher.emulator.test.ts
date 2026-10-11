@@ -160,7 +160,27 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
     expect((await db.collection('issuedStatements').doc('OEMFEE-po-10').get()).data()?.items).toHaveLength(2);
   });
 
-  it('BOM으로 묶인 박스 품목의 kg 환산을 PO 줄과 대조한다', async () => {
+  it.each([false,true])('소수 제품 줄과 마지막 잔차를 실제 서버 거래에서 대조한다 (면세 %s)',async(exempt)=>{
+    const poId=`po-plan-fraction-${exempt}`,a=`plan-product-a-${exempt}`,b=`plan-product-b-${exempt}`;
+    await seed([poId]);
+    await Promise.all([
+      db.collection('purchaseOrders').doc(poId).update({oemReceivedKg:0.667,items:[{itemId:a,name:'A',quantity:1,unit:'개'},{itemId:b,name:'B',quantity:1,unit:'개'}]}),
+      ...[a,b].map((id,index)=>db.collection('items').doc(id).set({companyId:'taebaek',name:index?'B':'A',spec:'0.3333kg',packageKg:0.3333,type:'product'})),
+    ]);
+    const lines=[{name:'A',spec:'0.3333kg',qty:1,price:exempt?333:303,supply:exempt?333:303,tax:exempt?0:30,total:333,isTaxExempt:exempt,accountCode:'540'},
+      {name:'B',spec:'0.3333kg',qty:1,price:exempt?334:304,supply:exempt?334:304,tax:exempt?0:30,total:334,isTaxExempt:exempt,accountCode:'540'}];
+    const input={poId,perKg:1000,releaseId,statement:{...statement(poId),totalSupply:exempt?667:607,totalTax:exempt?0:60,totalAmount:667,items:lines}};
+    // 손상 kg는 기존 서버처럼 거절한다. 공용 Number||0를 써도 fallback으로 우회하지 않는다.
+    await db.collection('items').doc(a).update({packageKg:'invalid'});
+    await expect(issueOemFeeVoucher(db,'taebaek',input)).rejects.toThrow('입고 내역');
+    expect((await db.collection('issuedStatements').doc(`OEMFEE-${poId}`).get()).exists).toBe(false);
+    await db.collection('items').doc(a).update({packageKg:0.3333});
+    expect(await issueOemFeeVoucher(db,'taebaek',input)).toBe(`OEMFEE-${poId}`);
+    const saved=await db.collection('issuedStatements').doc(`OEMFEE-${poId}`).get();
+    expect(saved.get('items')).toEqual(lines);expect(saved.get('totalAmount')).toBe(667);
+    expect(await issueOemFeeVoucher(db,'taebaek',input)).toBe(`OEMFEE-${poId}`);
+    expect((await db.collection('appMeta').doc(counterId).get()).get('last')).toBe(1);
+  });  it('BOM으로 묶인 박스 품목의 kg 환산을 PO 줄과 대조한다', async () => {
     await seed(['po-11']);
     await Promise.all([
       db.collection('purchaseOrders').doc('po-11').update({ oemReceivedKg: 4,

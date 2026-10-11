@@ -1,3 +1,4 @@
+import { buildOemFeePlan, oemFeeLineAmount as lineAmount, type OemFeeProductInput } from './shared/oemFeePlan';
 import { buildOemBatchCostPreview, finalizeOemBatchCost, validateOemCostIssueFingerprint, type OemBatchCost } from './shared/oemBatchCost';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
@@ -12,11 +13,6 @@ const fail = (message: string): never => { throw new HttpsError('failed-precondi
 const invalid = (message: string): never => { throw new HttpsError('invalid-argument', message); };
 const ownCompany = (row: Row) => row.companyId ?? 'taebaek';
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
-const lineAmount = (qty: number, price: number, exempt: boolean) => {
-  const total = Math.round(qty * price);
-  const supply = exempt ? total : Math.round(total / 1.1);
-  return { supply, tax: total - supply, total };
-};
 const packageKg = (value: unknown) => {
   const matched = /([\d.]+)\s*kg/i.exec(String(value ?? ''));
   return matched ? Number(matched[1]) : 0;
@@ -108,7 +104,6 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     if (!finite(po.oemReceivedKg) || po.oemReceivedKg <= 0) fail('가공입고 중량이 확인되지 않았습니다.');
     const gross = Math.round(po.oemReceivedKg * perKg);
     if (feeSnap.exists && feeSnap.data()!.oemTotal !== gross) fail('OEM 가공비 확인 요청 금액이 입고와 다릅니다.');
-    const supply = exempt ? gross : Math.round(gross / 1.1);
     if (gross <= 0 || stmt.totalAmount !== gross) fail('가공입고 중량·단가와 전표 금액이 다릅니다.');
     const poItems: Row[] = (po.items ?? []).filter((item: Row) => Number(item.quantity) > 0);
     const bulk: Row[] = (po.oemReceivedBulk ?? []).filter((item: Row) => Number(item.kg) > 0);
@@ -119,7 +114,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     const childIds = [...new Set(bomRows.flatMap(rows => rows.docs.map(snap => snap.data().child_id as string)).filter(Boolean))];
     const childDocs = await Promise.all(childIds.map(id => tx.get(db.collection('items').doc(id))));
     const children = new Map(childDocs.filter(snap => snap.exists).map(snap => [snap.id, snap.data()!]));
-    const expected: Row[] = [];
+    const productInputs: OemFeeProductInput[] = [];
     for (const [index, product] of products.entries()) {
       const poItem = poItems[index];
       if (!product.exists || ownCompany(product.data()!) !== companyId) fail('현재 회사의 OEM 전표 품목을 찾을 수 없습니다.');
@@ -129,32 +124,16 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
       const boxed = (finishedChildren.length === 1 && Number(finishedChildren[0].quantity ?? 1) > 1)
         || item.unit === '박스';
       const kg = item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1);
-      const unitTotal = Math.round(kg * perKg);
-      const amount = lineAmount(poItem.quantity, unitTotal, exempt);
-      if (amount.total <= 0) continue;
-      expected.push({ name: poItem.name, spec: item.spec ?? poItem.unit ?? '', qty: poItem.quantity,
-        price: lineAmount(1, unitTotal, exempt).supply, ...amount,
-        isTaxExempt: exempt, accountCode: '540' });
+      // 앱의 입력칸 coerce 정책으로 서버의 손상된 저장 kg가 0/fallback으로 바뀌지 않게 한다.
+      if (!Number.isFinite(kg * perKg)) fail('가공비 전표 줄이 OEM 입고 내역과 다릅니다.');
+      productInputs.push({name:poItem.name,spec:item.spec ?? poItem.unit ?? '',qty:poItem.quantity,unitKg:kg});
     }
-    for (const row of bulk) {
-      const amount = lineAmount(row.kg, perKg, exempt);
-      expected.push({ name: `${row.material} 벌크 가공비`, spec: 'kg', qty: row.kg,
-        price: lineAmount(1, perKg, exempt).supply, ...amount,
-        isTaxExempt: exempt, accountCode: '540' });
-    }
-    if (!expected.length) {
-      const sent = (po.oemSent ?? []).reduce((sum: number, row: Row) => sum + Number(row.kg || 0), 0);
-      expected.push({ name: `외주가공비 (${sent}kg→${po.oemReceivedKg}kg)`, spec: '', qty: 1,
-        price: supply, supply, tax: gross - supply, total: gross,
-        isTaxExempt: exempt, accountCode: '540' });
-    }
-    const gap = gross - expected.reduce((sum, line) => sum + line.total, 0);
-    if (gap !== 0) {
-      const last = expected[expected.length - 1];
-      const corrected = lineAmount(last.total + gap, 1, exempt);
-      if (corrected.total < 0) fail('가공입고 중량과 전표 줄이 일치하지 않습니다.');
-      expected[expected.length - 1] = { ...last, ...corrected, price: Math.round(corrected.supply / last.qty) };
-    }
+    const sent = (po.oemSent ?? []).reduce((sum: number, row: Row) => sum + Number(row.kg || 0), 0);
+    let expected: ReturnType<typeof buildOemFeePlan>['lines'];
+    try {
+      expected = buildOemFeePlan({receivedKg:po.oemReceivedKg,sentKg:sent,perKg,exempt,
+        accountCode:'540',products:productInputs,bulk:bulk.map(row => ({material:row.material,kg:row.kg}))}).lines;
+    } catch { return fail('가공입고 중량과 전표 줄이 일치하지 않습니다.'); }
     if (hash(stmt.items) !== hash(expected)
       || stmt.totalSupply !== expected.reduce((sum, line) => sum + line.supply, 0)
       || stmt.totalTax !== expected.reduce((sum, line) => sum + line.tax, 0)) {

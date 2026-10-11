@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
-import { loadStartView, saveView } from './startView';
+import { loadStartView, saveView, normalizeViewAlias } from './startView';
 
 describe('앱을 켤 때 여는 화면', () => {
   beforeEach(() => { localStorage.clear(); sessionStorage.clear(); });
@@ -49,3 +49,5 @@ describe('시작 화면 규칙을 손으로 적지 않는다', () => {
       `shared/startView 의 loadStartView · saveView 를 써라.`).toEqual([]);
   });
 });
+
+it('과거 품목 가격 화면의 저장값은 현재 품목 관리로 복원하고 다시 저장한다',()=>{sessionStorage.setItem('tb_admin_view','item-price-management');expect(loadStartView('tb_admin_view','dashboard')).toBe('item-management');saveView('tb_admin_view','item-price-management');expect(sessionStorage.getItem('tb_admin_view')).toBe('item-management');expect(normalizeViewAlias('trade-statement')).toBe('trade-statement');});
