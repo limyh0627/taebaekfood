@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {returnBusinessText} from './shared/returnBusinessEvidence';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import * as admin from 'firebase-admin';
@@ -495,4 +497,31 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     expect((await ref('items', itemId).get()).data()?.stock).toBe(6);
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(1);
   }, 15000);
+  async function approved(suffix:string){const request=(await ref('returnRequests',requestId).get()).data()!;return {...input(suffix),expectedBusinessHash:createHash('sha256').update(returnBusinessText(request)).digest('hex')};}
+  it('최초 승인 뒤 금액·행·원전표 변경은 출력없이 거절한다',async()=>{
+    for(const [label,patch] of [['amount',{totalAmount:101}],['items',{items:[{itemId,quantity:2,isResellable:true}]}],['source',{linkedStatementId:sourceId+'-changed'}]] as const){
+      await seed();const data=await approved('approval-'+label);await ref('returnRequests',requestId).update(patch);
+      await expect(issue(data)).rejects.toThrow('최초 승인');expect((await ref('items',itemId).get()).data()?.stock).toBe(5);expect((await ref('appMeta',counterId).get()).data()?.last).toBe(0);
+      expect((await ref('returnOperations',data.operationId).get()).data()?.status).toBe('rejected');expect((await ref('issuedStatements','return-'+data.operationId).get()).exists).toBe(false);
+    }
+  });
+  it('map 순서만 다른 최초원문은 처리하고 완료 뒤 동일 command는 한번만 확인한다',async()=>{
+    await seed();const data=await approved('approved-order');await ref('returnRequests',requestId).update({items:[{isResellable:true,quantity:1,itemId}]});
+    const first=await issue(data);expect(first).toMatchObject({status:'applied',companyId,operationId:data.operationId,returnRequestId:requestId});
+    const before=await ref('items',itemId).get();expect((await issue(data)).status).toBe('duplicate');const after=await ref('items',itemId).get();expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+    await expect(processGeneralStockReturn(db,companyId,actor+'-other',data)).rejects.toThrow('요청이 다릅니다');await expect(processGeneralStockReturn(db,'punghoe',actor,data)).rejects.toThrow();
+  });
+  it('최초 hash 명령 동시 요청은 원장·재고를 한번만 반영한다',async()=>{
+    await seed();const data=await approved('approved-concurrent');const results=await Promise.all([issue(data),issue(data)]);expect(results.map(row=>row.status).sort()).toEqual(['applied','duplicate']);expect((await ref('items',itemId).get()).data()?.stock).toBe(6);expect((await ref('appMeta',counterId).get()).data()?.last).toBe(1);
+  });
+  it.each(['매출','매입'])('원전표 없는 %s 반품도 같은 승인과 기존 plan으로 처리한다',async(type)=>{
+    if(type==='매입')await seedPurchase();else await seed();
+    await ref('returnRequests',requestId).update({linkedStatementId:admin.firestore.FieldValue.delete(),returnType:type,...(type==='매입'?{payableAccountCode:'251'}:{}),items:[{itemId,quantity:1,isResellable:type==='매출',supply:100,tax:type==='매입'?10:0,accountCode:type==='매입'?'500':'404'}]});
+    const data=await approved('standalone-'+(type==='매입'?'purchase':'sale'));expect((await issue(data)).status).toBe('applied');expect((await issue(data)).status).toBe('duplicate');expect((await ref('items',itemId).get()).data()?.stock).toBe(type==='매입'?4:6);
+    expect((await ref('issuedStatements','return-'+data.operationId).get()).data()?.sourceMode).toBe('standalone');
+  });
+  it('standalone 채무 계정 승인 후 변경도 출력없이 거절한다',async()=>{
+    await seedPurchase();await ref('returnRequests',requestId).update({linkedStatementId:admin.firestore.FieldValue.delete(),payableAccountCode:'251',items:[{itemId,quantity:1,isResellable:false,supply:100,tax:10,accountCode:'500'}]});const data=await approved('standalone-account');await ref('returnRequests',requestId).update({payableAccountCode:'253'});await expect(issue(data)).rejects.toThrow('최초 승인');expect((await ref('items',itemId).get()).data()?.stock).toBe(5);
+  });
+
 });

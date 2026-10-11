@@ -6,7 +6,7 @@ import {normalizeViewAlias} from '../../shared/startView';
 import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
 import { isStockProduction } from '../../shared/orderPurpose';
-import { processReturn } from './returnCommands';
+import { processReturn, resumePendingReturn } from './returnCommands';
 import { mutateManualSettlement } from './manualSettlementCommands';
 import { mutateCash, matchCashAllocations, resumeCashMutation, prepareTransferCash, type PayrollCashEdit, type TransferCashEdit } from './cashMutationCommands';
 import ProductionWorkDocumentHost from '../production-documents/ui/ProductionWorkDocumentHost';
@@ -1259,6 +1259,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (!isAdmin || req.companyId !== companyId || orderAskScope.current.companyId !== companyId) throw new Error('관리자 회사 권한이 필요합니다.');
     const scope = orderAskScope.current.token;
     await processReturn(companyId, req);
+    if (orderAskScope.current.token === scope) setLedgerReloadKey(k => k + 1);
+  };
+
+  const handleResumeReturn = async (requestId: string) => {
+    if (!isAdmin || orderAskScope.current.companyId !== companyId) throw new Error('관리자 회사 권한이 필요합니다.');
+    const scope = orderAskScope.current.token;
+    await resumePendingReturn(companyId, requestId);
     if (orderAskScope.current.token === scope) setLedgerReloadKey(k => k + 1);
   };
 
@@ -2815,6 +2822,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               receivedOrders={receivedOrders}
               returnRequests={returnRequests}
               returnBadge={returnRequests.filter(r => r.status === 'pending' && !r.cancelledAt).length}
+              onProcessReturn={handleProcessReturn}
+              onResumeReturn={handleResumeReturn}
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager

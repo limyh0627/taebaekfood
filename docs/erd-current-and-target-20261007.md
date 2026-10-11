@@ -1,4 +1,4 @@
-# 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-09
+# 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
 기준: 기존 통합 저장소 534b67fa 이후 문서 보완. 원료·주문 관계는 제품 변경 955e4ab8을 기준으로 확인했고, 이어 거래처 원장 조회 화면을 보완했다. 이 문서는 **코드에서 확인한 관계**이며 Firestore 전 문서 실측, 외래키 강제, 모든 읽기·쓰기 완전 추적을 주장하지 않는다. registry와 생성기 결과는 field-dictionary.generated.md/json에서 재생성한다.
 
@@ -243,3 +243,8 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 위 후속은 source d388dd0으로 실제 배포·푸시를 완료했다. 선택복구함수 ACTIVE/nodejs22·양Hosting117SHA일치, 최종일반4056PASS/5skip·집중103PASS·SDK8PASS·타입/양빌드0. 운영/Figma/신규gate쓰기0이며 ERD전체완료추가0.
 
 복구영수증 보호 추가: sourceee37463에서 serverAuditCollection 등록으로 포괄 client writer를 차단했다. Rules단독배포0·실제Rules4PASS/보호제거변이4FAIL·원복20PASS(SDK16포함). 운영자료쓰기0.
+
+
+## 2026-10-12 반품 승인 원문·결과 재개 후속 작업중
+
+현재배포 fa484cf에서 반품 처리는 최신 returnRequests로 기존 businessHash를 만들며 최초 UI 승인 원문과 비교하는 입력은 없다. 새 shared business evidence/optional expectedBusinessHash와 local pending v2는 구현되었고 실제 서버 TX 28건·service/pure 16건을 검증했다. v1은 원명령 그대로 보존하고 결과 재개와 회사·UID·actor 확인을 보강한다. 서버 분개·수불 계획과 운영 gate는 유지한다. 아직 새 반품 계약 배포 완료가 아니며 실제 관계와 제한은 [반품 처리 근거 후속](return-processing-evidence-followup-20261012.md)에 정리한다.

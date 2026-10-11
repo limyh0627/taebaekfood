@@ -1,3 +1,4 @@
+import { returnBusinessText } from './shared/returnBusinessEvidence';
 import { readPurchaseUnitSnapshot, returnKgFromPurchaseSnapshot } from './shared/purchaseUnit';
 import { isRawPurchaseItem } from './shared/purchaseCost';
 import { readClaimsAfterReturns } from './returnClaimReader';
@@ -26,7 +27,7 @@ import { kstDateOf } from './shared/calculation';
 
 type Row = Record<string, any>;
 type Input = { operationId: string; returnRequestId: string; tradeDate: string;
-  expectedPartnerRevision: number; releaseId: string };
+  expectedPartnerRevision: number; releaseId: string; expectedBusinessHash?: string };
 const fail = (message: string): never => { throw new HttpsError('failed-precondition', message); };
 const bad = (message: string): never => { throw new HttpsError('invalid-argument', message); };
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
@@ -46,7 +47,7 @@ export async function processGeneralStockReturn(
   if (!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId) || !/^[A-Za-z0-9_-]{1,150}$/.test(input.returnRequestId)
     || !/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)
     || !validDate(input.tradeDate) || !Number.isSafeInteger(input.expectedPartnerRevision)
-    || input.expectedPartnerRevision < 0) bad('반품 작업 입력이 잘못되었습니다.');
+    || input.expectedPartnerRevision < 0 || (input.expectedBusinessHash !== undefined && !/^[a-f0-9]{64}$/.test(input.expectedBusinessHash))) bad('반품 작업 입력이 잘못되었습니다.');
   const requestHash = hash(input);
   const operation = db.collection('returnOperations').doc(input.operationId);
   const returnRef = db.collection('returnRequests').doc(input.returnRequestId);
@@ -94,9 +95,8 @@ export async function processGeneralStockReturn(
     const standalone = !request.linkedStatementId;
     if (!request.partnerId || !Array.isArray(request.items) || (standalone && !['매출','매입'].includes(request.returnType)))
       fail('반품 원전표·거래처·품목 연결이 없습니다.');
-    const businessHash = hash({ companyId: request.companyId, linkedStatementId: request.linkedStatementId,
-      partnerId: request.partnerId, returnType: request.returnType ?? null,
-      totalAmount: request.totalAmount, items: request.items, ...(standalone && {payableAccountCode:request.payableAccountCode ?? null}) });
+    const businessHash = createHash('sha256').update(returnBusinessText(request)).digest('hex');
+    if(input.expectedBusinessHash !== undefined && input.expectedBusinessHash !== businessHash) fail('최초 승인한 반품 원문과 현재 요청이 다릅니다.');
     const sourceRef = standalone ? null : db.collection('issuedStatements').doc(request.linkedStatementId);
     const partnerRef = db.collection('partners').doc(request.partnerId);
     const stateRef = db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${request.partnerId}`);
@@ -117,7 +117,7 @@ export async function processGeneralStockReturn(
         prior.applications ?? [{ id: appRef.id, statementId: request.linkedStatementId, amount: prior.amount }];
       const storedApps: admin.firestore.DocumentSnapshot[] = [];
       for (const row of expectedApps) storedApps.push(await tx.get(db.collection('returnApplications').doc(row.id)));
-      if (prior.companyId !== companyId || prior.requestHash !== requestHash
+      if (prior.companyId !== companyId || prior.createdBy !== actorId || prior.requestHash !== requestHash
         || prior.businessHash !== businessHash
         || request.status !== 'processed' || request.returnJournalId !== journal.id
         || request.returnApplicationId !== appRef.id
@@ -159,7 +159,7 @@ export async function processGeneralStockReturn(
               : item.sourceLineIndex === row.sourceLineIndex))?.quantity
             || row.date !== input.tradeDate)) fail('기존 반품 출고 근거가 변경되었습니다.');
       }
-      return { status: 'duplicate' as const, docNo: prior.docNo, journalId: journal.id };
+      return { status: 'duplicate' as const, docNo: prior.docNo, journalId: journal.id, companyId, operationId:input.operationId, returnRequestId:input.returnRequestId };
     }
     if (journalSnap.exists || appSnap.exists) fail('반품 작업 ID가 이미 사용 중입니다.');
     if ((!standalone && (!sourceSnap?.exists || sourceSnap.data()?.companyId !== companyId || !['매출', '매입'].includes(sourceSnap.data()?.type)))
@@ -363,7 +363,7 @@ export async function processGeneralStockReturn(
     if (stateSnap.exists) tx.update(stateRef, { revision: revision + 1 });
     else tx.create(stateRef, { companyId, partnerId: request.partnerId, revision: 1 });
     tx.create(operation, { ...returnOperationData, advanceStatementIds: advanceMutations.map(row => row.statement.id) });
-    return { status: 'applied' as const, docNo, journalId: journal.id };
+    return { status: 'applied' as const, docNo, journalId: journal.id, companyId, operationId:input.operationId, returnRequestId:input.returnRequestId };
     } catch (error) {
       const validation = error instanceof ReturnValidationError || error instanceof PartnerPaymentValidationError
         ? new HttpsError('failed-precondition', error.message) : error;
