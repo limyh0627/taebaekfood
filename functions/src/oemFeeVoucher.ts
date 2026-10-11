@@ -1,5 +1,5 @@
 import { buildOemFeePlan, oemFeeLineAmount as lineAmount, type OemFeeProductInput } from './shared/oemFeePlan';
-import { buildOemBatchCostPreview, finalizeOemBatchCost, validateOemCostIssueFingerprint, type OemBatchCost } from './shared/oemBatchCost';
+import { buildOemBatchCostPreview, finalizeOemBatchCost, oemFeeUnitKgFromSavedReceipt, validateOemCostIssueFingerprint, type OemBatchCost } from './shared/oemBatchCost';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -114,16 +114,24 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
     const childIds = [...new Set(bomRows.flatMap(rows => rows.docs.map(snap => snap.data().child_id as string)).filter(Boolean))];
     const childDocs = await Promise.all(childIds.map(id => tx.get(db.collection('items').doc(id))));
     const children = new Map(childDocs.filter(snap => snap.exists).map(snap => [snap.id, snap.data()!]));
+    const savedUnitKg = oemFeeUnitKgFromSavedReceipt(po as {items:{itemId:string;quantity:number}[]});
     const productInputs: OemFeeProductInput[] = [];
     for (const [index, product] of products.entries()) {
       const poItem = poItems[index];
       if (!product.exists || ownCompany(product.data()!) !== companyId) fail('현재 회사의 OEM 전표 품목을 찾을 수 없습니다.');
       const item = product.data()!;
+      if (savedUnitKg) {
+        const lots: Row[] = Array.isArray(item.lots) ? item.lots : [];
+        const matches = lots.filter(lot => lot.id === `lot-oem-${poId}-${poItem.itemId}`);
+        const row = po.oemBatchCost.rows.find((row: Row) => row.itemId === poItem.itemId);
+        if (matches.length !== 1 || matches[0].poId !== poId || matches[0].qtyIn !== poItem.quantity || matches[0].kgIn !== row.kg)
+          fail('OEM 원입고 로트 수량·중량이 변경되었습니다.');
+      }
       const finishedChildren = bomRows[index].docs.map(snap => snap.data())
         .filter(row => ['product', '완제품'].includes(children.get(row.child_id)?.type));
       const boxed = (finishedChildren.length === 1 && Number(finishedChildren[0].quantity ?? 1) > 1)
         || item.unit === '박스';
-      const kg = item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1);
+      const kg = savedUnitKg?.get(poItem.itemId) ?? (item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1));
       // 앱의 입력칸 coerce 정책으로 서버의 손상된 저장 kg가 0/fallback으로 바뀌지 않게 한다.
       if (!Number.isFinite(kg * perKg)) fail('가공비 전표 줄이 OEM 입고 내역과 다릅니다.');
       productInputs.push({name:poItem.name,spec:item.spec ?? poItem.unit ?? '',qty:poItem.quantity,unitKg:kg});

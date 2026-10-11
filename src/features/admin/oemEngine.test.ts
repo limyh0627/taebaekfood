@@ -293,3 +293,11 @@ it('화면의 기존 로트 번호는 재발급하지 않고 물질·입고일�
   expect(lot.id).toBe('lot-oem-number-boundary-box20');
   expect(lot.lotNo).toBeUndefined();
 });
+
+it('가공비는 규격 변경 뒤에도 신규 확인 배치의 저장된 입고 kg를 사용한다',async()=>{
+ const {deps,adds}=makeDeps();
+ deps.items=items.map(row=>row.id==='box10'?{...row,packageKg:30}:row);
+ const po={id:'saved-kg',companyId:'taebaek',poType:'oem',status:'received',oemPartnerId:'oem1',oemReceivedKg:20,oemFeePerKg:500,items:[{itemId:'box10',name:'10kg',quantity:1,unit:'개'},{itemId:'box20',name:'20kg',quantity:1,unit:'개'}],oemCostEvidence:{version:1},oemBatchCost:{rows:[{itemId:'box10',kg:10},{itemId:'box20',kg:10}]}} as unknown as PurchaseOrder;
+ await createOemEngine(deps as any).issueOemFeeStatement({po,date:'2026-10-11'});
+ expect(adds[0].d.items.map((line:any)=>line.total)).toEqual([5000,5000]);
+});

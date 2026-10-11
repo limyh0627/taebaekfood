@@ -20,3 +20,15 @@ it('반품과 검증된 선급 적용을 함께 넘겨 미결20을 보존한다'
 
 
 it('다른 회사에 존재하는 원전표와 중복 ID를 삭제로 오인하지 않는다',async()=>{const foreign=fixture();foreign.issuedStatements[0]={...target,companyId:'punghoe'};await expect(buildVerifiedAnchor('taebaek','2025',foreign)).rejects.toThrow('다른 회사');const duplicate=fixture();duplicate.issuedStatements.push({...target});await expect(buildVerifiedAnchor('taebaek','2025',duplicate)).rejects.toThrow('중복');});
+
+it.each(['', '2025-02-30'])('전표·자금의 실제 분개 날짜 %s는 추정하지 않고 차단한다', async date => {
+ const rows=fixture();rows.returnOperations=[];rows.returnApplications=[];rows.issuedStatements=[{...target,tradeDate:date}];
+ await expect(buildVerifiedAnchor('taebaek','2025',rows)).rejects.toThrow('거래 날짜');
+ rows.issuedStatements=[];rows.cashEntries=[{id:'cash-date',companyId:'taebaek',partnerId:'p',date,dir:'출금',accountCode:'251',amount:100}];
+ await expect(buildVerifiedAnchor('taebaek','2025',rows)).rejects.toThrow('거래 날짜');
+});
+it('유효한 과거 날짜·타회사 격리·기존 빈 제외용 더미 계약은 보존한다',async()=>{
+ const rows=fixture();rows.returnOperations=[];rows.returnApplications=[];rows.issuedStatements=[target,{...target,id:'foreign-date',companyId:'punghoe',tradeDate:''},{...target,id:'stmt-hide-exclusion',tradeDate:'',items:[],totalAmount:0,totalSupply:0}];
+ const before=JSON.stringify(rows);const anchor=await buildVerifiedAnchor('taebaek','2025',rows);
+ expect(anchor.rows[0].openStmts).toEqual([{id:'target',date:'2025-10-01',type:'매입',remaining:100}]);expect(JSON.stringify(rows)).toBe(before);
+});

@@ -247,7 +247,7 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
     const poId=`po-confirmed-cost-${source}`,itemId=`confirmed-cost-product-${source}`;await seed([poId]);
     const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'own-raw',kg:12,supplyAmount:24000}],packaging:{confirmed:true,supplyAmount:3000},capturedAt:'2026-10-03T00:00:00Z'};
     const sent=[{rawItemId:'own-raw',kg:12}];const preview=buildOemBatchCostPreview(evidence,{companyId:'taebaek',sent},[{itemId,kg:10}]);
-    await db.collection('items').doc(itemId).set({companyId:'taebaek',name:'원가 완제품',spec:'1kg',unit:'개',packageKg:1,cost:123,stock:10,lots:[{id:`lot-oem-${poId}-${itemId}`,poId,kgIn:10,kgRemaining:10,qtyIn:10,qtyRemaining:10,unitKg:1}]});
+    await db.collection('items').doc(itemId).set({companyId:'taebaek',name:'원가 완제품',spec:'1kg',unit:'개',packageKg:30,cost:123,stock:10,lots:[{id:`lot-oem-${poId}-${itemId}`,poId,kgIn:10,kgRemaining:10,qtyIn:10,qtyRemaining:10,unitKg:1}]});
     await db.collection('purchaseOrders').doc(poId).update({partnerId:'factory',oemIssueDate:date,oemIssueFingerprint:JSON.stringify({companyId:'taebaek',partnerId:'factory',sent,date,note:'',oemCostEvidence:evidence}),oemSent:sent,oemCostEvidence:evidence,oemBatchCost:preview,items:[{itemId,name:'원가 완제품',quantity:10,unit:'개'}]});
     if(source==='receipt'){
       const receiptId=`oem-receive:${poId}`;
@@ -260,6 +260,9 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
     expect(cost).toMatchObject({status:'confirmed',rawSupplyAmount:24000,packagingSupplyAmount:3000,feeSupplyAmount:4545,totalSupplyAmount:31545,costPerKg:3154.5});
     const item=(await db.collection('items').doc(itemId).get()).data()!;expect(item.cost).toBe(123);expect(item.stock).toBe(10);expect(item.lots[0].oemBatchCost).toMatchObject({allocatedSupplyAmount:31545,costPerKg:3154.5});
     expect(await issueOemFeeVoucher(db,'taebaek',request)).toBe(`OEMFEE-${poId}`);
+    await db.collection('purchaseOrders').doc(poId).update({items:[{itemId,name:'원가 완제품',quantity:20,unit:'개'}]});
+    await expect(issueOemFeeVoucher(db,'taebaek',request)).rejects.toThrow('원입고 로트 수량');
+    await db.collection('purchaseOrders').doc(poId).update({items:[{itemId,name:'원가 완제품',quantity:10,unit:'개'}]});
     await db.collection('purchaseOrders').doc(poId).update({'oemBatchCost.totalSupplyAmount':1});
     await expect(issueOemFeeVoucher(db,'taebaek',request)).rejects.toThrow('원가 확인 근거');
     expect((await db.collection('appMeta').doc(counterId).get()).get('last')).toBe(1);

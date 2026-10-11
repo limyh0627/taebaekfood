@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {buildOemBatchCostPreview,finalizeOemBatchCost,sumOemReceivedKg,validateOemCostEvidence,validateOemCostIssueFingerprint} from './oemBatchCost';
+import {oemFeeUnitKgFromSavedReceipt,buildOemBatchCostPreview,finalizeOemBatchCost,sumOemReceivedKg,validateOemCostEvidence,validateOemCostIssueFingerprint} from './oemBatchCost';
 const scope={companyId:'taebaek',sent:[{rawItemId:'raw',kg:100}]};
 const evidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:200000}],packaging:{confirmed:true,supplyAmount:30000},capturedAt:'2026-10-12T00:00:00Z'};
 const rows=[{itemId:'a',kg:20},{itemId:'b',kg:70}];
@@ -50,4 +50,13 @@ describe('신규 OEM 확인 공급가 근거와 kg 배분',()=>{
   expect(()=>validateOemCostIssueFingerprint({...po,oemIssueFingerprint:''})).toThrow('지문');
   expect(()=>validateOemCostIssueFingerprint({companyId:'taebaek'})).not.toThrow();
  });
+});
+
+it('확인 배치의 원입고 kg만 수량으로 나누고 legacy는 현재 경로를 유지한다',()=>{
+ const po={oemCostEvidence:evidence,oemBatchCost:pending(),oemReceivedKg:90,items:[{itemId:'a',quantity:2},{itemId:'b',quantity:10}]};
+ expect([...oemFeeUnitKgFromSavedReceipt(po)!]).toEqual([['a',10],['b',7]]);
+ expect(oemFeeUnitKgFromSavedReceipt({items:po.items})).toBeNull();
+ expect(()=>oemFeeUnitKgFromSavedReceipt({...po,oemReceivedKg:91})).toThrow();
+ expect(()=>oemFeeUnitKgFromSavedReceipt({...po,items:[po.items[0],po.items[0]]})).toThrow();
+ expect(()=>oemFeeUnitKgFromSavedReceipt({...po,items:[po.items[0],{itemId:'b',quantity:0}]})).toThrow();
 });

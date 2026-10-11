@@ -357,6 +357,10 @@ service cloud.firestore {
      */
     match /chatMessages/{msgId} {
       allow read: if readOk();
+      // 공유 최초 저장의 중복 확인만 허용한다. 기존 타회사 문서나 목록 조회에는 적용하지 않는다.
+      allow get: if isEmployee() && myCompany() in ['taebaek', 'punghoe']
+                 && msgId.matches('^MSG-share-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$')
+                 && resource == null;
       allow create, update: if createUpdateOk()
                             && exists(/databases/$(database)/documents/chatRooms/$(request.resource.data.roomId))
                             && get(/databases/$(database)/documents/chatRooms/$(request.resource.data.roomId)).data.companyId

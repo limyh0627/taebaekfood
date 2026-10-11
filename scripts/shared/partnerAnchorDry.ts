@@ -1,3 +1,4 @@
+import {isCalendarDay} from '../../src/shared/day';
 import {buildPartnerAnchor} from '../../src/features/admin/partnerAnchor';
 import {buildJournals} from '../../src/shared/buildJournals';
 import {verifyAdvanceStatements} from '../../src/shared/partnerAdvanceAudit';
@@ -20,5 +21,7 @@ export async function buildVerifiedAnchor(companyId:CompanyId,year:string,rows:R
  const advanceStatements=await verifyAdvanceStatements(companyId,statements,scoped('partnerAdvanceOperations'));
  const {entries,skipped}=buildJournals({statements,cashEntries,accounts:rows.accounts});
  if(skipped.length)throw new Error('분개 확인이 필요한 자료가 있어 결산 계획을 중단합니다.');
+ // 회사 필터와 기존 더미 제외를 거친 실제 분개만 날짜를 검증한다. 날짜를 추정하지 않는다.
+ if(entries.some(entry=>typeof entry.date!=='string'||!isCalendarDay(entry.date)))throw new Error('거래 날짜가 비어 있거나 올바르지 않아 결산 계획을 중단합니다.');
  return buildPartnerAnchor(companyId,year,{journals:entries,statements,cashEntries,settlements,returnOperations,advanceStatements,nameOf:id=>rows.partners?.find(p=>p.id===id&&companyOf(p)===companyId)?.name});
 }

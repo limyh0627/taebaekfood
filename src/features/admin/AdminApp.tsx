@@ -1,3 +1,4 @@
+import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
 import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
 import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
 import {normalizeViewAlias} from '../../shared/startView';
@@ -5089,9 +5090,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setIsAddOrderOpen(false);
                 setIsPasteOrderOpen(true);
               }}
-              onSendMessage={async (msg) => {
-                // 메시지 저장 (핵심 동작 — 실패 시 에러 전파)
-                await addItem('chatMessages', msg);
+              onSendMessage={async (msg, sharedUUID) => {
+                if (sharedUUID) {
+                  const result = await sendSharedChatMessage(msg, sharedUUID);
+                  if (result === 'duplicate') return;
+                } else {
+                  await addItem('chatMessages', msg);
+                }
+                // 공유 중복 확인에서는 방 요약·수신 알림도 다시 만들지 않는다.
 
                 // 방 요약·수신 알림은 본문 저장과 별개다. 참여자가 많을수록 알림 쓰기를 전부
                 // 기다리느라 전송 버튼이 수초간 잠겼다. 본문 성공 즉시 입력을 풀고 뒤에서 처리한다.

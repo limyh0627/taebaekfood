@@ -35,6 +35,8 @@ const reviewedTransactionWriters = new Set([
   'src/shared/services/productionWorkDocumentService.ts',
   // 새 환산표는 companyScopedWriteData와 원문 회사·품목 검증을 통과한다. 실제 회사별 Rules도 조회/등록/탈취 거절을 확인했다.
   'src/shared/services/itemPurchaseUnitService.ts',
+  // 공유 원문의 회사·로그인 claim·방 참여를 같은 거래에서 확인하고 기존 원문을 덮지 않는다.
+  'src/shared/services/sharedChatMessageService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

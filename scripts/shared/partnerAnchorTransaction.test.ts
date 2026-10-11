@@ -23,7 +23,7 @@ describe('043 conditional single anchor',()=>{
  it('timestamp backup round trips seconds and nanos',()=>{const t=new Timestamp(123,456);const r=decode(encode({t}));expect(r.t).toBeInstanceOf(Timestamp);expect(r.t.isEqual(t)).toBe(true);});
  it('domain journal failure rejects prepare rather than silently producing a balance',async()=>{const f=fake();f.write('issuedStatements/bad',{companyId:'taebaek',type:'매출',items:[],tradeDate:'2025-01-01'});await expect(prepareAnchor(f.db,'taebaek','2025','anchor-invalid','uid')).rejects.toThrow();expect(f.writes()).toBe(0);});
 });
-const enabled=process.env.PARTNER_ANCHOR_EMULATOR_TEST==='true'&&process.env.FIRESTORE_EMULATOR_HOST==='127.0.0.1:8082';
+const enabled=process.env.PARTNER_ANCHOR_EMULATOR_TEST==='true'&&['127.0.0.1:8082','127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
 describe.skipIf(!enabled)('043 actual Admin emulator',()=>{
  let app:App,db:Firestore;const project=`demo-anchor-${Date.now()}`;
  beforeAll(()=>{app=initializeApp({projectId:project},project);db=getFirestore(app);});
@@ -33,6 +33,16 @@ describe.skipIf(!enabled)('043 actual Admin emulator',()=>{
   const p=await prepareAnchor(db,'taebaek','2025','anchor-sdk','uid');const results=await Promise.allSettled([applyAnchor(db,p,p.planHash),applyAnchor(db,p,p.planHash)]);expect(results.filter(r=>r.status==='rejected').map(r=>(r as PromiseRejectedResult).reason?.message)).toEqual([]);expect(results.map(r=>r.status==='fulfilled'?r.value.status:'error').sort()).toEqual(['applied','duplicate']);const r=await captureApplied(db,p);expect((await partner.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);await undoAnchor(db,p,r);expect((await db.collection('partnerBalanceSnapshots').doc(p.anchorId).get()).exists).toBe(false);
  });
  it('actual changes after captured receipt block undo even when the saved body is restored',async()=>{const p=await prepareAnchor(db,'punghoe','2025','anchor-sdk-rewrite','uid');await applyAnchor(db,p,p.planHash);const r=await captureApplied(db,p);const ref=db.collection('partnerBalanceSnapshots').doc(p.anchorId);const body=(await ref.get()).data()!;await ref.set({...body,external:'changed'});await expect(captureApplied(db,p)).rejects.toThrow('원문');await expect(applyAnchor(db,p,p.planHash)).rejects.toThrow('변경');await ref.set(body);await expect(undoAnchor(db,p,r)).rejects.toThrow('변경');await ref.delete();});
+ it.each(['', '2025-02-30'])('실제 SDK 날짜 %s는 dry 및 기존 계획 apply를 쓰기 전에 차단한다',async date=>{
+  const ref=db.collection('issuedStatements').doc('calendar-guard');const body={companyId:'taebaek',partnerId:'p',type:'매입',tradeDate:'2025-10-01',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'합성',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'500'}]};
+  try {await ref.set(body);const p=await prepareAnchor(db,'taebaek','2025','anchor-calendar-'+(date?'invalid':'empty'),'uid');
+   await ref.update({tradeDate:date});const before=await ref.get();
+   await expect(prepareAnchor(db,'taebaek','2025','anchor-calendar-dry','uid')).rejects.toThrow('거래 날짜');
+   await expect(applyAnchor(db,p,p.planHash)).rejects.toThrow('변경');
+   expect((await db.collection('partnerBalanceSnapshots').doc(p.anchorId).get()).exists).toBe(false);
+   const after=await ref.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+  } finally {await ref.delete();}
+ });
  it('fresh membership change after dry gives no anchor write',async()=>{const p=await prepareAnchor(db,'punghoe','2025','anchor-sdk-cas','uid');await db.collection('partners').doc('new').set({companyId:'punghoe',name:'합성새'});await expect(applyAnchor(db,p,p.planHash)).rejects.toThrow('변경');expect((await db.collection('partnerBalanceSnapshots').doc(p.anchorId).get()).exists).toBe(false);expect(SOURCE_COLLECTIONS).toHaveLength(8);});
 });
 it('CLI completed undo receipt rejects same-run apply before credentials or database access',()=>{

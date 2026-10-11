@@ -105,3 +105,21 @@ export function validateOemCostIssueFingerprint(po: {companyId?:string;partnerId
   if(po.oemPartnerId!==undefined && po.oemPartnerId!==po.partnerId || JSON.stringify(canonical(recorded))!==JSON.stringify(canonical(expected)))
     fail('OEM 출고 회사·거래처·수량·원가 입력 근거가 변경되었습니다.');
 }
+
+/** 확인 배치는 현재 규격 대신 입고 때 고정한 행 kg/원 PO 수량을 사용한다. */
+export function oemFeeUnitKgFromSavedReceipt(po: {oemCostEvidence?:unknown;oemBatchCost?:unknown;oemReceivedKg?:number;items?:readonly {itemId:string;quantity:number}[]}): Map<string,number> | null {
+  if (po.oemCostEvidence === undefined) return null;
+  const cost=po.oemBatchCost as OemBatchCostPreview | OemBatchCostBlocked | OemBatchCost | undefined;
+  const rows=cost?.rows;
+  const items=po.items ?? [];
+  if (!rows?.length || items.length!==rows.length || new Set(items.map(row=>row.itemId)).size!==items.length
+    || new Set(rows.map(row=>row.itemId)).size!==rows.length || rows.some(row=>!positiveKg(row.kg))
+    || sumOemReceivedKg(rows.map(row=>row.kg))!==po.oemReceivedKg) fail('OEM 원입고 행 중량·수량 근거가 잘못되었습니다.');
+  const result=new Map<string,number>();
+  for (const item of items) {
+    const row=rows!.find(row=>row.itemId===item.itemId);
+    if (!row || !Number.isFinite(item.quantity) || item.quantity<=0 || !Number.isFinite(row.kg/item.quantity)) fail('OEM 원입고 품목·수량 근거가 다릅니다.');
+    result.set(item.itemId,row!.kg/item.quantity);
+  }
+  return result;
+}

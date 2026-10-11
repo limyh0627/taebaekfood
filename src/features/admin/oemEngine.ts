@@ -1,4 +1,4 @@
-import {sumOemReceivedKg} from '../../shared/oemBatchCost';
+import {sumOemReceivedKg, oemFeeUnitKgFromSavedReceipt} from '../../shared/oemBatchCost';
 import { validateAndMergeOemCostEvidence, type OemCostEvidence } from './oemCostEvidence';
 
 import { stampFor } from '../../shared/voucherStamp';
@@ -262,10 +262,11 @@ export function createOemEngine(deps: OemEngineDeps) {
     const perKg = input.unitPricePerKg ?? po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
     const taxable = input.taxable ?? true;
     // 회사·현재 단위중량은 기존 앱 경로에서 해석하고 전표 줄 계산은 서버와 공유한다.
+    const savedUnitKg = oemFeeUnitKgFromSavedReceipt(po);
     const products = (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
       if (!it || companyOf(it) !== companyId) throw new Error(`현재 회사의 OEM 전표 품목을 찾을 수 없습니다: ${pi.itemId}`);
-      return {name:pi.name,spec:it.spec ?? pi.unit ?? '',qty:pi.quantity ?? 0,unitKg:itemKg(it,deps.orderUnitInputs)};
+      return {name:pi.name,spec:it.spec ?? pi.unit ?? '',qty:pi.quantity ?? 0,unitKg:savedUnitKg?.get(pi.itemId) ?? itemKg(it,deps.orderUnitInputs)};
     });
     const {lines,totalSupply,totalTax} = buildOemFeePlan({receivedKg,sentKg:sentKg(po.oemSent),perKg,
       exempt:!taxable,accountCode:feeCode,products,bulk:po.oemReceivedBulk ?? []});
