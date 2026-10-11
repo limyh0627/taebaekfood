@@ -1,3 +1,4 @@
+import { itemWritePayload } from '../itemWritePayload';
 import { readPurchaseUnitSnapshot } from '../purchaseUnit';
 import {runFinancialOpening} from './financialOpeningCommands';
 /**
@@ -155,7 +156,7 @@ export const subscribeToDocument = <T>(
 };
 
 export const setDocument = async (collectionName: CollectionName, docId: string, data: any) => {
-  const scoped = await companyScopedWriteData(collectionName, stripUndefined(data));
+  const scoped = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(data)));
   await setDoc(doc(db, collectionName, docId), scoped, { merge: true });
 };
 
@@ -340,7 +341,7 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
     if (reason) throw new Error(`전표를 만들 수 없습니다 — ${reason}`);
   }
   const { id, ...raw } = item;
-  const data = await companyScopedWriteData(collectionName, stripUndefined(raw));
+  const data = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(raw)));
   if (collectionName === 'settlements') {
     const settlementRef = id ? doc(db, collectionName, id) : doc(collection(db, collectionName));
     await runTransaction(db, async tx => {
@@ -379,7 +380,7 @@ export const updateItem = async (collectionName: CollectionName, id: string, dat
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
   // 수정도 로그인 claim의 회사를 함께 보낸다. 생성만 회사 경계를 지나고 수정은 화면값에 맡기면
   // 오피스톡 초대처럼 강화된 규칙에서 저장 경로마다 동작이 갈린다.
-  const scoped = await companyScopedWriteData(collectionName, stripUndefined(data));
+  const scoped = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(data)));
   await updateDoc(docRef, scoped);
 };
 
@@ -611,7 +612,7 @@ export const commitCompanyWrites = async (ops: CompanyWriteOperation[]): Promise
       if (op.kind === 'delete') {
         batch.delete(ref);
       } else {
-        const data = await companyScopedWriteData(op.collection, stripUndefined(op.data));
+        const data = await companyScopedWriteData(op.collection, itemWritePayload(op.collection, stripUndefined(op.data)));
         batch.set(ref, data, { merge: op.merge ?? false });
       }
     }

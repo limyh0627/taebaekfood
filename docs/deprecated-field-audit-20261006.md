@@ -126,3 +126,19 @@ scripts/fix-sesame-lots.mts에는 lotsAreTotal false 정정 및 원문 undo writ
 
 
 최종 합류4파일17PASS·타입0. 저장값·notif URL·SW·상위prop alias는 공용 정규화, 현대 ItemManager 수정콜백 확인. 시험은 실제effect/분기를 사용하는 Host 검증이며 전체 AdminApp mount는 아니다. redirect 제거 변이는 실패를 검출하고 복구 후17PASS. 전체참조 검색에서 구 컴포넌트 소비는 본체/전용시험뿐이므로 components/ItemPriceManager.tsx와 전용bomInputs시험도 제거했다. 현대 ItemManager의 회사별/BOM시험은 유지한다.
+
+## 2026-10-12 전체 인수 잔여 대조
+
+현재 코드 기준93b56c7 및 이번030/039 후보를 읽기 전용으로 대조했다. 아래 존재 수는 2026-10-09 감사값이며 최신 운영 조회값이 아니다. 현재 PC의 Process/User/Machine 서비스 계정 설정이 모두 없어 운영 감사는 실행하지 않았다. 최신 전체 기준은21완료22잔여다. 위 절의 과거 배포 대기·푸시 보류·잔량은 당시 기록이며 현재 지시를 대신하지 않는다.
+
+| 유지 항목 | 과거 DB 태백 / 풍회 | 현재 소비·대체 | 전체 인수까지 남은 일 |
+|---|---|---|---|
+| Item.partnerIds | 188 / 2 | partnerPrice의 SMARTSTORE 호환 reader를 AddOrder/PasteOrder가 사용. AdminApp의 파생 거래처 prop과 DB 원문은 구분. 대체는 partner_item 및 isSmartStore | 최신 원문 의미·누락 연결과 채널 표식 대조, 이관 계획·원문 백업·조건부 적용/undo 및 삭제 결정 |
+| Item.lotsAreTotal | 1 / 0 | 제품 계산 reader/writer0, never 선언으로 재도입 방지. 현재 stock/로트 계약 유지 | 잔존 품목 stock와 로트 kg합 동치·최신 백업·삭제 결정. 과거 개별 복구 도구와 구분 |
+| PalletStock.inUse | 8 / 0 | required 타입과 원문 편집 snapshot 보존. 잔량은 PalletManager 거래기록 및 outstandingByPallet | 실제8문서의 거래기록·회수대기 동치와 원문 검수 후 삭제 결정 |
+| AccountCode.noncash | 2 / 2 | optional 선언, 현재 계산은 journal 상대계정. noncashApplication은 다른 현행 필드 | 최신 존재·의미 확인과 필드 보존/삭제 결정 |
+| InventoryCategory 옛 분류 | 필드 존재 감사 대상 아님 | AddItemModal·현대 ItemManager·ItemList의 taxonomy 계약 사용. 구 ItemPriceManager는66f31fb3에서 실행 경로 통합 및 제거 완료 | 현재 운영 분류 동치 확인 전 union 일괄 축소 금지 |
+
+postMode는d21eb7d0에서 앱/Functions 호환을 제거했고 실제101개 템플릿×12개월 투영 차이0 근거가 있다. 재작업 대상이 아니다. 초기 팔레트·CostFn·구 포장 필드 및 OEM 서버 unpackTo 후속도 기존 완료 범위를 다시 계수하지 않는다.
+
+옛 CLI writer는 boxSize 복원6d61ca8, pack 이관93b56c7에 이어 이번 fix-spec-loose-bulk를 안내로 종료한다. 이는 현재 데이터를 오래된 snapshot으로 덮는 실행 경로 제거이며 운영 잔존 필드 이관을 대신하지 않는다. 현재 규격 UI·BOM·item_pack 및 과거 백업·DB 이력은 보존한다. 이 추가표는 코드·과거 감사·미실행 최신 조회를 구분하며039 전체 완료를 선언하지 않는다.
