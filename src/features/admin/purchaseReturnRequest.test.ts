@@ -76,3 +76,22 @@ describe('purchase return request', () => {
     expect(purchaseReturnRequest('taebaek','supplier',source,[{itemId:'box',qty:'1'}],[item],{...explicit,items:[{...explicit.items[0],supply:999}]}).totalAmount).toBe(110);
   });
  });
+
+describe('혼합 포장 매입 반품 화면 금액', () => {
+  const raw = { id: 'raw', companyId: 'taebaek', type: 'raw', subtype: '벌크', name: '참깨', unit: 'kg' } as Item;
+  const mixed = { ...source, totalSupply: 700, totalTax: 70, totalAmount: 770,
+    items: [20, 25].map((unitKg, index) => ({ itemId: 'raw', accountCode: '500', qty: 2,
+      supply: index ? 500 : 200, tax: index ? 50 : 20, total: index ? 550 : 220,
+      purchaseUnitId: `unit-${index}`, purchaseUnit: '포대', purchaseQty: 2, unitKg, inventoryQty: unitKg * 2 })) } as IssuedStatement;
+  it('동일품목 두 포장 줄의 원전표 index와 각 금액을 그대로 접수한다', () => {
+    const result = purchaseReturnRequest('taebaek', 'supplier', mixed,
+      [{ itemId: 'raw', sourceLineIndex: 0, qty: '1' }, { itemId: 'raw', sourceLineIndex: 1, qty: '1' }], [raw]);
+    expect(result.totalAmount).toBe(385);
+    expect(result.items.map(row => [row.sourceLineIndex, row.price])).toEqual([[0, 110], [1, 275]]);
+  });
+  it('원줄 미선택·같은 줄 중복·다른 품목·과반품을 거절한다', () => {
+    for (const selected of [[{ itemId: 'raw', qty: '1' }], [{ itemId: 'raw', sourceLineIndex: 0, qty: '3' }], [{ itemId: 'other', sourceLineIndex: 0, qty: '1' }], [{ itemId: 'raw', sourceLineIndex: 0, qty: '1' }, { itemId: 'raw', sourceLineIndex: 0, qty: '1' }]]) {
+      expect(() => purchaseReturnRequest('taebaek', 'supplier', mixed, selected, [raw])).toThrow();
+    }
+  });
+});

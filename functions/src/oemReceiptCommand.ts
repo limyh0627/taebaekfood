@@ -105,7 +105,7 @@ export async function receiveOemFinishedGoods(db: admin.firestore.Firestore, com
       const finishedChildren = bomSnaps[index]!.docs.map(snap => snap.data())
         .filter(row => ['product', '완제품'].includes(children.get(row.child_id)?.type));
       const boxed = (finishedChildren.length === 1 && Number(finishedChildren[0].quantity ?? 1) > 1)
-        || Number(item.unpackTo?.count ?? 0) > 1 || item.unit === '박스';
+        || item.unit === '박스';
       const unitKg = productKg(item, boxed);
       const formulas = formulaSnaps[index]!.docs.map(snap => snap.data())
         .filter(formula => typeof formula.child_name === 'string' && formula.child_name

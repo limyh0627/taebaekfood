@@ -101,6 +101,44 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     expect((await counter.get()).data()).toEqual(before);
   });
 
+  it('등록된 매입 단위 22.5kg포를 거래2포·원가kg·발주 스냅샷으로 일치 저장한다',async()=>{
+    await seed(); const id='registered-purchase-unit'; const rawId='registered-raw';
+    await db.collection('items').doc(rawId).set({companyId:'taebaek',name:'합성 원료',type:'raw',subtype:'벌크',unit:'L',cost:80});
+    const snapshot={sourceLineIndex:0,purchaseUnitId:'registered-unit',purchaseUnit:'22.5kg포',purchaseQty:2,unitKg:22.5,inventoryQty:45};
+    await db.collection('item_purchase_unit').doc(snapshot.purchaseUnitId).set({companyId:'taebaek',itemId:rawId,partnerId:'p1',purchaseUnit:snapshot.purchaseUnit,unitKg:22.5,isDefault:true,active:true});
+    const line={itemId:rawId,name:'합성 원료',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500',...snapshot};
+    const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,items:[line]},
+      newPo:{id:`po-${id}`,cardNo:'PO-261003-092',items:[{itemId:rawId,itemName:'합성 원료',quantity:2,unit:'L',isBox:false,...snapshot}]},costUpdates:[{itemId:rawId,price:889,beforeCost:80,sourceLineIndex:0}]};
+    const result=await issue(request);
+    expect((await db.collection('issuedStatements').doc(id).get()).data()?.items[0]).toEqual(line);
+    expect((await db.collection('purchaseOrders').doc(`po-${id}`).get()).data()?.items[0]).toMatchObject({quantity:2,unit:'L',...snapshot});
+    expect((await db.collection('items').doc(rawId).get()).data()?.cost).toBe(889);
+    await db.collection('item_purchase_unit').doc(snapshot.purchaseUnitId).update({active:false,unitKg:25});
+    expect(await issue(request)).toEqual({...result,status:'duplicate'});
+  });
+  it.each(['foreign','inactive','supplier','weight','po-snapshot'])('매입 단위 등록표·전표·발주 불일치 %s는 쓰기 전 거절한다',async scenario=>{
+    await seed(); const id=`unit-reject-${scenario}`; const rawId=`unit-raw-${scenario}`; const unitId=`unit-${scenario}`;
+    await db.collection('items').doc(rawId).set({companyId:'taebaek',name:'원료',type:'raw',subtype:'벌크',unit:'kg',cost:80});
+    const snapshot={sourceLineIndex:0,purchaseUnitId:unitId,purchaseUnit:'포',purchaseQty:2,unitKg:20,inventoryQty:40};
+    await db.collection('item_purchase_unit').doc(unitId).set({companyId:scenario==='foreign'?'punghoe':'taebaek',itemId:rawId,partnerId:scenario==='supplier'?'other':'p1',purchaseUnit:'포',unitKg:scenario==='weight'?25:20,isDefault:true,active:scenario!=='inactive'});
+    const line={itemId:rawId,name:'원료',qty:2,price:100,supply:200,tax:0,total:200,isTaxExempt:true,accountCode:'500',...snapshot};
+    const poSnapshot=scenario==='po-snapshot'?{...snapshot,unitKg:25,inventoryQty:50}:snapshot;
+    await expect(issue({...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:200,totalTax:0,totalAmount:200,items:[line]},
+      newPo:{id:`po-${id}`,cardNo:'PO-261003-093',items:[{itemId:rawId,itemName:'원료',quantity:2,unit:'kg',isBox:false,...poSnapshot}]}})).rejects.toThrow();
+    expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
+    expect((await db.collection('purchaseOrders').doc(`po-${id}`).get()).exists).toBe(false);
+    expect((await db.collection('items').doc(rawId).get()).data()?.cost).toBe(80);
+  });
+  it.each(['valid','duplicate','missing'])('같은 원료 20·25kg 포 행의 신규 발주 coverage와 가중 원가 %s',async mode=>{
+    await seed(); const id=`mixed-${mode}`,rawId=`mixed-raw-${mode}`;
+    await db.collection('items').doc(rawId).set({companyId:'taebaek',name:'원료',type:'raw',subtype:'벌크',unit:'kg',cost:80});
+    const lines=[20,25].map((unitKg,sourceLineIndex)=>({itemId:rawId,name:'원료',qty:1,price:unitKg*1100,supply:unitKg*1000,tax:unitKg*100,total:unitKg*1100,isTaxExempt:false,accountCode:'500',sourceLineIndex,purchaseUnitId:`${id}-u${unitKg}`,purchaseUnit:'포',purchaseQty:1,unitKg,inventoryQty:unitKg}));
+    for(const line of lines)await db.collection('item_purchase_unit').doc(line.purchaseUnitId).set({companyId:'taebaek',itemId:rawId,purchaseUnit:'포',unitKg:line.unitKg,isDefault:false,active:true});
+    const poLines=lines.map(({qty,...row})=>({...row,itemName:row.name,quantity:qty,unit:'kg',isBox:false}));
+    const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',items:lines,totalSupply:45000,totalTax:4500,totalAmount:49500},newPo:{id:`po-${id}`,cardNo:`PO-261003-${mode==='valid'?'094':mode==='duplicate'?'095':'096'}`,items:mode==='duplicate'?[poLines[0],poLines[0]]:mode==='missing'?[poLines[0]]:poLines},costUpdates:[{itemId:rawId,price:1000,beforeCost:80,sourceLineIndex:0,sourceLineIndices:[0,1]}]};
+    if(mode==='valid'){expect((await issue(request)).status).toBe('applied');expect((await db.collection('items').doc(rawId).get()).get('cost')).toBe(1000);expect((await db.collection('purchaseOrders').doc(`po-${id}`).get()).get('items')).toHaveLength(2);}
+    else{await expect(issue(request)).rejects.toThrow('중복되거나 누락');expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);expect((await db.collection('items').doc(rawId).get()).get('cost')).toBe(80);}
+  });
   beforeAll(async () => { app = admin.initializeApp({ projectId }, projectId); db = admin.firestore(app); });
   afterAll(async () => { await app?.delete(); });
 

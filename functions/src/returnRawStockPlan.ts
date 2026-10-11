@@ -4,8 +4,8 @@ import { prepareRawCommand } from './shared/rawInventoryPrepare';
 import { inventoryDocId, operationDocId, legacyOperationDocId,
   type RawInventoryCommand, type RawInventoryState } from './shared/rawInventoryCore';
 import { toLedgerDoc } from './shared/rawInventoryDocument';
-import { rawLotTarget, type RawHolderItem } from './shared/rawHolder';
-import { DENSITY } from './shared/formula';
+import { rawLotTarget, rawHolderById, type RawHolderItem } from './shared/rawHolder';
+import { DENSITY, baseRawName } from './shared/formula';
 import { itemPackageKg, unpackStockComponent, receiptToKg } from './shared/stockUnitMeasure';
 import type { CompanyId } from './shared/rawLot';
 
@@ -13,7 +13,7 @@ type Item = RawHolderItem & { unit?: string; spec?: string; packageKg?: number; 
   stock?: number; lots?: unknown[] };
 type Input = { operationId: string; requestId: string; companyId: CompanyId; date: string; createdAt: string;
   partnerId: string; partnerName: string; item: Item; quantityDelta: number; allItems: Item[];
-  bomLines: { parent_id: string; child_id: string; quantity?: number }[] };
+  bomLines: { parent_id: string; child_id: string; quantity?: number }[]; explicitKg?: number; sourceLineIndex?: number };
 type Applied = { state: RawInventoryState; itemData: Record<string, any> };
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const snapshot = (value: admin.firestore.DocumentSnapshot | null) => value ? {
@@ -23,7 +23,10 @@ const snapshot = (value: admin.firestore.DocumentSnapshot | null) => value ? {
 /** 기존 원료 명령의 읽기·계산만 수행한다. 모든 반품의 읽기가 끝난 뒤 함께 저장한다. */
 export async function prepareReturnRawStock(db: admin.firestore.Firestore, tx: admin.firestore.Transaction,
   input: Input, virtual: Map<string, Applied>) {
-  const target = rawLotTarget(input.allItems, input.item, input.item.name, input.companyId);
+  const savedUnitHolder = input.explicitKg !== undefined ? rawHolderById(input.allItems,input.item.id,input.companyId) : undefined;
+  if (input.explicitKg !== undefined && !savedUnitHolder) throw new ReturnValidationError('원매입 단위의 회사·원료 홀더 ID를 확인해 주세요.');
+  const target = savedUnitHolder ? {rawItem:savedUnitHolder,baseName:savedUnitHolder.rawMaterialName || baseRawName(savedUnitHolder.name)}
+    : rawLotTarget(input.allItems, input.item, input.item.name, input.companyId);
   if (!target) return null;
   const byId = new Map(input.allItems.map(item => [item.id, item]));
   const component = unpackStockComponent(input.bomLines.filter(line => line.parent_id === input.item.id)
@@ -31,10 +34,10 @@ export async function prepareReturnRawStock(db: admin.firestore.Firestore, tx: a
       child: byId.get(line.child_id) as Item & { type?: string } | undefined })));
   const packageKg = itemPackageKg(input.item, component !== null) || undefined;
   const unit = String(input.item.unit ?? '').toLowerCase();
-  const kg = receiptToKg({ quantity: Math.abs(input.quantityDelta), unit,
+  const kg = input.explicitKg ?? receiptToKg({ quantity: Math.abs(input.quantityDelta), unit,
     density: DENSITY[target.baseName] ?? 1, packageKg });
   if (!Number.isFinite(kg) || kg <= 0) throw new ReturnValidationError('원료 반품 kg를 확인해 주세요.');
-  const operationId = `return:${input.operationId}:${input.item.id}`;
+  const operationId = input.sourceLineIndex !== undefined ? `return:${input.operationId}:${input.item.id}:line:${input.sourceLineIndex}` : `return:${input.operationId}:${input.item.id}`;
   const base = { operationId, companyId: input.companyId, rawItemId: target.rawItem.id,
     materialSnapshot: target.baseName,
     effectiveAt: input.createdAt.slice(0, 10) === input.date ? input.createdAt : `${input.date}T12:00:00+09:00`,
@@ -62,9 +65,9 @@ export async function prepareReturnRawStock(db: admin.firestore.Firestore, tx: a
   virtual.set(target.rawItem.id, { state: result.state, itemData: { ...itemSnap.data(), ...itemPatch } });
   const movement = clean({ ...toLedgerDoc(result.movement, { note: `${input.partnerName} 반품`, type: 'manual' }),
     returnOperationId: input.operationId, returnRequestId: input.requestId, partnerId: input.partnerId,
-    returnedItemId: input.item.id, returnedQuantityDelta: input.quantityDelta });
+    returnedItemId: input.item.id, returnedQuantityDelta: input.quantityDelta, ...(input.sourceLineIndex!==undefined?{sourceLineIndex:input.sourceLineIndex}:{}) });
   return { stateRef, itemRef, movementRef, state: clean(result.state), itemPatch, movement,
-    requestItemId: input.item.id, quantityDelta: input.quantityDelta };
+    requestItemId: input.item.id, quantityDelta: input.quantityDelta, sourceLineIndex:input.sourceLineIndex };
 }
 
 export function writeReturnRawStock(tx: admin.firestore.Transaction,

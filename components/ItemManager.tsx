@@ -25,6 +25,8 @@ import { channelStyle } from '../src/shared/channelStyle';
 import FilterRow from '../src/shared/ui/FilterRow';
 import { partnersOfItem, isLinkedToPartner, partnerNamesByItem } from '../src/shared/partnerPrice';
 import ModalShell from '../src/shared/components/ModalShell';
+import PurchaseUnitManagerModal from '../src/features/items/PurchaseUnitManagerModal';
+import { isRawPurchaseItem } from '../functions/src/shared/purchaseCost';
 
 interface ItemManagerProps {
   companyId: CompanyId;
@@ -200,6 +202,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
   // ── 박스 품목 만들기 ──
   // 낱개에서 'N개입' 박스 품목을 만든다. BOM = 낱개×N + 겉박스·테이프(고르면).
   // 이름·id는 기존 규칙을 따라 자동으로 채우고('{낱개} (N개입)' / box-{낱개id}-{N}) 편집 가능.
+  const [purchaseUnitItem, setPurchaseUnitItem] = useState<Item | null>(null);
   const [boxModal, setBoxModal] = useState<Item | null>(null);
   const [boxForm, setBoxForm] = useState<{ name: string; count: string; comps: { id: string; qty: string }[] }>({ name: '', count: '10', comps: [] });
   const openBoxModal = (unit: Item) => {
@@ -1275,6 +1278,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
                         ) : isAdmin ? (
                           // 품목 목록 뷰: 품목 수정 / 삭제 버튼
                           <div className="flex items-center justify-end gap-1.5">
+                            {isRawPurchaseItem(item) && <button onClick={() => setPurchaseUnitItem(item)} className="px-2 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-black">매입단위</button>}
                             {/* 낱개 완제품 → N개입 박스 품목 만들기. 이미 박스인 품목엔 안 띄운다. */}
                             {onCreateBoxItem && item.type === 'product' && !isBoxStockItem(item, orderUnitInputs) && (
                               <button
@@ -1784,6 +1788,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ companyId, orderUnitInputs, i
 
       {/* 포장설정 모달 */}
       {/* ── 박스 품목 만들기 ── */}
+      {purchaseUnitItem && <PurchaseUnitManagerModal key={`${companyId}:${purchaseUnitItem.id}`} companyId={companyId} item={purchaseUnitItem} partners={partners} onClose={() => setPurchaseUnitItem(null)}/>}
       {boxModal && (
         <ModalShell title="박스 품목 만들기" onClose={() => setBoxModal(null)} bodyClassName="space-y-4">
             <p className="text-[11px] text-slate-400">낱개 · {boxModal.name}</p>

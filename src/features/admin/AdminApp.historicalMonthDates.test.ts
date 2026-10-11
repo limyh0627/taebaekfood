@@ -14,7 +14,7 @@ function visit(node: ts.Node) {
   ts.forEachChild(node, visit);
 }
 visit(source);
-const day = ts.transpileModule(readFileSync('src/shared/day.ts', 'utf8').replace(/^export \{ kstDateOf \}.*\n/m, ''), {
+const day = ts.transpileModule(readFileSync('src/shared/day.ts', 'utf8').replace(/^export \{ kstDateOf \}[^\r\n]*\r?\n/m, ''), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 it.each(['UTC', 'Asia/Seoul'])('과거 생성일 조회 실제 effect는 %s에서도 전월 첫날부터 월말까지 포함한다', zone => {

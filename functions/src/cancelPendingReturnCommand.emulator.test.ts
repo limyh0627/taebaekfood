@@ -6,8 +6,9 @@ import { submitReturnRequest } from './submitReturnRequestCommand';
 import { cancelPendingReturn, type PendingReturnCancellationInput } from './cancelPendingReturnCommand';
 import { updatePendingReturnQuantity } from './updatePendingReturnQuantityCommand';
 import { processGeneralStockReturn } from './processReturnCommand';
+import { inventoryDocId } from './shared/rawInventoryCore';
 import { voucherSequenceKey } from './voucherIssue';
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
+const available = ['127.0.0.1:8082', '127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST ?? '');
 const run = `cancel-return-${randomUUID()}`, companyId = 'taebaek' as const, date = '2026-10-09';
 const actor = { uid: `${run}-uid`, token: {companyId, isAdmin: true, employeeId: `${run}-employee`} };
 let app: App, db: Firestore;
@@ -18,7 +19,7 @@ describe.skipIf(!available)('대기 반품 취소 실제 Admin transaction', () 
     app = initializeApp({projectId: 'demo-taebaekfood-local'}, run); db = getFirestore(app);
     const shared = {
       'appMeta/releaseCutover': {releaseId: run, status: 'active', voucherNotBefore: {taebaek: date, punghoe: date}},
-      'appMeta/returnCutover_taebaek': {companyId, enabled: true, legacyWritersBlocked: true, auditPassed: true},
+      'appMeta/returnCutover_taebaek': {companyId, enabled: true, legacyWritersBlocked: true, auditPassed: true, purchaseGeneralStockEnabled: true},
       'appMeta/partnerPaymentCutover_taebaek': {companyId, enabled: true, legacyWritersBlocked: true, auditPassed: true},
       [`appMeta/${counterId}`]: {companyId, tradeDate: date, prefix: '반품', last: 0},
     };
@@ -56,6 +57,50 @@ describe.skipIf(!available)('대기 반품 취소 실제 Admin transaction', () 
   }
   const process = (input: PendingReturnCancellationInput) => processGeneralStockReturn(db, companyId, actor.uid,
     {operationId: `${input.requestId}-process`, returnRequestId: input.requestId, tradeDate: date, expectedPartnerRevision: 0, releaseId: run});
+
+  // 혼합 단위는 원전표 행 번호로 식별하며 취소 접수는 물리 원장을 변경하지 않는다.
+  async function seedMixed(label: string) {
+    const requestId = run + '-mixed-' + label, partnerId = requestId + '-partner', itemId = requestId + '-raw', sourceId = requestId + '-source';
+    const stateId = inventoryDocId(companyId, itemId);
+    const lot = {id: requestId + '-lot', supplierName: '시험', kgIn: 45, kgRemaining: 45, receivedDate: date, status: 'active', createdAt: date + 'T00:00:00Z'};
+    const lines = [20,25].map((unitKg,sourceLineIndex)=>({itemId,sourceLineIndex,accountCode:'500',qty:1,supply:100,tax:10,total:110,purchaseUnitId:'old-'+unitKg,purchaseUnit:'포',purchaseQty:1,unitKg,inventoryQty:unitKg}));
+    const docs: Array<[string, Record<string, any>]> = [
+      ['partners/'+partnerId,{companyId,name:'혼합 단위 시험'}],
+      ['items/'+itemId,{companyId,name:'혼합원료',type:'raw',subtype:'벌크',unit:'L',stock:45,lots:[lot]}],
+      ['rawInventories/'+stateId,{id:stateId,companyId,rawItemId:itemId,materialSnapshot:'혼합원료',stockKg:45,activeLots:[lot],recentDepletedLots:[],revision:0,lastProcessedAt:date+'T00:00:00Z'}],
+      ['issuedStatements/'+sourceId,{companyId,partnerId,type:'매입',tradeDate:date,totalSupply:200,totalTax:20,totalAmount:220,items:lines}],
+    ];
+    for(const code of ['500','135','251','253','255'])docs.push(['accountCodes/'+requestId+'-'+code,{companyId,code}]);
+    for(const [path,data] of docs){owned.add(path);await db.doc(path).set(data);}
+    owned.add('returnRequests/'+requestId);owned.add('returnSubmissionOperations/'+requestId);owned.add('appMeta/partnerPaymentState_'+companyId+'_'+partnerId);
+    const request={companyId,partnerId,partnerName:'혼합 단위 시험',linkedStatementId:sourceId,returnType:'매입',status:'pending',totalAmount:220,createdAt:date+'T00:00:00Z',items:[0,1].map(sourceLineIndex=>({itemId,sourceLineIndex,quantity:1,isResellable:false}))};
+    await submitReturnRequest(db,companyId,actor.uid,{companyId,requestId,request});
+    const input: PendingReturnCancellationInput={companyId,requestId,operationId:requestId+'-cancel',expectedRequest:(await db.doc('returnRequests/'+requestId).get()).data()!};
+    return {input,itemId,stateId,sourceId,partnerId};
+  }
+  it('혼합 단위 접수 취소는 원행과 raw 재고·로트·금액·번호를 보존한다',async()=>{
+    const f=await seedMixed('pending');
+    const before=await Promise.all(['items/'+f.itemId,'rawInventories/'+f.stateId,'issuedStatements/'+f.sourceId,'appMeta/'+counterId].map(path=>db.doc(path).get()));
+    expect((await cancelPendingReturn(db,actor,f.input)).status).toBe('cancelled');
+    const current=(await db.doc('returnRequests/'+f.input.requestId).get()).data()!;
+    expect(current.items.map((row:any)=>row.sourceLineIndex)).toEqual([0,1]);expect(current.totalAmount).toBe(220);
+    for(const old of before){const next=await old.ref.get();expect(next.data()).toEqual(old.data());expect(next.updateTime!.isEqual(old.updateTime!)).toBe(true);}
+    expect((await db.collection('rawMaterialLedger').where('returnRequestId','==',f.input.requestId).get()).empty).toBe(true);
+  },90000);
+  it('혼합 단위 처리 완료 후 접수 취소 거절은 원장·로트·원행·금액·번호를 변경하지 않는다',async()=>{
+    const f=await seedMixed('processed');expect((await process(f.input)).status).toBe('applied');
+    const movements=await db.collection('rawMaterialLedger').where('returnRequestId','==',f.input.requestId).get();
+    expect(movements.size).toBe(2);expect(movements.docs.map(row=>row.get('sourceLineIndex')).sort()).toEqual([0,1]);expect(movements.docs.map(row=>row.get('used')).sort((a,b)=>a-b)).toEqual([20,25]);
+    const paths=['items/'+f.itemId,'rawInventories/'+f.stateId,'issuedStatements/'+f.sourceId,'appMeta/'+counterId,'appMeta/partnerPaymentState_'+companyId+'_'+f.partnerId];
+    const current=(await db.doc('returnRequests/'+f.input.requestId).get()).data()!;paths.push('issuedStatements/'+current.returnJournalId,'returnApplications/'+current.returnApplicationId,'returnOperations/'+f.input.requestId+'-process');
+    const before=[...movements.docs,...await Promise.all(paths.map(path=>db.doc(path).get()))];
+    expect((await db.doc('rawInventories/'+f.stateId).get()).get('stockKg')).toBe(0);
+    const originalItems=current.items,originalAmount=current.totalAmount;
+    await expect(cancelPendingReturn(db,actor,{...f.input,expectedRequest:current})).rejects.toThrow('대기');
+    for(const old of before){expect(old.exists).toBe(true);const next=await old.ref.get();expect(next.data()).toEqual(old.data());expect(next.updateTime!.isEqual(old.updateTime!)).toBe(true);}
+    const after=(await db.doc('returnRequests/'+f.input.requestId).get()).data()!;expect(after.items).toEqual(originalItems);expect(after.totalAmount).toBe(originalAmount);expect(after.status).toBe('processed');expect(after.cancelledAt).toBeUndefined();
+  },90000);
+
   it('수량 수정 후 취소·동시 재시도·원접수 재개가 원문과 금융을 보존한다', async () => {
     const f = await seed('normal'), ref = db.doc(`returnRequests/${f.input.requestId}`);
     await updatePendingReturnQuantity(db, actor, {companyId, requestId: f.input.requestId, operationId: `${f.input.requestId}-quantity`, updates: [{itemId: f.itemId, previousQuantity: 2, quantity: 3}]});

@@ -85,3 +85,29 @@ it('취소된 일반·원료 발주는 received duplicate 반환보다 먼저 �
   const before=JSON.stringify([...state.docs]);await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).rejects.toThrow('취소된 발주');expect(JSON.stringify([...state.docs])).toBe(before);expect(raw.read).not.toHaveBeenCalled();
  }
 });
+
+it.each([20,22.5,25])('원료 %skg 포 선택 스냅샷으로 입고 kg와 포장 로트를 준비한다',async unitKg=>{
+ const holder={id:'holder',companyId:'taebaek',name:'볶음참깨',type:'wip',subtype:'벌크',unit:'kg',stock:0,packageKg:999} as Item;
+ const snapshot={sourceLineIndex:0,purchaseUnitId:'registered',purchaseUnit:'포',purchaseQty:2,unitKg,inventoryQty:2*unitKg};
+ state.docs.set('items/holder',holder);
+ state.docs.set('purchaseOrders/po',{companyId:'taebaek',status:'invoiced',partnerName:'공급자',items:[{itemId:'holder',name:holder.name,quantity:2,unit:'kg',...snapshot}]});
+ await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',[holder],inputs)).rejects.toThrow('원료 명령 관찰 종료');
+ expect(raw.read.mock.calls[0][2]).toMatchObject({rawItemId:'holder',kg:2*unitKg,lot:{packageType:'포',packageKg:unitKg,qtyIn:2}});
+ expect(state.queries).toEqual(['itemReceipts','rawMaterialLedger']);
+});
+it('L 원료도 저장 inventoryQty kg를 밀도로 다시 곱하지 않는다',async()=>{
+ const holder={id:'holder',companyId:'taebaek',name:'깨분참기름',type:'wip',subtype:'벌크',unit:'L',density:0.9,stock:0} as Item;
+ state.docs.set('items/holder',holder);
+ state.docs.set('purchaseOrders/po',{companyId:'taebaek',status:'invoiced',items:[{itemId:'holder',quantity:2,unit:'L',sourceLineIndex:0,purchaseUnitId:'registered',purchaseUnit:'L통',purchaseQty:2,unitKg:0.9,inventoryQty:1.8}]});
+ await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',[holder],inputs)).rejects.toThrow('원료 명령 관찰 종료');
+ expect(raw.read.mock.calls[0][2].kg).toBe(1.8);
+});
+it('개수 재고나 부분 스냅샷은 원료 단위 선택으로 입고하지 않는다',async()=>{
+ const po=state.docs.get('purchaseOrders/po'); po.items[0]={...po.items[0],sourceLineIndex:0,purchaseUnitId:'registered',purchaseUnit:'포',purchaseQty:2,unitKg:20,inventoryQty:40};
+ const original=JSON.stringify([...state.docs]);
+ await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).rejects.toThrow('원료 품목');
+ expect(JSON.stringify([...state.docs])).toBe(original); expect(raw.read).not.toHaveBeenCalled();
+ delete po.items[0].unitKg;
+ await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).rejects.toThrow();
+ expect(raw.read).not.toHaveBeenCalled();
+});

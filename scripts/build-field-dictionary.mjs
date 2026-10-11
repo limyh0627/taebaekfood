@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { resolvedModelFields } from './resolved-model-fields.mjs';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import assert from 'node:assert/strict';
@@ -62,6 +63,7 @@ const collections = [...readFileSync('src/shared/collections.ts', 'utf8').matchA
   .map(([, key, collection]) => ({ key, collection }));
 const registry = new Set(collections.map(entry => entry.collection));
 const additionalModels = [];
+const resolvedModels = [];
 const pathCalls = [];
 const candidateCalls = [];
 const apiNames = new Set(['collection', 'doc', 'collectionGroup']);
@@ -159,6 +161,9 @@ const namedOwner = node => {
 for (const file of program.getSourceFiles()) {
   if (!fileNames.has(file.fileName.replaceAll('\\', '/').toLowerCase())) continue;
   const visit = node => {
+    if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) {
+      resolvedModels.push({ model: node.name.text, declaration: location(node), ...resolvedModelFields(checker, node, location) });
+    }
     if (file !== source && (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node))) {
       const members = ts.isInterfaceDeclaration(node) ? node.members : ts.isTypeLiteralNode(node.type) ? node.type.members : undefined;
       additionalModels.push({ model: node.name.text, declaration: location(node), kind: ts.isInterfaceDeclaration(node) ? 'interface' : 'type-alias',
@@ -273,7 +278,7 @@ if (process.argv.includes('--self-check')) {
 }
 const report = { generatedAt: new Date().toISOString(), sourceFiles: files.length, unresolvedAccesses, unresolvedPropertyAccesses,
   scope: 'shared/types.ts direct interface properties; statically resolved property accesses only; no DB schema or zero-use deletion proof',
-  collections, fields, additionalModels,
+  collections, fields, additionalModels, resolvedModels,
   firestorePaths: { scope: 'Firestore SDK import/declaration or receiver type confirmed calls only; direct const aliases traced; dynamic expressions and unresolved parents retained; no runtime schema proof',
     calls: pathCalls, candidateCalls, outsideRegistry: [...new Set(pathCalls.flatMap(call => call.outsideRegistry))].sort(),
     dynamicWrappers: [...dynamicWrappers.values()],
@@ -300,6 +305,11 @@ writeFileSync('docs/field-dictionary.generated.md', [
   '| 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |',
   '| --- | --- | --- | --- | --- |',
   ...additionalModels.map(model => `| ${model.model} | ${model.declaration} | ${model.kind} | ${model.scope} | ${model.fields.map(field => field.field).join(', ').replaceAll('|', '\\|')} |`), '',
+  '## 상속·공용 모델의 정적 필드 보완', '',
+  'JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 모델의 속성과 원래 선언 위치를 별도로 기록한다. 기존 직접 선언 필드 통계에 합산하지 않는다. 공용체·any·unknown은 완전한 객체 모델로 펼치지 않고 상태를 남긴다. 정적으로 해석된 모델 역시 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.', '',
+  '| 모델 | 선언 | 해석 범위 | 정적 필드 수 |',
+  '| --- | --- | --- | --- |',
+  ...resolvedModels.map(model => `| ${model.model} | ${model.declaration} | ${model.scope} | ${model.fields.length} |`), '',
   '## 미해석 속성 접근 조사 목록', '',
   '이 목록은 속성 선언을 해석하지 못한 위치와 수신 객체 타입이다. DB 필드 목록이 아니며 any/unknown·동적/런타임 접근을 실제 소스에서 분류해야 한다. 미해석 숫자 0을 완료 조건으로 바꾸지 않는다.', '',
   '| 위치 | 식 | 수신 타입 | 미해석 이유 |',

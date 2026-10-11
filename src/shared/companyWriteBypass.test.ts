@@ -33,6 +33,8 @@ const reviewedTransactionWriters = new Set([
   // 생산 문서와 모든 행의 회사·부모·revision을 검사하고 동일 transaction으로 교체한다.
   // 실제 Auth SDK와 getAfter Rules에서 타회사/오래된 revision/독립 행 쓰기를 거부한다.
   'src/shared/services/productionWorkDocumentService.ts',
+  // 새 환산표는 companyScopedWriteData와 원문 회사·품목 검증을 통과한다. 실제 회사별 Rules도 조회/등록/탈취 거절을 확인했다.
+  'src/shared/services/itemPurchaseUnitService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

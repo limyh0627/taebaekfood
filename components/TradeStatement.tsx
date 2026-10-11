@@ -1,3 +1,7 @@
+import { invalidPurchaseUnitRow, defaultPurchaseUnitRowFields } from '../src/shared/purchaseUnitRow';
+import { readPurchaseUnitSnapshot } from '../src/shared/purchaseUnit';
+import { subscribeItemPurchaseUnits } from '../src/shared/services/itemPurchaseUnitService';
+import type { ItemPurchaseUnit, PurchaseUnitSnapshot } from '../src/shared/types';
 import {auth} from '../src/shared/firebase';
 import {readTradePending,storeTradePending,clearTradePending,tradePendingKey,tradeNoWriteProof,type TradeStatementPending} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { isStockProduction } from '../src/shared/orderPurpose';
@@ -141,9 +145,9 @@ interface TradeStatementProps {
   onApplyStatement?: (input: {
     command: StatementCommand;
     statement: IssuedStatement;
-    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number }[];
+    costUpdates: { itemId: string; price: number; beforeCost?: number; sourceLineIndex?: number; sourceLineIndices?: number[] }[];
     poIds: string[];
-    newPoItems: { itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string }[];
+    newPoItems: ({ itemId: string; itemName: string; quantity: number; isBox: boolean; unit: string; sourceLineIndex?: number } & Partial<PurchaseUnitSnapshot>)[];
   }) => Promise<'applied' | 'duplicate' | { status: 'applied' | 'duplicate'; id: string; docNo: string }>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
@@ -159,6 +163,7 @@ interface TradeStatementProps {
   onClearPendingInvoice?: () => void;
   composerOnly?: boolean;
   onComposerClose?: () => void;
+  purchaseUnitOrders?: readonly PurchaseOrder[];
   confirmedOrders?: PurchaseOrder[];
   orderRequests?: PurchaseOrder[];
   onAddConfirmedOrder?: (item: { id: string; quantity: number; isBox?: boolean; partnerId?: string; partnerName?: string }) => void;
@@ -273,6 +278,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onClearPendingInvoice,
   composerOnly = false,
   onComposerClose,
+  purchaseUnitOrders = [],
   confirmedOrders = [],
   orderRequests = [],
   onAddConfirmedOrder,
@@ -449,6 +455,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const cashOpening = useRef<object | null>(null);
   const [cashPayrollEdit, setCashPayrollEdit] = useState<PayrollCashEdit>();
   const [cashTransferEdit, setCashTransferEdit] = useState<PreparedTransferCashEdit>();
+  const [purchaseUnits, setPurchaseUnits] = useState<ItemPurchaseUnit[]>([]);
+  const [purchaseUnitLoadError, setPurchaseUnitLoadError] = useState('');
+  useEffect(() => { let alive = true; setPurchaseUnits([]); setPurchaseUnitLoadError(''); const stop = subscribeItemPurchaseUnits(companyId, rows => { if (alive) setPurchaseUnits(rows); }, error => { if (alive) setPurchaseUnitLoadError(error.message); }); return () => { alive = false; stop(); }; }, [companyId]);
   const cashEditScope = useRef({ companyId, alive: true, token: {} });
   if (cashEditScope.current.companyId !== companyId) cashEditScope.current = { companyId, alive: true, token: {} };
   useEffect(() => { cashEditScope.current.alive = true; return () => { cashEditScope.current.alive = false; cashEditScope.current.token = {}; }; }, []);
@@ -1190,6 +1199,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name,
         spec: i.spec,
         qty: String(i.qty),
+        ...(readPurchaseUnitSnapshot(i) ?? {}),
+        ...(i.sourceLineIndex !== undefined ? {sourceLineIndex: i.sourceLineIndex} : {}),
         ...(i.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: String(i.purchaseQuantityKg) } : {}),
         // 저장된 단가(부가세 포함)를 그대로 사용 — 수동입력 모드 supply=round(qty*price/1.1)와 일치
         price: String(i.price || (i.qty > 0 ? Math.round(i.total / i.qty) : 0)),
@@ -1389,6 +1400,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
   }, [editingStmt, isEditMode, manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
 
+  const purchaseUnitLockedItemIds = new Set(purchaseUnitOrders.filter(po => companyOf(po) === companyId && po.linkedStatementId === editingStmt?.id && po.status === 'received').flatMap(po => po.items?.map(line => line.itemId) ?? [po.itemId]));
+  const newRowPurchaseUnit = (row: ManualRow): ManualRow => !row.purchaseUnitId && stmtType === '매입' && row.itemId && isRawPurchaseItem(allItems.find(item => item.id === row.itemId)) ? { ...row, ...defaultPurchaseUnitRowFields(purchaseUnits, {companyId, itemId: row.itemId, partnerId: selectedClientId}, row.qty) } : row;
+  const invalidPurchaseUnit = lineItems.some(line => invalidPurchaseUnitRow(line) || (line.purchaseUnitId && !isRawPurchaseItem(allItems.find(item => item.id === line.itemId))));
   const invalidPurchaseKg = lineItems.some(line => line.purchaseQuantityKg !== undefined &&
     (!Number.isFinite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0
       || !isRawPurchaseItem(allItems.find(item => item.id === line.itemId))));
@@ -1466,6 +1480,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!selectedClientId || lineItems.length === 0) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
+    if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return null; }
     if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return null; }
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (걸린줄들('NO_ACCOUNT_CODE').length) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
@@ -1495,10 +1510,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  비용 줄(택배비·상차비)은 발주·입고 대상이 아니라 뺀다.
     const newPoItems = stmtType === '매입' && loadedPoIds.length === 0 && selectedClientId
       ? lineItems
-          .map(item => {
+          .map((item, sourceLineIndex) => {
             const product = allItems.find(p => p.id === item.itemId);
             return product && isInboundInventoryItem(product)
-              ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, unit: product.unit || '개' }
+              ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, ...(item.purchaseUnitId ? { sourceLineIndex } : {}), unit: item.purchaseUnit || product.unit || '개', ...(readPurchaseUnitSnapshot(item) ?? {}) }
               : null;
           })
           .filter((it): it is NonNullable<typeof it> => it !== null)
@@ -1520,7 +1535,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const costUpdates = 계산된원가.map(c => ({
       ...c,
       beforeCost: Number(allItems.find(i => i.id === c.itemId)?.cost ?? 0),
-      sourceLineIndex: lineItems.findIndex(line => line.itemId === c.itemId),
+      sourceLineIndex: c.sourceLineIndices?.[0] ?? lineItems.findIndex(line => line.itemId === c.itemId),
     }));
     const input={command,statement:{...stmt,companyId},costUpdates,
       poIds:stmtType==='매입'&&registerInbound?loadedPoIds:[],newPoItems:registerInbound?newPoItems:[]};
@@ -1662,6 +1677,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleSaveEdit = async () => {
     if (saveBusyRef.current) return;
     if (!editingStmt || lineItems.length === 0) return;
+    if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return; }
     if (invalidPurchaseKg) { window.alert('원가 기준 수량은 원료 벌크의 직접 확인한 양수 kg로 입력해 주세요.'); return; }
     const skipLinkIds = await confirmUnlinkedLines();
     if (!skipLinkIds) return;
@@ -1674,13 +1690,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       totalTax,
       totalAmount,
       partySnapshot,
-      items: lineItems.map(i => ({
+      items: lineItems.map((i, index) => ({
         ...(i.itemId ? { itemId: i.itemId } : {}),
         ...(i.lineKind ? { lineKind: i.lineKind } : {}),
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
         ...(i.side ? { side: i.side } : {}),
+        ...(stmtType === '매입' ? readPurchaseUnitSnapshot(i) ?? {} : {}),
+        ...(stmtType === '매입' && i.purchaseUnitId ? {sourceLineIndex: i.sourceLineIndex ?? index} : {}),
         ...(stmtType === '매입' && i.purchaseQuantityKg !== undefined ? { purchaseQuantityKg: i.purchaseQuantityKg } : {}),   // 양변 전표 — 없으면 분개가 안 선다
       })),
     };
@@ -2602,7 +2620,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 setManualMode(true);
                 setManualItems(prev=>{
                   const rows = prev.filter(r=>r.name.trim());
-                  return [...rows,newRow];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
+                  return [...rows,newRowPurchaseUnit(newRow)];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
                 setQuickItemId(undefined);setQuickName('');setQuickSpec('');setQuickQty('');setQuickPrice('');setQuickNote('');setQuickSearchOpen(false);setQuickIsTaxExempt(false);
               };
@@ -2677,7 +2695,7 @@ ${names}
                 setManualMode(true);
                 setManualItems(prev => {
                   const existing = prev.filter(r => r.name.trim());
-                  return [...existing, ...toAdd];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
+                  return [...existing, ...toAdd.map(newRowPurchaseUnit)];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
                 setShowItemPicker(false); setPickerSearch(''); setPickerQtys({});
               };
@@ -2746,7 +2764,7 @@ ${names}
                       const ro=!!(editingStmt&&!isEditMode);
                       const activeRows=ro?lineItems.map(row=>({...row,qty:String(row.qty),price:String(row.price),purchaseQuantityKg:row.purchaseQuantityKg === undefined ? undefined : String(row.purchaseQuantityKg)})):manualItems;
                       return (<>
-                        <StatementManualItemRows bomIndex={orderUnitInputs?.bom} rows={activeRows} savedLines={ro ? lineItems : undefined} readOnly={ro} selectedIndex={selectedItemIdx}
+                        <StatementManualItemRows preservedPurchaseUnitLineIndices={editingStmt?.items.flatMap((line,index) => line.purchaseUnitId ? [index] : [])} companyId={companyId} selectedPartnerId={selectedClientId} lockedPurchaseUnitItemIds={purchaseUnitLockedItemIds} purchaseUnits={purchaseUnits.filter(unit => unit.companyId === companyId && (!unit.partnerId || unit.partnerId === selectedClientId))} purchaseUnitLoadError={purchaseUnitLoadError} bomIndex={orderUnitInputs?.bom} rows={activeRows} savedLines={ro ? lineItems : undefined} readOnly={ro} selectedIndex={selectedItemIdx}
                           activeSearchIndex={activeSearchRow} statementType={stmtType} accountCodes={stmtCodes} items={allItems} linked={linkedManualItems}
                           formatAmount={fmt} searchResults={row=>{
                             if (!row.name.trim()) return [];
@@ -2754,9 +2772,9 @@ ${names}
                             return searchableRows.filter(result => matchesSearch(result.product!.name, query))
                               .map(result => ({ pc: result.pc, product: result.product! }));
                           }} onSelect={setSelectedItemIdx}
-                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch,...('accountCode' in patch || 'itemId' in patch ? {purchaseQuantityKg:undefined} : {})}:row))}
+                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch,...('accountCode' in patch || 'itemId' in patch ? {purchaseQuantityKg:undefined,purchaseUnitId:undefined,purchaseUnit:undefined,purchaseQty:undefined,unitKg:undefined,inventoryQty:undefined} : {})}:row))}
                           onSearchFocus={setActiveSearchRow} onSearchBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
-                          onChooseProduct={(index,result)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,purchaseQuantityKg:undefined,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
+                          onChooseProduct={(index,result,unitFields)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,purchaseQuantityKg:undefined,purchaseUnitId:undefined,purchaseUnit:undefined,purchaseQty:undefined,unitKg:undefined,inventoryQty:undefined,...unitFields,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
                           onRemove={index=>setManualItems(prev=>prev.filter((_,i)=>i!==index))}/>
                         {!ro && <StatementExpensePresetRow presets={expensePresets} managing={manageExpense}
                           canAdd={!!onAddExpensePreset} canDelete={!!onDeleteExpensePreset} onAddRow={addExpenseRow}

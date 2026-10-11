@@ -1,7 +1,8 @@
+import { readPurchaseUnitSnapshot, type PurchaseUnitSnapshot } from './shared/purchaseUnit';
 import { ReturnValidationError } from './returnValidationError';
 /** Pure source-linked reversal plan. A writer must commit these lines and stock effects together. */
-type Line = { itemId?: string; accountCode?: string; qty: number; supply: number; tax: number; total: number };
-type ReturnItem = { itemId: string; quantity: number; isResellable: boolean };
+type Line = Partial<PurchaseUnitSnapshot> & { sourceLineIndex?: number; itemId?: string; accountCode?: string; qty: number; supply: number; tax: number; total: number };
+type ReturnItem = { itemId: string; sourceLineIndex?: number; quantity: number; isResellable: boolean };
 export type ReturnRow = { id: string; companyId?: string; linkedStatementId?: string; partnerId: string;
   status: 'pending' | 'processed'; returnType?: '매출' | '매입'; totalAmount: number; items: ReturnItem[] };
 export type Source = { id: string; companyId?: string; type: '매출' | '매입'; partnerId: string;
@@ -17,6 +18,23 @@ const payableCode = (codes: string[]) => {
   return codes.some(code => ['500', '501', '503', '505'].includes(code)) ? '251' : '253';
 };
 
+
+/** 같은 품목의 다른 포대는 원전표 배열 위치로 구분한다. 옛 단일 품목은 그대로 읽는다. */
+export function resolveReturnSourceLine<T extends { itemId?: string }>(lines: readonly T[], selection: { itemId: string; sourceLineIndex?: number }): { line: T; index: number } {
+  if (selection.sourceLineIndex !== undefined) {
+    const index = selection.sourceLineIndex;
+    if (!Number.isSafeInteger(index) || index < 0 || !lines[index] || lines[index].itemId !== selection.itemId) fail('원전표 품목 줄 연결이 맞지 않습니다.');
+    return { line: lines[index], index };
+  }
+  const matches = lines.map((line, index) => ({ line, index })).filter(row => row.line.itemId === selection.itemId);
+  if (matches.length !== 1) fail('같은 품목의 포장별 원전표 줄을 선택해주세요.');
+  return matches[0];
+}
+export function validMixedPurchaseReturnSource(source: { type: string; items: Line[] }): boolean {
+  const duplicates = source.items.filter(line => source.items.filter(other => other.itemId === line.itemId).length > 1);
+  return !duplicates.length || source.type === '매입' && duplicates.every(line => readPurchaseUnitSnapshot(line) !== null);
+}
+
 export function planReturnReversal(companyId: string, request: ReturnRow, source: Source, priorReturns: ReturnRow[]) {
   if (request.companyId !== companyId || source.companyId !== companyId || request.status !== 'pending'
     || request.linkedStatementId !== source.id || request.partnerId !== source.partnerId
@@ -26,7 +44,7 @@ export function planReturnReversal(companyId: string, request: ReturnRow, source
     || source.items.some(line => !line.itemId || !line.accountCode || !Number.isFinite(line.qty) || line.qty <= 0
       || !money(line.supply) || !money(line.tax) || !money(line.total)
       || line.supply + line.tax !== line.total)
-    || new Set(source.items.map(line => line.itemId)).size !== source.items.length
+    || !validMixedPurchaseReturnSource(source)
     || !money(source.totalSupply) || !money(source.totalTax) || !money(source.totalAmount) || source.totalAmount === 0
     || source.items.reduce((sum, line) => sum + line.supply, 0) !== source.totalSupply
     || source.items.reduce((sum, line) => sum + line.tax, 0) !== source.totalTax
@@ -34,21 +52,21 @@ export function planReturnReversal(companyId: string, request: ReturnRow, source
     fail('원전표의 품목·계정·금액 근거가 불명확합니다.');
   if (request.items.some(item => !item.itemId || !Number.isFinite(item.quantity) || item.quantity <= 0
     || typeof item.isResellable !== 'boolean')
-    || new Set(request.items.map(item => item.itemId)).size !== request.items.length)
+    || new Set(request.items.map(item => resolveReturnSourceLine(source.items, item).index)).size !== request.items.length)
     fail('반품 품목·수량이 잘못되었습니다.');
-  const byId = new Map(source.items.map(line => [line.itemId!, line]));
-  const previouslyReturned = new Map<string, number>();
+  const previouslyReturned = new Map<number, number>();
+
   for (const old of priorReturns) {
     if (old.id === request.id || old.linkedStatementId !== source.id) continue;
     if (old.companyId !== companyId || old.partnerId !== source.partnerId || old.status !== 'processed')
       fail('원전표의 기존 반품 연결이 불완전합니다.');
     for (const item of old.items) {
-      if (!byId.has(item.itemId) || !Number.isFinite(item.quantity) || item.quantity <= 0)
-        fail('기존 반품 수량 근거가 불명확합니다.');
-      previouslyReturned.set(item.itemId, (previouslyReturned.get(item.itemId) ?? 0) + item.quantity);
+      const { index } = resolveReturnSourceLine(source.items, item);
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0) fail('기존 반품 수량 근거가 불명확합니다.');
+      previouslyReturned.set(index, (previouslyReturned.get(index) ?? 0) + item.quantity);
     }
   }
-  if ([...previouslyReturned].some(([itemId, quantity]) => quantity > byId.get(itemId)!.qty))
+  if ([...previouslyReturned].some(([index, quantity]) => quantity > source.items[index].qty))
     fail('기존 반품 수량이 원전표 수량을 넘습니다.');
   const lines = new Map<string, JournalLine>();
   const add = (accountCode: string, side: JournalLine['side'], amount: number) => {
@@ -57,12 +75,11 @@ export function planReturnReversal(companyId: string, request: ReturnRow, source
     lines.set(key, { accountCode, side, amount: (previous?.amount ?? 0) + amount });
   };
   let supply = 0, tax = 0;
-  const stockEffects: { itemId: string; quantityDelta: number }[] = [];
+  const stockEffects: { itemId: string; quantityDelta: number; sourceLineIndex?: number }[] = [];
   for (const item of request.items) {
-    const original = byId.get(item.itemId);
-    if (!original) throw new ReturnValidationError('반품 수량이 원전표의 남은 수량을 넘습니다.');
+    const { line: original, index } = resolveReturnSourceLine(source.items, item);
     if (original.total <= 0) fail('반품 대상 품목의 원전표 금액이 없습니다.');
-    if (item.quantity + (previouslyReturned.get(item.itemId) ?? 0) > original.qty)
+    if (item.quantity + (previouslyReturned.get(index) ?? 0) > original.qty)
       fail('반품 수량이 원전표의 남은 수량을 넘습니다.');
     const partSupply = original.supply * item.quantity / original.qty;
     const partTax = original.tax * item.quantity / original.qty;
@@ -70,7 +87,8 @@ export function planReturnReversal(companyId: string, request: ReturnRow, source
     supply += partSupply; tax += partTax;
     add(original.accountCode!, source.type === '매출' ? '차변' : '대변', partSupply);
     if (source.type === '매출' && item.isResellable) stockEffects.push({ itemId: item.itemId, quantityDelta: item.quantity });
-    if (source.type === '매입') stockEffects.push({ itemId: item.itemId, quantityDelta: -item.quantity });
+    if (source.type === '매입') stockEffects.push({ itemId: item.itemId, quantityDelta: -item.quantity,
+      ...(item.sourceLineIndex !== undefined || readPurchaseUnitSnapshot(original) ? { sourceLineIndex: index } : {}) });
   }
   const amount = supply + tax;
   if (!money(amount) || amount === 0 || request.totalAmount !== amount)

@@ -4567,6 +4567,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteIssuedStatement={async (id) => { await deleteIssuedStatement(companyId, id); refreshStaticData(); }}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
+              purchaseUnitOrders={purchaseOrders.filter(po => companyOf(po) === companyId)}
               confirmedOrders={invoicedPurchaseOrders}
               orderRequests={pendingPurchaseOrders}
               onAddConfirmedOrder={async (item) => {

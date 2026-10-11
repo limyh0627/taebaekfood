@@ -112,6 +112,32 @@ describe('OEM finished-goods server transaction', () => {
     }
   });
 
+  it('낡은 unpackTo는 개 중량을 곱하지 않고 현재 BOM 12개입만 박스로 환산한다', async () => {
+    for (const boxed of [false, true]) {
+      const key = `${prefix}-${boxed ? 'bom12' : 'stale12'}`;
+      const product = `${key}-item`, raw = `${key}-raw`, po = `${key}-po`;
+      const child = `${key}-child`, formula = `${key}-formula`, bom = `${key}-bom`;
+      const counter = `oemLotSequence_taebaek_20261003_${encodeURIComponent(raw)}`;
+      const operation = `oem-receive:${po}`;
+      paths.push(`items/${product}`, `items/${child}`, `item_formula/${formula}`, `item_bom/${bom}`,
+        `purchaseOrders/${po}`, `appMeta/${counter}`, `adjustmentRequests/OEMFEE-${po}`, `oemReceiptOperations/${operation}`);
+      await Promise.all([
+        db.doc(`items/${product}`).create({ companyId: 'taebaek', name: key, type: 'product', procureType: '임가공', unit: '개', spec: '1kg × 12', stock: 0, lots: [], unpackTo: { count: 12 }, testRunId: prefix }),
+        db.doc(`items/${child}`).create({ companyId: 'taebaek', name: `${key} 낱개`, type: 'product', testRunId: prefix }),
+        db.doc(`item_formula/${formula}`).create({ parent_key: key, child_name: raw, ratio: 1, yield_rate: 1, testRunId: prefix }),
+        db.doc(`purchaseOrders/${po}`).create({ companyId: 'taebaek', poType: 'oem', status: 'invoiced', oemPartnerId: partnerId, partnerName: 'demo OEM', oemSent: [{ material: raw, kg: 30 }], testRunId: prefix }),
+        db.doc(`appMeta/${counter}`).create({ companyId: 'taebaek', material: raw, date, lastSequence: 0, testRunId: prefix }),
+      ]);
+      if (boxed) await db.doc(`item_bom/${bom}`).create({ parent_id: product, child_id: child, quantity: 12, testRunId: prefix });
+      const expectedKg = boxed ? 24 : 2;
+      const result = await receiveOemFinishedGoods(db, 'taebaek', { ...input(), poId: po, operationId: operation, returns: [{ itemId: product, qty: 2 }] });
+      expect(result.receivedKg).toBe(expectedKg);
+      expect((await saved(`items/${product}`))?.stock).toBe(2);
+      expect((await saved(`items/${product}`))?.lots[0].unitKg).toBe(boxed ? 12 : 1);
+      expect((await saved(`adjustmentRequests/OEMFEE-${po}`))?.oemTotal).toBe(expectedKg * 500);
+      expect((await saved(`purchaseOrders/${po}`))?.oemReceivedKg).toBe(expectedKg);
+    }
+  });
   it('commits stock, lot, counter, PO, fee and operation once; rejects changed retry', async () => {
     const applied = await receiveOemFinishedGoods(db, 'taebaek', input());
     expect(applied).toMatchObject({ status: 'applied', receivedKg: 5, loss: 1 });

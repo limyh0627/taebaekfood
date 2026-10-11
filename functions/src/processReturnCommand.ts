@@ -1,3 +1,5 @@
+import { readPurchaseUnitSnapshot, returnKgFromPurchaseSnapshot } from './shared/purchaseUnit';
+import { isRawPurchaseItem } from './shared/purchaseCost';
 import { readClaimsAfterReturns } from './returnClaimReader';
 import { ReturnValidationError } from './returnValidationError';
 import * as admin from 'firebase-admin';
@@ -5,7 +7,7 @@ import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
 import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
-import { planReturnReversal, planStandaloneReturn, type ReturnRow, type Source } from './returnReversalPlan';
+import { planReturnReversal, planStandaloneReturn, resolveReturnSourceLine, type ReturnRow, type Source } from './returnReversalPlan';
 import { planGeneralReturnReceipt, planGeneralReturnIssue, type Item } from './returnGeneralStockPlan';
 import { planUnitReturnReceipt, planUnitReturnIssue } from './returnUnitStockPlan';
 import { unpackStockComponent, stockUnitKg } from './shared/stockUnitMeasure';
@@ -149,10 +151,12 @@ export async function processGeneralStockReturn(
         const physicalRows = [...(prior.stockMovements ?? []), ...rawMovements.map(row => ({ ...row, itemId: row.requestItemId }))];
         if (!Array.isArray(prior.stockMovements) || physicalRows.length !== request.items.length
           || hash(prior.stockMovements) !== prior.stockMovementsHash
-          || new Set(physicalRows.map(row => row.itemId)).size !== request.items.length
+          || new Set(physicalRows.map(row => `${row.itemId}:${row.sourceLineIndex ?? "legacy"}`)).size !== request.items.length
           || physicalRows.some((row: Row) => row.companyId !== companyId
             || row.partnerId !== request.partnerId || row.operationId !== input.operationId
-            || row.quantityDelta !== -request.items.find((item: Row) => item.itemId === row.itemId)?.quantity
+            || row.quantityDelta !== -request.items.find((item: Row) => item.itemId === row.itemId && (row.sourceLineIndex !== undefined && rawMovements.some(raw=>raw.id===row.id) && sourceSnap?.exists
+              ? resolveReturnSourceLine<Row>(sourceSnap.data()!.items,{itemId:item.itemId,sourceLineIndex:item.sourceLineIndex}).index === row.sourceLineIndex
+              : item.sourceLineIndex === row.sourceLineIndex))?.quantity
             || row.date !== input.tradeDate)) fail('기존 반품 출고 근거가 변경되었습니다.');
       }
       return { status: 'duplicate' as const, docNo: prior.docNo, journalId: journal.id };
@@ -252,7 +256,7 @@ export async function processGeneralStockReturn(
       | ReturnType<typeof planUnitReturnReceipt> | ReturnType<typeof planUnitReturnIssue>)[] = [];
     const rawPrepared: NonNullable<Awaited<ReturnType<typeof prepareReturnRawStock>>>[] = [];
     const rawVirtual = new Map<string, { state: RawInventoryState; itemData: Row }>();
-    for (const effect of plan.stockEffects) {
+    for (const effect of plan.stockEffects as {itemId:string;quantityDelta:number;sourceLineIndex?:number}[]) {
       const item = itemDocs.get(effect.itemId);
       if (!item) fail('반품 품목을 찾을 수 없습니다.');
       const base = String(item!.rawMaterialName || item!.name || '').split('/')[0].trim();
@@ -261,6 +265,15 @@ export async function processGeneralStockReturn(
         return (row.companyId ?? 'taebaek') === companyId && row.subtype === '벌크'
           && !row.phantom && !row.archived && String(row.name ?? '').split('/')[0].trim() === base;
       });
+      const resolvedSource = purchase && source ? resolveReturnSourceLine<Row>(source.items, effect) : undefined;
+      const sourceLine = resolvedSource?.line;
+      const purchaseUnit = sourceLine ? readPurchaseUnitSnapshot(sourceLine) : null;
+      if (purchaseUnit && (!isRawPurchaseItem(item!) || purchaseUnit.purchaseQty !== sourceLine!.qty))
+        fail('원전표 매입 단위의 원료·거래 수량 근거가 다릅니다.');
+      const previouslyReturnedQty = purchaseUnit ? oldReturns.filter(row => row.id !== requestSnap.id && row.status === 'processed'
+        && row.linkedStatementId === sourceSnap?.id).reduce((sum, row) =>
+          sum + row.items.filter(line => line.itemId === effect.itemId && resolveReturnSourceLine(source!.items,line).index === resolvedSource!.index).reduce((qty, line) => qty + line.quantity, 0), 0) : 0;
+      const explicitKg = purchaseUnit ? returnKgFromPurchaseSnapshot(purchaseUnit, Math.abs(effect.quantityDelta), previouslyReturnedQty) : undefined;
       const stockInput = { operationId: input.operationId, companyId, date: input.tradeDate,
         createdAt: todayIso, partnerId: request.partnerId, partnerName: partnerSnap.data()!.name,
         item: { ...item, id: effect.itemId, companyId: item!.companyId ?? 'taebaek' } as Item, quantityDelta: effect.quantityDelta, rawTargetExists };
@@ -274,7 +287,7 @@ export async function processGeneralStockReturn(
         continue;
       }
       const raw = await prepareReturnRawStock(db, tx, { ...stockInput, companyId: companyId as 'taebaek' | 'punghoe',
-        requestId: returnRef.id, item: { ...item, id: effect.itemId } as any,
+        requestId: returnRef.id, item: { ...item, id: effect.itemId } as any, explicitKg, sourceLineIndex: effect.sourceLineIndex,
         allItems: companyItems,
         bomLines: bomRows.docs.map(doc => doc.data() as { parent_id: string; child_id: string; quantity?: number }),
       }, rawVirtual);
@@ -285,7 +298,7 @@ export async function processGeneralStockReturn(
     const stockMovements = JSON.parse(JSON.stringify(prepared.flatMap(row => 'movement' in row ? [row.movement] : []))) as Row[];
     const rawMovements = rawPrepared.map(row => ({ id: row.movementRef.id, companyId, partnerId: request.partnerId,
       operationId: input.operationId, date: input.tradeDate, requestItemId: row.requestItemId,
-      quantityDelta: row.quantityDelta, movementHash: hash(row.movement) }));
+      quantityDelta: row.quantityDelta, ...(row.sourceLineIndex !== undefined ? {sourceLineIndex:row.sourceLineIndex}:{}), movementHash: hash(row.movement) }));
     const receiptSnaps = await Promise.all(receipts.map(row => tx.get(db.collection('itemReceipts').doc(row.receiptId))));
     if (receiptSnaps.some(snap => snap.exists)) fail('반품 입고 기록이 이미 있습니다.');
     const codes = new Set(accountCodes.docs.filter(doc => doc.data().companyId === companyId).map(doc => doc.data().code));

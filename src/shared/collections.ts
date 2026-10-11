@@ -36,6 +36,7 @@ export const COL = {
   itemReceipts: 'itemReceipts',
   itemTaxonomy: 'itemTaxonomy',
   itemPack: 'item_pack',
+  itemPurchaseUnits: 'item_purchase_unit',
   itemFormula: 'item_formula',
   itemCostHistory: 'itemCostHistory',
 

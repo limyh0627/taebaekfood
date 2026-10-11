@@ -63,3 +63,34 @@ it('원전표 없는 매출 폐기는 금융 역분개만 준비한다', () => {
  expect(result.stockEffects).toEqual([]);
  expect(result.journalLines).toContainEqual({accountCode:'108',side:'대변',amount:110});
 });
+
+describe('같은 원료의 혼합 포장 원줄 반품', () => {
+  const mixed = { ...source, id: 'mixed', type: '매입' as const, totalSupply: 700, totalTax: 70, totalAmount: 770,
+    items: [20, 25].map((unitKg, index) => ({ itemId: 'raw', accountCode: '500', qty: 2,
+      supply: index ? 500 : 200, tax: index ? 50 : 20, total: index ? 550 : 220,
+      purchaseUnitId: `unit-${index}`, purchaseUnit: '포대', purchaseQty: 2, unitKg, inventoryQty: unitKg * 2 })) };
+  const current = { ...request, linkedStatementId: mixed.id, returnType: '매입' as const, totalAmount: 385,
+    items: [0, 1].map(sourceLineIndex => ({ itemId: 'raw', sourceLineIndex, quantity: 1, isResellable: false })) };
+  it('20kg·25kg 같은 원료 줄을 별개 가격·수량 및 원줄 효과로 보존한다', () => {
+    const result = planReturnReversal('taebaek', current, mixed, []);
+    expect(result.amount).toBe(385);
+    expect(result.supply).toBe(350);
+    expect(result.tax).toBe(35);
+    expect(result.stockEffects).toEqual([{ itemId: 'raw', sourceLineIndex: 0, quantityDelta: -1 }, { itemId: 'raw', sourceLineIndex: 1, quantityDelta: -1 }]);
+  });
+  it('기존 반품 누적도 포장 원줄별로 분리하며 같은 줄 중복 요청은 거절한다', () => {
+    const old = { ...current, id: 'old', status: 'processed' as const, totalAmount: 220, items: [{ ...current.items[0], quantity: 2 }] };
+    expect(planReturnReversal('taebaek', { ...current, totalAmount: 275, items: [current.items[1]] }, mixed, [old]).amount).toBe(275);
+    expect(() => planReturnReversal('taebaek', current, mixed, [old])).toThrow('남은 수량');
+    expect(() => planReturnReversal('taebaek', { ...current, items: [current.items[0], current.items[0]] }, mixed, [])).toThrow();
+  });
+  it('혼합 원줄 연결 누락·범위초과·다른 품목 및 예전 모호 누적은 거절한다', () => {
+    for (const change of [{ sourceLineIndex: undefined }, { sourceLineIndex: -1 }, { sourceLineIndex: 2 }, { sourceLineIndex: 0.5 }, { itemId: 'other' }]) {
+      expect(() => planReturnReversal('taebaek', { ...current, totalAmount: 110, items: [{ ...current.items[0], ...change }] }, mixed, [])).toThrow();
+    }
+    const old = { ...current, id: 'old', status: 'processed' as const, items: [{ itemId: 'raw', quantity: 1, isResellable: false }] };
+    expect(() => planReturnReversal('taebaek', current, mixed, [old])).toThrow();
+    const { purchaseUnitId, purchaseUnit, purchaseQty, unitKg, inventoryQty, ...legacy } = mixed.items[0];
+    expect(() => planReturnReversal('taebaek', current, { ...mixed, items: [legacy, mixed.items[1]] }, [])).toThrow();
+  });
+});

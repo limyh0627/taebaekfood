@@ -1,6 +1,7 @@
+import { readPurchaseUnitSnapshot, type PurchaseUnitSnapshot } from './purchaseUnit';
 import type { PartnerItem, Item } from './types';
 import { costFromPurchaseLine } from './lineAmount';
-import { isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
+import { isRawPurchaseItem, costFromPurchaseLines } from '../../functions/src/shared/purchaseCost';
 
 /**
  * **전표에 찍힌 단가·계정을 거래처 단가로 되민다.**
@@ -23,7 +24,7 @@ import { isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
  * ---
  * 이 함수는 **쓰지 않는다.** 무엇을 써야 하는지만 돌려준다 — 그래야 시험할 수 있다.
  */
-export interface PriceSyncLine {
+export interface PriceSyncLine extends Partial<PurchaseUnitSnapshot> {
   purchaseQuantityKg?: number;
   /** 옛 전표·비용 줄은 없을 수 있다 — 이름으로 짐작해서 다른 품목을 고치지 않는다. */
   itemId?: string;
@@ -66,7 +67,7 @@ export interface PriceSyncInput {
 export interface PriceSyncResult {
   upserts: PartnerItem[];
   /** 매입만 — 원가는 산 값에서 온다 */
-  costUpdates: { itemId: string; price: number }[];
+  costUpdates: { itemId: string; price: number; sourceLineIndices?: number[] }[];
 }
 
 export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
@@ -78,6 +79,25 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
 
   const dir: 'in' | 'out' = type === '매출' ? 'out' : 'in';
   const book = partnerItems.filter(p => p.Direction === dir);
+  const groupedRaw = new Set<string>();
+  const ambiguousPrices = new Set<string>();
+  if (type === '매입') {
+    for (const product of items.filter(isRawPurchaseItem)) {
+      const indexes = lines.map((line,index)=>line.itemId===product.id?index:-1).filter(index=>index>=0);
+      if (indexes.length < 2) continue;
+      const group = indexes.map(index=>lines[index]);
+      let snapshots: (PurchaseUnitSnapshot|null)[] = [];
+      try { snapshots=group.map(readPurchaseUnitSnapshot); } catch { /* 불명확 원가는 남기고 거래 전표 금액은 유지한다. */ }
+      if (!group.some(line=>line.purchaseUnitId!==undefined)) continue;
+      groupedRaw.add(product.id);
+      if (new Set(snapshots.map(snapshot=>snapshot?.purchaseUnitId)).size>1 || snapshots.length!==group.length || snapshots.some(snapshot=>!snapshot))
+        ambiguousPrices.add(product.id);
+      if (!noLinkIds?.has(product.id)) {
+        const cost=costFromPurchaseLines(group);
+        if(cost!==null)out.costUpdates.push({itemId:product.id,price:cost,sourceLineIndices:indexes});
+      }
+    }
+  }
 
   for (const line of lines) {
     const price = Number(line.price ?? 0);
@@ -101,7 +121,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
       if (!changed) continue;
     }
 
-    out.upserts.push({
+    if (!ambiguousPrices.has(product.id)) out.upserts.push({
       ...(prev ?? {}),
       id: prev?.id ?? `${product.id}_${partnerId}_${dir}`,
       itemId: product.id,
@@ -124,9 +144,11 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
      * (2026-09-06 에 60개를 되돌렸는데 전표를 다시 끊자 되살아난 게 이 갈림 때문이다)
      * 셈은 [lineAmount.costFromPurchaseLine](./lineAmount.ts) 한 곳이다.
      */
-    if (type === '매입' && product.type !== 'service'
-        && !(newIssue && isRawPurchaseItem(product) && line.purchaseQuantityKg === undefined)
-        && (line.purchaseQuantityKg === undefined || isRawPurchaseItem(product))) {
+    let purchaseUnit: PurchaseUnitSnapshot | null = null;
+    try { purchaseUnit = readPurchaseUnitSnapshot(line); } catch { continue; }
+    if (type === '매입' && product.type !== 'service' && !groupedRaw.has(product.id)
+        && !(newIssue && isRawPurchaseItem(product) && line.purchaseQuantityKg === undefined && !purchaseUnit)
+        && ((line.purchaseQuantityKg === undefined && !purchaseUnit) || isRawPurchaseItem(product))) {
       const cost = costFromPurchaseLine(line);
       if (cost != null) out.costUpdates.push({ itemId: product.id, price: cost });
     }

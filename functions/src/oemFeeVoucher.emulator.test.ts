@@ -175,28 +175,28 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
     expect(await issueOemFeeVoucher(db, 'taebaek', boxed)).toBe('OEMFEE-po-11');
   });
 
-  it('BOM·박스 단위 없이 unpackTo만 있는 품목도 실제 박스 kg로 발행하고 같은 요청은 번호·원문을 보존한다', async () => {
+  it('낡은 unpackTo12는 개 중량을 곱하지 않고 재시도는 번호·원문을 보존한다', async () => {
     await seed(['po-12']);
     await Promise.all([
-      db.collection('purchaseOrders').doc('po-12').update({ oemReceivedKg: 6,
+      db.collection('purchaseOrders').doc('po-12').update({ oemReceivedKg: 4,
         items: [{ itemId: 'unpack-only-box', name: '구성만 있는 2개입', quantity: 2, unit: '개' },
           { itemId: 'unpack-test-loose', name: '별도 낱개', quantity: 1, unit: '개' }] }),
       db.collection('items').doc('unpack-only-box').set({ companyId: 'taebaek', name: '구성만 있는 2개입',
-        spec: '1kg × 2', unit: '개', type: 'product', unpackTo: { count: 2 } }),
+        spec: '1kg × 12', unit: '개', type: 'product', unpackTo: { count: 12 } }),
       db.collection('items').doc('unpack-test-loose').set({ companyId: 'taebaek', name: '별도 낱개', spec: '2kg', unit: '개', type: 'product' }),
     ]);
     expect((await db.collection('item_bom').where('parent_id', '==', 'unpack-only-box').get()).empty).toBe(true);
     // 두 줄을 사용해 총중량 보정이 잘못 환산된 첫 줄을 가리지 못하게 한다.
     const request = { ...command('po-12'), statement: { ...statement('po-12'),
-      totalSupply: 2727, totalTax: 273, totalAmount: 3000,
-      items: [{ name: '구성만 있는 2개입', spec: '1kg × 2', qty: 2, price: 909,
-        supply: 1818, tax: 182, total: 2000, isTaxExempt: false, accountCode: '540' },
+      totalSupply: 1818, totalTax: 182, totalAmount: 2000,
+      items: [{ name: '구성만 있는 2개입', spec: '1kg × 12', qty: 2, price: 455,
+        supply: 909, tax: 91, total: 1000, isTaxExempt: false, accountCode: '540' },
       { name: '별도 낱개', spec: '2kg', qty: 1, price: 909,
         supply: 909, tax: 91, total: 1000, isTaxExempt: false, accountCode: '540' }] } };
     expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-12');
     const issuedRef = db.collection('issuedStatements').doc('OEMFEE-po-12');
     const before = await issuedRef.get();
-    expect(before.data()).toMatchObject({ totalAmount: 3000, totalSupply: 2727, totalTax: 273, items: request.statement.items });
+    expect(before.data()).toMatchObject({ totalAmount: 2000, totalSupply: 1818, totalTax: 182, items: request.statement.items });
     expect((await db.collection('purchaseOrders').doc('po-12').get()).data()?.linkedStatementId).toBe('OEMFEE-po-12');
     expect((await db.collection('appMeta').doc(counterId).get()).data()?.last).toBe(1);
     expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-12');
@@ -204,5 +204,22 @@ describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', 
     expect(after.data()).toEqual(before.data());
     expect(after.updateTime).toEqual(before.updateTime);
     expect((await db.collection('appMeta').doc(counterId).get()).data()?.last).toBe(1);
+  });
+  it('현재 BOM12개입은 정상 중량과 가공비를 유지하고 별도 낱개와 섞여도 같게 발행한다', async () => {
+    await seed(['po-13']);
+    await Promise.all([
+      db.collection('purchaseOrders').doc('po-13').update({ oemReceivedKg: 26, items: [
+        { itemId: 'bom12-box', name: '현재 12개입', quantity: 2, unit: '개' },
+        { itemId: 'bom12-loose-other', name: '별도 낱개', quantity: 1, unit: '개' }] }),
+      db.collection('items').doc('bom12-box').set({ companyId: 'taebaek', name: '현재 12개입', spec: '1kg × 12', unit: '개', type: 'product' }),
+      db.collection('items').doc('bom12-child').set({ companyId: 'taebaek', name: '구성 낱개', type: 'product' }),
+      db.collection('items').doc('bom12-loose-other').set({ companyId: 'taebaek', name: '별도 낱개', spec: '2kg', unit: '개', type: 'product' }),
+      db.collection('item_bom').doc('bom12-box-child').set({ parent_id: 'bom12-box', child_id: 'bom12-child', quantity: 12 }),
+    ]);
+    const request = { ...command('po-13'), statement: { ...statement('po-13'), totalSupply: 11818, totalTax: 1182, totalAmount: 13000,
+      items: [{ name: '현재 12개입', spec: '1kg × 12', qty: 2, price: 5455, supply: 10909, tax: 1091, total: 12000, isTaxExempt: false, accountCode: '540' },
+        { name: '별도 낱개', spec: '2kg', qty: 1, price: 909, supply: 909, tax: 91, total: 1000, isTaxExempt: false, accountCode: '540' }] } };
+    expect(await issueOemFeeVoucher(db, 'taebaek', request)).toBe('OEMFEE-po-13');
+    expect((await db.collection('issuedStatements').doc('OEMFEE-po-13').get()).data()?.items).toEqual(request.statement.items);
   });
 });

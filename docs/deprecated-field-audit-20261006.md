@@ -113,3 +113,7 @@ Notion 원본 https://app.notion.com/p/3e82cda7782b8142b375fcdd3dcda820의 write
 scripts/fix-sesame-lots.mts에는 lotsAreTotal false 정정 및 원문 undo writer가 있고, fix-lot-to-ledger/fix-kkaebun-lot-to-ledger 등은 옛 축별 분기다. 이는 현재 앱 신규 writer가 아니라 보존된 개별 운영 복구 스크립트다. 이 감사는 스크립트를 실행하거나 옛 모델을 다시 활성화하지 않는다. 새 운영 실행은 해당 현재 계약·명시 승인·백업/조건부 복구를 별도 검토해야 한다.
 
 현재 안전한 추가 제품 필드 제거를 확정하지 않았으며 임의 삭제하지 않는다. 문서 인수 요구의 최신화는 완료했지만 미결 호환·운영 잔존의 정당 유지가 남아 전체 TODO039 완료와 다르다. 원본 전체 잔량35·우선8/15 판정은 변경하지 않는다. Notion쓰기0·Figma 보류·GitHub푸시 보류를 유지한다.
+
+## 2026-10-11 OEM 서버 잔존 읽기 제거
+
+앞선 제품 reader 제거 기록 뒤에도 oemReceiptCommand와 oemFeeVoucher의 상자 판정에 unpackTo.count 호환 읽기 두 곳이 남아 있었다. 두 곳을 제거하고 현재 완제품 자식 BOM·박스 단위·packageKg 기준은 유지했다. 실제 Firestore 에뮬레이터 시험에서 옛 unpackTo.count=12만 있는 일반 품목은 2kg로, 현재 박스 BOM이 12인 품목은 24kg로 처리되는 입고·로트·가공비 결과를 확인했다. 운영 필드 수는 10월 9일 과거 감사 근거이며 이번 운영 DB 재조회·수정은 없다. partnerIds/lotsAreTotal/inUse/noncash 후속은 남아 있어 039 전체 완료로 세지 않는다.

@@ -1,3 +1,5 @@
+import { readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
+import { isRawPurchaseItem } from './shared/purchaseCost';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
@@ -45,6 +47,10 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
     patch.items.some((line: Record<string, unknown>) => !line || typeof line !== 'object' ||
       typeof line.name !== 'string' || !['qty', 'price', 'supply', 'tax', 'total'].every(key => money(line[key]))))) {
     throw new HttpsError('invalid-argument', '전표 품목의 수량·금액이 올바르지 않습니다.');
+  }
+  if ('items' in patch) {
+    try { patch.items.forEach((line: Record<string, any>) => readPurchaseUnitSnapshot(line)); }
+    catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : '매입 단위 스냅샷이 잘못되었습니다.'); }
   }
   const gateRef = db.doc('appMeta/releaseCutover');
   const statementRef = db.collection('issuedStatements').doc(statementId);
@@ -99,6 +105,82 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
         throw new HttpsError('invalid-argument', '품목 합계와 전표 합계가 일치하지 않습니다.');
       }
     }
+    const purchaseOrderUpdates: { ref: admin.firestore.DocumentReference; beforeItems: Record<string, any>[]; items: Record<string, any>[] }[] = [];
+    if ('items' in patch || ('partnerId' in patch && patch.partnerId !== old.partnerId && (old.items ?? []).some((line:Record<string,any>)=>readPurchaseUnitSnapshot(line)))) {
+      const oldLines: Record<string, any>[] = old.items ?? [], nextLines: Record<string, any>[] = next.items;
+      const originalIndex = (line: Record<string, any>) => {
+        if (line.sourceLineIndex !== undefined) {
+          if (!Number.isSafeInteger(line.sourceLineIndex) || line.sourceLineIndex < 0
+            || oldLines[line.sourceLineIndex]?.itemId !== line.itemId)
+            throw new HttpsError('invalid-argument', '원전표 행 연결이 올바르지 않습니다.');
+          return line.sourceLineIndex as number;
+        }
+        const indexes = oldLines.map((row,index)=>row.itemId===line.itemId?index:-1).filter(index=>index>=0);
+        if (indexes.length !== 1) throw new HttpsError('failed-precondition', '원전표 원료 행을 확인해 주세요.');
+        return indexes[0];
+      };
+      const changed = nextLines.filter((line,position) => {
+        const snapshot = readPurchaseUnitSnapshot(line);
+        if (!snapshot) return false;
+        const index = originalIndex(line);
+        if (line.sourceLineIndex !== index || position !== index)
+          throw new HttpsError('failed-precondition', '매입 단위가 연결된 원전표 행의 순서는 유지해 주세요.');
+        if (line.purchaseQuantityKg !== undefined && line.purchaseQuantityKg !== snapshot.inventoryQty)
+          throw new HttpsError('invalid-argument', '매입 단위와 직접 입력한 원가 기준 kg가 다릅니다.');
+        return hash(readPurchaseUnitSnapshot(oldLines[index])) !== hash(snapshot) || next.partnerId !== old.partnerId;
+      });
+      oldLines.forEach((previous,index)=> {
+        if (!readPurchaseUnitSnapshot(previous)) return;
+        const matching = nextLines[index];
+        if (!matching || matching.itemId !== previous.itemId || matching.sourceLineIndex !== index
+          || !readPurchaseUnitSnapshot(matching))
+          throw new HttpsError('failed-precondition', '확정 매입 단위 행을 제거하려면 전표와 입고 연결을 취소한 뒤 다시 발행해 주세요.');
+      });
+      if (changed.length) {
+        if (next.type !== '매입') throw new HttpsError('invalid-argument', '매입 단위는 원료 매입에서만 선택할 수 있습니다.');
+        const [poRows, returnRows, unitRows, itemRows] = await Promise.all([
+          tx.get(db.collection('purchaseOrders').where('linkedStatementId', '==', statementId)),
+          tx.get(db.collection('returnRequests').where('linkedStatementId', '==', statementId)),
+          Promise.all(changed.map(line => tx.get(db.collection('item_purchase_unit').doc(line.purchaseUnitId)))),
+          Promise.all(changed.map(line => tx.get(db.collection('items').doc(line.itemId)))),
+        ]);
+        const pos = poRows.docs.filter(row => companyOf(row.data().companyId) === claims.companyId);
+        for (let index = 0; index < changed.length; index++) {
+          const line = changed[index], sourceIndex = originalIndex(line), previous = oldLines[sourceIndex];
+          if (!previous) throw new HttpsError('failed-precondition', '새 원료 품목은 신규 전표 발행에서 선택해 주세요.');
+          const snapshot = readPurchaseUnitSnapshot(line)!;
+          const linked = pos.flatMap(po => {
+            const rows = po.data().items ?? [{itemId:po.data().itemId, quantity:po.data().quantity}];
+            return rows.filter((row: Record<string, any>) => row.itemId === line.itemId && (row.sourceLineIndex !== undefined ? row.sourceLineIndex === sourceIndex : oldLines.filter(entry=>entry.itemId===line.itemId).length===1)).map((row: Record<string, any>) => ({po,row,rows}));
+          });
+          if (linked.length > 1) throw new HttpsError('failed-precondition', '원료에 연결된 여러 발주를 먼저 확인해 주세요.');
+          if (returnRows.docs.some(row => companyOf(row.data().companyId) === claims.companyId
+            && row.data().items?.some((item: Record<string, any>) => item.itemId === line.itemId && (item.sourceLineIndex === undefined || item.sourceLineIndex === sourceIndex))))
+            throw new HttpsError('failed-precondition', '반품이 연결된 원료의 매입 단위·수량은 변경할 수 없습니다. 반품 취소 후 확인해 주세요.');
+          if (linked.some(({po}) => !['pending','invoiced'].includes(po.data().status)))
+            throw new HttpsError('failed-precondition', '이미 입고된 원료의 매입 단위·수량은 입고 취소 후 변경해 주세요.');
+          if (!readPurchaseUnitSnapshot(previous) && linked.length !== 1)
+            throw new HttpsError('failed-precondition', '기존 원료의 입고대기 발주 연결을 확인한 뒤 단위를 선택하거나 새로 발행해 주세요.');
+          const item = itemRows[index], registration = unitRows[index];
+          if (!item.exists || companyOf(item.data()!.companyId) !== claims.companyId || !isRawPurchaseItem(item.data()!))
+            throw new HttpsError('failed-precondition', '등록된 원료 품목·매입 단위를 확인해 주세요.');
+          const previousUnit = readPurchaseUnitSnapshot(previous);
+          const sameSavedUnit = previousUnit && previousUnit.purchaseUnitId === snapshot.purchaseUnitId && previousUnit.purchaseUnit === snapshot.purchaseUnit && previousUnit.unitKg === snapshot.unitKg && next.partnerId === old.partnerId;
+          if (!sameSavedUnit && !registration.exists) throw new HttpsError('failed-precondition', '등록된 매입 단위를 확인해 주세요.');
+          try { if (!sameSavedUnit) validatePurchaseUnitRegistration(snapshot, {...registration.data(),id:registration.id} as ItemPurchaseUnit,
+            {companyId:claims.companyId,itemId:line.itemId,partnerId:next.partnerId}); }
+          catch (error) { throw new HttpsError('failed-precondition', error instanceof Error ? error.message : '매입 단위가 변경되었습니다.'); }
+          if (linked.length) {
+            const {po,row,rows}=linked[0];
+            if (row.quantity !== previous.qty || hash(readPurchaseUnitSnapshot(row)) !== hash(readPurchaseUnitSnapshot(previous)))
+              throw new HttpsError('failed-precondition', '기존 전표와 입고대기 발주의 수량·단위가 다릅니다.');
+            let update = purchaseOrderUpdates.find(entry => entry.ref.path === po.ref.path);
+            if (!update) { update={ref:po.ref,beforeItems:rows,items:rows.map((entry:Record<string,any>)=>({...entry}))}; purchaseOrderUpdates.push(update); }
+            update.items = update.items.map(entry => entry.itemId === line.itemId && (entry.sourceLineIndex !== undefined ? entry.sourceLineIndex === sourceIndex : oldLines.filter(oldLine=>oldLine.itemId===line.itemId).length===1) ? {...entry,quantity:line.qty,sourceLineIndex:sourceIndex,...snapshot}:entry);
+          }
+        }
+      }
+    }
     const settled = settlements.docs.reduce((total, row) => total + Number(row.get('amount') ?? 0), 0);
     if (settled > 0 && money(next.totalAmount) && next.totalAmount < settled) {
       throw new HttpsError('failed-precondition', `수정 후 전표 금액이 이미 수금한 ${settled.toLocaleString()}원보다 작습니다.`);
@@ -139,11 +221,12 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
       if (advanceMutations.length * 2 + (approval ? 5 : 4) > 500) throw new HttpsError('failed-precondition', '연결된 적용 내역이 너무 많습니다.');
       writePartnerAdvanceMutations(tx, advanceSnapshot!, advanceScope, advanceMutations);
     }
+    for (const update of purchaseOrderUpdates) tx.update(update.ref,{items:update.items,...(next.partnerId !== old.partnerId ? {partnerId:next.partnerId,partnerName:next.partnerName}: {})});
     tx.update(statementRef, { ...patch, mutationRevision: revision + 1, editedAt, editedBy: claims.employeeId });
     if (approval && editRef) tx.update(editRef, { status: 'approved', approvalOperationId: operationId,
       approvedRequestHash: approval.pendingEditRequestHash, approvedAt: new Date().toISOString(), approvedBy: claims.employeeId });
     tx.create(operationRef, { ...(approval ?? {}), statementId, uid: request.auth!.uid, companyId: claims.companyId, requestHash, revision: revision + 1, action: 'edit-statement',
-      kind: 'issuedStatements', status: 'applied', expectedRevision, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      kind: 'issuedStatements', status: 'applied', expectedRevision, beforeSnapshot: old, beforeHash: cashOriginalHash(old), afterHash: cashOriginalHash(after), advanceStatementIds: advanceMutations.map(row => row.statement.id), purchaseOrderUpdates: purchaseOrderUpdates.map(row=>({id:row.ref.id,beforeItems:row.beforeItems,items:row.items})), createdAt: admin.firestore.FieldValue.serverTimestamp() });
     return { status: 'applied', revision: revision + 1 };
   });
 }

@@ -1,7 +1,7 @@
-import type {CompanyId,IssuedStatement} from '../../../shared/types';
+import type {CompanyId,IssuedStatement,PurchaseUnitSnapshot} from '../../../shared/types';
 import type {StatementCommand} from '../domain/statementCommand';
 import {isCalendarDay} from '../../../shared/day';
-export type TradeStatementDraft={command:StatementCommand;statement:IssuedStatement;costUpdates:{itemId:string;price:number;beforeCost?:number;sourceLineIndex?:number}[];poIds:string[];newPoItems:{itemId:string;itemName:string;quantity:number;isBox:boolean;unit:string}[]};
+export type TradeStatementDraft={command:StatementCommand;statement:IssuedStatement;costUpdates:{itemId:string;price:number;beforeCost?:number;sourceLineIndex?:number;sourceLineIndices?:number[]}[];poIds:string[];newPoItems:({itemId:string;itemName:string;quantity:number;isBox:boolean;unit:string;sourceLineIndex?:number}&Partial<PurchaseUnitSnapshot>)[]};
 export type TradeStatementPending={version:1;companyId:CompanyId;userId:string;input:TradeStatementDraft;payment?:{amount:number;cashAccountId:string;date:string}};
 export const tradePendingKey=(companyId:CompanyId,userId:string)=>`trade-statement-issue:${companyId}:${userId}`;
 export const tradeRequestKey=(companyId:CompanyId,userId:string)=>`trade-statement-request:${companyId}:${userId}`;

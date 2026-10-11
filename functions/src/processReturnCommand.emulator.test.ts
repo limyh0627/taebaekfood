@@ -230,6 +230,41 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(1);
   });
 
+  it('같은 원료의 두 매입 단위 행을 함께 반품하면 원행별 kg와 원장 ID를 구분해 모두 차감한다',async()=>{
+    await seedPurchase(); const stateId=inventoryDocId('taebaek',itemId);
+    const lot={id:`${runId}-mixed-lot`,supplierName:'합성 공급처',kgIn:45,kgRemaining:45,receivedDate:date,status:'active',createdAt:`${date}T00:00:00Z`};
+    await ref('items',itemId).update({name:'혼합원료',type:'raw',subtype:'벌크',unit:'L',stock:45,lots:[lot]});
+    await put('rawInventories',stateId,{id:stateId,companyId,rawItemId:itemId,materialSnapshot:'혼합원료',stockKg:45,activeLots:[lot],recentDepletedLots:[],revision:0,lastProcessedAt:`${date}T00:00:00Z`});
+    const lines=[20,25].map((unitKg,sourceLineIndex)=>({itemId,accountCode:'500',qty:1,supply:100,tax:10,total:110,sourceLineIndex,purchaseUnitId:`old-${unitKg}`,purchaseUnit:'포',purchaseQty:1,unitKg,inventoryQty:unitKg}));
+    await ref('issuedStatements',sourceId).update({items:lines});
+    await ref('returnRequests',requestId).update({totalAmount:220,items:[0,1].map(sourceLineIndex=>({itemId,quantity:1,isResellable:false,sourceLineIndex}))});
+    const data=input('mixed-unit-return');expect((await issue(data)).status).toBe('applied');expect((await issue(data)).status).toBe('duplicate');
+    const ledger=await db.collection('rawMaterialLedger').where('returnOperationId','==',data.operationId).get();
+    expect(ledger.size).toBe(2);expect(ledger.docs.map(row=>row.get('used')).sort((a,b)=>a-b)).toEqual([20,25]);
+    expect((await ref('rawInventories',stateId).get()).get('stockKg')).toBe(0);expect((await ref('items',itemId).get()).get('stock')).toBe(0);
+  });
+  it('원매입 단위 10kg/3거래수량을 세 번 부분반품해 L 재환산·0.001kg 잔량 없이 모두 차감한다',async()=>{
+    await seedPurchase();
+    const lot={id:`${runId}-unit-raw-lot`,supplierName:'합성 공급처',kgIn:10,kgRemaining:10,receivedDate:date,status:'active',createdAt:`${date}T00:00:00Z`};
+    const stateId=inventoryDocId('taebaek',itemId);
+    await ref('items',itemId).update({name:'깨분참기름',type:'raw',subtype:'벌크',unit:'L',density:0.9,packageKg:999,stock:10,lots:[lot]});
+    await put('rawInventories',stateId,{id:stateId,companyId,rawItemId:itemId,materialSnapshot:'깨분참기름',stockKg:10,activeLots:[lot],recentDepletedLots:[],revision:0,lastProcessedAt:`${date}T00:00:00Z`});
+    const snapshot={sourceLineIndex:0,purchaseUnitId:'과거단위-현재등록없음',purchaseUnit:'등록당시통',purchaseQty:3,unitKg:10/3,inventoryQty:10};
+    await ref('issuedStatements',sourceId).update({totalSupply:300,totalTax:30,totalAmount:330,items:[{itemId,accountCode:'500',qty:3,supply:300,tax:30,total:330,...snapshot}]});
+    const moved:number[]=[];
+    for(let index=0;index<3;index++){
+      const nextRequestId=index===0?requestId:`${runId}-unit-return-${index}`;
+      if(index)await put('returnRequests',nextRequestId,{companyId,partnerId,linkedStatementId:sourceId,returnType:'매입',status:'pending',totalAmount:110,items:[{itemId,quantity:1,isResellable:false,sourceLineIndex:0}]});
+      const data={...input(`unit-partial-${index}`),returnRequestId:nextRequestId,expectedPartnerRevision:index};
+      expect((await issue(data)).status).toBe('applied'); expect((await issue(data)).status).toBe('duplicate');
+      const rows=await db.collection('rawMaterialLedger').where('returnOperationId','==',data.operationId).get();
+      expect(rows.size).toBe(1); moved.push(rows.docs[0].get('used'));
+    }
+    expect(moved).toEqual([3.333,3.334,3.333]);
+    expect((await ref('rawInventories',stateId).get()).data()?.stockKg).toBe(0);
+    expect((await ref('items',itemId).get()).data()?.stock).toBe(0);
+    expect((await ref('appMeta',counterId).get()).data()?.last).toBe(3);
+  });
   it('매입 gate와 부족 재고는 모든 쓰기를 차단한다', async () => {
     for (const scenario of ['gate', 'stock', 'lot', 'unit']) {
       await seedPurchase('500', scenario !== 'gate');

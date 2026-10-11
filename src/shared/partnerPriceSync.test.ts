@@ -339,3 +339,19 @@ it('신규 벌크 매입의 kg 미확인은 원가만 건너뛰고 거래 단가
   expect(partnerPriceWrites({...request,newIssue:false}).costUpdates).toEqual([{itemId:'raw',price:20000}]);
   expect(partnerPriceWrites({...request,lines:[{...request.lines[0],purchaseQuantityKg:40}]}).costUpdates).toEqual([{itemId:'raw',price:1000}]);
 });
+
+it('신규 벌크 매입의 단위 스냅샷 kg로 원가만 계산하고 거래 단가는 유지한다',()=>{
+ const snapshot={purchaseUnitId:'registered',purchaseUnit:'22.5kg포',purchaseQty:2,unitKg:22.5,inventoryQty:45};
+ const request={type:'매입',partnerId:'p1',newIssue:true,lines:[{itemId:'raw',name:'원료',qty:2,price:22000,supply:40000,...snapshot}],items:[{id:'raw',type:'raw' as const,subtype:'벌크'}],partnerItems:[]};
+ const result=partnerPriceWrites(request);
+ expect(result.costUpdates).toEqual([{itemId:'raw',price:889}]); expect(result.upserts[0].price).toBe(22000);
+ expect(partnerPriceWrites({...request,lines:[{...request.lines[0],purchaseQuantityKg:40}]}).costUpdates).toEqual([]);
+ expect(partnerPriceWrites({...request,items:[{id:'raw',type:'product'}]}).costUpdates).toEqual([]);
+});
+
+it('같은 원료의 20·25kg 포는 kg 가중 원가 한 건만 갱신하고 모호한 거래 단가는 쓰지 않는다',()=>{
+ const line=(unitKg:number,supply:number)=>({itemId:'raw',name:'원료',qty:1,price:supply,supply,purchaseUnitId:`u${unitKg}`,purchaseUnit:'포',purchaseQty:1,unitKg,inventoryQty:unitKg});
+ const request={type:'매입',partnerId:'p1',newIssue:true,lines:[line(20,20000),line(25,25000)],items:[{id:'raw',type:'raw' as const,subtype:'벌크'}],partnerItems:[]};
+ expect(partnerPriceWrites(request)).toMatchObject({costUpdates:[{itemId:'raw',price:1000,sourceLineIndices:[0,1]}],upserts:[]});
+ expect(partnerPriceWrites({...request,lines:[line(20,20000),{itemId:'raw',name:'원료',qty:1,price:25000,supply:25000}]})).toMatchObject({costUpdates:[],upserts:[]});
+});

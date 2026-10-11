@@ -1,3 +1,6 @@
+import { resolveReturnSourceLine, validMixedPurchaseReturnSource } from '../../../functions/src/returnReversalPlan';
+import { readPurchaseUnitSnapshot } from '../../shared/purchaseUnit';
+import { isRawHolder } from '../../shared/rawHolder';
 import { AP, OTHER_PAYABLE } from '../../shared/autoJournal';
 import { companyOf } from '../../shared/types';
 import type { CompanyId, IssuedStatement, Item, ReturnItem } from '../../shared/types';
@@ -12,24 +15,26 @@ export function purchaseReturnAvailable(companyId: CompanyId, release: any, retu
 
 /** 화면 금액도 원전표 공급가/세액 비례로 계산한다. 최종 수량/잔액은 서버가 다시 검증한다. */
 export function purchaseReturnRequest(companyId: CompanyId, partnerId: string, source: IssuedStatement | undefined,
-  selected: { itemId: string; qty: string }[], allItems: Item[], explicit?: ExplicitReturnMoney) {
+  selected: { itemId: string; qty: string; sourceLineIndex?: number }[], allItems: Item[], explicit?: ExplicitReturnMoney) {
   if (!source && explicit) return explicitReturnRequest(companyId, partnerId, '매입', selected, allItems, explicit);
   const money = (value: number) => Number.isSafeInteger(value) && value >= 0;
   if (!source || source.companyId !== companyId || source.type !== '매입' || source.partnerId !== partnerId
-    || !source.items.length || new Set(source.items.map(row => row.itemId)).size !== source.items.length
+    || !source.items.length || !validMixedPurchaseReturnSource(source)
     || source.items.some(row => !row.itemId || !row.accountCode || !Number.isFinite(row.qty) || row.qty <= 0
       || !money(row.supply) || !money(row.tax) || row.total !== row.supply + row.tax)
     || source.items.reduce((sum, row) => sum + row.supply, 0) !== source.totalSupply
     || source.items.reduce((sum, row) => sum + row.tax, 0) !== source.totalTax
     || source.totalAmount !== source.totalSupply + source.totalTax) throw new Error('유효한 원매입 전표를 선택해주세요.');
   const quantities = selected.filter(row => row.qty !== '' && Number(row.qty) !== 0);
-  if (!quantities.length || new Set(quantities.map(row => row.itemId)).size !== quantities.length)
+  if (!quantities.length || new Set(quantities.map(row => resolveReturnSourceLine(source.items, row).index)).size !== quantities.length)
     throw new Error('반품 수량을 입력해주세요.');
   let totalAmount = 0;
   const items: ReturnItem[] = quantities.map(row => {
-    const original = source.items.find(line => line.itemId === row.itemId);
+    const { line: original, index } = resolveReturnSourceLine(source.items, row);
     const item = allItems.find(item => item.id === row.itemId);
     const quantity = Number(row.qty);
+    const unitSnapshot = readPurchaseUnitSnapshot(original);
+    if (unitSnapshot && (!item || !isRawHolder(item))) throw new Error('매입 단위의 원료 품목을 확인해주세요.');
     if (!original || !item || returnStockKind(companyId, item, allItems) === 'unsupported' || !item.unit?.trim()
       || !Number.isFinite(quantity) || quantity <= 0 || quantity > original.qty
       || !Number.isSafeInteger(Math.round(quantity * 1000)) || Math.round(quantity * 1000) <= 0
@@ -38,7 +43,8 @@ export function purchaseReturnRequest(companyId: CompanyId, partnerId: string, s
     const supply = original.supply * quantity / original.qty, tax = original.tax * quantity / original.qty;
     if (!money(supply) || !money(tax) || supply + tax <= 0) throw new Error('공급가·세액을 정확히 나눌 수 없는 반품 수량입니다.');
     totalAmount += supply + tax;
-    return { itemId: row.itemId, name: item.name, quantity, price: original.total / original.qty, reason: '기타', isResellable: false };
+    return { itemId: row.itemId, name: item.name, quantity, price: original.total / original.qty, reason: '기타', isResellable: false,
+      ...(row.sourceLineIndex !== undefined || unitSnapshot ? { sourceLineIndex: index } : {}) };
   });
   if (!money(totalAmount) || !totalAmount) throw new Error('반품 금액을 확인해주세요.');
   return { companyId, partnerId, linkedStatementId: source.id, returnType: '매입' as const,
@@ -98,7 +104,7 @@ function explicitReturnRequest(companyId: CompanyId, partnerId: string, returnTy
     || explicit.items.length !== rows.length || new Set(explicit.items.map(row => row.itemId)).size !== rows.length)
     throw new Error('반품 품목과 명시 금액을 확인해주세요.');
   let totalAmount = 0;
-  const items = rows.map(row => {
+  const items: ReturnItem[] = rows.map(row => {
     const item = allItems.find(item => item.id === row.itemId);
     const money = explicit.items.find(line => line.itemId === row.itemId);
     const quantity = Number(row.qty);

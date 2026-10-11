@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { costFromPurchaseLine as appCost } from './lineAmount';
-import { costFromPurchaseLine as sharedCost, isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
+import { costFromPurchaseLine as sharedCost, costFromPurchaseLines, isRawPurchaseItem } from '../../functions/src/shared/purchaseCost';
 // 실제 서버 소비자의 계산 선언을 실행하여 정책 배선까지 검증한다.
 const source = readFileSync('functions/src/tradeStatementIssue.ts', 'utf8');
 const declaration = source.match(/const purchaseCost = ([\s\S]*?);\r?\nconst oldCompany/)!;
@@ -40,4 +40,21 @@ it('명시 kg 원가는 현재 kg mirror 홀더만 허용한다', () => {
   expect(isRawPurchaseItem({subtype:'낱개'})).toBe(false);
   expect(isRawPurchaseItem({subtype:'벌크',phantom:true})).toBe(false);
   expect(isRawPurchaseItem({subtype:'벌크',archived:true})).toBe(false);
+});
+
+it.each([20, 22.5, 25])('등록 포장 %skg의 원가 분모는 거래 qty가 아닌 저장 kg이다', unitKg => {
+  const line = {purchaseUnitId:'registered',purchaseUnit:'포',purchaseQty:2,unitKg,inventoryQty:2*unitKg,qty:2,price:22000,supply:40000};
+  expect(appCost(line)).toBe(Math.round(40000/(2*unitKg))); expect(serverCost(line)).toBe(appCost(line));
+  expect(appCost({...line,purchaseQuantityKg:2*unitKg})).toBe(appCost(line));
+  expect(appCost({...line,purchaseQuantityKg:10})).toBeNull();
+});
+it('부분 매입단위와 잘못된 확정 kg는 기존 거래수량 원가로 fallback하지 않는다',()=>{
+  expect(appCost({qty:2,supply:40000,purchaseUnitId:'registered'})).toBeNull();
+  expect(appCost({qty:2,supply:40000,purchaseUnitId:'registered',purchaseUnit:'포',purchaseQty:2,unitKg:20,inventoryQty:39})).toBeNull();
+});
+
+it('혼합 포장 원가는 공급가 합계/확인 kg 합계이며 미확인 줄을 합치지 않는다',()=>{
+ const line=(unitKg:number,supply:number)=>({qty:1,supply,price:supply,purchaseUnitId:`u${unitKg}`,purchaseUnit:'포',purchaseQty:1,unitKg,inventoryQty:unitKg});
+ expect(costFromPurchaseLines([line(20,20000),line(25,25000)])).toBe(1000);
+ expect(costFromPurchaseLines([line(20,20000),{qty:1,supply:25000,price:25000}])).toBeNull();
 });

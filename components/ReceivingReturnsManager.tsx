@@ -1,3 +1,4 @@
+import { purchaseReturnRows, type PurchaseReturnRow } from '../src/features/admin/purchaseReturnRows';
 import { AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { purchaseReturnRequest, salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
@@ -80,7 +81,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [prSupplierId, setPrSupplierId] = useState('');
   const [prSupplierSearch, setPrSupplierSearch] = useState('');
   const [showPrSupplierDropdown, setShowPrSupplierDropdown] = useState(false);
-  const [prItems, setPrItems] = useState<{ itemId: string; name: string; qty: string; unit: string }[]>([]);
+  const [prItems, setPrItems] = useState<PurchaseReturnRow[]>([]);
   const [prItemSearch, setPrItemSearch] = useState('');
   const [prNote, setPrNote] = useState('');
   const [prSaving, setPrSaving] = useState(false);
@@ -494,7 +495,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   <select aria-label="원매입 전표" value={purchaseSourceId} onChange={e => {
                     setPurchaseSourceId(e.target.value);
                     const original = issuedStatements.find(row => row.id === e.target.value && row.companyId === companyId && row.partnerId === prSupplierId && row.type === '매입');
-                    setPrItems((original?.items ?? []).map(row => ({ itemId: row.itemId ?? '', name: row.name, qty: '', unit: items.find(item => item.id === row.itemId)?.unit ?? '' })));
+                    setPrItems(purchaseReturnRows(original, items, returnRequests));
                   }} className="block w-full border rounded-lg p-2 mt-1">
                     <option value="">원전표 없이 금액 직접 입력</option>
                     {issuedStatements.filter(row => row.companyId === companyId && row.partnerId === prSupplierId && row.type === '매입' && row.totalAmount > 0)
@@ -517,14 +518,17 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   ) : (
                     <div className="space-y-1.5">
                       {prItems.map((item, idx) => (
-                        <div key={item.itemId} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                        <div key={`${item.itemId}:${item.sourceLineIndex ?? idx}`} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-700">{item.name}</p>
-                            <p className="text-xs text-slate-400">{item.unit}</p>
+                            <p className="text-xs text-slate-400">{item.unit}{item.unitKg !== undefined ? ` · 단위당 ${item.unitKg}kg` : ''}{item.originalQty !== undefined ? ` · 원매입 ${item.originalQty} · 처리후 잔량 ${item.remainingQty}` : ''}</p>
                           </div>
                           <input
                             type="number"
                             min={0}
+                            max={item.remainingQty}
+                            step="0.001"
+                            aria-label={`${idx + 1}행 반품 수량`}
                             placeholder="0"
                             value={item.qty}
                             onChange={e => setPrItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))}
@@ -573,7 +577,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
 {!purchaseSourceId && <div className="space-y-2 border rounded-xl p-3">
               <p>원전표 없이 금액 직접 입력 · 과거 단가를 자동 추정하지 않습니다.</p>
               <label>줄일 채무 계정<select aria-label="줄일 채무 계정" value={payableAccountCode} onChange={e => setPayableAccountCode(e.target.value as typeof AP | typeof OTHER_PAYABLE)}><option value={AP}>251</option><option value={OTHER_PAYABLE}>253</option></select></label>
-              {prItems.map((row, idx) => row.itemId && <div key={row.itemId} className="flex flex-wrap gap-2">
+              {prItems.map((row, idx) => row.itemId && <div key={`${row.itemId}:${row.sourceLineIndex ?? idx}`} className="flex flex-wrap gap-2">
                 <span>{row.name}</span>
                 {(['supply', 'tax', 'accountCode'] as const).map(field => <label key={field}>
                   {{ supply: '공급가', tax: '세액', accountCode: '발생 계정' }[field]}

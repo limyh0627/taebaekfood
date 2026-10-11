@@ -116,7 +116,7 @@ export async function issueOemFeeVoucher(db: admin.firestore.Firestore, companyI
       const finishedChildren = bomRows[index].docs.map(snap => snap.data())
         .filter(row => ['product', '완제품'].includes(children.get(row.child_id)?.type));
       const boxed = (finishedChildren.length === 1 && Number(finishedChildren[0].quantity ?? 1) > 1)
-        || Number(item.unpackTo?.count ?? 0) > 1 || item.unit === '박스';
+        || item.unit === '박스';
       const kg = item.packageKg || (packageKg(item.spec) || packageKg(item.name)) * (boxed ? specCount(item.spec) : 1);
       const unitTotal = Math.round(kg * perKg);
       const amount = lineAmount(poItem.quantity, unitTotal, exempt);

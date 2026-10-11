@@ -1,3 +1,4 @@
+import { readPurchaseUnitSnapshot } from '../purchaseUnit';
 import {runFinancialOpening} from './financialOpeningCommands';
 /**
  * @shared-move  shared/src/services/firebaseService.ts
@@ -692,7 +693,14 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
     if (po.status === 'received') return false;
     if (po.status !== 'invoiced') throw new Error('입고대기 발주만 확정할 수 있습니다.');
     const lines = poLines(po);
-    if (!lines.length || lines.length > 100 || new Set(lines.map(line => line.itemId)).size !== lines.length)
+    const lineKeys = lines.map(line => {
+      const snapshot = readPurchaseUnitSnapshot(line);
+      if (snapshot && (!Number.isSafeInteger(line.sourceLineIndex) || Number(line.sourceLineIndex) < 0))
+        throw new Error('매입 단위 원전표 행번호가 없습니다.');
+      return snapshot ? `${line.itemId}:line:${line.sourceLineIndex}` : line.itemId;
+    });
+    if (!lines.length || lines.length > 100 || new Set(lineKeys).size !== lines.length
+      || lines.some(line => lines.filter(row => row.itemId === line.itemId).length > 1 && !readPurchaseUnitSnapshot(line)))
       throw new Error('발주 품목 구성을 먼저 확인해 주세요.');
     const refs = lines.map(line => ({ item: doc(store, 'items', line.itemId), receipt: doc(store, 'itemReceipts', `rcv-po-${encodeURIComponent(poId)}-${encodeURIComponent(line.itemId)}`) }));
     const itemSnaps = await Promise.all(refs.map(ref => tx.get(ref.item)));
@@ -705,6 +713,9 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
       if (receiptSnaps[i].exists()) throw new Error('기존 입고 기록이 있어 중복 입고를 막았습니다.');
       const item = { id: line.itemId, ...itemSnaps[i].data() } as Item;
       if (companyOf(item) !== claim) throw new Error(`품목 회사가 다릅니다: ${item.name}`);
+      const purchaseUnit = readPurchaseUnitSnapshot(line);
+      if (purchaseUnit && (!isRawHolder(item) || purchaseUnit.purchaseQty !== line.quantity))
+        throw new Error('매입 단위 스냅샷의 원료 품목·거래 수량이 다릅니다.');
       const unitStock = holdsUnitStock(item);
       if (!canConfirmPurchaseOrderReceiptItem(item)) {
         const target = isRawHolder(item) ? { rawItem: item, baseName: item.rawMaterialName || baseRawName(item.name) }
@@ -713,23 +724,24 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
         const unit = String(item.unit ?? line.unit ?? '').toLowerCase();
         const packaged = unit !== 'kg' && unit !== 'l';
         const packageKg = packaged ? itemKg(item, fixedInputs) || parsePackageKg(item.name) : undefined;
-        if (packaged && (!packageKg || !Number.isFinite(packageKg) || packageKg <= 0))
+        if (!purchaseUnit && packaged && (!packageKg || !Number.isFinite(packageKg) || packageKg <= 0))
           throw new Error(`원료 포장 단위의 kg 환산값이 없습니다: ${item.name}`);
         const density = DENSITY[target.baseName] ?? item.density ?? 1;
-        const kg = receiptToKg({ quantity: line.quantity, unit, density, packageKg });
+        const kg = purchaseUnit ? purchaseUnit.inventoryQty : receiptToKg({ quantity: line.quantity, unit, density, packageKg });
         if (!Number.isFinite(kg) || kg <= 0) throw new Error(`원료 입고 kg을 확인해 주세요: ${item.name}`);
         rawCommands.push({ command: {
           companyId: claim, rawItemId: target.rawItem.id, materialSnapshot: target.baseName,
-          operationId: `po-receive:${poId}:${line.itemId}`,
+          operationId: purchaseUnit ? `po-receive:${poId}:${line.itemId}:line:${line.sourceLineIndex}` : `po-receive:${poId}:${line.itemId}`,
           effectiveAt: now.slice(0, 10) === date ? now : `${date}T12:00:00+09:00`,
           source: { type: 'purchase', id: poId }, actorName: addedBy,
           kind: 'receive', kg,
           lot: { supplierId: po.partnerId, supplierName: po.partnerName || '거래처',
-            packageType: packaged ? item.packageType ?? (packageKg ? '캔' : undefined) : undefined,
-            packageKg, qtyIn: packaged ? line.quantity : undefined, poId },
+            packageType: purchaseUnit?.purchaseUnit ?? (packaged ? item.packageType ?? (packageKg ? '캔' : undefined) : undefined),
+            packageKg: purchaseUnit?.unitKg ?? packageKg, qtyIn: purchaseUnit?.purchaseQty ?? (packaged ? line.quantity : undefined), poId },
         }, legacy: { note: `${po.partnerName || '거래처'} 입고`, type: 'manual', addedBy,
-          originalAmount: line.quantity, originalUnit: unit === 'l' ? 'L' : 'kg',
-          ...(packaged && packageKg ? { canSize: packageKg, canCount: line.quantity } : {}) } });
+          ...(purchaseUnit ? {} : {originalAmount: line.quantity, originalUnit: unit === 'l' ? 'L' : 'kg'}),
+          ...(purchaseUnit ? {...purchaseUnit,sourceLineIndex:line.sourceLineIndex} : {}),
+          ...(purchaseUnit ? { canSize: purchaseUnit.unitKg, canCount: purchaseUnit.purchaseQty } : packaged && packageKg ? { canSize: packageKg, canCount: line.quantity } : {}) } });
         return null;
       }
       const stock = Number(item.stock ?? 0);

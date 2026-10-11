@@ -1,4 +1,5 @@
-import { costFromPurchaseLine, isRawPurchaseItem } from './shared/purchaseCost';
+import { readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
+import { costFromPurchaseLine, costFromPurchaseLines, isRawPurchaseItem } from './shared/purchaseCost';
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
 import { readStatementCreation } from './statementCreationReceipt';
 import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
@@ -9,7 +10,7 @@ import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
 
 type Row = Record<string, any>;
-type Cost = { itemId: string; price: number; beforeCost: number; sourceLineIndex: number };
+type Cost = { itemId: string; price: number; beforeCost: number; sourceLineIndex: number; sourceLineIndices?: number[] };
 type Input = {
   operationId: string;
   statement: Row;
@@ -72,6 +73,15 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     const supply = line.isTaxExempt ? gross : Math.round(gross / 1.1);
     return line.total !== gross || line.supply !== supply || line.tax !== gross - supply;
   })) bad('전표 줄이 잘못되었습니다.');
+  const unitLines: Row[] = raw.items.filter((line: Row) => {
+    try {
+      const snapshot = readPurchaseUnitSnapshot(line);
+      if (snapshot && (raw.type !== '매입' || !line.itemId || snapshot.purchaseQty !== line.qty
+        || !Number.isSafeInteger(line.sourceLineIndex) || line.sourceLineIndex !== raw.items.indexOf(line)
+        || line.purchaseQuantityKg !== undefined && line.purchaseQuantityKg !== snapshot.inventoryQty)) bad('매입 단위와 거래 수량·원가 kg가 일치하지 않습니다.');
+      return !!snapshot;
+    } catch (error) { return bad(error instanceof Error ? error.message : '매입 단위가 잘못되었습니다.'); }
+  });
   const kgLines = raw.items.filter((line: Row) => line.purchaseQuantityKg !== undefined);
   if (kgLines.some((line: Row) => raw.type !== '매입' || typeof line.itemId !== 'string' || !line.itemId
       || !finite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0 || line.qty <= 0))
@@ -79,16 +89,31 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   if (newPo && newPo.items.some(item => !item || typeof item.itemId !== 'string'
     || !raw.items.some((line: Row) => line.itemId === item.itemId && line.qty === item.quantity)
     || !finite(item.quantity) || item.quantity <= 0 || item.isBox !== false)) bad('신규 발주 품목이 전표와 일치하지 않습니다.');
+  if (newPo && unitLines.length) {
+    const indexes = newPo.items.filter(item=>readPurchaseUnitSnapshot(item)).map(item=>item.sourceLineIndex);
+    const expected = unitLines.map((line:Row)=>line.sourceLineIndex);
+    if (new Set(indexes).size !== indexes.length || hash([...indexes].sort((a,b)=>a-b)) !== hash([...expected].sort((a,b)=>a-b)))
+      bad('매입 단위 전표와 신규 발주의 원료 행 연결이 중복되거나 누락되었습니다.');
+  }
   const sums = raw.items.reduce((a: number[], line: Row) => [a[0] + line.supply, a[1] + line.tax, a[2] + line.total], [0, 0, 0]);
   if (!finite(raw.totalSupply) || !finite(raw.totalTax) || !finite(raw.totalAmount)
     || raw.totalAmount <= 0 || sums.some((n: number, i: number) => Math.round(n * 100) !== Math.round([raw.totalSupply, raw.totalTax, raw.totalAmount][i] * 100))) bad('전표 합계가 일치하지 않습니다.');
   if (raw.orderId !== orderIds.join(',')) bad('전표와 주문 연결이 일치하지 않습니다.');
   if (!Array.isArray(costUpdates) || (raw.type !== '매입' && costUpdates.length)) bad('원가 갱신이 잘못되었습니다.');
+  if (costUpdates.some(cost=>costUpdates.filter(row=>row.itemId===cost.itemId).length>1 && raw.items.some((line:Row)=>line.itemId===cost.itemId && readPurchaseUnitSnapshot(line)))) bad('같은 품목 원가는 전표 전체를 묶어 한 번 갱신해야 합니다.');
   for (const cost of costUpdates) {
     const line = raw.items[cost.sourceLineIndex];
-    if (!line || line.itemId !== cost.itemId || !finite(cost.price) || !finite(cost.beforeCost)
-      || (line.purchaseQuantityKg !== undefined && purchaseCost(line) !== cost.price)
-      || !raw.items.some((candidate: Row) => candidate.itemId === cost.itemId && purchaseCost(candidate) === cost.price)) {
+    if (!line || line.itemId !== cost.itemId || !finite(cost.price) || !finite(cost.beforeCost)) bad('전표 줄과 원가가 일치하지 않습니다.');
+    const allUnitIndexes = raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1).filter((index:number)=>index>=0);
+    if (cost.sourceLineIndices !== undefined) {
+      const indexes=cost.sourceLineIndices;
+      const allItemIndexes=raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1).filter((index:number)=>index>=0);
+      if (!Array.isArray(indexes) || !indexes.length || indexes.some(index=>!Number.isSafeInteger(index)||index<0)
+        || new Set(indexes).size!==indexes.length || cost.sourceLineIndex!==indexes[0]
+        || hash(indexes)!==hash(allItemIndexes) || costFromPurchaseLines(indexes.map(index=>raw.items[index]))!==cost.price)
+        bad('묶음 원가의 전표 행·확정 kg 근거가 일치하지 않습니다.');
+    } else if (allUnitIndexes.length>0 && raw.items.filter((row:Row)=>row.itemId===cost.itemId).length>1 || (line.purchaseQuantityKg!==undefined || readPurchaseUnitSnapshot(line)) && purchaseCost(line)!==cost.price
+      || !raw.items.some((candidate:Row)=>candidate.itemId===cost.itemId && purchaseCost(candidate)===cost.price)) {
       bad('전표 줄과 원가가 일치하지 않습니다.');
     }
   }
@@ -104,8 +129,9 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const orderRefs = orderIds.map(id => db.collection('orders').doc(id));
   const poRefs = poIds.map(id => db.collection('purchaseOrders').doc(id));
   const newPoRef = newPo ? db.collection('purchaseOrders').doc(newPo.id) : null;
-  const kgItemRefs = [...new Set<string>(kgLines.map((line: Row) => line.itemId as string))]
+  const kgItemRefs = [...new Set<string>([...kgLines, ...unitLines].map((line: Row) => line.itemId as string))]
     .map(id => db.collection('items').doc(id));
+  const unitRefs = unitLines.map((line: Row) => db.collection('item_purchase_unit').doc(line.purchaseUnitId));
   const costRefs = costUpdates.map(c => db.collection('items').doc(c.itemId));
   const newPoItemRefs = newPo ? [...new Set(newPo.items.map(item => item.itemId as string))]
     .map(id => db.collection('items').doc(id)) : [];
@@ -120,7 +146,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const releaseGate = releaseGateRef(db);
   return db.runTransaction(async tx => {
     const recordedAt = new Date().toISOString();
-    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, histories, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems] = await Promise.all([
+    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, histories, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems, unitRegistrations] = await Promise.all([
       tx.get(statementRef), tx.get(otherKindRef), tx.get(counterRef), tx.get(catchUpCounterRef), tx.get(partnerRef),
       Promise.all(orderRefs.map(ref => tx.get(ref))), Promise.all(poRefs.map(ref => tx.get(ref))),
       newPoRef ? tx.get(newPoRef) : Promise.resolve(null), Promise.all(costRefs.map(ref => tx.get(ref))),
@@ -131,6 +157,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       tx.get(partnerStatementsQuery),
       tx.get(releaseGate),
       Promise.all(kgItemRefs.map(ref => tx.get(ref))),
+      Promise.all(unitRefs.map(ref => tx.get(ref))),
     ]);
     assertReleaseActive(releaseSnap, input.releaseId);
     const mode = assertVoucherDateAllowed(releaseSnap, companyId, date, true);
@@ -181,6 +208,37 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       }
       return { status: 'duplicate' as const, id: raw.id, docNo: saved.docNo };
     }
+    unitLines.forEach((line: Row, index: number) => {
+      const registration = unitRegistrations[index];
+      if (!registration.exists) conflict('등록된 매입 단위가 없습니다.');
+      try {
+        validatePurchaseUnitRegistration(readPurchaseUnitSnapshot(line)!, { ...registration.data(), id: registration.id } as ItemPurchaseUnit,
+          { companyId: companyId as ItemPurchaseUnit['companyId'], itemId: line.itemId, partnerId: raw.partnerId });
+      } catch (error) { conflict(error instanceof Error ? error.message : '등록된 매입 단위가 변경되었습니다.'); }
+    });
+    // 발주 원문도 같은 스냅샷이어야 입고 단계에서 다른 kg를 적용하지 않는다.
+    for (const row of newPo?.items ?? []) {
+      const matching = row.sourceLineIndex === undefined
+        ? raw.items.filter((line: Row) => line.itemId === row.itemId && line.qty === row.quantity)
+        : Number.isSafeInteger(row.sourceLineIndex) && row.sourceLineIndex >= 0 && raw.items[row.sourceLineIndex]?.itemId === row.itemId
+          && raw.items[row.sourceLineIndex]?.qty === row.quantity ? [raw.items[row.sourceLineIndex]] : [];
+      if (readPurchaseUnitSnapshot(row) && (matching.length !== 1 || row.sourceLineIndex === undefined || row.sourceLineIndex !== matching[0].sourceLineIndex)) conflict('매입 단위의 전표 품목 연결이 불명확합니다.');
+      if (matching.length === 1 && hash(readPurchaseUnitSnapshot(row)) !== hash(readPurchaseUnitSnapshot(matching[0])))
+        conflict('신규 발주와 전표의 매입 단위가 다릅니다.');
+    }
+    for (const po of pos) {
+      const rows = po.data()?.items ?? [{ itemId: po.data()?.itemId, quantity: po.data()?.quantity }];
+      for (const row of rows) {
+        const matching = row.sourceLineIndex === undefined
+        ? raw.items.filter((line: Row) => line.itemId === row.itemId && line.qty === row.quantity)
+        : Number.isSafeInteger(row.sourceLineIndex) && row.sourceLineIndex >= 0 && raw.items[row.sourceLineIndex]?.itemId === row.itemId
+          && raw.items[row.sourceLineIndex]?.qty === row.quantity ? [raw.items[row.sourceLineIndex]] : [];
+        if (matching.some((line: Row) => readPurchaseUnitSnapshot(line)) || readPurchaseUnitSnapshot(row)) {
+          if (matching.length !== 1 || row.sourceLineIndex !== matching[0].sourceLineIndex || hash(readPurchaseUnitSnapshot(row)) !== hash(readPurchaseUnitSnapshot(matching[0])))
+            conflict('기존 발주와 전표의 매입 단위가 다릅니다.');
+        }
+      }
+    }
     const allowedCodes = new Set(codes.docs.filter(snap => oldCompany(snap.data()) === companyId).map(snap => snap.data().code));
     if (raw.items.some((line: Row) => !allowedCodes.has(line.accountCode))) conflict('회사 계정과목이 일치하지 않습니다.');
     if (!partner.exists || oldCompany(partner.data()!) !== companyId) conflict('거래처 회사가 일치하지 않습니다.');
@@ -213,7 +271,8 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
       if (!snap.exists || oldCompany(snap.data()!) !== companyId
         || Number(snap.data()!.cost ?? 0) !== costUpdates[i].beforeCost
         || snap.data()!.type === 'service') conflict(`품목 ${costUpdates[i].itemId} 원가가 변경되었습니다.`);
-      if (isRawPurchaseItem(snap.data()!) && raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg === undefined)
+      if (isRawPurchaseItem(snap.data()!) && raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg === undefined
+        && !readPurchaseUnitSnapshot(raw.items[costUpdates[i].sourceLineIndex]))
         conflict('원료 벌크 kg 수량을 확인하지 않은 원가는 갱신할 수 없습니다.');
     });
     kgItems.forEach(snap => {
@@ -244,6 +303,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
         companyId, itemId: cost.itemId, beforeCost: cost.beforeCost, afterCost: cost.price,
         effectiveAt: date, recordedAt, actorId,
         sourceStatementId: raw.id, sourceLineIndex: cost.sourceLineIndex,
+        ...(cost.sourceLineIndices ? {sourceLineIndices:cost.sourceLineIndices} : {}),
       });
     });
     return { status: 'applied' as const, id: raw.id, docNo };

@@ -1,3 +1,5 @@
+import type { PurchaseUnitSnapshot } from './purchaseUnit';
+export type { ItemPurchaseUnit, PurchaseUnitSnapshot } from './purchaseUnit';
 import type { AP, OTHER_PAYABLE } from './autoJournal';
 import type { CompanyId, RawMaterialLot } from '../../functions/src/shared/rawLot';
 import type { RawMovementKind } from './rawInventoryCore';
@@ -1053,7 +1055,9 @@ export interface FixedCostTemplate {
  */
 export type StatementLineKind = 'item' | 'account';
 
-export interface IssuedStatementItem {
+export interface IssuedStatementItem extends Partial<PurchaseUnitSnapshot> {
+  /** 혼합 포장은 원전표 품목 배열 위치로 구분한다. 옛 단일 줄에는 없다. */
+  sourceLineIndex?: number;
   /** 신규 원료 매입 줄에서 사용자가 직접 확인한 기본 kg 수량. 거래 qty와 별개이며 옛 줄은 없을 수 있다. */
   purchaseQuantityKg?: number;
   /** 비용·옛 전표는 없을 수 있다. 이름으로 품목을 추정해 단가를 덮어쓰지 않는다. */
@@ -1172,7 +1176,9 @@ export type PaymentMethod = '현금' | '계좌이체' | '어음' | '카드' | '�
 // 매입 플로우: pending → invoiced → received
 // received + linkedStatementId 없음 = 전표 작성 대기
 // received + linkedStatementId 있음 = 전표 연결 완료
-export interface PurchaseOrderItem {
+export interface PurchaseOrderItem extends Partial<PurchaseUnitSnapshot> {
+  /** 혼합 포장은 원전표 품목 배열 위치로 구분한다. 옛 단일 줄에는 없다. */
+  sourceLineIndex?: number;
   itemId: string;
   name: string;
   /** **언제나 그 품목의 재고 단위.** 박스로 골랐어도 담을 때 낱개로 풀어 넣는다. */
@@ -1388,6 +1394,8 @@ export interface ItemBom {
 export type ReturnReason = '품질불량' | '오배송' | '과잉재고' | '기타';
 
 export interface ReturnItem {
+  /** 혼합 포장은 원전표 품목 배열 위치로 구분한다. 옛 단일 줄에는 없다. */
+  sourceLineIndex?: number;
   itemId: string;
   name: string;
   quantity: number;

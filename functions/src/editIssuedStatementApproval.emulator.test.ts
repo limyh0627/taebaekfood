@@ -24,4 +24,28 @@ describe.skipIf(!available)('전표 수정 요청의 원자 승인',{timeout:300
  it('서버 합계 검증 실패 또는 변경 patch는 승인 상태를 남기지 않는다',async()=>{await seed();const bad={...patch,totalAmount:90};await ref('pendingStatementEdits',pendingId).update({proposedData:bad});const input=command();input.data.patch=bad;input.data.pendingEditRequestHash=hash({...pending,proposedData:bad});await expect(editIssuedStatement(db,input)).rejects.toThrow('합계');expect((await ref('pendingStatementEdits',pendingId).get()).get('status')).toBe('pending');expect((await ref('issuedStatements',statementId).get()).get('mutationRevision')).toBe(0);await seed();const forged=command();forged.data.patch={...patch,partnerName:'바꾼 표시'};await expect(editIssuedStatement(db,forged)).rejects.toThrow('변경');});
  it('승인 뒤 원문을 변조하면 기존 성공 receipt로 덮지 않는다',async()=>{await seed();await editIssuedStatement(db,command());await ref('pendingStatementEdits',pendingId).update({createdBy:'다른 직원'});await expect(editIssuedStatement(db,command())).rejects.toThrow('근거');expect((await ref('issuedStatements',statementId).get()).get('mutationRevision')).toBe(1);});
  it('거래처 변경 기존 guard와 일반 수정 API는 유지한다',async()=>{await seed();const data=command();const changed={...patch,partnerId:'other'};data.data.patch=changed;data.data.pendingEditRequestHash=hash({...pending,proposedData:changed});await ref('pendingStatementEdits',pendingId).update({proposedData:changed});await expect(editIssuedStatement(db,data)).rejects.toThrow('거래처 변경');await seed();const ordinary:any=command();delete ordinary.data.pendingEditRequestId;delete ordinary.data.pendingEditRequestHash;ordinary.data.patch={memo:'일반 수정'};expect((await editIssuedStatement(db,ordinary)).status).toBe('applied');expect((await ref('pendingStatementEdits',pendingId).get()).get('status')).toBe('pending');});
+ it('같은 원료의 미입고 20·25kg 행을 원자 수정하고 이미 입고된 수량 변경만 보호한다',async()=>{
+  const rawId=runId+'-raw',poId=runId+'-po'; await seed();
+  const line=(index:number,unitKg:number,qty:number)=>({itemId:rawId,name:'원료',qty,price:110,supply:100*qty,tax:10*qty,total:110*qty,sourceLineIndex:index,purchaseUnitId:runId+'-u'+unitKg,purchaseUnit:'포',purchaseQty:qty,unitKg,inventoryQty:qty*unitKg});
+  const oldLines=[line(0,20,1),line(1,25,1)],newLines=[line(0,20,2),line(1,25,1)];
+  await ref('items',rawId).set({companyId:'taebaek',type:'raw',subtype:'벌크'});
+  await ref('issuedStatements',statementId).update({type:'매입',items:oldLines});
+  await ref('purchaseOrders',poId).set({companyId:'taebaek',partnerId:'same',linkedStatementId:statementId,status:'invoiced',items:oldLines.map(({qty,...row})=>({...row,quantity:qty,unit:'kg'}))});
+  const request={auth:command().auth,data:{statementId,releaseId:runId,expectedRevision:0,operationId,patch:{items:newLines,totalSupply:300,totalTax:30,totalAmount:330}}};
+  try{
+   // 현재 등록표가 없어도 같은 저장 단위의 수량 수정은 그 kg를 유지한다.
+   expect((await editIssuedStatement(db,request)).status).toBe('applied');
+   expect((await ref('purchaseOrders',poId).get()).get('items')).toMatchObject([{sourceLineIndex:0,quantity:2,inventoryQty:40},{sourceLineIndex:1,quantity:1,inventoryQty:25}]);
+   const reordered={...request,data:{...request.data,expectedRevision:1,operationId:runId+'-reorder',patch:{items:[newLines[1],newLines[0]],totalSupply:300,totalTax:30,totalAmount:330}}};
+   await expect(editIssuedStatement(db,reordered)).rejects.toThrow('순서');
+   expect((await ref('issuedStatements',statementId).get()).get('items')).toEqual(newLines);
+   expect((await ref('purchaseOrders',poId).get()).get('items')[0].quantity).toBe(2);
+   await ref('purchaseOrders',poId).update({status:'received'});
+   const next={...request,data:{...request.data,expectedRevision:1,operationId:runId+'-received',patch:{items:[line(0,20,3),line(1,25,1)],totalSupply:400,totalTax:40,totalAmount:440}}};
+   await expect(editIssuedStatement(db,next)).rejects.toThrow('입고');
+   expect((await ref('purchaseOrders',poId).get()).get('items')[0].quantity).toBe(2);
+   const moneyOnly={...request,data:{...request.data,expectedRevision:1,operationId:runId+'-money',patch:{memo:'금액·메모 수정 가능'}}};
+   expect((await editIssuedStatement(db,moneyOnly)).status).toBe('applied');
+  } finally {await Promise.all([ref('items',rawId).delete(),ref('purchaseOrders',poId).delete(),ref('voucherMutationOperations',runId+'-money').delete(),ref('voucherMutationOperations',runId+'-received').delete(),ref('voucherMutationOperations',runId+'-reorder').delete()]);}
+ });
 });

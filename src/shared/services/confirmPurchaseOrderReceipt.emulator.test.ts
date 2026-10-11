@@ -254,4 +254,24 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     await expect(deletePendingPurchaseOrderWithDb(userDb(), company, receiptId)).rejects.toThrow('이미 입고');
     expect((await getDoc(doc(userDb(), 'purchaseOrders', receiptId))).exists()).toBe(true);
   }, 20_000);
+  it('같은 L 원료에 등록 당시 20·25kg 포를 선택하면 별개 로트·원장으로 총45kg를 한 번만 입고한다',async()=>{
+    const id='po-snapshot-mixed',rawId='raw-snapshot-mixed';
+    await env.withSecurityRulesDisabled(async context=>{
+      const db=context.firestore();
+      await setDoc(doc(db,'items',rawId),{companyId:company,type:'raw',subtype:'벌크',name:'혼합 원료',unit:'L',density:0.9,stock:0,lots:[],packageKg:999});
+      await setDoc(doc(db,'purchaseOrders',id),{companyId:company,status:'invoiced',partnerName:'검수 거래처',items:[20,25].map((unitKg,sourceLineIndex)=>({itemId:rawId,quantity:1,unit:'L',sourceLineIndex,purchaseUnitId:`old-unit-${unitKg}`,purchaseUnit:`${unitKg}kg포`,purchaseQty:1,unitKg,inventoryQty:unitKg}))});
+    });
+    expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(),company,id,'검수자')).toBe(true);
+    const item=(await getDoc(doc(userDb(),'items',rawId))).data()!;
+    expect(item.stock).toBe(45);expect(item.lots).toHaveLength(2);
+    expect(new Set(item.lots.map((lot:any)=>lot.id)).size).toBe(2);
+    expect(item.lots.map((lot:any)=>lot.kgIn).sort((a:number,b:number)=>a-b)).toEqual([20,25]);
+    const inventory=(await getDoc(doc(userDb(),'rawInventories',`taebaek__${rawId}`))).data()!;
+    expect(inventory.stockKg).toBe(45);expect(inventory.activeLots).toHaveLength(2);
+    const ledger=await getDocs(query(collection(userDb(),'rawMaterialLedger'),where('companyId','==',company),where('source.id','==',id)));
+    expect(ledger.size).toBe(2);expect(new Set(ledger.docs.map(row=>row.id)).size).toBe(2);
+    for(const row of ledger.docs){const saved=row.data();expect(saved.originalAmount).toBeUndefined();expect(saved.originalUnit).toBeUndefined();expect(saved.purchaseQty).toBe(1);expect(saved.purchaseUnit).toBe(`${saved.unitKg}kg포`);expect(saved.inventoryQty).toBe(saved.unitKg);}
+    expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(),company,id,'검수자')).toBe(false);
+    expect((await getDoc(doc(userDb(),'items',rawId))).get('stock')).toBe(45);
+  },30000);
 });

@@ -1,5 +1,6 @@
-import type { Item, Order, OrderItem, PartnerItem, StatementLineKind } from './types';
+import type { Item, Order, OrderItem, PartnerItem, StatementLineKind, PurchaseUnitSnapshot } from './types';
 import { lineAmount } from './lineAmount';
+import { purchaseUnitRowFields } from './purchaseUnitRow';
 import { unpackComponent, boxDerivedUnitPrice, boxCountOf, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
 import { STANDARD_ACCOUNT } from './accountChart';
 
@@ -18,7 +19,8 @@ import { STANDARD_ACCOUNT } from './accountChart';
 export type StatementType = '매출' | '매입' | '비용';
 
 /** 손으로 적는 줄 — 화면의 입력칸 그대로라 전부 글자다. */
-export interface ManualRow {
+export interface ManualRow extends Partial<PurchaseUnitSnapshot> {
+  sourceLineIndex?: number;
   /** 직접 확인한 원료 매입 전체 kg 수량. 빈칸은 기존 계산을 유지한다. */
   purchaseQuantityKg?: string;
   itemId?: string;
@@ -27,7 +29,8 @@ export interface ManualRow {
   side?: '차변' | '대변';
 }
 
-export interface LineItem {
+export interface LineItem extends Partial<PurchaseUnitSnapshot> {
+  sourceLineIndex?: number;
   purchaseQuantityKg?: number;
   itemId?: string;
   /**
@@ -127,6 +130,8 @@ export function manualLines(
         ...(lineKind ? { lineKind } : {}),
         key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec,
         qty, price, supply, tax, total: supply + tax,
+        ...(stmtType === '매입' ? purchaseUnitRowFields(item) : {}),
+        ...(stmtType === '매입' && item.purchaseUnitId && item.sourceLineIndex !== undefined ? { sourceLineIndex: item.sourceLineIndex } : {}),
         ...(stmtType === '매입' && item.purchaseQuantityKg?.trim() ? { purchaseQuantityKg: Number(item.purchaseQuantityKg) } : {}),
         isTaxExempt: item.isTaxExempt, side: item.side,
         accountCode,

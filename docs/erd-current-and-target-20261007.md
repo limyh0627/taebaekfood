@@ -219,3 +219,9 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 `rawInventoryAxes`의 기존 원료 네 축 계산을 관리자 감사와 일일 보고서가 공유한다. rawInventoryReport는 원료 상태·활성 로트·품목 저장 kg·실제 원장을 같은 행에 표시한다. L 표시 품목도 이미 저장된 kg를 다시 환산하지 않는다. 빠진 값은 미확인으로 표시하며 실측 증빙을 추정하지 않는다. CLI는 `npm run audit:daily -- --raw-input 입력.json --output 결과.json`으로 인증·DB 초기화 없이 전체 원료 파일을 대조한다. 입력은 companyId, snapshotDate, complete:true, rawInventories/items/rawMaterialLedger 전체 배열이 필요하며 기존 결과 파일을 덮어쓰지 않는다. 기존 제품 `--input` 분기를 유지한다.
 
 새 컬렉션·활성화 설정·운영 자료 수정은 없다. 009의 과거 주문 출처 확인과 011의 전수 실측 기준, ERD의 Figma 보류 및 동적 경로 후속은 남아 있으므로 원본 TODO 완료 수를 늘리지 않는다.
+
+## 2026-10-11 매입 단위와 해석된 모델 필드
+
+매입 단위는 품목 배열이 아닌 item_purchase_unit 별도 컬렉션으로 관리한다. 매입 전표·발주 줄은 purchaseUnitId/purchaseUnit/purchaseQty/unitKg/inventoryQty 다섯 필드를 함께 저장하며 sourceLineIndex로 같은 품목의 다른 단위 줄을 구분한다. 과거 원가용 purchaseQuantityKg는 입고 확정 kg로 전환하지 않는다. 현재 표를 수정해도 이미 저장된 거래의 환산값은 바뀌지 않는다.
+
+필드 사전은 기존 직접 선언 통계와 별도로 TypeScript가 해석한 모델 필드를 제공한다. 상속, Partial, intersection의 필드·선택 여부·원본 선언 위치를 표시한다. union/any는 임의의 데이터베이스 구조로 펼치지 않는다. 자체 검증과 독립 fixture 3개를 통과했으며 새 컬렉션 이외의 운영 자료나 Figma 보류 범위를 변경하지 않았다.

@@ -116,8 +116,8 @@ export const buildStatementPrintHtml = (items: LineItem[] | IssuedStatement['ite
         return `<tr style="height:5.5mm;background:${bg};">
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
           <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
-          <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${displaySpec(item.spec)}</td>
-          <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${(item as any).unit||'개'}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${esc(displaySpec(item.spec))}${item.purchaseUnitId ? '<br/><span style="font-size:8px">단위당 ' + fmt(item.unitKg) + 'kg · 입고 ' + fmt(item.inventoryQty) + 'kg</span>' : ''}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${esc(item.purchaseUnit || (item as any).unit || '개')}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.qty)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.price)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.total)}</td>
@@ -277,4 +277,3 @@ export function buildReceiptHtml(input: {
   <div style="margin-top:4mm;text-align:center;font-size:7px;color:#888;">위 금액을 정히 영수합니다</div><div style="margin-top:6mm;text-align:right;">서&nbsp;&nbsp;명:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
 </div>`;
 }
-

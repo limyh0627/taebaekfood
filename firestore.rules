@@ -125,9 +125,37 @@ service cloud.firestore {
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
       return serverAuditCollection(c) || c in ['taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
-                   'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines'];
+                   'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit'];
     }
 
+    // 매입 단위는 별도 등록표다. 직원은 회사 안에서 선택하고 관리자만 표를 수정한다.
+    function purchaseUnitCatalogOk(id) {
+      let data = request.resource.data;
+      let item = get(/databases/$(database)/documents/items/$(data.itemId)).data;
+      return data.keys().hasOnly(['id', 'companyId', 'itemId', 'partnerId', 'purchaseUnit', 'unitKg', 'isDefault', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['id', 'companyId', 'itemId', 'purchaseUnit', 'unitKg', 'isDefault', 'active', 'createdAt', 'updatedAt'])
+        && data.id == id && data.itemId is string && data.itemId.size() > 0
+        && data.purchaseUnit is string && data.purchaseUnit.size() > 0
+        && data.unitKg is number && data.unitKg > 0 && data.unitKg - data.unitKg == 0
+        && data.isDefault is bool && data.active is bool
+        && data.createdAt is string && data.updatedAt is string
+        && item.companyId == data.companyId && item.subtype == '벌크'
+        && (!('phantom' in item) || item.phantom == false)
+        && (!('archived' in item) || item.archived == false)
+        && (!('partnerId' in data) || (data.partnerId is string && data.partnerId.size() > 0
+          && get(/databases/$(database)/documents/partners/$(data.partnerId)).data.companyId == data.companyId));
+    }
+    match /item_purchase_unit/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create: if isAdmin() && createUpdateOk() && purchaseUnitCatalogOk(id);
+      allow update: if isAdmin() && createUpdateOk() && purchaseUnitCatalogOk(id)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.itemId == resource.data.itemId
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin() && deleteOk();
+    }
     // 현금 내역은 서버 원자 명령만 저장한다. 기존 회사별 관리자 조회는 유지한다.
     match /cashEntries/{id} {
       allow get: if isAdmin() && getOk();
