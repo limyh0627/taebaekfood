@@ -199,3 +199,15 @@ flowchart LR
 소스4cc21755의 생성기는 실제 SDK 컬렉션 인수에 쓰인 함수 선언 파라미터만 실제 호출 인수로 대입해 literal/COL로 확인된 첫 컬렉션을 resolvedPaths에 기록한다. 다른 인수(회사 등)를 컬렉션으로 승격하지 않고 런타임 문자열·동적 문서 ID·조건 분기는 미해석으로 유지한다. self-check/변이 검출은 제한된 정적 해석 검증이며 운영 DB 전체 경로와 writer 완료를 뜻하지 않는다. 사전35350 exit0은 COL74/필드717/소스430/참조614/미해석2038이다. caller-SDK520은 해석 결과 수이며 컬렉션520개가 아니다.
 
 Node22 집중5파일30PASS80077·타입19408·양앱91644 exit0, 양Hosting84430·원격29782 exit0으로 HTML2+JS115+CSS2 총119 SHA 일치를 확인했다. 새 Functions/Rules 배포는0이다. 전체 시험85077은 exit1로 종료했다. 파일459 중12실패·446통과·1skip, 시험3876 중24실패·3842통과·10skip(1297.41초)이며 전체 PASS가 아니다. PartnerLedger 기본환경5FAIL은 jsdom pragma 보완 후 기본config30PASS86586 exit0으로 해결했고, 새 accountCodeWiring 공통상수 후속은 기존 실패와 구분한다. 상세 근거는 docs/notice-partner-erd-followup-20261010.md에 보존한다. Figma 보드 정리·Notion 의미 통합은 보류/쓰기0, 원본ERD whole완료 추가0·전체21완료22잔여·우선15 중11완료4잔여를 유지한다.
+
+## 2026-10-11 컬렉션 등록·구형 경로 후속 — 배포 전 소스 고정
+
+source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push0이다. 실제11개 컬렉션 등록과 미등록 경로 감지 guard를 반영한 사전57496 exit0은 collections85/fields717/source429/refs614/unresolved2037/caller-SDK520이다. 마지막520은 컬렉션 수가 아니다. 회사 fallback·계정상수·원장 setters 명칭·대출 얇은 re-export 정리는039 국소 후속이며015는 기존 loanAutoReady 정책의 Manager 안내다. 새 Functions runtime 변경0, Hosting74768·원격56475 exit0이다.
+
+최종 타입93073→57efa0 및 diff0226a1 exit0은 확인됐다. 전체51233은 CLI spawn30초 timeout과 두 파일 thread termination으로 중단 exit1(0ac6c2), 최종 시험 총계는 없다. 실패3파일 복구82016은 정확3파일23PASS exit0이며 기존195와 고유218시험·별도Node6 근거를 확인했다. 전체 중단 실행은 성공으로 세지 않는다. 통합 후 양앱56303·Hosting74768 exit0이며 기대값·제한시간·제품 소스 변경0이다. 집중 성공 근거를 전체 PASS로 확대하지 않는다. 사용자가 수정 마무리·브랜치 통합·배포·푸시를 명시 승인했으며 최종 소스 푸시13220 exit0을 확인했다. Figma/Notion/운영자료/gate 쓰기0, 원본 전체21완료22잔여를 유지한다. 상세는 docs/legacy-company-collection-loan-followup-20261010.md.
+
+### 2026-10-11 이관·브랜치 검토 후속(최종 검증 대기)
+이전용 세션·MEMORY·기록·설정은 별도 폴더 이관6파일 범위다. 브랜치 검토에서 필요한 코드가 이미 반영돼 새 merge0이며 관련6파일93PASS는 기존 시험과 겹쳐 합산하지 않는다. 배합(formula) 운영 변경은 별도 보류다. 최종 타입67257 exit0·통합 소스e6e5e49a 정확6파일67추가/10삭제 로컬 커밋, 최종 양앱56303·Hosting74768 exit0, 원격56475·실제push13220 exit0이다. 승인과 별도로 실제 빌드·Hosting·원격·푸시 성공 근거를 확인했다.
+
+### 통합 후 빌드·Hosting 확정
+양앱56303 exit0: 관리자3284/직원3286 module과 PWA 둘 다 완료했다. Hosting74768 exit0으로 양 사이트 release complete(admin71/staff72파일)를 확인했다. 원격56475 exit0에서 HTML2+JS115+CSS2 총119 SHA가 일치했다. 실제 소스 push13220 exit0, github/main은 d2876860→e6e5e49ad0dfdc0ffe24c8f4b002b6a058b551be이며 ls-remote와 HEAD가 일치했다. 결과 문서3개 커밋·푸시는 총괄 후속이다. 업로드 파일 수를 원격 SHA 대조 파일 수로 대신하지 않는다.
