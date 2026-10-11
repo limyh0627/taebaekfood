@@ -48,6 +48,7 @@ import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { executeRawPress } from '../../shared/services/rawPressService';
 import { readRawPressAttempt, rawPressText, rawPressYieldKg, type RawPressRequest } from '../../shared/rawPressAttempt';
+import { derivedRawDocEntries } from '../../shared/derivedRawDocEntries';
 import { adjustStockByQty, durableProductStocktake as stocktakeByQty } from '../../shared/services/unpackService';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 import { createPortal } from 'react-dom';
@@ -3774,28 +3775,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const orderById = orderIndex(allOrders);
 
                   // 수율: 원재료 사용 → 반제품 입고 자동 파생 (규칙은 yieldRules = item_formula 데이터)
-                  const calcDerivedReceived = (material: string): UsageRow[] => {
-                    const rows: UsageRow[] = [];
-                    const sourceEntry = Object.entries(yieldRules).find(([, v]) => v.product === material);
-                    if (!sourceEntry) return rows;
-                    const [sourceMaterial, { rate: yieldRate }] = sourceEntry;
-                    mergedRawMaterialLedger
-                      // 수율 파생은 '실제 사용(압착=manual)'에만 — correction(재고실사/조정/로트삭제)은 제외.
-                      // (예전엔 note==='재고실사정정'만 막아, 다른 note의 실사조정이 파생입고를 만들었음)
-                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto' && e.type !== 'correction')
-                      .forEach(e => {
-                        const derivedKg = Math.round(e.used * yieldRate * 1000) / 1000;
-                        // YIELD_AUTO(rm-yield-*)가 DB에 실제 파생입고를 이미 기록한 경우 표시용 파생행을 만들면
-                        // 같은 압착이 두 번 잡힌다(이중계상) → DB에 동일 건이 있으면 건너뜀
-                        const storedExists = mergedRawMaterialLedger.some(x =>
-                          x.material === material && x.date === e.date &&
-                          (x.note ?? '').startsWith(`${sourceMaterial} 압착`) &&
-                          Math.abs((x.received ?? 0) - derivedKg) < 0.005);
-                        if (storedExists) return;
-                        rows.push({ date: e.date, received: derivedKg, used: 0, note: `${sourceMaterial} 압착 (수율 ${yieldRate * 100}%)`, type: 'auto' as const, createdAt: e.createdAt });
-                      });
-                    return rows;
-                  };
+                  const calcDerivedReceived = (material: string): UsageRow[] =>
+                    derivedRawDocEntries(material, companyId, mergedRawMaterialLedger, yieldRules);
 
                   // 수불부에서만 합쳐 보는 원료. 실제 품목·재고·로트는 절대 합치지 않는다.
                   const RM_TABS = rawDocTabs(RM_LIST);
