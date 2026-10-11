@@ -37,6 +37,8 @@ const reviewedTransactionWriters = new Set([
   'src/shared/services/itemPurchaseUnitService.ts',
   // 공유 원문의 회사·로그인 claim·방 참여를 같은 거래에서 확인하고 기존 원문을 덮지 않는다.
   'src/shared/services/sharedChatMessageService.ts',
+  // 직원 claim과 최신 발주 원문 회사를 대조하고 확정 상태·시각만 같은 거래에서 갱신한다.
+  'src/shared/services/confirmPendingPurchaseOrderService.ts',
 ]);
 
 function sourceFiles(dir: string): string[] {

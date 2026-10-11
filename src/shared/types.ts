@@ -1,3 +1,4 @@
+import type { ProductStocktakeRequest } from './productStocktakeAttempt';
 import type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
 export type { OemCostEvidence, OemBatchCostPreview, OemBatchCostBlocked, OemBatchCost } from './oemBatchCost';
 import type { PurchaseUnitSnapshot } from './purchaseUnit';
@@ -493,6 +494,8 @@ export interface ItemStocktakeAnchor {
   beforeQty: number;
   deltaQty: number;
   note?: string;
+  /** 응답 유실 후 최초 요청 확인용. 새 실사에만 남긴다. */
+  request?: ProductStocktakeRequest;
 }
 
 // ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────

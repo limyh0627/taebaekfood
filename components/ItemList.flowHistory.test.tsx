@@ -144,3 +144,13 @@ it('취소된 일반 입고는 대기에서 빠지고 취소 날짜·읽기 전�
  expect(row.getAllByText('취소').length).toBeGreaterThan(0);expect(row.getByText('2026-10-09')).toBeInTheDocument();expect(row.queryByRole('button',{name:'입고확정'})).toBeNull();
  fireEvent.click(row.getByText('공급업체'));expect(screen.getByText(/중복 입고를 취소하고/)).toBeInTheDocument();expect(screen.queryByRole('button',{name:'수량 저장'})).toBeNull();expect(screen.getByRole('button',{name:/^삭제$/})).toBeDisabled();
 });
+
+it('이전 입고 응답은 새 상세를 닫거나 저장 상태를 바꾸지 않는다',async()=>{
+ const first=deferred<boolean>(),second=deferred<boolean>();const finish=vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+ const row=view({confirmedOrders:[{...po,status:'invoiced'},{...po,id:'po2',status:'invoiced',partnerName:'다른 업체'}] as any,onFinishConfirmedOrder:finish});
+ fireEvent.click(row.getByText('공급업체'));fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'입고확정'}));
+ fireEvent.click(screen.getByRole('button',{name:'입고 상세 닫기'}));fireEvent.click(screen.getByText('다른 업체'));fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'입고확정'}));
+ await act(async()=>{first.resolve(true);await first.promise;});
+ expect(screen.getByRole('dialog')).toBeInTheDocument();expect(within(screen.getByRole('dialog')).getByRole('button',{name:'입고확정'})).toBeDisabled();
+ await act(async()=>{second.resolve(false);await second.promise;});expect(within(screen.getByRole('dialog')).getByRole('button',{name:'입고확정'})).not.toBeDisabled();
+});

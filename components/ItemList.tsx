@@ -1,3 +1,4 @@
+import { readProductStocktakeAttempt, productStocktakeAttemptText, discardProductStocktakeAttempt, type ProductStocktakeAttempt } from '../src/shared/productStocktakeAttempt';
 import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -50,7 +51,7 @@ import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { hasPendingReturnQuantity, resumePendingReturnQuantity } from '../src/shared/services/pendingFlowQuantityService';
 import { cancelReturnRequest, hasPendingReturnCancellation, resumeReturnCancellation } from '../src/shared/services/returnRequestCancellation';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
-import { adjustStockByQty, unpack, stocktakeByQty } from '../src/shared/services/unpackService';
+import { adjustStockByQty, unpack, durableProductStocktake as stocktakeByQty } from '../src/shared/services/unpackService';
 import { getPackIndex, packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -658,7 +659,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
   const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
   const stocktakeOperationId = useRef('');
+  const [stocktakePending,setStocktakePending] = useState<ProductStocktakeAttempt | null>(null);
+  const stocktakeScope = useRef({companyId,itemId:rowEditProduct?.id});
+  stocktakeScope.current={companyId,itemId:rowEditProduct?.id};
+  useEffect(()=>{setRowEditProduct(null);setStocktakePending(null);},[companyId,currentUser?.id]);
   const [stocktakeSaving, setStocktakeSaving] = useState(false);
+  useEffect(()=>{setStocktakeSaving(false);},[companyId,currentUser?.id,rowEditProduct]);
   const [stocktakeLotId, setStocktakeLotId] = useState('');
   const [detailProduct, setDetailProduct] = useState<Item | null>(null);
   const [detailOrderQty, setDetailOrderQty] = useState<number>(0);
@@ -888,6 +894,13 @@ const ItemListContent: React.FC<ItemListProps> = ({
    * 이제 숫자를 누르면 창이 뜬다.
    */
   const openStocktake = (product: Item) => {
+    let pending: ProductStocktakeAttempt | null = null;
+    if (!isRawHolder(product)) {
+      const uid=auth.currentUser?.uid;
+      if (!uid) { setToast({message:'로그인 후 제품 실사를 확인해 주세요.'}); return; }
+      try { pending=readProductStocktakeAttempt(companyId,uid,product.id); } catch(error) { setToast({message:String(error)}); return; }
+    }
+    setStocktakePending(pending);
     stocktakeOperationId.current = `stocktake-${product.id}-${crypto.randomUUID()}`;
     const activeLot = isRawHolder(product)
       ? (product.lots ?? []).find(lot => lot.status !== 'depleted')
@@ -897,8 +910,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
     setRowEditProduct(product);
     setRowEditForm({
       name: product.name, type: product.type,
-      stock: product.density ? Math.round((stockKg / product.density) * 1000) / 1000 : stockKg,
-      minStock: product.minStock, unit: product.unit,
+      stock: pending?.targetQty ?? (product.density ? Math.round((stockKg / product.density) * 1000) / 1000 : stockKg),
+      minStock: pending?.minStock ?? product.minStock, unit: product.unit,
     });
   };
 
@@ -965,6 +978,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
        * 별도 음수 로트를 만들지 않고 `stock` 과 같은 기준에서 이어진다.
        */
       const r = await stocktakeByQty({
+        companyId: companyOf(product),
         itemId: product.id,
         itemName: product.name,
         targetQty: 목표,
@@ -1770,8 +1784,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
               {po?.poType === 'oem' && !po.oemCancelledAt && po.status === 'received' && !po.linkedStatementId && <button type="button" disabled={!oemControlsReady} onClick={() => { setFlowDetail(null); setOemFeeTarget(po); }} className="rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">가공비 발행</button>}
               {po && po.poType !== 'oem' && pending && <button type="button" disabled={flowSaving || sourceChanged || !canReceive} onClick={async () => {
                 setFlowSaving(true);
-                try { if (await onFinishConfirmedOrder(po.id) !== false) setFlowDetail(null); }
-                finally { setFlowSaving(false); }
+                const detail=flowDetail,uid=auth.currentUser?.uid;
+                const active=()=>unpackMounted.current&&auth.currentUser?.uid===uid&&oemCancelScope.current.companyId===companyId&&oemCancelScope.current.detail===detail;
+                try { if (await onFinishConfirmedOrder(po.id) !== false && active()) setFlowDetail(current=>current===detail?null:current); }
+                finally { if(active()) setFlowSaving(false); }
               }} className="min-w-24 flex-1 rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">입고확정</button>}
             </div>
           </div>}
@@ -2512,6 +2528,16 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <p className="mt-1 text-[10px] font-bold text-slate-400">기본은 현재 FIFO 1순위 로트입니다. 선택한 로트만 정정됩니다.</p>
                   </div>
                 )}
+                {stocktakePending && <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><p>보존된 최초 실사 {stocktakePending.targetQty} · 재고를 다시 맞추지 않고 저장 결과를 확인합니다.</p><button type="button" disabled={stocktakeSaving} onClick={async()=>{
+                  const p=rowEditProduct!,uid=auth.currentUser?.uid;if(!uid)return;
+                  const capturedCompany=companyId,generation=stocktakeOperationId.current;
+                  const sameScope=()=>unpackMounted.current&&auth.currentUser?.uid===uid&&stocktakeScope.current.companyId===capturedCompany&&stocktakeScope.current.itemId===p.id&&stocktakeOperationId.current===generation;
+                  const original=productStocktakeAttemptText(companyId,uid,p.id);
+                  if(!await appConfirm('보존된 실사 요청을 폐기하고 새로 세어 본 수량으로 새 실사를 시작할까요? 기존에 저장된 실사와 재고는 취소하지 않습니다.'))return;
+                  if(!sameScope())return;
+                  try { discardProductStocktakeAttempt(companyId,uid,p.id,original);setStocktakePending(null);stocktakeOperationId.current=`stocktake-${p.id}-${crypto.randomUUID()}`; }
+                  catch(error){setToast({message:String(error)});}
+                }} className="mt-2 font-bold underline">보존 요청 폐기 후 새 실사</button></div>}
                 {/* 현재 재고 + 최소 수량 */}
                 <div className={`grid gap-3 ${isRawHolder(rowEditProduct) ? '' : 'grid-cols-2'}`}>
                   <div>
@@ -2524,6 +2550,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                         type="number"
                         min="0"
                         step="any"
+                        disabled={!!stocktakePending}
                         value={rowEditForm.stock ?? ''}
                         onChange={e => setRowEditForm(f => ({ ...f, stock: parseFloat(e.target.value) || 0 }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2549,6 +2576,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">최소 수량</label>
                     <input
                       type="number"
+                      disabled={!!stocktakePending}
                       value={rowEditForm.minStock ?? ''}
                       onChange={e => setRowEditForm(f => ({ ...f, minStock: parseInt(e.target.value) || 0 }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -2573,6 +2601,9 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   disabled={stocktakeSaving}
                   onClick={async () => {
                     const p = rowEditProduct!;
+                    const stocktakeUid = auth.currentUser?.uid;
+                    const capturedCompany=companyId,generation=stocktakeOperationId.current;
+                    const sameScope=()=>unpackMounted.current&&auth.currentUser?.uid===stocktakeUid&&stocktakeScope.current.companyId===capturedCompany&&stocktakeScope.current.itemId===p.id&&stocktakeOperationId.current===generation;
                     const newStock = rowEditForm.stock;
                     const minStock = rowEditForm.minStock;
                     if (newStock === undefined || !Number.isFinite(newStock) || newStock < 0) {
@@ -2588,15 +2619,17 @@ const ItemListContent: React.FC<ItemListProps> = ({
                       // 재고·로트·실사 기록·최소 수량을 한 거래로 저장한다.
                       const ok = await commitStockEdit(p, newStock, 0, isRawHolder(p) ? stocktakeLotId : undefined,
                         isRawHolder(p) ? undefined : { minStock, operationId: stocktakeOperationId.current });
-                      if (ok) setRowEditProduct(null);
+                      if (!sameScope()) return;
+                      if (ok) { setStocktakePending(null);setRowEditProduct(null); }
+                      else if (!isRawHolder(p) && stocktakeUid) setStocktakePending(readProductStocktakeAttempt(companyId,stocktakeUid,p.id));
                     } catch (error) {
-                      setToast({ message: `실사 실패 — ${error instanceof Error ? error.message : String(error)}` });
+                      if(sameScope()) setToast({ message: `실사 실패 — ${error instanceof Error ? error.message : String(error)}` });
                     } finally {
-                      setStocktakeSaving(false);
+                      if (sameScope()) setStocktakeSaving(false);
                     }
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
-                >{productEditable ? '저장' : '실사 반영'}</button>
+                >{stocktakePending ? '실사 결과 확인' : productEditable ? '저장' : '실사 반영'}</button>
               </div>
           </ModalShell>
         )}

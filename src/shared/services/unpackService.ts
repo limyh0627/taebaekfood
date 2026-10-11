@@ -1,5 +1,8 @@
 import { doc, runTransaction } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth, authReady } from '../firebase';
+import { beginProductStocktakeAttempt, submitProductStocktakeAttempt, clearProductStocktakeAttempt, productStocktakeRequest, sameProductStocktakeRequest, validateProductStocktakeRequest, type ProductStocktakeRequest } from '../productStocktakeAttempt';
+import type { CompanyId, Item } from '../types';
+import { isRawHolder } from '../rawHolder';
 import { COL } from '../collections';
 import { companyOf, type RawMaterialLot } from '../types';
 import type { UnpackPlan } from '../canUnpack';
@@ -211,30 +214,44 @@ export async function stocktakeByQty(params: {
   operationId?: string;
   /** 로트가 아직 없을 때 새 실사 로트에 기록할 1재고단위의 kg. */
   unitKg?: number;
+  request?: ProductStocktakeRequest;
+  mode?: 'apply' | 'inspect';
 }): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
   const { itemId, itemName, targetQty, minStock, operationId, unitKg = 0 } = params;
   if (!Number.isFinite(targetQty) || targetQty < 0) return { ok: false, message: '실사 수량은 0 이상의 숫자여야 합니다.' };
   if (minStock !== undefined && (!Number.isFinite(minStock) || minStock < 0)) return { ok: false, message: '최소 수량은 0 이상의 숫자여야 합니다.' };
-  const now = new Date().toISOString();
+  const request = params.request;
+  const now = request?.capturedAt ?? new Date().toISOString();
   const 오늘 = today();
 
   try {
+    if (request) {
+      validateProductStocktakeRequest(request);
+      if (params.mode !== 'apply' && params.mode !== 'inspect') throw Error('제품 실사 실행 또는 결과 확인 방식을 지정해 주세요.');
+      if (request.itemId !== itemId || request.itemName !== itemName || request.targetQty !== targetQty || request.minStock !== minStock || request.unitKg !== unitKg || request.operationId !== operationId) throw Error('실사 입력이 최초 요청 원문과 다릅니다.');
+      if (await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.');
+    }
+    const currentActor = () => { if (request && auth.currentUser?.uid !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.'); };
     const r = await runTransaction(db, async tx => {
+      currentActor();
       const ref = doc(db, 'items', itemId);
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new Error(`${itemName} 품목을 찾을 수 없습니다.`);
       const data = snap.data();
+      if (request && companyOf(data) !== request.companyId) throw Error('다른 회사의 제품 실사는 처리할 수 없습니다.');
+      if (request && isRawHolder({...data,id:itemId} as Item)) throw Error('원료 홀더는 원료 원자 실사로 처리해 주세요.');
       const lots = (data.lots ?? []) as RawMaterialLot[];
       const stocktakeAnchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
       const anchorId = operationId ?? `stocktake-${itemId}-${Date.parse(now)}`;
       const previous = stocktakeAnchors.find((anchor: { id?: string }) => anchor.id === anchorId);
       // 수량이 같은 새 실사는 마지막 실사일을 갱신한다. 같은 요청의 재시도만 ID로 거른다.
       if (previous) {
-        if (Number(previous.targetQty) !== targetQty || (minStock !== undefined && Number(data.minStock ?? 0) !== minStock)) {
+        if (request ? !sameProductStocktakeRequest(previous.request,request) : Number(previous.targetQty) !== targetQty || (minStock !== undefined && Number(data.minStock ?? 0) !== minStock)) {
           throw new Error('이미 처리된 실사 요청의 내용을 바꿀 수 없습니다. 다시 열어 새 실사를 등록하세요.');
         }
         return { deltaQty: 0, beforeQty: targetQty };
       }
+      if (request && params.mode === 'inspect') throw Error('이 실사 요청의 저장 근거를 찾지 못했습니다. 재고를 다시 적용하지 않았습니다. 확인 후 새 실사를 시작하세요.');
 
       const a = anchorLotsByQty({
         lots,
@@ -253,7 +270,9 @@ export async function stocktakeByQty(params: {
         targetQty,
         beforeQty: a.beforeQty,
         deltaQty: a.deltaQty,
+        ...(request ? {request} : {}),
       };
+      currentActor();
       tx.update(ref, {
         lots: strip(pruneDepletedLots(a.lots)),
         stock: canStockAfter(a.lots),
@@ -263,12 +282,17 @@ export async function stocktakeByQty(params: {
       return { deltaQty: a.deltaQty, beforeQty: a.beforeQty };
     });
 
+    if (request && await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되어 결과를 확인하지 못했습니다.');
     return {
       ok: true,
       deltaQty: r.deltaQty,
       message: `${itemName} 실사 ${targetQty} — 로트도 ${r.deltaQty > 0 ? '+' : ''}${r.deltaQty} 맞췄습니다`,
     };
   } catch (error) {
+    if (request) {
+      console.error('[제품 실사] 저장 결과 미확인:', error);
+      return {ok:false,message:`실사 저장 결과 미확인 — ${error instanceof Error ? error.message : String(error)}. 보존된 최초 요청으로 결과를 확인하세요.`};
+    }
     console.error('[실사] 실패 — 아무것도 안 움직였다:', error);
     return { ok: false, message: `실사하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -315,4 +339,24 @@ export async function adjustStockByQty(params: {
   } catch (error) {
     return { ok: false, message: `재고를 조정하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}` };
   }
+}
+
+/** 인증 회사와 실제 로그인 UID를 모두 확인한다. */
+export async function productStocktakeActor(companyId: CompanyId): Promise<string> {
+ await authReady; const user=auth.currentUser;if(!user)throw Error('로그인 후 제품 실사를 확인해 주세요.');
+ const token=await user.getIdTokenResult();if(auth.currentUser?.uid!==user.uid || token.claims.companyId!==companyId)throw Error('제품 실사의 회사·로그인이 변경되었습니다.');return user.uid;
+}
+/** 최초 원문 보존 후 한번만 적용하고, 보존된 요청 재개는 저장 앵커만 확인한다. */
+export async function durableProductStocktake(params: {companyId:CompanyId;itemId:string;itemName:string;targetQty:number;minStock?:number;unitKg?:number;operationId?:string}): Promise<{ok:boolean;message:string;deltaQty?:number}> {
+ try {
+  const uid=await productStocktakeActor(params.companyId);
+  const attempt=beginProductStocktakeAttempt({...params,uid,unitKg:params.unitKg ?? 0});
+  const first=attempt.state==='prepared';const submitted=submitProductStocktakeAttempt(attempt);
+  if(await productStocktakeActor(params.companyId)!==uid)throw Error('실사 로그인 사용자가 변경되었습니다.');
+  const request=productStocktakeRequest(submitted);
+  const result=await stocktakeByQty({...request,request,mode:first?'apply':'inspect'});
+  if(!result.ok)return result;
+  if(await productStocktakeActor(params.companyId)!==uid)throw Error('실사 결과의 로그인 사용자가 변경되었습니다.');
+  clearProductStocktakeAttempt(submitted);return result;
+ }catch(error){return {ok:false,message:`제품 실사 처리·정리 결과를 확인해 주세요 — ${error instanceof Error?error.message:String(error)}`};}
 }

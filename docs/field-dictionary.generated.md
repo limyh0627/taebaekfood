@@ -1,37 +1,37 @@
 # 현재 코드 필드 사전
 
-COL 86개, 선언 필드 724개, 운영 소스 448개를 분석했다.
+COL 86개, 선언 필드 725개, 운영 소스 450개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 671건. 동적 문서 ID도 미해석으로 보존하며, 미해석 340건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 672건. 동적 문서 ID도 미해석으로 보존하며, 미해석 341건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 38건과 정적 컬렉션의 동적 문서 경로 301건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 38건과 정적 컬렉션의 동적 문서 경로 302건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
 | doc | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:27: 미해석; functions/src/financialOpeningCommand.ts:28: 미해석; functions/src/financialOpeningCommand.ts:30: 미해석; functions/src/financialOpeningCommand.ts:61: 미해석; functions/src/financialOpeningCommand.ts:62: 미해석; functions/src/financialOpeningCommand.ts:63: 미해석; functions/src/financialOpeningCommand.ts:64: 미해석; functions/src/financialOpeningCommand.ts:100: 미해석; functions/src/financialOpeningCommand.ts:101: 미해석; functions/src/financialOpeningCommand.ts:150: 미해석; functions/src/financialOpeningCommand.ts:151: 미해석; functions/src/financialOpeningCommand.ts:152: 미해석; functions/src/financialOpeningCommand.ts:194: 미해석; functions/src/financialOpeningCommand.ts:195: 미해석 |
 | subscribeToDocument | src/shared/services/firebaseService.ts:147 | src/shared/services/firebaseService.ts:152 | src/shared/deliveryTimeSlot.ts:24: settings; components/OrdersList.tsx:1712: settings; components/DeliveryManager.tsx:138: settings; components/LeaveManager.tsx:181: settings; src/shared/hooks/useAppData.ts:326: settings |
-| setDocument | src/shared/services/firebaseService.ts:157 | src/shared/services/firebaseService.ts:159 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1718: settings; components/DeliveryManager.tsx:300: deliveryScheduleAudits; components/DeliveryManager.tsx:302: settings; components/DeliveryManager.tsx:303: deliveryScheduleAudits; components/DeliveryManager.tsx:309: deliveryScheduleAudits; components/DeliveryManager.tsx:480: settings; components/DeliveryManager.tsx:486: settings; components/DeliveryManager.tsx:1201: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:397: partner_item; src/features/admin/AdminApp.tsx:4306: settings; src/features/admin/AdminApp.tsx:4490: cashFlowManual |
-| subscribeToCollection | src/shared/services/firebaseService.ts:243 | src/shared/services/firebaseService.ts:249 | src/shared/services/firebaseService.ts:289: 미해석; components/ItemList.tsx:528: stockClosings; src/shared/hooks/useAppData.ts:252: 미해석; src/shared/hooks/useAppData.ts:258: issuedStatements; src/shared/hooks/useAppData.ts:272: cashAccounts; src/shared/hooks/useAppData.ts:273: returnOperations; src/shared/hooks/useAppData.ts:276: cashEntries; src/shared/hooks/useAppData.ts:277: settlements; src/shared/hooks/useAppData.ts:278: partnerAdvanceOperations; src/shared/hooks/useAppData.ts:279: inventorySnapshots; src/shared/hooks/useAppData.ts:298: 미해석; src/shared/hooks/useAppData.ts:307: notices; src/shared/hooks/useAppData.ts:308: pallets; src/shared/hooks/useAppData.ts:310: employees; src/shared/hooks/useAppData.ts:311: leaveRequests; src/shared/hooks/useAppData.ts:312: adjustmentRequests; src/shared/hooks/useAppData.ts:313: purchaseOrders; src/shared/hooks/useAppData.ts:314: items; src/shared/hooks/useAppData.ts:315: partners; src/shared/hooks/useAppData.ts:316: chatRooms; src/shared/hooks/useAppData.ts:321: notifications; src/shared/hooks/useAppData.ts:322: workOrderItems; src/shared/hooks/useAppData.ts:324: itemReceipts; src/shared/hooks/useAppData.ts:344: orders; src/hooks/useAdminData.ts:56: fixedCosts; src/hooks/useAdminData.ts:61: productionRecords; components/HRManager.tsx:128: payrolls; components/PartnerSignupApproval.tsx:40: users; components/DocumentManager.tsx:78: fileCabinetCategories; components/DocumentManager.tsx:79: fileCabinetSubCategories; components/DocumentManager.tsx:80: fileCabinetDocs; components/QuotationManager.tsx:117: quotations; components/ReturnManager.tsx:104: returnRequests; components/ReceivingReturnsManager.tsx:56: returnRequests |
-| fetchCollection | src/shared/services/firebaseService.ts:266 | src/shared/services/firebaseService.ts:270 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:504: itemTaxonomy; components/ItemList.tsx:559: fileCabinetCategories; components/ItemList.tsx:561: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:527: rawMaterialLedger; src/features/admin/AdminApp.tsx:540: rawMaterialLedger |
+| setDocument | src/shared/services/firebaseService.ts:157 | src/shared/services/firebaseService.ts:159 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1718: settings; components/DeliveryManager.tsx:300: deliveryScheduleAudits; components/DeliveryManager.tsx:302: settings; components/DeliveryManager.tsx:303: deliveryScheduleAudits; components/DeliveryManager.tsx:309: deliveryScheduleAudits; components/DeliveryManager.tsx:480: settings; components/DeliveryManager.tsx:486: settings; components/DeliveryManager.tsx:1201: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:398: partner_item; src/features/admin/AdminApp.tsx:4311: settings; src/features/admin/AdminApp.tsx:4495: cashFlowManual |
+| subscribeToCollection | src/shared/services/firebaseService.ts:243 | src/shared/services/firebaseService.ts:249 | src/shared/services/firebaseService.ts:289: 미해석; components/ItemList.tsx:529: stockClosings; src/shared/hooks/useAppData.ts:252: 미해석; src/shared/hooks/useAppData.ts:258: issuedStatements; src/shared/hooks/useAppData.ts:272: cashAccounts; src/shared/hooks/useAppData.ts:273: returnOperations; src/shared/hooks/useAppData.ts:276: cashEntries; src/shared/hooks/useAppData.ts:277: settlements; src/shared/hooks/useAppData.ts:278: partnerAdvanceOperations; src/shared/hooks/useAppData.ts:279: inventorySnapshots; src/shared/hooks/useAppData.ts:298: 미해석; src/shared/hooks/useAppData.ts:307: notices; src/shared/hooks/useAppData.ts:308: pallets; src/shared/hooks/useAppData.ts:310: employees; src/shared/hooks/useAppData.ts:311: leaveRequests; src/shared/hooks/useAppData.ts:312: adjustmentRequests; src/shared/hooks/useAppData.ts:313: purchaseOrders; src/shared/hooks/useAppData.ts:314: items; src/shared/hooks/useAppData.ts:315: partners; src/shared/hooks/useAppData.ts:316: chatRooms; src/shared/hooks/useAppData.ts:321: notifications; src/shared/hooks/useAppData.ts:322: workOrderItems; src/shared/hooks/useAppData.ts:324: itemReceipts; src/shared/hooks/useAppData.ts:344: orders; src/hooks/useAdminData.ts:56: fixedCosts; src/hooks/useAdminData.ts:61: productionRecords; components/HRManager.tsx:128: payrolls; components/PartnerSignupApproval.tsx:40: users; components/DocumentManager.tsx:78: fileCabinetCategories; components/DocumentManager.tsx:79: fileCabinetSubCategories; components/DocumentManager.tsx:80: fileCabinetDocs; components/QuotationManager.tsx:117: quotations; components/ReturnManager.tsx:104: returnRequests; components/ReceivingReturnsManager.tsx:56: returnRequests |
+| fetchCollection | src/shared/services/firebaseService.ts:266 | src/shared/services/firebaseService.ts:270 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:505: itemTaxonomy; components/ItemList.tsx:560: fileCabinetCategories; components/ItemList.tsx:562: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:528: rawMaterialLedger; src/features/admin/AdminApp.tsx:541: rawMaterialLedger |
 | fetchDateRange | src/shared/services/firebaseService.ts:297 | src/shared/services/firebaseService.ts:305 | src/features/admin/useProductionSalesHistory.ts:14: productionSalesLogs; components/PalletManager.tsx:65: palletTransactions; components/TaxStatement.tsx:58: issuedStatements; src/features/admin/useVoucherLedger.ts:152: issuedStatements; src/features/admin/useVoucherLedger.ts:169: issuedStatements |
-| addItem | src/shared/services/firebaseService.ts:332 | src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:368, src/shared/services/firebaseService.ts:371 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:560: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:563: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:759: items, items, items, items, items; src/features/admin/AdminApp.tsx:1072: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1084: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1099: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1111: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1249: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:1452: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1753: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2014: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2603: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2639: items, items, items, items, items; src/features/admin/AdminApp.tsx:2660: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3011: partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3037: notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3047: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3057: employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3065: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3375: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4212: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4216: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4265: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4333: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4343: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4345: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4350: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4412: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4561: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4635: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4637: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4771: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:4790: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:4812: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4821: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:4933: items, items, items, items, items; src/features/admin/AdminApp.tsx:4988: items, items, items, items, items |
-| updateItem | src/shared/services/firebaseService.ts:376 | src/shared/services/firebaseService.ts:377 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:728: items; src/features/admin/AdminApp.tsx:780: items; src/features/admin/AdminApp.tsx:1144: purchaseOrders; src/features/admin/AdminApp.tsx:1152: purchaseOrders; src/features/admin/AdminApp.tsx:1154: purchaseOrders; src/features/admin/AdminApp.tsx:1163: purchaseOrders; src/features/admin/AdminApp.tsx:1171: purchaseOrders; src/features/admin/AdminApp.tsx:1215: purchaseOrders; src/features/admin/AdminApp.tsx:2008: orders; src/features/admin/AdminApp.tsx:2514: orders; src/features/admin/AdminApp.tsx:2517: orders; src/features/admin/AdminApp.tsx:2518: orders; src/features/admin/AdminApp.tsx:2519: orders; src/features/admin/AdminApp.tsx:2520: orders; src/features/admin/AdminApp.tsx:2548: orders; src/features/admin/AdminApp.tsx:2551: orders; src/features/admin/AdminApp.tsx:2552: orders; src/features/admin/AdminApp.tsx:2553: orders; src/features/admin/AdminApp.tsx:2554: orders; src/features/admin/AdminApp.tsx:2575: orders; src/features/admin/AdminApp.tsx:2576: orders; src/features/admin/AdminApp.tsx:2580: orders; src/features/admin/AdminApp.tsx:2581: orders; src/features/admin/AdminApp.tsx:2582: orders; src/features/admin/AdminApp.tsx:2583: orders; src/features/admin/AdminApp.tsx:2621: workOrderItems; src/features/admin/AdminApp.tsx:2637: items; src/features/admin/AdminApp.tsx:2655: purchaseOrders; src/features/admin/AdminApp.tsx:2810: items; src/features/admin/AdminApp.tsx:3011: partners; src/features/admin/AdminApp.tsx:3037: notices; src/features/admin/AdminApp.tsx:3046: pallets; src/features/admin/AdminApp.tsx:3056: employees; src/features/admin/AdminApp.tsx:3060: leaveRequests; src/features/admin/AdminApp.tsx:3062: leaveRequests; src/features/admin/AdminApp.tsx:3083: leaveRequests; src/features/admin/AdminApp.tsx:3085: adjustmentRequests; src/features/admin/AdminApp.tsx:3094: adjustmentRequests; src/features/admin/AdminApp.tsx:3117: adjustmentRequests; src/features/admin/AdminApp.tsx:3128: pendingStatementEdits; src/features/admin/AdminApp.tsx:3636: orders; src/features/admin/AdminApp.tsx:4209: cashAccounts; src/features/admin/AdminApp.tsx:4213: fixedCostTemplates; src/features/admin/AdminApp.tsx:4221: orders; src/features/admin/AdminApp.tsx:4286: purchaseOrders; src/features/admin/AdminApp.tsx:4334: fixedCostTemplates; src/features/admin/AdminApp.tsx:4342: accountCodes; src/features/admin/AdminApp.tsx:4346: accountGroups; src/features/admin/AdminApp.tsx:4438: cashAccounts; src/features/admin/AdminApp.tsx:4531: items; src/features/admin/AdminApp.tsx:4563: productionRecords; src/features/admin/AdminApp.tsx:4573: adjustmentRequests; src/features/admin/AdminApp.tsx:4582: adjustmentRequests; src/features/admin/AdminApp.tsx:4616: adjustmentRequests; src/features/admin/AdminApp.tsx:4649: leaveRequests; src/features/admin/AdminApp.tsx:4651: leaveRequests; src/features/admin/AdminApp.tsx:4772: chatRooms; src/features/admin/AdminApp.tsx:4775: chatMessages; src/features/admin/AdminApp.tsx:4800: chatRooms; src/features/admin/AdminApp.tsx:4971: items; src/features/admin/AdminApp.tsx:4983: items |
-| deleteItem | src/shared/services/firebaseService.ts:386 | src/shared/services/firebaseService.ts:387 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1010: notifications; src/features/admin/AdminApp.tsx:1140: purchaseOrders; src/features/admin/AdminApp.tsx:1162: purchaseOrders; src/features/admin/AdminApp.tsx:1165: purchaseOrders; src/features/admin/AdminApp.tsx:2599: workOrderItems; src/features/admin/AdminApp.tsx:3011: partners; src/features/admin/AdminApp.tsx:3037: notices; src/features/admin/AdminApp.tsx:3058: employees; src/features/admin/AdminApp.tsx:3063: leaveRequests; src/features/admin/AdminApp.tsx:3086: adjustmentRequests; src/features/admin/AdminApp.tsx:4214: fixedCostTemplates; src/features/admin/AdminApp.tsx:4217: expensePresets; src/features/admin/AdminApp.tsx:4335: fixedCostTemplates; src/features/admin/AdminApp.tsx:4344: accountCodes; src/features/admin/AdminApp.tsx:4347: accountGroups; src/features/admin/AdminApp.tsx:4562: productionRecords; src/features/admin/AdminApp.tsx:4614: purchaseOrders; src/features/admin/AdminApp.tsx:4619: adjustmentRequests; src/features/admin/AdminApp.tsx:4773: chatRooms; src/features/admin/AdminApp.tsx:4930: partner_item; src/features/admin/AdminApp.tsx:4958: items |
+| addItem | src/shared/services/firebaseService.ts:332 | src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:368, src/shared/services/firebaseService.ts:371 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:561: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:564: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:760: items, items, items, items, items; src/features/admin/AdminApp.tsx:1073: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1085: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1100: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1112: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1253: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:1456: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1757: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2018: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2607: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2643: items, items, items, items, items; src/features/admin/AdminApp.tsx:2664: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3015: partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3041: notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3051: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3061: employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3069: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3380: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4217: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4221: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4270: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4338: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4348: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4350: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4355: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4417: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4566: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4640: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4642: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4776: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:4795: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:4817: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4826: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:4938: items, items, items, items, items; src/features/admin/AdminApp.tsx:4993: items, items, items, items, items |
+| updateItem | src/shared/services/firebaseService.ts:376 | src/shared/services/firebaseService.ts:377 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:729: items; src/features/admin/AdminApp.tsx:781: items; src/features/admin/AdminApp.tsx:1145: purchaseOrders; src/features/admin/AdminApp.tsx:1153: purchaseOrders; src/features/admin/AdminApp.tsx:1155: purchaseOrders; src/features/admin/AdminApp.tsx:1164: purchaseOrders; src/features/admin/AdminApp.tsx:1172: purchaseOrders; src/features/admin/AdminApp.tsx:2012: orders; src/features/admin/AdminApp.tsx:2518: orders; src/features/admin/AdminApp.tsx:2521: orders; src/features/admin/AdminApp.tsx:2522: orders; src/features/admin/AdminApp.tsx:2523: orders; src/features/admin/AdminApp.tsx:2524: orders; src/features/admin/AdminApp.tsx:2552: orders; src/features/admin/AdminApp.tsx:2555: orders; src/features/admin/AdminApp.tsx:2556: orders; src/features/admin/AdminApp.tsx:2557: orders; src/features/admin/AdminApp.tsx:2558: orders; src/features/admin/AdminApp.tsx:2579: orders; src/features/admin/AdminApp.tsx:2580: orders; src/features/admin/AdminApp.tsx:2584: orders; src/features/admin/AdminApp.tsx:2585: orders; src/features/admin/AdminApp.tsx:2586: orders; src/features/admin/AdminApp.tsx:2587: orders; src/features/admin/AdminApp.tsx:2625: workOrderItems; src/features/admin/AdminApp.tsx:2641: items; src/features/admin/AdminApp.tsx:2659: purchaseOrders; src/features/admin/AdminApp.tsx:2814: items; src/features/admin/AdminApp.tsx:3015: partners; src/features/admin/AdminApp.tsx:3041: notices; src/features/admin/AdminApp.tsx:3050: pallets; src/features/admin/AdminApp.tsx:3060: employees; src/features/admin/AdminApp.tsx:3064: leaveRequests; src/features/admin/AdminApp.tsx:3066: leaveRequests; src/features/admin/AdminApp.tsx:3087: leaveRequests; src/features/admin/AdminApp.tsx:3089: adjustmentRequests; src/features/admin/AdminApp.tsx:3098: adjustmentRequests; src/features/admin/AdminApp.tsx:3122: adjustmentRequests; src/features/admin/AdminApp.tsx:3133: pendingStatementEdits; src/features/admin/AdminApp.tsx:3641: orders; src/features/admin/AdminApp.tsx:4214: cashAccounts; src/features/admin/AdminApp.tsx:4218: fixedCostTemplates; src/features/admin/AdminApp.tsx:4226: orders; src/features/admin/AdminApp.tsx:4291: purchaseOrders; src/features/admin/AdminApp.tsx:4339: fixedCostTemplates; src/features/admin/AdminApp.tsx:4347: accountCodes; src/features/admin/AdminApp.tsx:4351: accountGroups; src/features/admin/AdminApp.tsx:4443: cashAccounts; src/features/admin/AdminApp.tsx:4536: items; src/features/admin/AdminApp.tsx:4568: productionRecords; src/features/admin/AdminApp.tsx:4578: adjustmentRequests; src/features/admin/AdminApp.tsx:4587: adjustmentRequests; src/features/admin/AdminApp.tsx:4621: adjustmentRequests; src/features/admin/AdminApp.tsx:4654: leaveRequests; src/features/admin/AdminApp.tsx:4656: leaveRequests; src/features/admin/AdminApp.tsx:4777: chatRooms; src/features/admin/AdminApp.tsx:4780: chatMessages; src/features/admin/AdminApp.tsx:4805: chatRooms; src/features/admin/AdminApp.tsx:4976: items; src/features/admin/AdminApp.tsx:4988: items |
+| deleteItem | src/shared/services/firebaseService.ts:386 | src/shared/services/firebaseService.ts:387 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1011: notifications; src/features/admin/AdminApp.tsx:1141: purchaseOrders; src/features/admin/AdminApp.tsx:1163: purchaseOrders; src/features/admin/AdminApp.tsx:1166: purchaseOrders; src/features/admin/AdminApp.tsx:2603: workOrderItems; src/features/admin/AdminApp.tsx:3015: partners; src/features/admin/AdminApp.tsx:3041: notices; src/features/admin/AdminApp.tsx:3062: employees; src/features/admin/AdminApp.tsx:3067: leaveRequests; src/features/admin/AdminApp.tsx:3090: adjustmentRequests; src/features/admin/AdminApp.tsx:4219: fixedCostTemplates; src/features/admin/AdminApp.tsx:4222: expensePresets; src/features/admin/AdminApp.tsx:4340: fixedCostTemplates; src/features/admin/AdminApp.tsx:4349: accountCodes; src/features/admin/AdminApp.tsx:4352: accountGroups; src/features/admin/AdminApp.tsx:4567: productionRecords; src/features/admin/AdminApp.tsx:4619: purchaseOrders; src/features/admin/AdminApp.tsx:4624: adjustmentRequests; src/features/admin/AdminApp.tsx:4778: chatRooms; src/features/admin/AdminApp.tsx:4935: partner_item; src/features/admin/AdminApp.tsx:4963: items |
 | subscribeToSubcollection | src/shared/services/firebaseService.ts:403 | src/shared/services/firebaseService.ts:409 | 정적 호출 연결 없음 |
 | addSubItem | src/shared/services/firebaseService.ts:419 | src/shared/services/firebaseService.ts:428, src/shared/services/firebaseService.ts:431 | 정적 호출 연결 없음 |
 | updateSubItem | src/shared/services/firebaseService.ts:436 | src/shared/services/firebaseService.ts:443 | 정적 호출 연결 없음 |
 | deleteSubItem | src/shared/services/firebaseService.ts:447 | src/shared/services/firebaseService.ts:453 | 정적 호출 연결 없음 |
 | fetchWhere | src/shared/services/firebaseService.ts:536 | src/shared/services/firebaseService.ts:541 | src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:16: productionWorkDocuments; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:17: productionWorkDocumentLines; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:129: orders; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:130: rawMaterialLedger; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:131: items; components/OrdersList.tsx:1632: orderStatusAudits; components/OrdersList.tsx:1633: orderItemEdits; src/features/admin/useVoucherLedger.ts:102: openingBalances; src/features/admin/useVoucherLedger.ts:114: partnerBalanceSnapshots; src/shared/useLoanContracts.ts:12: loanContracts; components/ProfitAnalysis.tsx:99: openingBalances; components/FinancialReports.tsx:111: openingBalances; components/LoanManager.tsx:76: loanContracts |
-| fetchWhereIn | src/shared/services/firebaseService.ts:546 | src/shared/services/firebaseService.ts:556 | src/features/admin/AdminApp.tsx:1348: orders |
+| fetchWhereIn | src/shared/services/firebaseService.ts:546 | src/shared/services/firebaseService.ts:556 | src/features/admin/AdminApp.tsx:1352: orders |
 | fetchByIds | src/shared/services/firebaseService.ts:569 | src/shared/services/firebaseService.ts:577 | src/features/admin/useVoucherLedger.ts:136: issuedStatements |
 | subscribeWhere | src/shared/services/firebaseService.ts:583 | src/shared/services/firebaseService.ts:590 | 정적 호출 연결 없음 |
-| commitCompanyWrites | src/shared/services/firebaseService.ts:604 | src/shared/services/firebaseService.ts:610 | src/shared/services/firebaseService.ts:490: 미해석; src/shared/services/firebaseService.ts:521: 미해석; src/shared/services/firebaseService.ts:831: 미해석; src/features/admin/AdminApp.tsx:1398: 미해석; src/features/admin/AdminApp.tsx:4735: 미해석; src/features/admin/AdminApp.tsx:4916: 미해석; src/features/admin/AdminApp.tsx:5006: 미해석 |
+| commitCompanyWrites | src/shared/services/firebaseService.ts:604 | src/shared/services/firebaseService.ts:610 | src/shared/services/firebaseService.ts:490: 미해석; src/shared/services/firebaseService.ts:521: 미해석; src/shared/services/firebaseService.ts:831: 미해석; src/features/admin/AdminApp.tsx:1402: 미해석; src/features/admin/AdminApp.tsx:4740: 미해석; src/features/admin/AdminApp.tsx:4921: 미해석; src/features/admin/AdminApp.tsx:5011: 미해석 |
 | readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98: 미해석; functions/src/partnerAdvanceCommand.ts:128: 미해석; functions/src/deleteIssuedStatementCommand.ts:100: 미해석; functions/src/cashMutationCommand.ts:198: 미해석; functions/src/editIssuedStatementCommand.ts:196: 미해석; functions/src/processReturnCommand.ts:208: 미해석 |
 | deleteIssuedStatement | functions/src/deleteIssuedStatementCommand.ts:55 | functions/src/deleteIssuedStatementCommand.ts:79, functions/src/deleteIssuedStatementCommand.ts:94, functions/src/deleteIssuedStatementCommand.ts:94, functions/src/deleteIssuedStatementCommand.ts:113, functions/src/deleteIssuedStatementCommand.ts:113 | functions/src/deleteIssuedStatementCommand.ts:135: 미해석, 미해석, 미해석, 미해석, 미해석 |
 | issueVoucher | functions/src/voucherIssue.ts:33 | functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:75, functions/src/voucherIssue.ts:75 | functions/src/voucherIssue.ts:187: 미해석, 미해석, 미해석, 미해석; functions/src/autoVoucherCommand.ts:39: 미해석, 미해석, 미해석, 미해석 |
@@ -39,6 +39,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 | 위치 | 실행 | API | 문맥 | 깊이 | 경로 (중괄호는 동적식) | COL 밖 |
 | --- | --- | --- | --- | --- | --- | --- |
+| src/shared/services/confirmPendingPurchaseOrderService.ts:36 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{expected.id} |  |
 | src/shared/services/sharedChatMessageService.ts:34 | client | doc | root / top-level-candidate | 미해석 | chatMessages/{message.id} |  |
 | src/shared/services/sharedChatMessageService.ts:35 | client | doc | root / top-level-candidate | 미해석 | chatRooms/{message.roomId} |  |
 | src/shared/services/orderInventoryRecoveryService.ts:12 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
@@ -120,12 +121,12 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/productionWorkDocumentService.ts:66 | client | doc | root / top-level-candidate | 미해석 | productionWorkDocuments/{header.id} |  |
 | src/shared/services/productionWorkDocumentService.ts:73 | client | doc | root / top-level-candidate | 미해석 | productionWorkDocumentLines/{id} |  |
 | src/shared/services/productionWorkDocumentService.ts:87 | client | doc | root / top-level-candidate | 미해석 | productionWorkDocumentLines/{line.id} |  |
-| src/shared/services/unpackService.ts:60 | client | doc | root / top-level-candidate | 미해석 | items/{plan.canItemId} |  |
-| src/shared/services/unpackService.ts:61 | client | doc | root / top-level-candidate | 미해석 | items/{plan.bulkItemId} |  |
-| src/shared/services/unpackService.ts:62 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(operationId)} |  |
-| src/shared/services/unpackService.ts:80 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(bulkCompany, plan.bulkItemId)} |  |
-| src/shared/services/unpackService.ts:223 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
-| src/shared/services/unpackService.ts:291 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/shared/services/unpackService.ts:63 | client | doc | root / top-level-candidate | 미해석 | items/{plan.canItemId} |  |
+| src/shared/services/unpackService.ts:64 | client | doc | root / top-level-candidate | 미해석 | items/{plan.bulkItemId} |  |
+| src/shared/services/unpackService.ts:65 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(operationId)} |  |
+| src/shared/services/unpackService.ts:83 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(bulkCompany, plan.bulkItemId)} |  |
+| src/shared/services/unpackService.ts:237 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/shared/services/unpackService.ts:315 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
 | src/shared/services/pendingFlowQuantityService.ts:15 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{id} |  |
 | src/shared/services/workOrderResetService.ts:9 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`workOrderReset_${companyId}`} |  |
 | src/shared/services/workOrderResetService.ts:20 | client | collection | root / top-level | 1 | workOrderItems |  |
@@ -204,11 +205,11 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/interCompanyTransferService.ts:14 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/interCompanyTransferService.ts:21 | client | doc | root / top-level-candidate | 미해석 | companyTransferOperations/{command.operationId} |  |
 | src/shared/services/confirmedCashBalance.ts:9 | client | doc | root / top-level-candidate | 미해석 | cashAccounts/{original.id} |  |
-| src/features/admin/AdminApp.tsx:487 | client | collection | root / top-level | 1 | users |  |
-| src/features/admin/AdminApp.tsx:541 | client | collection | root / top-level | 1 | rawInventories |  |
-| src/features/admin/AdminApp.tsx:542 | client | collection | root / top-level | 1 | items |  |
-| src/features/admin/AdminApp.tsx:4720 | client | collection | root / top-level | 1 | partner_item |  |
-| src/features/admin/AdminApp.tsx:4749 | client | doc | root / top-level-candidate | 미해석 | partner_item/{id} |  |
+| src/features/admin/AdminApp.tsx:488 | client | collection | root / top-level | 1 | users |  |
+| src/features/admin/AdminApp.tsx:542 | client | collection | root / top-level | 1 | rawInventories |  |
+| src/features/admin/AdminApp.tsx:543 | client | collection | root / top-level | 1 | items |  |
+| src/features/admin/AdminApp.tsx:4725 | client | collection | root / top-level | 1 | partner_item |  |
+| src/features/admin/AdminApp.tsx:4754 | client | doc | root / top-level-candidate | 미해석 | partner_item/{id} |  |
 | src/shared/employeeAuth.ts:19 | client | doc | root / top-level-candidate | 미해석 | employees/{credential.user.uid} |  |
 | functions/src/newScopeCounter.ts:30 | server | collection | root / top-level | 1 | issuedStatements |  |
 | functions/src/newScopeCounter.ts:31 | server | collection | root / top-level | 1 | cashEntries |  |
@@ -713,10 +714,12 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 714개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 717개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
+| ProductStocktakeRequest | src/shared/productStocktakeAttempt.ts:2 | type-alias | direct-properties-only | version, operationId, companyId, uid, itemId, itemName, targetQty, minStock, unitKg, capturedAt |
+| ProductStocktakeAttempt | src/shared/productStocktakeAttempt.ts:3 | type-alias | non-object-alias-not-expanded |  |
 | OemCostEvidence | functions/src/shared/oemBatchCost.ts:1 | type-alias | direct-properties-only | version, ownerCompanyId, rawMaterials, packaging, capturedAt |
 | OemCostScope | functions/src/shared/oemBatchCost.ts:4 | type-alias | direct-properties-only | companyId, sent |
 | OemCostRow | functions/src/shared/oemBatchCost.ts:5 | type-alias | direct-properties-only | itemId, kg |
@@ -764,6 +767,7 @@ shared/types.ts 외 interface/type alias 714개를 별도 목록에 기록한다
 | CancelPartnerAdvanceInput | functions/src/shared/partnerAdvance.ts:224 | type-alias | direct-properties-only | operationId, partnerId, date, applicationStatementId, reason, expectedRevision, releaseId |
 | PreparedPartnerAdvance | functions/src/shared/partnerAdvance.ts:229 | type-alias | direct-properties-only | enabled, blockedReason, revision, releaseId, sources, targets, applications, diagnostics |
 | RawUnit | functions/src/shared/formula.ts:57 | type-alias | non-object-alias-not-expanded |  |
+| PendingPurchaseOrderConfirmation | src/shared/services/confirmPendingPurchaseOrderService.ts:14 | type-alias | direct-properties-only | status, poId, invoicedAt |
 | AppConfirmOptions | src/shared/components/appDialog.ts:1 | interface | direct-properties-only | title, message, confirmText, cancelText, tone |
 | AppPromptOptions | src/shared/components/appDialog.ts:9 | interface | direct-properties-only | title, message, defaultValue, placeholder, confirmText |
 | ConfirmRequest | src/shared/components/appDialog.ts:17 | type-alias | non-object-alias-not-expanded |  |
@@ -871,7 +875,7 @@ shared/types.ts 외 interface/type alias 714개를 별도 목록에 기록한다
 | UnpackResult | src/shared/canUnpack.ts:68 | type-alias | non-object-alias-not-expanded |  |
 | UnpackLotMove | src/shared/unpackLots.ts:36 | interface | direct-properties-only | canLotId, lotNo, supplierName, receivedDate, cans, bulkQty |
 | UnpackLotResult | src/shared/unpackLots.ts:48 | interface | direct-properties-only | canLots, bulkLots, moves, shortageQty |
-| UnpackOutcome | src/shared/services/unpackService.ts:44 | interface | direct-properties-only | ok, message, moves |
+| UnpackOutcome | src/shared/services/unpackService.ts:47 | interface | direct-properties-only | ok, message, moves |
 | PartnerAdvanceResult | src/features/statements/infrastructure/partnerAdvanceCommands.ts:5 | type-alias | direct-properties-only | status, id, docNo |
 | PendingPartnerAdvance | src/features/statements/infrastructure/partnerAdvanceCommands.ts:6 | type-alias | direct-properties-only | version, companyId, actorId, action, input |
 | Command | src/shared/services/deleteIssuedStatementService.ts:7 | type-alias | direct-properties-only | operationId, statementId, releaseId, expectedRevision, expectedOriginalHash |
@@ -985,17 +989,17 @@ shared/types.ts 외 interface/type alias 714개를 별도 목록에 기록한다
 | IssueInput | components/OemManager.tsx:35 | type-alias | non-object-alias-not-expanded |  |
 | ReceiveInput | components/OemManager.tsx:36 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/CategoryManager.tsx:14 | interface | direct-properties-only | onClose, onSaved, usage, companyId |
-| StockClosingRow | components/ItemList.tsx:180 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
-| StockClosing | components/ItemList.tsx:181 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
-| ItemListProps | components/ItemList.tsx:192 | interface | direct-properties-only | orderUnitInputs, mode, companyId, items, orderRequests, confirmedOrders, dispatchedQtyByItem, onUpdateItem, onAddItem, onAddOrderRequest, onRemoveOrderRequest, onUpdateOrderRequestQty, onUpdatePoItemQty, onRemovePoItem, onRequestPoEdit, onToggleConfirmRequestQty, onConfirmRequest, onConfirmRequests, onBulkAddConfirmedOrders, onConfirmAllRequests, onFinishConfirmedOrder, onUpdateConfirmedQty, onUpdatePendingFlowQty, onRemoveConfirmedOrder, onEditProduct, onDeleteItem, onAddAdjustmentRequest, inboundPartners, partners, partnerItems, rawMaterialLedger, linesUsingRaw, orders, onRequestPurchaseInvoice, onOpenVoucher, issuedStatements, onAddRawMaterialEntry, onDeleteRawMaterialEntry, onLedgerChanged, currentUser, isAdmin, onUpdateSubmaterial, receivedOrders, returnRequests, returnContent, returnBadge, oemEnabled, oemIssueDrafts, rawStockKg, onOemIssue, onOemReceive, onOemCancel, onOemIssueFee |
-| MainTab | components/ItemList.tsx:266 | type-alias | non-object-alias-not-expanded |  |
-| FlowTypeFilter | components/ItemList.tsx:306 | type-alias | non-object-alias-not-expanded |  |
-| FlowStatusFilter | components/ItemList.tsx:307 | type-alias | non-object-alias-not-expanded |  |
-| InboundSubTab | components/ItemList.tsx:308 | type-alias | non-object-alias-not-expanded |  |
-| TopTab | components/ItemList.tsx:311 | type-alias | non-object-alias-not-expanded |  |
-| GroupRow | components/ItemList.tsx:1236 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
-| FlowRow | components/ItemList.tsx:1556 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
-| GridRow | components/ItemList.tsx:3601 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
+| StockClosingRow | components/ItemList.tsx:181 | interface | direct-properties-only | itemId, name, spec, boxSize, boxes, loose, total |
+| StockClosing | components/ItemList.tsx:182 | interface | direct-properties-only | id, date, closedBy, createdAt, items, totalStock |
+| ItemListProps | components/ItemList.tsx:193 | interface | direct-properties-only | orderUnitInputs, mode, companyId, items, orderRequests, confirmedOrders, dispatchedQtyByItem, onUpdateItem, onAddItem, onAddOrderRequest, onRemoveOrderRequest, onUpdateOrderRequestQty, onUpdatePoItemQty, onRemovePoItem, onRequestPoEdit, onToggleConfirmRequestQty, onConfirmRequest, onConfirmRequests, onBulkAddConfirmedOrders, onConfirmAllRequests, onFinishConfirmedOrder, onUpdateConfirmedQty, onUpdatePendingFlowQty, onRemoveConfirmedOrder, onEditProduct, onDeleteItem, onAddAdjustmentRequest, inboundPartners, partners, partnerItems, rawMaterialLedger, linesUsingRaw, orders, onRequestPurchaseInvoice, onOpenVoucher, issuedStatements, onAddRawMaterialEntry, onDeleteRawMaterialEntry, onLedgerChanged, currentUser, isAdmin, onUpdateSubmaterial, receivedOrders, returnRequests, returnContent, returnBadge, oemEnabled, oemIssueDrafts, rawStockKg, onOemIssue, onOemReceive, onOemCancel, onOemIssueFee |
+| MainTab | components/ItemList.tsx:267 | type-alias | non-object-alias-not-expanded |  |
+| FlowTypeFilter | components/ItemList.tsx:307 | type-alias | non-object-alias-not-expanded |  |
+| FlowStatusFilter | components/ItemList.tsx:308 | type-alias | non-object-alias-not-expanded |  |
+| InboundSubTab | components/ItemList.tsx:309 | type-alias | non-object-alias-not-expanded |  |
+| TopTab | components/ItemList.tsx:312 | type-alias | non-object-alias-not-expanded |  |
+| GroupRow | components/ItemList.tsx:1250 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
+| FlowRow | components/ItemList.tsx:1570 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
+| GridRow | components/ItemList.tsx:3634 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
 | Vouchered | src/shared/statementOrders.ts:24 | type-alias | non-object-alias-not-expanded |  |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | interface | direct-properties-only | orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | interface | direct-properties-only | status, className |
@@ -1330,10 +1334,10 @@ shared/types.ts 외 interface/type alias 714개를 별도 목록에 기록한다
 | Props | components/PartnerAdvanceModal.tsx:11 | type-alias | direct-properties-only | companyId, partnerId, partnerName, onClose |
 | ComposerProps | components/PartnerLedger.tsx:19 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/PartnerLedger.tsx:21 | interface | direct-properties-only | partners, accountGroups, fixedCostTemplates, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, advanceStatements, returnOperations, companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements, onOpenVoucher |
-| AdminAppProps | src/features/admin/AdminApp.tsx:253 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
-| NewOrderDraft | src/features/admin/AdminApp.tsx:1416 | type-alias | non-object-alias-not-expanded |  |
-| RightRow | src/features/admin/AdminApp.tsx:3156 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
-| UsageRow | src/features/admin/AdminApp.tsx:3736 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
+| AdminAppProps | src/features/admin/AdminApp.tsx:254 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
+| NewOrderDraft | src/features/admin/AdminApp.tsx:1420 | type-alias | non-object-alias-not-expanded |  |
+| RightRow | src/features/admin/AdminApp.tsx:3161 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
+| UsageRow | src/features/admin/AdminApp.tsx:3741 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
 | Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
@@ -1438,6 +1442,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 
 | 모델 | 선언 | 해석 범위 | 정적 필드 수 |
 | --- | --- | --- | --- |
+| ProductStocktakeRequest | src/shared/productStocktakeAttempt.ts:2 | checker-resolved-properties-only | 10 |
+| ProductStocktakeAttempt | src/shared/productStocktakeAttempt.ts:3 | checker-resolved-properties-only | 11 |
 | OemCostEvidence | functions/src/shared/oemBatchCost.ts:1 | checker-resolved-properties-only | 5 |
 | OemCostScope | functions/src/shared/oemBatchCost.ts:4 | checker-resolved-properties-only | 2 |
 | OemCostRow | functions/src/shared/oemBatchCost.ts:5 | checker-resolved-properties-only | 2 |
@@ -1484,92 +1490,93 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | ApplyPartnerAdvanceInput | functions/src/shared/partnerAdvance.ts:218 | checker-resolved-properties-only | 11 |
 | CancelPartnerAdvanceInput | functions/src/shared/partnerAdvance.ts:224 | checker-resolved-properties-only | 7 |
 | PreparedPartnerAdvance | functions/src/shared/partnerAdvance.ts:229 | checker-resolved-properties-only | 8 |
-| OrderItem | src/shared/types.ts:25 | checker-resolved-properties-only | 21 |
-| OrderPallet | src/shared/types.ts:69 | checker-resolved-properties-only | 3 |
-| DeliveryBox | src/shared/types.ts:75 | checker-resolved-properties-only | 3 |
-| PartnerChannel | src/shared/types.ts:81 | non-object-model-not-expanded | 0 |
-| PartnerType | src/shared/types.ts:94 | non-object-model-not-expanded | 0 |
-| PurchaseItem | src/shared/types.ts:96 | checker-resolved-properties-only | 2 |
-| ShipTo | src/shared/types.ts:107 | checker-resolved-properties-only | 3 |
-| PartnerItem | src/shared/types.ts:115 | checker-resolved-properties-only | 9 |
-| Partner | src/shared/types.ts:149 | checker-resolved-properties-only | 19 |
-| OrderSource | src/shared/types.ts:185 | non-object-model-not-expanded | 0 |
-| ShipMethod | src/shared/types.ts:197 | non-object-model-not-expanded | 0 |
-| InvoiceType | src/shared/types.ts:204 | non-object-model-not-expanded | 0 |
-| OrderRawInventoryTrace | src/shared/types.ts:213 | checker-resolved-properties-only | 10 |
-| Order | src/shared/types.ts:230 | checker-resolved-properties-only | 46 |
-| OrderItemInventoryState | src/shared/types.ts:351 | checker-resolved-properties-only | 11 |
-| OrderInventoryAdjustment | src/shared/types.ts:365 | checker-resolved-properties-only | 2 |
-| OrderRawCalculationEvidence | src/shared/types.ts:371 | checker-resolved-properties-only | 11 |
-| OrderInventorySnapshot | src/shared/types.ts:385 | checker-resolved-properties-only | 8 |
-| OrderStatusAudit | src/shared/types.ts:396 | checker-resolved-properties-only | 12 |
-| OrderItemEdit | src/shared/types.ts:417 | checker-resolved-properties-only | 5 |
-| SubmaterialComponent | src/shared/types.ts:426 | checker-resolved-properties-only | 8 |
-| InventoryCategory | src/shared/types.ts:438 | non-object-model-not-expanded | 0 |
-| ItemSubtype | src/shared/types.ts:444 | non-object-model-not-expanded | 0 |
-| ItemInventoryReservation | src/shared/types.ts:479 | checker-resolved-properties-only | 5 |
-| ItemStocktakeAnchor | src/shared/types.ts:488 | checker-resolved-properties-only | 7 |
-| Item | src/shared/types.ts:499 | checker-resolved-properties-only | 37 |
-| PalletStock | src/shared/types.ts:612 | checker-resolved-properties-only | 6 |
-| PalletTransaction | src/shared/types.ts:622 | checker-resolved-properties-only | 10 |
-| Post | src/shared/types.ts:636 | checker-resolved-properties-only | 8 |
-| FileItem | src/shared/types.ts:647 | checker-resolved-properties-only | 6 |
-| CabinetCategory | src/shared/types.ts:658 | checker-resolved-properties-only | 5 |
-| CabinetSubCategory | src/shared/types.ts:666 | checker-resolved-properties-only | 6 |
-| CabinetDoc | src/shared/types.ts:675 | checker-resolved-properties-only | 12 |
-| EmployeeStatus | src/shared/types.ts:691 | non-object-model-not-expanded | 0 |
-| AnnualLeave | src/shared/types.ts:693 | checker-resolved-properties-only | 2 |
-| Employee | src/shared/types.ts:698 | checker-resolved-properties-only | 15 |
-| PayrollLine | src/shared/types.ts:739 | checker-resolved-properties-only | 14 |
-| Payroll | src/shared/types.ts:756 | checker-resolved-properties-only | 9 |
-| LeaveType | src/shared/types.ts:797 | non-object-model-not-expanded | 0 |
-| LeaveStatus | src/shared/types.ts:798 | non-object-model-not-expanded | 0 |
-| LeaveModifyRequest | src/shared/types.ts:800 | checker-resolved-properties-only | 5 |
-| LeaveRequest | src/shared/types.ts:808 | checker-resolved-properties-only | 16 |
-| ChatMessage | src/shared/types.ts:837 | checker-resolved-properties-only | 17 |
-| ChatRoom | src/shared/types.ts:877 | checker-resolved-properties-only | 13 |
-| RoomNotice | src/shared/types.ts:912 | checker-resolved-properties-only | 5 |
-| ViewType | src/shared/types.ts:924 | non-object-model-not-expanded | 0 |
-| ProductionRecord | src/shared/types.ts:927 | checker-resolved-properties-only | 12 |
-| FixedCostCategory | src/shared/types.ts:943 | non-object-model-not-expanded | 0 |
-| FixedCostEntry | src/shared/types.ts:945 | checker-resolved-properties-only | 8 |
-| FixedCostTemplate | src/shared/types.ts:956 | checker-resolved-properties-only | 35 |
-| StatementLineKind | src/shared/types.ts:1058 | non-object-model-not-expanded | 0 |
-| IssuedStatementItem | src/shared/types.ts:1060 | checker-resolved-properties-only | 19 |
-| StatementParty | src/shared/types.ts:1098 | checker-resolved-properties-only | 8 |
-| StatementPartySnapshot | src/shared/types.ts:1109 | checker-resolved-properties-only | 2 |
-| IssuedStatement | src/shared/types.ts:1114 | checker-resolved-properties-only | 24 |
-| PaymentMethod | src/shared/types.ts:1175 | non-object-model-not-expanded | 0 |
-| PurchaseOrderItem | src/shared/types.ts:1181 | checker-resolved-properties-only | 11 |
-| PurchaseOrder | src/shared/types.ts:1197 | checker-resolved-properties-only | 39 |
-| CompanyInfo | src/shared/types.ts:1283 | checker-resolved-properties-only | 11 |
-| ExpensePreset | src/shared/types.ts:1298 | checker-resolved-properties-only | 5 |
-| AppNotification | src/shared/types.ts:1306 | checker-resolved-properties-only | 10 |
-| RawMaterialEntry | src/shared/types.ts:1333 | checker-resolved-properties-only | 26 |
-| ItemType | src/shared/types.ts:1382 | non-object-model-not-expanded | 0 |
-| ItemFormula | src/shared/types.ts:1384 | checker-resolved-properties-only | 5 |
-| ItemBom | src/shared/types.ts:1393 | checker-resolved-properties-only | 4 |
-| ReturnReason | src/shared/types.ts:1402 | non-object-model-not-expanded | 0 |
-| ReturnItem | src/shared/types.ts:1404 | checker-resolved-properties-only | 10 |
-| ReturnRequest | src/shared/types.ts:1418 | checker-resolved-properties-only | 19 |
-| PendingStatementEdit | src/shared/types.ts:1440 | checker-resolved-properties-only | 12 |
-| AccountType | src/shared/types.ts:1464 | non-object-model-not-expanded | 0 |
-| AccountCode | src/shared/types.ts:1466 | checker-resolved-properties-only | 9 |
-| JournalLine | src/shared/types.ts:1484 | checker-resolved-properties-only | 5 |
-| JournalEntry | src/shared/types.ts:1492 | checker-resolved-properties-only | 8 |
-| AccountGroupPlLine | src/shared/types.ts:1503 | non-object-model-not-expanded | 0 |
-| AccountGroupCfSection | src/shared/types.ts:1505 | non-object-model-not-expanded | 0 |
-| AccountGroup | src/shared/types.ts:1507 | checker-resolved-properties-only | 6 |
-| CashAccount | src/shared/types.ts:1522 | checker-resolved-properties-only | 10 |
-| CashEntry | src/shared/types.ts:1536 | checker-resolved-properties-only | 18 |
-| Settlement | src/shared/types.ts:1599 | checker-resolved-properties-only | 5 |
-| InventorySnapshot | src/shared/types.ts:1607 | checker-resolved-properties-only | 6 |
-| CashFlowManual | src/shared/types.ts:1621 | checker-resolved-properties-only | 10 |
-| ProductionSalesLog | src/shared/types.ts:1634 | checker-resolved-properties-only | 11 |
-| AdjustmentType | src/shared/types.ts:1654 | non-object-model-not-expanded | 0 |
-| AdjustmentStatus | src/shared/types.ts:1655 | non-object-model-not-expanded | 0 |
-| AdjustmentRequest | src/shared/types.ts:1657 | checker-resolved-properties-only | 15 |
+| OrderItem | src/shared/types.ts:26 | checker-resolved-properties-only | 21 |
+| OrderPallet | src/shared/types.ts:70 | checker-resolved-properties-only | 3 |
+| DeliveryBox | src/shared/types.ts:76 | checker-resolved-properties-only | 3 |
+| PartnerChannel | src/shared/types.ts:82 | non-object-model-not-expanded | 0 |
+| PartnerType | src/shared/types.ts:95 | non-object-model-not-expanded | 0 |
+| PurchaseItem | src/shared/types.ts:97 | checker-resolved-properties-only | 2 |
+| ShipTo | src/shared/types.ts:108 | checker-resolved-properties-only | 3 |
+| PartnerItem | src/shared/types.ts:116 | checker-resolved-properties-only | 9 |
+| Partner | src/shared/types.ts:150 | checker-resolved-properties-only | 19 |
+| OrderSource | src/shared/types.ts:186 | non-object-model-not-expanded | 0 |
+| ShipMethod | src/shared/types.ts:198 | non-object-model-not-expanded | 0 |
+| InvoiceType | src/shared/types.ts:205 | non-object-model-not-expanded | 0 |
+| OrderRawInventoryTrace | src/shared/types.ts:214 | checker-resolved-properties-only | 10 |
+| Order | src/shared/types.ts:231 | checker-resolved-properties-only | 46 |
+| OrderItemInventoryState | src/shared/types.ts:352 | checker-resolved-properties-only | 11 |
+| OrderInventoryAdjustment | src/shared/types.ts:366 | checker-resolved-properties-only | 2 |
+| OrderRawCalculationEvidence | src/shared/types.ts:372 | checker-resolved-properties-only | 11 |
+| OrderInventorySnapshot | src/shared/types.ts:386 | checker-resolved-properties-only | 8 |
+| OrderStatusAudit | src/shared/types.ts:397 | checker-resolved-properties-only | 12 |
+| OrderItemEdit | src/shared/types.ts:418 | checker-resolved-properties-only | 5 |
+| SubmaterialComponent | src/shared/types.ts:427 | checker-resolved-properties-only | 8 |
+| InventoryCategory | src/shared/types.ts:439 | non-object-model-not-expanded | 0 |
+| ItemSubtype | src/shared/types.ts:445 | non-object-model-not-expanded | 0 |
+| ItemInventoryReservation | src/shared/types.ts:480 | checker-resolved-properties-only | 5 |
+| ItemStocktakeAnchor | src/shared/types.ts:489 | checker-resolved-properties-only | 8 |
+| Item | src/shared/types.ts:502 | checker-resolved-properties-only | 37 |
+| PalletStock | src/shared/types.ts:615 | checker-resolved-properties-only | 6 |
+| PalletTransaction | src/shared/types.ts:625 | checker-resolved-properties-only | 10 |
+| Post | src/shared/types.ts:639 | checker-resolved-properties-only | 8 |
+| FileItem | src/shared/types.ts:650 | checker-resolved-properties-only | 6 |
+| CabinetCategory | src/shared/types.ts:661 | checker-resolved-properties-only | 5 |
+| CabinetSubCategory | src/shared/types.ts:669 | checker-resolved-properties-only | 6 |
+| CabinetDoc | src/shared/types.ts:678 | checker-resolved-properties-only | 12 |
+| EmployeeStatus | src/shared/types.ts:694 | non-object-model-not-expanded | 0 |
+| AnnualLeave | src/shared/types.ts:696 | checker-resolved-properties-only | 2 |
+| Employee | src/shared/types.ts:701 | checker-resolved-properties-only | 15 |
+| PayrollLine | src/shared/types.ts:742 | checker-resolved-properties-only | 14 |
+| Payroll | src/shared/types.ts:759 | checker-resolved-properties-only | 9 |
+| LeaveType | src/shared/types.ts:800 | non-object-model-not-expanded | 0 |
+| LeaveStatus | src/shared/types.ts:801 | non-object-model-not-expanded | 0 |
+| LeaveModifyRequest | src/shared/types.ts:803 | checker-resolved-properties-only | 5 |
+| LeaveRequest | src/shared/types.ts:811 | checker-resolved-properties-only | 16 |
+| ChatMessage | src/shared/types.ts:840 | checker-resolved-properties-only | 17 |
+| ChatRoom | src/shared/types.ts:880 | checker-resolved-properties-only | 13 |
+| RoomNotice | src/shared/types.ts:915 | checker-resolved-properties-only | 5 |
+| ViewType | src/shared/types.ts:927 | non-object-model-not-expanded | 0 |
+| ProductionRecord | src/shared/types.ts:930 | checker-resolved-properties-only | 12 |
+| FixedCostCategory | src/shared/types.ts:946 | non-object-model-not-expanded | 0 |
+| FixedCostEntry | src/shared/types.ts:948 | checker-resolved-properties-only | 8 |
+| FixedCostTemplate | src/shared/types.ts:959 | checker-resolved-properties-only | 35 |
+| StatementLineKind | src/shared/types.ts:1061 | non-object-model-not-expanded | 0 |
+| IssuedStatementItem | src/shared/types.ts:1063 | checker-resolved-properties-only | 19 |
+| StatementParty | src/shared/types.ts:1101 | checker-resolved-properties-only | 8 |
+| StatementPartySnapshot | src/shared/types.ts:1112 | checker-resolved-properties-only | 2 |
+| IssuedStatement | src/shared/types.ts:1117 | checker-resolved-properties-only | 24 |
+| PaymentMethod | src/shared/types.ts:1178 | non-object-model-not-expanded | 0 |
+| PurchaseOrderItem | src/shared/types.ts:1184 | checker-resolved-properties-only | 11 |
+| PurchaseOrder | src/shared/types.ts:1200 | checker-resolved-properties-only | 39 |
+| CompanyInfo | src/shared/types.ts:1286 | checker-resolved-properties-only | 11 |
+| ExpensePreset | src/shared/types.ts:1301 | checker-resolved-properties-only | 5 |
+| AppNotification | src/shared/types.ts:1309 | checker-resolved-properties-only | 10 |
+| RawMaterialEntry | src/shared/types.ts:1336 | checker-resolved-properties-only | 26 |
+| ItemType | src/shared/types.ts:1385 | non-object-model-not-expanded | 0 |
+| ItemFormula | src/shared/types.ts:1387 | checker-resolved-properties-only | 5 |
+| ItemBom | src/shared/types.ts:1396 | checker-resolved-properties-only | 4 |
+| ReturnReason | src/shared/types.ts:1405 | non-object-model-not-expanded | 0 |
+| ReturnItem | src/shared/types.ts:1407 | checker-resolved-properties-only | 10 |
+| ReturnRequest | src/shared/types.ts:1421 | checker-resolved-properties-only | 19 |
+| PendingStatementEdit | src/shared/types.ts:1443 | checker-resolved-properties-only | 12 |
+| AccountType | src/shared/types.ts:1467 | non-object-model-not-expanded | 0 |
+| AccountCode | src/shared/types.ts:1469 | checker-resolved-properties-only | 9 |
+| JournalLine | src/shared/types.ts:1487 | checker-resolved-properties-only | 5 |
+| JournalEntry | src/shared/types.ts:1495 | checker-resolved-properties-only | 8 |
+| AccountGroupPlLine | src/shared/types.ts:1506 | non-object-model-not-expanded | 0 |
+| AccountGroupCfSection | src/shared/types.ts:1508 | non-object-model-not-expanded | 0 |
+| AccountGroup | src/shared/types.ts:1510 | checker-resolved-properties-only | 6 |
+| CashAccount | src/shared/types.ts:1525 | checker-resolved-properties-only | 10 |
+| CashEntry | src/shared/types.ts:1539 | checker-resolved-properties-only | 18 |
+| Settlement | src/shared/types.ts:1602 | checker-resolved-properties-only | 5 |
+| InventorySnapshot | src/shared/types.ts:1610 | checker-resolved-properties-only | 6 |
+| CashFlowManual | src/shared/types.ts:1624 | checker-resolved-properties-only | 10 |
+| ProductionSalesLog | src/shared/types.ts:1637 | checker-resolved-properties-only | 11 |
+| AdjustmentType | src/shared/types.ts:1657 | non-object-model-not-expanded | 0 |
+| AdjustmentStatus | src/shared/types.ts:1658 | non-object-model-not-expanded | 0 |
+| AdjustmentRequest | src/shared/types.ts:1660 | checker-resolved-properties-only | 15 |
 | RawUnit | functions/src/shared/formula.ts:57 | non-object-model-not-expanded | 0 |
+| PendingPurchaseOrderConfirmation | src/shared/services/confirmPendingPurchaseOrderService.ts:14 | checker-resolved-properties-only | 3 |
 | AppConfirmOptions | src/shared/components/appDialog.ts:1 | checker-resolved-properties-only | 5 |
 | AppPromptOptions | src/shared/components/appDialog.ts:9 | checker-resolved-properties-only | 5 |
 | ConfirmRequest | src/shared/components/appDialog.ts:17 | checker-resolved-properties-only | 7 |
@@ -1677,7 +1684,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | UnpackResult | src/shared/canUnpack.ts:68 | non-object-model-not-expanded | 0 |
 | UnpackLotMove | src/shared/unpackLots.ts:36 | checker-resolved-properties-only | 6 |
 | UnpackLotResult | src/shared/unpackLots.ts:48 | checker-resolved-properties-only | 4 |
-| UnpackOutcome | src/shared/services/unpackService.ts:44 | checker-resolved-properties-only | 3 |
+| UnpackOutcome | src/shared/services/unpackService.ts:47 | checker-resolved-properties-only | 3 |
 | PartnerAdvanceResult | src/features/statements/infrastructure/partnerAdvanceCommands.ts:5 | checker-resolved-properties-only | 3 |
 | PendingPartnerAdvance | src/features/statements/infrastructure/partnerAdvanceCommands.ts:6 | checker-resolved-properties-only | 5 |
 | Command | src/shared/services/deleteIssuedStatementService.ts:7 | checker-resolved-properties-only | 5 |
@@ -1791,17 +1798,17 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | IssueInput | components/OemManager.tsx:35 | checker-resolved-properties-only | 7 |
 | ReceiveInput | components/OemManager.tsx:36 | checker-resolved-properties-only | 6 |
 | Props | components/CategoryManager.tsx:14 | checker-resolved-properties-only | 4 |
-| StockClosingRow | components/ItemList.tsx:180 | checker-resolved-properties-only | 7 |
-| StockClosing | components/ItemList.tsx:181 | checker-resolved-properties-only | 6 |
-| ItemListProps | components/ItemList.tsx:192 | checker-resolved-properties-only | 53 |
-| MainTab | components/ItemList.tsx:266 | non-object-model-not-expanded | 0 |
-| FlowTypeFilter | components/ItemList.tsx:306 | non-object-model-not-expanded | 0 |
-| FlowStatusFilter | components/ItemList.tsx:307 | non-object-model-not-expanded | 0 |
-| InboundSubTab | components/ItemList.tsx:308 | non-object-model-not-expanded | 0 |
-| TopTab | components/ItemList.tsx:311 | non-object-model-not-expanded | 0 |
-| GroupRow | components/ItemList.tsx:1236 | checker-resolved-properties-only | 4 |
-| FlowRow | components/ItemList.tsx:1556 | checker-resolved-properties-only | 9 |
-| GridRow | components/ItemList.tsx:3601 | checker-resolved-properties-only | 6 |
+| StockClosingRow | components/ItemList.tsx:181 | checker-resolved-properties-only | 7 |
+| StockClosing | components/ItemList.tsx:182 | checker-resolved-properties-only | 6 |
+| ItemListProps | components/ItemList.tsx:193 | checker-resolved-properties-only | 53 |
+| MainTab | components/ItemList.tsx:267 | non-object-model-not-expanded | 0 |
+| FlowTypeFilter | components/ItemList.tsx:307 | non-object-model-not-expanded | 0 |
+| FlowStatusFilter | components/ItemList.tsx:308 | non-object-model-not-expanded | 0 |
+| InboundSubTab | components/ItemList.tsx:309 | non-object-model-not-expanded | 0 |
+| TopTab | components/ItemList.tsx:312 | non-object-model-not-expanded | 0 |
+| GroupRow | components/ItemList.tsx:1250 | checker-resolved-properties-only | 4 |
+| FlowRow | components/ItemList.tsx:1570 | checker-resolved-properties-only | 9 |
+| GridRow | components/ItemList.tsx:3634 | checker-resolved-properties-only | 6 |
 | Vouchered | src/shared/statementOrders.ts:24 | checker-resolved-properties-only | 0 |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | checker-resolved-properties-only | 6 |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | checker-resolved-properties-only | 2 |
@@ -2136,10 +2143,10 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Props | components/PartnerAdvanceModal.tsx:11 | checker-resolved-properties-only | 4 |
 | ComposerProps | components/PartnerLedger.tsx:19 | checker-resolved-properties-only | 22 |
 | Props | components/PartnerLedger.tsx:21 | checker-resolved-properties-only | 16 |
-| AdminAppProps | src/features/admin/AdminApp.tsx:253 | checker-resolved-properties-only | 12 |
-| NewOrderDraft | src/features/admin/AdminApp.tsx:1416 | checker-resolved-properties-only | 44 |
-| RightRow | src/features/admin/AdminApp.tsx:3156 | checker-resolved-properties-only | 7 |
-| UsageRow | src/features/admin/AdminApp.tsx:3736 | checker-resolved-properties-only | 10 |
+| AdminAppProps | src/features/admin/AdminApp.tsx:254 | checker-resolved-properties-only | 12 |
+| NewOrderDraft | src/features/admin/AdminApp.tsx:1420 | checker-resolved-properties-only | 44 |
+| RightRow | src/features/admin/AdminApp.tsx:3161 | checker-resolved-properties-only | 7 |
+| UsageRow | src/features/admin/AdminApp.tsx:3741 | checker-resolved-properties-only | 10 |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | checker-resolved-properties-only | 10 |
 | Window | src/global.d.ts:3 | checker-resolved-properties-only | 186 |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | checker-resolved-properties-only | 4 |
@@ -2465,7 +2472,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/services/employeeCommand.ts:31 | data.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/employeeCommand.ts:33 | data.createdAt | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/employeeCommand.ts:39 | data.createdAt | Record<string, unknown> | property-symbol-unresolved |
-| src/shared/services/unpackService.ts:233 | previous.targetQty | any | any-receiver |
+| src/shared/services/unpackService.ts:249 | previous.request | any | any-receiver |
+| src/shared/services/unpackService.ts:249 | previous.targetQty | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof?.version | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof.terminalConfirmed | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof.status | any | any-receiver |
@@ -2568,58 +2576,58 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/LotTimeline.tsx:35 | parts.day | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.hour | { [k: string]: string; } | property-symbol-unresolved |
 | components/LotTimeline.tsx:35 | parts.minute | { [k: string]: string; } | property-symbol-unresolved |
-| components/ItemList.tsx:321 | (p?.lots ?? []).length | any | any-receiver |
-| components/ItemList.tsx:321 | p?.lots | any | any-receiver |
-| components/ItemList.tsx:322 | p.lots | any | any-receiver |
-| components/ItemList.tsx:323 | p?.stock | any | any-receiver |
-| components/ItemList.tsx:324 | p?.density | any | any-receiver |
-| components/ItemList.tsx:324 | p.density | any | any-receiver |
-| components/ItemList.tsx:553 | canvas.toBlob | any | any-receiver |
-| components/ItemList.tsx:582 | (e as any)?.message | any | any-receiver |
-| components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
-| components/ItemList.tsx:594 | nav.canShare | any | any-receiver |
-| components/ItemList.tsx:595 | nav.share | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.id | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.companyId | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.poType | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.status | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.oemCancelledAt | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po?.oemCancelOperationId | any | any-receiver |
-| components/ItemList.tsx:1065 | value.po | any | any-receiver |
-| components/ItemList.tsx:1066 | value.returns | any | any-receiver |
-| components/ItemList.tsx:1066 | value.returns.every | any | any-receiver |
-| components/ItemList.tsx:1066 | value.returns | any | any-receiver |
-| components/ItemList.tsx:1066 | row.itemId | any | any-receiver |
-| components/ItemList.tsx:1066 | row.itemId | any | any-receiver |
-| components/ItemList.tsx:1066 | row.qty | any | any-receiver |
-| components/ItemList.tsx:1066 | row.qty | any | any-receiver |
-| components/ItemList.tsx:1067 | value.bulk | any | any-receiver |
-| components/ItemList.tsx:1067 | value.bulk.every | any | any-receiver |
-| components/ItemList.tsx:1067 | value.bulk | any | any-receiver |
-| components/ItemList.tsx:1067 | row.material | any | any-receiver |
-| components/ItemList.tsx:1067 | row.material | any | any-receiver |
-| components/ItemList.tsx:1067 | row.kg | any | any-receiver |
-| components/ItemList.tsx:1067 | row.kg | any | any-receiver |
-| components/ItemList.tsx:1068 | value.returns.length | any | any-receiver |
-| components/ItemList.tsx:1068 | value.returns | any | any-receiver |
-| components/ItemList.tsx:1068 | value.bulk.length | any | any-receiver |
-| components/ItemList.tsx:1068 | value.bulk | any | any-receiver |
-| components/ItemList.tsx:1068 | value.unitPricePerKg | any | any-receiver |
-| components/ItemList.tsx:1068 | value.unitPricePerKg | any | any-receiver |
-| components/ItemList.tsx:1068 | value.date | any | any-receiver |
-| components/ItemList.tsx:1068 | value.date | any | any-receiver |
-| components/ItemList.tsx:1992 | (e as any).lotChanges?.some | any | any-receiver |
-| components/ItemList.tsx:1992 | (e as any).lotChanges | any | any-receiver |
-| components/ItemList.tsx:1992 | change.lotId | any | any-receiver |
-| components/ItemList.tsx:1994 | (e as any).source?.type | any | any-receiver |
-| components/ItemList.tsx:1994 | (e as any).source | any | any-receiver |
-| components/ItemList.tsx:1994 | (e as any).source?.id | any | any-receiver |
-| components/ItemList.tsx:1994 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:322 | (p?.lots ?? []).length | any | any-receiver |
+| components/ItemList.tsx:322 | p?.lots | any | any-receiver |
+| components/ItemList.tsx:323 | p.lots | any | any-receiver |
+| components/ItemList.tsx:324 | p?.stock | any | any-receiver |
+| components/ItemList.tsx:325 | p?.density | any | any-receiver |
+| components/ItemList.tsx:325 | p.density | any | any-receiver |
+| components/ItemList.tsx:554 | canvas.toBlob | any | any-receiver |
+| components/ItemList.tsx:583 | (e as any)?.message | any | any-receiver |
+| components/ItemList.tsx:595 | nav.canShare | any | any-receiver |
+| components/ItemList.tsx:595 | nav.canShare | any | any-receiver |
+| components/ItemList.tsx:596 | nav.share | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.id | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.companyId | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.poType | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.status | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.oemCancelledAt | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po?.oemCancelOperationId | any | any-receiver |
+| components/ItemList.tsx:1079 | value.po | any | any-receiver |
+| components/ItemList.tsx:1080 | value.returns | any | any-receiver |
+| components/ItemList.tsx:1080 | value.returns.every | any | any-receiver |
+| components/ItemList.tsx:1080 | value.returns | any | any-receiver |
+| components/ItemList.tsx:1080 | row.itemId | any | any-receiver |
+| components/ItemList.tsx:1080 | row.itemId | any | any-receiver |
+| components/ItemList.tsx:1080 | row.qty | any | any-receiver |
+| components/ItemList.tsx:1080 | row.qty | any | any-receiver |
+| components/ItemList.tsx:1081 | value.bulk | any | any-receiver |
+| components/ItemList.tsx:1081 | value.bulk.every | any | any-receiver |
+| components/ItemList.tsx:1081 | value.bulk | any | any-receiver |
+| components/ItemList.tsx:1081 | row.material | any | any-receiver |
+| components/ItemList.tsx:1081 | row.material | any | any-receiver |
+| components/ItemList.tsx:1081 | row.kg | any | any-receiver |
+| components/ItemList.tsx:1081 | row.kg | any | any-receiver |
+| components/ItemList.tsx:1082 | value.returns.length | any | any-receiver |
+| components/ItemList.tsx:1082 | value.returns | any | any-receiver |
+| components/ItemList.tsx:1082 | value.bulk.length | any | any-receiver |
+| components/ItemList.tsx:1082 | value.bulk | any | any-receiver |
+| components/ItemList.tsx:1082 | value.unitPricePerKg | any | any-receiver |
+| components/ItemList.tsx:1082 | value.unitPricePerKg | any | any-receiver |
+| components/ItemList.tsx:1082 | value.date | any | any-receiver |
+| components/ItemList.tsx:1082 | value.date | any | any-receiver |
+| components/ItemList.tsx:2008 | (e as any).lotChanges?.some | any | any-receiver |
+| components/ItemList.tsx:2008 | (e as any).lotChanges | any | any-receiver |
+| components/ItemList.tsx:2008 | change.lotId | any | any-receiver |
+| components/ItemList.tsx:2010 | (e as any).source?.type | any | any-receiver |
+| components/ItemList.tsx:2010 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:2010 | (e as any).source?.id | any | any-receiver |
+| components/ItemList.tsx:2010 | (e as any).source | any | any-receiver |
 | components/AddOrderModal.tsx:67 | pi.Direction | any | any-receiver |
 | components/AddOrderModal.tsx:235 | pi.partnerId | any | any-receiver |
 | components/AddOrderModal.tsx:236 | pi.itemId | any | any-receiver |
@@ -2960,21 +2968,19 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/PartnerLedger.tsx:523 | it.tax | any | any-receiver |
 | components/PartnerLedger.tsx:524 | it.total | any | any-receiver |
 | components/PartnerLedger.tsx:544 | i.name | any | any-receiver |
-| src/features/admin/AdminApp.tsx:426 | e?.message | any | any-receiver |
-| src/features/admin/AdminApp.tsx:600 | (pc as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:601 | (pc as any).partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:993 | e.data?.type | any | any-receiver |
-| src/features/admin/AdminApp.tsx:993 | e.data.view | any | any-receiver |
-| src/features/admin/AdminApp.tsx:993 | e.data.view | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1120 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1121 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1183 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1184 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1212 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1213 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:2614 | patch.sortIndex | Record<string, unknown> | property-symbol-unresolved |
-| src/features/admin/AdminApp.tsx:4689 | error?.message | any | any-receiver |
-| src/features/admin/AdminApp.tsx:4699 | error?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:427 | e?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:601 | (pc as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:602 | (pc as any).partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:994 | e.data?.type | any | any-receiver |
+| src/features/admin/AdminApp.tsx:994 | e.data.view | any | any-receiver |
+| src/features/admin/AdminApp.tsx:994 | e.data.view | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1121 | (s as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1122 | (ps as any)?.partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1184 | (s as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1185 | (ps as any)?.partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:2618 | patch.sortIndex | Record<string, unknown> | property-symbol-unresolved |
+| src/features/admin/AdminApp.tsx:4694 | error?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:4704 | error?.message | any | any-receiver |
 | src/shared/components/AuthPage.tsx:34 | cause?.code | any | any-receiver |
 | functions/src/newScopeCounter.ts:11 | gate.data()?.oemLotCutoverDate | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/newScopeCounter.ts:17 | row?.status | DocumentData \| undefined | property-symbol-unresolved |
@@ -4526,727 +4532,728 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 
 | 모델 | 필드 | 입력 | 선언 타입 | 선언 위치 | 정적 사용처 |
 | --- | --- | --- | --- | --- | --- |
-| OrderItem | lineId | 선택 | string | src/shared/types.ts:27 | 39 |
-| OrderItem | itemId | 필수 | string | src/shared/types.ts:28 | 118 |
-| OrderItem | name | 필수 | string | src/shared/types.ts:29 | 63 |
-| OrderItem | orderedAs | 선택 | string | src/shared/types.ts:43 | 0 |
-| OrderItem | quantity | 필수 | number | src/shared/types.ts:44 | 40 |
-| OrderItem | price | 필수 | number | src/shared/types.ts:45 | 7 |
-| OrderItem | checked | 선택 | boolean | src/shared/types.ts:46 | 37 |
-| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:47 | 6 |
-| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:48 | 5 |
-| OrderItem | mfgDate | 선택 | string | src/shared/types.ts:49 | 18 |
-| OrderItem | mfgBy | 선택 | string | src/shared/types.ts:50 | 2 |
-| OrderItem | mfgAt | 선택 | string | src/shared/types.ts:51 | 2 |
-| OrderItem | labelType | 선택 | '대기' \| '날인' \| '부착' | src/shared/types.ts:52 | 13 |
-| OrderItem | labelBy | 선택 | string | src/shared/types.ts:59 | 2 |
-| OrderItem | labelAt | 선택 | string | src/shared/types.ts:60 | 2 |
-| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:61 | 25 |
-| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:62 | 23 |
-| OrderItem | unitsPerBox | 선택 | number | src/shared/types.ts:63 | 7 |
-| OrderItem | boxType | 선택 | string | src/shared/types.ts:64 | 2 |
-| OrderItem | boxSubId | 선택 | string | src/shared/types.ts:65 | 1 |
-| OrderItem | displaySize | 선택 | string | src/shared/types.ts:66 | 4 |
-| OrderPallet | type | 필수 | string | src/shared/types.ts:70 | 16 |
-| OrderPallet | quantity | 필수 | number | src/shared/types.ts:71 | 17 |
-| OrderPallet | isExchange | 선택 | boolean | src/shared/types.ts:72 | 7 |
-| DeliveryBox | itemId | 필수 | string | src/shared/types.ts:76 | 3 |
-| DeliveryBox | name | 필수 | string | src/shared/types.ts:77 | 1 |
-| DeliveryBox | quantity | 필수 | number | src/shared/types.ts:78 | 2 |
-| PurchaseItem | id | 필수 | string | src/shared/types.ts:97 | 0 |
-| PurchaseItem | name | 필수 | string | src/shared/types.ts:98 | 0 |
-| ShipTo | id | 필수 | string | src/shared/types.ts:109 | 19 |
-| ShipTo | name | 필수 | string | src/shared/types.ts:110 | 12 |
-| ShipTo | archived | 선택 | boolean | src/shared/types.ts:112 | 11 |
-| PartnerItem | id | 필수 | string | src/shared/types.ts:116 | 25 |
-| PartnerItem | itemId | 필수 | string | src/shared/types.ts:117 | 70 |
-| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:118 | 63 |
-| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:119 | 28 |
-| PartnerItem | price | 선택 | number | src/shared/types.ts:120 | 29 |
-| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:121 | 13 |
-| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:130 | 21 |
-| PartnerItem | shipToIds | 선택 | string[] | src/shared/types.ts:144 | 1 |
-| PartnerItem | isSmartStore | 선택 | boolean | src/shared/types.ts:145 | 0 |
-| Partner | shipTos | 선택 | ShipTo[] | src/shared/types.ts:157 | 5 |
-| Partner | id | 필수 | string | src/shared/types.ts:158 | 190 |
-| Partner | name | 필수 | string | src/shared/types.ts:159 | 178 |
-| Partner | email | 선택 | string | src/shared/types.ts:160 | 4 |
-| Partner | phone | 선택 | string | src/shared/types.ts:161 | 6 |
-| Partner | type | 필수 | PartnerChannel | src/shared/types.ts:162 | 28 |
-| Partner | region | 선택 | string | src/shared/types.ts:163 | 8 |
-| Partner | address | 선택 | string | src/shared/types.ts:164 | 10 |
-| Partner | addressDetail | 선택 | string | src/shared/types.ts:165 | 8 |
-| Partner | ownerName | 선택 | string | src/shared/types.ts:166 | 6 |
-| Partner | bizNo | 선택 | string | src/shared/types.ts:167 | 6 |
-| Partner | tel | 선택 | string | src/shared/types.ts:168 | 7 |
-| Partner | mobile | 선택 | string | src/shared/types.ts:169 | 7 |
-| Partner | fax | 선택 | string | src/shared/types.ts:170 | 2 |
-| Partner | note | 선택 | string | src/shared/types.ts:171 | 3 |
-| Partner | partnerType | 선택 | PartnerType | src/shared/types.ts:172 | 8 |
-| Partner | companyId | 선택 | CompanyId | src/shared/types.ts:179 | 3 |
-| Partner | isOemFactory | 선택 | boolean | src/shared/types.ts:180 | 1 |
-| Partner | purchaseItems | 선택 | PurchaseItem[] | src/shared/types.ts:181 | 0 |
-| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:214 | 14 |
-| OrderRawInventoryTrace | rawItemId | 선택 | string | src/shared/types.ts:216 | 14 |
-| OrderRawInventoryTrace | operationId | 선택 | string | src/shared/types.ts:218 | 20 |
-| OrderRawInventoryTrace | ledgerId | 선택 | string | src/shared/types.ts:220 | 3 |
-| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:222 | 11 |
-| OrderRawInventoryTrace | lotId | 선택 | string | src/shared/types.ts:223 | 8 |
-| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:224 | 4 |
-| OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:225 | 3 |
-| OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:226 | 3 |
-| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:227 | 13 |
-| Order | id | 필수 | string | src/shared/types.ts:231 | 260 |
-| Order | companyId | 선택 | CompanyId | src/shared/types.ts:233 | 1 |
-| Order | cardNo | 선택 | string | src/shared/types.ts:244 | 5 |
-| Order | createdBy | 선택 | string | src/shared/types.ts:249 | 1 |
-| Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:251 | 1 |
-| Order | partnerId | 선택 | string | src/shared/types.ts:252 | 58 |
-| Order | partnerName | 필수 | string | src/shared/types.ts:253 | 91 |
-| Order | items | 필수 | OrderItem[] | src/shared/types.ts:254 | 146 |
-| Order | note | 선택 | string | src/shared/types.ts:256 | 14 |
-| Order | noteImportant | 선택 | boolean | src/shared/types.ts:257 | 4 |
-| Order | noteBy | 선택 | string | src/shared/types.ts:258 | 2 |
-| Order | noteAt | 선택 | string | src/shared/types.ts:259 | 2 |
-| Order | totalAmount | 필수 | number | src/shared/types.ts:260 | 0 |
-| Order | status | 필수 | OrderStatus | src/shared/types.ts:261 | 130 |
-| Order | createdAt | 필수 | string | src/shared/types.ts:262 | 55 |
-| Order | deliveryDate | 필수 | string | src/shared/types.ts:263 | 58 |
-| Order | email | 필수 | string | src/shared/types.ts:264 | 0 |
-| Order | purpose | 선택 | 'stock-production' | src/shared/types.ts:266 | 1 |
-| Order | source | 필수 | OrderSource | src/shared/types.ts:267 | 33 |
-| Order | pallets | 선택 | OrderPallet[] | src/shared/types.ts:268 | 20 |
-| Order | region | 선택 | string | src/shared/types.ts:269 | 0 |
-| Order | shipToId | 선택 | string | src/shared/types.ts:277 | 5 |
-| Order | deliveryBoxes | 선택 | DeliveryBox[] | src/shared/types.ts:278 | 10 |
-| Order | shipMethod | 선택 | ShipMethod \| '직접수령' | src/shared/types.ts:280 | 0 |
-| Order | invoicePrinted | 선택 | boolean | src/shared/types.ts:281 | 16 |
-| Order | invoiceStage | 선택 | 'printed' \| 'attached' | src/shared/types.ts:290 | 2 |
-| Order | invoiceType | 선택 | InvoiceType | src/shared/types.ts:292 | 2 |
-| Order | shipmentConfirmedBy | 선택 | string \| null | src/shared/types.ts:293 | 3 |
-| Order | shipmentConfirmedAt | 선택 | string \| null | src/shared/types.ts:294 | 5 |
-| Order | deliveredAt | 선택 | string | src/shared/types.ts:295 | 13 |
-| Order | documentDate | 선택 | string | src/shared/types.ts:296 | 0 |
-| Order | accountingExcluded | 선택 | boolean | src/shared/types.ts:302 | 3 |
-| Order | accountingExclusionReason | 선택 | string | src/shared/types.ts:303 | 2 |
-| Order | accountingExcludedAt | 선택 | string | src/shared/types.ts:304 | 0 |
-| Order | accountingExcludedBy | 선택 | string | src/shared/types.ts:305 | 0 |
-| Order | rawLotsDeducted | 선택 | boolean | src/shared/types.ts:306 | 3 |
-| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:307 | 17 |
-| Order | rawInventoryAttempt | 선택 | number | src/shared/types.ts:309 | 5 |
-| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:315 | 7 |
-| Order | autoBuilt | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:316 | 12 |
-| Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:317 | 15 |
-| Order | producedAt | 선택 | string | src/shared/types.ts:319 | 23 |
-| Order | shippedOut | 선택 | boolean | src/shared/types.ts:320 | 14 |
-| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:325 | 30 |
-| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:335 | 18 |
-| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:337 | 17 |
-| OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:352 | 0 |
-| OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:353 | 4 |
-| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:354 | 3 |
-| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:355 | 15 |
-| OrderItemInventoryState | attempt | 필수 | number | src/shared/types.ts:356 | 6 |
-| OrderItemInventoryState | completedAt | 선택 | string | src/shared/types.ts:357 | 8 |
-| OrderItemInventoryState | reversedAt | 선택 | string | src/shared/types.ts:358 | 0 |
-| OrderItemInventoryState | rawConsumedLots | 필수 | OrderRawInventoryTrace[] | src/shared/types.ts:359 | 9 |
-| OrderItemInventoryState | autoBuilt | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:360 | 4 |
-| OrderItemInventoryState | producedUnits | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:361 | 5 |
-| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:362 | 21 |
-| OrderInventoryAdjustment | itemId | 필수 | string | src/shared/types.ts:366 | 18 |
-| OrderInventoryAdjustment | delta | 필수 | number | src/shared/types.ts:367 | 14 |
-| OrderRawCalculationEvidence | productId | 필수 | string | src/shared/types.ts:372 | 2 |
-| OrderRawCalculationEvidence | spec | 필수 | string | src/shared/types.ts:373 | 1 |
-| OrderRawCalculationEvidence | units | 필수 | number | src/shared/types.ts:374 | 1 |
-| OrderRawCalculationEvidence | raw | 필수 | string | src/shared/types.ts:375 | 3 |
-| OrderRawCalculationEvidence | kg | 필수 | number | src/shared/types.ts:376 | 3 |
-| OrderRawCalculationEvidence | path | 필수 | 'bom-direct' \| 'bom-formula' \| 'formula-fallback' \| 'bulk' | src/shared/types.ts:377 | 1 |
-| OrderRawCalculationEvidence | childItemId | 선택 | string | src/shared/types.ts:378 | 1 |
-| OrderRawCalculationEvidence | bomQuantityKg | 선택 | number | src/shared/types.ts:379 | 1 |
-| OrderRawCalculationEvidence | formulaName | 선택 | string | src/shared/types.ts:380 | 1 |
-| OrderRawCalculationEvidence | ratio | 선택 | number | src/shared/types.ts:381 | 1 |
-| OrderRawCalculationEvidence | convertedKg | 선택 | number | src/shared/types.ts:382 | 1 |
-| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:386 | 16 |
-| OrderInventorySnapshot | rawCalculationEvidence | 선택 | OrderRawCalculationEvidence[] | src/shared/types.ts:387 | 4 |
-| OrderInventorySnapshot | stockDeltas | 필수 | OrderInventoryAdjustment[] | src/shared/types.ts:388 | 19 |
-| OrderInventorySnapshot | bomLines | 필수 | { parentItemId: string; childItemId: string; quantity: number }[] | src/shared/types.ts:389 | 3 |
-| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:390 | 13 |
-| OrderInventorySnapshot | productConsumedLots | 선택 | Order['productConsumedLots'] | src/shared/types.ts:391 | 6 |
-| OrderInventorySnapshot | productProducedLots | 선택 | { itemId: string; lotId: string; qty: number }[] | src/shared/types.ts:392 | 6 |
-| OrderInventorySnapshot | rawLedgerIds | 선택 | string[] | src/shared/types.ts:393 | 7 |
-| OrderStatusAudit | id | 필수 | string | src/shared/types.ts:397 | 0 |
-| OrderStatusAudit | orderId | 필수 | string | src/shared/types.ts:398 | 0 |
-| OrderStatusAudit | partnerName | 필수 | string | src/shared/types.ts:399 | 0 |
-| OrderStatusAudit | previousStatus | 필수 | OrderStatus | src/shared/types.ts:400 | 1 |
-| OrderStatusAudit | nextStatus | 필수 | OrderStatus | src/shared/types.ts:401 | 1 |
-| OrderStatusAudit | approvedBy | 필수 | string | src/shared/types.ts:402 | 1 |
-| OrderStatusAudit | approvedAt | 필수 | string | src/shared/types.ts:403 | 1 |
-| OrderStatusAudit | completedAt | 선택 | string | src/shared/types.ts:404 | 1 |
-| OrderStatusAudit | state | 필수 | 'processing' \| 'completed' \| 'failed' | src/shared/types.ts:405 | 3 |
-| OrderStatusAudit | legacyEvidenceWarning | 필수 | boolean | src/shared/types.ts:406 | 1 |
-| OrderStatusAudit | stockAdjustments | 필수 | Array<OrderInventoryAdjustment & { name: string; unit: string }> | src/shared/types.ts:407 | 1 |
-| OrderStatusAudit | error | 선택 | string | src/shared/types.ts:408 | 1 |
-| OrderItemEdit | id | 필수 | string | src/shared/types.ts:418 | 0 |
-| OrderItemEdit | orderId | 필수 | string | src/shared/types.ts:419 | 0 |
-| OrderItemEdit | at | 필수 | string | src/shared/types.ts:420 | 1 |
-| OrderItemEdit | by | 필수 | string | src/shared/types.ts:421 | 1 |
-| OrderItemEdit | changes | 필수 | string[] | src/shared/types.ts:423 | 1 |
-| SubmaterialComponent | id | 필수 | string | src/shared/types.ts:427 | 13 |
-| SubmaterialComponent | name | 필수 | string | src/shared/types.ts:428 | 2 |
-| SubmaterialComponent | category | 필수 | InventoryCategory \| string | src/shared/types.ts:429 | 0 |
-| SubmaterialComponent | stock | 필수 | number | src/shared/types.ts:430 | 8 |
-| SubmaterialComponent | unit | 필수 | string | src/shared/types.ts:431 | 1 |
-| SubmaterialComponent | spec | 선택 | string | src/shared/types.ts:432 | 0 |
-| SubmaterialComponent | cost | 선택 | number | src/shared/types.ts:433 | 0 |
-| SubmaterialComponent | qrCode | 선택 | string | src/shared/types.ts:434 | 0 |
-| ItemInventoryReservation | operationId | 필수 | string | src/shared/types.ts:480 | 2 |
-| ItemInventoryReservation | orderId | 필수 | string | src/shared/types.ts:481 | 9 |
-| ItemInventoryReservation | qty | 필수 | number | src/shared/types.ts:482 | 7 |
-| ItemInventoryReservation | createdAt | 필수 | string | src/shared/types.ts:483 | 1 |
-| ItemInventoryReservation | state | 필수 | 'processing' \| 'allocated' | src/shared/types.ts:485 | 3 |
-| ItemStocktakeAnchor | id | 필수 | string | src/shared/types.ts:489 | 4 |
-| ItemStocktakeAnchor | date | 필수 | string | src/shared/types.ts:490 | 3 |
-| ItemStocktakeAnchor | createdAt | 필수 | string | src/shared/types.ts:491 | 2 |
-| ItemStocktakeAnchor | targetQty | 필수 | number | src/shared/types.ts:492 | 1 |
-| ItemStocktakeAnchor | beforeQty | 필수 | number | src/shared/types.ts:493 | 1 |
-| ItemStocktakeAnchor | deltaQty | 필수 | number | src/shared/types.ts:494 | 0 |
-| ItemStocktakeAnchor | note | 선택 | string | src/shared/types.ts:495 | 1 |
-| Item | id | 필수 | string | src/shared/types.ts:500 | 687 |
-| Item | companyId | 선택 | CompanyId | src/shared/types.ts:512 | 3 |
-| Item | name | 필수 | string | src/shared/types.ts:513 | 293 |
-| Item | sku | 선택 | string | src/shared/types.ts:514 | 0 |
-| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:516 | 131 |
-| Item | category | 선택 | ItemSubtype \| string | src/shared/types.ts:517 | 36 |
-| Item | subtype | 선택 | string | src/shared/types.ts:518 | 20 |
-| Item | cost | 선택 | number | src/shared/types.ts:519 | 20 |
-| Item | costSource | 선택 | 'rollup' \| 'manual' | src/shared/types.ts:528 | 2 |
-| Item | lotsAreTotal | 선택 | never | src/shared/types.ts:557 | 0 |
-| Item | stock | 필수 | number | src/shared/types.ts:559 | 61 |
-| Item | inventoryReservations | 선택 | ItemInventoryReservation[] | src/shared/types.ts:561 | 4 |
-| Item | stocktakeAnchors | 선택 | ItemStocktakeAnchor[] | src/shared/types.ts:563 | 4 |
-| Item | density | 선택 | number | src/shared/types.ts:569 | 15 |
-| Item | minStock | 필수 | number | src/shared/types.ts:570 | 22 |
-| Item | unit | 필수 | string | src/shared/types.ts:571 | 113 |
-| Item | image | 필수 | string | src/shared/types.ts:572 | 3 |
-| Item | imagePath | 선택 | string | src/shared/types.ts:574 | 5 |
-| Item | oil | 선택 | string | src/shared/types.ts:575 | 3 |
-| Item | partnerIds | 선택 | string[] | src/shared/types.ts:576 | 0 |
-| Item | freightType | 선택 | 's' \| 'a' \| 'b' \| 'c' \| 'd' \| 'e' | src/shared/types.ts:577 | 3 |
-| Item | 품목 | 선택 | string | src/shared/types.ts:580 | 13 |
-| Item | 품목이력 | 선택 | { 품목: string; until: string }[] | src/shared/types.ts:582 | 1 |
-| Item | spec | 선택 | string | src/shared/types.ts:583 | 100 |
-| Item | isSmartStore | 선택 | boolean | src/shared/types.ts:584 | 1 |
-| Item | smartStorePrice | 선택 | number | src/shared/types.ts:585 | 4 |
-| Item | procureType | 선택 | '완사입' \| '임가공' | src/shared/types.ts:588 | 5 |
-| Item | unpackable | 선택 | boolean | src/shared/types.ts:598 | 2 |
-| Item | rawMaterialName | 선택 | string | src/shared/types.ts:599 | 7 |
-| Item | packageType | 선택 | string | src/shared/types.ts:600 | 3 |
-| Item | packageKg | 선택 | number | src/shared/types.ts:601 | 2 |
-| Item | lots | 선택 | RawMaterialLot[] | src/shared/types.ts:602 | 39 |
-| Item | mixEnabled | 선택 | boolean | src/shared/types.ts:603 | 4 |
-| Item | mixTopPercent | 선택 | number | src/shared/types.ts:604 | 3 |
-| Item | mixLotRatios | 선택 | { lotId: string; percent: number }[] | src/shared/types.ts:605 | 8 |
-| Item | phantom | 선택 | boolean | src/shared/types.ts:606 | 12 |
-| Item | archived | 선택 | boolean | src/shared/types.ts:608 | 38 |
-| PalletStock | id | 필수 | string | src/shared/types.ts:613 | 35 |
-| PalletStock | name | 필수 | string | src/shared/types.ts:614 | 25 |
-| PalletStock | total | 필수 | number | src/shared/types.ts:615 | 10 |
-| PalletStock | inUse | 필수 | number | src/shared/types.ts:617 | 0 |
-| PalletStock | damaged | 필수 | number | src/shared/types.ts:618 | 6 |
-| PalletStock | hidden | 선택 | boolean | src/shared/types.ts:619 | 9 |
-| PalletTransaction | id | 필수 | string | src/shared/types.ts:623 | 12 |
-| PalletTransaction | partnerId | 필수 | string | src/shared/types.ts:624 | 6 |
-| PalletTransaction | palletId | 필수 | string | src/shared/types.ts:625 | 6 |
-| PalletTransaction | type | 필수 | 'in' \| 'out' | src/shared/types.ts:626 | 9 |
-| PalletTransaction | quantity | 필수 | number | src/shared/types.ts:627 | 13 |
-| PalletTransaction | date | 필수 | string | src/shared/types.ts:628 | 6 |
-| PalletTransaction | note | 선택 | string | src/shared/types.ts:629 | 2 |
-| PalletTransaction | status | 선택 | '교체중' \| '교체완료' | src/shared/types.ts:630 | 3 |
-| PalletTransaction | exchangeReturnQty | 선택 | number | src/shared/types.ts:631 | 2 |
-| PalletTransaction | isTransfer | 선택 | boolean | src/shared/types.ts:632 | 5 |
-| Post | id | 필수 | string | src/shared/types.ts:637 | 6 |
-| Post | title | 필수 | string | src/shared/types.ts:638 | 5 |
-| Post | author | 필수 | string | src/shared/types.ts:639 | 4 |
-| Post | content | 필수 | string | src/shared/types.ts:640 | 3 |
-| Post | date | 필수 | string | src/shared/types.ts:641 | 4 |
-| Post | tag | 필수 | '공지' \| '긴급' \| '매뉴얼' \| '업무' | src/shared/types.ts:642 | 8 |
-| Post | pinned | 선택 | boolean | src/shared/types.ts:643 | 6 |
-| Post | blocks | 선택 | ({ type: 'text'; text: string; format?: 'paragraph' \| 'heading' \| 'subheading' \| 'list'; bold?: boolean; link?: string } \| { type: 'image'; url: string; path: string; caption: string })[] | src/shared/types.ts:644 | 5 |
-| FileItem | id | 필수 | string | src/shared/types.ts:648 | 0 |
-| FileItem | name | 필수 | string | src/shared/types.ts:649 | 0 |
-| FileItem | type | 필수 | 'pdf' \| 'excel' \| 'image' \| 'word' | src/shared/types.ts:650 | 0 |
-| FileItem | size | 필수 | string | src/shared/types.ts:651 | 0 |
-| FileItem | date | 필수 | string | src/shared/types.ts:652 | 0 |
-| FileItem | uploader | 필수 | string | src/shared/types.ts:653 | 0 |
-| CabinetCategory | id | 필수 | string | src/shared/types.ts:659 | 2 |
-| CabinetCategory | companyId | 선택 | CompanyId | src/shared/types.ts:660 | 0 |
-| CabinetCategory | name | 필수 | string | src/shared/types.ts:661 | 12 |
-| CabinetCategory | order | 필수 | number | src/shared/types.ts:662 | 1 |
-| CabinetCategory | createdAt | 필수 | string | src/shared/types.ts:663 | 0 |
-| CabinetSubCategory | id | 필수 | string | src/shared/types.ts:667 | 2 |
-| CabinetSubCategory | companyId | 선택 | CompanyId | src/shared/types.ts:668 | 0 |
-| CabinetSubCategory | category | 필수 | string | src/shared/types.ts:669 | 6 |
-| CabinetSubCategory | name | 필수 | string | src/shared/types.ts:670 | 11 |
-| CabinetSubCategory | order | 필수 | number | src/shared/types.ts:671 | 1 |
-| CabinetSubCategory | createdAt | 필수 | string | src/shared/types.ts:672 | 0 |
-| CabinetDoc | id | 필수 | string | src/shared/types.ts:676 | 3 |
-| CabinetDoc | companyId | 선택 | CompanyId | src/shared/types.ts:677 | 0 |
-| CabinetDoc | category | 필수 | string | src/shared/types.ts:678 | 3 |
-| CabinetDoc | subCategory | 필수 | string | src/shared/types.ts:679 | 3 |
-| CabinetDoc | fileName | 필수 | string | src/shared/types.ts:680 | 5 |
-| CabinetDoc | storagePath | 필수 | string | src/shared/types.ts:681 | 1 |
-| CabinetDoc | downloadUrl | 필수 | string | src/shared/types.ts:682 | 1 |
-| CabinetDoc | size | 필수 | number | src/shared/types.ts:683 | 1 |
-| CabinetDoc | contentType | 필수 | string | src/shared/types.ts:684 | 1 |
-| CabinetDoc | note | 선택 | string | src/shared/types.ts:685 | 3 |
-| CabinetDoc | uploadedBy | 필수 | string | src/shared/types.ts:686 | 1 |
-| CabinetDoc | uploadedAt | 필수 | string | src/shared/types.ts:687 | 2 |
-| AnnualLeave | carryOverLeave | 필수 | number | src/shared/types.ts:694 | 7 |
-| AnnualLeave | bonusLeave | 필수 | number | src/shared/types.ts:695 | 7 |
-| Employee | id | 필수 | string | src/shared/types.ts:699 | 138 |
-| Employee | companyId | 선택 | CompanyId | src/shared/types.ts:701 | 4 |
-| Employee | name | 필수 | string | src/shared/types.ts:702 | 99 |
-| Employee | username | 선택 | string | src/shared/types.ts:703 | 1 |
-| Employee | position | 필수 | string | src/shared/types.ts:704 | 25 |
-| Employee | department | 필수 | string | src/shared/types.ts:705 | 21 |
-| Employee | joinDate | 필수 | string | src/shared/types.ts:706 | 12 |
-| Employee | status | 필수 | EmployeeStatus | src/shared/types.ts:707 | 5 |
-| Employee | phone | 필수 | string | src/shared/types.ts:708 | 9 |
-| Employee | birthDate | 선택 | string | src/shared/types.ts:709 | 1 |
-| Employee | annualLeave | 선택 | AnnualLeave | src/shared/types.ts:710 | 12 |
-| Employee | healthCertDate | 선택 | string | src/shared/types.ts:711 | 7 |
-| Employee | adminAccess | 선택 | boolean | src/shared/types.ts:716 | 2 |
-| Employee | fcmTokens | 선택 | string[] | src/shared/types.ts:721 | 1 |
-| Employee | fcmDevices | 선택 | Record<string, { name: string; at: string }> | src/shared/types.ts:732 | 1 |
-| PayrollLine | employeeId | 필수 | string | src/shared/types.ts:740 | 4 |
-| PayrollLine | employeeName | 필수 | string | src/shared/types.ts:741 | 3 |
-| PayrollLine | department | 선택 | string | src/shared/types.ts:742 | 3 |
-| PayrollLine | position | 선택 | string | src/shared/types.ts:743 | 2 |
-| PayrollLine | base | 필수 | number | src/shared/types.ts:744 | 2 |
-| PayrollLine | overtime | 선택 | number | src/shared/types.ts:745 | 2 |
-| PayrollLine | allowance | 선택 | number | src/shared/types.ts:746 | 2 |
-| PayrollLine | incomeTax | 선택 | number | src/shared/types.ts:747 | 2 |
-| PayrollLine | localTax | 선택 | number | src/shared/types.ts:748 | 2 |
-| PayrollLine | pension | 선택 | number | src/shared/types.ts:749 | 2 |
-| PayrollLine | health | 선택 | number | src/shared/types.ts:750 | 2 |
-| PayrollLine | employment | 선택 | number | src/shared/types.ts:751 | 2 |
-| PayrollLine | otherDeduct | 선택 | number | src/shared/types.ts:752 | 2 |
-| PayrollLine | note | 선택 | string | src/shared/types.ts:753 | 0 |
-| Payroll | id | 필수 | string | src/shared/types.ts:757 | 3 |
-| Payroll | companyId | 선택 | CompanyId | src/shared/types.ts:759 | 0 |
-| Payroll | yearMonth | 필수 | string | src/shared/types.ts:760 | 0 |
-| Payroll | payDate | 필수 | string | src/shared/types.ts:761 | 1 |
-| Payroll | lines | 필수 | PayrollLine[] | src/shared/types.ts:762 | 2 |
-| Payroll | cashEntryId | 선택 | string | src/shared/types.ts:763 | 1 |
-| Payroll | note | 선택 | string | src/shared/types.ts:764 | 0 |
-| Payroll | createdAt | 선택 | string | src/shared/types.ts:765 | 0 |
-| Payroll | updatedAt | 선택 | string | src/shared/types.ts:766 | 0 |
-| LeaveModifyRequest | startDate | 필수 | string | src/shared/types.ts:801 | 3 |
-| LeaveModifyRequest | endDate | 필수 | string | src/shared/types.ts:802 | 3 |
-| LeaveModifyRequest | reason | 필수 | string | src/shared/types.ts:803 | 3 |
-| LeaveModifyRequest | daysUsed | 필수 | number | src/shared/types.ts:804 | 3 |
-| LeaveModifyRequest | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:805 | 7 |
-| LeaveRequest | id | 필수 | string | src/shared/types.ts:809 | 19 |
-| LeaveRequest | employeeId | 필수 | string | src/shared/types.ts:810 | 8 |
-| LeaveRequest | employeeName | 필수 | string | src/shared/types.ts:811 | 6 |
-| LeaveRequest | type | 필수 | LeaveType | src/shared/types.ts:812 | 10 |
-| LeaveRequest | startDate | 필수 | string | src/shared/types.ts:813 | 17 |
-| LeaveRequest | endDate | 필수 | string | src/shared/types.ts:814 | 11 |
-| LeaveRequest | reason | 필수 | string | src/shared/types.ts:815 | 6 |
-| LeaveRequest | status | 필수 | LeaveStatus | src/shared/types.ts:816 | 24 |
-| LeaveRequest | requestedAt | 필수 | string | src/shared/types.ts:817 | 4 |
-| LeaveRequest | daysUsed | 필수 | number | src/shared/types.ts:818 | 10 |
-| LeaveRequest | deductsLeave | 선택 | boolean | src/shared/types.ts:824 | 1 |
-| LeaveRequest | modifyRequest | 선택 | LeaveModifyRequest | src/shared/types.ts:825 | 19 |
-| LeaveRequest | cancelledAt | 선택 | string | src/shared/types.ts:831 | 2 |
-| LeaveRequest | cancelledBy | 선택 | string | src/shared/types.ts:832 | 0 |
-| LeaveRequest | cancelledByName | 선택 | string | src/shared/types.ts:833 | 1 |
-| LeaveRequest | cancelReason | 선택 | string | src/shared/types.ts:834 | 2 |
-| ChatMessage | id | 필수 | string | src/shared/types.ts:838 | 18 |
-| ChatMessage | companyId | 선택 | CompanyId | src/shared/types.ts:839 | 2 |
-| ChatMessage | roomId | 필수 | string | src/shared/types.ts:840 | 7 |
-| ChatMessage | senderId | 필수 | string | src/shared/types.ts:841 | 11 |
-| ChatMessage | senderName | 필수 | string | src/shared/types.ts:842 | 9 |
-| ChatMessage | text | 필수 | string | src/shared/types.ts:843 | 20 |
-| ChatMessage | imageUrl | 선택 | string | src/shared/types.ts:844 | 4 |
-| ChatMessage | images | 선택 | string[] | src/shared/types.ts:851 | 2 |
-| ChatMessage | createdAt | 필수 | string | src/shared/types.ts:852 | 6 |
-| ChatMessage | mentions | 선택 | string[] | src/shared/types.ts:853 | 0 |
-| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:855 | 4 |
-| ChatMessage | fileName | 선택 | string | src/shared/types.ts:856 | 3 |
-| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:857 | 4 |
-| ChatMessage | replyTo | 선택 | { id: string; senderName: string; text: string } | src/shared/types.ts:862 | 3 |
-| ChatMessage | deletedAt | 선택 | string | src/shared/types.ts:867 | 4 |
-| ChatMessage | deletedBy | 선택 | string | src/shared/types.ts:868 | 0 |
-| ChatMessage | reactions | 선택 | Record<string, string[]> | src/shared/types.ts:874 | 6 |
-| ChatRoom | id | 필수 | string | src/shared/types.ts:878 | 25 |
-| ChatRoom | companyId | 선택 | CompanyId | src/shared/types.ts:879 | 0 |
-| ChatRoom | name | 선택 | string | src/shared/types.ts:881 | 4 |
-| ChatRoom | nameBy | 선택 | Record<string, string> | src/shared/types.ts:883 | 1 |
-| ChatRoom | createdBy | 선택 | string | src/shared/types.ts:885 | 0 |
-| ChatRoom | participantIds | 필수 | string[] | src/shared/types.ts:886 | 12 |
-| ChatRoom | participantCompanies | 선택 | Record<string, CompanyId> | src/shared/types.ts:888 | 0 |
-| ChatRoom | lastMessage | 선택 | string | src/shared/types.ts:889 | 1 |
-| ChatRoom | lastUpdatedAt | 필수 | string | src/shared/types.ts:890 | 5 |
-| ChatRoom | isGroup | 필수 | boolean | src/shared/types.ts:891 | 7 |
-| ChatRoom | lastReadBy | 선택 | Record<string, string> | src/shared/types.ts:892 | 5 |
-| ChatRoom | pinnedBy | 선택 | Record<string, string> | src/shared/types.ts:900 | 3 |
-| ChatRoom | notice | 선택 | RoomNotice \| null | src/shared/types.ts:908 | 2 |
-| RoomNotice | messageId | 필수 | string | src/shared/types.ts:914 | 1 |
-| RoomNotice | text | 필수 | string | src/shared/types.ts:915 | 2 |
-| RoomNotice | by | 필수 | string | src/shared/types.ts:917 | 0 |
-| RoomNotice | byName | 필수 | string | src/shared/types.ts:918 | 1 |
-| RoomNotice | at | 필수 | string | src/shared/types.ts:920 | 1 |
-| ProductionRecord | id | 필수 | string | src/shared/types.ts:928 | 9 |
-| ProductionRecord | date | 필수 | string | src/shared/types.ts:929 | 4 |
-| ProductionRecord | itemId | 필수 | string | src/shared/types.ts:930 | 8 |
-| ProductionRecord | itemName | 필수 | string | src/shared/types.ts:931 | 3 |
-| ProductionRecord | finishedQty | 필수 | number | src/shared/types.ts:932 | 3 |
-| ProductionRecord | wipUsed | 선택 | number | src/shared/types.ts:933 | 1 |
-| ProductionRecord | wipItemId | 선택 | string | src/shared/types.ts:934 | 0 |
-| ProductionRecord | wipItemName | 선택 | string | src/shared/types.ts:935 | 2 |
-| ProductionRecord | cost | 선택 | number | src/shared/types.ts:936 | 0 |
-| ProductionRecord | note | 선택 | string | src/shared/types.ts:937 | 2 |
-| ProductionRecord | createdBy | 선택 | string | src/shared/types.ts:938 | 0 |
-| ProductionRecord | createdAt | 필수 | string | src/shared/types.ts:939 | 0 |
-| FixedCostEntry | id | 필수 | string | src/shared/types.ts:946 | 0 |
-| FixedCostEntry | yearMonth | 필수 | string | src/shared/types.ts:947 | 1 |
-| FixedCostEntry | category | 필수 | FixedCostCategory | src/shared/types.ts:948 | 0 |
-| FixedCostEntry | label | 필수 | string | src/shared/types.ts:949 | 0 |
-| FixedCostEntry | amount | 필수 | number | src/shared/types.ts:950 | 1 |
-| FixedCostEntry | accountCode | 선택 | string | src/shared/types.ts:951 | 0 |
-| FixedCostEntry | note | 선택 | string | src/shared/types.ts:952 | 0 |
-| FixedCostEntry | createdAt | 필수 | string | src/shared/types.ts:953 | 0 |
-| FixedCostTemplate | statementType | 선택 | '매출' \| '매입' \| '비용' | src/shared/types.ts:957 | 2 |
-| FixedCostTemplate | companyId | 선택 | CompanyId | src/shared/types.ts:967 | 3 |
-| FixedCostTemplate | transferLines | 선택 | { accountCode: string; side: '차변' \| '대변'; name?: string }[] | src/shared/types.ts:969 | 7 |
-| FixedCostTemplate | id | 필수 | string | src/shared/types.ts:970 | 16 |
-| FixedCostTemplate | name | 필수 | string | src/shared/types.ts:971 | 19 |
-| FixedCostTemplate | amount | 필수 | number | src/shared/types.ts:972 | 14 |
-| FixedCostTemplate | category | 필수 | FixedCostCategory | src/shared/types.ts:973 | 1 |
-| FixedCostTemplate | active | 필수 | boolean | src/shared/types.ts:974 | 1 |
-| FixedCostTemplate | note | 선택 | string | src/shared/types.ts:975 | 1 |
-| FixedCostTemplate | accountCode | 선택 | string | src/shared/types.ts:977 | 15 |
-| FixedCostTemplate | partnerId | 선택 | string | src/shared/types.ts:978 | 4 |
-| FixedCostTemplate | partnerName | 선택 | string | src/shared/types.ts:979 | 11 |
-| FixedCostTemplate | startYm | 선택 | string | src/shared/types.ts:980 | 2 |
-| FixedCostTemplate | endYm | 선택 | string | src/shared/types.ts:981 | 1 |
-| FixedCostTemplate | kind | 선택 | 'recurring' \| 'voucher' | src/shared/types.ts:986 | 3 |
-| FixedCostTemplate | dir | 선택 | '입금' \| '출금' \| '줄돈' \| '받을돈' \| '대체' \| '회사이체' | src/shared/types.ts:999 | 3 |
-| FixedCostTemplate | mode | 선택 | '일반' \| '상환' \| '급여' \| '보험' \| '세금' | src/shared/types.ts:1000 | 22 |
-| FixedCostTemplate | insCorp | 선택 | number | src/shared/types.ts:1012 | 1 |
-| FixedCostTemplate | insEmp | 선택 | number | src/shared/types.ts:1012 | 1 |
-| FixedCostTemplate | principal | 선택 | number | src/shared/types.ts:1013 | 4 |
-| FixedCostTemplate | interest | 선택 | number | src/shared/types.ts:1013 | 4 |
-| FixedCostTemplate | gross | 선택 | number | src/shared/types.ts:1014 | 1 |
-| FixedCostTemplate | deduction | 선택 | number | src/shared/types.ts:1014 | 1 |
-| FixedCostTemplate | loanCode | 선택 | string | src/shared/types.ts:1016 | 4 |
-| FixedCostTemplate | loanId | 선택 | string | src/shared/types.ts:1018 | 6 |
-| FixedCostTemplate | vat | 선택 | number | src/shared/types.ts:1020 | 0 |
-| FixedCostTemplate | incomeTax | 선택 | number | src/shared/types.ts:1020 | 0 |
-| FixedCostTemplate | builtin | 선택 | string | src/shared/types.ts:1022 | 8 |
-| FixedCostTemplate | hidden | 선택 | boolean | src/shared/types.ts:1024 | 6 |
-| FixedCostTemplate | group | 선택 | string | src/shared/types.ts:1026 | 10 |
-| FixedCostTemplate | favorite | 선택 | boolean | src/shared/types.ts:1028 | 6 |
-| FixedCostTemplate | autoIssue | 선택 | boolean | src/shared/types.ts:1031 | 12 |
-| FixedCostTemplate | issueDay | 선택 | number | src/shared/types.ts:1033 | 11 |
-| FixedCostTemplate | taxExempt | 선택 | boolean | src/shared/types.ts:1035 | 2 |
-| FixedCostTemplate | itemName | 선택 | string | src/shared/types.ts:1040 | 2 |
-| IssuedStatementItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1062 | 1 |
-| IssuedStatementItem | purchaseQuantityKg | 선택 | number | src/shared/types.ts:1064 | 1 |
-| IssuedStatementItem | itemId | 선택 | string | src/shared/types.ts:1066 | 15 |
-| IssuedStatementItem | lineKind | 선택 | StatementLineKind | src/shared/types.ts:1068 | 1 |
-| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1069 | 27 |
-| IssuedStatementItem | spec | 필수 | string | src/shared/types.ts:1070 | 4 |
-| IssuedStatementItem | qty | 필수 | number | src/shared/types.ts:1071 | 19 |
-| IssuedStatementItem | price | 필수 | number | src/shared/types.ts:1072 | 2 |
-| IssuedStatementItem | supply | 필수 | number | src/shared/types.ts:1073 | 17 |
-| IssuedStatementItem | tax | 필수 | number | src/shared/types.ts:1074 | 13 |
-| IssuedStatementItem | total | 필수 | number | src/shared/types.ts:1075 | 21 |
-| IssuedStatementItem | isTaxExempt | 필수 | boolean | src/shared/types.ts:1076 | 4 |
-| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1081 | 20 |
-| IssuedStatementItem | side | 선택 | '차변' \| '대변' | src/shared/types.ts:1094 | 15 |
-| StatementParty | name | 필수 | string | src/shared/types.ts:1099 | 0 |
-| StatementParty | bizNo | 필수 | string | src/shared/types.ts:1100 | 0 |
-| StatementParty | ceo | 필수 | string | src/shared/types.ts:1101 | 0 |
-| StatementParty | addr | 필수 | string | src/shared/types.ts:1102 | 0 |
-| StatementParty | bizType | 필수 | string | src/shared/types.ts:1103 | 0 |
-| StatementParty | bizItem | 필수 | string | src/shared/types.ts:1104 | 0 |
-| StatementParty | tel | 필수 | string | src/shared/types.ts:1105 | 0 |
-| StatementParty | fax | 필수 | string | src/shared/types.ts:1106 | 0 |
-| StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1110 | 1 |
-| StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1111 | 1 |
-| IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1115 | 9 |
-| IssuedStatement | id | 필수 | string | src/shared/types.ts:1116 | 142 |
-| IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1118 | 4 |
-| IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1120 | 0 |
-| IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1121 | 0 |
-| IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1123 | 15 |
-| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1124 | 15 |
-| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1125 | 86 |
-| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1126 | 74 |
-| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1127 | 80 |
-| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1128 | 31 |
-| IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1129 | 8 |
-| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1130 | 43 |
-| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1131 | 8 |
-| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1132 | 9 |
-| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1133 | 56 |
-| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1134 | 62 |
-| IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1136 | 3 |
-| IssuedStatement | memo | 선택 | string | src/shared/types.ts:1141 | 5 |
-| IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1149 | 4 |
-| IssuedStatement | evidence | 선택 | string | src/shared/types.ts:1157 | 0 |
-| IssuedStatement | taxIssuedAt | 선택 | string | src/shared/types.ts:1158 | 9 |
-| IssuedStatement | exemptIssuedAt | 선택 | string | src/shared/types.ts:1164 | 0 |
-| IssuedStatement | cashDir | 선택 | '입금' \| '출금' | src/shared/types.ts:1165 | 0 |
-| PurchaseOrderItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1183 | 4 |
-| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1184 | 49 |
-| PurchaseOrderItem | name | 필수 | string | src/shared/types.ts:1185 | 24 |
-| PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1187 | 29 |
-| PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1188 | 12 |
-| PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1194 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1198 | 83 |
-| PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1200 | 5 |
-| PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1201 | 6 |
-| PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1202 | 1 |
-| PurchaseOrder | partnerId | 선택 | string | src/shared/types.ts:1203 | 17 |
-| PurchaseOrder | partnerName | 선택 | string | src/shared/types.ts:1204 | 21 |
-| PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1205 | 11 |
-| PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1206 | 1 |
-| PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1208 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1209 | 52 |
-| PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1210 | 2 |
-| PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1211 | 1 |
-| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1212 | 22 |
-| PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1217 | 2 |
-| PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1218 | 0 |
-| PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1219 | 11 |
-| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1220 | 3 |
-| PurchaseOrder | receivedAt | 선택 | string | src/shared/types.ts:1221 | 7 |
-| PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1222 | 16 |
-| PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1223 | 0 |
-| PurchaseOrder | note | 선택 | string | src/shared/types.ts:1224 | 1 |
-| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1228 | 30 |
-| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1230 | 5 |
-| PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1232 | 0 |
-| PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1234 | 1 |
-| PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1235 | 4 |
-| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1236 | 14 |
-| PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1237 | 1 |
-| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1239 | 3 |
-| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1240 | 16 |
-| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1241 | 8 |
-| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1242 | 3 |
-| PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1243 | 3 |
-| PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1244 | 1 |
-| PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1245 | 0 |
-| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1246 | 6 |
-| PurchaseOrder | oemReceivedBulk | 선택 | { material: string; kg: number }[] | src/shared/types.ts:1247 | 5 |
-| PurchaseOrder | oemFeePerKg | 선택 | number | src/shared/types.ts:1248 | 3 |
-| PurchaseOrder | oemReceiptOperationId | 선택 | string | src/shared/types.ts:1250 | 3 |
-| CompanyInfo | name | 필수 | string | src/shared/types.ts:1284 | 4 |
-| CompanyInfo | ceoName | 필수 | string | src/shared/types.ts:1285 | 3 |
-| CompanyInfo | bizNo | 필수 | string | src/shared/types.ts:1286 | 3 |
-| CompanyInfo | bizType | 필수 | string | src/shared/types.ts:1287 | 2 |
-| CompanyInfo | bizItem | 필수 | string | src/shared/types.ts:1288 | 2 |
-| CompanyInfo | address | 필수 | string | src/shared/types.ts:1289 | 3 |
-| CompanyInfo | phone | 선택 | string | src/shared/types.ts:1290 | 2 |
-| CompanyInfo | fax | 선택 | string | src/shared/types.ts:1291 | 2 |
-| CompanyInfo | email | 선택 | string | src/shared/types.ts:1292 | 0 |
-| CompanyInfo | bankAccount | 선택 | string | src/shared/types.ts:1293 | 3 |
-| CompanyInfo | adminPassword | 선택 | string | src/shared/types.ts:1294 | 2 |
-| ExpensePreset | id | 필수 | string | src/shared/types.ts:1299 | 2 |
-| ExpensePreset | name | 필수 | string | src/shared/types.ts:1300 | 2 |
-| ExpensePreset | price | 선택 | number | src/shared/types.ts:1301 | 2 |
-| ExpensePreset | taxType | 선택 | '과세' \| '면세' | src/shared/types.ts:1302 | 1 |
-| ExpensePreset | createdAt | 선택 | string | src/shared/types.ts:1303 | 0 |
-| AppNotification | id | 필수 | string | src/shared/types.ts:1307 | 5 |
-| AppNotification | type | 필수 | 'new_order' \| 'confirmation' \| 'mention' \| 'leave_request' \| 'inventory_shortage' | src/shared/types.ts:1308 | 8 |
-| AppNotification | title | 필수 | string | src/shared/types.ts:1309 | 1 |
-| AppNotification | body | 필수 | string | src/shared/types.ts:1310 | 3 |
-| AppNotification | readBy | 필수 | string[] | src/shared/types.ts:1311 | 4 |
-| AppNotification | dismissedBy | 선택 | string[] | src/shared/types.ts:1312 | 1 |
-| AppNotification | createdAt | 필수 | string | src/shared/types.ts:1313 | 3 |
-| AppNotification | linkedId | 선택 | string | src/shared/types.ts:1314 | 4 |
-| AppNotification | senderId | 선택 | string | src/shared/types.ts:1315 | 0 |
-| AppNotification | targetId | 선택 | string | src/shared/types.ts:1316 | 2 |
-| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1334 | 42 |
-| RawMaterialEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1336 | 5 |
-| RawMaterialEntry | rawItemId | 선택 | string | src/shared/types.ts:1347 | 13 |
-| RawMaterialEntry | kind | 선택 | RawMovementKind | src/shared/types.ts:1348 | 16 |
-| RawMaterialEntry | reversalOf | 선택 | string | src/shared/types.ts:1349 | 5 |
-| RawMaterialEntry | material | 필수 | string | src/shared/types.ts:1351 | 37 |
-| RawMaterialEntry | date | 필수 | string | src/shared/types.ts:1352 | 23 |
-| RawMaterialEntry | received | 필수 | number | src/shared/types.ts:1353 | 18 |
-| RawMaterialEntry | used | 필수 | number | src/shared/types.ts:1354 | 17 |
-| RawMaterialEntry | note | 필수 | string | src/shared/types.ts:1355 | 13 |
-| RawMaterialEntry | createdAt | 필수 | string | src/shared/types.ts:1356 | 12 |
-| RawMaterialEntry | recordedAt | 선택 | string | src/shared/types.ts:1358 | 7 |
-| RawMaterialEntry | sequence | 선택 | number | src/shared/types.ts:1360 | 3 |
-| RawMaterialEntry | effectiveAt | 선택 | string | src/shared/types.ts:1362 | 8 |
-| RawMaterialEntry | balanceAfterKg | 선택 | number | src/shared/types.ts:1364 | 3 |
-| RawMaterialEntry | addedBy | 선택 | string | src/shared/types.ts:1365 | 8 |
-| RawMaterialEntry | type | 선택 | 'auto' \| 'manual' \| 'correction' \| 'stocktake_unit' | src/shared/types.ts:1366 | 13 |
-| RawMaterialEntry | orderId | 선택 | string | src/shared/types.ts:1367 | 2 |
-| RawMaterialEntry | canSize | 선택 | number | src/shared/types.ts:1368 | 2 |
-| RawMaterialEntry | canSizeTag | 선택 | string | src/shared/types.ts:1369 | 2 |
-| RawMaterialEntry | canCount | 선택 | number | src/shared/types.ts:1370 | 4 |
-| RawMaterialEntry | unit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1371 | 7 |
-| RawMaterialEntry | originalAmount | 선택 | number | src/shared/types.ts:1373 | 1 |
-| RawMaterialEntry | originalUnit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1374 | 1 |
-| RawMaterialEntry | targetKg | 선택 | number | src/shared/types.ts:1375 | 14 |
-| RawMaterialEntry | targetLotId | 선택 | string | src/shared/types.ts:1377 | 4 |
-| ItemFormula | id | 필수 | string | src/shared/types.ts:1385 | 1 |
-| ItemFormula | parent_key | 필수 | string | src/shared/types.ts:1386 | 10 |
-| ItemFormula | child_name | 필수 | string | src/shared/types.ts:1387 | 6 |
-| ItemFormula | ratio | 필수 | number | src/shared/types.ts:1388 | 5 |
-| ItemFormula | yield_rate | 필수 | number | src/shared/types.ts:1389 | 4 |
-| ItemBom | id | 필수 | string | src/shared/types.ts:1394 | 4 |
-| ItemBom | parent_id | 필수 | string | src/shared/types.ts:1395 | 14 |
-| ItemBom | child_id | 필수 | string | src/shared/types.ts:1396 | 11 |
-| ItemBom | quantity | 필수 | number | src/shared/types.ts:1397 | 3 |
-| ReturnItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1406 | 1 |
-| ReturnItem | itemId | 필수 | string | src/shared/types.ts:1407 | 17 |
-| ReturnItem | name | 필수 | string | src/shared/types.ts:1408 | 8 |
-| ReturnItem | quantity | 필수 | number | src/shared/types.ts:1409 | 13 |
-| ReturnItem | price | 필수 | number | src/shared/types.ts:1410 | 3 |
-| ReturnItem | reason | 필수 | ReturnReason | src/shared/types.ts:1411 | 3 |
-| ReturnItem | isResellable | 필수 | boolean | src/shared/types.ts:1412 | 8 |
-| ReturnItem | supply | 선택 | number | src/shared/types.ts:1413 | 0 |
-| ReturnItem | tax | 선택 | number | src/shared/types.ts:1414 | 0 |
-| ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1415 | 0 |
-| ReturnRequest | id | 필수 | string | src/shared/types.ts:1419 | 15 |
-| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1420 | 4 |
-| ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1421 | 2 |
-| ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1422 | 3 |
-| ReturnRequest | partnerName | 필수 | string | src/shared/types.ts:1423 | 5 |
-| ReturnRequest | items | 필수 | ReturnItem[] | src/shared/types.ts:1424 | 16 |
-| ReturnRequest | totalAmount | 필수 | number | src/shared/types.ts:1425 | 3 |
-| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1426 | 17 |
-| ReturnRequest | returnType | 선택 | '매출' \| '매입' | src/shared/types.ts:1427 | 3 |
-| ReturnRequest | createdAt | 필수 | string | src/shared/types.ts:1428 | 7 |
-| ReturnRequest | createdBy | 선택 | string | src/shared/types.ts:1429 | 0 |
-| ReturnRequest | processedAt | 선택 | string | src/shared/types.ts:1430 | 4 |
-| ReturnRequest | processedBy | 선택 | string | src/shared/types.ts:1431 | 1 |
-| ReturnRequest | cancelledAt | 선택 | string | src/shared/types.ts:1432 | 13 |
-| ReturnRequest | cancelledBy | 선택 | string | src/shared/types.ts:1433 | 0 |
-| ReturnRequest | cancellationReceipt | 선택 | Record<string, unknown> | src/shared/types.ts:1434 | 0 |
-| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1435 | 8 |
-| ReturnRequest | payableAccountCode | 선택 | typeof AP \| typeof OTHER_PAYABLE | src/shared/types.ts:1436 | 0 |
-| ReturnRequest | note | 선택 | string | src/shared/types.ts:1437 | 3 |
-| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1441 | 11 |
-| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1442 | 2 |
-| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1443 | 1 |
-| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1444 | 1 |
-| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1445 | 1 |
-| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1446 | 3 |
-| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1455 | 2 |
-| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1456 | 1 |
-| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1457 | 1 |
-| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1458 | 1 |
-| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1459 | 2 |
-| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1460 | 0 |
-| AccountCode | id | 필수 | string | src/shared/types.ts:1467 | 27 |
-| AccountCode | code | 필수 | string | src/shared/types.ts:1468 | 104 |
-| AccountCode | name | 필수 | string | src/shared/types.ts:1469 | 60 |
-| AccountCode | groupId | 선택 | string | src/shared/types.ts:1470 | 11 |
-| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1472 | 18 |
-| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1473 | 10 |
-| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1474 | 1 |
-| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1479 | 0 |
-| AccountCode | note | 선택 | string | src/shared/types.ts:1480 | 0 |
-| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1485 | 37 |
-| JournalLine | debit | 필수 | number | src/shared/types.ts:1486 | 35 |
-| JournalLine | credit | 필수 | number | src/shared/types.ts:1487 | 31 |
-| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1488 | 13 |
-| JournalLine | note | 선택 | string | src/shared/types.ts:1489 | 1 |
-| JournalEntry | id | 필수 | string | src/shared/types.ts:1493 | 10 |
-| JournalEntry | date | 필수 | string | src/shared/types.ts:1494 | 17 |
-| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1495 | 33 |
-| JournalEntry | memo | 선택 | string | src/shared/types.ts:1496 | 3 |
-| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1497 | 9 |
-| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1498 | 16 |
-| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1499 | 0 |
-| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1500 | 0 |
-| AccountGroup | id | 필수 | string | src/shared/types.ts:1508 | 24 |
-| AccountGroup | name | 필수 | string | src/shared/types.ts:1509 | 9 |
-| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1510 | 6 |
-| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1511 | 4 |
-| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1514 | 1 |
-| AccountGroup | note | 선택 | string | src/shared/types.ts:1515 | 0 |
-| CashAccount | id | 필수 | string | src/shared/types.ts:1523 | 34 |
-| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1525 | 1 |
-| CashAccount | name | 필수 | string | src/shared/types.ts:1526 | 12 |
-| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1527 | 17 |
-| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1528 | 3 |
-| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1529 | 8 |
-| CashAccount | active | 필수 | boolean | src/shared/types.ts:1530 | 18 |
-| CashAccount | note | 선택 | string | src/shared/types.ts:1531 | 0 |
-| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1532 | 2 |
-| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1533 | 0 |
-| CashEntry | id | 필수 | string | src/shared/types.ts:1537 | 77 |
-| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1539 | 15 |
-| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1541 | 2 |
-| CashEntry | loanId | 선택 | string | src/shared/types.ts:1543 | 9 |
-| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1545 | 6 |
-| CashEntry | docNo | 선택 | string | src/shared/types.ts:1551 | 10 |
-| CashEntry | date | 필수 | string | src/shared/types.ts:1552 | 45 |
-| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1553 | 12 |
-| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1564 | 49 |
-| CashEntry | amount | 필수 | number | src/shared/types.ts:1565 | 31 |
-| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1566 | 49 |
-| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1567 | 18 |
-| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1568 | 24 |
-| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1575 | 28 |
-| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1591 | 0 |
-| CashEntry | note | 선택 | string | src/shared/types.ts:1592 | 23 |
-| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1593 | 14 |
-| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1594 | 5 |
-| Settlement | id | 필수 | string | src/shared/types.ts:1600 | 9 |
-| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1601 | 17 |
-| Settlement | statementId | 필수 | string | src/shared/types.ts:1602 | 14 |
-| Settlement | amount | 필수 | number | src/shared/types.ts:1603 | 9 |
-| Settlement | createdAt | 필수 | string | src/shared/types.ts:1604 | 0 |
-| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1608 | 5 |
-| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1611 | 0 |
-| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1612 | 8 |
-| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1613 | 5 |
-| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1614 | 1 |
-| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1617 | 3 |
-| CashFlowManual | id | 필수 | string | src/shared/types.ts:1622 | 0 |
-| CashFlowManual | month | 필수 | string | src/shared/types.ts:1623 | 3 |
-| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1624 | 1 |
-| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1625 | 1 |
-| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1626 | 1 |
-| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1627 | 1 |
-| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1628 | 1 |
-| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1629 | 1 |
-| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1630 | 4 |
-| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1631 | 4 |
-| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1635 | 10 |
-| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1636 | 1 |
-| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1637 | 12 |
-| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1638 | 2 |
-| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1639 | 2 |
-| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1640 | 3 |
-| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1642 | 2 |
-| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1644 | 2 |
-| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1646 | 5 |
-| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1648 | 1 |
-| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1650 | 1 |
-| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1658 | 19 |
-| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1659 | 1 |
-| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1660 | 9 |
-| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1661 | 3 |
-| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1662 | 6 |
-| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1663 | 9 |
-| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1664 | 31 |
-| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1665 | 4 |
-| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1666 | 11 |
-| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1667 | 4 |
-| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1668 | 3 |
-| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1669 | 4 |
-| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1671 | 3 |
-| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1672 | 5 |
-| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1673 | 2 |
+| OrderItem | lineId | 선택 | string | src/shared/types.ts:28 | 39 |
+| OrderItem | itemId | 필수 | string | src/shared/types.ts:29 | 118 |
+| OrderItem | name | 필수 | string | src/shared/types.ts:30 | 63 |
+| OrderItem | orderedAs | 선택 | string | src/shared/types.ts:44 | 0 |
+| OrderItem | quantity | 필수 | number | src/shared/types.ts:45 | 40 |
+| OrderItem | price | 필수 | number | src/shared/types.ts:46 | 7 |
+| OrderItem | checked | 선택 | boolean | src/shared/types.ts:47 | 37 |
+| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:48 | 6 |
+| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:49 | 5 |
+| OrderItem | mfgDate | 선택 | string | src/shared/types.ts:50 | 18 |
+| OrderItem | mfgBy | 선택 | string | src/shared/types.ts:51 | 2 |
+| OrderItem | mfgAt | 선택 | string | src/shared/types.ts:52 | 2 |
+| OrderItem | labelType | 선택 | '대기' \| '날인' \| '부착' | src/shared/types.ts:53 | 13 |
+| OrderItem | labelBy | 선택 | string | src/shared/types.ts:60 | 2 |
+| OrderItem | labelAt | 선택 | string | src/shared/types.ts:61 | 2 |
+| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:62 | 25 |
+| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:63 | 23 |
+| OrderItem | unitsPerBox | 선택 | number | src/shared/types.ts:64 | 7 |
+| OrderItem | boxType | 선택 | string | src/shared/types.ts:65 | 2 |
+| OrderItem | boxSubId | 선택 | string | src/shared/types.ts:66 | 1 |
+| OrderItem | displaySize | 선택 | string | src/shared/types.ts:67 | 4 |
+| OrderPallet | type | 필수 | string | src/shared/types.ts:71 | 16 |
+| OrderPallet | quantity | 필수 | number | src/shared/types.ts:72 | 17 |
+| OrderPallet | isExchange | 선택 | boolean | src/shared/types.ts:73 | 7 |
+| DeliveryBox | itemId | 필수 | string | src/shared/types.ts:77 | 3 |
+| DeliveryBox | name | 필수 | string | src/shared/types.ts:78 | 1 |
+| DeliveryBox | quantity | 필수 | number | src/shared/types.ts:79 | 2 |
+| PurchaseItem | id | 필수 | string | src/shared/types.ts:98 | 0 |
+| PurchaseItem | name | 필수 | string | src/shared/types.ts:99 | 0 |
+| ShipTo | id | 필수 | string | src/shared/types.ts:110 | 19 |
+| ShipTo | name | 필수 | string | src/shared/types.ts:111 | 12 |
+| ShipTo | archived | 선택 | boolean | src/shared/types.ts:113 | 11 |
+| PartnerItem | id | 필수 | string | src/shared/types.ts:117 | 25 |
+| PartnerItem | itemId | 필수 | string | src/shared/types.ts:118 | 69 |
+| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:119 | 62 |
+| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:120 | 28 |
+| PartnerItem | price | 선택 | number | src/shared/types.ts:121 | 29 |
+| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:122 | 13 |
+| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:131 | 21 |
+| PartnerItem | shipToIds | 선택 | string[] | src/shared/types.ts:145 | 1 |
+| PartnerItem | isSmartStore | 선택 | boolean | src/shared/types.ts:146 | 0 |
+| Partner | shipTos | 선택 | ShipTo[] | src/shared/types.ts:158 | 5 |
+| Partner | id | 필수 | string | src/shared/types.ts:159 | 189 |
+| Partner | name | 필수 | string | src/shared/types.ts:160 | 177 |
+| Partner | email | 선택 | string | src/shared/types.ts:161 | 4 |
+| Partner | phone | 선택 | string | src/shared/types.ts:162 | 6 |
+| Partner | type | 필수 | PartnerChannel | src/shared/types.ts:163 | 28 |
+| Partner | region | 선택 | string | src/shared/types.ts:164 | 8 |
+| Partner | address | 선택 | string | src/shared/types.ts:165 | 10 |
+| Partner | addressDetail | 선택 | string | src/shared/types.ts:166 | 8 |
+| Partner | ownerName | 선택 | string | src/shared/types.ts:167 | 6 |
+| Partner | bizNo | 선택 | string | src/shared/types.ts:168 | 6 |
+| Partner | tel | 선택 | string | src/shared/types.ts:169 | 7 |
+| Partner | mobile | 선택 | string | src/shared/types.ts:170 | 7 |
+| Partner | fax | 선택 | string | src/shared/types.ts:171 | 2 |
+| Partner | note | 선택 | string | src/shared/types.ts:172 | 3 |
+| Partner | partnerType | 선택 | PartnerType | src/shared/types.ts:173 | 8 |
+| Partner | companyId | 선택 | CompanyId | src/shared/types.ts:180 | 3 |
+| Partner | isOemFactory | 선택 | boolean | src/shared/types.ts:181 | 1 |
+| Partner | purchaseItems | 선택 | PurchaseItem[] | src/shared/types.ts:182 | 0 |
+| OrderRawInventoryTrace | material | 필수 | string | src/shared/types.ts:215 | 14 |
+| OrderRawInventoryTrace | rawItemId | 선택 | string | src/shared/types.ts:217 | 14 |
+| OrderRawInventoryTrace | operationId | 선택 | string | src/shared/types.ts:219 | 20 |
+| OrderRawInventoryTrace | ledgerId | 선택 | string | src/shared/types.ts:221 | 3 |
+| OrderRawInventoryTrace | ledgerOnly | 선택 | boolean | src/shared/types.ts:223 | 11 |
+| OrderRawInventoryTrace | lotId | 선택 | string | src/shared/types.ts:224 | 8 |
+| OrderRawInventoryTrace | lotNo | 선택 | string | src/shared/types.ts:225 | 4 |
+| OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:226 | 3 |
+| OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:227 | 3 |
+| OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:228 | 13 |
+| Order | id | 필수 | string | src/shared/types.ts:232 | 260 |
+| Order | companyId | 선택 | CompanyId | src/shared/types.ts:234 | 1 |
+| Order | cardNo | 선택 | string | src/shared/types.ts:245 | 5 |
+| Order | createdBy | 선택 | string | src/shared/types.ts:250 | 1 |
+| Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:252 | 1 |
+| Order | partnerId | 선택 | string | src/shared/types.ts:253 | 58 |
+| Order | partnerName | 필수 | string | src/shared/types.ts:254 | 91 |
+| Order | items | 필수 | OrderItem[] | src/shared/types.ts:255 | 146 |
+| Order | note | 선택 | string | src/shared/types.ts:257 | 14 |
+| Order | noteImportant | 선택 | boolean | src/shared/types.ts:258 | 4 |
+| Order | noteBy | 선택 | string | src/shared/types.ts:259 | 2 |
+| Order | noteAt | 선택 | string | src/shared/types.ts:260 | 2 |
+| Order | totalAmount | 필수 | number | src/shared/types.ts:261 | 0 |
+| Order | status | 필수 | OrderStatus | src/shared/types.ts:262 | 130 |
+| Order | createdAt | 필수 | string | src/shared/types.ts:263 | 55 |
+| Order | deliveryDate | 필수 | string | src/shared/types.ts:264 | 58 |
+| Order | email | 필수 | string | src/shared/types.ts:265 | 0 |
+| Order | purpose | 선택 | 'stock-production' | src/shared/types.ts:267 | 1 |
+| Order | source | 필수 | OrderSource | src/shared/types.ts:268 | 33 |
+| Order | pallets | 선택 | OrderPallet[] | src/shared/types.ts:269 | 20 |
+| Order | region | 선택 | string | src/shared/types.ts:270 | 0 |
+| Order | shipToId | 선택 | string | src/shared/types.ts:278 | 5 |
+| Order | deliveryBoxes | 선택 | DeliveryBox[] | src/shared/types.ts:279 | 10 |
+| Order | shipMethod | 선택 | ShipMethod \| '직접수령' | src/shared/types.ts:281 | 0 |
+| Order | invoicePrinted | 선택 | boolean | src/shared/types.ts:282 | 16 |
+| Order | invoiceStage | 선택 | 'printed' \| 'attached' | src/shared/types.ts:291 | 2 |
+| Order | invoiceType | 선택 | InvoiceType | src/shared/types.ts:293 | 2 |
+| Order | shipmentConfirmedBy | 선택 | string \| null | src/shared/types.ts:294 | 3 |
+| Order | shipmentConfirmedAt | 선택 | string \| null | src/shared/types.ts:295 | 5 |
+| Order | deliveredAt | 선택 | string | src/shared/types.ts:296 | 13 |
+| Order | documentDate | 선택 | string | src/shared/types.ts:297 | 0 |
+| Order | accountingExcluded | 선택 | boolean | src/shared/types.ts:303 | 3 |
+| Order | accountingExclusionReason | 선택 | string | src/shared/types.ts:304 | 2 |
+| Order | accountingExcludedAt | 선택 | string | src/shared/types.ts:305 | 0 |
+| Order | accountingExcludedBy | 선택 | string | src/shared/types.ts:306 | 0 |
+| Order | rawLotsDeducted | 선택 | boolean | src/shared/types.ts:307 | 3 |
+| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:308 | 17 |
+| Order | rawInventoryAttempt | 선택 | number | src/shared/types.ts:310 | 5 |
+| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:316 | 7 |
+| Order | autoBuilt | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:317 | 12 |
+| Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:318 | 15 |
+| Order | producedAt | 선택 | string | src/shared/types.ts:320 | 23 |
+| Order | shippedOut | 선택 | boolean | src/shared/types.ts:321 | 14 |
+| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:326 | 30 |
+| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:336 | 18 |
+| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:338 | 17 |
+| OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:353 | 0 |
+| OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:354 | 4 |
+| OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:355 | 3 |
+| OrderItemInventoryState | applied | 필수 | boolean | src/shared/types.ts:356 | 15 |
+| OrderItemInventoryState | attempt | 필수 | number | src/shared/types.ts:357 | 6 |
+| OrderItemInventoryState | completedAt | 선택 | string | src/shared/types.ts:358 | 8 |
+| OrderItemInventoryState | reversedAt | 선택 | string | src/shared/types.ts:359 | 0 |
+| OrderItemInventoryState | rawConsumedLots | 필수 | OrderRawInventoryTrace[] | src/shared/types.ts:360 | 9 |
+| OrderItemInventoryState | autoBuilt | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:361 | 4 |
+| OrderItemInventoryState | producedUnits | 필수 | { itemId: string; qty: number }[] | src/shared/types.ts:362 | 5 |
+| OrderItemInventoryState | production | 필수 | OrderInventorySnapshot | src/shared/types.ts:363 | 21 |
+| OrderInventoryAdjustment | itemId | 필수 | string | src/shared/types.ts:367 | 18 |
+| OrderInventoryAdjustment | delta | 필수 | number | src/shared/types.ts:368 | 14 |
+| OrderRawCalculationEvidence | productId | 필수 | string | src/shared/types.ts:373 | 2 |
+| OrderRawCalculationEvidence | spec | 필수 | string | src/shared/types.ts:374 | 1 |
+| OrderRawCalculationEvidence | units | 필수 | number | src/shared/types.ts:375 | 1 |
+| OrderRawCalculationEvidence | raw | 필수 | string | src/shared/types.ts:376 | 3 |
+| OrderRawCalculationEvidence | kg | 필수 | number | src/shared/types.ts:377 | 3 |
+| OrderRawCalculationEvidence | path | 필수 | 'bom-direct' \| 'bom-formula' \| 'formula-fallback' \| 'bulk' | src/shared/types.ts:378 | 1 |
+| OrderRawCalculationEvidence | childItemId | 선택 | string | src/shared/types.ts:379 | 1 |
+| OrderRawCalculationEvidence | bomQuantityKg | 선택 | number | src/shared/types.ts:380 | 1 |
+| OrderRawCalculationEvidence | formulaName | 선택 | string | src/shared/types.ts:381 | 1 |
+| OrderRawCalculationEvidence | ratio | 선택 | number | src/shared/types.ts:382 | 1 |
+| OrderRawCalculationEvidence | convertedKg | 선택 | number | src/shared/types.ts:383 | 1 |
+| OrderInventorySnapshot | capturedAt | 필수 | string | src/shared/types.ts:387 | 16 |
+| OrderInventorySnapshot | rawCalculationEvidence | 선택 | OrderRawCalculationEvidence[] | src/shared/types.ts:388 | 4 |
+| OrderInventorySnapshot | stockDeltas | 필수 | OrderInventoryAdjustment[] | src/shared/types.ts:389 | 19 |
+| OrderInventorySnapshot | bomLines | 필수 | { parentItemId: string; childItemId: string; quantity: number }[] | src/shared/types.ts:390 | 3 |
+| OrderInventorySnapshot | rawConsumedLots | 선택 | Order['rawConsumedLots'] | src/shared/types.ts:391 | 13 |
+| OrderInventorySnapshot | productConsumedLots | 선택 | Order['productConsumedLots'] | src/shared/types.ts:392 | 6 |
+| OrderInventorySnapshot | productProducedLots | 선택 | { itemId: string; lotId: string; qty: number }[] | src/shared/types.ts:393 | 6 |
+| OrderInventorySnapshot | rawLedgerIds | 선택 | string[] | src/shared/types.ts:394 | 7 |
+| OrderStatusAudit | id | 필수 | string | src/shared/types.ts:398 | 0 |
+| OrderStatusAudit | orderId | 필수 | string | src/shared/types.ts:399 | 0 |
+| OrderStatusAudit | partnerName | 필수 | string | src/shared/types.ts:400 | 0 |
+| OrderStatusAudit | previousStatus | 필수 | OrderStatus | src/shared/types.ts:401 | 1 |
+| OrderStatusAudit | nextStatus | 필수 | OrderStatus | src/shared/types.ts:402 | 1 |
+| OrderStatusAudit | approvedBy | 필수 | string | src/shared/types.ts:403 | 1 |
+| OrderStatusAudit | approvedAt | 필수 | string | src/shared/types.ts:404 | 1 |
+| OrderStatusAudit | completedAt | 선택 | string | src/shared/types.ts:405 | 1 |
+| OrderStatusAudit | state | 필수 | 'processing' \| 'completed' \| 'failed' | src/shared/types.ts:406 | 3 |
+| OrderStatusAudit | legacyEvidenceWarning | 필수 | boolean | src/shared/types.ts:407 | 1 |
+| OrderStatusAudit | stockAdjustments | 필수 | Array<OrderInventoryAdjustment & { name: string; unit: string }> | src/shared/types.ts:408 | 1 |
+| OrderStatusAudit | error | 선택 | string | src/shared/types.ts:409 | 1 |
+| OrderItemEdit | id | 필수 | string | src/shared/types.ts:419 | 0 |
+| OrderItemEdit | orderId | 필수 | string | src/shared/types.ts:420 | 0 |
+| OrderItemEdit | at | 필수 | string | src/shared/types.ts:421 | 1 |
+| OrderItemEdit | by | 필수 | string | src/shared/types.ts:422 | 1 |
+| OrderItemEdit | changes | 필수 | string[] | src/shared/types.ts:424 | 1 |
+| SubmaterialComponent | id | 필수 | string | src/shared/types.ts:428 | 13 |
+| SubmaterialComponent | name | 필수 | string | src/shared/types.ts:429 | 2 |
+| SubmaterialComponent | category | 필수 | InventoryCategory \| string | src/shared/types.ts:430 | 0 |
+| SubmaterialComponent | stock | 필수 | number | src/shared/types.ts:431 | 8 |
+| SubmaterialComponent | unit | 필수 | string | src/shared/types.ts:432 | 1 |
+| SubmaterialComponent | spec | 선택 | string | src/shared/types.ts:433 | 0 |
+| SubmaterialComponent | cost | 선택 | number | src/shared/types.ts:434 | 0 |
+| SubmaterialComponent | qrCode | 선택 | string | src/shared/types.ts:435 | 0 |
+| ItemInventoryReservation | operationId | 필수 | string | src/shared/types.ts:481 | 2 |
+| ItemInventoryReservation | orderId | 필수 | string | src/shared/types.ts:482 | 9 |
+| ItemInventoryReservation | qty | 필수 | number | src/shared/types.ts:483 | 7 |
+| ItemInventoryReservation | createdAt | 필수 | string | src/shared/types.ts:484 | 1 |
+| ItemInventoryReservation | state | 필수 | 'processing' \| 'allocated' | src/shared/types.ts:486 | 3 |
+| ItemStocktakeAnchor | id | 필수 | string | src/shared/types.ts:490 | 4 |
+| ItemStocktakeAnchor | date | 필수 | string | src/shared/types.ts:491 | 3 |
+| ItemStocktakeAnchor | createdAt | 필수 | string | src/shared/types.ts:492 | 2 |
+| ItemStocktakeAnchor | targetQty | 필수 | number | src/shared/types.ts:493 | 1 |
+| ItemStocktakeAnchor | beforeQty | 필수 | number | src/shared/types.ts:494 | 1 |
+| ItemStocktakeAnchor | deltaQty | 필수 | number | src/shared/types.ts:495 | 0 |
+| ItemStocktakeAnchor | note | 선택 | string | src/shared/types.ts:496 | 1 |
+| ItemStocktakeAnchor | request | 선택 | ProductStocktakeRequest | src/shared/types.ts:498 | 0 |
+| Item | id | 필수 | string | src/shared/types.ts:503 | 695 |
+| Item | companyId | 선택 | CompanyId | src/shared/types.ts:515 | 3 |
+| Item | name | 필수 | string | src/shared/types.ts:516 | 293 |
+| Item | sku | 선택 | string | src/shared/types.ts:517 | 0 |
+| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:519 | 131 |
+| Item | category | 선택 | ItemSubtype \| string | src/shared/types.ts:520 | 36 |
+| Item | subtype | 선택 | string | src/shared/types.ts:521 | 20 |
+| Item | cost | 선택 | number | src/shared/types.ts:522 | 20 |
+| Item | costSource | 선택 | 'rollup' \| 'manual' | src/shared/types.ts:531 | 2 |
+| Item | lotsAreTotal | 선택 | never | src/shared/types.ts:560 | 0 |
+| Item | stock | 필수 | number | src/shared/types.ts:562 | 61 |
+| Item | inventoryReservations | 선택 | ItemInventoryReservation[] | src/shared/types.ts:564 | 4 |
+| Item | stocktakeAnchors | 선택 | ItemStocktakeAnchor[] | src/shared/types.ts:566 | 4 |
+| Item | density | 선택 | number | src/shared/types.ts:572 | 15 |
+| Item | minStock | 필수 | number | src/shared/types.ts:573 | 22 |
+| Item | unit | 필수 | string | src/shared/types.ts:574 | 113 |
+| Item | image | 필수 | string | src/shared/types.ts:575 | 3 |
+| Item | imagePath | 선택 | string | src/shared/types.ts:577 | 5 |
+| Item | oil | 선택 | string | src/shared/types.ts:578 | 3 |
+| Item | partnerIds | 선택 | string[] | src/shared/types.ts:579 | 0 |
+| Item | freightType | 선택 | 's' \| 'a' \| 'b' \| 'c' \| 'd' \| 'e' | src/shared/types.ts:580 | 3 |
+| Item | 품목 | 선택 | string | src/shared/types.ts:583 | 13 |
+| Item | 품목이력 | 선택 | { 품목: string; until: string }[] | src/shared/types.ts:585 | 1 |
+| Item | spec | 선택 | string | src/shared/types.ts:586 | 100 |
+| Item | isSmartStore | 선택 | boolean | src/shared/types.ts:587 | 1 |
+| Item | smartStorePrice | 선택 | number | src/shared/types.ts:588 | 4 |
+| Item | procureType | 선택 | '완사입' \| '임가공' | src/shared/types.ts:591 | 5 |
+| Item | unpackable | 선택 | boolean | src/shared/types.ts:601 | 2 |
+| Item | rawMaterialName | 선택 | string | src/shared/types.ts:602 | 7 |
+| Item | packageType | 선택 | string | src/shared/types.ts:603 | 3 |
+| Item | packageKg | 선택 | number | src/shared/types.ts:604 | 2 |
+| Item | lots | 선택 | RawMaterialLot[] | src/shared/types.ts:605 | 39 |
+| Item | mixEnabled | 선택 | boolean | src/shared/types.ts:606 | 4 |
+| Item | mixTopPercent | 선택 | number | src/shared/types.ts:607 | 3 |
+| Item | mixLotRatios | 선택 | { lotId: string; percent: number }[] | src/shared/types.ts:608 | 8 |
+| Item | phantom | 선택 | boolean | src/shared/types.ts:609 | 12 |
+| Item | archived | 선택 | boolean | src/shared/types.ts:611 | 38 |
+| PalletStock | id | 필수 | string | src/shared/types.ts:616 | 35 |
+| PalletStock | name | 필수 | string | src/shared/types.ts:617 | 25 |
+| PalletStock | total | 필수 | number | src/shared/types.ts:618 | 10 |
+| PalletStock | inUse | 필수 | number | src/shared/types.ts:620 | 0 |
+| PalletStock | damaged | 필수 | number | src/shared/types.ts:621 | 6 |
+| PalletStock | hidden | 선택 | boolean | src/shared/types.ts:622 | 9 |
+| PalletTransaction | id | 필수 | string | src/shared/types.ts:626 | 12 |
+| PalletTransaction | partnerId | 필수 | string | src/shared/types.ts:627 | 6 |
+| PalletTransaction | palletId | 필수 | string | src/shared/types.ts:628 | 6 |
+| PalletTransaction | type | 필수 | 'in' \| 'out' | src/shared/types.ts:629 | 9 |
+| PalletTransaction | quantity | 필수 | number | src/shared/types.ts:630 | 13 |
+| PalletTransaction | date | 필수 | string | src/shared/types.ts:631 | 6 |
+| PalletTransaction | note | 선택 | string | src/shared/types.ts:632 | 2 |
+| PalletTransaction | status | 선택 | '교체중' \| '교체완료' | src/shared/types.ts:633 | 3 |
+| PalletTransaction | exchangeReturnQty | 선택 | number | src/shared/types.ts:634 | 2 |
+| PalletTransaction | isTransfer | 선택 | boolean | src/shared/types.ts:635 | 5 |
+| Post | id | 필수 | string | src/shared/types.ts:640 | 6 |
+| Post | title | 필수 | string | src/shared/types.ts:641 | 5 |
+| Post | author | 필수 | string | src/shared/types.ts:642 | 4 |
+| Post | content | 필수 | string | src/shared/types.ts:643 | 3 |
+| Post | date | 필수 | string | src/shared/types.ts:644 | 4 |
+| Post | tag | 필수 | '공지' \| '긴급' \| '매뉴얼' \| '업무' | src/shared/types.ts:645 | 8 |
+| Post | pinned | 선택 | boolean | src/shared/types.ts:646 | 6 |
+| Post | blocks | 선택 | ({ type: 'text'; text: string; format?: 'paragraph' \| 'heading' \| 'subheading' \| 'list'; bold?: boolean; link?: string } \| { type: 'image'; url: string; path: string; caption: string })[] | src/shared/types.ts:647 | 5 |
+| FileItem | id | 필수 | string | src/shared/types.ts:651 | 0 |
+| FileItem | name | 필수 | string | src/shared/types.ts:652 | 0 |
+| FileItem | type | 필수 | 'pdf' \| 'excel' \| 'image' \| 'word' | src/shared/types.ts:653 | 0 |
+| FileItem | size | 필수 | string | src/shared/types.ts:654 | 0 |
+| FileItem | date | 필수 | string | src/shared/types.ts:655 | 0 |
+| FileItem | uploader | 필수 | string | src/shared/types.ts:656 | 0 |
+| CabinetCategory | id | 필수 | string | src/shared/types.ts:662 | 2 |
+| CabinetCategory | companyId | 선택 | CompanyId | src/shared/types.ts:663 | 0 |
+| CabinetCategory | name | 필수 | string | src/shared/types.ts:664 | 12 |
+| CabinetCategory | order | 필수 | number | src/shared/types.ts:665 | 1 |
+| CabinetCategory | createdAt | 필수 | string | src/shared/types.ts:666 | 0 |
+| CabinetSubCategory | id | 필수 | string | src/shared/types.ts:670 | 2 |
+| CabinetSubCategory | companyId | 선택 | CompanyId | src/shared/types.ts:671 | 0 |
+| CabinetSubCategory | category | 필수 | string | src/shared/types.ts:672 | 6 |
+| CabinetSubCategory | name | 필수 | string | src/shared/types.ts:673 | 11 |
+| CabinetSubCategory | order | 필수 | number | src/shared/types.ts:674 | 1 |
+| CabinetSubCategory | createdAt | 필수 | string | src/shared/types.ts:675 | 0 |
+| CabinetDoc | id | 필수 | string | src/shared/types.ts:679 | 3 |
+| CabinetDoc | companyId | 선택 | CompanyId | src/shared/types.ts:680 | 0 |
+| CabinetDoc | category | 필수 | string | src/shared/types.ts:681 | 3 |
+| CabinetDoc | subCategory | 필수 | string | src/shared/types.ts:682 | 3 |
+| CabinetDoc | fileName | 필수 | string | src/shared/types.ts:683 | 5 |
+| CabinetDoc | storagePath | 필수 | string | src/shared/types.ts:684 | 1 |
+| CabinetDoc | downloadUrl | 필수 | string | src/shared/types.ts:685 | 1 |
+| CabinetDoc | size | 필수 | number | src/shared/types.ts:686 | 1 |
+| CabinetDoc | contentType | 필수 | string | src/shared/types.ts:687 | 1 |
+| CabinetDoc | note | 선택 | string | src/shared/types.ts:688 | 3 |
+| CabinetDoc | uploadedBy | 필수 | string | src/shared/types.ts:689 | 1 |
+| CabinetDoc | uploadedAt | 필수 | string | src/shared/types.ts:690 | 2 |
+| AnnualLeave | carryOverLeave | 필수 | number | src/shared/types.ts:697 | 7 |
+| AnnualLeave | bonusLeave | 필수 | number | src/shared/types.ts:698 | 7 |
+| Employee | id | 필수 | string | src/shared/types.ts:702 | 138 |
+| Employee | companyId | 선택 | CompanyId | src/shared/types.ts:704 | 4 |
+| Employee | name | 필수 | string | src/shared/types.ts:705 | 99 |
+| Employee | username | 선택 | string | src/shared/types.ts:706 | 1 |
+| Employee | position | 필수 | string | src/shared/types.ts:707 | 25 |
+| Employee | department | 필수 | string | src/shared/types.ts:708 | 21 |
+| Employee | joinDate | 필수 | string | src/shared/types.ts:709 | 12 |
+| Employee | status | 필수 | EmployeeStatus | src/shared/types.ts:710 | 5 |
+| Employee | phone | 필수 | string | src/shared/types.ts:711 | 9 |
+| Employee | birthDate | 선택 | string | src/shared/types.ts:712 | 1 |
+| Employee | annualLeave | 선택 | AnnualLeave | src/shared/types.ts:713 | 12 |
+| Employee | healthCertDate | 선택 | string | src/shared/types.ts:714 | 7 |
+| Employee | adminAccess | 선택 | boolean | src/shared/types.ts:719 | 2 |
+| Employee | fcmTokens | 선택 | string[] | src/shared/types.ts:724 | 1 |
+| Employee | fcmDevices | 선택 | Record<string, { name: string; at: string }> | src/shared/types.ts:735 | 1 |
+| PayrollLine | employeeId | 필수 | string | src/shared/types.ts:743 | 4 |
+| PayrollLine | employeeName | 필수 | string | src/shared/types.ts:744 | 3 |
+| PayrollLine | department | 선택 | string | src/shared/types.ts:745 | 3 |
+| PayrollLine | position | 선택 | string | src/shared/types.ts:746 | 2 |
+| PayrollLine | base | 필수 | number | src/shared/types.ts:747 | 2 |
+| PayrollLine | overtime | 선택 | number | src/shared/types.ts:748 | 2 |
+| PayrollLine | allowance | 선택 | number | src/shared/types.ts:749 | 2 |
+| PayrollLine | incomeTax | 선택 | number | src/shared/types.ts:750 | 2 |
+| PayrollLine | localTax | 선택 | number | src/shared/types.ts:751 | 2 |
+| PayrollLine | pension | 선택 | number | src/shared/types.ts:752 | 2 |
+| PayrollLine | health | 선택 | number | src/shared/types.ts:753 | 2 |
+| PayrollLine | employment | 선택 | number | src/shared/types.ts:754 | 2 |
+| PayrollLine | otherDeduct | 선택 | number | src/shared/types.ts:755 | 2 |
+| PayrollLine | note | 선택 | string | src/shared/types.ts:756 | 0 |
+| Payroll | id | 필수 | string | src/shared/types.ts:760 | 3 |
+| Payroll | companyId | 선택 | CompanyId | src/shared/types.ts:762 | 0 |
+| Payroll | yearMonth | 필수 | string | src/shared/types.ts:763 | 0 |
+| Payroll | payDate | 필수 | string | src/shared/types.ts:764 | 1 |
+| Payroll | lines | 필수 | PayrollLine[] | src/shared/types.ts:765 | 2 |
+| Payroll | cashEntryId | 선택 | string | src/shared/types.ts:766 | 1 |
+| Payroll | note | 선택 | string | src/shared/types.ts:767 | 0 |
+| Payroll | createdAt | 선택 | string | src/shared/types.ts:768 | 0 |
+| Payroll | updatedAt | 선택 | string | src/shared/types.ts:769 | 0 |
+| LeaveModifyRequest | startDate | 필수 | string | src/shared/types.ts:804 | 3 |
+| LeaveModifyRequest | endDate | 필수 | string | src/shared/types.ts:805 | 3 |
+| LeaveModifyRequest | reason | 필수 | string | src/shared/types.ts:806 | 3 |
+| LeaveModifyRequest | daysUsed | 필수 | number | src/shared/types.ts:807 | 3 |
+| LeaveModifyRequest | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:808 | 7 |
+| LeaveRequest | id | 필수 | string | src/shared/types.ts:812 | 19 |
+| LeaveRequest | employeeId | 필수 | string | src/shared/types.ts:813 | 8 |
+| LeaveRequest | employeeName | 필수 | string | src/shared/types.ts:814 | 6 |
+| LeaveRequest | type | 필수 | LeaveType | src/shared/types.ts:815 | 10 |
+| LeaveRequest | startDate | 필수 | string | src/shared/types.ts:816 | 17 |
+| LeaveRequest | endDate | 필수 | string | src/shared/types.ts:817 | 11 |
+| LeaveRequest | reason | 필수 | string | src/shared/types.ts:818 | 6 |
+| LeaveRequest | status | 필수 | LeaveStatus | src/shared/types.ts:819 | 24 |
+| LeaveRequest | requestedAt | 필수 | string | src/shared/types.ts:820 | 4 |
+| LeaveRequest | daysUsed | 필수 | number | src/shared/types.ts:821 | 10 |
+| LeaveRequest | deductsLeave | 선택 | boolean | src/shared/types.ts:827 | 1 |
+| LeaveRequest | modifyRequest | 선택 | LeaveModifyRequest | src/shared/types.ts:828 | 19 |
+| LeaveRequest | cancelledAt | 선택 | string | src/shared/types.ts:834 | 2 |
+| LeaveRequest | cancelledBy | 선택 | string | src/shared/types.ts:835 | 0 |
+| LeaveRequest | cancelledByName | 선택 | string | src/shared/types.ts:836 | 1 |
+| LeaveRequest | cancelReason | 선택 | string | src/shared/types.ts:837 | 2 |
+| ChatMessage | id | 필수 | string | src/shared/types.ts:841 | 18 |
+| ChatMessage | companyId | 선택 | CompanyId | src/shared/types.ts:842 | 2 |
+| ChatMessage | roomId | 필수 | string | src/shared/types.ts:843 | 7 |
+| ChatMessage | senderId | 필수 | string | src/shared/types.ts:844 | 11 |
+| ChatMessage | senderName | 필수 | string | src/shared/types.ts:845 | 9 |
+| ChatMessage | text | 필수 | string | src/shared/types.ts:846 | 20 |
+| ChatMessage | imageUrl | 선택 | string | src/shared/types.ts:847 | 4 |
+| ChatMessage | images | 선택 | string[] | src/shared/types.ts:854 | 2 |
+| ChatMessage | createdAt | 필수 | string | src/shared/types.ts:855 | 6 |
+| ChatMessage | mentions | 선택 | string[] | src/shared/types.ts:856 | 0 |
+| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:858 | 4 |
+| ChatMessage | fileName | 선택 | string | src/shared/types.ts:859 | 3 |
+| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:860 | 4 |
+| ChatMessage | replyTo | 선택 | { id: string; senderName: string; text: string } | src/shared/types.ts:865 | 3 |
+| ChatMessage | deletedAt | 선택 | string | src/shared/types.ts:870 | 4 |
+| ChatMessage | deletedBy | 선택 | string | src/shared/types.ts:871 | 0 |
+| ChatMessage | reactions | 선택 | Record<string, string[]> | src/shared/types.ts:877 | 6 |
+| ChatRoom | id | 필수 | string | src/shared/types.ts:881 | 25 |
+| ChatRoom | companyId | 선택 | CompanyId | src/shared/types.ts:882 | 0 |
+| ChatRoom | name | 선택 | string | src/shared/types.ts:884 | 4 |
+| ChatRoom | nameBy | 선택 | Record<string, string> | src/shared/types.ts:886 | 1 |
+| ChatRoom | createdBy | 선택 | string | src/shared/types.ts:888 | 0 |
+| ChatRoom | participantIds | 필수 | string[] | src/shared/types.ts:889 | 12 |
+| ChatRoom | participantCompanies | 선택 | Record<string, CompanyId> | src/shared/types.ts:891 | 0 |
+| ChatRoom | lastMessage | 선택 | string | src/shared/types.ts:892 | 1 |
+| ChatRoom | lastUpdatedAt | 필수 | string | src/shared/types.ts:893 | 5 |
+| ChatRoom | isGroup | 필수 | boolean | src/shared/types.ts:894 | 7 |
+| ChatRoom | lastReadBy | 선택 | Record<string, string> | src/shared/types.ts:895 | 5 |
+| ChatRoom | pinnedBy | 선택 | Record<string, string> | src/shared/types.ts:903 | 3 |
+| ChatRoom | notice | 선택 | RoomNotice \| null | src/shared/types.ts:911 | 2 |
+| RoomNotice | messageId | 필수 | string | src/shared/types.ts:917 | 1 |
+| RoomNotice | text | 필수 | string | src/shared/types.ts:918 | 2 |
+| RoomNotice | by | 필수 | string | src/shared/types.ts:920 | 0 |
+| RoomNotice | byName | 필수 | string | src/shared/types.ts:921 | 1 |
+| RoomNotice | at | 필수 | string | src/shared/types.ts:923 | 1 |
+| ProductionRecord | id | 필수 | string | src/shared/types.ts:931 | 9 |
+| ProductionRecord | date | 필수 | string | src/shared/types.ts:932 | 4 |
+| ProductionRecord | itemId | 필수 | string | src/shared/types.ts:933 | 8 |
+| ProductionRecord | itemName | 필수 | string | src/shared/types.ts:934 | 3 |
+| ProductionRecord | finishedQty | 필수 | number | src/shared/types.ts:935 | 3 |
+| ProductionRecord | wipUsed | 선택 | number | src/shared/types.ts:936 | 1 |
+| ProductionRecord | wipItemId | 선택 | string | src/shared/types.ts:937 | 0 |
+| ProductionRecord | wipItemName | 선택 | string | src/shared/types.ts:938 | 2 |
+| ProductionRecord | cost | 선택 | number | src/shared/types.ts:939 | 0 |
+| ProductionRecord | note | 선택 | string | src/shared/types.ts:940 | 2 |
+| ProductionRecord | createdBy | 선택 | string | src/shared/types.ts:941 | 0 |
+| ProductionRecord | createdAt | 필수 | string | src/shared/types.ts:942 | 0 |
+| FixedCostEntry | id | 필수 | string | src/shared/types.ts:949 | 0 |
+| FixedCostEntry | yearMonth | 필수 | string | src/shared/types.ts:950 | 1 |
+| FixedCostEntry | category | 필수 | FixedCostCategory | src/shared/types.ts:951 | 0 |
+| FixedCostEntry | label | 필수 | string | src/shared/types.ts:952 | 0 |
+| FixedCostEntry | amount | 필수 | number | src/shared/types.ts:953 | 1 |
+| FixedCostEntry | accountCode | 선택 | string | src/shared/types.ts:954 | 0 |
+| FixedCostEntry | note | 선택 | string | src/shared/types.ts:955 | 0 |
+| FixedCostEntry | createdAt | 필수 | string | src/shared/types.ts:956 | 0 |
+| FixedCostTemplate | statementType | 선택 | '매출' \| '매입' \| '비용' | src/shared/types.ts:960 | 2 |
+| FixedCostTemplate | companyId | 선택 | CompanyId | src/shared/types.ts:970 | 3 |
+| FixedCostTemplate | transferLines | 선택 | { accountCode: string; side: '차변' \| '대변'; name?: string }[] | src/shared/types.ts:972 | 7 |
+| FixedCostTemplate | id | 필수 | string | src/shared/types.ts:973 | 16 |
+| FixedCostTemplate | name | 필수 | string | src/shared/types.ts:974 | 19 |
+| FixedCostTemplate | amount | 필수 | number | src/shared/types.ts:975 | 14 |
+| FixedCostTemplate | category | 필수 | FixedCostCategory | src/shared/types.ts:976 | 1 |
+| FixedCostTemplate | active | 필수 | boolean | src/shared/types.ts:977 | 1 |
+| FixedCostTemplate | note | 선택 | string | src/shared/types.ts:978 | 1 |
+| FixedCostTemplate | accountCode | 선택 | string | src/shared/types.ts:980 | 15 |
+| FixedCostTemplate | partnerId | 선택 | string | src/shared/types.ts:981 | 4 |
+| FixedCostTemplate | partnerName | 선택 | string | src/shared/types.ts:982 | 11 |
+| FixedCostTemplate | startYm | 선택 | string | src/shared/types.ts:983 | 2 |
+| FixedCostTemplate | endYm | 선택 | string | src/shared/types.ts:984 | 1 |
+| FixedCostTemplate | kind | 선택 | 'recurring' \| 'voucher' | src/shared/types.ts:989 | 3 |
+| FixedCostTemplate | dir | 선택 | '입금' \| '출금' \| '줄돈' \| '받을돈' \| '대체' \| '회사이체' | src/shared/types.ts:1002 | 3 |
+| FixedCostTemplate | mode | 선택 | '일반' \| '상환' \| '급여' \| '보험' \| '세금' | src/shared/types.ts:1003 | 22 |
+| FixedCostTemplate | insCorp | 선택 | number | src/shared/types.ts:1015 | 1 |
+| FixedCostTemplate | insEmp | 선택 | number | src/shared/types.ts:1015 | 1 |
+| FixedCostTemplate | principal | 선택 | number | src/shared/types.ts:1016 | 4 |
+| FixedCostTemplate | interest | 선택 | number | src/shared/types.ts:1016 | 4 |
+| FixedCostTemplate | gross | 선택 | number | src/shared/types.ts:1017 | 1 |
+| FixedCostTemplate | deduction | 선택 | number | src/shared/types.ts:1017 | 1 |
+| FixedCostTemplate | loanCode | 선택 | string | src/shared/types.ts:1019 | 4 |
+| FixedCostTemplate | loanId | 선택 | string | src/shared/types.ts:1021 | 6 |
+| FixedCostTemplate | vat | 선택 | number | src/shared/types.ts:1023 | 0 |
+| FixedCostTemplate | incomeTax | 선택 | number | src/shared/types.ts:1023 | 0 |
+| FixedCostTemplate | builtin | 선택 | string | src/shared/types.ts:1025 | 8 |
+| FixedCostTemplate | hidden | 선택 | boolean | src/shared/types.ts:1027 | 6 |
+| FixedCostTemplate | group | 선택 | string | src/shared/types.ts:1029 | 10 |
+| FixedCostTemplate | favorite | 선택 | boolean | src/shared/types.ts:1031 | 6 |
+| FixedCostTemplate | autoIssue | 선택 | boolean | src/shared/types.ts:1034 | 12 |
+| FixedCostTemplate | issueDay | 선택 | number | src/shared/types.ts:1036 | 11 |
+| FixedCostTemplate | taxExempt | 선택 | boolean | src/shared/types.ts:1038 | 2 |
+| FixedCostTemplate | itemName | 선택 | string | src/shared/types.ts:1043 | 2 |
+| IssuedStatementItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1065 | 1 |
+| IssuedStatementItem | purchaseQuantityKg | 선택 | number | src/shared/types.ts:1067 | 1 |
+| IssuedStatementItem | itemId | 선택 | string | src/shared/types.ts:1069 | 15 |
+| IssuedStatementItem | lineKind | 선택 | StatementLineKind | src/shared/types.ts:1071 | 1 |
+| IssuedStatementItem | name | 필수 | string | src/shared/types.ts:1072 | 27 |
+| IssuedStatementItem | spec | 필수 | string | src/shared/types.ts:1073 | 4 |
+| IssuedStatementItem | qty | 필수 | number | src/shared/types.ts:1074 | 19 |
+| IssuedStatementItem | price | 필수 | number | src/shared/types.ts:1075 | 2 |
+| IssuedStatementItem | supply | 필수 | number | src/shared/types.ts:1076 | 17 |
+| IssuedStatementItem | tax | 필수 | number | src/shared/types.ts:1077 | 13 |
+| IssuedStatementItem | total | 필수 | number | src/shared/types.ts:1078 | 21 |
+| IssuedStatementItem | isTaxExempt | 필수 | boolean | src/shared/types.ts:1079 | 4 |
+| IssuedStatementItem | accountCode | 선택 | string | src/shared/types.ts:1084 | 20 |
+| IssuedStatementItem | side | 선택 | '차변' \| '대변' | src/shared/types.ts:1097 | 15 |
+| StatementParty | name | 필수 | string | src/shared/types.ts:1102 | 0 |
+| StatementParty | bizNo | 필수 | string | src/shared/types.ts:1103 | 0 |
+| StatementParty | ceo | 필수 | string | src/shared/types.ts:1104 | 0 |
+| StatementParty | addr | 필수 | string | src/shared/types.ts:1105 | 0 |
+| StatementParty | bizType | 필수 | string | src/shared/types.ts:1106 | 0 |
+| StatementParty | bizItem | 필수 | string | src/shared/types.ts:1107 | 0 |
+| StatementParty | tel | 필수 | string | src/shared/types.ts:1108 | 0 |
+| StatementParty | fax | 필수 | string | src/shared/types.ts:1109 | 0 |
+| StatementPartySnapshot | supplier | 필수 | StatementParty | src/shared/types.ts:1113 | 1 |
+| StatementPartySnapshot | buyer | 필수 | StatementParty | src/shared/types.ts:1114 | 1 |
+| IssuedStatement | noncashApplication | 선택 | import('../../functions/src/shared/partnerAdvance').ApplicationMetadata \| import('../../functions/src/shared/partnerAdvance').CancellationMetadata | src/shared/types.ts:1118 | 9 |
+| IssuedStatement | id | 필수 | string | src/shared/types.ts:1119 | 142 |
+| IssuedStatement | mutationRevision | 선택 | number | src/shared/types.ts:1121 | 4 |
+| IssuedStatement | openingItemId | 선택 | string | src/shared/types.ts:1123 | 0 |
+| IssuedStatement | openingQuantity | 선택 | number | src/shared/types.ts:1124 | 0 |
+| IssuedStatement | companyId | 선택 | CompanyId | src/shared/types.ts:1126 | 15 |
+| IssuedStatement | issuedAt | 필수 | string | src/shared/types.ts:1127 | 15 |
+| IssuedStatement | tradeDate | 필수 | string | src/shared/types.ts:1128 | 86 |
+| IssuedStatement | type | 필수 | '매출' \| '매입' \| '비용' | src/shared/types.ts:1129 | 74 |
+| IssuedStatement | partnerId | 필수 | string | src/shared/types.ts:1130 | 80 |
+| IssuedStatement | partnerName | 필수 | string | src/shared/types.ts:1131 | 31 |
+| IssuedStatement | orderId | 필수 | string | src/shared/types.ts:1132 | 8 |
+| IssuedStatement | docNo | 필수 | string | src/shared/types.ts:1133 | 43 |
+| IssuedStatement | totalSupply | 필수 | number | src/shared/types.ts:1134 | 8 |
+| IssuedStatement | totalTax | 필수 | number | src/shared/types.ts:1135 | 9 |
+| IssuedStatement | totalAmount | 필수 | number | src/shared/types.ts:1136 | 56 |
+| IssuedStatement | items | 필수 | IssuedStatementItem[] | src/shared/types.ts:1137 | 62 |
+| IssuedStatement | partySnapshot | 선택 | StatementPartySnapshot | src/shared/types.ts:1139 | 3 |
+| IssuedStatement | memo | 선택 | string | src/shared/types.ts:1144 | 5 |
+| IssuedStatement | createdBy | 선택 | string | src/shared/types.ts:1152 | 4 |
+| IssuedStatement | evidence | 선택 | string | src/shared/types.ts:1160 | 0 |
+| IssuedStatement | taxIssuedAt | 선택 | string | src/shared/types.ts:1161 | 9 |
+| IssuedStatement | exemptIssuedAt | 선택 | string | src/shared/types.ts:1167 | 0 |
+| IssuedStatement | cashDir | 선택 | '입금' \| '출금' | src/shared/types.ts:1168 | 0 |
+| PurchaseOrderItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1186 | 4 |
+| PurchaseOrderItem | itemId | 필수 | string | src/shared/types.ts:1187 | 49 |
+| PurchaseOrderItem | name | 필수 | string | src/shared/types.ts:1188 | 24 |
+| PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1190 | 29 |
+| PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1191 | 12 |
+| PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1197 | 0 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1201 | 84 |
+| PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1203 | 5 |
+| PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1204 | 5 |
+| PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1205 | 1 |
+| PurchaseOrder | partnerId | 선택 | string | src/shared/types.ts:1206 | 16 |
+| PurchaseOrder | partnerName | 선택 | string | src/shared/types.ts:1207 | 21 |
+| PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1208 | 11 |
+| PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1209 | 1 |
+| PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1211 | 1 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1212 | 55 |
+| PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1213 | 2 |
+| PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1214 | 1 |
+| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1215 | 22 |
+| PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1220 | 2 |
+| PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1221 | 0 |
+| PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1222 | 11 |
+| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1223 | 5 |
+| PurchaseOrder | receivedAt | 선택 | string | src/shared/types.ts:1224 | 7 |
+| PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1225 | 16 |
+| PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1226 | 0 |
+| PurchaseOrder | note | 선택 | string | src/shared/types.ts:1227 | 1 |
+| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1231 | 32 |
+| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1233 | 5 |
+| PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1235 | 0 |
+| PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1237 | 1 |
+| PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1238 | 4 |
+| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1239 | 14 |
+| PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1240 | 1 |
+| PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1242 | 3 |
+| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1243 | 16 |
+| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1244 | 8 |
+| PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1245 | 3 |
+| PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1246 | 3 |
+| PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1247 | 1 |
+| PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1248 | 0 |
+| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1249 | 6 |
+| PurchaseOrder | oemReceivedBulk | 선택 | { material: string; kg: number }[] | src/shared/types.ts:1250 | 5 |
+| PurchaseOrder | oemFeePerKg | 선택 | number | src/shared/types.ts:1251 | 3 |
+| PurchaseOrder | oemReceiptOperationId | 선택 | string | src/shared/types.ts:1253 | 3 |
+| CompanyInfo | name | 필수 | string | src/shared/types.ts:1287 | 4 |
+| CompanyInfo | ceoName | 필수 | string | src/shared/types.ts:1288 | 3 |
+| CompanyInfo | bizNo | 필수 | string | src/shared/types.ts:1289 | 3 |
+| CompanyInfo | bizType | 필수 | string | src/shared/types.ts:1290 | 2 |
+| CompanyInfo | bizItem | 필수 | string | src/shared/types.ts:1291 | 2 |
+| CompanyInfo | address | 필수 | string | src/shared/types.ts:1292 | 3 |
+| CompanyInfo | phone | 선택 | string | src/shared/types.ts:1293 | 2 |
+| CompanyInfo | fax | 선택 | string | src/shared/types.ts:1294 | 2 |
+| CompanyInfo | email | 선택 | string | src/shared/types.ts:1295 | 0 |
+| CompanyInfo | bankAccount | 선택 | string | src/shared/types.ts:1296 | 3 |
+| CompanyInfo | adminPassword | 선택 | string | src/shared/types.ts:1297 | 2 |
+| ExpensePreset | id | 필수 | string | src/shared/types.ts:1302 | 2 |
+| ExpensePreset | name | 필수 | string | src/shared/types.ts:1303 | 2 |
+| ExpensePreset | price | 선택 | number | src/shared/types.ts:1304 | 2 |
+| ExpensePreset | taxType | 선택 | '과세' \| '면세' | src/shared/types.ts:1305 | 1 |
+| ExpensePreset | createdAt | 선택 | string | src/shared/types.ts:1306 | 0 |
+| AppNotification | id | 필수 | string | src/shared/types.ts:1310 | 5 |
+| AppNotification | type | 필수 | 'new_order' \| 'confirmation' \| 'mention' \| 'leave_request' \| 'inventory_shortage' | src/shared/types.ts:1311 | 8 |
+| AppNotification | title | 필수 | string | src/shared/types.ts:1312 | 1 |
+| AppNotification | body | 필수 | string | src/shared/types.ts:1313 | 3 |
+| AppNotification | readBy | 필수 | string[] | src/shared/types.ts:1314 | 4 |
+| AppNotification | dismissedBy | 선택 | string[] | src/shared/types.ts:1315 | 1 |
+| AppNotification | createdAt | 필수 | string | src/shared/types.ts:1316 | 3 |
+| AppNotification | linkedId | 선택 | string | src/shared/types.ts:1317 | 4 |
+| AppNotification | senderId | 선택 | string | src/shared/types.ts:1318 | 0 |
+| AppNotification | targetId | 선택 | string | src/shared/types.ts:1319 | 2 |
+| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1337 | 42 |
+| RawMaterialEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1339 | 5 |
+| RawMaterialEntry | rawItemId | 선택 | string | src/shared/types.ts:1350 | 13 |
+| RawMaterialEntry | kind | 선택 | RawMovementKind | src/shared/types.ts:1351 | 16 |
+| RawMaterialEntry | reversalOf | 선택 | string | src/shared/types.ts:1352 | 5 |
+| RawMaterialEntry | material | 필수 | string | src/shared/types.ts:1354 | 37 |
+| RawMaterialEntry | date | 필수 | string | src/shared/types.ts:1355 | 23 |
+| RawMaterialEntry | received | 필수 | number | src/shared/types.ts:1356 | 18 |
+| RawMaterialEntry | used | 필수 | number | src/shared/types.ts:1357 | 17 |
+| RawMaterialEntry | note | 필수 | string | src/shared/types.ts:1358 | 13 |
+| RawMaterialEntry | createdAt | 필수 | string | src/shared/types.ts:1359 | 12 |
+| RawMaterialEntry | recordedAt | 선택 | string | src/shared/types.ts:1361 | 7 |
+| RawMaterialEntry | sequence | 선택 | number | src/shared/types.ts:1363 | 3 |
+| RawMaterialEntry | effectiveAt | 선택 | string | src/shared/types.ts:1365 | 8 |
+| RawMaterialEntry | balanceAfterKg | 선택 | number | src/shared/types.ts:1367 | 3 |
+| RawMaterialEntry | addedBy | 선택 | string | src/shared/types.ts:1368 | 8 |
+| RawMaterialEntry | type | 선택 | 'auto' \| 'manual' \| 'correction' \| 'stocktake_unit' | src/shared/types.ts:1369 | 13 |
+| RawMaterialEntry | orderId | 선택 | string | src/shared/types.ts:1370 | 2 |
+| RawMaterialEntry | canSize | 선택 | number | src/shared/types.ts:1371 | 2 |
+| RawMaterialEntry | canSizeTag | 선택 | string | src/shared/types.ts:1372 | 2 |
+| RawMaterialEntry | canCount | 선택 | number | src/shared/types.ts:1373 | 4 |
+| RawMaterialEntry | unit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1374 | 7 |
+| RawMaterialEntry | originalAmount | 선택 | number | src/shared/types.ts:1376 | 1 |
+| RawMaterialEntry | originalUnit | 선택 | 'kg' \| 'L' | src/shared/types.ts:1377 | 1 |
+| RawMaterialEntry | targetKg | 선택 | number | src/shared/types.ts:1378 | 14 |
+| RawMaterialEntry | targetLotId | 선택 | string | src/shared/types.ts:1380 | 4 |
+| ItemFormula | id | 필수 | string | src/shared/types.ts:1388 | 1 |
+| ItemFormula | parent_key | 필수 | string | src/shared/types.ts:1389 | 10 |
+| ItemFormula | child_name | 필수 | string | src/shared/types.ts:1390 | 6 |
+| ItemFormula | ratio | 필수 | number | src/shared/types.ts:1391 | 5 |
+| ItemFormula | yield_rate | 필수 | number | src/shared/types.ts:1392 | 4 |
+| ItemBom | id | 필수 | string | src/shared/types.ts:1397 | 4 |
+| ItemBom | parent_id | 필수 | string | src/shared/types.ts:1398 | 14 |
+| ItemBom | child_id | 필수 | string | src/shared/types.ts:1399 | 11 |
+| ItemBom | quantity | 필수 | number | src/shared/types.ts:1400 | 3 |
+| ReturnItem | sourceLineIndex | 선택 | number | src/shared/types.ts:1409 | 1 |
+| ReturnItem | itemId | 필수 | string | src/shared/types.ts:1410 | 17 |
+| ReturnItem | name | 필수 | string | src/shared/types.ts:1411 | 8 |
+| ReturnItem | quantity | 필수 | number | src/shared/types.ts:1412 | 13 |
+| ReturnItem | price | 필수 | number | src/shared/types.ts:1413 | 3 |
+| ReturnItem | reason | 필수 | ReturnReason | src/shared/types.ts:1414 | 3 |
+| ReturnItem | isResellable | 필수 | boolean | src/shared/types.ts:1415 | 8 |
+| ReturnItem | supply | 선택 | number | src/shared/types.ts:1416 | 0 |
+| ReturnItem | tax | 선택 | number | src/shared/types.ts:1417 | 0 |
+| ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1418 | 0 |
+| ReturnRequest | id | 필수 | string | src/shared/types.ts:1422 | 15 |
+| ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1423 | 4 |
+| ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1424 | 2 |
+| ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1425 | 3 |
+| ReturnRequest | partnerName | 필수 | string | src/shared/types.ts:1426 | 5 |
+| ReturnRequest | items | 필수 | ReturnItem[] | src/shared/types.ts:1427 | 16 |
+| ReturnRequest | totalAmount | 필수 | number | src/shared/types.ts:1428 | 3 |
+| ReturnRequest | status | 필수 | 'pending' \| 'processed' | src/shared/types.ts:1429 | 17 |
+| ReturnRequest | returnType | 선택 | '매출' \| '매입' | src/shared/types.ts:1430 | 3 |
+| ReturnRequest | createdAt | 필수 | string | src/shared/types.ts:1431 | 7 |
+| ReturnRequest | createdBy | 선택 | string | src/shared/types.ts:1432 | 0 |
+| ReturnRequest | processedAt | 선택 | string | src/shared/types.ts:1433 | 4 |
+| ReturnRequest | processedBy | 선택 | string | src/shared/types.ts:1434 | 1 |
+| ReturnRequest | cancelledAt | 선택 | string | src/shared/types.ts:1435 | 13 |
+| ReturnRequest | cancelledBy | 선택 | string | src/shared/types.ts:1436 | 0 |
+| ReturnRequest | cancellationReceipt | 선택 | Record<string, unknown> | src/shared/types.ts:1437 | 0 |
+| ReturnRequest | linkedStatementId | 선택 | string | src/shared/types.ts:1438 | 8 |
+| ReturnRequest | payableAccountCode | 선택 | typeof AP \| typeof OTHER_PAYABLE | src/shared/types.ts:1439 | 0 |
+| ReturnRequest | note | 선택 | string | src/shared/types.ts:1440 | 3 |
+| PendingStatementEdit | id | 필수 | string | src/shared/types.ts:1444 | 11 |
+| PendingStatementEdit | statementId | 필수 | string | src/shared/types.ts:1445 | 2 |
+| PendingStatementEdit | statementDocNo | 필수 | string | src/shared/types.ts:1446 | 1 |
+| PendingStatementEdit | statementType | 필수 | '매출' \| '매입' | src/shared/types.ts:1447 | 1 |
+| PendingStatementEdit | partnerName | 필수 | string | src/shared/types.ts:1448 | 1 |
+| PendingStatementEdit | proposedData | 필수 | {     tradeDate: string;     partnerId: string;     partnerName: string;     totalSupply: number;     totalTax: number;     totalAmount: number;     items: IssuedStatementItem[];   } | src/shared/types.ts:1449 | 3 |
+| PendingStatementEdit | createdAt | 필수 | string | src/shared/types.ts:1458 | 2 |
+| PendingStatementEdit | createdBy | 필수 | string | src/shared/types.ts:1459 | 1 |
+| PendingStatementEdit | status | 필수 | 'pending' \| 'approved' \| 'rejected' | src/shared/types.ts:1460 | 1 |
+| PendingStatementEdit | reason | 선택 | string | src/shared/types.ts:1461 | 1 |
+| PendingStatementEdit | changes | 선택 | { name: string; oldQty: number; newQty: number }[] | src/shared/types.ts:1462 | 2 |
+| PendingStatementEdit | sourcePoId | 선택 | string | src/shared/types.ts:1463 | 0 |
+| AccountCode | id | 필수 | string | src/shared/types.ts:1470 | 27 |
+| AccountCode | code | 필수 | string | src/shared/types.ts:1471 | 104 |
+| AccountCode | name | 필수 | string | src/shared/types.ts:1472 | 60 |
+| AccountCode | groupId | 선택 | string | src/shared/types.ts:1473 | 11 |
+| AccountCode | type | 선택 | AccountType | src/shared/types.ts:1475 | 18 |
+| AccountCode | normalBalance | 선택 | 'debit' \| 'credit' | src/shared/types.ts:1476 | 10 |
+| AccountCode | isCash | 선택 | boolean | src/shared/types.ts:1477 | 1 |
+| AccountCode | noncash | 선택 | boolean | src/shared/types.ts:1482 | 0 |
+| AccountCode | note | 선택 | string | src/shared/types.ts:1483 | 0 |
+| JournalLine | accountCode | 필수 | string | src/shared/types.ts:1488 | 37 |
+| JournalLine | debit | 필수 | number | src/shared/types.ts:1489 | 35 |
+| JournalLine | credit | 필수 | number | src/shared/types.ts:1490 | 31 |
+| JournalLine | partnerId | 선택 | string | src/shared/types.ts:1491 | 13 |
+| JournalLine | note | 선택 | string | src/shared/types.ts:1492 | 1 |
+| JournalEntry | id | 필수 | string | src/shared/types.ts:1496 | 10 |
+| JournalEntry | date | 필수 | string | src/shared/types.ts:1497 | 17 |
+| JournalEntry | lines | 필수 | JournalLine[] | src/shared/types.ts:1498 | 33 |
+| JournalEntry | memo | 선택 | string | src/shared/types.ts:1499 | 3 |
+| JournalEntry | sourceType | 필수 | '매출' \| '매입' \| '대체' \| '자금' \| '수동' | src/shared/types.ts:1500 | 9 |
+| JournalEntry | sourceId | 선택 | string | src/shared/types.ts:1501 | 16 |
+| JournalEntry | createdAt | 필수 | string | src/shared/types.ts:1502 | 0 |
+| JournalEntry | createdBy | 선택 | string | src/shared/types.ts:1503 | 0 |
+| AccountGroup | id | 필수 | string | src/shared/types.ts:1511 | 24 |
+| AccountGroup | name | 필수 | string | src/shared/types.ts:1512 | 9 |
+| AccountGroup | type | 필수 | '수익' \| '비용' \| '자산' \| '부채' \| '자본' | src/shared/types.ts:1513 | 6 |
+| AccountGroup | plLine | 선택 | AccountGroupPlLine | src/shared/types.ts:1514 | 4 |
+| AccountGroup | cfSection | 선택 | AccountGroupCfSection | src/shared/types.ts:1517 | 1 |
+| AccountGroup | note | 선택 | string | src/shared/types.ts:1518 | 0 |
+| CashAccount | id | 필수 | string | src/shared/types.ts:1526 | 34 |
+| CashAccount | companyId | 선택 | CompanyId | src/shared/types.ts:1528 | 1 |
+| CashAccount | name | 필수 | string | src/shared/types.ts:1529 | 12 |
+| CashAccount | type | 필수 | '통장' \| '카드' \| '현금' | src/shared/types.ts:1530 | 17 |
+| CashAccount | openingBalance | 필수 | number | src/shared/types.ts:1531 | 3 |
+| CashAccount | openingDate | 필수 | string | src/shared/types.ts:1532 | 8 |
+| CashAccount | active | 필수 | boolean | src/shared/types.ts:1533 | 18 |
+| CashAccount | note | 선택 | string | src/shared/types.ts:1534 | 0 |
+| CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1535 | 2 |
+| CashAccount | createdAt | 필수 | string | src/shared/types.ts:1536 | 0 |
+| CashEntry | id | 필수 | string | src/shared/types.ts:1540 | 77 |
+| CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1542 | 15 |
+| CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1544 | 2 |
+| CashEntry | loanId | 선택 | string | src/shared/types.ts:1546 | 9 |
+| CashEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1548 | 6 |
+| CashEntry | docNo | 선택 | string | src/shared/types.ts:1554 | 10 |
+| CashEntry | date | 필수 | string | src/shared/types.ts:1555 | 45 |
+| CashEntry | cashAccountId | 필수 | string | src/shared/types.ts:1556 | 12 |
+| CashEntry | dir | 필수 | '입금' \| '출금' \| '대체' | src/shared/types.ts:1567 | 49 |
+| CashEntry | amount | 필수 | number | src/shared/types.ts:1568 | 31 |
+| CashEntry | partnerId | 선택 | string | src/shared/types.ts:1569 | 49 |
+| CashEntry | partnerName | 선택 | string | src/shared/types.ts:1570 | 18 |
+| CashEntry | accountCode | 선택 | string | src/shared/types.ts:1571 | 24 |
+| CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1578 | 28 |
+| CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1594 | 0 |
+| CashEntry | note | 선택 | string | src/shared/types.ts:1595 | 23 |
+| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1596 | 14 |
+| CashEntry | createdBy | 선택 | string | src/shared/types.ts:1597 | 5 |
+| Settlement | id | 필수 | string | src/shared/types.ts:1603 | 9 |
+| Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1604 | 17 |
+| Settlement | statementId | 필수 | string | src/shared/types.ts:1605 | 14 |
+| Settlement | amount | 필수 | number | src/shared/types.ts:1606 | 9 |
+| Settlement | createdAt | 필수 | string | src/shared/types.ts:1607 | 0 |
+| InventorySnapshot | id | 필수 | string | src/shared/types.ts:1611 | 5 |
+| InventorySnapshot | companyId | 선택 | CompanyId | src/shared/types.ts:1614 | 0 |
+| InventorySnapshot | yearMonth | 필수 | string | src/shared/types.ts:1615 | 8 |
+| InventorySnapshot | value | 필수 | number | src/shared/types.ts:1616 | 5 |
+| InventorySnapshot | recordedAt | 필수 | string | src/shared/types.ts:1617 | 1 |
+| InventorySnapshot | items | 선택 | { itemId: string; name: string; category?: string; spec?: string; qty: number; value: number }[] | src/shared/types.ts:1620 | 3 |
+| CashFlowManual | id | 필수 | string | src/shared/types.ts:1625 | 0 |
+| CashFlowManual | month | 필수 | string | src/shared/types.ts:1626 | 3 |
+| CashFlowManual | depreciation | 선택 | number | src/shared/types.ts:1627 | 1 |
+| CashFlowManual | prepaidInc | 선택 | number | src/shared/types.ts:1628 | 1 |
+| CashFlowManual | assetBuy | 선택 | number | src/shared/types.ts:1629 | 1 |
+| CashFlowManual | assetSell | 선택 | number | src/shared/types.ts:1630 | 1 |
+| CashFlowManual | financeIn | 선택 | number | src/shared/types.ts:1631 | 1 |
+| CashFlowManual | debtRepay | 선택 | number | src/shared/types.ts:1632 | 1 |
+| CashFlowManual | openingCash | 선택 | number | src/shared/types.ts:1633 | 4 |
+| CashFlowManual | closingCash | 선택 | number | src/shared/types.ts:1634 | 4 |
+| ProductionSalesLog | id | 필수 | string | src/shared/types.ts:1638 | 10 |
+| ProductionSalesLog | companyId | 선택 | CompanyId | src/shared/types.ts:1639 | 1 |
+| ProductionSalesLog | date | 필수 | string | src/shared/types.ts:1640 | 12 |
+| ProductionSalesLog | createdAt | 필수 | string | src/shared/types.ts:1641 | 2 |
+| ProductionSalesLog | createdBy | 필수 | string | src/shared/types.ts:1642 | 2 |
+| ProductionSalesLog | orderCount | 필수 | number | src/shared/types.ts:1643 | 3 |
+| ProductionSalesLog | productionRows | 필수 | { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1645 | 2 |
+| ProductionSalesLog | seedRows | 선택 | { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] | src/shared/types.ts:1647 | 2 |
+| ProductionSalesLog | salesRows | 선택 | { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[] | src/shared/types.ts:1649 | 5 |
+| ProductionSalesLog | extraRows | 선택 | { 품목: string; 용량: string; 수량: number; 거래처: string }[] | src/shared/types.ts:1651 | 1 |
+| ProductionSalesLog | orderSummaries | 필수 | { partnerName: string; items: { name: string; qty: number }[] }[] | src/shared/types.ts:1653 | 1 |
+| AdjustmentRequest | id | 필수 | string | src/shared/types.ts:1661 | 20 |
+| AdjustmentRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1662 | 1 |
+| AdjustmentRequest | itemId | 필수 | string | src/shared/types.ts:1663 | 9 |
+| AdjustmentRequest | itemName | 필수 | string | src/shared/types.ts:1664 | 3 |
+| AdjustmentRequest | originalQuantity | 필수 | number | src/shared/types.ts:1665 | 6 |
+| AdjustmentRequest | requestedQuantity | 선택 | number | src/shared/types.ts:1666 | 9 |
+| AdjustmentRequest | type | 필수 | AdjustmentType | src/shared/types.ts:1667 | 31 |
+| AdjustmentRequest | reason | 필수 | string | src/shared/types.ts:1668 | 4 |
+| AdjustmentRequest | status | 필수 | AdjustmentStatus | src/shared/types.ts:1669 | 11 |
+| AdjustmentRequest | requestedAt | 필수 | string | src/shared/types.ts:1670 | 4 |
+| AdjustmentRequest | processedAt | 선택 | string | src/shared/types.ts:1671 | 3 |
+| AdjustmentRequest | unit | 선택 | string | src/shared/types.ts:1672 | 4 |
+| AdjustmentRequest | oemPoId | 선택 | string | src/shared/types.ts:1674 | 3 |
+| AdjustmentRequest | oemFeePerKg | 선택 | number | src/shared/types.ts:1675 | 5 |
+| AdjustmentRequest | oemTotal | 선택 | number | src/shared/types.ts:1676 | 2 |

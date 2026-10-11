@@ -1,3 +1,4 @@
+import { confirmPendingPurchaseOrder } from '../../shared/services/confirmPendingPurchaseOrderService';
 import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
 import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
 import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
@@ -45,7 +46,7 @@ import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
-import { adjustStockByQty, stocktakeByQty } from '../../shared/services/unpackService';
+import { adjustStockByQty, durableProductStocktake as stocktakeByQty } from '../../shared/services/unpackService';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
 import { createPortal } from 'react-dom';
 import {
@@ -1205,17 +1206,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 발주예정 → 입고대기(invoiced)로 직접 확정 (전표 없이)
   // item.id는 PO 문서 ID (UUID 또는 itemId)
-  const handleConfirmPendingToInvoiced = async (items: { id: string, quantity: number }[]) => {
-    for (const item of items) {
-      const po = purchaseOrders.find(po => po.id === item.id);
-      if (!po) continue;
-      const ps = partnerIn.find(s => s.itemId === (po.itemId ?? po.id) || (s as any).itemId === (po.itemId ?? po.id));
-      const partnerId = ps?.partnerId || (ps as any)?.partnerId;
-      const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-      await updateItem('purchaseOrders', item.id, {
-        status: 'invoiced', invoicedAt: new Date().toISOString(),
-        ...(partnerId && !po.partnerId ? { partnerId, partnerName } : {}),
-      });
+  const handleConfirmPendingToInvoiced = async (selected: { id: string, quantity: number }[]) => {
+    const token = orderAskScope.current.token, uid = auth.currentUser?.uid;
+    const active = () => orderAskScope.current.token === token && orderAskScope.current.companyId === companyId && auth.currentUser?.uid === uid;
+    if (!uid || !active()) return;
+    // 한 건을 기다리는 동안 구독이 갱신돼도 나머지 발주는 승인 당시 원문으로만 확인한다.
+    const originals = selected.map(row => purchaseOrders.find(po => po.id === row.id));
+    try {
+      for (const original of originals) {
+        if (!active()) return;
+        if (!original) throw new Error('발주가 없거나 이미 삭제됐습니다. 새로 확인해주세요.');
+        await confirmPendingPurchaseOrder(companyId, original);
+      }
+    } catch (error) {
+      if (active()) await awaitNotice(error instanceof Error ? error.message : String(error), '발주확정 중단');
     }
   };
 
@@ -2647,7 +2651,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemovePoItem={handleRemovePoItem}
               onRequestPoEdit={handleRequestPoEdit}
               onToggleConfirmRequestQty={handleToggleConfirmRequestQty}
-              onConfirmRequest={(id: string) => { const r = pendingPurchaseOrders.find(r => r.id === id); handleConfirmPendingToInvoiced([{ id, quantity: r?.quantity || 0 }]); }}
+              onConfirmRequest={(id: string) => handleConfirmPendingToInvoiced([{ id, quantity: pendingPurchaseOrders.find(row => row.id === id)?.quantity || 0 }])}
               onConfirmRequests={(ids: string[]) => handleConfirmPendingToInvoiced(pendingPurchaseOrders.filter(r => ids.includes(r.id)).map(r => ({ id: r.id, quantity: r.quantity })))}
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
               onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({ id: r.id, quantity: r.quantity }))); }}
@@ -3107,6 +3111,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     setLedgerReloadKey(k => k + 1);
                   } else {
                     const result = await stocktakeByQty({
+                      companyId, operationId: `stocktake-adjustment-${req.id}`,
                       itemId: product.id,
                       itemName: product.name,
                       targetQty: req.requestedQuantity,
