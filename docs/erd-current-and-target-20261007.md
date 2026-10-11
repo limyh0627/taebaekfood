@@ -211,3 +211,11 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 
 ### 통합 후 빌드·Hosting 확정
 양앱56303 exit0: 관리자3284/직원3286 module과 PWA 둘 다 완료했다. Hosting74768 exit0으로 양 사이트 release complete(admin71/staff72파일)를 확인했다. 원격56475 exit0에서 HTML2+JS115+CSS2 총119 SHA가 일치했다. 실제 소스 push13220 exit0, github/main은 d2876860→e6e5e49ad0dfdc0ffe24c8f4b002b6a058b551be이며 ls-remote와 HEAD가 일치했다. 결과 문서3개 커밋·푸시는 총괄 후속이다. 업로드 파일 수를 원격 SHA 대조 파일 수로 대신하지 않는다.
+
+## 2026-10-11 저장 생산 계산·원료 일일 대조 후속
+
+`auditSavedRawCalculation`은 저장된 rawCalculationEvidence와 같은 회사·주문·품목 줄·attempt·원료·문서에 연결된 생산 trace 및 원장의 reportedDeltaKg만 비교한다. appliedDeltaKg=0을 원래 사용량 0으로 해석하지 않는다. 현재 BOM으로 과거 계산을 보충하지 않으며, 취소된 생산 기록은 당시 기록으로 표시한다. 동일 operation이어도 계산·trace·원장 ID 원문이 다르면 정상 미러로 제외하지 않는다. 품목 생산을 모은 전체 스냅샷에는 계산 근거가 없는 기존 저장 방식이 있어 미기록 안내가 함께 나올 수 있다.
+
+`rawInventoryAxes`의 기존 원료 네 축 계산을 관리자 감사와 일일 보고서가 공유한다. rawInventoryReport는 원료 상태·활성 로트·품목 저장 kg·실제 원장을 같은 행에 표시한다. L 표시 품목도 이미 저장된 kg를 다시 환산하지 않는다. 빠진 값은 미확인으로 표시하며 실측 증빙을 추정하지 않는다. CLI는 `npm run audit:daily -- --raw-input 입력.json --output 결과.json`으로 인증·DB 초기화 없이 전체 원료 파일을 대조한다. 입력은 companyId, snapshotDate, complete:true, rawInventories/items/rawMaterialLedger 전체 배열이 필요하며 기존 결과 파일을 덮어쓰지 않는다. 기존 제품 `--input` 분기를 유지한다.
+
+새 컬렉션·활성화 설정·운영 자료 수정은 없다. 009의 과거 주문 출처 확인과 011의 전수 실측 기준, ERD의 Figma 보류 및 동적 경로 후속은 남아 있으므로 원본 TODO 완료 수를 늘리지 않는다.

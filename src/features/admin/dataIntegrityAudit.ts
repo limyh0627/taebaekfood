@@ -1,3 +1,5 @@
+import { auditSavedRawCalculation, kg3, KG_EPS } from './savedRawCalculationAudit';
+import { rawInventoryAxes } from '../../../scripts/todo011-raw-report';
 import { AP, OTHER_PAYABLE } from '../../shared/autoJournal';
 import { validReturnStockMovements, type ReturnStockOperation } from '../../shared/returnStockMovement';
 import type { ItemReceipt } from '../../shared/receipt';
@@ -15,7 +17,7 @@ import { isBulkItem } from '../../shared/itemTaxonomy';
 import { rawLotTarget } from '../../shared/rawReceipt';
 import { operationDocId, type RawInventoryState } from '../../shared/rawInventoryCore';
 import { receiptToKg } from '../../shared/lotUtils';
-import { authoritativeLedgerBalanceKg } from '../../shared/rawLedgerBalance';
+
 import { lotQtyRemaining } from '../../shared/lotUtils';
 
 export type IntegrityArea = '작업완료·BOM' | '입고·재고' | '전표·서류' | '판매일지·수불부';
@@ -42,10 +44,10 @@ export interface IntegrityAuditInput {
 
 const refOf = (o: Order) => o.cardNo || o.id;
 const nameOf = (items: Item[], id: string) => items.find(item => item.id === id)?.name || id;
-const kg3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** kg 반올림 오차 허용치 — 엔진이 이미 3자리로 맞춰 저장한다. */
-const KG_EPS = 0.01;
+
+
+
 /** 재고 개수 허용치 — 엔진은 3자리에서 반올림한다. */
 const QTY_EPS = 0.001;
 /** 처리 중 예약은 정상 작업 중에도 잠깐 보인다. 예약 TTL과 같은 1시간을 넘긴 것만 멈춤으로 본다. */
@@ -55,7 +57,7 @@ export const isStaleInventoryProcessing = (startedAt: string | undefined, nowMs 
   return Number.isFinite(startedMs) && nowMs - startedMs >= PROCESSING_STALE_MS;
 };
 
-type LedgerMovement = RawMaterialEntry & {
+export type LedgerMovement = RawMaterialEntry & {
   materialSnapshot?: string;
   effectiveAt?: string;
   source?: { type?: string; id?: string };
@@ -168,14 +170,12 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
 
   const inRange = (value?: string) => !value || ((!input.dateFrom || value.slice(0, 10) >= input.dateFrom) && (!input.dateTo || value.slice(0, 10) <= input.dateTo));
 
-  for (const state of input.rawInventories.filter(state => state.companyId === input.companyId)) {
-    const lotTotal = state.activeLots.reduce((sum, lot) => sum + lot.kgRemaining, 0);
+  for (const { state, lotTotal, ledgerBalance, holder } of rawInventoryAxes(input.companyId, input.rawInventories, items, rawLedger)) {
+
     if (state.stockKg < -QTY_EPS) out.push({ id: `raw-stock-negative:${state.id}`, area: '입고·재고', severity: 'error', title: '원료 현재고가 음수', detail: `${state.materialSnapshot} 현재고가 ${state.stockKg.toLocaleString()}kg입니다. 입고되지 않은 수량을 사용한 상태가 아직 해소되지 않았습니다.`, date: state.lastProcessedAt, reference: state.rawItemId });
     if (Math.abs(state.stockKg - lotTotal) > QTY_EPS) out.push({ id: `raw-lot-gap:${state.id}`, area: '입고·재고', severity: 'error', title: '원료 현재고와 활성 로트 합계 불일치', detail: `${state.materialSnapshot}: 현재고 ${state.stockKg.toLocaleString()}kg, 로트 합계 ${lotTotal.toLocaleString()}kg로 ${(state.stockKg - lotTotal).toLocaleString()}kg 차이입니다.`, date: state.lastProcessedAt, reference: state.rawItemId });
-    const stateLedger = rawLedger.filter(entry => entry.rawItemId === state.rawItemId || (!entry.rawItemId && entry.material === state.materialSnapshot));
-    const ledgerBalance = authoritativeLedgerBalanceKg(stateLedger, DENSITY[state.materialSnapshot] ?? 1);
     if (Math.abs(state.stockKg - ledgerBalance) > QTY_EPS) out.push({ id: `raw-ledger-state-gap:${state.id}`, area: '입고·재고', severity: 'error', title: '원료 실제 원장과 현재고 불일치', detail: `${state.materialSnapshot}: 실제 원장 잔량 ${kg3(ledgerBalance)}kg, 현재고 ${kg3(state.stockKg)}kg로 ${kg3(state.stockKg - ledgerBalance)}kg 차이입니다.`, date: state.lastProcessedAt, reference: state.rawItemId });
-    const holder = itemById.get(state.rawItemId);
+
     if (holder && Math.abs(Number(holder.stock ?? 0) - state.stockKg) > QTY_EPS) out.push({ id: `raw-item-state-gap:${state.id}`, area: '입고·재고', severity: 'error', title: '재고관리와 원자화 상태 불일치', detail: `${state.materialSnapshot}: 재고관리 ${kg3(Number(holder.stock ?? 0))}kg, 원자화 상태 ${kg3(state.stockKg)}kg로 ${kg3(Number(holder.stock ?? 0) - state.stockKg)}kg 차이입니다.`, date: state.lastProcessedAt, reference: state.rawItemId });
     if (!itemIds.has(state.rawItemId)) out.push({ id: `raw-item-missing:${state.id}`, area: '입고·재고', severity: 'error', title: '원료 재고가 없는 품목을 참조함', detail: `${state.materialSnapshot} 재고의 품목 ${state.rawItemId}를 현재 회사에서 찾을 수 없습니다.`, date: state.lastProcessedAt, reference: state.id });
   }
@@ -618,5 +618,6 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     if (!itemIds.has(bom.parent_id) && !itemIds.has(bom.child_id)) continue;
     if (!itemIds.has(bom.parent_id) || !itemIds.has(bom.child_id)) out.push({ id: `orphan-bom:${bom.id}`, area: '작업완료·BOM', severity: 'error', title: '삭제됐거나 다른 회사인 품목을 가리키는 BOM', detail: `${nameOf(items, bom.parent_id)} → ${nameOf(items, bom.child_id)} 연결을 정리해야 합니다.`, reference: bom.id });
   }
+  for (const order of orders) out.push(...auditSavedRawCalculation(order, rawLedger, inRange));
   return out;
 }

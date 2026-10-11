@@ -171,7 +171,7 @@ describe('auditDataIntegrity — 기존 검사', () => {
 
     expect(auditDataIntegrity(input({
       orders: [appliedOrder({
-        production: coherentSnapshot(),
+        production: coherentSnapshot({ rawCalculationEvidence: [] }),
         producedUnits: [{ itemId: 'item-1', qty: 1 }],
       })],
       purchaseOrders: [po],

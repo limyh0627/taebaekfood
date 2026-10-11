@@ -33,7 +33,7 @@ it.each(names)('실제 호스트 %s 호출은 회사 입력·빈 구성·fallbac
  const rows=calls(name);expect(rows.length).toBeGreaterThan(0);
  for(const expression of rows){
   const p=name==='boxSpecUpdates'?loose:box;
-  const scope={id:'box',unpackComponent,stockUnits,unitsPerBoxOf,bomOf,docSaleLines,boxSpecUpdates,allItems,boxItem:box,product:box,p,품목:box,푸는품목:box,완료품목:box,it:{quantity:40,boxQuantity:2},item:{quantity:40,boxQuantity:2},완료줄:{quantity:40,boxQuantity:2}};
+  const scope={ds:{docPumokAt:undefined},id:'box',unpackComponent,stockUnits,unitsPerBoxOf,bomOf,docSaleLines,boxSpecUpdates,allItems,boxItem:box,product:box,p,품목:box,푸는품목:box,완료품목:box,it:{quantity:40,boxQuantity:2},item:{quantity:40,boxQuantity:2},완료줄:{quantity:40,boxQuantity:2}};
   const run=new Function(...Object.keys(scope),'appData',`return (${expression});`);
   const evaluate=(provided?:OrderUnitInputs)=>run(...Object.values(scope),{orderUnitInputs:provided});
   const expected=(count:number|undefined)=>name==='unpackComponent'?(count?{itemId:'loose',count}:null):name==='stockUnits'?(count?2:40):name==='unitsPerBoxOf'?(count??0):name==='bomOf'?(count?[{childId:'loose',qty:count,child:loose}]:[]):name==='boxSpecUpdates'?(count?[{id:'box',name:box.name,from:box.spec,spec:`350ml * ${count}`}]:[]):[{품목:'참기름',spec:count?'350ml':box.spec,qty:count?2*count:40}];

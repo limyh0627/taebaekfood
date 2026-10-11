@@ -24,13 +24,16 @@ import type { PackRow } from '../src/shared/packIndex';
 import type { ReturnStockOperation } from '../src/shared/returnStockMovement';
 const { auditLedgerFile, dailyLedgerAudit, ledgerUnitInputs, partitionLedgerOrders }: typeof import('./todo011-daily-ledger') = require('./todo011-daily-ledger.ts');
 
+const { auditRawInventoryFile, rawInventoryReport, rawInventoryReportMarkdown }: typeof import('./todo011-raw-report') = require('./todo011-raw-report.ts');
+
 // 파일 모드는 인증 초기화 전에 끝낸다. DB 접근·원본 덮어쓰기 없음.
-if (process.argv[2] === '--input') {
+if (process.argv[2] === '--input' || process.argv[2] === '--raw-input') {
   try {
     const [, , , inputPath, flag, outputPath, ...extra] = process.argv;
-    if (!inputPath || flag !== '--output' || !outputPath || extra.length) throw new Error('사용법: npm run audit:daily -- --input 입력.json --output 결과.json');
+    if (!inputPath || flag !== '--output' || !outputPath || extra.length) throw new Error('사용법: npm run audit:daily -- --input 또는 --raw-input 입력.json --output 결과.json');
     if (resolve(inputPath) === resolve(outputPath)) throw new Error('입력 파일을 결과로 덮어쓸 수 없습니다.');
-    const report = auditLedgerFile(JSON.parse(await readFile(inputPath, 'utf8')));
+    const value = JSON.parse(await readFile(inputPath, 'utf8'));
+    const report = process.argv[2] === '--raw-input' ? auditRawInventoryFile(value) : auditLedgerFile(value);
     await writeFile(outputPath, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
     console.log(`파일 재고 대조: ${report.rows.length}품목. DB 접근 없음.`);
     process.exit(0);
@@ -132,7 +135,7 @@ try {
       inventoryEntries: rawMaterialLedger, returnOperations, complete: true, physicalEvidence: [],
       unitInputs: ledgerUnitInputs(companyId, items, itemBoms, itemPacks) }).map(row => inputDiagnostics.length
         ? { ...row, status: '입력미확인', reason: '형식 불명 주문 제외로 회사 전체 흐름의 완전성 미확인; 표시 수치는 정상 입력만의 진단값' } : row);
-    return { companyId, issues, inputDiagnostics, itemLedgerAudit };
+    return { companyId, issues, inputDiagnostics, itemLedgerAudit, rawInventoryReport: rawInventoryReport(companyId, rawInventories, items, rawMaterialLedger) };
   });
   const all = reports.flatMap(report => report.issues.map(issue => ({ ...issue, companyId: report.companyId })));
   const errors = all.filter(issue => issue.severity === 'error').length;
@@ -173,6 +176,7 @@ try {
   }
   for (const report of reports) {
     lines.push(`## ${report.companyId === 'taebaek' ? '태백식품' : '풍회유통'}`, '');
+    lines.push(...rawInventoryReportMarkdown(report.rawInventoryReport));
     lines.push('### 제품 원장 기록 대조', '', `- 현재 재고 기준일: ${snapshotDate} (점검 대상일 ${date}의 과거 종료 재고가 아님)`,
       '- 전체 배열 수집 성공. 여러 컬렉션 읽기는 원자적 스냅샷이 아니며 내용 진실/실측 증명이 아닙니다.',
       '- 실측 증빙 입력 없음: 앵커 이름만으로 실측 판정하지 않습니다. 원료는 기존 원료 점검을 따릅니다.', '',
