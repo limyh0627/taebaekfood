@@ -18,3 +18,8 @@ TODO-20260927-028의 신규 거래 범위다. 원물은 보내는 회사 소유,
 일반 시험 477파일 중473통과4skip, 4,003PASS/122skip·실패0. 최종 화면 재개 관련29PASS 및 상세 한정16PASS. 입고 서버9PASS, 원가 무효화5PASS. 통합8파일92시험 첫 실행은 활성화 fixture 누락2FAIL/90PASS였으며 fixture만 고쳐 입고9PASS를 재확인했다. 독립 검토에서 연결 및 삭제 우회를 추가 발견해 수정했고 Rules는 별도 최종 재검증한다. 과거 자료 검증·운영 재계산은 하지 않았으며 028 전체 완료로 집계하지 않는다.
 
 최종 Rules4PASS·skip0. 타입 및 필드 사전 자체검증 통과. 인증 관련 생성물4개의 보존SHA가 일치한다.
+
+## 배포 확인
+
+최종 source efc0fb14210c23066a3f80207671413232322a34를 GitHub main에 푸시하고 원격 SHA 일치를 확인했다. 변경한 receiveOemFinishedGoodsCommand·issueOemFeeVoucherCommand·editIssuedStatementCommand·deleteIssuedStatementCommand와 Rules 배포 exit0, 4개 함수 ACTIVE/nodejs22. 양 Hosting 배포 exit0이며 HTML2/JS115/CSS2 총119파일 원격 SHA가 현재 dist와 일치한다. 인증 함수 배포 없이 보존 생성물4SHA 일치를 확인했다. 최초 배포는 최종 diff의 무관 컬렉션 조건 발견으로 중단했고, 조건을 바로잡은 최종 Rules4PASS 이후 배포만 성공 근거로 사용한다. 현재 운영자료/gate쓰기0, 028 전체 완료 아님·22완료21잔여 유지.
+
