@@ -103,3 +103,18 @@ it('진행 중 같은 버튼을 다시 눌러도 기존 AI 요청만 보낸다',
  render(<PasteOrderModal {...props} onSave={vi.fn()}/>);review();const pending=beginRead();
  fireEvent.click(screen.getByRole('button',{name:'읽는 중…'}));expect(api.call).toHaveBeenCalledTimes(1);await finish(pending);
 });
+
+
+it.each(['2026-02-30', '2026-04-31', '2026-02-29'])('AI가 불가능한 날짜 %s를 보내도 기존 날짜로 정상 주문을 저장한다', async deliveryDate => {
+ const save=vi.fn().mockResolvedValue(undefined);render(<PasteOrderModal {...props} onSave={save}/>);review();const pending=beginRead();
+ await act(async()=>{pending.resolve({data:{...answer().data,deliveryDate}});await pending.promise;});
+ expect(screen.getByLabelText('주문일')).toHaveValue('2026-11-01');expect(screen.getByLabelText('출고예정일')).toHaveValue('2026-11-10');
+ expect(screen.getByRole('combobox')).toHaveValue('perilla');expect(screen.getByRole('spinbutton')).toHaveValue(2);expect(screen.getByLabelText('주문 비고')).toHaveValue('AI 메모');
+ const create=screen.getByRole('button',{name:/주문 생성/});expect(create).toBeEnabled();fireEvent.click(create);await waitFor(()=>expect(save).toHaveBeenCalledOnce());
+ expect(save.mock.calls[0][0]).toMatchObject({deliveryDate:'2026-11-10T00:00:00.000Z',note:'AI 메모',items:[{itemId:'perilla',quantity:24,isBoxUnit:true,boxQuantity:2}]});expect(api.call).toHaveBeenCalledOnce();
+});
+it('윤년의 실제 날짜는 AI 응답에서 정확히 적용하고 저장한다',async()=>{
+ const save=vi.fn().mockResolvedValue(undefined);render(<PasteOrderModal {...props} onSave={save}/>);review();const pending=beginRead();
+ await act(async()=>{pending.resolve({data:{...answer().data,deliveryDate:'2028-02-29'}});await pending.promise;});expect(screen.getByLabelText('출고예정일')).toHaveValue('2028-02-29');
+ fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());expect(save.mock.calls[0][0]).toMatchObject({deliveryDate:'2028-02-29T00:00:00.000Z'});
+});

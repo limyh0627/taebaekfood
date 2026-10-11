@@ -80,3 +80,12 @@ it('외주 발주가 현재 진행 중이면 이전 미완료 안내와 구분�
  await act(async()=>{finish();});
  expect(sessionStorage.getItem('oem-issue-pending:taebaek')).toBeNull();
 });
+const savedEvidence={version:1 as const,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:100000}],packaging:{confirmed:true as const,supplyAmount:0},capturedAt:'2026-10-12T00:00:00Z'};
+function savedBatch(){return po({oemCostEvidence:savedEvidence,oemBatchCost:{version:1,status:'pending-fee',evidenceSnapshot:savedEvidence,ownerCompanyId:'taebaek',sentKg:100,receivedKg:20,lossKg:80,rawSupplyAmount:100000,packagingSupplyAmount:0,rows:[{itemId:'product',kg:20}]},oemReceivedKg:20,oemReceiptOperationId:'receipt',items:[{itemId:'product',name:'입고 당시 제품',quantity:2,unit:'개'}]});}
+it('현재 규격이 바뀌어도 조회는 저장 원입고 중량으로 표시한다',()=>{
+ view(savedBatch(),[{...item,spec:'25kg'}]);expect(screen.getByText('제품 중량 (저장된 원입고 기준)').parentElement?.textContent).toContain('20 kg');expect(screen.queryByText('제품 중량 (현재 품목 기준 환산)')).toBeNull();expect(screen.queryByText('저장된 회수 중량과 제품·벌크 단위 불일치')).toBeNull();
+});
+it.each(['missing','foreign'])('저장 중량 %s 근거는 화면을 중단하거나 현재 규격으로 추정하지 않는다',kind=>{
+ const batch=savedBatch();if(kind==='missing')batch.oemBatchCost=undefined;else batch.oemCostEvidence={...savedEvidence,ownerCompanyId:'punghoe'};
+ view(batch,[{...item,spec:'25kg'}]);expect(screen.getByText('제품 중량 (입고 근거 미확인)').parentElement?.textContent).toContain('자료 없음');expect(screen.getByText('저장된 원입고 중량 근거 미확인')).toBeInTheDocument();expect(screen.getByText('산술 차이 · 손실 미확정').parentElement?.textContent).toContain('미확정');
+});

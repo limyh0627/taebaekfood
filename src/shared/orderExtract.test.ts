@@ -134,3 +134,20 @@ describe('이 거래처가 전에 시킨 것', () => {
     expect(historyLines([], 'c-가득찬')).toEqual([]);
   });
 });
+
+
+describe('AI 날짜의 실제 달력 검증', () => {
+  it.each(['2026-02-30', '2026-04-31', '2026-02-29', '2100-02-29', '2026-00-10', '2026-12-00', '2026-13-01', '2026-2-09', '2026-09-20T00:00:00Z'])('불가능한 날짜 %s는 기존 화면 날짜를 바꾸지 않도록 제외한다', deliveryDate => {
+    const result = validateExtract({ deliveryDate, note: '정상 메모', lines: [{ itemId: 'p-oil', qty: 2, isBox: true }] }, 품목);
+    expect(result.deliveryDate).toBeUndefined();
+    expect(result.lines).toEqual([{ itemId: 'p-oil', name: '참기름/골드', qty: 2, isBox: true, source: undefined }]);
+    expect(result.note).toBe('정상 메모');
+  });
+  it.each(['2028-02-29', '2000-02-29', '2026-04-30', '2026-12-31'])('달력에 있는 %s는 정확한 날 그대로 받는다', deliveryDate => {
+    expect(validateExtract({ deliveryDate, lines: [] }, 품목).deliveryDate).toBe(deliveryDate);
+  });
+  it('공백은 기존대로 다듬고 문자열이 아닌 날짜는 적용하지 않는다', () => {
+    expect(validateExtract({ deliveryDate: ' 2028-02-29 ', lines: [] }, 품목).deliveryDate).toBe('2028-02-29');
+    for (const deliveryDate of [null, undefined, 20280229, {}, []]) expect(validateExtract({ deliveryDate, lines: [] }, 품목).deliveryDate).toBeUndefined();
+  });
+});

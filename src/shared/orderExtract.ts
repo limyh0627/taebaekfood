@@ -1,3 +1,5 @@
+import { isCalendarDay } from './day';
+
 /**
  * **말로 온 주문을 표로 옮긴다 — 읽어낸 것을 믿지 않는 자리.**
  *
@@ -16,7 +18,7 @@
  * 믿지 않는 까닭: 수량 하나가 틀리면 재고·전표가 다 틀어진다. 그래서
  *   · 품목은 **우리 목록에 있는 id 만** 받는다 — 이름이 그럴듯해도 지어낸 것은 버린다.
  *   · 수량은 **양수**여야 한다.
- *   · 날짜는 `YYYY-MM-DD` 모양이어야 한다.
+ *   · 날짜는 `YYYY-MM-DD` 모양이며 실제 달력에 있는 날이어야 한다.
  * 걸러낸 줄은 버리지 않고 **왜 걸렸는지 적어** 돌려준다 — 사람이 보고 고칠 수 있어야 한다.
  */
 
@@ -58,12 +60,10 @@ const 수 = (v: unknown): number => {
   return Number.isFinite(n) ? n : NaN;
 };
 
-/** `YYYY-MM-DD` 인가 — 달력이 받는 모양이어야 화면에 그대로 꽂힌다. */
+/** Date가 2월 30일을 3월로 보정해도 날짜 입력은 받지 않는다. 공용 달력 검증으로 기존 입력을 지킨다. */
 const 날짜꼴 = (v: unknown): string | undefined => {
   const t = 글(v);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return undefined;
-  const d = new Date(`${t}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? undefined : t;
+  return isCalendarDay(t) ? t : undefined;
 };
 
 /**

@@ -1,3 +1,4 @@
+import {buildOemBatchCostPreview,type OemCostEvidence} from '../../shared/oemBatchCost';
 import { afterEach, describe, expect, it } from 'vitest';
 import {buildBomIndex,getBomIndex,setBomIndex} from '../../shared/bomIndex';
 import {buildPackIndex} from '../../shared/packIndex';
@@ -81,4 +82,19 @@ describe('reconcileOemBatch', () => {
     ] }), [product], 'taebaek')!;
     expect(result.products.map(row => [row.name, row.itemId])).toEqual([['입고 당시 이름', 'item'], ['missing', 'missing']]);
   });
+});
+
+const confirmedEvidence:OemCostEvidence={version:1,ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:100000}],packaging:{confirmed:true,supplyAmount:0},capturedAt:'2026-10-12T00:00:00Z'};
+function confirmedBatch(){return po({oemCostEvidence:confirmedEvidence,oemBatchCost:buildOemBatchCostPreview(confirmedEvidence,{companyId:'taebaek',sent:[{rawItemId:'raw',kg:100}]},[{itemId:'item',kg:20}]),oemReceivedKg:20,oemReceiptOperationId:'receipt',items:[{itemId:'item',name:'입고 당시 제품',quantity:2,unit:'개'}]});}
+it('확인 배치는 현재 규격/BOM/품목 존재와 무관하게 저장 원입고 kg를 유지한다',()=>{
+ const batch=confirmedBatch(),changed={...product,spec:'25kg'};const before=JSON.stringify(batch);
+ const result=reconcileOemBatch(batch,[changed],'taebaek')!;expect(result.productWeightBasis).toBe('saved-receipt');expect(result.products[0].kg).toBe(20);expect(result.unresolvedBatchKg).toBe(80);expect(result.issues).not.toContain('저장된 회수 중량과 제품·벌크 단위 불일치');
+ expect(reconcileOemBatch(batch,[],'taebaek')?.products[0].kg).toBe(20);expect(reconcileOemBatch(batch,[changed],'punghoe')).toBeUndefined();expect(JSON.stringify(batch)).toBe(before);
+});
+it.each(['missing','sum','duplicate','quantity'])('확인 원입고 %s 손상은 현재 환산으로 대체하지 않는다',kind=>{
+ const batch=confirmedBatch();if(kind==='missing')batch.oemBatchCost=undefined;if(kind==='sum')batch.oemReceivedKg=21;if(kind==='duplicate')batch.items=[...batch.items!,...batch.items!];if(kind==='quantity')batch.items![0].quantity=0;
+ const result=reconcileOemBatch(batch,[{...product,spec:'25kg'}],'taebaek')!;expect(result.productWeightBasis).toBe('unconfirmed');expect(result.issues).toContain('저장된 원입고 중량 근거 미확인');expect(result.products.every(row=>row.kg===undefined)).toBe(true);expect(result.unresolvedBatchKg).toBeUndefined();
+});
+it('다른 회사 원가 근거를 현재 회사 저장 중량으로 표시하지 않는다',()=>{
+ const batch=confirmedBatch();batch.oemCostEvidence={...confirmedEvidence,ownerCompanyId:'punghoe'};const result=reconcileOemBatch(batch,[product],'taebaek')!;expect(result.productWeightBasis).toBe('unconfirmed');expect(result.unallocatedProductKg).toBeUndefined();expect(result.issues).toContain('저장된 원입고 중량 근거 미확인');
 });
