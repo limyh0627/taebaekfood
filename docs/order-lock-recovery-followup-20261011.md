@@ -34,3 +34,8 @@ orderLockRecoveryOperations는 서버 전용 복구 영수증 컬렉션으로 �
 최종 앱 타입 및 집중7파일103PASS, 서비스/화면27PASS(103에 포함), 서버 SDK8PASS, 두 앱 최종 배포 빌드 exit0를 확인했다. 생산 취소 표시5PASS와 보호 제거 변이 검출을 포함하며 독립 검토 추가P1/P2는 없다. 중복 부분 시험은 합산하지 않는다.
 
 최종 일반 회귀477파일·4056PASS/5skip·실패0·exit0(98.61초). 사전87컬렉션/724필드/447소스/619필드참조/2263미해석/519wrapper해석결과이며 마지막519는컬렉션수가아니다. 인증SHA4보존 및 diff check를 확인했다.
+
+## 실제 배포 확인 · 2026-10-11
+
+소스 d388dd09ee6f7c32715bf3b29e6fe6105ca2618c GitHub main푸시·원격HEAD일치. recoverOrderInventoryLockCommand 단독 생성 배포84321 exit0·ACTIVE/nodejs22. 관리자·직원 Hosting53242 exit0, 원격72731에서 HTML2/JS113/CSS2 총117파일 SHA일치. Rules/운영자료/활성화설정쓰기0. private records/order-unlock의 실행로그·검증JSON을 보존한다. 원본 전체21완료22잔여를 유지하며 각 관리키의 후속 배포를 전체완료3건으로 더하지 않는다.
+
