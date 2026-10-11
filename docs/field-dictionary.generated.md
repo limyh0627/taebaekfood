@@ -714,7 +714,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 719개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 720개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -986,6 +986,7 @@ shared/types.ts 외 interface/type alias 719개를 별도 목록에 기록한다
 | OemIssuePorts | src/features/admin/oemIssueJob.ts:42 | interface | direct-properties-only | prepareDraft, runRawSteps, missingRawSteps, finalizeDraft, markFailed |
 | OemFeeStatementWrite | src/features/admin/oemFeeStatement.ts:4 | interface | direct-properties-only | companyId, poId, perKg, statement |
 | OemEngineDeps | src/features/admin/oemEngine.ts:33 | interface | direct-properties-only | orderUnitInputs, companyId, items, partners, issueOemBatchJob, adjustRawLots, updateItem, addItem, applyOemReceiptInventory, applyOemFeeStatement, buildFormula, processingFeeCode |
+| StoredOemCostDisplay | src/features/admin/oemReconciliation.ts:8 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/OemManager.tsx:19 | interface | direct-properties-only | orderUnitInputs, companyId, items, partners, rawStockKg, issueDrafts, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee |
 | IssueInput | components/OemManager.tsx:35 | type-alias | non-object-alias-not-expanded |  |
 | ReceiveInput | components/OemManager.tsx:36 | type-alias | non-object-alias-not-expanded |  |
@@ -1797,6 +1798,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OemIssuePorts | src/features/admin/oemIssueJob.ts:42 | checker-resolved-properties-only | 5 |
 | OemFeeStatementWrite | src/features/admin/oemFeeStatement.ts:4 | checker-resolved-properties-only | 4 |
 | OemEngineDeps | src/features/admin/oemEngine.ts:33 | checker-resolved-properties-only | 12 |
+| StoredOemCostDisplay | src/features/admin/oemReconciliation.ts:8 | non-object-model-not-expanded | 0 |
 | Props | components/OemManager.tsx:19 | checker-resolved-properties-only | 13 |
 | IssueInput | components/OemManager.tsx:35 | checker-resolved-properties-only | 7 |
 | ReceiveInput | components/OemManager.tsx:36 | checker-resolved-properties-only | 6 |
@@ -5062,10 +5064,10 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1208 | 11 |
 | PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1209 | 1 |
 | PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1211 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1212 | 56 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1212 | 57 |
 | PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1213 | 2 |
 | PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1214 | 1 |
-| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1215 | 22 |
+| PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1215 | 24 |
 | PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1220 | 2 |
 | PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1221 | 0 |
 | PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1222 | 11 |
@@ -5074,21 +5076,21 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1225 | 16 |
 | PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1226 | 0 |
 | PurchaseOrder | note | 선택 | string | src/shared/types.ts:1227 | 1 |
-| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1231 | 32 |
-| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1233 | 7 |
+| PurchaseOrder | poType | 선택 | 'oem' | src/shared/types.ts:1231 | 33 |
+| PurchaseOrder | oemCostEvidence | 선택 | OemCostEvidence | src/shared/types.ts:1233 | 8 |
 | PurchaseOrder | oemCostEvidenceSource | 선택 | 'issue' \| 'receipt' | src/shared/types.ts:1235 | 0 |
 | PurchaseOrder | oemBatchCost | 선택 | OemBatchCostPreview \| OemBatchCostBlocked \| OemBatchCost | src/shared/types.ts:1237 | 2 |
 | PurchaseOrder | oemPartnerId | 선택 | string | src/shared/types.ts:1238 | 4 |
-| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1239 | 14 |
+| PurchaseOrder | oemSent | 선택 | { material: string; kg: number; rawItemId?: string }[] | src/shared/types.ts:1239 | 15 |
 | PurchaseOrder | oemSentAt | 선택 | string | src/shared/types.ts:1240 | 1 |
 | PurchaseOrder | oemIssueStatus | 선택 | 'processing' \| 'failed' \| 'complete' | src/shared/types.ts:1242 | 3 |
-| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1243 | 16 |
-| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1244 | 8 |
+| PurchaseOrder | oemCancelledAt | 선택 | string | src/shared/types.ts:1243 | 17 |
+| PurchaseOrder | oemCancelOperationId | 선택 | string | src/shared/types.ts:1244 | 9 |
 | PurchaseOrder | oemIssueFingerprint | 선택 | string | src/shared/types.ts:1245 | 3 |
 | PurchaseOrder | oemIssueDate | 선택 | string | src/shared/types.ts:1246 | 3 |
 | PurchaseOrder | oemIssuedBy | 선택 | string | src/shared/types.ts:1247 | 1 |
 | PurchaseOrder | oemIssueError | 선택 | string | src/shared/types.ts:1248 | 0 |
-| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1249 | 6 |
+| PurchaseOrder | oemReceivedKg | 선택 | number | src/shared/types.ts:1249 | 7 |
 | PurchaseOrder | oemReceivedBulk | 선택 | { material: string; kg: number }[] | src/shared/types.ts:1250 | 5 |
 | PurchaseOrder | oemFeePerKg | 선택 | number | src/shared/types.ts:1251 | 3 |
 | PurchaseOrder | oemReceiptOperationId | 선택 | string | src/shared/types.ts:1253 | 3 |

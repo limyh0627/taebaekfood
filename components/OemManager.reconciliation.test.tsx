@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import OemManager from './OemManager';
 import type { Item, PurchaseOrder } from '../src/shared/types';
+import { buildOemBatchCostPreview, finalizeOemBatchCost, type OemBatchCost } from '../src/shared/oemBatchCost';
 
 const item = { id: 'product', companyId: 'taebaek', name: '볶음참깨', type: 'product', spec: '1kg', unit: '개' } as Item;
 const po = (patch: Partial<PurchaseOrder> = {}) => ({ id: 'po', companyId: 'taebaek', poType: 'oem', status: 'received',
@@ -88,4 +89,48 @@ it('현재 규격이 바뀌어도 조회는 저장 원입고 중량으로 표시
 it.each(['missing','foreign'])('저장 중량 %s 근거는 화면을 중단하거나 현재 규격으로 추정하지 않는다',kind=>{
  const batch=savedBatch();if(kind==='missing')batch.oemBatchCost=undefined;else batch.oemCostEvidence={...savedEvidence,ownerCompanyId:'punghoe'};
  view(batch,[{...item,spec:'25kg'}]);expect(screen.getByText('제품 중량 (입고 근거 미확인)').parentElement?.textContent).toContain('자료 없음');expect(screen.getByText('저장된 원입고 중량 근거 미확인')).toBeInTheDocument();expect(screen.getByText('산술 차이 · 손실 미확정').parentElement?.textContent).toContain('미확정');
+});
+function confirmedBatch(){
+ const sent=[{rawItemId:'raw',material:'참깨',kg:100}];
+ const preview=buildOemBatchCostPreview(savedEvidence,{companyId:'taebaek',sent},[{itemId:'product',kg:20}]);
+ if(preview.status!=='pending-fee')throw new Error('invalid fixture');
+ return po({oemSent:sent,oemCostEvidence:savedEvidence,oemBatchCost:finalizeOemBatchCost(preview,{statementId:'fee-po',feeSupplyAmount:2000}),linkedStatementId:'fee-po',oemReceivedKg:20,oemReceiptOperationId:'receipt',oemFeePerKg:100,items:[{itemId:'product',name:'제품',quantity:2,unit:'개'}]});
+}
+it('정상 확정 근거는 현재 규격과 독립적으로 기존 원가를 표시한다',()=>{
+ const issue=view(confirmedBatch(),[{...item,spec:'25kg'}]);
+ expect(screen.getByText('OEM 원가 확정')).toBeInTheDocument();
+ expect(screen.getByText('확정 원가 5,100원/kg')).toBeInTheDocument();
+ expect(issue).not.toHaveBeenCalled();
+});
+it.each(['company','owner','snapshot','status','received','link','fee','total','allocation','loss','nan','rows'])('실제 모달은 %s 불일치의 확정 숫자를 숨긴다',kind=>{
+ const batch=confirmedBatch();const cost=batch.oemBatchCost as OemBatchCost;
+ if(kind==='company')batch.companyId='punghoe';
+ if(kind==='owner')cost.ownerCompanyId='punghoe';
+ if(kind==='snapshot')cost.evidenceSnapshot={...cost.evidenceSnapshot,ownerCompanyId:'punghoe'};
+ if(kind==='status')batch.status='invoiced';
+ if(kind==='received')batch.oemReceivedKg=21;
+ if(kind==='link')batch.linkedStatementId=undefined;
+ if(kind==='fee')cost.feeStatementId='other';
+ if(kind==='total')cost.totalSupplyAmount++;
+ if(kind==='allocation')cost.allocations[0].supplyAmount++;
+ if(kind==='loss')cost.lossKg++;
+ if(kind==='nan')cost.costPerKg=NaN;
+ if(kind==='rows')cost.rows[0].kg++;
+ view(batch);
+ expect(screen.queryByText('OEM 원가 확정')).toBeNull();
+ expect(screen.queryByText(/^확정 원가 /)).toBeNull();
+ expect(screen.getByText(/^OEM 원가 미확인/)).toBeInTheDocument();
+});
+it('blocked 이전 확정 객체는 숫자 표시로 되살리지 않는다',()=>{
+ const batch=confirmedBatch();batch.oemBatchCost={version:1,status:'blocked',reason:'fee-deleted',previousConfirmed:batch.oemBatchCost as OemBatchCost};
+ view(batch);expect(screen.getByText(/가공비 전표 삭제로 재확인이 필요/)).toBeInTheDocument();expect(screen.queryByText(/^확정 원가 /)).toBeNull();
+});
+it('객체 키 순서만 바뀐 저장 근거는 정상 확정 표시를 유지한다',()=>{
+ const reverse=(v:any):any=>Array.isArray(v)?v.map(reverse):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).reverse().map(([k,x])=>[k,reverse(x)])):v;
+ const batch=confirmedBatch();batch.oemBatchCost=reverse(batch.oemBatchCost);view(batch);expect(screen.getByText('OEM 원가 확정')).toBeInTheDocument();
+});
+it('조회 불일치는 새 발행 계산이나 사용자 콜백을 차단하지 않는다',async()=>{
+ const batch=confirmedBatch();(batch.oemBatchCost as OemBatchCost).totalSupplyAmount++;
+ const issue=view(batch);fireEvent.click(screen.getByRole('button',{name:'전표 발행'}));await act(async()=>{});
+ expect(issue).toHaveBeenCalledExactlyOnceWith({po:batch,unitPricePerKg:100,date:expect.any(String)});
 });

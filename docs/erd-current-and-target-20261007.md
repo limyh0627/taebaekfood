@@ -261,3 +261,9 @@ source93376edb 정확36파일은 로컬 커밋으로 고정됐으며 GitHub push
 | 원자 입고·가공비 operation | 기존 서버 명령의 최신 문서·회사·요청 증명을 유지한다. UI 생명주기 수정에 새 컬렉션을 추가하지 않는다. |
 
 현재 boxSize는 공용 환산 근거가 아니다. 현재 환산은 BOM·item_pack의 unitsPerBoxOf를 사용하며 옛 fix-boxsize-restore CLI의 고정값 부활/무조건 삭제 경로를 종료하는 후속을 구현했다. 기존 DB-CHANGELOG 역사와 백업·실제 포장 관계는 보존한다. 최종 검증·배포 여부는 [OEM 모달 세대 후속](oem-modal-generation-followup-20261012.md)에 별도로 기록한다.
+
+## 2026-10-12 OEM 저장 원가 요약 후속 · 구현 중
+
+6d61ca8의 모달 세대 후속은 일반4204PASS·타입양빌드 exit0·GitHub main 통합을 확인했고 Hosting 화면 확인은 대기한다. 다음 조회 판독은 PO·원가 근거·저장 preview/finalize 결과를 기존 공용 계산으로 대조하여 불일치한 원가 숫자의 확정 표시를 막는다. 실제 가공비 전표나 원입고 영수증을 새로 조회한 인증 증명과 구분한다. 양수 PO 수량과 저장 kg의 동시 변경은 PO-only 판독만으로 검출할 수 없다.
+
+현재 포장 관계는 BOM·item_pack이며 옛 fix-pack-table의 고정값 이관과 전체 문서 복원/기존 pack 무조건 삭제 undo는 현재 관계의 수정 경로가 아니다. 해당 CLI를 안내로 종료하고 실제 포장 관계·백업·역사를 보존한다. 새로운 DB 관계·컬렉션·활성화 설정은 없다. 구현과 검증 결과는 [OEM 저장 원가 요약 근거 후속](oem-cost-summary-evidence-followup-20261012.md)에서 구분한다.

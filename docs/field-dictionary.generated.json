@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-11T17:19:21.859Z",
+  "generatedAt": "2026-10-11T17:36:42.261Z",
   "sourceFiles": 452,
   "unresolvedAccesses": 2312,
   "unresolvedPropertyAccesses": [
@@ -21424,7 +21424,7 @@
         "src/features/admin/oemEngine.ts:194",
         "src/features/admin/oemEngine.ts:199",
         "src/features/admin/oemEngine.ts:267",
-        "src/features/admin/oemReconciliation.ts:27",
+        "src/features/admin/oemReconciliation.ts:78",
         "src/features/admin/orderInventoryCancellation.ts:100",
         "src/features/admin/orderInventoryCancellation.ts:102",
         "src/features/admin/orderInventoryCancellation.ts:80",
@@ -21826,7 +21826,7 @@
         "src/features/admin/dataIntegrityAudit.ts:539",
         "src/features/admin/itemLedger.ts:97",
         "src/features/admin/oemEngine.ts:171",
-        "src/features/admin/oemReconciliation.ts:29",
+        "src/features/admin/oemReconciliation.ts:80",
         "src/features/admin/orderItemStock.ts:156",
         "src/features/admin/orderItemStock.ts:274",
         "src/features/admin/orderItemStock.ts:284",
@@ -27194,11 +27194,11 @@
         "src/features/admin/oemEngine.ts:267",
         "src/features/admin/oemEngine.ts:268",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:27",
-        "src/features/admin/oemReconciliation.ts:28",
-        "src/features/admin/oemReconciliation.ts:29",
-        "src/features/admin/oemReconciliation.ts:30",
-        "src/features/admin/oemReconciliation.ts:31",
+        "src/features/admin/oemReconciliation.ts:78",
+        "src/features/admin/oemReconciliation.ts:79",
+        "src/features/admin/oemReconciliation.ts:80",
+        "src/features/admin/oemReconciliation.ts:81",
+        "src/features/admin/oemReconciliation.ts:82",
         "src/shared/pendingFlowQuantity.ts:18",
         "src/shared/services/firebaseService.ts:700",
         "src/shared/services/firebaseService.ts:703",
@@ -27239,7 +27239,7 @@
         "src/features/admin/dataIntegrityAudit.ts:480",
         "src/features/admin/dataIntegrityAudit.ts:490",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:29"
+        "src/features/admin/oemReconciliation.ts:80"
       ]
     },
     {
@@ -27266,7 +27266,7 @@
         "src/features/admin/dataIntegrityAudit.ts:145",
         "src/features/admin/dataIntegrityAudit.ts:407",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:31",
+        "src/features/admin/oemReconciliation.ts:82",
         "src/shared/pendingFlowQuantity.ts:18",
         "src/shared/services/firebaseService.ts:710",
         "src/shared/services/firebaseService.ts:717",
@@ -27297,7 +27297,7 @@
         "src/features/admin/dataIntegrityAudit.ts:425",
         "src/features/admin/dataIntegrityAudit.ts:480",
         "src/features/admin/oemEngine.ts:269",
-        "src/features/admin/oemReconciliation.ts:31",
+        "src/features/admin/oemReconciliation.ts:82",
         "src/shared/services/firebaseService.ts:724"
       ]
     },
@@ -27400,7 +27400,7 @@
         "src/features/admin/oemIssueJob.ts:71",
         "src/features/admin/oemIssueJob.ts:77",
         "src/features/admin/oemIssueJob.ts:83",
-        "src/features/admin/oemReconciliation.ts:50",
+        "src/features/admin/oemReconciliation.ts:101",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:19",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:21"
       ]
@@ -27583,16 +27583,17 @@
         "src/features/admin/oemIssueJob.ts:57",
         "src/features/admin/oemReceiptInventory.ts:75",
         "src/features/admin/oemReceiptInventory.ts:82",
-        "src/features/admin/oemReconciliation.ts:12",
-        "src/features/admin/oemReconciliation.ts:25",
-        "src/features/admin/oemReconciliation.ts:26",
-        "src/features/admin/oemReconciliation.ts:33",
-        "src/features/admin/oemReconciliation.ts:34",
-        "src/features/admin/oemReconciliation.ts:35",
-        "src/features/admin/oemReconciliation.ts:45",
-        "src/features/admin/oemReconciliation.ts:50",
-        "src/features/admin/oemReconciliation.ts:54",
-        "src/features/admin/oemReconciliation.ts:56",
+        "src/features/admin/oemReconciliation.ts:101",
+        "src/features/admin/oemReconciliation.ts:105",
+        "src/features/admin/oemReconciliation.ts:107",
+        "src/features/admin/oemReconciliation.ts:29",
+        "src/features/admin/oemReconciliation.ts:63",
+        "src/features/admin/oemReconciliation.ts:76",
+        "src/features/admin/oemReconciliation.ts:77",
+        "src/features/admin/oemReconciliation.ts:84",
+        "src/features/admin/oemReconciliation.ts:85",
+        "src/features/admin/oemReconciliation.ts:86",
+        "src/features/admin/oemReconciliation.ts:96",
         "src/shared/pendingFlowQuantity.ts:16",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:20",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:40",
@@ -27651,7 +27652,9 @@
         "src/features/admin/AdminApp.tsx:2344",
         "src/features/admin/oemEngine.ts:259",
         "src/features/admin/oemReceiptInventory.ts:78",
-        "src/features/admin/oemReconciliation.ts:56",
+        "src/features/admin/oemReconciliation.ts:107",
+        "src/features/admin/oemReconciliation.ts:46",
+        "src/features/admin/oemReconciliation.ts:49",
         "src/shared/services/firebaseService.ts:818"
       ]
     },
@@ -27741,8 +27744,8 @@
         "src/features/admin/AdminApp.tsx:1161",
         "src/features/admin/AdminApp.tsx:1162",
         "src/features/admin/oemEngine.ts:266",
-        "src/features/admin/oemReconciliation.ts:25",
-        "src/features/admin/oemReconciliation.ts:26",
+        "src/features/admin/oemReconciliation.ts:76",
+        "src/features/admin/oemReconciliation.ts:77",
         "src/shared/pendingFlowQuantity.ts:19",
         "src/shared/pendingFlowQuantity.ts:20",
         "src/shared/types.ts:1258",
@@ -27801,7 +27804,8 @@
         "src/features/admin/oemEngine.ts:254",
         "src/features/admin/oemIssueJob.ts:39",
         "src/features/admin/oemIssueJob.ts:97",
-        "src/features/admin/oemReconciliation.ts:7",
+        "src/features/admin/oemReconciliation.ts:29",
+        "src/features/admin/oemReconciliation.ts:58",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:20",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:39",
         "src/shared/services/firebaseService.ts:691",
@@ -27820,8 +27824,9 @@
         "components/OemManager.tsx:438",
         "src/features/admin/oemEngine.ts:197",
         "src/features/admin/oemEngine.ts:223",
-        "src/features/admin/oemReconciliation.ts:10",
-        "src/features/admin/oemReconciliation.ts:14"
+        "src/features/admin/oemReconciliation.ts:39",
+        "src/features/admin/oemReconciliation.ts:61",
+        "src/features/admin/oemReconciliation.ts:65"
       ]
     },
     {
@@ -27839,8 +27844,8 @@
       "type": "OemBatchCostPreview | OemBatchCostBlocked | OemBatchCost",
       "declaration": "src/shared/types.ts:1237",
       "references": [
-        "components/OemManager.tsx:538",
-        "src/features/admin/oemReconciliation.ts:14"
+        "src/features/admin/oemReconciliation.ts:30",
+        "src/features/admin/oemReconciliation.ts:65"
       ]
     },
     {
@@ -27876,7 +27881,8 @@
         "src/features/admin/oemEngine.ts:223",
         "src/features/admin/oemEngine.ts:271",
         "src/features/admin/oemIssueJob.ts:76",
-        "src/features/admin/oemReconciliation.ts:18"
+        "src/features/admin/oemReconciliation.ts:38",
+        "src/features/admin/oemReconciliation.ts:69"
       ]
     },
     {
@@ -27923,7 +27929,8 @@
         "src/features/admin/oem.ts:55",
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemIssueJob.ts:139",
-        "src/features/admin/oemIssueJob.ts:96"
+        "src/features/admin/oemIssueJob.ts:96",
+        "src/features/admin/oemReconciliation.ts:29"
       ]
     },
     {
@@ -27940,7 +27947,8 @@
         "src/features/admin/oem.ts:55",
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemIssueJob.ts:139",
-        "src/features/admin/oemIssueJob.ts:96"
+        "src/features/admin/oemIssueJob.ts:96",
+        "src/features/admin/oemReconciliation.ts:29"
       ]
     },
     {
@@ -27996,8 +28004,9 @@
         "components/OemManager.tsx:485",
         "components/OemManager.tsx:498",
         "src/features/admin/oemEngine.ts:261",
-        "src/features/admin/oemReconciliation.ts:45",
-        "src/features/admin/oemReconciliation.ts:47"
+        "src/features/admin/oemReconciliation.ts:44",
+        "src/features/admin/oemReconciliation.ts:96",
+        "src/features/admin/oemReconciliation.ts:98"
       ]
     },
     {
@@ -28009,9 +28018,9 @@
       "references": [
         "components/ItemList.tsx:1144",
         "src/features/admin/oemEngine.ts:272",
-        "src/features/admin/oemReconciliation.ts:25",
-        "src/features/admin/oemReconciliation.ts:33",
-        "src/features/admin/oemReconciliation.ts:34"
+        "src/features/admin/oemReconciliation.ts:76",
+        "src/features/admin/oemReconciliation.ts:84",
+        "src/features/admin/oemReconciliation.ts:85"
       ]
     },
     {
@@ -28035,7 +28044,7 @@
       "references": [
         "src/features/admin/oemEngine.ts:134",
         "src/features/admin/oemReceiptInventory.ts:76",
-        "src/features/admin/oemReconciliation.ts:34"
+        "src/features/admin/oemReconciliation.ts:85"
       ]
     },
     {
@@ -41644,6 +41653,14 @@
           "declaration": "src/features/admin/oemEngine.ts:49"
         }
       ]
+    },
+    {
+      "model": "StoredOemCostDisplay",
+      "declaration": "src/features/admin/oemReconciliation.ts:8",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "{ status: 'unconfirmed'; message: string }\r\n  | { status: 'pending-fee'; cost: OemBatchCostPreview }\r\n  | { status: 'confirmed'; cost: OemBatchCost }"
     },
     {
       "model": "Props",
@@ -82275,6 +82292,12 @@
           "inherited": false
         }
       ]
+    },
+    {
+      "model": "StoredOemCostDisplay",
+      "declaration": "src/features/admin/oemReconciliation.ts:8",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
     },
     {
       "model": "Props",

@@ -9,7 +9,7 @@ import { companyOf, Item, Partner, PurchaseOrder, type CompanyId } from '../src/
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
 import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
-import { reconcileOemBatch } from '../src/features/admin/oemReconciliation';
+import { inspectStoredOemCostDisplay, reconcileOemBatch } from '../src/features/admin/oemReconciliation';
 import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 
 /**
@@ -502,7 +502,7 @@ function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderUnitInpu
           {reconciliation?.issues.map(issue => <p key={issue} className="text-amber-700">{issue}</p>)}
         </div>
 
-        <OemCostSummary po={po}/>
+        <OemCostSummary po={po} companyId={companyId}/>
         <div className="flex items-end gap-3">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">
@@ -534,9 +534,10 @@ function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderUnitInpu
   );
 }
 
-function OemCostSummary({po}:{po:PurchaseOrder}) {
- const cost=po.oemBatchCost;
- if(!cost || cost.status==='blocked') return <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">OEM 원가 미확인 · {cost?.reason==='yield-unconfirmed' ? '받은 중량이 보낸 중량보다 많아 확인이 필요합니다.' : cost?.reason==='fee-changed' ? '가공비 전표 변경으로 재확인이 필요합니다.' : cost?.reason==='fee-deleted' ? '가공비 전표 삭제로 재확인이 필요합니다.' : !cost || cost.reason==='missing-evidence' ? '직접 확인한 원료·부자재 원가 근거가 없습니다.' : '원가 근거 확인이 필요합니다.'}</p>;
+function OemCostSummary({po,companyId}:{po:PurchaseOrder;companyId:CompanyId}) {
+ const display=inspectStoredOemCostDisplay(po,companyId);
+ if(display.status==='unconfirmed') return <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">OEM 원가 미확인 · {display.message}</p>;
+ const cost=display.cost;
  return <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1">
    <strong>OEM 원가 {cost.status==='confirmed' ? '확정' : '가공비 공급가액 확인 대기'}</strong>
    <p>원료 공급가액 {fmt(cost.rawSupplyAmount)}원 · 부자재 공급가액 {fmt(cost.packagingSupplyAmount)}원</p>
