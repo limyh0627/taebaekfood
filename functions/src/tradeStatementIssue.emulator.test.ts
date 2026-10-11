@@ -39,6 +39,23 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+
+  it.each([false,true])('TODO027 소수 포 매입은 면세=%s에서도 거래금액 반올림과 저장 kg 원가를 보존한다',async isTaxExempt=>{
+    await seed();const id='fraction-unit-'+isTaxExempt,rawId=id+'-raw',unitId=id+'-unit';
+    await db.collection('items').doc(rawId).set({companyId:'taebaek',name:'소수 포 원료',type:'raw',subtype:'벌크',unit:'L',stock:7,lots:[],cost:80});
+    await db.collection('item_purchase_unit').doc(unitId).set({companyId:'taebaek',itemId:rawId,purchaseUnit:'포',unitKg:22.5,active:true,isDefault:false});
+    const supply=isTaxExempt?11000:10000,tax=isTaxExempt?0:1000,cost=isTaxExempt?326:296;
+    const snapshot={sourceLineIndex:0,purchaseUnitId:unitId,purchaseUnit:'포',purchaseQty:1.5,unitKg:22.5,inventoryQty:33.75};
+    const line={itemId:rawId,name:'소수 포 원료',qty:1.5,price:7333,supply,tax,total:11000,isTaxExempt,accountCode:'500',...snapshot};
+    const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:supply,totalTax:tax,totalAmount:11000,items:[line]},newPo:{id:'po-'+id,cardNo:'PO-261003-'+(isTaxExempt?'098':'097'),items:[{itemId:rawId,itemName:'소수 포 원료',quantity:1.5,unit:'L',isBox:false,...snapshot}]},costUpdates:[{itemId:rawId,price:cost,beforeCost:80,sourceLineIndex:0}]};
+    const issued=await issue(request);
+    const saved=await db.collection('issuedStatements').doc(id).get();expect(saved.get('items')[0]).toEqual(line);expect(saved.data()).toMatchObject({totalSupply:supply,totalTax:tax,totalAmount:11000});
+    const po=await db.collection('purchaseOrders').doc(request.newPo.id).get(),item=await db.collection('items').doc(rawId).get(),counter=await db.collection('appMeta').doc('voucherNo_taebaek_'+date+'_general').get();
+    expect(po.get('items')[0]).toMatchObject({quantity:1.5,...snapshot});expect(item.get('cost')).toBe(cost);expect(item.get('stock')).toBe(7);
+    expect(await issue(request)).toEqual({...issued,status:'duplicate'});
+    for(const old of [saved,po,item,counter])expect((await old.ref.get()).updateTime!.isEqual(old.updateTime!)).toBe(true);
+  });
+
   it('kg 미확인 벌크의 거래·발주는 발행하되 품목 원가와 원가 이력은 바꾸지 않는다', async () => {
     await seed(); const id='raw-no-kg';
     await db.collection('items').doc('raw-no-kg-item').set({companyId:'taebaek',name:'원료',type:'raw',subtype:'벌크',unit:'포',cost:80});
