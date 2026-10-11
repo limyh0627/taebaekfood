@@ -10,6 +10,19 @@
  * 지금 있는 이름을 그대로 옮겨 적은 것이다 — **DB 를 바꾸는 게 아니다.**
  */
 export const COL = {
+  authLoginAttempts: 'authLoginAttempts',
+  companyTransferOperations: 'companyTransferOperations',
+  companyTransferGrants: 'companyTransferGrants',
+  // 앱과 Admin SDK 실제 소비 컬렉션. 운영 DB 생성이나 쓰기 정책 변경이 아니다.
+  returnApplications: 'returnApplications',
+  voucherMutationOperations: 'voucherMutationOperations',
+  appMeta: 'appMeta',
+  loanMovementOperations: 'loanMovementOperations',
+  manualSettlementBatchOperations: 'manualSettlementBatchOperations',
+  manualSettlementOperations: 'manualSettlementOperations',
+  oemReceiptOperations: 'oemReceiptOperations',
+  partnerPaymentOperations: 'partnerPaymentOperations',
+
   financialOpeningOperations: 'financialOpeningOperations',
   returnSubmissionOperations: 'returnSubmissionOperations',
   partnerAdvanceOperations: 'partnerAdvanceOperations',

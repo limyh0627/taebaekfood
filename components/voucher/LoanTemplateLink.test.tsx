@@ -72,9 +72,11 @@ describe('계약 상환 연결', () => {
     await u.click(screen.getByRole('button', { name: '템플릿 저장' }));
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ amount: 1100, principal: 1000, interest: 100, loanId: 'l1', loanCode: '260', autoIssue: false }));
   });
-  it('계약 연결 템플릿은 자동 발행 대상이 되지 않는다', () => {
+  it('계약 검증 없는 일반 자동 발행은 상환을 처리하지 않는다', () => {
     expect(canAutoIssue(template({ autoIssue: true }), '2026-09')).toBe(false);
-    expect(canAutoIssue(template({ autoIssue: true, loanId: '' }), '2026-09')).toBe(true);
+    expect(canAutoIssue(template({ autoIssue: true, loanId: '' }), '2026-09')).toBe(false);
+    expect(canAutoIssue(template({ kind: 'recurring', autoIssue: true }), '2026-09', state.loans)).toBe(true);
+    expect(canAutoIssue(template({ kind: 'recurring', autoIssue: true }), '2026-09', [{ ...loan, companyId: 'punghoe' }])).toBe(false);
     expect(matchingLoan(state.loans, 'punghoe', 'l1', '260')).toBeUndefined();
   });
   it('관리 화면에서도 자동 켜기와 잘못된 연결 저장을 차단한다', async () => {
@@ -101,7 +103,7 @@ describe('계약 상환 연결', () => {
     await u.selectOptions(screen.getByLabelText('대출 건 연결'), '');
     await u.selectOptions(screen.getByLabelText('대출 건 연결'), 'l1');
     await u.click(screen.getByRole('button', { name: '저장' })); expect(update).not.toHaveBeenCalled();
-    expect(state.notice).toHaveBeenLastCalledWith(expect.stringContaining('수동 발행'));
+    expect(state.notice).toHaveBeenLastCalledWith(expect.stringContaining('같은 회사의 대출 계약'));
   });
   it('선택 모달은 그룹·방향·즐겨찾기·검색을 함께 적용하고 높이를 유지한다', async () => {
     const u = userEvent.setup(); render(<CashTemplateModal templates={[
@@ -136,4 +138,13 @@ it('풍회 템플릿의 단기 계정에서도 등록된 중진공 장기 대출
   await u.selectOptions(select, 'ph-long');
   await u.click(screen.getByRole('button', { name: '저장' }));
   expect(update).toHaveBeenCalledWith('t1', expect.objectContaining({ loanId: 'ph-long', loanCode: '293' }));
+});
+
+it('적격 정기 상환은 조건 안내와 기존 자동 발행 켜기를 함께 제공한다', async () => {
+  const u = userEvent.setup(); const update = vi.fn();
+  render(<VoucherTemplateManager companyId="taebaek" templates={[template({ kind: 'recurring' })]} accountCodes={accounts} onUpdate={update} />);
+  await u.click(screen.getByRole('button', { name: '계약 상환 상세보기' }));
+  expect(screen.getByText('계약 검증을 통과한 정기 상환은 자동 발행을 켤 수 있습니다.')).toBeInTheDocument();
+  await u.click(screen.getByTitle('자동 발행 켜기'));
+  expect(update).toHaveBeenCalledWith('t1', { autoIssue: true });
 });

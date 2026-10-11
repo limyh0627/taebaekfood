@@ -1,3 +1,4 @@
+import { AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { purchaseReturnRequest, salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
 import { getPendingReturnSubmission, resumeReturnSubmission, submitReturnRequest, returnSubmissionActorUid } from '../src/shared/services/returnRequestSubmission';
@@ -65,7 +66,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   const [returnItemSearch, setReturnItemSearch] = useState('');
   const [returnNote, setReturnNote] = useState('');
   const [explicitMoney, setExplicitMoney] = useState<Record<string, { supply: string; tax: string; accountCode: string }>>({});
-  const [payableAccountCode, setPayableAccountCode] = useState<'251' | '253'>('251');
+  const [payableAccountCode, setPayableAccountCode] = useState<typeof AP | typeof OTHER_PAYABLE>(AP);
 
   const explicitFor = (rows: { itemId: string }[]) => ({ items: rows.map(row => ({ itemId: row.itemId,
     supply: explicitMoney[row.itemId]?.supply?.trim() ? Number(explicitMoney[row.itemId].supply) : NaN,
@@ -571,7 +572,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
 
 {!purchaseSourceId && <div className="space-y-2 border rounded-xl p-3">
               <p>원전표 없이 금액 직접 입력 · 과거 단가를 자동 추정하지 않습니다.</p>
-              <label>줄일 채무 계정<select aria-label="줄일 채무 계정" value={payableAccountCode} onChange={e => setPayableAccountCode(e.target.value as '251' | '253')}><option value="251">251</option><option value="253">253</option></select></label>
+              <label>줄일 채무 계정<select aria-label="줄일 채무 계정" value={payableAccountCode} onChange={e => setPayableAccountCode(e.target.value as typeof AP | typeof OTHER_PAYABLE)}><option value={AP}>251</option><option value={OTHER_PAYABLE}>253</option></select></label>
               {prItems.map((row, idx) => row.itemId && <div key={row.itemId} className="flex flex-wrap gap-2">
                 <span>{row.name}</span>
                 {(['supply', 'tax', 'accountCode'] as const).map(field => <label key={field}>

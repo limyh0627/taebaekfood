@@ -1,3 +1,5 @@
+import { AP, OTHER_PAYABLE } from '../../shared/autoJournal';
+import { companyOf } from '../../shared/types';
 import type { CompanyId, IssuedStatement, Item, ReturnItem } from '../../shared/types';
 import { returnStockKind } from '../../../functions/src/shared/returnStockKind';
 
@@ -64,7 +66,7 @@ export function salesReturnRequest(companyId: CompanyId, partnerId: string, sour
     const item = allItems.find(candidate => candidate.id === row.itemId);
     const quantity = Number(row.qty);
     const isResellable = row.isResellable ?? true;
-    if (!original || !item || (item.companyId ?? 'taebaek') !== companyId || typeof isResellable !== 'boolean'
+    if (!original || !item || companyOf(item) !== companyId || typeof isResellable !== 'boolean'
       || !Number.isFinite(quantity) || quantity <= 0 || quantity > original.qty
       || !Number.isSafeInteger(Math.round(quantity * 1000))
       || Math.abs(Math.round(quantity * 1000) / 1000 - quantity) > 1e-9)
@@ -85,11 +87,11 @@ export function salesReturnRequest(companyId: CompanyId, partnerId: string, sour
 
 export interface ExplicitReturnMoney {
   items: { itemId: string; supply: number; tax: number; accountCode: string }[];
-  payableAccountCode?: '251' | '253';
+  payableAccountCode?: typeof AP | typeof OTHER_PAYABLE;
 }
 function explicitReturnRequest(companyId: CompanyId, partnerId: string, returnType: '매출' | '매입',
   selected: { itemId: string; qty: string; isResellable?: boolean }[], allItems: Item[], explicit: ExplicitReturnMoney) {
-  if (!partnerId || (returnType === '매입' && !['251', '253'].includes(explicit.payableAccountCode ?? '')))
+  if (!partnerId || (returnType === '매입' && ![AP, OTHER_PAYABLE].includes(explicit.payableAccountCode ?? '')))
     throw new Error('거래처와 매입 채무 계정을 선택해주세요.');
   const rows = selected.filter(row => row.qty !== '' && Number(row.qty) !== 0);
   if (!rows.length || new Set(rows.map(row => row.itemId)).size !== rows.length
@@ -101,7 +103,7 @@ function explicitReturnRequest(companyId: CompanyId, partnerId: string, returnTy
     const money = explicit.items.find(line => line.itemId === row.itemId);
     const quantity = Number(row.qty);
     const isResellable = returnType === '매입' ? false : row.isResellable ?? true;
-    if (!item || (item.companyId ?? 'taebaek') !== companyId || !Number.isFinite(quantity) || quantity <= 0
+    if (!item || companyOf(item) !== companyId || !Number.isFinite(quantity) || quantity <= 0
       || !Number.isSafeInteger(Math.round(quantity * 1000)) || Math.abs(Math.round(quantity * 1000) / 1000 - quantity) > 1e-9
       || typeof isResellable !== 'boolean' || ((returnType === '매입' || isResellable)
         && (returnStockKind(companyId, item, allItems) === 'unsupported' || !item.unit?.trim())))

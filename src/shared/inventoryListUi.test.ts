@@ -6,8 +6,8 @@ const src = readFileSync('components/ItemList.tsx', 'utf8');
 describe('재고 목록 표시 규칙', () => {
   it('상품 발주는 낱개로 고정하고 박스 수는 안내만 한다', () => {
     expect(src).toContain("const canOrderByBox = product.type !== 'goods'");
-    expect(src).toContain("product.type === 'goods' && unitsPerBoxOf(product) > 1");
-    expect(src).toContain('boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product))');
+    expect(src).toContain("product.type === 'goods' && unitsPerBoxOf(product, orderUnitInputs) > 1");
+    expect(src).toContain('boxEquivalentLabel(inlineCartQty, unitsPerBoxOf(product, orderUnitInputs))');
   });
 
   it('카테고리와 서브타입은 열 대신 상단 필터에서 고른다', () => {
@@ -59,7 +59,7 @@ describe('재고 목록 표시 규칙', () => {
   it('출고 전 주문에서 작업완료된 품목 줄만 실제 출고 수량으로 합산한다', () => {
     expect(src).toContain('>출고예정　가용재고</th>');
     expect(src).toContain('if (!line.checked) continue;');
-    expect(src).toContain('shipQtyOfLine(line, product)');
+    expect(src).toContain('shipQtyOfLine(line, product, orderUnitInputs)');
     expect(src).toContain('scheduledOutboundQty.get(product.id) ?? 0');
     expect(src).not.toContain("isCritical ? 'bg-rose-50/30");
   });

@@ -1,3 +1,4 @@
+import { companyOf } from '../../shared/types';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../shared/firebase';
@@ -10,13 +11,13 @@ export type PreparedTransferCashEdit = { counterpart: CashEntry; expectedRevisio
 /** Read once when opening the editor; the returned revision is retained with that draft. */
 export async function loadPayrollCashEdit(companyId: CompanyId, original: CashEntry): Promise<PayrollCashEdit> {
   const payrollId = (original as CashEntry & { payrollId?: string }).payrollId;
-  if (!payrollId || payrollId.includes('/') || (original.companyId ?? 'taebaek') !== companyId) throw new Error('급여 원전표를 확인해주세요.');
+  if (!payrollId || payrollId.includes('/') || companyOf(original) !== companyId) throw new Error('급여 원전표를 확인해주세요.');
   await authReady;
   const user = auth.currentUser;
   const claims = (await user?.getIdTokenResult())?.claims;
   if (!user || claims?.companyId !== companyId || claims.isAdmin !== true) throw new Error('관리자 회사 권한이 필요합니다.');
   const row = (await getDoc(doc(db, 'payrolls', payrollId))).data();
-  if (!row || (row.companyId ?? 'taebaek') !== companyId || row.cashEntryId !== original.id
+  if (!row || companyOf(row) !== companyId || row.cashEntryId !== original.id
     || row.issueKind !== 'cashEntries' || row.issueCancelled || !Array.isArray(row.lines)
     || !Number.isSafeInteger(row.revision) || row.revision < 0) throw new Error('급여대장과 현금 원전표 연결을 확인해주세요.');
   const latest = (await user.getIdTokenResult()).claims;
@@ -69,7 +70,7 @@ async function sendCashMutation(command: Command, companyId: CompanyId, actorId:
 /** Captures the UI original; never fetches a newer cash revision to approve a stale draft. */
 export async function mutateCash(companyId: CompanyId, original: CashEntry, action: 'edit' | 'delete', patch?: Patch, payrollEdit?: PayrollCashEdit, transferEdit?: TransferCashEdit): Promise<Result> {
   const assignment = action === 'edit' && patch && Object.keys(patch).length === 1 && Object.hasOwn(patch, 'cashAccountId');
-  if ((original.companyId ?? 'taebaek') !== companyId || !/^[A-Za-z0-9_-]{1,160}$/.test(original.id)
+  if (companyOf(original) !== companyId || !/^[A-Za-z0-9_-]{1,160}$/.test(original.id)
     || !['edit', 'delete'].includes(action) || (action === 'edit' ? !patch : patch !== undefined)) throw new Error('자금전표 변경 입력을 확인해주세요.');
   await authReady;
   const user = auth.currentUser;
@@ -122,7 +123,7 @@ export async function mutateCash(companyId: CompanyId, original: CashEntry, acti
 
 /** Only the server may authorize and read the other-company cash snapshot. */
 export async function prepareTransferCash(companyId: CompanyId, original: CashEntry) {
-  if ((original.companyId ?? 'taebaek') !== companyId || !/^[A-Za-z0-9_-]{1,160}$/.test(original.id)) throw new Error('현재 회사 원전표를 확인해주세요.');
+  if (companyOf(original) !== companyId || !/^[A-Za-z0-9_-]{1,160}$/.test(original.id)) throw new Error('현재 회사 원전표를 확인해주세요.');
   await authReady;
   const user = auth.currentUser;
   const token = await user?.getIdTokenResult();
@@ -176,7 +177,7 @@ export async function resumeCashMutation(companyId: CompanyId, cashEntryId: stri
 
 /** Separately confirmed FIFO matching reuses the existing atomic manual-allocation command. */
 export async function matchCashAllocations(companyId: CompanyId, entry: CashEntry, allocations: { statementId: string; amount: number }[]) {
-  if ((entry.companyId ?? 'taebaek') !== companyId || !entry.partnerId || !allocations.length
+  if (companyOf(entry) !== companyId || !entry.partnerId || !allocations.length
     || allocations.some(row => !row.statementId || !Number.isSafeInteger(row.amount) || row.amount <= 0)) throw new Error('매칭할 자금과 전표를 확인해주세요.');
   await authReady;
   const user = auth.currentUser;

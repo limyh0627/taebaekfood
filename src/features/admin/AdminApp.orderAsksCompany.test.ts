@@ -15,6 +15,7 @@ import { isGoodsItem } from '../../shared/itemTaxonomy';
 import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import { unreservedItemStock, reservedItemQty, reservedByOrders } from './orderItemStock';
 import { buildStockUseRows } from './stockUseRows';
+import { isStockProduction } from '../../shared/orderPurpose';
 import { OrderStatus } from '../../shared/types';
 const source = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
 const file = ts.createSourceFile('AdminApp.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -31,7 +32,7 @@ function harness(scopeOverride?: {current:{companyId:string;token:object}}) {
  let ask: any = null;
  const writer = vi.fn(); const pending = deferred();
  const order = { id: 'A', partnerName: '태백 주문', status: OrderStatus.PENDING, items: [] };
- const request = actualRequest({ orderAskScope: scope, prepareOrderStatusChange: () => pending.promise,
+ const request = actualRequest({ isStockProduction, orderAskScope: scope, prepareOrderStatusChange: () => pending.promise,
  allOrders: [order], orders: [], workStatusFromItems: () => OrderStatus.DISPATCHED,
  requiresCompleteItemsForStatusChange: () => false, OrderStatus, allItems: [], appData: {orderUnitInputs: undefined}, currentUser: {name:'관리자'},
  buildStockUseRows: () => [{itemId:'item'}], setStockUseAsk: (value: any) => { ask=value; }, setRollbackAsk: (value: any) => {ask=value;}, changeOrderStatus: writer });
@@ -169,7 +170,7 @@ function goodsHarness(stock:number) {
  const item={id:'goods',name:'사입품',type:'goods',stock,minStock:0,image:'',unit:'개'};
  const order={id:'A',partnerName:'태백 주문',status:OrderStatus.PENDING,items:[{itemId:item.id,name:item.name,quantity:2,lineId:'line'}]};
  const set=(value:any)=>{ask=typeof value==='function'?value(ask):value;refs.current.goods=ask;};
- const deps={OrderStatus,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
+ const deps={OrderStatus,isStockProduction,orderAskScope:scope,allOrders:[order],completionSaving:{current:new Set()},ensureOrderLineIds,planOrderItemToggle,currentUser:{name:'관리자'},buildStockUseRows,allItems:[item],appData:{orderUnitInputs:undefined},isGoodsItem,stockUnits,unpackComponent,unreservedItemStock,reservedItemQty,reservedByOrders,setGoodsStockAsk:set,changeOrderItemCompletion:writer,statusLabel:(value:any)=>value,상태색:{},CheckCircle2:{},setAppNotice:vi.fn(),alert:vi.fn(),console};
  const code=ts.transpileModule(`const toggle=${expression.getText(file)};`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
  const toggle=new Function(...Object.keys(deps),`${code};return toggle;`)(...Object.values(deps)) as (...args:any[])=>Promise<void>;
  return{toggle,scope,refs,writer,set,get:()=>ask};

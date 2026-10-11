@@ -1,3 +1,4 @@
+import { AR, AP, OTHER_PAYABLE } from '../../../shared/autoJournal';
 import { httpsCallable } from 'firebase/functions';
 import { auth,authReady,functions } from '../../../shared/firebase';
 import type { CompanyId,ApplyPartnerAdvanceInput,CancelPartnerAdvanceInput,PreparedPartnerAdvance } from '../../../shared/partnerAdvance';
@@ -8,7 +9,7 @@ const validId=(value:unknown,max=180)=>typeof value==='string'&&new RegExp(`^[A-
 const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
 function validInput(action:string,input:any):boolean {
  if(!input||!validId(input.operationId,120)||!validId(input.partnerId,150)||!validId(input.releaseId,150)||typeof input.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(input.date)||!Number.isFinite(Date.parse(input.date+'T00:00:00Z'))||new Date(input.date+'T00:00:00Z').toISOString().slice(0,10)!==input.date||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0)return false;
- return action==='apply'?input.source?.collection==='cashEntries'&&validId(input.source.id)&&['133','254'].includes(input.source.lineKey)&&validId(input.statementId)&&['108','251','253'].includes(input.accountCode)&&Number.isSafeInteger(input.amount)&&input.amount>0&&[input.expectedSourceFingerprint,input.expectedTargetFingerprint].every(value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value))
+ return action==='apply'?input.source?.collection==='cashEntries'&&validId(input.source.id)&&['133','254'].includes(input.source.lineKey)&&validId(input.statementId)&&[AR,AP,OTHER_PAYABLE].includes(input.accountCode)&&Number.isSafeInteger(input.amount)&&input.amount>0&&[input.expectedSourceFingerprint,input.expectedTargetFingerprint].every(value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value))
  :action==='cancel'&&validId(input.applicationStatementId)&&typeof input.reason==='string'&&!!input.reason.trim()&&input.reason.length<=500;
 }
 export function readPendingPartnerAdvance(companyId:CompanyId):PendingPartnerAdvance|null {

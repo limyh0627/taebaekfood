@@ -1,3 +1,4 @@
+import { AR, AP } from '../autoJournal';
 import {doc,getDoc} from 'firebase/firestore';
 import {httpsCallable} from 'firebase/functions';
 import {auth,authReady,db,functions} from '../firebase';
@@ -14,7 +15,7 @@ export function getPendingFinancialOpening(companyId:CompanyId):FinancialOpening
  if(p.version!==1||p.companyId!==companyId||p.userId!==uid||!r||r.companyId!==companyId||typeof r.operationId!=='string'||!r.operationId||typeof r.releaseId!=='string'||!r.releaseId||!['partner-create','loan-create','loan-update','account-create','account-update'].includes(r.kind))throw Error();
  const row=r.kind==='loan-create'?r.loan:r.kind==='account-create'?r.account:r.kind==='loan-update'||r.kind==='account-update'?r.original:undefined;
  if(r.kind!=='partner-create'&&(!row||typeof row!=='object'||Array.isArray(row)||typeof row.id!=='string'||!row.id||row.companyId!==companyId||typeof row.name!=='string'))throw Error();
- if(r.kind==='partner-create'&&(typeof r.partnerId!=='string'||typeof r.date!=='string'||!['108','251'].includes(r.code)||!Number.isSafeInteger(r.amount)))throw Error();
+ if(r.kind==='partner-create'&&(typeof r.partnerId!=='string'||typeof r.date!=='string'||![AR,AP].includes(r.code)||!Number.isSafeInteger(r.amount)))throw Error();
  return p;}catch{throw new Error('저장 중인 기초 금융 원문을 확인해야 합니다. 원문은 보존했습니다.');}
 }
 function clear(key:string,text:string){if(localStorage.getItem(key)===text){localStorage.removeItem(key);notify();}}

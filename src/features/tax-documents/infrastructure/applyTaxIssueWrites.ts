@@ -1,3 +1,4 @@
+import { companyOf } from '../../../shared/types';
 import {httpsCallable} from 'firebase/functions';
 import {auth,authReady,functions} from '../../../shared/firebase';
 import type {CompanyId,IssuedStatement} from '../../../shared/types';
@@ -13,7 +14,7 @@ const notify=()=>window.dispatchEvent(new Event('tax-issue-pending'));
 export function getPendingTaxIssue(companyId:CompanyId):TaxIssueCommand|null{
  const uid=auth.currentUser?.uid;if(!uid)return null;const text=localStorage.getItem(keyOf(companyId,uid));if(text===null)return null;
  try{const row=JSON.parse(text) as TaxIssueCommand;
- if(!row||row.companyId!==companyId||typeof row.operationId!=='string'||!/^tax-[A-Za-z0-9_-]+$/.test(row.operationId)||!['all','taxable','exempt'].includes(row.scope)||typeof row.issuedAt!=='string'||!Number.isFinite(Date.parse(row.issuedAt))||!Array.isArray(row.statements)||!row.statements.length||row.statements.some(s=>!s||typeof s.id!=='string'||!s.id||!Array.isArray(s.items)||(s.companyId??'taebaek')!==companyId))throw Error();return row;
+ if(!row||row.companyId!==companyId||typeof row.operationId!=='string'||!/^tax-[A-Za-z0-9_-]+$/.test(row.operationId)||!['all','taxable','exempt'].includes(row.scope)||typeof row.issuedAt!=='string'||!Number.isFinite(Date.parse(row.issuedAt))||!Array.isArray(row.statements)||!row.statements.length||row.statements.some(s=>!s||typeof s.id!=='string'||!s.id||!Array.isArray(s.items)||companyOf(s)!==companyId))throw Error();return row;
  }catch{throw new Error('보존된 세금계산서 발행 요청을 확인해주세요. 원문은 지우지 않았습니다.');}
 }
 /** 발행 기록과 대상 전표 표시를 서버 한 거래로 저장한다. */

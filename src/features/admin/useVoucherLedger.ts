@@ -48,12 +48,12 @@ export function useVoucherLedger({
 }: VoucherLedgerInput) {
   // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
   const [stateCompany, setStateCompany] = useState(companyId);
-  const [storedExtraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
-  const [storedFetchingHistory, setIsFetchingHistory] = useState(false);
-  const [storedOpeningDate, setOpeningDate] = useState<string | null>(null);
-  const [storedAnchors, setAnchors] = useState<PartnerAnchor[]>([]);
-  const [storedAnchorStatements, setAnchorStatements] = useState<IssuedStatement[]>([]);
-  const [storedDeletedStmtIds, setDeletedStmtIds] = useState<Set<string>>(new Set());
+  const [storedExtraStatements, setStoredExtraStatements] = useState<IssuedStatement[]>([]);
+  const [storedFetchingHistory, setStoredFetchingHistory] = useState(false);
+  const [storedOpeningDate, setStoredOpeningDate] = useState<string | null>(null);
+  const [storedAnchors, setStoredAnchors] = useState<PartnerAnchor[]>([]);
+  const [storedAnchorStatements, setStoredAnchorStatements] = useState<IssuedStatement[]>([]);
+  const [storedDeletedStmtIds, setStoredDeletedStmtIds] = useState<Set<string>>(new Set());
   const currentCompany = useRef(companyId);
   currentCompany.current = companyId;
   const ownState = stateCompany === companyId;
@@ -66,8 +66,8 @@ export function useVoucherLedger({
   const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
   useEffect(() => {
     setStateCompany(companyId);
-    setExtraStatements([]); setOpeningDate(null); setAnchors([]); setAnchorStatements([]);
-    setDeletedStmtIds(new Set()); setIsFetchingHistory(false); fetchedRangeRef.current = null;
+    setStoredExtraStatements([]); setStoredOpeningDate(null); setStoredAnchors([]); setStoredAnchorStatements([]);
+    setStoredDeletedStmtIds(new Set()); setStoredFetchingHistory(false); fetchedRangeRef.current = null;
   }, [companyId]);
 
   const sevenDaysAgoCutoff = useMemo(() => {
@@ -78,7 +78,7 @@ export function useVoucherLedger({
   /**
    * 발행내역 온디맨드 fetch — **떠온 전표는 안 버린다.**
    *
-   * 예전엔 조회 기간을 최근 7일로 좁히면 `setExtraStatements([])`로 통째로 비웠다.
+   * 예전엔 조회 기간을 최근 7일로 좁히면 `setStoredExtraStatements([])`로 통째로 비웠다.
    * 그런데 이 목록은 **거래처 잔액의 근거**이기도 하다(partnerJournals → partnerBalances).
    * 비우는 순간 옛 전표가 사라져 미수·미지급이 확 줄고, 일반전표 발행 화면이 보여주는
    * 누적잔액이 거래처 누적잔액과 안 맞았다.
@@ -100,8 +100,8 @@ export function useVoucherLedger({
   useEffect(() => {
     let cancelled = false;
     fetchWhere<{ id: string; date: string }>('openingBalances', 'companyId', companyId)
-      .then(rows => { if (!cancelled) setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null); })
-      .catch(() => { if (!cancelled) setOpeningDate(null); });
+      .then(rows => { if (!cancelled) setStoredOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null); })
+      .catch(() => { if (!cancelled) setStoredOpeningDate(null); });
     return () => { cancelled = true; };
   }, [companyId]);
 
@@ -112,8 +112,8 @@ export function useVoucherLedger({
   useEffect(() => {
     let cancelled = false;
     fetchWhere<PartnerAnchor>('partnerBalanceSnapshots', 'companyId', companyId)
-      .then(rows => { if (!cancelled) setAnchors(rows.filter(row => row.companyId === companyId)); })
-      .catch(() => { if (!cancelled) setAnchors([]); });
+      .then(rows => { if (!cancelled) setStoredAnchors(rows.filter(row => row.companyId === companyId)); })
+      .catch(() => { if (!cancelled) setStoredAnchors([]); });
     return () => { cancelled = true; };
   }, [companyId]);
   const anchor = useMemo(() => anchorBefore(anchors, today()), [anchors]);
@@ -132,10 +132,10 @@ export function useVoucherLedger({
   useEffect(() => {
     let cancelled = false;
     const ids = openStatementIds(anchor);
-    if (!ids.length) { setAnchorStatements(prev => (prev.length ? [] : prev)); return; }
+    if (!ids.length) { setStoredAnchorStatements(prev => (prev.length ? [] : prev)); return; }
     fetchByIds<IssuedStatement>('issuedStatements', ids, companyId)
-      .then(rows => { if (!cancelled) setAnchorStatements(rows.map(x => ({ ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' }))); })
-      .catch(() => { if (!cancelled) setAnchorStatements([]); });
+      .then(rows => { if (!cancelled) setStoredAnchorStatements(rows.map(x => ({ ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' }))); })
+      .catch(() => { if (!cancelled) setStoredAnchorStatements([]); });
     return () => { cancelled = true; };
   }, [anchor, companyId]);
 
@@ -150,7 +150,7 @@ export function useVoucherLedger({
   useEffect(() => {
     let cancelled = false;
     fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', ledgerFrom, today(), [where('companyId', '==', companyId)])
-      .then(data => { if (cancelled) return; setExtraStatements(prev => {
+      .then(data => { if (cancelled) return; setStoredExtraStatements(prev => {
         const m = new Map(prev.map(x => [x.id, x]));
         for (const x of data) m.set(x.id, { ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' });
         return [...m.values()];
@@ -165,7 +165,7 @@ export function useVoucherLedger({
     const to   = histTo   || today();
     if (from >= sevenDaysAgoCutoff) return;          // 최근 7일은 props로 충분 — 더 안 떠온다
     if (fetchedRangeRef.current?.from === from && fetchedRangeRef.current?.to === to) return;
-    setIsFetchingHistory(true);
+    setStoredFetchingHistory(true);
     fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to, [where('companyId', '==', companyId)])
       .then(data => {
         if (cancelled) return;
@@ -175,7 +175,7 @@ export function useVoucherLedger({
           tradeDate: s.tradeDate ?? '',
           issuedAt: s.issuedAt ?? '',
         }));
-        setExtraStatements(prev => {
+        setStoredExtraStatements(prev => {
           const m = new Map(prev.map(x => [x.id, x]));
           for (const x of fetched) m.set(x.id, x);   // 새로 떠온 게 최신
           return [...m.values()];
@@ -183,7 +183,7 @@ export function useVoucherLedger({
         fetchedRangeRef.current = { from, to };
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setIsFetchingHistory(false); });
+      .finally(() => { if (!cancelled) setStoredFetchingHistory(false); });
     return () => { cancelled = true; };
   }, [histFrom, histTo, ledgerFrom, sevenDaysAgoCutoff, companyId]);
 
@@ -314,8 +314,8 @@ export function useVoucherLedger({
    */
   const forgetStatement = useCallback((id: string) => {
     if (currentCompany.current !== companyId) return;
-    setDeletedStmtIds(prev => new Set(prev).add(id));
-    setExtraStatements(prev => prev.filter(s => s.id !== id));
+    setStoredDeletedStmtIds(prev => new Set(prev).add(id));
+    setStoredExtraStatements(prev => prev.filter(s => s.id !== id));
   }, [companyId]);
 
   return {

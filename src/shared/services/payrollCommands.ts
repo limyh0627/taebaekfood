@@ -1,3 +1,4 @@
+import { companyOf } from '../types';
 import {doc,getDoc} from 'firebase/firestore';
 import {httpsCallable} from 'firebase/functions';
 import {auth,authReady,db,functions} from '../firebase';
@@ -15,7 +16,7 @@ async function current(companyId:CompanyId,input:PayrollCommandInput){
  await ownCompany(companyId);
  const snap=await getDoc(doc(db,'payrolls',payrollDocId(companyId,input.yearMonth)));
  const row=snap.data();
- if(row&&(row.companyId??'taebaek')!==companyId)throw new Error('급여대장의 회사가 맞지 않습니다.');
+ if(row&&companyOf(row)!==companyId)throw new Error('급여대장의 회사가 맞지 않습니다.');
  const revision=row?.revision??0;
  if(!Number.isSafeInteger(revision)||revision<0)throw new Error('급여대장 버전이 잘못되었습니다.');
  return {row,revision};

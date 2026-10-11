@@ -6,7 +6,7 @@ import type { LoanMovementInput } from './recordLoanMovement';
 /** 기존 LoanManager/대출 양식의 현금입력만 전용 명령 입력으로 변환한다. */
 export function loanCashInput(companyId: string, entry: CashEntry,
   contract: { id: string; companyId?: string; accountCode: string }): LoanMovementInput {
-  if (companyOf(entry) !== companyId || (contract.companyId ?? 'taebaek') !== companyId
+  if (companyOf(entry) !== companyId || (contract.companyId ?? companyOf(undefined)) !== companyId
     || !entry.loanId || contract.id !== entry.loanId || !['260', '293'].includes(contract.accountCode)
     || !['입금', '출금'].includes(entry.dir) || !entry.cashAccountId
     || !Number.isSafeInteger(entry.amount) || entry.amount <= 0) throw new Error('대출·회사·통장·금액을 확인하세요.');

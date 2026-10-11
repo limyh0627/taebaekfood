@@ -1,3 +1,4 @@
+import type { AP, OTHER_PAYABLE } from './autoJournal';
 import type { CompanyId, RawMaterialLot } from '../../functions/src/shared/rawLot';
 import type { RawMovementKind } from './rawInventoryCore';
 /**
@@ -1414,7 +1415,7 @@ export interface ReturnRequest {
   cancelledBy?: string;
   cancellationReceipt?: Record<string, unknown>;
   linkedStatementId?: string;
-  payableAccountCode?: '251' | '253';
+  payableAccountCode?: typeof AP | typeof OTHER_PAYABLE;
   note?: string;
 }
 

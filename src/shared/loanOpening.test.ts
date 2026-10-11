@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loanOpeningStatement } from './loanOpening';
+import { loanOpeningStatement } from './financialOpening';
 import { journalizeTransfer } from './autoJournal';
 import type { LoanContract } from './loanLedger';
 

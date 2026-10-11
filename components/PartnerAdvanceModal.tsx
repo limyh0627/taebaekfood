@@ -1,3 +1,4 @@
+import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import React, { useEffect, useRef, useState } from 'react';
 import ModalShell from '../src/shared/components/ModalShell';
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -11,7 +12,7 @@ type Props = { companyId: CompanyId; partnerId: string; partnerName: string; onC
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const sourceKey = (source: PreparedPartnerAdvance['sources'][number]) => `${source.key.id}:${source.key.lineKey}`;
 const targetKey = (target: PreparedPartnerAdvance['targets'][number]) => `${target.statementId}:${target.accountCode}`;
-const compatible = (source: PreparedPartnerAdvance['sources'][number], target: PreparedPartnerAdvance['targets'][number]) => source.code === '254' ? target.accountCode === '108' : ['251', '253'].includes(target.accountCode);
+const compatible = (source: PreparedPartnerAdvance['sources'][number], target: PreparedPartnerAdvance['targets'][number]) => source.code === '254' ? target.accountCode === AR : [AP, OTHER_PAYABLE].includes(target.accountCode);
 const order = (a: { date: string; docNo: string }, b: { date: string; docNo: string }) => a.date.localeCompare(b.date) || a.docNo.localeCompare(b.docNo);
 
 export default function PartnerAdvanceModal({ companyId, partnerId, partnerName, onClose }: Props) {

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { CashEntry } from '../types';
 import type { LoanContract } from '../loanLedger';
-import { loanOpeningStatement } from '../loanOpening';
+import { loanOpeningStatement } from '../financialOpening';
 
 const state = vi.hoisted(() => ({ rows: new Map<string, Record<string, unknown>>(), writes: [] as Array<{ path: string; patch: Record<string, unknown> }>, afterQuery: null as null | (() => void), claim: 'punghoe', queries: [] as unknown[] }));
 import {executeFinancialOpening,executeFinancialOpeningForActor} from '../../../functions/src/financialOpeningCommand';

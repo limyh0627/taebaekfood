@@ -10,9 +10,10 @@ vi.mock('../../functions/node_modules/firebase-functions/lib/v2/providers/https.
 vi.mock('../../functions/node_modules/firebase-admin/lib/index.js', () => ({
   firestore: Object.assign(() => ({
     doc: (path: string) => path,
-    collection: (name: string) => ({ doc: (id: string) => `${name}/${id}`, where: () => 'settlements' }),
+    collection: (name: string) => ({ collectionName: name, doc: (id: string) => `${name}/${id}`, where: () => 'settlements' }),
     runTransaction: (run: (tx: unknown) => unknown) => run({
-      get: async (ref: string) => {
+      get: async (ref: string | { collectionName: string }) => {
+        if (typeof ref !== 'string') return { size: 0, docs: [] };
         if (ref === 'appMeta/releaseCutover') return { get: (key: string) => ({ status: 'active', releaseId: 'live' } as Record<string, string>)[key] };
         if (ref.startsWith('voucherMutationOperations/')) return { exists: false };
         if (ref === 'settlements') return { size: state.settled ? 1 : 0, docs: state.settled ? [{ get: () => state.settled }] : [] };

@@ -1,3 +1,4 @@
+import { companyOf } from '../types';
 import { useEffect, useState } from 'react';
 import type { CompanyId, IssuedStatement } from '../types';
 import type { ReturnStockOperation } from '../returnStockMovement';
@@ -16,7 +17,7 @@ export function useReturnAllocationSources(companyId: CompanyId, enabled: boolea
     const ids = [...new Set(operations.flatMap(row => row.applications?.map(app => app.statementId) ?? []))];
     void load(ids, companyId).then(rows => {
       if (cancelled || currentUid() !== uid) return;
-      const present = new Set(rows.filter(row => (row.companyId ?? 'taebaek') === companyId).map(row => row.id));
+      const present = new Set(rows.filter(row => companyOf(row) === companyId).map(row => row.id));
       const sourcePresence = Object.fromEntries(ids.map(id => [id, present.has(id)]));
       setState({ companyId, uid, refreshToken, operations, statements, rows: operations.map(row => ({ ...row, sourcePresence })) });
     }).catch(() => { /* Unresolved reads remain pending; never infer deletion from a failed query. */ });

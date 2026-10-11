@@ -1,3 +1,4 @@
+import { AR, AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Search, Users, Wallet } from 'lucide-react';
@@ -144,10 +145,10 @@ export default function PartnerLedger({ companyId, issuedStatements: allStatemen
 
   const allPartners = useMemo(() => {
     const names = new Map<string, string>();
-    const directionCodes = type === '매출' ? ['108', '254'] : ['251', '253', '133'];
+    const directionCodes = type === '매출' ? [AR, '254'] : [AP, OTHER_PAYABLE, '133'];
     const relevant = new Set<string>();
     const directionStatements = issuedStatements.filter(row => row.type === type || (row.type === '비용' && (row.items.some(line => directionCodes.includes(String(line.accountCode))) || (type === '매입' && settlementTypeOf(row) === '매입'))));
-    const oppositeCodes = type === '매출' ? ['251', '253', '133'] : ['108', '254'];
+    const oppositeCodes = type === '매출' ? [AP, OTHER_PAYABLE, '133'] : [AR, '254'];
     const directionCash = cashEntries.filter(row => row.dir === (type === '매출' ? '입금' : '출금') && ![row.accountCode, ...(row.lines?.map(line => line.accountCode) ?? [])].some(code => oppositeCodes.includes(String(code))));
     for (const record of [...issuedStatements, ...cashEntries]) if (record.partnerId)
       names.set(record.partnerId, record.partnerName || names.get(record.partnerId) || `(ID: ${record.partnerId})`);

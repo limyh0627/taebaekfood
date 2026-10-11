@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, globSync } from 'node:fs';
 import { COL, isKnownCollection } from './collections';
+import { planTaxIssue } from '../../functions/src/shared/taxIssue';
+import { companyOf } from './types';
 
 /**
  * **적어 둔 컬렉션 목록이 실제로 쓰는 것과 같은지 확인한다.**
@@ -23,7 +25,7 @@ const 파일들 = globSync('{components,src,scripts,functions/src}/**/*.{ts,tsx,
  * 놓쳤다(2026-09-06). 타입을 좁히고 나서야 컴파일러가 잡아 줬다.
  */
 const 부르는곳 =
-  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|fetchWhereIn|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
+  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|fetchWhereIn|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|\.collection\s*\(\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
 
 /**
  * **`COL.무엇` 으로 쓴 것도 쓴 것이다.**
@@ -36,13 +38,22 @@ const 부르는곳 =
  */
 const 상수로쓴곳 = /COL\.([a-zA-Z_]\w*)/g;
 
+const 세금쓰기컬렉션 = (server: string): string[] => {
+  if (!/import\s*\{[^}]*\bplanTaxIssue\b[^}]*\}\s*from\s*['"]\.\/shared\/taxIssue['"]/.test(server)
+    || !/const\s+plan\s*=\s*planTaxIssue\(/.test(server)
+    || !/const\s+records\s*=\s*plan\.writes\.filter\(/.test(server)
+    || !/for\s*\(const\s+record\s+of\s+records\)\s*tx\.create\(db\.collection\(record\.collection\)/.test(server)) return [];
+  return planTaxIssue({ operationId: 'source-audit', companyId: 'taebaek', scope: 'all', issuedAt: '2026-10-10T00:00:00Z',
+    statements: [{ id: 'source', items: [{ supply: 100, tax: 10 }, { supply: 50, tax: 0, isTaxExempt: true }] }] }).writes.map(write => write.collection);
+};
+
 const 쓰는이름 = (): Map<string, string[]> => {
   const m = new Map<string, string[]>();
   const 담기 = (name: string, file: string) => m.set(name, [...(m.get(name) ?? []), file]);
   for (const file of 파일들) {
     const src = readFileSync(file, 'utf8');
     for (const hit of src.matchAll(부르는곳)) {
-      const name = hit[1] ?? hit[2] ?? hit[3];
+      const name = hit[1] ?? hit[2] ?? hit[3] ?? hit[4];
       if (!name) continue;
       담기(name, file);
     }
@@ -51,6 +62,8 @@ const 쓰는이름 = (): Map<string, string[]> => {
       if (value) 담기(value, file);
     }
   }
+  for (const collection of 세금쓰기컬렉션(readFileSync('functions/src/taxIssueCommand.ts', 'utf8')))
+    담기(collection, 'functions/src/taxIssueCommand.ts → shared/taxIssue.planTaxIssue');
   return m;
 };
 
@@ -104,5 +117,26 @@ describe('회사 가르기', () => {
     }
     expect(걸림, `회사 받침을 손으로 적은 곳:\n${걸림.join('\n')}\n\n` +
       `shared/types 의 companyOf 를 써라.`).toEqual([]);
+  });
+});
+
+
+describe('컬렉션·회사 공용 경계 회귀', () => {
+  it('실제 Admin 리터럴은 쓰임이며 동적식은 추정하지 않는다', () => {
+    const matches = (source: string) => [...source.matchAll(부르는곳)].map(hit => hit[1] ?? hit[2] ?? hit[3] ?? hit[4]);
+    expect(matches("db.collection('financialOpeningOperations')")).toEqual(['financialOpeningOperations']);
+    expect(matches('db.collection(runtimeCollection)')).toEqual([]);
+  });
+  it('세금계획은 실제 서버 소비가 있을 때만 사용으로 세고 무관 DTO는 세지 않는다', () => {
+    const server = readFileSync('functions/src/taxIssueCommand.ts', 'utf8');
+    expect(세금쓰기컬렉션(server)).toContain('taxIssueRecords');
+    expect(세금쓰기컬렉션(server.replace('tx.create(db.collection(record.collection)', 'consumeWithoutWrite(record.collection)'))).toEqual([]);
+    expect(세금쓰기컬렉션("const unrelated = { collection: 'taxIssueRecords' }; ")).toEqual([]);
+  });
+  it('회사 누락·태백·풍회 및 string계약 경계가 옛 fallback과 동일하다', () => {
+    for (const row of [undefined, {}, { companyId: 'taebaek' as const }, { companyId: 'punghoe' as const }])
+      expect(companyOf(row)).toBe(row?.companyId ?? 'taebaek');
+    for (const companyId of [undefined, null, 'taebaek', 'punghoe', 'unknown'])
+      expect(companyId == null ? companyOf(undefined) : companyId).toBe(companyId ?? 'taebaek');
   });
 });

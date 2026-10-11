@@ -1,3 +1,4 @@
+import { companyOf } from '../types';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../firebase';
@@ -55,7 +56,7 @@ export async function recordLoanMovement(companyId: string, input: LoanMovementI
       ]);
       const release = gate.data(), contract = loan.data();
       if (release?.status !== 'active' || typeof release.releaseId !== 'string') throw new Error('대출 발행 서버가 준비되지 않았습니다.');
-      if (!loan.exists() || (contract?.companyId ?? 'taebaek') !== companyId) throw new Error('대출 계약의 회사가 맞지 않습니다.');
+      if (!loan.exists() || companyOf(contract) !== companyId) throw new Error('대출 계약의 회사가 맞지 않습니다.');
       const revision = contract?.movementRevision ?? 0;
       if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('대출 계약 버전이 잘못되었습니다.');
       const operationId = `loan-${crypto.randomUUID()}`;

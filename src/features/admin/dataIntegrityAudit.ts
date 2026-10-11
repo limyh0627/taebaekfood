@@ -1,3 +1,4 @@
+import { AP, OTHER_PAYABLE } from '../../shared/autoJournal';
 import { validReturnStockMovements, type ReturnStockOperation } from '../../shared/returnStockMovement';
 import type { ItemReceipt } from '../../shared/receipt';
 import type {
@@ -348,7 +349,7 @@ export function auditDataIntegrity(input: IntegrityAuditInput): IntegrityIssue[]
     const lines = journal?.items ?? [];
     const debit = lines.filter(row => row.side === '차변').reduce((sum, row) => sum + Number(row.supply), 0);
     const credit = lines.filter(row => row.side === '대변').reduce((sum, row) => sum + Number(row.supply), 0);
-    const payable = lines.filter(row => ['251', '253'].includes(row.accountCode ?? '') && row.side === '차변')
+    const payable = lines.filter(row => [AP, OTHER_PAYABLE].includes(row.accountCode ?? '') && row.side === '차변')
       .reduce((sum, row) => sum + Number(row.supply), 0);
     const standaloneProof = standalone && operation.returnType === '매입' && !!operation.partnerId
       && !operation.sourceStatementId && !!journal && companyOf(journal) === input.companyId

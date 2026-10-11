@@ -1,3 +1,5 @@
+import { AP, OTHER_PAYABLE } from '../src/shared/autoJournal';
+import { companyOf } from '../src/shared/types';
 import { salesReturnRequest } from '../src/features/admin/purchaseReturnRequest';
 import { getPendingReturnSubmission, resumeReturnSubmission, submitReturnRequest, returnSubmissionActorUid } from '../src/shared/services/returnRequestSubmission';
 import { appConfirm } from '../src/shared/components/appDialog';
@@ -64,7 +66,7 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
   const [returnLineItems, setReturnLineItems] = useState<Partial<ReturnItem>[]>([]);
   const [note, setNote] = useState('');
   const [explicitMoney, setExplicitMoney] = useState<Record<string, { supply: string; tax: string; accountCode: string }>>({});
-  const [payableAccountCode, setPayableAccountCode] = useState<'251' | '253'>('251');
+  const [payableAccountCode, setPayableAccountCode] = useState<typeof AP | typeof OTHER_PAYABLE>(AP);
   const explicitFor = (rows: { itemId: string }[]) => ({ items: rows.map(row => ({ itemId: row.itemId,
     supply: explicitMoney[row.itemId]?.supply?.trim() ? Number(explicitMoney[row.itemId].supply) : NaN,
     tax: explicitMoney[row.itemId]?.tax?.trim() ? Number(explicitMoney[row.itemId].tax) : NaN,
@@ -113,8 +115,8 @@ const CompanyReturnManager: React.FC<ReturnManagerProps> = ({
     setReturnLineItems([]);
   }, [selectedClientId]);
 
-  const sellableProducts = items.filter(p => (p.companyId ?? 'taebaek') === companyId &&
-    (orders.some(order => (order.companyId ?? 'taebaek') === companyId && order.partnerId === selectedClientId && order.items.some(row => row.itemId === p.id)) || issuedStatements.some(statement => (statement.companyId ?? 'taebaek') === companyId && statement.partnerId === selectedClientId && statement.items.some(row => row.itemId === p.id))) &&
+  const sellableProducts = items.filter(p => companyOf(p) === companyId &&
+    (orders.some(order => companyOf(order) === companyId && order.partnerId === selectedClientId && order.items.some(row => row.itemId === p.id)) || issuedStatements.some(statement => companyOf(statement) === companyId && statement.partnerId === selectedClientId && statement.items.some(row => row.itemId === p.id))) &&
     ['완제품', '향미유', '고춧가루', 'product', 'wip', 'goods'].includes(p.type as string)
   );
 

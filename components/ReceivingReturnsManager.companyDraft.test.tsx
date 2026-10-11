@@ -10,6 +10,10 @@ vi.mock('../src/shared/services/firebaseService', () => ({ subscribeToCollection
   const stop = vi.fn(); mock.listeners.push({ callback, stop, clauses }); return stop;
 } }));
 vi.mock('../src/shared/services/employeeCommand', () => ({ executeEmployeeCommand: mock.command }));
+vi.mock('../src/shared/services/returnRequestSubmission', () => ({
+  getPendingReturnSubmission: () => null, returnSubmissionActorUid: () => 'test-auth-uid',
+  submitReturnRequest: mock.command, resumeReturnSubmission: mock.command,
+}));
 vi.mock('firebase/firestore', () => ({ where: (field: string, op: string, value: unknown) => ({ field, op, value }) }));
 
 const props = (companyId: CompanyId) => ({

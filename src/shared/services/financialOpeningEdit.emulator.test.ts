@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
 import type { CashAccount, CashEntry } from '../types';
 import type { LoanContract } from '../loanLedger';
 import { cashOpeningStatement } from '../cashOpening';
-import { loanOpeningStatement } from '../loanOpening';
+import { loanOpeningStatement } from '../financialOpening';
 vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
 import {initializeApp,deleteApp,type App} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';

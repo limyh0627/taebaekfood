@@ -229,7 +229,7 @@ export default function VoucherTemplateManager({
               <div><dt className="text-xs text-slate-400">목록 표시</dt><dd className="mt-1">{detailTpl.hidden ? '숨김' : '표시'}{detailTpl.favorite && ' · 즐겨찾기'}{detailTpl.builtin && ' · 기본 템플릿'}</dd></div>
               {detailTpl.mode === '상환' && <div className="col-span-2"><dt className="text-xs text-slate-400">상환 구성</dt><dd className="mt-1">원금 {fmt(detailTpl.principal ?? 0)}원 · 이자 {fmt(detailTpl.interest ?? 0)}원</dd>
                 <p className="mt-1 text-xs text-slate-500">{detailTpl.loanId ? loans.find(l => l.id === detailTpl.loanId && l.companyId === companyId)?.name || '연결 계약 확인 필요' : '대출 계약 연결 안 함'}</p>
-                {detailTpl.loanId && <p className="mt-1 text-xs text-slate-500">계약 연결 템플릿은 수동 발행만 가능합니다.</p>}
+                {detailTpl.loanId && <p className="mt-1 text-xs text-slate-500">{loanAutoReady(detailTpl) ? '계약 검증을 통과한 정기 상환은 자동 발행을 켤 수 있습니다.' : '자동 상환 조건을 확인하기 전에는 수동으로 발행해 주세요.'}</p>}
               </div>}
             </dl>
           </div>

@@ -720,7 +720,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 완제품 원가가 옛날 값에 굳는다. 그래서 바뀔 때마다 연쇄로 다시 계산한다.
    */
   const recomputeAllCosts = useCallback(async (
-    src: typeof allItems = allItems,
+    src: Item[] = allItems,
     formulas: typeof itemFormulas = itemFormulas,
     boms: typeof itemBoms = itemBoms,
   ) => {
@@ -772,7 +772,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     refreshStaticData();
 
     // 방금 만든 구성으로 원가를 굴려 저장 — 구독 갱신을 기다리지 않는다.
-    const nextItems = [...allItems, { ...box, partnerIds: [] as string[] }];
+    const nextItems = [...allItems, box];
     const nextBoms = [...itemBoms, ...rows.map(r => ({
       id: `bom-${boxId}__${r.child_id}`, parent_id: boxId, child_id: r.child_id, quantity: r.quantity,
     }))] as typeof itemBoms;

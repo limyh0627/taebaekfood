@@ -17,14 +17,14 @@ it('주문 부족분은 BOM 포장 수량만 세고 옛 거래처 포장을 더�
  setBomIndex(buildBomIndex(items,[{parent_id:'oil',child_id:'box',quantity:1}]));
  const source=readFileSync('components/AddOrderModal.tsx','utf8');const file=ts.createSourceFile('AddOrderModal.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let expression:ts.Expression|undefined;
  const find=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='shortages')expression=node.initializer;ts.forEachChild(node,find);};find(file);if(!expression)throw new Error('실제 부족분 계산 없음');
- const result=compile(expression.getText(file),{useMemo:(fn:()=>unknown)=>fn(),selectedItems:[{itemId:'oil',quantity:20,isBoxUnit:false,unitsPerBox:0}],selectedPartner:{id:'partner'},products:items,items,submaterials:items.filter(p=>p.type==='submaterial'),partnerOut:[{itemId:'oil',partnerId:'partner',boxTypeId:'old',qtyPerBox:10}],unitsPerBoxOf,unpackComponent,bomOf});
+ const result=compile(expression.getText(file),{orderUnitInputs:undefined,useMemo:(fn:()=>unknown)=>fn(),selectedItems:[{itemId:'oil',quantity:20,isBoxUnit:false,unitsPerBox:0}],selectedPartner:{id:'partner'},products:items,items,submaterials:items.filter(p=>p.type==='submaterial'),partnerOut:[{itemId:'oil',partnerId:'partner',boxTypeId:'old',qtyPerBox:10}],unitsPerBoxOf,unpackComponent,bomOf});
  expect(result).toEqual([{name:'BOM 박스',needed:20,stock:0}]);
 });
 it('복사 주문의 포장 표시도 BOM만 사용한다',()=>{
  setBomIndex(buildBomIndex(items,[{parent_id:'oil',child_id:'box',quantity:1}]));
  const source=readFileSync('components/PasteOrderModal.tsx','utf8');const start=source.indexOf('{matched && (() => {')+'{matched && (() => {'.length;const end=source.indexOf('                      return (',start);const body=source.slice(start,end);
  const code=ts.transpileModule(`${body}\nreturn subs;`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
- const result=new Function('matched','items','partnerOut','selectedClient','bomOf',code)(items[0],items,[{itemId:'oil',partnerId:'partner',boxTypeId:'old',tapeTypeId:'old'}],{id:'partner'},bomOf);
+ const result=new Function('matched','items','partnerOut','selectedClient','bomOf','orderUnitInputs',code)(items[0],items,[{itemId:'oil',partnerId:'partner',boxTypeId:'old',tapeTypeId:'old'}],{id:'partner'},bomOf,undefined);
  expect(result).toEqual(['BOM 박스']);
 });
 it('품목 중복 대조의 거래처 줄은 구형 박스·테이프 설정을 표시하지 않는다',()=>{

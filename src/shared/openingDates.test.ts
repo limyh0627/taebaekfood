@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cashOpeningStatement } from './cashOpening';
-import { loanOpeningStatement } from './loanOpening';
+import { loanOpeningStatement } from './financialOpening';
 import { inventoryOpeningStatement } from './inventoryOpening';
 import { openingPartnerStatement } from './openingPartnerBalance';
 import type { CashAccount, Item, Partner } from './types';
