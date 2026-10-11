@@ -8,7 +8,7 @@ const number = (value: number) => value.toLocaleString('ko-KR', { useGrouping: f
 export default function ProductionCalculationEvidence({ order, companyId }: { order: Order; companyId: CompanyId }) {
   if (companyOf(order) !== companyId) return null;
   const snapshots: { key: string; title: string; snapshot: OrderInventorySnapshot; cancelled: boolean }[] = [];
-  if (order.inventorySnapshots?.production) snapshots.push({ key: 'whole', title: '전체 작업 생산', snapshot: order.inventorySnapshots.production, cancelled: false });
+  if (order.inventorySnapshots?.production) snapshots.push({ key: 'whole', title: '전체 작업 생산', snapshot: order.inventorySnapshots.production, cancelled: !order.producedAt });
   Object.entries(order.itemInventory ?? {}).forEach(([key, state]) => snapshots.push({ key: `line-${key}`, title: `품목별 생산 · ${order.items.find(item => item.itemId === state.itemId)?.name || state.itemId}`, snapshot: state.production, cancelled: !state.applied }));
   return <details className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
     <summary className="cursor-pointer text-sm font-bold">생산 당시 원료 계산 근거</summary>

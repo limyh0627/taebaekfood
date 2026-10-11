@@ -341,3 +341,5 @@ export { submitReturnRequestCommand } from './submitReturnRequestCommand';
 export { updatePendingReturnQuantityCommand } from './updatePendingReturnQuantityCommand';
 export { cancelPendingReturnCommand } from './cancelPendingReturnCommand';
 export { recordTaxIssueCommand } from './taxIssueCommand';
+
+export { recoverOrderInventoryLockCommand } from './orderLockRecovery';

@@ -1,3 +1,4 @@
+import { cancellationEvidenceText } from '../../shared/orderCancellationEvidence';
 import { doc, getDoc, runTransaction, type Firestore, type Transaction } from 'firebase/firestore';
 import { readRawCommandInTransaction, prepareRawCommand, writePreparedRawCommand, normalizeRawMovement } from '../../shared/services/rawInventoryService';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
@@ -12,22 +13,13 @@ export class CancellationBlocked extends Error {
   constructor(public code: string, public affectedItemIds: string[] = []) { super(code); }
 }
 const block = (code: string, ids: string[] = []): never => { throw new CancellationBlocked(code, ids); };
-const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
-  : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, val]) => [key, canonical(val)])) : value;
-
 /** 승인한 당시 근거가 바뀌면 화면 확인을 다시 받아야 하므로 표시명/BOM은 포함하지 않는다. */
 function validateAction(action: unknown): asserts action is CancellationAction {
   if (action !== 'cancel-shipment' && action !== 'delete') block('CANCELLATION_ACTION_INVALID');
 }
 export function cancellationEvidence(order: Order, action: CancellationAction): string {
   validateAction(action);
-  return JSON.stringify(canonical({ action, id: order.id, companyId: companyOf(order), status: order.status,
-    producedAt: order.producedAt ?? '', shippedOut: !!order.shippedOut,
-    items: (order.items ?? []).map(row => ({ lineId: row.lineId ?? '', itemId: row.itemId,
-      quantity: row.quantity, isBoxUnit: !!row.isBoxUnit, boxQuantity: row.boxQuantity ?? null })),
-    inventorySnapshots: order.inventorySnapshots ?? null, itemInventory: order.itemInventory ?? null,
-    rawConsumedLots: order.rawConsumedLots ?? [], productConsumedLots: order.productConsumedLots ?? [],
-  }));
+  return cancellationEvidenceText(order, action);
 }
 
 export function planOrderCancellation(order: Order, action: CancellationAction) {
@@ -165,14 +157,15 @@ export async function readOrderCancellationReceipt(db: Firestore, ticket: Cancel
   return completed(ticket);
 }
 
-async function recordCancellationFailure(db: Firestore, ticket: CancellationTicket, code: string) {
+async function recordCancellationFailure(db: Firestore, ticket: CancellationTicket, code: string, claimedStartedAt: string | undefined) {
+  if (!claimedStartedAt) return;
   try {
     await runTransaction(db, async tx => {
       const orderRef = doc(db, 'orders', ticket.orderId);
       const [audit, snap] = await Promise.all([tx.get(receiptRef(db, ticket)), tx.get(orderRef)]);
       if (audit.exists() || !snap.exists()) return;
       const order = snap.data() as Order;
-      if (companyOf(order) !== ticket.companyId || order.inventoryOperation?.id !== ticket.operationId) return;
+      if (companyOf(order) !== ticket.companyId || order.inventoryOperation?.id !== ticket.operationId || order.inventoryOperation.startedAt !== claimedStartedAt) return;
       tx.update(orderRef, { inventoryOperation: { ...order.inventoryOperation, state: 'failed', stage: 'final-stock', error: code } });
     });
   } catch { /* 실패 기록의 통신 장애가 최초 실패를 성공으로 바꾸면 안 된다. */ }
@@ -181,6 +174,7 @@ async function recordCancellationFailure(db: Firestore, ticket: CancellationTick
 export async function executeOrderInventoryCancellation(db: Firestore, ticket: CancellationTicket, actorName = '미기록'): Promise<CancellationResult> {
   const orderRef = doc(db, 'orders', ticket.orderId);
   const auditRef = receiptRef(db, ticket);
+  let claimedStartedAt: string | undefined;
   try {
     validateAction(ticket.action);
     if (!/^[a-f0-9]{64}$/.test(ticket.evidence) || ticket.operationId !== `order-cancellation-${ticket.action}-${ticket.orderId}-${ticket.evidence}`) block('CANCELLATION_TICKET_INVALID');
@@ -208,6 +202,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       return operation;
     });
     if (!claim) return completed(ticket);
+    claimedStartedAt = claim.startedAt;
 
     return await runTransaction(db, async tx => {
       const reads = new Map<string, Promise<any>>();
@@ -224,6 +219,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
       const order = { ...snap.data(), id: ticket.orderId } as Order;
       if (companyOf(order) !== ticket.companyId) block('COMPANY_MISMATCH');
       if (order.inventoryOperation?.id !== ticket.operationId) block('OTHER_INVENTORY_OPERATION');
+      if (order.inventoryOperation?.startedAt !== claim.startedAt) block('OPERATION_GENERATION_CHANGED');
       if (await fingerprint(cancellationEvidence(order, ticket.action)) !== ticket.evidence) block('APPROVAL_EVIDENCE_CHANGED');
       const plan = planOrderCancellation(order, ticket.action);
       const draftOnly = plan.snapshots.length === 0;
@@ -316,7 +312,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
         }
       }
       const blocked = error as CancellationBlocked;
-      await recordCancellationFailure(db, ticket, blocked.code);
+      await recordCancellationFailure(db, ticket, blocked.code, claimedStartedAt);
       return { status: 'blocked', operationId: ticket.operationId, code: blocked.code, affectedItemIds: blocked.affectedItemIds,
         inventoryApplied: 'none', retryable: blocked.code === 'OTHER_INVENTORY_OPERATION', deleted: false };
     }
@@ -324,7 +320,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
     try { const receipt = await readOrderCancellationReceipt(db, ticket); if (receipt) return receipt; }
     catch { return { status: 'failed', operationId: ticket.operationId, code: 'CANCELLATION_RESULT_UNKNOWN',
       affectedItemIds: [], inventoryApplied: 'unknown', retryable: true, deleted: false }; }
-    await recordCancellationFailure(db, ticket, 'CANCELLATION_TRANSACTION_FAILED');
+    await recordCancellationFailure(db, ticket, 'CANCELLATION_TRANSACTION_FAILED', claimedStartedAt);
     return { status: 'failed', operationId: ticket.operationId, code: 'CANCELLATION_TRANSACTION_FAILED',
       affectedItemIds: [], inventoryApplied: 'unknown', retryable: true, deleted: false };
   }

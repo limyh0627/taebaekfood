@@ -412,3 +412,26 @@ it('벌크 주문 품목이 원료 mirror와 같아도 zero delta 예약정리�
   expect(memory.store.get('items/raw').stock).toBe(50);
   expect(memory.writes.filter(path => path === 'items/raw')).toHaveLength(1);
 });
+
+describe('같은 취소 ID의 claim 세대를 구분한다', () => {
+  it.each([false, true])('새 세대가 생긴 뒤 이전 실행이 재고 또는 실패 잠금을 덮어쓰지 않는다 (쓰기 실패=%s)', async failWrite => {
+    seed();
+    const { ticket } = await prepareOrderInventoryCancellation(db, 'o', 'taebaek', 'delete');
+    let nextOperation: any;
+    memory.beforeRead = path => {
+      if (path !== 'items/p') return;
+      memory.beforeRead = null;
+      const current = memory.store.get('orders/o');
+      nextOperation = { ...current.inventoryOperation, startedAt: '2099-01-01T00:00:00.000Z', actor: '새 실행', state: 'processing' };
+      current.inventoryOperation = nextOperation;
+      memory.versions.set('orders/o', (memory.versions.get('orders/o') ?? 0) + 1);
+      if (failWrite) memory.failPath = 'items/';
+    };
+    const result = await executeOrderInventoryCancellation(db, ticket, '이전 실행');
+    expect(result).toMatchObject(failWrite ? { status: 'failed', code: 'CANCELLATION_TRANSACTION_FAILED' } : { status: 'blocked', code: 'OPERATION_GENERATION_CHANGED' });
+    expect(memory.store.get('orders/o').inventoryOperation).toEqual(nextOperation);
+    expect(memory.store.get('items/p').stock).toBe(10);
+    expect([...memory.store.keys()].some(key => key.startsWith('orderStatusAudits/'))).toBe(false);
+    expect(memory.writes.filter(path => path === 'orders/o')).toHaveLength(1);
+  });
+});

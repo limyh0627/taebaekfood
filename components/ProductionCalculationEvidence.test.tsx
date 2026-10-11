@@ -6,7 +6,7 @@ import OrderActivityLogModal from './OrderActivityLogModal';
 import { OrderStatus, type Order, type OrderInventorySnapshot } from '../src/shared/types';
 
 afterEach(cleanup);
-const order: Order = { id: 'o', companyId: 'taebaek', partnerName: '거래처', items: [], totalAmount: 0, status: OrderStatus.PROCESSING, createdAt: '2026-10-10', deliveryDate: '2026-10-10', email: '', source: '일반' };
+const order: Order = { id: 'o', companyId: 'taebaek', partnerName: '거래처', items: [], totalAmount: 0, status: OrderStatus.PROCESSING, producedAt: '2026-10-10T01:00:00Z', createdAt: '2026-10-10', deliveryDate: '2026-10-10', email: '', source: '일반' };
 const snapshot: OrderInventorySnapshot = { capturedAt: '2026-10-10T01:00:00Z', stockDeltas: [], bomLines: [], rawCalculationEvidence: [
   { productId: 'oil', spec: '350ml', units: 2, raw: '깨분', kg: 0.000001, path: 'bom-direct', childItemId: 'raw', bomQuantityKg: 0.0000005 },
   { productId: 'oil', spec: '350ml', units: 2, raw: '참깨', kg: 0.4, path: 'bom-formula', bomQuantityKg: 1, formulaName: '당시 배합', ratio: 0.2 },
@@ -44,4 +44,17 @@ it('저장된 빈 계산은 과거 미기록과 구분하고 다른 회사 주�
   expect(screen.getByText('차감 기록 없음')).toBeInTheDocument();
   view.rerender(modal(order, 'punghoe'));
   expect(screen.queryByText('생산 당시 원료 계산 근거')).not.toBeInTheDocument();
+});
+
+it('전체 생산 취소는 당시 계산과 차감 원문을 보존하면서 취소 이력으로 표시한다', () => {
+  const original = JSON.stringify(snapshot);
+  const view = render(modal({ ...order, inventorySnapshots: { version: 1, production: snapshot } }));
+  expect(screen.getByText('전체 작업 생산')).toBeInTheDocument();
+  expect(screen.queryByText('전체 작업 생산 · 취소 이력')).not.toBeInTheDocument();
+  view.rerender(modal({ ...order, producedAt: '', inventorySnapshots: { version: 1, production: snapshot } }));
+  expect(screen.getByText('전체 작업 생산 · 취소 이력')).toBeInTheDocument();
+  expect(screen.getByText('깨분 · 계산 사용량 0.000001 kg')).toBeInTheDocument();
+  expect(screen.getByText('깨분 · 기록 0.000001 kg · 로트 L1')).toBeInTheDocument();
+  expect(screen.getByText(/저장 시각 2026-10-10T01:00:00Z/)).toBeInTheDocument();
+  expect(JSON.stringify(snapshot)).toBe(original);
 });

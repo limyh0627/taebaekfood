@@ -1,37 +1,37 @@
 # 현재 코드 필드 사전
 
-COL 86개, 선언 필드 724개, 운영 소스 442개를 분석했다.
+COL 87개, 선언 필드 724개, 운영 소스 447개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 663건. 동적 문서 ID도 미해석으로 보존하며, 미해석 335건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 670건. 동적 문서 ID도 미해석으로 보존하며, 미해석 338건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 38건과 정적 컬렉션의 동적 문서 경로 296건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 38건과 정적 컬렉션의 동적 문서 경로 299건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
 | doc | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:27: 미해석; functions/src/financialOpeningCommand.ts:28: 미해석; functions/src/financialOpeningCommand.ts:30: 미해석; functions/src/financialOpeningCommand.ts:61: 미해석; functions/src/financialOpeningCommand.ts:62: 미해석; functions/src/financialOpeningCommand.ts:63: 미해석; functions/src/financialOpeningCommand.ts:64: 미해석; functions/src/financialOpeningCommand.ts:100: 미해석; functions/src/financialOpeningCommand.ts:101: 미해석; functions/src/financialOpeningCommand.ts:150: 미해석; functions/src/financialOpeningCommand.ts:151: 미해석; functions/src/financialOpeningCommand.ts:152: 미해석; functions/src/financialOpeningCommand.ts:194: 미해석; functions/src/financialOpeningCommand.ts:195: 미해석 |
 | subscribeToDocument | src/shared/services/firebaseService.ts:147 | src/shared/services/firebaseService.ts:152 | src/shared/deliveryTimeSlot.ts:24: settings; components/OrdersList.tsx:1712: settings; components/DeliveryManager.tsx:138: settings; components/LeaveManager.tsx:181: settings; src/shared/hooks/useAppData.ts:326: settings |
-| setDocument | src/shared/services/firebaseService.ts:157 | src/shared/services/firebaseService.ts:159 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1718: settings; components/DeliveryManager.tsx:300: deliveryScheduleAudits; components/DeliveryManager.tsx:302: settings; components/DeliveryManager.tsx:303: deliveryScheduleAudits; components/DeliveryManager.tsx:309: deliveryScheduleAudits; components/DeliveryManager.tsx:480: settings; components/DeliveryManager.tsx:486: settings; components/DeliveryManager.tsx:1201: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:395: partner_item; src/features/admin/AdminApp.tsx:2031: docSheetTitles; src/features/admin/AdminApp.tsx:4602: settings; src/features/admin/AdminApp.tsx:4786: cashFlowManual |
+| setDocument | src/shared/services/firebaseService.ts:157 | src/shared/services/firebaseService.ts:159 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1718: settings; components/DeliveryManager.tsx:300: deliveryScheduleAudits; components/DeliveryManager.tsx:302: settings; components/DeliveryManager.tsx:303: deliveryScheduleAudits; components/DeliveryManager.tsx:309: deliveryScheduleAudits; components/DeliveryManager.tsx:480: settings; components/DeliveryManager.tsx:486: settings; components/DeliveryManager.tsx:1201: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:397: partner_item; src/features/admin/AdminApp.tsx:2037: docSheetTitles; src/features/admin/AdminApp.tsx:4613: settings; src/features/admin/AdminApp.tsx:4797: cashFlowManual |
 | subscribeToCollection | src/shared/services/firebaseService.ts:243 | src/shared/services/firebaseService.ts:249 | src/shared/services/firebaseService.ts:289: 미해석; components/ItemList.tsx:528: stockClosings; src/shared/hooks/useAppData.ts:252: 미해석; src/shared/hooks/useAppData.ts:258: issuedStatements; src/shared/hooks/useAppData.ts:272: cashAccounts; src/shared/hooks/useAppData.ts:273: returnOperations; src/shared/hooks/useAppData.ts:276: cashEntries; src/shared/hooks/useAppData.ts:277: settlements; src/shared/hooks/useAppData.ts:278: partnerAdvanceOperations; src/shared/hooks/useAppData.ts:279: inventorySnapshots; src/shared/hooks/useAppData.ts:298: 미해석; src/shared/hooks/useAppData.ts:307: notices; src/shared/hooks/useAppData.ts:308: pallets; src/shared/hooks/useAppData.ts:310: employees; src/shared/hooks/useAppData.ts:311: leaveRequests; src/shared/hooks/useAppData.ts:312: adjustmentRequests; src/shared/hooks/useAppData.ts:313: purchaseOrders; src/shared/hooks/useAppData.ts:314: items; src/shared/hooks/useAppData.ts:315: partners; src/shared/hooks/useAppData.ts:316: chatRooms; src/shared/hooks/useAppData.ts:321: notifications; src/shared/hooks/useAppData.ts:322: workOrderItems; src/shared/hooks/useAppData.ts:324: itemReceipts; src/shared/hooks/useAppData.ts:344: orders; src/hooks/useAdminData.ts:56: fixedCosts; src/hooks/useAdminData.ts:61: productionRecords; components/HRManager.tsx:128: payrolls; components/PartnerSignupApproval.tsx:40: users; components/DocumentManager.tsx:78: fileCabinetCategories; components/DocumentManager.tsx:79: fileCabinetSubCategories; components/DocumentManager.tsx:80: fileCabinetDocs; components/QuotationManager.tsx:117: quotations; components/ReturnManager.tsx:104: returnRequests; components/ReceivingReturnsManager.tsx:56: returnRequests |
-| fetchCollection | src/shared/services/firebaseService.ts:266 | src/shared/services/firebaseService.ts:270 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:504: itemTaxonomy; components/ItemList.tsx:559: fileCabinetCategories; components/ItemList.tsx:561: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:530: rawMaterialLedger; src/features/admin/AdminApp.tsx:543: rawMaterialLedger |
+| fetchCollection | src/shared/services/firebaseService.ts:266 | src/shared/services/firebaseService.ts:270 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:504: itemTaxonomy; components/ItemList.tsx:559: fileCabinetCategories; components/ItemList.tsx:561: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:532: rawMaterialLedger; src/features/admin/AdminApp.tsx:545: rawMaterialLedger |
 | fetchDateRange | src/shared/services/firebaseService.ts:297 | src/shared/services/firebaseService.ts:305 | src/features/admin/useProductionSalesHistory.ts:14: productionSalesLogs; components/PalletManager.tsx:65: palletTransactions; components/TaxStatement.tsx:58: issuedStatements; src/features/admin/useVoucherLedger.ts:152: issuedStatements; src/features/admin/useVoucherLedger.ts:169: issuedStatements |
-| addItem | src/shared/services/firebaseService.ts:332 | src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:368, src/shared/services/firebaseService.ts:371 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:560: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:563: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:762: items, items, items, items, items; src/features/admin/AdminApp.tsx:1075: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1087: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1102: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1114: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1252: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:1455: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1752: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2013: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2609: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2645: items, items, items, items, items; src/features/admin/AdminApp.tsx:2666: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3017: partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3043: notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3053: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3063: employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3071: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3381: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4508: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4512: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4561: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4629: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4639: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4641: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4646: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4708: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4857: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4931: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4933: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:5067: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:5083: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:5103: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:5112: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:5224: items, items, items, items, items; src/features/admin/AdminApp.tsx:5279: items, items, items, items, items |
-| updateItem | src/shared/services/firebaseService.ts:376 | src/shared/services/firebaseService.ts:377 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:731: items; src/features/admin/AdminApp.tsx:783: items; src/features/admin/AdminApp.tsx:1147: purchaseOrders; src/features/admin/AdminApp.tsx:1155: purchaseOrders; src/features/admin/AdminApp.tsx:1157: purchaseOrders; src/features/admin/AdminApp.tsx:1166: purchaseOrders; src/features/admin/AdminApp.tsx:1174: purchaseOrders; src/features/admin/AdminApp.tsx:1218: purchaseOrders; src/features/admin/AdminApp.tsx:2007: orders; src/features/admin/AdminApp.tsx:2520: orders; src/features/admin/AdminApp.tsx:2523: orders; src/features/admin/AdminApp.tsx:2524: orders; src/features/admin/AdminApp.tsx:2525: orders; src/features/admin/AdminApp.tsx:2526: orders; src/features/admin/AdminApp.tsx:2554: orders; src/features/admin/AdminApp.tsx:2557: orders; src/features/admin/AdminApp.tsx:2558: orders; src/features/admin/AdminApp.tsx:2559: orders; src/features/admin/AdminApp.tsx:2560: orders; src/features/admin/AdminApp.tsx:2581: orders; src/features/admin/AdminApp.tsx:2582: orders; src/features/admin/AdminApp.tsx:2586: orders; src/features/admin/AdminApp.tsx:2587: orders; src/features/admin/AdminApp.tsx:2588: orders; src/features/admin/AdminApp.tsx:2589: orders; src/features/admin/AdminApp.tsx:2627: workOrderItems; src/features/admin/AdminApp.tsx:2643: items; src/features/admin/AdminApp.tsx:2661: purchaseOrders; src/features/admin/AdminApp.tsx:2816: items; src/features/admin/AdminApp.tsx:3017: partners; src/features/admin/AdminApp.tsx:3043: notices; src/features/admin/AdminApp.tsx:3052: pallets; src/features/admin/AdminApp.tsx:3062: employees; src/features/admin/AdminApp.tsx:3066: leaveRequests; src/features/admin/AdminApp.tsx:3068: leaveRequests; src/features/admin/AdminApp.tsx:3089: leaveRequests; src/features/admin/AdminApp.tsx:3091: adjustmentRequests; src/features/admin/AdminApp.tsx:3100: adjustmentRequests; src/features/admin/AdminApp.tsx:3123: adjustmentRequests; src/features/admin/AdminApp.tsx:3134: pendingStatementEdits; src/features/admin/AdminApp.tsx:3774: orders; src/features/admin/AdminApp.tsx:4505: cashAccounts; src/features/admin/AdminApp.tsx:4509: fixedCostTemplates; src/features/admin/AdminApp.tsx:4517: orders; src/features/admin/AdminApp.tsx:4582: purchaseOrders; src/features/admin/AdminApp.tsx:4630: fixedCostTemplates; src/features/admin/AdminApp.tsx:4638: accountCodes; src/features/admin/AdminApp.tsx:4642: accountGroups; src/features/admin/AdminApp.tsx:4734: cashAccounts; src/features/admin/AdminApp.tsx:4827: items; src/features/admin/AdminApp.tsx:4859: productionRecords; src/features/admin/AdminApp.tsx:4869: adjustmentRequests; src/features/admin/AdminApp.tsx:4878: adjustmentRequests; src/features/admin/AdminApp.tsx:4912: adjustmentRequests; src/features/admin/AdminApp.tsx:4945: leaveRequests; src/features/admin/AdminApp.tsx:4947: leaveRequests; src/features/admin/AdminApp.tsx:5068: chatRooms; src/features/admin/AdminApp.tsx:5071: chatMessages; src/features/admin/AdminApp.tsx:5091: chatRooms; src/features/admin/AdminApp.tsx:5262: items; src/features/admin/AdminApp.tsx:5274: items |
-| deleteItem | src/shared/services/firebaseService.ts:386 | src/shared/services/firebaseService.ts:387 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1013: notifications; src/features/admin/AdminApp.tsx:1143: purchaseOrders; src/features/admin/AdminApp.tsx:1165: purchaseOrders; src/features/admin/AdminApp.tsx:1168: purchaseOrders; src/features/admin/AdminApp.tsx:2605: workOrderItems; src/features/admin/AdminApp.tsx:3017: partners; src/features/admin/AdminApp.tsx:3043: notices; src/features/admin/AdminApp.tsx:3064: employees; src/features/admin/AdminApp.tsx:3069: leaveRequests; src/features/admin/AdminApp.tsx:3092: adjustmentRequests; src/features/admin/AdminApp.tsx:4510: fixedCostTemplates; src/features/admin/AdminApp.tsx:4513: expensePresets; src/features/admin/AdminApp.tsx:4631: fixedCostTemplates; src/features/admin/AdminApp.tsx:4640: accountCodes; src/features/admin/AdminApp.tsx:4643: accountGroups; src/features/admin/AdminApp.tsx:4858: productionRecords; src/features/admin/AdminApp.tsx:4910: purchaseOrders; src/features/admin/AdminApp.tsx:4915: adjustmentRequests; src/features/admin/AdminApp.tsx:5069: chatRooms; src/features/admin/AdminApp.tsx:5221: partner_item; src/features/admin/AdminApp.tsx:5249: items |
+| addItem | src/shared/services/firebaseService.ts:332 | src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:345, src/shared/services/firebaseService.ts:368, src/shared/services/firebaseService.ts:371 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:560: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:563: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:764: items, items, items, items, items; src/features/admin/AdminApp.tsx:1077: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1089: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1104: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1116: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1254: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:1457: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1758: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2019: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2620: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2656: items, items, items, items, items; src/features/admin/AdminApp.tsx:2677: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3028: partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3054: notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3064: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3074: employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3082: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3392: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4519: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4523: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4572: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4640: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4650: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4652: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4657: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4719: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4868: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4942: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4944: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:5078: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:5094: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:5114: notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:5123: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:5235: items, items, items, items, items; src/features/admin/AdminApp.tsx:5290: items, items, items, items, items |
+| updateItem | src/shared/services/firebaseService.ts:376 | src/shared/services/firebaseService.ts:377 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:733: items; src/features/admin/AdminApp.tsx:785: items; src/features/admin/AdminApp.tsx:1149: purchaseOrders; src/features/admin/AdminApp.tsx:1157: purchaseOrders; src/features/admin/AdminApp.tsx:1159: purchaseOrders; src/features/admin/AdminApp.tsx:1168: purchaseOrders; src/features/admin/AdminApp.tsx:1176: purchaseOrders; src/features/admin/AdminApp.tsx:1220: purchaseOrders; src/features/admin/AdminApp.tsx:2013: orders; src/features/admin/AdminApp.tsx:2531: orders; src/features/admin/AdminApp.tsx:2534: orders; src/features/admin/AdminApp.tsx:2535: orders; src/features/admin/AdminApp.tsx:2536: orders; src/features/admin/AdminApp.tsx:2537: orders; src/features/admin/AdminApp.tsx:2565: orders; src/features/admin/AdminApp.tsx:2568: orders; src/features/admin/AdminApp.tsx:2569: orders; src/features/admin/AdminApp.tsx:2570: orders; src/features/admin/AdminApp.tsx:2571: orders; src/features/admin/AdminApp.tsx:2592: orders; src/features/admin/AdminApp.tsx:2593: orders; src/features/admin/AdminApp.tsx:2597: orders; src/features/admin/AdminApp.tsx:2598: orders; src/features/admin/AdminApp.tsx:2599: orders; src/features/admin/AdminApp.tsx:2600: orders; src/features/admin/AdminApp.tsx:2638: workOrderItems; src/features/admin/AdminApp.tsx:2654: items; src/features/admin/AdminApp.tsx:2672: purchaseOrders; src/features/admin/AdminApp.tsx:2827: items; src/features/admin/AdminApp.tsx:3028: partners; src/features/admin/AdminApp.tsx:3054: notices; src/features/admin/AdminApp.tsx:3063: pallets; src/features/admin/AdminApp.tsx:3073: employees; src/features/admin/AdminApp.tsx:3077: leaveRequests; src/features/admin/AdminApp.tsx:3079: leaveRequests; src/features/admin/AdminApp.tsx:3100: leaveRequests; src/features/admin/AdminApp.tsx:3102: adjustmentRequests; src/features/admin/AdminApp.tsx:3111: adjustmentRequests; src/features/admin/AdminApp.tsx:3134: adjustmentRequests; src/features/admin/AdminApp.tsx:3145: pendingStatementEdits; src/features/admin/AdminApp.tsx:3785: orders; src/features/admin/AdminApp.tsx:4516: cashAccounts; src/features/admin/AdminApp.tsx:4520: fixedCostTemplates; src/features/admin/AdminApp.tsx:4528: orders; src/features/admin/AdminApp.tsx:4593: purchaseOrders; src/features/admin/AdminApp.tsx:4641: fixedCostTemplates; src/features/admin/AdminApp.tsx:4649: accountCodes; src/features/admin/AdminApp.tsx:4653: accountGroups; src/features/admin/AdminApp.tsx:4745: cashAccounts; src/features/admin/AdminApp.tsx:4838: items; src/features/admin/AdminApp.tsx:4870: productionRecords; src/features/admin/AdminApp.tsx:4880: adjustmentRequests; src/features/admin/AdminApp.tsx:4889: adjustmentRequests; src/features/admin/AdminApp.tsx:4923: adjustmentRequests; src/features/admin/AdminApp.tsx:4956: leaveRequests; src/features/admin/AdminApp.tsx:4958: leaveRequests; src/features/admin/AdminApp.tsx:5079: chatRooms; src/features/admin/AdminApp.tsx:5082: chatMessages; src/features/admin/AdminApp.tsx:5102: chatRooms; src/features/admin/AdminApp.tsx:5273: items; src/features/admin/AdminApp.tsx:5285: items |
+| deleteItem | src/shared/services/firebaseService.ts:386 | src/shared/services/firebaseService.ts:387 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1015: notifications; src/features/admin/AdminApp.tsx:1145: purchaseOrders; src/features/admin/AdminApp.tsx:1167: purchaseOrders; src/features/admin/AdminApp.tsx:1170: purchaseOrders; src/features/admin/AdminApp.tsx:2616: workOrderItems; src/features/admin/AdminApp.tsx:3028: partners; src/features/admin/AdminApp.tsx:3054: notices; src/features/admin/AdminApp.tsx:3075: employees; src/features/admin/AdminApp.tsx:3080: leaveRequests; src/features/admin/AdminApp.tsx:3103: adjustmentRequests; src/features/admin/AdminApp.tsx:4521: fixedCostTemplates; src/features/admin/AdminApp.tsx:4524: expensePresets; src/features/admin/AdminApp.tsx:4642: fixedCostTemplates; src/features/admin/AdminApp.tsx:4651: accountCodes; src/features/admin/AdminApp.tsx:4654: accountGroups; src/features/admin/AdminApp.tsx:4869: productionRecords; src/features/admin/AdminApp.tsx:4921: purchaseOrders; src/features/admin/AdminApp.tsx:4926: adjustmentRequests; src/features/admin/AdminApp.tsx:5080: chatRooms; src/features/admin/AdminApp.tsx:5232: partner_item; src/features/admin/AdminApp.tsx:5260: items |
 | subscribeToSubcollection | src/shared/services/firebaseService.ts:403 | src/shared/services/firebaseService.ts:409 | 정적 호출 연결 없음 |
 | addSubItem | src/shared/services/firebaseService.ts:419 | src/shared/services/firebaseService.ts:428, src/shared/services/firebaseService.ts:431 | 정적 호출 연결 없음 |
 | updateSubItem | src/shared/services/firebaseService.ts:436 | src/shared/services/firebaseService.ts:443 | 정적 호출 연결 없음 |
 | deleteSubItem | src/shared/services/firebaseService.ts:447 | src/shared/services/firebaseService.ts:453 | 정적 호출 연결 없음 |
 | fetchWhere | src/shared/services/firebaseService.ts:536 | src/shared/services/firebaseService.ts:541 | src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:16: productionWorkDocuments; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:17: productionWorkDocumentLines; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:129: orders; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:130: rawMaterialLedger; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:131: items; components/OrdersList.tsx:1632: orderStatusAudits; components/OrdersList.tsx:1633: orderItemEdits; src/features/admin/useVoucherLedger.ts:102: openingBalances; src/features/admin/useVoucherLedger.ts:114: partnerBalanceSnapshots; src/shared/useLoanContracts.ts:12: loanContracts; components/ProfitAnalysis.tsx:99: openingBalances; components/FinancialReports.tsx:111: openingBalances; components/LoanManager.tsx:76: loanContracts |
-| fetchWhereIn | src/shared/services/firebaseService.ts:546 | src/shared/services/firebaseService.ts:556 | src/features/admin/AdminApp.tsx:1351: orders |
+| fetchWhereIn | src/shared/services/firebaseService.ts:546 | src/shared/services/firebaseService.ts:556 | src/features/admin/AdminApp.tsx:1353: orders |
 | fetchByIds | src/shared/services/firebaseService.ts:569 | src/shared/services/firebaseService.ts:577 | src/features/admin/useVoucherLedger.ts:136: issuedStatements |
 | subscribeWhere | src/shared/services/firebaseService.ts:583 | src/shared/services/firebaseService.ts:590 | 정적 호출 연결 없음 |
-| commitCompanyWrites | src/shared/services/firebaseService.ts:604 | src/shared/services/firebaseService.ts:610 | src/shared/services/firebaseService.ts:490: 미해석; src/shared/services/firebaseService.ts:521: 미해석; src/shared/services/firebaseService.ts:831: 미해석; src/features/admin/AdminApp.tsx:1401: 미해석; src/features/admin/AdminApp.tsx:5031: 미해석; src/features/admin/AdminApp.tsx:5207: 미해석; src/features/admin/AdminApp.tsx:5297: 미해석 |
+| commitCompanyWrites | src/shared/services/firebaseService.ts:604 | src/shared/services/firebaseService.ts:610 | src/shared/services/firebaseService.ts:490: 미해석; src/shared/services/firebaseService.ts:521: 미해석; src/shared/services/firebaseService.ts:831: 미해석; src/features/admin/AdminApp.tsx:1403: 미해석; src/features/admin/AdminApp.tsx:5042: 미해석; src/features/admin/AdminApp.tsx:5218: 미해석; src/features/admin/AdminApp.tsx:5308: 미해석 |
 | readPartnerAdvanceSnapshot | functions/src/partnerAdvanceReader.ts:11 | functions/src/partnerAdvanceReader.ts:15 | functions/src/partnerAdvanceCommand.ts:98: 미해석; functions/src/partnerAdvanceCommand.ts:128: 미해석; functions/src/deleteIssuedStatementCommand.ts:100: 미해석; functions/src/cashMutationCommand.ts:198: 미해석; functions/src/editIssuedStatementCommand.ts:196: 미해석; functions/src/processReturnCommand.ts:208: 미해석 |
 | deleteIssuedStatement | functions/src/deleteIssuedStatementCommand.ts:55 | functions/src/deleteIssuedStatementCommand.ts:79, functions/src/deleteIssuedStatementCommand.ts:94, functions/src/deleteIssuedStatementCommand.ts:94, functions/src/deleteIssuedStatementCommand.ts:113, functions/src/deleteIssuedStatementCommand.ts:113 | functions/src/deleteIssuedStatementCommand.ts:135: 미해석, 미해석, 미해석, 미해석, 미해석 |
 | issueVoucher | functions/src/voucherIssue.ts:33 | functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:74, functions/src/voucherIssue.ts:75, functions/src/voucherIssue.ts:75 | functions/src/voucherIssue.ts:187: 미해석, 미해석, 미해석, 미해석; functions/src/autoVoucherCommand.ts:39: 미해석, 미해석, 미해석, 미해석 |
@@ -39,6 +39,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 | 위치 | 실행 | API | 문맥 | 깊이 | 경로 (중괄호는 동적식) | COL 밖 |
 | --- | --- | --- | --- | --- | --- | --- |
+| src/shared/services/orderInventoryRecoveryService.ts:12 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | functions/src/cashMutationReceipt.ts:19 | server | collection | root / top-level | 1 | voucherMutationOperations |  |
 | functions/src/releaseGate.ts:5 | server | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | functions/src/releaseGate.ts:5 | server | collection | root / top-level | 1 | appMeta |  |
@@ -158,12 +159,12 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/features/admin/orderItemStock.ts:247 | client | doc | root / top-level-candidate | 미해석 | orders/{orderMutation.orderId} |  |
 | src/features/admin/orderItemStock.ts:258 | client | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
 | src/features/admin/orderItemStock.ts:319 | client | doc | root / top-level-candidate | 미해석 | orders/{orderMutation.orderId} |  |
-| src/features/admin/orderInventoryCancellation.ts:135 | client | doc | root / top-level-candidate | 미해석 | orderStatusAudits/{ticket.operationId} |  |
-| src/features/admin/orderInventoryCancellation.ts:147 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
-| src/features/admin/orderInventoryCancellation.ts:171 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
-| src/features/admin/orderInventoryCancellation.ts:182 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
-| src/features/admin/orderInventoryCancellation.ts:236 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
-| src/features/admin/orderInventoryCancellation.ts:284 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| src/features/admin/orderInventoryCancellation.ts:127 | client | doc | root / top-level-candidate | 미해석 | orderStatusAudits/{ticket.operationId} |  |
+| src/features/admin/orderInventoryCancellation.ts:139 | client | doc | root / top-level-candidate | 미해석 | orders/{orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:164 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:175 | client | doc | root / top-level-candidate | 미해석 | orders/{ticket.orderId} |  |
+| src/features/admin/orderInventoryCancellation.ts:232 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| src/features/admin/orderInventoryCancellation.ts:280 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
 | src/features/admin/orderStockEngine.ts:380 | client | doc | root / top-level-candidate | 미해석 | orders/{order.id} |  |
 | src/features/admin/orderStockEngine.ts:662 | client | doc | root / top-level-candidate | 미해석 | orders/{id} |  |
 | src/shared/ledgerLotCheck.ts:66 | client | doc | root / top-level-candidate | 미해석 | items/{rawItemId} |  |
@@ -202,11 +203,11 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/interCompanyTransferService.ts:14 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/interCompanyTransferService.ts:21 | client | doc | root / top-level-candidate | 미해석 | companyTransferOperations/{command.operationId} |  |
 | src/shared/services/confirmedCashBalance.ts:9 | client | doc | root / top-level-candidate | 미해석 | cashAccounts/{original.id} |  |
-| src/features/admin/AdminApp.tsx:490 | client | collection | root / top-level | 1 | users |  |
-| src/features/admin/AdminApp.tsx:544 | client | collection | root / top-level | 1 | rawInventories |  |
-| src/features/admin/AdminApp.tsx:545 | client | collection | root / top-level | 1 | items |  |
-| src/features/admin/AdminApp.tsx:5016 | client | collection | root / top-level | 1 | partner_item |  |
-| src/features/admin/AdminApp.tsx:5045 | client | doc | root / top-level-candidate | 미해석 | partner_item/{id} |  |
+| src/features/admin/AdminApp.tsx:492 | client | collection | root / top-level | 1 | users |  |
+| src/features/admin/AdminApp.tsx:546 | client | collection | root / top-level | 1 | rawInventories |  |
+| src/features/admin/AdminApp.tsx:547 | client | collection | root / top-level | 1 | items |  |
+| src/features/admin/AdminApp.tsx:5027 | client | collection | root / top-level | 1 | partner_item |  |
+| src/features/admin/AdminApp.tsx:5056 | client | doc | root / top-level-candidate | 미해석 | partner_item/{id} |  |
 | src/shared/employeeAuth.ts:19 | client | doc | root / top-level-candidate | 미해석 | employees/{credential.user.uid} |  |
 | functions/src/newScopeCounter.ts:30 | server | collection | root / top-level | 1 | issuedStatements |  |
 | functions/src/newScopeCounter.ts:31 | server | collection | root / top-level | 1 | cashEntries |  |
@@ -689,6 +690,12 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | functions/src/taxIssueCommand.ts:70 | server | collection | root / top-level | 1 | issuedStatements |  |
 | functions/src/taxIssueCommand.ts:76 | server | doc | root / top-level-candidate | 미해석 | {record.collection}/{record.id} |  |
 | functions/src/taxIssueCommand.ts:76 | server | collection | root / top-level-candidate | 미해석 | {record.collection} |  |
+| functions/src/orderLockRecovery.ts:19 | server | doc | root / top-level-candidate | 미해석 | orders/{input.orderId} |  |
+| functions/src/orderLockRecovery.ts:19 | server | collection | root / top-level | 1 | orders |  |
+| functions/src/orderLockRecovery.ts:19 | server | doc | root / top-level-candidate | 미해석 | orderStatusAudits/{input.failedOperationId} |  |
+| functions/src/orderLockRecovery.ts:19 | server | collection | root / top-level | 1 | orderStatusAudits |  |
+| functions/src/orderLockRecovery.ts:20 | server | doc | root / top-level-candidate | 미해석 | orderLockRecoveryOperations/{'order-unlock-'+identity(companyId,input)} |  |
+| functions/src/orderLockRecovery.ts:20 | server | collection | root / top-level | 1 | orderLockRecoveryOperations |  |
 | functions/src/index.ts:45 | server | collection | root / top-level | 1 | users |  |
 | functions/src/index.ts:66 | server | collection | root / top-level | 1 | users |  |
 | functions/src/index.ts:121 | server | collection | root / top-level | 1 | items |  |
@@ -705,7 +712,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 715개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -756,6 +763,16 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | CancelPartnerAdvanceInput | functions/src/shared/partnerAdvance.ts:224 | type-alias | direct-properties-only | operationId, partnerId, date, applicationStatementId, reason, expectedRevision, releaseId |
 | PreparedPartnerAdvance | functions/src/shared/partnerAdvance.ts:229 | type-alias | direct-properties-only | enabled, blockedReason, revision, releaseId, sources, targets, applications, diagnostics |
 | RawUnit | functions/src/shared/formula.ts:57 | type-alias | non-object-alias-not-expanded |  |
+| AppConfirmOptions | src/shared/components/appDialog.ts:1 | interface | direct-properties-only | title, message, confirmText, cancelText, tone |
+| AppPromptOptions | src/shared/components/appDialog.ts:9 | interface | direct-properties-only | title, message, defaultValue, placeholder, confirmText |
+| ConfirmRequest | src/shared/components/appDialog.ts:17 | type-alias | non-object-alias-not-expanded |  |
+| NoticeRequest | src/shared/components/appDialog.ts:18 | type-alias | direct-properties-only | kind, title, message, resolve |
+| PromptRequest | src/shared/components/appDialog.ts:19 | type-alias | non-object-alias-not-expanded |  |
+| AppDialogRequest | src/shared/components/appDialog.ts:20 | type-alias | non-object-alias-not-expanded |  |
+| OrderInventoryRecoveryResult | src/shared/services/orderInventoryRecoveryService.ts:6 | interface | direct-properties-only | status, orderId, failedOperationId, failedStartedAt, inventoryApplied, reason, failureMessage, targetStatus |
+| PendingOrderInventoryRecovery | src/shared/services/orderInventoryRecoveryService.ts:27 | interface | direct-properties-only | version, companyId, uid, orderId, failedOperationId, failedStartedAt, expectedSaved |
+| Props | components/OrderInventoryRecoveryPanel.tsx:5 | interface | direct-properties-only | companyId, actorUid, orders, pending, onRecovered |
+| Entry | components/OrderInventoryRecoveryPanel.tsx:6 | type-alias | direct-properties-only | orderId, partnerName, operationId, startedAt, pending |
 | Row | functions/src/cashMutationReceipt.ts:4 | type-alias | non-object-alias-not-expanded |  |
 | LedgerCashEntry | functions/src/shared/cashAccountLedger.ts:2 | type-alias | direct-properties-only | id, date, createdAt, cashAccountId, companyId, dir, amount, balanceAdjustment |
 | LedgerCashAccount | functions/src/shared/cashAccountLedger.ts:7 | type-alias | direct-properties-only | id, companyId, openingDate, openingBalance, confirmedBalances |
@@ -780,7 +797,7 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | RawReadSnapshot | functions/src/shared/rawInventoryPrepare.ts:6 | interface | direct-properties-only |  |
 | RawCommandRead | functions/src/shared/rawInventoryPrepare.ts:7 | interface | direct-properties-only | movementSnap, oldMovementSnap, stateSnap, itemSnap, originalSnap, oldOriginalSnap, guardSnap |
 | RawPrepareOptions | functions/src/shared/rawInventoryPrepare.ts:13 | interface | direct-properties-only | now, newLotId, carryOverLotId, mirrorToItem, legacy |
-| CollectionName | src/shared/collections.ts:120 | type-alias | non-object-alias-not-expanded |  |
+| CollectionName | src/shared/collections.ts:122 | type-alias | non-object-alias-not-expanded |  |
 | RawCommandOptions | src/shared/services/rawInventoryService.ts:41 | interface | direct-properties-only | now, newLotId, carryOverLotId, db, mirrorToItem, legacy |
 | KstDateRangeUtc | src/shared/day.ts:18 | interface | direct-properties-only | startInclusive, endExclusive |
 | Command | src/features/admin/returnCommands.ts:7 | type-alias | direct-properties-only | operationId, returnRequestId, tradeDate, expectedPartnerRevision, releaseId |
@@ -795,12 +812,6 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | PreparedTransferCashEdit | src/features/admin/cashMutationCommands.ts:9 | type-alias | direct-properties-only | counterpart, expectedRevision, expectedCashHash |
 | Command | src/features/admin/cashMutationCommands.ts:27 | type-alias | direct-properties-only | operationId, cashEntryId, action, expectedRevision, expectedCashHash, releaseId, patch, payrollEdit, transferEdit |
 | Result | src/features/admin/cashMutationCommands.ts:29 | type-alias | direct-properties-only | status, id, action, revision, docNo |
-| AppConfirmOptions | src/shared/components/appDialog.ts:1 | interface | direct-properties-only | title, message, confirmText, cancelText, tone |
-| AppPromptOptions | src/shared/components/appDialog.ts:9 | interface | direct-properties-only | title, message, defaultValue, placeholder, confirmText |
-| ConfirmRequest | src/shared/components/appDialog.ts:17 | type-alias | non-object-alias-not-expanded |  |
-| NoticeRequest | src/shared/components/appDialog.ts:18 | type-alias | direct-properties-only | kind, title, message, resolve |
-| PromptRequest | src/shared/components/appDialog.ts:19 | type-alias | non-object-alias-not-expanded |  |
-| AppDialogRequest | src/shared/components/appDialog.ts:20 | type-alias | non-object-alias-not-expanded |  |
 | ModalShellProps | src/shared/components/ModalShell.tsx:4 | interface | direct-properties-only | title, subtitle, onClose, children, footer, className, bodyClassName, layer, size |
 | LargeModalShellProps | src/shared/components/LargeModalShell.tsx:4 | type-alias | non-object-alias-not-expanded |  |
 | ProductionWorkDocument | src/features/production-documents/domain/productionWorkDocument.ts:5 | interface | direct-properties-only | id, companyId, documentDate, templateVersion, specialNotes, preparedByName, reviewedByName, approvedByName, revision, rowCount, createdAt, createdBy, updatedAt, updatedBy |
@@ -1029,6 +1040,8 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | OrderItemChange | src/shared/orderItemDiff.ts:15 | interface | direct-properties-only | kind, name, text |
 | DeviceHint | src/shared/deviceLabel.ts:16 | interface | direct-properties-only | userAgent, standalone |
 | PushResult | src/shared/push.ts:26 | interface | direct-properties-only | ok, token, reason |
+| CancellationEvidenceOrder | functions/src/shared/orderCancellationEvidence.ts:2 | type-alias | direct-properties-only | id, companyId, status, producedAt, shippedOut, items, inventorySnapshots, itemInventory, rawConsumedLots, productConsumedLots |
+| LockRecoveryAssessment | functions/src/shared/orderCancellationEvidence.ts:14 | type-alias | direct-properties-only | status, inventoryApplied, reason, action |
 | RawUsageKg | src/features/admin/orderRawInventory.ts:12 | type-alias | non-object-alias-not-expanded |  |
 | OrderRawInventoryDeps | src/features/admin/orderRawInventory.ts:14 | interface | direct-properties-only | actorName, allItems, partners, db, addNotification, runRawInventoryJob |
 | OrderProductLotMutationResult | src/features/admin/orderProductLots.ts:6 | interface | direct-properties-only | lots, consumedLots |
@@ -1036,10 +1049,10 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | OrderProductLotDeps | src/features/admin/orderProductLots.ts:78 | interface | direct-properties-only | allItems, shipQtyOf |
 | OrderItemStockDeps | src/features/admin/orderItemStock.ts:7 | interface | direct-properties-only | db, allItems, bomIndex |
 | OrderStockReservation | src/features/admin/orderItemStock.ts:17 | interface | direct-properties-only | operationId, orderId, itemIds, quantities, stockSnapshot, previousReservations, allocationQuantities, active |
-| CancellationAction | src/features/admin/orderInventoryCancellation.ts:10 | type-alias | non-object-alias-not-expanded |  |
-| CancellationTicket | src/features/admin/orderInventoryCancellation.ts:117 | interface | direct-properties-only | orderId, companyId, action, evidence, operationId |
-| CancellationReceipt | src/features/admin/orderInventoryCancellation.ts:121 | interface | direct-properties-only | id, companyId, orderId, state, cancellation |
-| CancellationResult | src/features/admin/orderInventoryCancellation.ts:125 | interface | direct-properties-only | status, operationId, code, affectedItemIds, inventoryApplied, retryable, deleted, nextStatus |
+| CancellationAction | src/features/admin/orderInventoryCancellation.ts:11 | type-alias | non-object-alias-not-expanded |  |
+| CancellationTicket | src/features/admin/orderInventoryCancellation.ts:109 | interface | direct-properties-only | orderId, companyId, action, evidence, operationId |
+| CancellationReceipt | src/features/admin/orderInventoryCancellation.ts:113 | interface | direct-properties-only | id, companyId, orderId, state, cancellation |
+| CancellationResult | src/features/admin/orderInventoryCancellation.ts:117 | interface | direct-properties-only | status, operationId, code, affectedItemIds, inventoryApplied, retryable, deleted, nextStatus |
 | RollbackPlan | src/features/admin/rollbackSummary.ts:15 | interface | direct-properties-only | needed, lines, text, adjustments, legacyEvidenceWarning, warnings |
 | OrderDeleteAction | src/features/admin/rollbackSummary.ts:235 | type-alias | non-object-alias-not-expanded |  |
 | OrderDeleteStage | src/features/admin/rollbackSummary.ts:236 | type-alias | non-object-alias-not-expanded |  |
@@ -1315,12 +1328,12 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | Props | components/PartnerAdvanceModal.tsx:11 | type-alias | direct-properties-only | companyId, partnerId, partnerName, onClose |
 | ComposerProps | components/PartnerLedger.tsx:19 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/PartnerLedger.tsx:21 | interface | direct-properties-only | partners, accountGroups, fixedCostTemplates, onAddCashEntry, onIssueCashEntry, onAddIssuedStatement, onAddFixedCostTemplate, advanceStatements, returnOperations, companyId, issuedStatements, cashEntries, cashAccounts, accountCodes, settlements, onOpenVoucher |
-| AdminAppProps | src/features/admin/AdminApp.tsx:251 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
-| NewOrderDraft | src/features/admin/AdminApp.tsx:1419 | type-alias | non-object-alias-not-expanded |  |
-| RightRow | src/features/admin/AdminApp.tsx:3162 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
-| WRow | src/features/admin/AdminApp.tsx:3569 | type-alias | direct-properties-only | spec, 수량, mfgDate |
-| UsageRow | src/features/admin/AdminApp.tsx:3874 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
-| WRow | src/features/admin/AdminApp.tsx:4321 | type-alias | direct-properties-only | spec, 수량, mfgDate |
+| AdminAppProps | src/features/admin/AdminApp.tsx:253 | interface | direct-properties-only | currentUser, companyId, isAdmin, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onPreviewStaff, onExitPreview |
+| NewOrderDraft | src/features/admin/AdminApp.tsx:1421 | type-alias | non-object-alias-not-expanded |  |
+| RightRow | src/features/admin/AdminApp.tsx:3173 | type-alias | direct-properties-only | 상호, 품목, spec, 수량, 소비기한, 제조일자, orderItems |
+| WRow | src/features/admin/AdminApp.tsx:3580 | type-alias | direct-properties-only | spec, 수량, mfgDate |
+| UsageRow | src/features/admin/AdminApp.tsx:3885 | type-alias | direct-properties-only | date, received, used, note, type, id, createdAt, targetKg, addedBy, orderId |
+| WRow | src/features/admin/AdminApp.tsx:4332 | type-alias | direct-properties-only | spec, 수량, mfgDate |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | interface | direct-properties-only | currentUser, companyId, isAdminAuthenticated, onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData, onExitPreview |
 | Window | src/global.d.ts:3 | interface | direct-properties-only | __chunkErrorHandled |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | interface | direct-properties-only | id, title, message, tone |
@@ -1415,6 +1428,9 @@ shared/types.ts 외 interface/type alias 706개를 별도 목록에 기록한다
 | Actor | functions/src/updatePendingReturnQuantityCommand.ts:9 | type-alias | non-object-alias-not-expanded |  |
 | Row | functions/src/taxIssueCommand.ts:5 | type-alias | non-object-alias-not-expanded |  |
 | TaxIssueInput | functions/src/taxIssueCommand.ts:6 | type-alias | direct-properties-only | companyId, operationId, statements, scope, issuedAt |
+| OrderRow | functions/src/orderLockRecovery.ts:6 | type-alias | non-object-alias-not-expanded |  |
+| Input | functions/src/orderLockRecovery.ts:7 | type-alias | direct-properties-only | action, orderId, failedOperationId, failedStartedAt, releaseId |
+| OrderLockRecoveryResult | functions/src/orderLockRecovery.ts:8 | type-alias | direct-properties-only | status, orderId, failedOperationId, failedStartedAt, inventoryApplied, reason, failureMessage, targetStatus |
 
 ## 상속·공용 모델의 정적 필드 보완
 
@@ -1554,6 +1570,16 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | AdjustmentStatus | src/shared/types.ts:1655 | non-object-model-not-expanded | 0 |
 | AdjustmentRequest | src/shared/types.ts:1657 | checker-resolved-properties-only | 15 |
 | RawUnit | functions/src/shared/formula.ts:57 | non-object-model-not-expanded | 0 |
+| AppConfirmOptions | src/shared/components/appDialog.ts:1 | checker-resolved-properties-only | 5 |
+| AppPromptOptions | src/shared/components/appDialog.ts:9 | checker-resolved-properties-only | 5 |
+| ConfirmRequest | src/shared/components/appDialog.ts:17 | checker-resolved-properties-only | 7 |
+| NoticeRequest | src/shared/components/appDialog.ts:18 | checker-resolved-properties-only | 4 |
+| PromptRequest | src/shared/components/appDialog.ts:19 | checker-resolved-properties-only | 7 |
+| AppDialogRequest | src/shared/components/appDialog.ts:20 | non-object-model-not-expanded | 0 |
+| OrderInventoryRecoveryResult | src/shared/services/orderInventoryRecoveryService.ts:6 | checker-resolved-properties-only | 8 |
+| PendingOrderInventoryRecovery | src/shared/services/orderInventoryRecoveryService.ts:27 | checker-resolved-properties-only | 7 |
+| Props | components/OrderInventoryRecoveryPanel.tsx:5 | checker-resolved-properties-only | 5 |
+| Entry | components/OrderInventoryRecoveryPanel.tsx:6 | checker-resolved-properties-only | 5 |
 | Row | functions/src/cashMutationReceipt.ts:4 | checker-resolved-properties-only | 0 |
 | LedgerCashEntry | functions/src/shared/cashAccountLedger.ts:2 | checker-resolved-properties-only | 8 |
 | LedgerCashAccount | functions/src/shared/cashAccountLedger.ts:7 | checker-resolved-properties-only | 5 |
@@ -1578,7 +1604,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | RawReadSnapshot | functions/src/shared/rawInventoryPrepare.ts:6 | checker-resolved-properties-only | 0 |
 | RawCommandRead | functions/src/shared/rawInventoryPrepare.ts:7 | checker-resolved-properties-only | 7 |
 | RawPrepareOptions | functions/src/shared/rawInventoryPrepare.ts:13 | checker-resolved-properties-only | 5 |
-| CollectionName | src/shared/collections.ts:120 | non-object-model-not-expanded | 0 |
+| CollectionName | src/shared/collections.ts:122 | non-object-model-not-expanded | 0 |
 | RawCommandOptions | src/shared/services/rawInventoryService.ts:41 | checker-resolved-properties-only | 6 |
 | KstDateRangeUtc | src/shared/day.ts:18 | checker-resolved-properties-only | 2 |
 | Command | src/features/admin/returnCommands.ts:7 | checker-resolved-properties-only | 5 |
@@ -1593,12 +1619,6 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | PreparedTransferCashEdit | src/features/admin/cashMutationCommands.ts:9 | checker-resolved-properties-only | 3 |
 | Command | src/features/admin/cashMutationCommands.ts:27 | checker-resolved-properties-only | 9 |
 | Result | src/features/admin/cashMutationCommands.ts:29 | checker-resolved-properties-only | 5 |
-| AppConfirmOptions | src/shared/components/appDialog.ts:1 | checker-resolved-properties-only | 5 |
-| AppPromptOptions | src/shared/components/appDialog.ts:9 | checker-resolved-properties-only | 5 |
-| ConfirmRequest | src/shared/components/appDialog.ts:17 | checker-resolved-properties-only | 7 |
-| NoticeRequest | src/shared/components/appDialog.ts:18 | checker-resolved-properties-only | 4 |
-| PromptRequest | src/shared/components/appDialog.ts:19 | checker-resolved-properties-only | 7 |
-| AppDialogRequest | src/shared/components/appDialog.ts:20 | non-object-model-not-expanded | 0 |
 | ModalShellProps | src/shared/components/ModalShell.tsx:4 | checker-resolved-properties-only | 9 |
 | LargeModalShellProps | src/shared/components/LargeModalShell.tsx:4 | checker-resolved-properties-only | 8 |
 | ProductionWorkDocument | src/features/production-documents/domain/productionWorkDocument.ts:5 | checker-resolved-properties-only | 14 |
@@ -1827,6 +1847,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderItemChange | src/shared/orderItemDiff.ts:15 | checker-resolved-properties-only | 3 |
 | DeviceHint | src/shared/deviceLabel.ts:16 | checker-resolved-properties-only | 2 |
 | PushResult | src/shared/push.ts:26 | checker-resolved-properties-only | 3 |
+| CancellationEvidenceOrder | functions/src/shared/orderCancellationEvidence.ts:2 | checker-resolved-properties-only | 10 |
+| LockRecoveryAssessment | functions/src/shared/orderCancellationEvidence.ts:14 | checker-resolved-properties-only | 4 |
 | RawUsageKg | src/features/admin/orderRawInventory.ts:12 | checker-resolved-properties-only | 0 |
 | OrderRawInventoryDeps | src/features/admin/orderRawInventory.ts:14 | checker-resolved-properties-only | 6 |
 | OrderProductLotMutationResult | src/features/admin/orderProductLots.ts:6 | checker-resolved-properties-only | 2 |
@@ -1834,10 +1856,10 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderProductLotDeps | src/features/admin/orderProductLots.ts:78 | checker-resolved-properties-only | 2 |
 | OrderItemStockDeps | src/features/admin/orderItemStock.ts:7 | checker-resolved-properties-only | 3 |
 | OrderStockReservation | src/features/admin/orderItemStock.ts:17 | checker-resolved-properties-only | 8 |
-| CancellationAction | src/features/admin/orderInventoryCancellation.ts:10 | non-object-model-not-expanded | 0 |
-| CancellationTicket | src/features/admin/orderInventoryCancellation.ts:117 | checker-resolved-properties-only | 5 |
-| CancellationReceipt | src/features/admin/orderInventoryCancellation.ts:121 | checker-resolved-properties-only | 5 |
-| CancellationResult | src/features/admin/orderInventoryCancellation.ts:125 | checker-resolved-properties-only | 8 |
+| CancellationAction | src/features/admin/orderInventoryCancellation.ts:11 | non-object-model-not-expanded | 0 |
+| CancellationTicket | src/features/admin/orderInventoryCancellation.ts:109 | checker-resolved-properties-only | 5 |
+| CancellationReceipt | src/features/admin/orderInventoryCancellation.ts:113 | checker-resolved-properties-only | 5 |
+| CancellationResult | src/features/admin/orderInventoryCancellation.ts:117 | checker-resolved-properties-only | 8 |
 | RollbackPlan | src/features/admin/rollbackSummary.ts:15 | checker-resolved-properties-only | 6 |
 | OrderDeleteAction | src/features/admin/rollbackSummary.ts:235 | non-object-model-not-expanded | 0 |
 | OrderDeleteStage | src/features/admin/rollbackSummary.ts:236 | non-object-model-not-expanded | 0 |
@@ -2113,12 +2135,12 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Props | components/PartnerAdvanceModal.tsx:11 | checker-resolved-properties-only | 4 |
 | ComposerProps | components/PartnerLedger.tsx:19 | checker-resolved-properties-only | 22 |
 | Props | components/PartnerLedger.tsx:21 | checker-resolved-properties-only | 16 |
-| AdminAppProps | src/features/admin/AdminApp.tsx:251 | checker-resolved-properties-only | 12 |
-| NewOrderDraft | src/features/admin/AdminApp.tsx:1419 | checker-resolved-properties-only | 44 |
-| RightRow | src/features/admin/AdminApp.tsx:3162 | checker-resolved-properties-only | 7 |
-| WRow | src/features/admin/AdminApp.tsx:3569 | checker-resolved-properties-only | 3 |
-| UsageRow | src/features/admin/AdminApp.tsx:3874 | checker-resolved-properties-only | 10 |
-| WRow | src/features/admin/AdminApp.tsx:4321 | checker-resolved-properties-only | 3 |
+| AdminAppProps | src/features/admin/AdminApp.tsx:253 | checker-resolved-properties-only | 12 |
+| NewOrderDraft | src/features/admin/AdminApp.tsx:1421 | checker-resolved-properties-only | 44 |
+| RightRow | src/features/admin/AdminApp.tsx:3173 | checker-resolved-properties-only | 7 |
+| WRow | src/features/admin/AdminApp.tsx:3580 | checker-resolved-properties-only | 3 |
+| UsageRow | src/features/admin/AdminApp.tsx:3885 | checker-resolved-properties-only | 10 |
+| WRow | src/features/admin/AdminApp.tsx:4332 | checker-resolved-properties-only | 3 |
 | StaffAppProps | src/features/staff/StaffApp.tsx:23 | checker-resolved-properties-only | 10 |
 | Window | src/global.d.ts:3 | checker-resolved-properties-only | 186 |
 | AppAlert | src/shared/components/AppAlertHost.tsx:5 | checker-resolved-properties-only | 4 |
@@ -2213,6 +2235,9 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Actor | functions/src/updatePendingReturnQuantityCommand.ts:9 | non-object-model-not-expanded | 0 |
 | Row | functions/src/taxIssueCommand.ts:5 | checker-resolved-properties-only | 0 |
 | TaxIssueInput | functions/src/taxIssueCommand.ts:6 | checker-resolved-properties-only | 5 |
+| OrderRow | functions/src/orderLockRecovery.ts:6 | checker-resolved-properties-only | 11 |
+| Input | functions/src/orderLockRecovery.ts:7 | checker-resolved-properties-only | 5 |
+| OrderLockRecoveryResult | functions/src/orderLockRecovery.ts:8 | checker-resolved-properties-only | 8 |
 
 ## 미해석 속성 접근 조사 목록
 
@@ -2225,6 +2250,13 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | functions/src/shared/oemBatchCost.ts:104 | source.sent | Record<string, unknown> | property-symbol-unresolved |
 | functions/src/shared/oemBatchCost.ts:104 | source.date | Record<string, unknown> | property-symbol-unresolved |
 | functions/src/shared/oemBatchCost.ts:104 | source.oemCostEvidence | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/releaseGate.ts:2 | gate?.status | Record<string, unknown> \| undefined | property-symbol-unresolved |
+| src/shared/releaseGate.ts:2 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/releaseGate.ts:3 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/releaseGate.ts:5 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.companyId | any | any-receiver |
+| src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.orderId | any | any-receiver |
+| src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.operationId | any | any-receiver |
 | functions/src/cashMutationReceipt.ts:7 | value.toMillis | any | any-receiver |
 | functions/src/cashMutationReceipt.ts:7 | value.toMillis | any | any-receiver |
 | functions/src/cashMutationReceipt.ts:30 | snapshots[id]?.companyId | any | any-receiver |
@@ -2358,10 +2390,6 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/features/admin/cashMutationCommands.ts:186 | claims?.companyId | ParsedToken \| undefined | property-symbol-unresolved |
 | src/features/admin/cashMutationCommands.ts:208 | state?.revision | DocumentData \| undefined | property-symbol-unresolved |
 | src/features/admin/cashMutationCommands.ts:209 | release?.status | DocumentData \| undefined | property-symbol-unresolved |
-| src/shared/releaseGate.ts:2 | gate?.status | Record<string, unknown> \| undefined | property-symbol-unresolved |
-| src/shared/releaseGate.ts:2 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
-| src/shared/releaseGate.ts:3 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
-| src/shared/releaseGate.ts:5 | gate.releaseId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/companyWriteBoundary.ts:28 | data.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/companyWriteBoundary.ts:28 | data.companyId | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/firebaseService.ts:104 | scoped.companyId | Record<string, unknown> | property-symbol-unresolved |
@@ -2608,25 +2636,25 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/PasteOrderModal.tsx:205 | r.itemId | any | any-receiver |
 | src/shared/push.ts:97 | e?.message | any | any-receiver |
 | src/features/admin/orderItemStock.ts:152 | snapshots[index]!.data()?.stock | DocumentData \| undefined | property-symbol-unresolved |
-| src/features/admin/orderInventoryCancellation.ts:104 | patch.lots | Record<string, unknown> | property-symbol-unresolved |
-| src/features/admin/orderInventoryCancellation.ts:111 | patch.lots | Record<string, unknown> | property-symbol-unresolved |
-| src/features/admin/orderInventoryCancellation.ts:136 | value?.state | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:137 | value.id | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:137 | value.orderId | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:137 | value.companyId | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:138 | value.cancellation?.action | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:138 | value.cancellation | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:138 | value.cancellation?.evidence | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:138 | value.cancellation | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:139 | value.cancellation?.deleted | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:139 | value.cancellation | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:215 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:215 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:216 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:277 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:279 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:280 | ref.path | any | any-receiver |
-| src/features/admin/orderInventoryCancellation.ts:296 | write.ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:96 | patch.lots | Record<string, unknown> | property-symbol-unresolved |
+| src/features/admin/orderInventoryCancellation.ts:103 | patch.lots | Record<string, unknown> | property-symbol-unresolved |
+| src/features/admin/orderInventoryCancellation.ts:128 | value?.state | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:129 | value.id | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:129 | value.orderId | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:129 | value.companyId | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:130 | value.cancellation?.action | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:130 | value.cancellation | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:130 | value.cancellation?.evidence | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:130 | value.cancellation | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:131 | value.cancellation?.deleted | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:131 | value.cancellation | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:210 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:210 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:211 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:273 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:275 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:276 | ref.path | any | any-receiver |
+| src/features/admin/orderInventoryCancellation.ts:292 | write.ref.path | any | any-receiver |
 | src/shared/noticeImage.ts:23 | error.code | any | any-receiver |
 | components/NoticeBoard.tsx:36 | saved?.post | any | any-receiver |
 | components/NoticeBoard.tsx:37 | saved.editing | any | any-receiver |
@@ -2931,21 +2959,21 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/PartnerLedger.tsx:523 | it.tax | any | any-receiver |
 | components/PartnerLedger.tsx:524 | it.total | any | any-receiver |
 | components/PartnerLedger.tsx:544 | i.name | any | any-receiver |
-| src/features/admin/AdminApp.tsx:424 | e?.message | any | any-receiver |
-| src/features/admin/AdminApp.tsx:603 | (pc as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:604 | (pc as any).partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:996 | e.data?.type | any | any-receiver |
-| src/features/admin/AdminApp.tsx:996 | e.data.view | any | any-receiver |
-| src/features/admin/AdminApp.tsx:996 | e.data.view | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1123 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1124 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1186 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1187 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1215 | (s as any).itemId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:1216 | (ps as any)?.partnerId | any | any-receiver |
-| src/features/admin/AdminApp.tsx:2620 | patch.sortIndex | Record<string, unknown> | property-symbol-unresolved |
-| src/features/admin/AdminApp.tsx:4985 | error?.message | any | any-receiver |
-| src/features/admin/AdminApp.tsx:4995 | error?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:426 | e?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:605 | (pc as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:606 | (pc as any).partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:998 | e.data?.type | any | any-receiver |
+| src/features/admin/AdminApp.tsx:998 | e.data.view | any | any-receiver |
+| src/features/admin/AdminApp.tsx:998 | e.data.view | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1125 | (s as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1126 | (ps as any)?.partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1188 | (s as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1189 | (ps as any)?.partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1217 | (s as any).itemId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:1218 | (ps as any)?.partnerId | any | any-receiver |
+| src/features/admin/AdminApp.tsx:2631 | patch.sortIndex | Record<string, unknown> | property-symbol-unresolved |
+| src/features/admin/AdminApp.tsx:4996 | error?.message | any | any-receiver |
+| src/features/admin/AdminApp.tsx:5006 | error?.message | any | any-receiver |
 | src/shared/components/AuthPage.tsx:34 | cause?.code | any | any-receiver |
 | functions/src/newScopeCounter.ts:11 | gate.data()?.oemLotCutoverDate | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/newScopeCounter.ts:17 | row?.status | DocumentData \| undefined | property-symbol-unresolved |
@@ -4467,6 +4495,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | functions/src/taxIssueCommand.ts:61 | write.data.tax | Record<string, unknown> | property-symbol-unresolved |
 | functions/src/taxIssueCommand.ts:61 | write.data.amount | Record<string, unknown> | property-symbol-unresolved |
 | functions/src/taxIssueCommand.ts:90 | request.auth?.token.companyId | DecodedIdToken \| undefined | property-symbol-unresolved |
+| functions/src/orderLockRecovery.ts:32 | saved.cancellation?.action | any | any-receiver |
+| functions/src/orderLockRecovery.ts:32 | saved.cancellation?.evidence | any | any-receiver |
 | functions/src/index.ts:39 | request.data?.name | any | any-receiver |
 | functions/src/index.ts:40 | request.data?.phone | any | any-receiver |
 | functions/src/index.ts:59 | request.data?.username | any | any-receiver |
@@ -4483,11 +4513,11 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 
 | 모델 | 필드 | 입력 | 선언 타입 | 선언 위치 | 정적 사용처 |
 | --- | --- | --- | --- | --- | --- |
-| OrderItem | lineId | 선택 | string | src/shared/types.ts:27 | 40 |
-| OrderItem | itemId | 필수 | string | src/shared/types.ts:28 | 121 |
+| OrderItem | lineId | 선택 | string | src/shared/types.ts:27 | 39 |
+| OrderItem | itemId | 필수 | string | src/shared/types.ts:28 | 120 |
 | OrderItem | name | 필수 | string | src/shared/types.ts:29 | 63 |
 | OrderItem | orderedAs | 선택 | string | src/shared/types.ts:43 | 0 |
-| OrderItem | quantity | 필수 | number | src/shared/types.ts:44 | 41 |
+| OrderItem | quantity | 필수 | number | src/shared/types.ts:44 | 40 |
 | OrderItem | price | 필수 | number | src/shared/types.ts:45 | 7 |
 | OrderItem | checked | 선택 | boolean | src/shared/types.ts:46 | 37 |
 | OrderItem | checkedBy | 선택 | string | src/shared/types.ts:47 | 6 |
@@ -4498,8 +4528,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderItem | labelType | 선택 | '대기' \| '날인' \| '부착' | src/shared/types.ts:52 | 13 |
 | OrderItem | labelBy | 선택 | string | src/shared/types.ts:59 | 2 |
 | OrderItem | labelAt | 선택 | string | src/shared/types.ts:60 | 2 |
-| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:61 | 26 |
-| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:62 | 24 |
+| OrderItem | isBoxUnit | 선택 | boolean | src/shared/types.ts:61 | 25 |
+| OrderItem | boxQuantity | 선택 | number | src/shared/types.ts:62 | 23 |
 | OrderItem | unitsPerBox | 선택 | number | src/shared/types.ts:63 | 7 |
 | OrderItem | boxType | 선택 | string | src/shared/types.ts:64 | 2 |
 | OrderItem | boxSubId | 선택 | string | src/shared/types.ts:65 | 1 |
@@ -4553,20 +4583,20 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderRawInventoryTrace | supplierName | 필수 | string | src/shared/types.ts:225 | 3 |
 | OrderRawInventoryTrace | receivedDate | 선택 | string | src/shared/types.ts:226 | 3 |
 | OrderRawInventoryTrace | kg | 필수 | number | src/shared/types.ts:227 | 13 |
-| Order | id | 필수 | string | src/shared/types.ts:231 | 258 |
+| Order | id | 필수 | string | src/shared/types.ts:231 | 260 |
 | Order | companyId | 선택 | CompanyId | src/shared/types.ts:233 | 1 |
 | Order | cardNo | 선택 | string | src/shared/types.ts:244 | 5 |
 | Order | createdBy | 선택 | string | src/shared/types.ts:249 | 1 |
 | Order | sourceChatMessageId | 선택 | string | src/shared/types.ts:251 | 1 |
 | Order | partnerId | 선택 | string | src/shared/types.ts:252 | 58 |
-| Order | partnerName | 필수 | string | src/shared/types.ts:253 | 89 |
-| Order | items | 필수 | OrderItem[] | src/shared/types.ts:254 | 149 |
+| Order | partnerName | 필수 | string | src/shared/types.ts:253 | 91 |
+| Order | items | 필수 | OrderItem[] | src/shared/types.ts:254 | 148 |
 | Order | note | 선택 | string | src/shared/types.ts:256 | 14 |
 | Order | noteImportant | 선택 | boolean | src/shared/types.ts:257 | 4 |
 | Order | noteBy | 선택 | string | src/shared/types.ts:258 | 2 |
 | Order | noteAt | 선택 | string | src/shared/types.ts:259 | 2 |
 | Order | totalAmount | 필수 | number | src/shared/types.ts:260 | 0 |
-| Order | status | 필수 | OrderStatus | src/shared/types.ts:261 | 133 |
+| Order | status | 필수 | OrderStatus | src/shared/types.ts:261 | 132 |
 | Order | createdAt | 필수 | string | src/shared/types.ts:262 | 55 |
 | Order | deliveryDate | 필수 | string | src/shared/types.ts:263 | 58 |
 | Order | email | 필수 | string | src/shared/types.ts:264 | 0 |
@@ -4589,16 +4619,16 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Order | accountingExcludedAt | 선택 | string | src/shared/types.ts:304 | 0 |
 | Order | accountingExcludedBy | 선택 | string | src/shared/types.ts:305 | 0 |
 | Order | rawLotsDeducted | 선택 | boolean | src/shared/types.ts:306 | 3 |
-| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:307 | 18 |
+| Order | rawConsumedLots | 선택 | OrderRawInventoryTrace[] | src/shared/types.ts:307 | 17 |
 | Order | rawInventoryAttempt | 선택 | number | src/shared/types.ts:309 | 5 |
-| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:315 | 8 |
+| Order | productConsumedLots | 선택 | { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[] | src/shared/types.ts:315 | 7 |
 | Order | autoBuilt | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:316 | 12 |
 | Order | producedUnits | 선택 | { itemId: string; qty: number }[] | src/shared/types.ts:317 | 15 |
 | Order | producedAt | 선택 | string | src/shared/types.ts:319 | 23 |
-| Order | shippedOut | 선택 | boolean | src/shared/types.ts:320 | 15 |
-| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:325 | 31 |
-| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:335 | 19 |
-| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:337 | 13 |
+| Order | shippedOut | 선택 | boolean | src/shared/types.ts:320 | 14 |
+| Order | inventorySnapshots | 선택 | {     version: 1;     production?: OrderInventorySnapshot;     shipment?: OrderInventorySnapshot;   } | src/shared/types.ts:325 | 30 |
+| Order | itemInventory | 선택 | Record<string, OrderItemInventoryState> | src/shared/types.ts:335 | 18 |
+| Order | inventoryOperation | 선택 | {     id: string;     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */     kind?: 'line' \| 'status';     lineId?: string;     stage?: 'claim' \| 'reservation' \| 'raw-inventory' \| 'production-record' \| 'final-stock';     targetStatus: OrderStatus;     state: 'processing' \| 'failed';     startedAt: string;     actor: string;     error?: string;   } \| null | src/shared/types.ts:337 | 17 |
 | OrderItemInventoryState | version | 필수 | 1 | src/shared/types.ts:352 | 0 |
 | OrderItemInventoryState | lineId | 필수 | string | src/shared/types.ts:353 | 4 |
 | OrderItemInventoryState | itemId | 필수 | string | src/shared/types.ts:354 | 3 |

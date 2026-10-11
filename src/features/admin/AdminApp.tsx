@@ -1,3 +1,5 @@
+import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
+import {readPendingOrderInventoryRecoveries,type PendingOrderInventoryRecovery,clearRecoveredOrderCancellation} from '../../shared/services/orderInventoryRecoveryService';
 import {normalizeViewAlias} from '../../shared/startView';
 import FinancialOpeningResume from '../../../components/FinancialOpeningResume';
 import { cancelOemIssue } from '../../shared/services/oemCancelService';
@@ -1593,20 +1595,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
   cancellationScope.current = `${companyId}:${currentUser.id}`;
   const [cancellationRevision, setCancellationRevision] = useState(0);
   const [pendingCancellations, setPendingCancellations] = useState<string[]>([]);
+  const [pendingInventoryRecoveries,setPendingInventoryRecoveries] = useState<PendingOrderInventoryRecovery[]>([]);
+  const failedInventoryOrders = allOrders.filter(order => companyOf(order) === companyId && order.inventoryOperation?.state === 'failed');
   useEffect(() => {
     // 삭제 응답을 잃으면 주문 자체가 목록에서 사라질 수 있어 별도 재조회 진입점을 남긴다.
     const refresh = () => {
       const uid = auth.currentUser?.uid;
-      if (!uid) { setPendingCancellations([]); return; }
+      if (!uid) { setPendingCancellations([]);setPendingInventoryRecoveries([]); return; }
       const prefix = `order-cancellation:${uid}:${companyId}:`;
       try {
+        setPendingInventoryRecoveries(readPendingOrderInventoryRecoveries(companyId,uid));
         setPendingCancellations(Object.keys(localStorage).filter(key => key.startsWith(prefix))
           .map(key => key.slice(prefix.length)));
-      } catch { setPendingCancellations([]); }
+      } catch { setPendingCancellations([]);setPendingInventoryRecoveries([]); }
     };
     refresh();
     window.addEventListener('storage', refresh);
-    return () => window.removeEventListener('storage', refresh);
+    window.addEventListener('order-inventory-recovery-pending',refresh);
+    return () => {window.removeEventListener('storage', refresh);window.removeEventListener('order-inventory-recovery-pending',refresh);};
   }, [companyId, currentUser.id, cancellationRevision]);
   /** 확인과 삭제를 한 곳에서 맡아 목록의 이중 확인·실패 직후 닫기를 막는다. */
   const handleDeleteOrder = async (id: string): Promise<boolean> => {
@@ -2126,7 +2132,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   return (
     <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
-      {(pendingCancellations.length > 0 || processingCancellationIds.length > 0) && (
+      {(pendingCancellations.length > 0 || processingCancellationIds.length > 0 || ((isAdmin || isAdminAuthenticated) && (failedInventoryOrders.length > 0 || pendingInventoryRecoveries.length > 0))) && (
         <section aria-label="미확인 주문 처리" className="fixed bottom-4 right-4 z-[90] max-h-48 max-w-sm overflow-auto rounded-xl border border-amber-300 bg-amber-50 p-3 shadow-lg">
           <p className="text-sm font-bold" role="status">{processingCancellationIds.length ? '주문 처리 확인 중' : '주문 처리 결과 확인 필요'}</p>
           <p className="text-xs">자동 재실행하지 않습니다. 완료 기록부터 확인합니다.</p>
@@ -2134,6 +2140,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
             disabled={processingCancellationIds.includes(id)}
             className="mt-2 block text-sm font-bold text-indigo-700 underline"
             onClick={() => { void handleDeleteOrder(id); }}>{processingCancellationIds.includes(id) ? '확인·처리 중' : '처리 결과 확인'} · {id}</button>)}
+          {(isAdmin || isAdminAuthenticated) && <OrderInventoryRecoveryPanel key={companyId+':'+(auth.currentUser?.uid ?? '')} companyId={companyId} actorUid={auth.currentUser?.uid ?? ''} orders={failedInventoryOrders} pending={pendingInventoryRecoveries} onRecovered={(result,expectedSaved) => {
+            const uid=auth.currentUser?.uid;
+            if(uid) clearRecoveredOrderCancellation(companyId,uid,result,expectedSaved);
+            setCancellationRevision(value=>value+1);
+          }}/>}
         </section>
       )}
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
