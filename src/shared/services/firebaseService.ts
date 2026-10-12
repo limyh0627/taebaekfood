@@ -35,7 +35,7 @@ import type { Order, OrderStatus, PurchaseOrder, IssuedStatement, PendingStateme
 import { requireActiveReleaseId } from '../releaseGate';
 import { buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
 import { companyOf, poLines, type Item, type CompanyId } from '../types';
-import { canConfirmPurchaseOrderReceiptItem, holdsUnitStock } from '../itemTaxonomy';
+import { canConfirmPurchaseOrderReceiptItem, tracksQuantityLots, quantityLotUnitKg } from '../itemTaxonomy';
 import { itemKg, type OrderUnitInputs } from '../orderUnits';
 import { getBomIndex } from '../bomIndex';
 import { getPackIndex } from '../packIndex';
@@ -638,7 +638,7 @@ export async function receiveUnitStockWithDb(store: Firestore, receipt: ItemRece
     const [itemSnap, receiptSnap] = await Promise.all([tx.get(itemRef), tx.get(receiptRef)]);
     if (!itemSnap.exists()) throw new Error('입고 품목이 없습니다.');
     const item = { ...itemSnap.data(), id: receipt.itemId } as Item;
-    if (companyOf(item) !== data.companyId || !holdsUnitStock(item)) throw new Error('입고 회사 또는 품목 분류가 변경되었습니다.');
+    if (companyOf(item) !== data.companyId || !tracksQuantityLots(item)) throw new Error('입고 회사 또는 품목 분류가 변경되었습니다.');
     if (receiptSnap.exists()) {
       const saved = receiptSnap.data();
       if (['itemId', 'companyId', 'quantity', 'date', 'poId'].some(k => saved[k] !== data[k])) throw new Error('같은 입고번호의 내용이 다릅니다.');
@@ -646,7 +646,7 @@ export async function receiveUnitStockWithDb(store: Firestore, receipt: ItemRece
     }
     const stock = Number(item.stock ?? 0);
     if (!Number.isFinite(stock) || stock < 0) throw new Error('현재 재고를 먼저 확인해 주세요.');
-    const unitKg = itemKg(item, fixedInputs) || 0;
+    const unitKg = quantityLotUnitKg(item,itemKg(item, fixedInputs) || 0);
     const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
       { id: `carry:${receipt.id}`, receivedDate: receipt.date, createdAt: receipt.createdAt });
     if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error('품목 재고와 로트 잔량이 다릅니다. 기존 누락을 확인한 뒤 입고해 주세요.');
@@ -717,7 +717,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
       const purchaseUnit = readPurchaseUnitSnapshot(line);
       if (purchaseUnit && (!isRawHolder(item) || purchaseUnit.purchaseQty !== line.quantity))
         throw new Error('매입 단위 스냅샷의 원료 품목·거래 수량이 다릅니다.');
-      const unitStock = holdsUnitStock(item);
+      const unitStock = tracksQuantityLots(item);
       if (!canConfirmPurchaseOrderReceiptItem(item)) {
         const target = isRawHolder(item) ? { rawItem: item, baseName: item.rawMaterialName || baseRawName(item.name) }
           : rawLotTarget(allItems, item, item.name, claim);
@@ -748,7 +748,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
       const stock = Number(item.stock ?? 0);
       if (!Number.isFinite(stock) || stock < 0) throw new Error(`현재 재고를 확인해 주세요: ${item.name}`);
       if (!unitStock) return { item, stock, lots: item.lots ?? [], line };
-      const unitKg = itemKg(item, fixedInputs) || 0;
+      const unitKg = quantityLotUnitKg(item,itemKg(item, fixedInputs) || 0);
       const lots = withCarryOverProductLot(item.lots ?? [], stock, item.rawMaterialName || item.name, unitKg,
         { id: `carry:${refs[i].receipt.id}`, receivedDate: date, createdAt: now });
       if (Math.abs(lotQtyRemaining(lots) - stock) > 0.0001) throw new Error(`재고와 로트 잔량이 다릅니다: ${item.name}`);
@@ -784,7 +784,7 @@ export async function confirmUnitPurchaseOrderReceiptWithDb(store: Firestore, cl
     }));
     writes.forEach((write, i) => {
       if (!write) return;
-      tx.update(refs[i].item, holdsUnitStock(write.item)
+      tx.update(refs[i].item, tracksQuantityLots(write.item)
         ? { stock: Math.round((write.stock + write.line.quantity) * 1000) / 1000, lots: stripUndefined(write.lots) }
         : { stock: Math.round((write.stock + write.line.quantity) * 1000) / 1000 });
       tx.set(refs[i].receipt, receipts[i]);

@@ -1,3 +1,4 @@
+import { tracksQuantityLots, quantityLotUnitKg } from './shared/itemInventoryKind';
 import { ReturnValidationError } from './returnValidationError';
 import { buildProductLot, withCarryOverProductLot, lotQtyRemaining, deductLotsByQty, type RawMaterialLot } from './shared/productLot';
 import { planReturnReceiptBase, type ReturnStockInput } from './returnGeneralStockPlan';
@@ -5,8 +6,9 @@ import { planReturnReceiptBase, type ReturnStockInput } from './returnGeneralSto
 /** receiveUnitStock과 같은 개수 재고/로트 계산. unitKg은 서버의 회사 BOM·포장 원본에서 해석한다. */
 export function planUnitReturnReceipt(input:ReturnStockInput,unitKg:number) {
   const item=input.item;
-  if(!['product','wip'].includes(item.type??'') || item.subtype==='벌크' || ['kg','KG','L','l','리터','ℓ'].includes(String(item.unit??'').trim()))
-    throw new ReturnValidationError('개수로 재고를 드는 완제품·반제품이 아닙니다.');
+  if(!tracksQuantityLots(item))
+    throw new ReturnValidationError('수량 로트를 관리하는 품목이 아닙니다.');
+  unitKg = quantityLotUnitKg(item, unitKg);
   if(!Number.isFinite(unitKg) || unitKg<0 || (item.lots!==undefined && !Array.isArray(item.lots))) throw new ReturnValidationError('품목 로트·중량을 확인해 주세요.');
   const stock=Number(item.stock??0);
   const base=planReturnReceiptBase({...input,item:{...item,stock}}),clock={now:input.createdAt,date:input.date,id:`carry:${base.receiptId}`};

@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 87개, 선언 필드 737개, 운영 소스 469개를 분석했다.
+COL 87개, 선언 필드 737개, 운영 소스 470개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -737,7 +737,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 760개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 761개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -883,10 +883,11 @@ shared/types.ts 외 interface/type alias 760개를 별도 목록에 기록한다
 | ProductionWorkDocumentEditorProps | src/features/production-documents/ui/ProductionWorkDocumentEditor.tsx:12 | interface | direct-properties-only | initialDocument, initialLines, loadEvidence, onStateChange, onSave |
 | ProductLotClock | functions/src/shared/productLot.ts:4 | type-alias | direct-properties-only | now, date, id |
 | ProductLotTake | functions/src/shared/productLot.ts:73 | interface | direct-properties-only | lotId, lotNo, receivedDate, supplierName, qty |
+| InventoryKindItem | functions/src/shared/itemInventoryKind.ts:1 | interface | direct-properties-only | type, unit, subtype, rawMaterialName, density |
 | CategoryKey | src/shared/taxonomy.ts:19 | type-alias | non-object-alias-not-expanded |  |
 | TaxonomyRow | src/shared/taxonomy.ts:47 | interface | direct-properties-only | id, kind, key, parent, label, order, hidden |
 | Taxonomy | src/shared/taxonomy.ts:58 | interface | direct-properties-only | types, allTypes, labelOf, subtypesOf, categoriesOf, seeded |
-| TypeKey | src/shared/itemTaxonomy.ts:88 | type-alias | non-object-alias-not-expanded |  |
+| TypeKey | src/shared/itemTaxonomy.ts:86 | type-alias | non-object-alias-not-expanded |  |
 | AnchorResult | functions/src/shared/lotAnchor.ts:41 | interface | direct-properties-only | lots, deltaQty, beforeQty |
 | ItemReceipt | src/shared/receipt.ts:4 | interface | direct-properties-only | id, itemId, itemName, quantity, unit, partnerId, partnerName, date, poId, companyId, addedBy, createdAt |
 | CompanyClaim | src/shared/companyWriteBoundary.ts:14 | type-alias | direct-properties-only | companyId |
@@ -1265,7 +1266,7 @@ shared/types.ts 외 interface/type alias 760개를 별도 목록에 기록한다
 | ReturnRow | functions/src/returnReversalPlan.ts:6 | type-alias | direct-properties-only | id, companyId, linkedStatementId, partnerId, status, returnType, totalAmount, items |
 | Source | functions/src/returnReversalPlan.ts:8 | type-alias | direct-properties-only | id, companyId, type, partnerId, totalSupply, totalTax, totalAmount, items |
 | JournalLine | functions/src/returnReversalPlan.ts:10 | type-alias | direct-properties-only | accountCode, side, amount |
-| Item | functions/src/shared/returnStockKind.ts:3 | type-alias | non-object-alias-not-expanded |  |
+| Item | functions/src/shared/returnStockKind.ts:4 | type-alias | non-object-alias-not-expanded |  |
 | ExplicitReturnMoney | src/features/admin/purchaseReturnRequest.ts:94 | interface | direct-properties-only | items, payableAccountCode |
 | DateRangeQuick | src/shared/components/DateRangeFilter.tsx:3 | type-alias | non-object-alias-not-expanded |  |
 | ReturnManagerProps | components/ReturnManager.tsx:31 | interface | direct-properties-only | companyId, items, partners, orders, issuedStatements, currentUser, isAdmin, onProcessReturn |
@@ -1736,10 +1737,11 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | ProductionWorkDocumentEditorProps | src/features/production-documents/ui/ProductionWorkDocumentEditor.tsx:12 | checker-resolved-properties-only | 5 |
 | ProductLotClock | functions/src/shared/productLot.ts:4 | checker-resolved-properties-only | 3 |
 | ProductLotTake | functions/src/shared/productLot.ts:73 | checker-resolved-properties-only | 5 |
+| InventoryKindItem | functions/src/shared/itemInventoryKind.ts:1 | checker-resolved-properties-only | 5 |
 | CategoryKey | src/shared/taxonomy.ts:19 | non-object-model-not-expanded | 0 |
 | TaxonomyRow | src/shared/taxonomy.ts:47 | checker-resolved-properties-only | 7 |
 | Taxonomy | src/shared/taxonomy.ts:58 | checker-resolved-properties-only | 6 |
-| TypeKey | src/shared/itemTaxonomy.ts:88 | non-object-model-not-expanded | 0 |
+| TypeKey | src/shared/itemTaxonomy.ts:86 | non-object-model-not-expanded | 0 |
 | AnchorResult | functions/src/shared/lotAnchor.ts:41 | checker-resolved-properties-only | 3 |
 | ItemReceipt | src/shared/receipt.ts:4 | checker-resolved-properties-only | 12 |
 | CompanyClaim | src/shared/companyWriteBoundary.ts:14 | checker-resolved-properties-only | 1 |
@@ -2118,7 +2120,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | ReturnRow | functions/src/returnReversalPlan.ts:6 | checker-resolved-properties-only | 8 |
 | Source | functions/src/returnReversalPlan.ts:8 | checker-resolved-properties-only | 8 |
 | JournalLine | functions/src/returnReversalPlan.ts:10 | checker-resolved-properties-only | 3 |
-| Item | functions/src/shared/returnStockKind.ts:3 | checker-resolved-properties-only | 10 |
+| Item | functions/src/shared/returnStockKind.ts:4 | checker-resolved-properties-only | 10 |
 | ExplicitReturnMoney | src/features/admin/purchaseReturnRequest.ts:94 | checker-resolved-properties-only | 2 |
 | DateRangeQuick | src/shared/components/DateRangeFilter.tsx:3 | non-object-model-not-expanded | 0 |
 | ReturnManagerProps | components/ReturnManager.tsx:31 | checker-resolved-properties-only | 8 |
@@ -5093,7 +5095,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Item | companyId | 선택 | CompanyId | src/shared/types.ts:528 | 3 |
 | Item | name | 필수 | string | src/shared/types.ts:529 | 292 |
 | Item | sku | 선택 | string | src/shared/types.ts:530 | 0 |
-| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:532 | 132 |
+| Item | type | 필수 | InventoryCategory \| string | src/shared/types.ts:532 | 134 |
 | Item | category | 선택 | ItemSubtype \| string | src/shared/types.ts:533 | 36 |
 | Item | subtype | 선택 | string | src/shared/types.ts:534 | 20 |
 | Item | cost | 선택 | number | src/shared/types.ts:535 | 20 |

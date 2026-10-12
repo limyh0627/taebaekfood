@@ -33,6 +33,27 @@ it('입고기록 쓰기 실패는 재고와 로트도 남기지 않는다', asyn
  await expect(receiveUnitStock(receipt)).rejects.toThrow('저장 실패');
  expect(state.docs.get('items/can')).toMatchObject({stock:0,lots:[]});
 });
+it.each(['개','kg','L'])('상품 %s 입고는 자기 수량과 기존 공용 중량을 각각 보존한다',async unit=>{
+ state.docs.set('items/can',{name:'참깨',type:'goods',unit,spec:'20kg',companyId:'taebaek',stock:0,lots:[]});
+ expect(await receiveUnitStock(receipt)).toBe(true);const before=JSON.stringify([...state.docs]);
+ const unitKg=unit==='kg'?1:unit==='L'?0:20;
+ expect(state.docs.get('items/can')).toMatchObject({stock:31,lots:[{qtyIn:31,qtyRemaining:31,unitKg,kgRemaining:31*unitKg}]});
+ expect(await receiveUnitStock(receipt)).toBe(false);expect(JSON.stringify([...state.docs])).toBe(before);
+});
+it('부자재와 명시 원료 별칭은 단독 수량 로트 입고 대상이 아니다',async()=>{
+ for(const item of [{type:'submaterial',unit:'개'},{type:'goods',unit:'포',rawMaterialName:'참깨'}]){
+  state.docs.set('items/can',{name:'참깨',companyId:'taebaek',stock:0,lots:[],...item});const before=JSON.stringify([...state.docs]);
+  await expect(receiveUnitStock(receipt)).rejects.toThrow('분류');expect(JSON.stringify([...state.docs])).toBe(before);
+ }
+});
+it('상품의 기존 재고·로트 차이는 새 입고로 자동 보충하지 않는다',async()=>{
+ state.docs.set('items/can',{name:'상품',type:'goods',unit:'개',companyId:'taebaek',stock:10,lots:[{id:'known',qtyIn:3,qtyRemaining:3,kgRemaining:0,status:'active'}]});
+ const before=JSON.stringify([...state.docs]);await expect(receiveUnitStock(receipt)).rejects.toThrow('로트 잔량');expect(JSON.stringify([...state.docs])).toBe(before);
+});
+it('L 상품은 등록 밀도만 새 로트 중량에 쓰고 수량은 그대로다',async()=>{
+ state.docs.set('items/can',{name:'상품',type:'goods',unit:'L',spec:'20kg',density:0.9,companyId:'taebaek',stock:0,lots:[]});
+ expect(await receiveUnitStock(receipt)).toBe(true);expect(state.docs.get('items/can')).toMatchObject({stock:31,lots:[{qtyIn:31,qtyRemaining:31,unitKg:0.9,kgRemaining:27.9}]});
+});
 it('다른 회사는 쓰기 전에 거절한다', async () => {
  state.docs.get('items/can').companyId='punghoe';
  await expect(receiveUnitStock(receipt)).rejects.toThrow('회사');

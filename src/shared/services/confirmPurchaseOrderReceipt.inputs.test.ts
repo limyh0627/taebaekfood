@@ -41,6 +41,22 @@ beforeEach(() => {
   state.docs.set('items/box', items[0]); setBomIndex(inputs.bom);
 });
 afterEach(() => setBomIndex(originalIndex));
+it.each(['개','kg','L'])('상품 %s는 원료와 이름이 같아도 자기 SKU 수량 로트로 입고된다',async unit=>{
+ const item={id:'box',companyId:'taebaek',name:'참깨',type:'goods',unit,stock:0,lots:[],spec:'1kg',minStock:0,image:''} as Item;
+ state.docs.set('items/box',item);expect(await confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',[item],{bom:buildBomIndex([item],[]),pack:buildPackIndex()})).toBe(true);
+ const unitKg=unit==='L'?0:1;
+ expect(state.docs.get('items/box')).toMatchObject({stock:2,lots:[{qtyIn:2,qtyRemaining:2,unitKg,kgRemaining:2*unitKg}]});expect(raw.read).not.toHaveBeenCalled();
+});
+it('명시 원료 매입 별칭 상품은 기존 원료 홀더 경로를 유지한다',async()=>{
+ state.docs.set('items/box',{...items[0],type:'goods',rawMaterialName:'볶음참깨'});
+ await expect(confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).rejects.toThrow('원료 명령 관찰 종료');
+ expect(raw.read.mock.calls[0][2]).toMatchObject({rawItemId:'holder',kind:'receive',kg:40});
+});
+it('부자재는 기존 공급자 로트가 있어도 수량만 변경한다',async()=>{
+ const lots=[{id:'supplier-old',qtyRemaining:3,kgRemaining:0,status:'active'}];state.docs.set('items/box',{...items[0],type:'submaterial',name:'캡',rawMaterialName:undefined,lots});
+ expect(await confirmUnitPurchaseOrderReceiptWithDb(store,'taebaek','po','관리자',items,inputs)).toBe(true);
+ expect(state.docs.get('items/box')).toMatchObject({stock:2,lots});
+});
 
 it('실제 품목 조회 대기 중 회사 색인이 바뀌어도 명시 BOM의 로트 중량을 유지한다', async () => {
   let finish!: () => void; state.gate = new Promise<void>(done => { finish = done; });

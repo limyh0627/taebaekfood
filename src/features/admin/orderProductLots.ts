@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem, RawMaterialLot } from '../../shared/types';
 import { buildProductLot, deductLotsByQty, restoreLotsByQty, withCarryOverProductLot, type ProductLotTake } from '../../shared/lotUtils';
-import { holdsUnitStock, isGoodsItem, isBulkItem } from '../../shared/itemTaxonomy';
+import { holdsUnitStock, isGoodsItem, isBulkItem, tracksQuantityLots } from '../../shared/itemTaxonomy';
 import { kgPerStockUnit, type OrderUnitInputs } from '../../shared/orderUnits';
 
 export interface OrderProductLotMutationResult {
@@ -32,7 +32,7 @@ export function productionProductLots(allItems: Item[], deltas: ReadonlyMap<stri
   for (const [itemId, qty] of deltas) {
     const item = allItems.find(row => row.id === itemId);
     if (!item || !qty || isBulkItem(item)) continue;
-    if (qty < 0) {
+    if (qty < 0 && tracksQuantityLots(item)) {
       const take = createOrderProductLotOperations({ allItems, shipQtyOf: row => row.quantity })
         .deductProductLotsForOrder({ items: [{ itemId, quantity: -qty }] } as Order)[0]!;
       mutations.push({ itemId, apply: lots => {
@@ -98,6 +98,7 @@ export function createOrderProductLotOperations(deps: OrderProductLotDeps) {
     for (const row of order.items) {
       const product = allItems.find(item => item.id === row.itemId);
       if (!product) throw new Error(`완제품 로트 출고 중 품목 기준정보를 찾을 수 없습니다: ${row.itemId}`);
+      if (!tracksQuantityLots(product)) continue;
       const qty = shipQtyOf(row, product);
       if (qty > 0) quantityByItem.set(product.id, (quantityByItem.get(product.id) ?? 0) + qty);
     }

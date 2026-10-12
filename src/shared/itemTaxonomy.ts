@@ -1,4 +1,6 @@
 import { RM_LIST, baseRawName } from '../constants/formula';
+import { holdsUnitStockPure, tracksQuantityLots } from '../../functions/src/shared/itemInventoryKind';
+export { tracksQuantityLots, quantityLotUnitKg } from '../../functions/src/shared/itemInventoryKind';
 
 /**
  * 품목 분류 3단 — 타입 > 서브타입 > 카테고리
@@ -57,11 +59,7 @@ export function isBulkItem(item: { subtype?: string } | undefined): boolean {
  */
 const 벌크단위 = new Set(['kg', 'KG', 'L', 'l', '리터', 'ℓ']);
 
-export const holdsUnitStock = (p: { type?: string; unit?: string; subtype?: string } | undefined): boolean => {
-  if (!p || isBulkItem(p)) return false;
-  if (벌크단위.has(String(p.unit ?? '').trim())) return false;
-  return p.type === 'product' || p.type === 'wip';
-};
+export const holdsUnitStock = holdsUnitStockPure;
 
 /**
  * **사입·임가공 완제품** — 팔 때 생산 없이 제 재고만 뺀다
@@ -93,7 +91,7 @@ export const isPhysicalInventoryItem = (item: { type?: string } | undefined): bo
 
 /** 발주 전체를 한 거래로 입고할 수 있는 분류. 원료·벌크는 로트 원자 경로 전까지 제외한다. */
 export const canConfirmPurchaseOrderReceiptItem = (item: { type?: string; subtype?: string; unit?: string; name?: string; rawMaterialName?: string } | undefined): boolean =>
-  holdsUnitStock(item) || !!item && (item.type === 'submaterial' || item.type === 'goods')
+  tracksQuantityLots(item) || !!item && item.type === 'submaterial'
     && !isBulkItem(item) && !벌크단위.has(item.unit ?? '')
     && !RM_LIST.includes(item.rawMaterialName || baseRawName(item.name ?? ''));
 

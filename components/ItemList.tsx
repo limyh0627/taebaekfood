@@ -7,7 +7,7 @@ import { appConfirm } from '../src/shared/components/appDialog';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal, timeOfLocal } from '../src/shared/day';
-import { canConfirmPurchaseOrderReceiptItem, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
+import { canConfirmPurchaseOrderReceiptItem, tracksQuantityLots, isBulkItem, isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
 import { rawHolderByName, isRawHolder } from '../src/shared/rawHolder';
 import { rawLotTarget } from '../src/shared/rawReceipt';
 import { bomOf, getBomIndex, packingSubmaterials } from '../src/shared/bomIndex';
@@ -1237,7 +1237,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const canConfirmReceipt = (po: PurchaseOrder): boolean => po.status === 'invoiced' && po.poType !== 'oem' && poLines(po).length > 0 &&
     poLines(po).every(line => {
       const item = productMap.get(line.itemId);
-      return !!item && (canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
+      return !!item && (tracksQuantityLots(item) || canConfirmPurchaseOrderReceiptItem(item) || ((isRawHolder(item) || !!rawLotTarget(items, item, item.name, companyId)) &&
         (['kg', 'l'].includes(String(item.unit ?? '').toLowerCase()) || itemKg(item, orderUnitInputs) > 0 || !!parsePackageKg(item.name))))
         && Number.isFinite(line.quantity) && line.quantity > 0;
     });
@@ -2268,7 +2268,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
                   const lotRaw = isRawHolder(product)
                     ? product
-                    : rawHolderByName(items, product.rawMaterialName || product.name);
+                    : product.type === 'goods' && tracksQuantityLots(product) ? undefined : rawHolderByName(items, product.rawMaterialName || product.name);
                   // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
                   // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
                   const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.type !== 'product')
@@ -2519,7 +2519,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         {detailProduct && (() => {
           const product = detailProduct;
           const reserved = scheduledOutboundQty.get(product.id) ?? 0;
-          const detailRaw = isRawHolder(product) ? product : rawHolderByName(items, product.rawMaterialName || product.name);
+          const detailRaw = isRawHolder(product) ? product : product.type === 'goods' && tracksQuantityLots(product) ? undefined : rawHolderByName(items, product.rawMaterialName || product.name);
           const detailPackageKg = detailRaw && detailRaw.id !== product.id && product.type !== 'product'
             ? (product.packageKg ?? parsePackageKg(product.spec) ?? parsePackageKg(product.name) ?? null)
             : null;

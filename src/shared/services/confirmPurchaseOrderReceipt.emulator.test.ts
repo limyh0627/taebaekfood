@@ -48,6 +48,8 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     const db = userDb();
     expect(await confirmUnitPurchaseOrderReceiptWithDb(db, company, id, '검수자')).toBe(true);
     expect(await state(id, ['sub-a', 'sub-b'])).toEqual({ status: 'received', stocks: [13, 14] });
+    expect((await getDoc(doc(db,'items','sub-a'))).data()).not.toHaveProperty('lots');
+    expect((await getDoc(doc(db,'items','sub-b'))).data()).not.toHaveProperty('lots');
     expect((await getDoc(doc(db, 'itemReceipts', `rcv-po-${id}-sub-a`))).data()).toMatchObject({ quantity: 3, poId: id, companyId: company });
     expect(await confirmUnitPurchaseOrderReceiptWithDb(db, company, id, '검수자')).toBe(false);
     expect(await state(id, ['sub-a', 'sub-b'])).toEqual({ status: 'received', stocks: [13, 14] });

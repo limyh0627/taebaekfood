@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { holdsUnitStock } from './itemTaxonomy';
+import { holdsUnitStock, tracksQuantityLots, canConfirmPurchaseOrderReceiptItem, quantityLotUnitKg } from './itemTaxonomy';
 
 /**
  * **캔을 반제품으로 옮기면서 생긴 판정**(2026-09-16 사장님: "나머지 캔 제품들은 그냥
@@ -11,6 +11,17 @@ import { holdsUnitStock } from './itemTaxonomy';
  */
 
 const 것 = (o: Record<string, unknown>) => o as { type?: string; unit?: string; subtype?: string };
+describe('자기 SKU의 수량 로트',()=>{
+ it('상품 kg는 1, L는 등록 밀도만 사용하고 count·기존 생산 판정 중량은 보존한다',()=>{
+  expect(quantityLotUnitKg({type:'goods',unit:'kg'},2)).toBe(1);expect(quantityLotUnitKg({type:'goods',unit:'L'},2)).toBe(0);
+  expect(quantityLotUnitKg({type:'goods',unit:'L',density:0.9},2)).toBe(0.9);expect(quantityLotUnitKg({type:'goods',unit:'리터',density:-1},2)).toBe(0);
+  expect(quantityLotUnitKg({type:'goods',unit:'개'},2)).toBe(2);expect(quantityLotUnitKg({type:'product',unit:'개'},2)).toBe(2);
+ });
+ it.each(['개','kg','L'])('상품 %s는 생산 판정은 유지하고 자기 수량 로트를 든다',unit=>{
+  const item={type:'goods',unit,name:'참깨'};expect(holdsUnitStock(item)).toBe(false);expect(tracksQuantityLots(item)).toBe(true);expect(canConfirmPurchaseOrderReceiptItem(item)).toBe(true);
+ });
+ it.each([{type:'goods',unit:'포',rawMaterialName:'참깨'},{type:'goods',subtype:'벌크',unit:'kg'},{type:'submaterial',unit:'개'},{type:'service',unit:'개'}])('원료 별칭·벌크·부자재·용역은 수량 로트를 새로 쓰지 않는다 %j',item=>expect(tracksQuantityLots(item)).toBe(false));
+});
 
 describe('제 재고를 개수로 드는 품목인가', () => {
   it('완제품은 든다', () => {

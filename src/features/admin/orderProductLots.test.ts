@@ -16,6 +16,20 @@ const lots = (): RawMaterialLot[] => [{
   qtyIn: 5, qtyRemaining: 5, unitKg: 1, kgIn: 5, kgRemaining: 5,
   receivedDate: '2026-09-01', status: 'active', createdAt: '2026-09-01T00:00:00.000Z',
 }];
+it('상품 8개·15개 로트의 20개 출고는 두 로트를 FIFO 소비하고 같은 원로트로 복원한다',()=>{
+ const goods={...product,type:'goods',unit:'kg'} as Item;
+ const before=[{...lots()[0],id:'first',qtyIn:8,qtyRemaining:8,kgIn:8,kgRemaining:8},{...lots()[0],id:'second',qtyIn:15,qtyRemaining:15,kgIn:15,kgRemaining:15,receivedDate:'2026-09-02'}] as RawMaterialLot[];
+ const operations=createOrderProductLotOperations({allItems:[goods],shipQtyOf:row=>row.quantity});
+ const taken=operations.deductProductLotsForOrder({...order,items:[{itemId:goods.id,name:goods.name,quantity:20}]} as Order)[0].apply(before);
+ expect(taken.consumedLots.map(row=>[row.lotId,row.qty])).toEqual([['first',8],['second',12]]);expect(taken.lots.map(row=>row.qtyRemaining)).toEqual([0,3]);
+ const restored=operations.restoreProductLotsForOrder({...order,productConsumedLots:taken.consumedLots})[0].apply(taken.lots);
+ expect(restored.lots.map(row=>row.qtyRemaining)).toEqual([8,15]);
+});
+it('공급자 로트가 남은 부자재는 음수 생산·주문 출고 경로에서 로트 변환을 만들지 않는다',()=>{
+ const cap={...product,type:'submaterial'} as Item;
+ expect(productionProductLots([cap],new Map([[cap.id,-2]]),'components').mutations).toEqual([]);
+ expect(createOrderProductLotOperations({allItems:[cap],shipQtyOf:row=>row.quantity}).deductProductLotsForOrder(order)).toEqual([]);
+});
 
 describe('주문 완제품 로트 계획', () => {
   it('생산에 쓴 구성 완제품도 로트에서 차감하고 재시도 추적을 중복하지 않는다', () => {

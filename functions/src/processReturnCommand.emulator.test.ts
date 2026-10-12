@@ -3,6 +3,12 @@ import {returnBusinessText} from './shared/returnBusinessEvidence';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import * as admin from 'firebase-admin';
+import {initializeApp as clientApp,deleteApp as deleteClientApp} from 'firebase/app';
+import {getAuth,connectAuthEmulator,signInWithEmailAndPassword} from 'firebase/auth';
+import {getFirestore,connectFirestoreEmulator} from 'firebase/firestore';
+import {receiveUnitStockWithDb} from '../../src/shared/services/firebaseService';
+const gateway=vi.hoisted(()=>({db:undefined as any,auth:undefined as any}));
+vi.mock('../../src/shared/firebase',()=>({get db(){return gateway.db;},get auth(){return gateway.auth;},authReady:Promise.resolve(),functions:{},storage:{}}));
 
 vi.mock('firebase-functions/v2/https', () => ({
   HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
@@ -21,6 +27,8 @@ const releaseId = runId;
 const counterId = voucherSequenceKey(companyId, date, '반품');
 let app: admin.app.App, db: admin.firestore.Firestore;
 const owned = new Set<string>();
+let client:ReturnType<typeof clientApp>,clientDb:ReturnType<typeof getFirestore>;
+const employeeUid=runId+'-employee';
 const ref = (group: string, id: string) => db.collection(group).doc(id);
 async function put(group: string, id: string, data: Record<string, unknown>) {
   await ref(group, id).set({ ...data, testRunId: runId });
@@ -79,16 +87,47 @@ async function seedPurchase(code = '500', enabled = true) {
 }
 
 describe.skipIf(!available)('general-stock return actual Firestore transaction', { timeout: 30000 }, () => {
-  beforeAll(() => { app = admin.initializeApp({ projectId: 'demo-taebaekfood-local' }, runId); db = admin.firestore(app); });
+  beforeAll(async () => {
+    app = admin.initializeApp({ projectId: 'demo-taebaekfood-local' }, runId); db = admin.firestore(app);
+    const accounts=admin.auth(app),email=employeeUid+'@example.invalid',password=randomUUID()+'A1!';
+    await accounts.createUser({uid:employeeUid,email,password});
+    await accounts.setCustomUserClaims(employeeUid,{employeeId:employeeUid,companyId,isAdmin:false});
+    client=clientApp({projectId:'demo-taebaekfood-local',apiKey:'local-only'},runId+'-client');
+    clientDb=getFirestore(client);const auth=getAuth(client);gateway.db=clientDb;gateway.auth=auth;
+    connectFirestoreEmulator(clientDb,'127.0.0.1',Number(process.env.FIRESTORE_EMULATOR_HOST!.split(':')[1]));
+    connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
+    await signInWithEmailAndPassword(auth,email,password);
+    expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({employeeId:employeeUid,companyId,isAdmin:false});
+  });
   afterAll(async () => {
     if (!db) return;
     await clearGenerated();
     for (const path of owned) {
       const [group, id] = path.split('/'), target = ref(group, id);
       const data = (await target.get()).data();
-      if (data?.testRunId === runId || (group === 'rawInventories' && data?.rawItemId?.startsWith(runId))) await target.delete();
+      if (data?.testRunId === runId || (group === 'itemReceipts' && id.startsWith(runId+'-goods-in-')) || (group === 'rawInventories' && data?.rawItemId?.startsWith(runId))) await target.delete();
     }
-    await app.delete();
+    for(const path of owned) expect((await db.doc(path).get()).exists).toBe(false);
+    await admin.auth(app).deleteUser(employeeUid);
+    await expect(admin.auth(app).getUser(employeeUid)).rejects.toMatchObject({code:'auth/user-not-found'});
+    await deleteClientApp(client);await app.delete();
+  });
+
+  it.each((['매출','매입'] as const).flatMap(type=>[{type,unit:'kg',density:undefined,unitKg:1},{type,unit:'L',density:undefined,unitKg:0},{type,unit:'L',density:0.92,unitKg:0.92}]))('실제 직원 $unit 상품 입고 뒤 $type 반품은 로트와 수량을 함께 바꾸고 중복은 쓰지 않는다',async ({type,unit,density,unitKg})=>{
+    if(type==='매입')await seedPurchase();else await seed();
+    await ref('items',itemId).update({stock:0,unit,spec:'2kg',lots:[],...(density===undefined?{}:{density})});
+    const receiptId=runId+'-goods-in-'+type+'-'+unit+'-'+String(density);owned.add('itemReceipts/'+receiptId);
+    expect(await receiveUnitStockWithDb(clientDb,{id:receiptId,companyId,itemId,itemName:'일반 상품',quantity:5,date,partnerName:'시험 거래처',createdAt:'2026-10-03T00:00:00.000Z'})).toBe(true);
+    expect((await ref('items',itemId).get()).data()?.lots.reduce((sum:number,l:any)=>sum+l.qtyRemaining,0)).toBe(5);
+    const data=input('goods-receipt-'+(type==='매입'?'purchase':'sale')+'-'+unit+'-'+String(density).replace('.','_'));expect((await issue(data)).status).toBe('applied');
+    const changed=await ref('items',itemId).get(),expected=type==='매입'?4:6;
+    expect(changed.data()?.stock).toBe(expected);
+    expect(changed.data()?.lots.reduce((sum:number,l:any)=>sum+l.qtyRemaining,0)).toBe(expected);
+    expect(changed.data()?.lots.every((l:any)=>l.unitKg===unitKg)).toBe(true);
+    expect(changed.data()?.lots.reduce((sum:number,l:any)=>sum+l.kgRemaining,0)).toBeCloseTo(expected*unitKg,8);
+    const paths=[changed.ref,ref('returnOperations',data.operationId),ref('issuedStatements','return-'+data.operationId),ref('appMeta',counterId)];
+    const before=await Promise.all(paths.map(p=>p.get()));expect((await issue(data)).status).toBe('duplicate');
+    const after=await Promise.all(paths.map(p=>p.get()));after.forEach((row,i)=>expect(row.updateTime!.isEqual(before[i].updateTime!)).toBe(true));
   });
 
   it('매입 출고와 역분개를 한 번만 저장하고 음수 입고를 만들지 않는다', async () => {
@@ -232,6 +271,20 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(1);
   });
 
+  it('명시 원료 별칭 상품의 과거 20kg 포 규격은 일반 상품 로트로 바꾸지 않는다',async()=>{
+    await seed();const aliasId=runId+'-pack-alias';
+    await put('items',aliasId,{companyId,name:'참깨 포',type:'goods',rawMaterialName:'참깨',unit:'포',spec:'20kg',stock:0});
+    const lot={id:'alias-original',material:'참깨',supplierName:'매입',qtyIn:40,kgIn:40,kgRemaining:40,receivedDate:date,status:'active'};
+    await ref('items',itemId).update({name:'참깨',type:'raw',subtype:'벌크',unit:'kg',stock:40,lots:[lot]});
+    const stateId=inventoryDocId(companyId,itemId);await put('rawInventories',stateId,{id:stateId,companyId,rawItemId:itemId,materialSnapshot:'참깨',stockKg:40,activeLots:[lot],recentDepletedLots:[],revision:0,lastProcessedAt:date+'T00:00:00Z'});
+    await ref('issuedStatements',sourceId).update({items:[{itemId:aliasId,accountCode:'404',qty:2,supply:200,tax:0,total:200}]});
+    await ref('returnRequests',requestId).update({items:[{itemId:aliasId,quantity:1,isResellable:true}]});
+    const aliasBefore=await ref('items',aliasId).get(),data=input('old-pack-alias');expect((await issue(data)).status).toBe('applied');
+    expect((await ref('rawInventories',stateId).get()).data()?.stockKg).toBe(60);
+    const aliasAfter=await ref('items',aliasId).get();expect(aliasAfter.data()).toEqual(aliasBefore.data());expect(aliasAfter.updateTime!.isEqual(aliasBefore.updateTime!)).toBe(true);
+    const stateBefore=await ref('rawInventories',stateId).get();expect((await issue(data)).status).toBe('duplicate');expect((await ref('rawInventories',stateId).get()).updateTime!.isEqual(stateBefore.updateTime!)).toBe(true);
+  });
+
   it('같은 원료의 두 매입 단위 행을 함께 반품하면 원행별 kg와 원장 ID를 구분해 모두 차감한다',async()=>{
     await seedPurchase(); const stateId=inventoryDocId('taebaek',itemId);
     const lot={id:`${runId}-mixed-lot`,supplierName:'합성 공급처',kgIn:45,kgRemaining:45,receivedDate:date,status:'active',createdAt:`${date}T00:00:00Z`};
@@ -268,7 +321,7 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     expect((await ref('appMeta',counterId).get()).data()?.last).toBe(3);
   });
   it('매입 gate와 부족 재고는 모든 쓰기를 차단한다', async () => {
-    for (const scenario of ['gate', 'stock', 'lot', 'unit']) {
+    for (const scenario of ['gate', 'stock', 'lot']) {
       await seedPurchase('500', scenario !== 'gate');
       if (scenario === 'stock') await ref('items', itemId).update({ stock: 0.5 });
       if (scenario === 'stock') {
@@ -277,7 +330,6 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
         await ref('appMeta', 'releaseCutover').update({ oldWritersBlocked: true, oldWritersBlockedEvidence: 'emulator' });
       }
       if (scenario === 'lot') await ref('items', itemId).update({ lots: [{ quantity: 5 }] });
-      if (scenario === 'unit') await ref('items', itemId).update({ unit: admin.firestore.FieldValue.delete() });
       const data = input(`purchase-${scenario}`);
       await expect(issue(data)).rejects.toThrow();
       expect((await ref('returnRequests', requestId).get()).data()?.status).toBe('pending');

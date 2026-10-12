@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-12T07:58:05.720Z",
-  "sourceFiles": 469,
+  "generatedAt": "2026-10-12T09:23:41.621Z",
+  "sourceFiles": 470,
   "unresolvedAccesses": 2531,
   "unresolvedPropertyAccesses": [
     {
@@ -21465,7 +21465,7 @@
         "components/ItemList.tsx:950",
         "src/features/admin/orderInventoryCancellation.ts:45",
         "src/features/admin/orderInventoryCancellation.ts:73",
-        "src/features/admin/orderProductLots.ts:133",
+        "src/features/admin/orderProductLots.ts:134",
         "src/features/admin/orderStockEngine.ts:691",
         "src/features/admin/orderStockEngine.ts:759"
       ]
@@ -23169,8 +23169,8 @@
         "src/features/admin/orderInventoryCancellation.ts:98",
         "src/features/admin/orderItemStock.ts:161",
         "src/features/admin/orderItemStock.ts:261",
-        "src/features/admin/orderProductLots.ts:102",
-        "src/features/admin/orderProductLots.ts:113",
+        "src/features/admin/orderProductLots.ts:103",
+        "src/features/admin/orderProductLots.ts:114",
         "src/features/admin/orderProductLots.ts:33",
         "src/features/admin/orderProductLots.ts:47",
         "src/features/admin/orderProductLots.ts:99",
@@ -23566,7 +23566,7 @@
         "src/features/admin/orderItemStock.ts:161",
         "src/features/admin/orderItemStock.ts:314",
         "src/features/admin/orderItemStock.ts:324",
-        "src/features/admin/orderProductLots.ts:115",
+        "src/features/admin/orderProductLots.ts:116",
         "src/features/admin/orderProductLots.ts:48",
         "src/features/admin/orderRawInventory.ts:234",
         "src/features/admin/orderStockEngine.ts:1087",
@@ -23686,6 +23686,7 @@
         "components/ItemList.tsx:1372",
         "components/ItemList.tsx:2204",
         "components/ItemList.tsx:2267",
+        "components/ItemList.tsx:2271",
         "components/ItemList.tsx:2274",
         "components/ItemList.tsx:2289",
         "components/ItemList.tsx:2290",
@@ -23693,6 +23694,7 @@
         "components/ItemList.tsx:2422",
         "components/ItemList.tsx:2434",
         "components/ItemList.tsx:2473",
+        "components/ItemList.tsx:2522",
         "components/ItemList.tsx:2523",
         "components/ItemList.tsx:2538",
         "components/ItemList.tsx:2540",
@@ -38701,6 +38703,44 @@
       ]
     },
     {
+      "model": "InventoryKindItem",
+      "declaration": "functions/src/shared/itemInventoryKind.ts:1",
+      "kind": "interface",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "type",
+          "optional": true,
+          "type": "string",
+          "declaration": "functions/src/shared/itemInventoryKind.ts:1"
+        },
+        {
+          "field": "unit",
+          "optional": true,
+          "type": "string",
+          "declaration": "functions/src/shared/itemInventoryKind.ts:1"
+        },
+        {
+          "field": "subtype",
+          "optional": true,
+          "type": "string",
+          "declaration": "functions/src/shared/itemInventoryKind.ts:1"
+        },
+        {
+          "field": "rawMaterialName",
+          "optional": true,
+          "type": "string",
+          "declaration": "functions/src/shared/itemInventoryKind.ts:1"
+        },
+        {
+          "field": "density",
+          "optional": true,
+          "type": "number",
+          "declaration": "functions/src/shared/itemInventoryKind.ts:1"
+        }
+      ]
+    },
+    {
       "model": "CategoryKey",
       "declaration": "src/shared/taxonomy.ts:19",
       "kind": "type-alias",
@@ -38804,7 +38844,7 @@
     },
     {
       "model": "TypeKey",
-      "declaration": "src/shared/itemTaxonomy.ts:88",
+      "declaration": "src/shared/itemTaxonomy.ts:86",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -53254,7 +53294,7 @@
     },
     {
       "model": "Item",
-      "declaration": "functions/src/shared/returnStockKind.ts:3",
+      "declaration": "functions/src/shared/returnStockKind.ts:4",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -77796,6 +77836,58 @@
       ]
     },
     {
+      "model": "InventoryKindItem",
+      "declaration": "functions/src/shared/itemInventoryKind.ts:1",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "type",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "functions/src/shared/itemInventoryKind.ts:1"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "unit",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "functions/src/shared/itemInventoryKind.ts:1"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "subtype",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "functions/src/shared/itemInventoryKind.ts:1"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "rawMaterialName",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "functions/src/shared/itemInventoryKind.ts:1"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "density",
+          "optional": true,
+          "type": "number | undefined",
+          "declarations": [
+            "functions/src/shared/itemInventoryKind.ts:1"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
       "model": "CategoryKey",
       "declaration": "src/shared/taxonomy.ts:19",
       "scope": "non-object-model-not-expanded",
@@ -77934,7 +78026,7 @@
     },
     {
       "model": "TypeKey",
-      "declaration": "src/shared/itemTaxonomy.ts:88",
+      "declaration": "src/shared/itemTaxonomy.ts:86",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
@@ -102163,7 +102255,7 @@
     },
     {
       "model": "Item",
-      "declaration": "functions/src/shared/returnStockKind.ts:3",
+      "declaration": "functions/src/shared/returnStockKind.ts:4",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -102234,7 +102326,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "functions/src/shared/returnStockKind.ts:3"
+            "functions/src/shared/returnStockKind.ts:4"
           ],
           "inherited": false
         },
@@ -102243,7 +102335,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "functions/src/shared/returnStockKind.ts:3"
+            "functions/src/shared/returnStockKind.ts:4"
           ],
           "inherited": false
         },
@@ -102252,7 +102344,7 @@
           "optional": true,
           "type": "unknown[] | undefined",
           "declarations": [
-            "functions/src/shared/returnStockKind.ts:3"
+            "functions/src/shared/returnStockKind.ts:4"
           ],
           "inherited": false
         }
