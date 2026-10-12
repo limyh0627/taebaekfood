@@ -20,6 +20,8 @@ const reviewedTransactionWriters = new Set([
   'src/shared/services/rawPressService.ts',
   // 실제 직원 Auth SDK에서 주문 세대·양쪽 원료 회사·UID를 검증하고 일괄 job/원장/상태를 한 TX로 쓴다.
   'src/shared/services/orderRawBatchService.ts',
+  // 실제 직원 Auth SDK에서 원료 완료·주문 세대·기록 품목의 회사와 UID를 확인한 생산기록 TX만 허용한다.
+  'src/shared/services/orderProductionRecordService.ts',
   // 캔·벌크의 companyId가 같은지 확인하고 회사가 박힌 rawInventories 열쇠만 쓴다.
   'src/shared/services/unpackService.ts',
   // 박스·낱개의 회사를 읽어 대조한 뒤 회사가 박힌 이동 기록과 두 품목을 한 거래로 쓴다.

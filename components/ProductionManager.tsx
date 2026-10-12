@@ -1,3 +1,4 @@
+import {projectProductionRecords,hasProductionRecordIndex,productionRecordOrderId} from '../src/shared/productionRecordProjection';
 import { appConfirm, appNotice } from '../src/shared/components/appDialog';
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
@@ -125,7 +126,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     if (!formula || formula.length === 0) return undefined;
 
     // 원료별 lot 출처(공급처·입고일) — 주문 단위 소비 스냅샷/수불부에서 material로 매칭
-    const orderId = r.id.startsWith('pr-') ? orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o) : undefined;
+    const orderId = productionRecordOrderId(r) ?? (r.id.startsWith('pr-') ? orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o) : undefined);
     const lotByMat = new Map<string, string>();
     if (orderId) {
       const structured = consumedByOrderId.get(orderId);
@@ -168,6 +169,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     [items]
   );
 
+  const recordProjection=useMemo(()=>projectProductionRecords(records,orders),[records,orders]);
+  const currentRecordIds=useMemo(()=>new Set(recordProjection.currentRecords.map(row=>row.id)),[recordProjection]);
+  const uncertainRecordIds=useMemo(()=>new Set(recordProjection.uncertainRecords.map(row=>row.id)),[recordProjection]);
+  const projectionById=useMemo(()=>new Map(recordProjection.details.map(row=>[row.record.id,row])),[recordProjection]);
   const filteredRecords = useMemo(() => {
     return records
       .filter(r => {
@@ -185,7 +190,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   const monthlySummary = useMemo(() => {
     const map: Record<string, { itemName: string; qty: number; count: number; category: string }> = {};
-    filteredRecords.forEach(r => {
+    filteredRecords.filter(record=>currentRecordIds.has(record.id)).forEach(r => {
       if (!map[r.itemId]) {
         const cat = items.find(p => p.id === r.itemId)?.type ?? '';
         map[r.itemId] = { itemName: r.itemName, qty: 0, count: 0, category: cat };
@@ -194,7 +199,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       map[r.itemId].count += 1;
     });
     return Object.values(map).sort((a, b) => b.qty - a.qty);
-  }, [filteredRecords, items]);
+  }, [filteredRecords, items, currentRecordIds]);
 
   const fmtMonth = (ym: string) => {
     const [y, m] = ym.split('-');
@@ -257,6 +262,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       let count = 0;
 
       for (const order of deliveredOrders) {
+        // 새 계약의 현재 기록을 손으로 삭제해도 옛 동기화 경로로 다시 만들지 않는다.
+        if(hasProductionRecordIndex(order))continue;
         for (const item of order.items) {
           const product = items.find(p => p.id === item.itemId);
           if (product && SUB_ONLY_CATS.has(product.type)) continue;
@@ -549,6 +556,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         )}
       </div>
 
+      {filteredRecords.some(record=>uncertainRecordIds.has(record.id)) && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        중복 확인 대상 {filteredRecords.filter(record=>uncertainRecordIds.has(record.id)).length}건 · 미확정 수량 {filteredRecords.filter(record=>uncertainRecordIds.has(record.id)).reduce((sum,record)=>sum+record.finishedQty,0).toLocaleString()}개. 아래 원문을 보존했으며 확정 합계에는 포함하지 않았습니다.
+      </div>}
       {/* 월별 요약 — 카테고리별 리스트 */}
       {monthlySummary.length > 0 && (() => {
         const groups = new Map<string, typeof monthlySummary>();
@@ -560,7 +570,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : fmtMonth(filterMonth)} 생산 요약</p>
               <div className="flex items-center gap-3 text-[11px] font-bold">
                 <span className="text-slate-500">품목 <b className="text-slate-800">{monthlySummary.length}</b>종</span>
-                <span className="text-slate-500">생산 <b className="text-emerald-700">{filteredRecords.length}</b>건</span>
+                <span className="text-slate-500">확정 집계 <b className="text-emerald-700">{filteredRecords.filter(record=>currentRecordIds.has(record.id)).length}</b>건</span>
               </div>
             </div>
             <div className="space-y-3">
@@ -615,7 +625,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredRecords.slice(0, recLimit).map(r => { const trace = traceOf(r); const isExp = expandedRecId === r.id; return (
+                {filteredRecords.slice(0, recLimit).map(r => { const trace = projectionById.get(r.id)?.status==='current'?traceOf(r):undefined; const isExp = expandedRecId === r.id; return (
                   <React.Fragment key={r.id}>
                   <tr className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -652,6 +662,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-bold text-slate-800">{r.itemName}</span>
+                      {projectionById.get(r.id)?.status!=='current' && <span className="ml-2 text-[10px] font-bold text-amber-700">{projectionById.get(r.id)?.status==='superseded'?'이전 처리 기록 · 집계 제외':'중복 확인 대상'}</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="font-black text-emerald-700">{r.finishedQty.toLocaleString()}</span>

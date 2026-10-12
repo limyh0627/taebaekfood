@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 import {beforeEach,expect,it,vi} from 'vitest';
 import {createOrderStockEngine} from './orderStockEngine';
+import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
+import {rawPressText} from '../../shared/rawPressAttempt';
 import {claimOrderInventoryOperation} from '../../shared/services/firebaseService';
 import {buildBomIndex} from '../../shared/bomIndex';
 import {buildPackIndex} from '../../shared/packIndex';
 import {executeRawInventoryCommand} from '../../shared/services/rawInventoryService';
 import {emptyRawInventory,inventoryDocId} from '../../shared/rawInventoryCore';
 import {OrderStatus,type Item,type Order} from '../../shared/types';
-const mem=vi.hoisted(()=>({docs:new Map<string,any>(),calls:[] as string[],writes:vi.fn(),loseFinalOnce:false,failFinalOnce:false,auth:{currentUser:{uid:'employee',getIdTokenResult:async()=>({claims:{employeeId:'employee',companyId:'taebaek'}})}}}));
+const mem=vi.hoisted(()=>({docs:new Map<string,any>(),calls:[] as string[],writes:vi.fn(),loseFinalOnce:false,failFinalOnce:false,swapPointerBeforeFinal:false,auth:{currentUser:{uid:'employee',getIdTokenResult:async()=>({claims:{employeeId:'employee',companyId:'taebaek'}})}}}));
 vi.mock('../../shared/firebase',()=>({auth:mem.auth,authReady:Promise.resolve(),db:{},functions:{}}));
-vi.mock('firebase/firestore',()=>({doc:(_db:unknown,...parts:string[])=>({path:parts.join('/')}),getDoc:async(ref:any)=>({exists:()=>mem.docs.has(ref.path),data:()=>mem.docs.get(ref.path),id:ref.path.split('/').at(-1)}),runTransaction:async(_db:unknown,fn:any)=>{mem.calls.push('read-tx');const pending:any[]=[];const result=await fn({get:async(ref:any)=>({exists:()=>mem.docs.has(ref.path),data:()=>mem.docs.get(ref.path),id:ref.path.split('/').at(-1)}),set:(ref:any,value:any)=>{mem.writes(ref,value);pending.push([ref.path,value]);},update:(ref:any,value:any)=>{mem.writes(ref,value);const updated=structuredClone(mem.docs.get(ref.path));for(const [key,val] of Object.entries(value)){const parts=key.split('.');let target=updated;for(const part of parts.slice(0,-1))target=target[part]??={};target[parts.at(-1)!]=val;}pending.push([ref.path,updated]);},delete:mem.writes});if(mem.failFinalOnce&&pending.some(([path,value])=>path.startsWith('orders/')&&value.inventoryGenerationCompletion)){mem.failFinalOnce=false;throw Error('final rejected');}for(const [path,value] of pending)mem.docs.set(path,value);if(mem.loseFinalOnce&&pending.some(([path,value])=>path.startsWith('orders/')&&value.inventoryGenerationCompletion)){mem.loseFinalOnce=false;throw Error('final unknown');}return result;}}));
+vi.mock('firebase/firestore',()=>({doc:(_db:unknown,...parts:string[])=>({path:parts.join('/')}),getDoc:async(ref:any)=>({exists:()=>mem.docs.has(ref.path),data:()=>mem.docs.get(ref.path),id:ref.path.split('/').at(-1)}),runTransaction:async(_db:unknown,fn:any)=>{mem.calls.push('read-tx');const pending:any[]=[];const result=await fn({get:async(ref:any)=>{if(mem.swapPointerBeforeFinal&&ref.path==='orders/order'&&mem.docs.get(ref.path)?.inventoryOperation?.stage==='production-record'){mem.swapPointerBeforeFinal=false;mem.docs.get(ref.path).productionRecordIndex={changed:{recordId:'foreign'}};}return {exists:()=>mem.docs.has(ref.path),data:()=>mem.docs.get(ref.path),id:ref.path.split('/').at(-1)};},set:(ref:any,value:any)=>{mem.writes(ref,value);pending.push([ref.path,value]);},update:(ref:any,value:any)=>{mem.writes(ref,value);const updated=structuredClone(mem.docs.get(ref.path));for(const [key,val] of Object.entries(value)){const parts=key.split('.');let target=updated;for(const part of parts.slice(0,-1))target=target[part]??={};target[parts.at(-1)!]=val;}pending.push([ref.path,updated]);},delete:mem.writes});if(mem.failFinalOnce&&pending.some(([path,value])=>path.startsWith('orders/')&&value.inventoryGenerationCompletion)){mem.failFinalOnce=false;throw Error('final rejected');}for(const [path,value] of pending)mem.docs.set(path,value);if(mem.loseFinalOnce&&pending.some(([path,value])=>path.startsWith('orders/')&&value.inventoryGenerationCompletion)){mem.loseFinalOnce=false;throw Error('final unknown');}return result;}}));
 function fixture(quantities=[1,1],rawKg=1,secondRaw=false,successful=false){
  const items=[{id:'product',companyId:'taebaek',name:'기름',type:'product',unit:'개',stock:0,spec:'1L'},{id:'raw',companyId:'taebaek',name:'참깨',rawMaterialName:'참깨',type:'raw',subtype:'벌크',unit:'kg',stock:rawKg},{id:'bottle',companyId:'taebaek',name:'병',type:'submaterial',unit:'개',stock:20}] as Item[];
  if(secondRaw)items.push({...items[1],id:'raw2',name:'들깨',rawMaterialName:'들깨',stock:0,lots:[]});
@@ -20,11 +22,11 @@ function fixture(quantities=[1,1],rawKg=1,secondRaw=false,successful=false){
  const rawJob=vi.fn(async(input:any)=>{const results=[];for(const row of input.commands)results.push({input:row,result:await executeRawInventoryCommand(row.command,{...row.options,db:{} as any})});return {job:{status:'complete'} as any,results};});
  const update=vi.fn(async(collection:string,id:string,data:any)=>{mem.docs.set(collection+'/'+id,{...mem.docs.get(collection+'/'+id),...data});}),add=vi.fn(),production=vi.fn();
  const inputs={bom:buildBomIndex(items,[{parent_id:'product',child_id:'raw',quantity:1},{parent_id:'product',child_id:'bottle',quantity:1},...(secondRaw?[{parent_id:'product',child_id:'raw2',quantity:1}]:[])]),pack:buildPackIndex()};
- const engine=createOrderStockEngine({db:{}as any,allItems:items,submaterials:[items[2]],partners:[],allOrders:[order],orders:[order],orderUnitInputs:inputs,buildFormula:()=>[],claimOrderOperation:claimOrderInventoryOperation,runRawInventoryJob:rawJob,updateItem:update,addItem:add,createProductionRecordsForOrder:production});return {engine,order,items,inputs,claim,rawJob,update,add,production};
+ const engine=createOrderStockEngine({db:{}as any,allItems:items,submaterials:[items[2]],partners:[],allOrders:[order],orders:[order],orderUnitInputs:inputs,buildFormula:()=>[],claimOrderOperation:claimOrderInventoryOperation,runRawInventoryJob:rawJob,updateItem:update,addItem:add,createProductionRecordsForOrder:production,createProductionRecordPlan:(order,inputs,generation)=>buildOrderProductionRecordPlan(order,items,inputs,generation)});return {engine,order,items,inputs,claim,rawJob,update,add,production};
 }
-beforeEach(()=>{vi.useRealTimers();mem.loseFinalOnce=false;mem.failFinalOnce=false;localStorage.clear();mem.docs.clear();mem.calls.length=0;mem.writes.mockClear();});
+beforeEach(()=>{vi.useRealTimers();mem.loseFinalOnce=false;mem.failFinalOnce=false;mem.swapPointerBeforeFinal=false;localStorage.clear();mem.docs.clear();mem.calls.length=0;mem.writes.mockClear();});
 
-it.each(['status','line'] as const)('실제 claim Auth stamp → %s 새 원료 일괄 경로로 반복 품목 전체를 한 TX에 적용한다',async mode=>{const f=fixture([1,1],10,false,true);if(mode==='status')await f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED);else await f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED);expect(f.rawJob).not.toHaveBeenCalled();expect(mem.docs.get('items/raw').stock).toBe(8);expect(mem.docs.get('items/product').stock).toBe(2);const jobWrites=mem.writes.mock.calls.filter(([ref]:any[])=>ref.path.startsWith('rawInventoryJobs/order-raw-batch:'));expect(jobWrites).toHaveLength(1);expect(mem.docs.get('orders/order').inventoryGenerationCompletion.generation.actorUid).toBe('employee');});
+it.each(['status','line'] as const)('실제 claim Auth stamp → %s 새 원료 일괄 경로로 반복 품목 전체를 한 TX에 적용한다',async mode=>{const f=fixture([1,1],10,false,true);if(mode==='status')await f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED);else await f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED);expect(f.rawJob).not.toHaveBeenCalled();expect(mem.docs.get('items/raw').stock).toBe(8);expect(mem.docs.get('items/product').stock).toBe(2);const jobWrites=mem.writes.mock.calls.filter(([ref,value]:any[])=>ref.path.startsWith('rawInventoryJobs/order-raw-batch:')&&value.atomicVersion===1);expect(jobWrites).toHaveLength(1);expect(mem.docs.get('orders/order').inventoryGenerationCompletion.generation.actorUid).toBe('employee');});
 
 it.each(['status','line'] as const)('완료 응답 유실 %s 재개는 실제 final 원문만 확인하며 생산기록·재고·job 추가쓰기0',async mode=>{
  const f=fixture([1,1],10,false,true);mem.loseFinalOnce=true;const run=()=>mode==='status'?f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED):f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED);
@@ -44,3 +46,27 @@ it('완료 후 원문 정리 실패는 다음 재개에서 생산기록·재고�
 });
 
 it('실패 재개에서 요청 품목수량이 바뀌면 첫 생산계획으로 새 주문수량을 저장하지 않는다',async()=>{const f=fixture([2],10,false,true);mem.failFinalOnce=true;await expect(f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED)).rejects.toThrow('final rejected');const encoded=localStorage.getItem(localStorage.key(0)!)!,rawBefore=structuredClone(mem.docs.get('rawInventories/'+inventoryDocId('taebaek','raw')));await expect(f.engine.changeOrderItemCompletion('order',0,[{...f.order.items[0],quantity:3}],OrderStatus.DISPATCHED)).rejects.toThrow('최초');expect(mem.docs.get('items/product').stock).toBe(0);expect(mem.docs.get('rawInventories/'+inventoryDocId('taebaek','raw'))).toEqual(rawBefore);expect(localStorage.getItem(localStorage.key(0)!)).toBe(encoded);});
+
+it('옛 주문의 없는 줄 ID는 첫 상태 생산 계획과 최종 주문에 같은 ID로 고정한다',async()=>{
+ const f=fixture([2],10,false,true);delete f.order.items[0].lineId;f.items[0].cost=0;
+ await f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED);
+ const order=mem.docs.get('orders/order'),records=[...mem.docs.entries()].filter(([path])=>path.startsWith('productionRecords/')).map(([,record])=>record);
+ expect(order.items[0].lineId).toBeTruthy();expect(records).toHaveLength(1);expect(records[0]).toMatchObject({lineId:order.items[0].lineId,finishedQty:2,cost:0});
+ expect(order.productionRecordIndex[order.items[0].lineId].recordId).toBe(records[0].id);
+});
+it.each(['status','line'] as const)('완료 ACK %s는 자기일관적인 marker라도 최초 승인 품목 원문 변조를 받아들이지 않는다',async mode=>{
+ const f=fixture([1],10,false,true);mem.loseFinalOnce=true;const run=()=>mode==='status'?f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED):f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED);
+ await expect(run()).rejects.toThrow();const order=mem.docs.get('orders/order'),payload=JSON.parse(order.inventoryGenerationCompletion.requestText);payload.patch.items[0].quantity=99;order.inventoryGenerationCompletion.requestText=rawPressText(payload);
+ const count=mem.writes.mock.calls.length;await expect(run()).rejects.toThrow();expect(mem.writes.mock.calls.length).toBe(count);expect(localStorage.length).toBe(1);
+});
+it('완료 ACK는 최초 승인 비고도 marker 자기일관성만으로 바꾸지 않는다',async()=>{
+ const f=fixture([1],10,false,true);mem.loseFinalOnce=true;
+ const run=()=>f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED,undefined,{orderPatch:{note:'최초 승인 비고'}});
+ await expect(run()).rejects.toThrow();const marker=mem.docs.get('orders/order').inventoryGenerationCompletion,payload=JSON.parse(marker.requestText);payload.patch.note='다른 승인';marker.requestText=rawPressText(payload);
+ const count=mem.writes.mock.calls.length;await expect(run()).rejects.toThrow('승인 내용');expect(mem.writes.mock.calls.length).toBe(count);expect(localStorage.length).toBe(1);
+});
+it.each(['status','line'] as const)('실제 %s 소비자는 record 저장 뒤 index 경합에서 최종 재고를 쓰지 않는다',async mode=>{
+ const f=fixture([1],10,false,true);mem.swapPointerBeforeFinal=true;
+ const run=()=>mode==='status'?f.engine.changeOrderStatus('order',OrderStatus.DISPATCHED):f.engine.changeOrderItemCompletion('order',0,f.order.items,OrderStatus.DISPATCHED);
+ await expect(run()).rejects.toThrow('연결이 변경');expect(mem.docs.get('items/product').stock).toBe(0);expect(mem.docs.get('items/raw').stock).toBe(9);expect(mem.docs.get('orders/order').inventoryGenerationCompletion).toBeUndefined();expect(localStorage.length).toBe(1);
+});

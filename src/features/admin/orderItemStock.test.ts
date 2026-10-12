@@ -287,6 +287,7 @@ it('공용 예약 판정은 모든 부족·다른 주문·기존 own 배정을 �
 });
 import {assertOrderInventoryGeneration,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import {orderRawBatchOrderEvidence} from '../../shared/orderRawBatchAttempt';
+import {orderProductionRecordId} from '../../shared/orderProductionRecordPlan';
 const gen:OrderInventoryGeneration={contractVersion:1,companyId:'taebaek',orderId:'order-a',operationId:'same-op',startedAt:'2026-10-12T00:00:00Z',actorUid:'actor'};
 function generationFixture(ids=['a']){
  let uid='actor';const saved={id:'order-a',companyId:'taebaek',status:'PENDING',items:ids.map(itemId=>({itemId,quantity:2})),inventoryOperation:{id:gen.operationId,contractVersion:1,actorUid:gen.actorUid,startedAt:gen.startedAt,state:'processing',kind:'line',lineId:'line-a',targetStatus:'DISPATCHED',actor:'직원',stage:'claim'}} as unknown as Order;
@@ -307,3 +308,29 @@ it('final의 비유한 변화량·class patch는 JSON null로 바꿔서 저장�
 it.each(['qty','lotId','itemId','class','text'] as const)('손상 완료 consumed %s는 patch가소비값을안써도duplicate성공0이다',async field=>{const f=generationFixture();const mutation:OrderProductLotMutation={itemId:'a',apply:lots=>({lots,consumedLots:[{itemId:'a',lotId:'lot-a',qty:2}]})};await f.stock.applyItemStockDeltas(new Map([['a',-2]]),[mutation],undefined,f.mutation);const marker=(memory.docs.get('orders/order-a') as any).inventoryGenerationCompletion;if(field==='qty')marker.consumedLots[0].qty=NaN;if(field==='lotId')marker.consumedLots[0].lotId='';if(field==='itemId')marker.consumedLots[0].itemId='';if(field==='class')marker.consumedLots[0]=new Date();if(field==='text')marker.consumedLots[0].qty=3;const before=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map([['a',-2]]),[mutation],undefined,f.mutation)).rejects.toThrow();expect(memory.docs).toEqual(before);});
 
 it.each([0,-1,NaN])('소비qty %s가 canonical문자열과같이손상되어도양수유한량검증으로duplicate0이다',async qty=>{const f=generationFixture();const mutation:OrderProductLotMutation={itemId:'a',apply:lots=>({lots,consumedLots:[{itemId:'a',lotId:'lot-a',qty:2}]})};await f.stock.applyItemStockDeltas(new Map([['a',-2]]),[mutation],undefined,f.mutation);const marker=(memory.docs.get('orders/order-a') as any).inventoryGenerationCompletion;marker.consumedLots[0].qty=qty;marker.consumedLotsText=JSON.stringify(marker.consumedLots.map((row:any)=>({itemId:row.itemId,lotId:row.lotId,qty:row.qty})));const before=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map([['a',-2]]),[mutation],undefined,f.mutation)).rejects.toThrow();expect(memory.docs).toEqual(before);});
+it.each(['production-record','final-stock'] as const)('새 생산기록 %s 최종 확정은 기대 index 없으면 쓰기0이다',async stage=>{
+ const f=generationFixture();Object.assign(memory.docs.get('orders/order-a')!.inventoryOperation!,{stage,productionRecordContractVersion:1});
+ const before=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,f.mutation)).rejects.toThrow('생산기록 연결');expect(memory.docs).toEqual(before);
+});
+it('생산기록 뒤 pointer 경합은 final 쓰기0이며 복원 후 같은 기대 원문만 duplicate한다',async()=>{
+ const f=generationFixture();Object.assign(memory.docs.get('orders/order-a')!.inventoryOperation!,{stage:'production-record',productionRecordContractVersion:1});
+ memory.docs.get('orders/order-a')!.productionRecordIndex={};const mutation={...f.mutation,expectedProductionRecordIndex:{}};
+ memory.docs.get('orders/order-a')!.productionRecordIndex={changed:{recordId:'foreign'}};const before=structuredClone(memory.docs);
+ await expect(f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,mutation)).rejects.toThrow('연결이 변경');expect(memory.docs).toEqual(before);
+ memory.docs.get('orders/order-a')!.productionRecordIndex={};await f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,mutation);const finished=structuredClone(memory.docs);
+ await f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,mutation);expect(memory.docs).toEqual(finished);
+ await expect(f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,f.mutation)).rejects.toThrow('원문');expect(memory.docs).toEqual(finished);
+});
+it.each(['productionRecordIndex','productionRecordIndex.line.recordId'])('final patch %s는 검증한 연결을 다시 덮지 못하고 쓰기0이다',async key=>{
+ const f=generationFixture();memory.docs.get('orders/order-a')!.productionRecordIndex={};const before=structuredClone(memory.docs);
+ await expect(f.stock.applyItemStockDeltas(new Map([['a',2]]),[],undefined,{...f.mutation,expectedProductionRecordIndex:{},patch:{...f.mutation.patch,[key]:{}}})).rejects.toThrow('최종 재고 패치');expect(memory.docs).toEqual(before);
+});
+it('빈 생산기록 index 필드 삭제는 final·완료 duplicate를 복원 쓰기 없이 거절한다',async()=>{
+ const f=generationFixture([]);Object.assign(memory.docs.get('orders/order-a')!.inventoryOperation!,{stage:'production-record',productionRecordContractVersion:1});
+ const mutation={...f.mutation,expectedProductionRecordIndex:{}};const missing=structuredClone(memory.docs);
+ await expect(f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation)).rejects.toThrow('연결 필드');expect(memory.docs).toEqual(missing);
+ memory.docs.get('orders/order-a')!.productionRecordIndex={};await f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation);delete memory.docs.get('orders/order-a')!.productionRecordIndex;
+ const before=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation)).rejects.toThrow('연결 필드');expect(memory.docs).toEqual(before);
+ memory.docs.get('orders/order-a')!.productionRecordIndex={line:{recordId:orderProductionRecordId(gen,'line'),generation:gen,requestHash:'a'.repeat(64)}};
+ const changed=structuredClone(memory.docs);await expect(f.stock.applyItemStockDeltas(new Map(),[],undefined,mutation)).rejects.toThrow('연결이 변경');expect(memory.docs).toEqual(changed);
+});

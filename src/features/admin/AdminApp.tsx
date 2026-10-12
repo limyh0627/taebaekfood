@@ -1,3 +1,5 @@
+import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
+import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import { confirmPendingPurchaseOrder } from '../../shared/services/confirmPendingPurchaseOrderService';
 import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
 import OrderInventoryRecoveryPanel from '../../../components/OrderInventoryRecoveryPanel';
@@ -1277,35 +1279,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
 
-  // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
-  const createProductionRecordsForOrder = async (order: Order, inputs?: OrderUnitInputs) => {
-    const finishedItems = order.items.filter(item => {
-      const p = allItems.find(pr => pr.id === item.itemId);
-      return p && p.type === 'product';
-    });
-    for (const [index, item] of finishedItems.entries()) {
-      const 원래 = allItems.find(p => p.id === item.itemId);
-      if (!원래) continue;
-      //  박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
-      //  푸는 셈은 [statementLines](../../shared/statementLines.ts) 와 **같은 함수**다.
-      const 푼것 = resolveOrderItem(item, allItems, inputs);
-      const product = 푼것.product ?? 원래;
-      const qty = 푼것.qty;
-      const record: ProductionRecord = {
-        // 품목별 재시도에서 같은 생산 실적을 두 번 만들지 않는다.
-        id: `pr-${order.id}-${item.lineId || `${index + 1}-${product.id}`}`,
-        //  `slice(0,10)` 은 UTC 라 밤 12시~아침 9시 사이 것이 하루 앞으로 밀린다
-        date: dateOfLocal(order.deliveredAt ?? new Date().toISOString()),
-        itemId: product.id,
-        itemName: product.name,
-        finishedQty: qty,
-        ...(product.cost !== undefined ? { cost: product.cost } : {}),
-        note: `주문 자동 연동 (${order.partnerName})`,
-        createdAt: new Date().toISOString(),
-      };
-      await addItem('productionRecords', record);
-    }
-  };
+  const createProductionRecordPlan = (order: Order, inputs: OrderUnitInputs | undefined, generation: OrderInventoryGeneration) => buildOrderProductionRecordPlan(order, allItems, inputs, generation);
 
   // 역분개·재고·비현금 상계·처리 상태는 서버의 한 거래로 확정한다.
   const handleProcessReturn = async (req: ReturnRequest) => {
@@ -1327,7 +1301,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     prepareOrderCancellation, executeOrderCancellation, readOrderCancellation } = createOrderStockEngine({
     actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, updateItem, addItem,
+    buildFormula, createProductionRecordPlan, updateItem, addItem,
     orderUnitInputs: appData.orderUnitInputs,
     claimOrderOperation: claimOrderInventoryOperation,
   });

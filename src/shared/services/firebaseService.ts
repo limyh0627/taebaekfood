@@ -850,9 +850,10 @@ export const claimOrderInventoryOperation = async (
  await authReady;const actorUid=auth.currentUser?.uid;
  if(!actorUid)throw Error('주문 재고 작업은 직원 로그인이 필요합니다.');
  if(operation.contractVersion!==undefined&&operation.contractVersion!==1)throw Error('주문 재고 세대 계약 버전이 잘못되었습니다.');
+ if(operation.productionRecordContractVersion!==undefined&&operation.productionRecordContractVersion!==1)throw Error('생산기록 최초 원문 계약 버전이 잘못되었습니다.');
  if(!['line','status'].includes(operation.kind??'')||operation.kind==='line'&&(typeof operation.lineId!=='string'||!operation.lineId.trim()))throw Error('주문 재고 작업 종류·줄 번호를 확인해 주세요.');
  if(operation.contractVersion===1&&operation.actorUid!==actorUid)throw Error('최초 요청의 로그인 계정이 다릅니다.');
- const requestedOperation:NonNullable<Order['inventoryOperation']>={...operation,contractVersion:1,actorUid};
+ const requestedOperation:NonNullable<Order['inventoryOperation']>={...operation,contractVersion:1,productionRecordContractVersion:1,actorUid};
  return runTransaction(db,async tx=>{
  const ref=doc(db,'orders',orderId),snap=await tx.get(ref);
  if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
@@ -865,6 +866,7 @@ export const claimOrderInventoryOperation = async (
   const requested=generationFromOrder({...current,inventoryOperation:requestedOperation})!;await assertOrderInventoryGenerationActor(requested);
   if(previous?.state==='failed'){
    if(previous.contractVersion!==1)throw Error('옛 실패 작업은 새 세대로 자동 재개할 수 없습니다. 최초 원문을 확인해 주세요.');
+   if(previous.productionRecordContractVersion!==1)throw Error('이전 실패에는 최초 생산기록 계획이 없어 자동 재개하지 않았습니다. 원문을 확인해 주세요.');
    const original=generationFromOrder(current)!;
    if(original.actorUid!==requested.actorUid||previous.kind!==requestedOperation.kind||previous.lineId!==requestedOperation.lineId||previous.targetStatus!==requestedOperation.targetStatus)throw Error('이전 작업의 최초 계정·대상과 다른 재개입니다.');
    selected={...previous,state:'processing'}; // ID·시각·실패 원문은 최초 세대 그대로다.
@@ -876,7 +878,7 @@ export const claimOrderInventoryOperation = async (
 };
 /** 세대 표식이나 완료 증거는 호출자 패치로 만들거나 지우지 않는다. */
 export async function guardedUpdateOrderInventoryGeneration(generation:OrderInventoryGeneration,patch:Record<string,unknown>):Promise<void>{
- if(Object.keys(patch).some(key=>['inventoryOperation','inventoryGenerationCompletion','id','companyId'].some(prefix=>key===prefix||key.startsWith(prefix+'.'))))throw Error('재고 작업 표식은 임의 패치할 수 없습니다.');
+ if(Object.keys(patch).some(key=>['inventoryOperation','inventoryGenerationCompletion','productionRecordIndex','id','companyId'].some(prefix=>key===prefix||key.startsWith(prefix+'.'))))throw Error('재고 작업 표식은 임의 패치할 수 없습니다.');
  await assertOrderInventoryGenerationActor(generation);
  await runTransaction(db,async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');assertOrderInventoryGeneration({...snap.data(),id:generation.orderId} as Order,generation);await assertOrderInventoryGenerationActor(generation);tx.update(ref,patch);});
  await assertOrderInventoryGenerationActor(generation);

@@ -19,6 +19,7 @@ import { applyOrderAtomicRawPlan,buildOrderRawCommands, createOrderRawInventoryO
 import {generationFromOrder,hasOrderInventoryGenerationCompletion,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import {clearOrderRawBatchAttempt,orderRawBatchOrderEvidence,readOrderRawBatchAttempt} from '../../shared/orderRawBatchAttempt';
 import {rawPressText} from '../../shared/rawPressAttempt';
+import {deriveNextProductionRecordIndex,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
 import { combineProductLotMutations, createOrderProductLotOperations, OrderInventoryPreconditionError,productionProductLotMutation, productionProductLots, reverseProductionProductLots, type OrderProductLotMutation } from './orderProductLots';
 import { createOrderItemStockOperations, orderStockTouchedIds } from './orderItemStock';
 import { inspectOrderProduction, OrderProductionPreflightError } from './orderProductionPreflight';
@@ -81,7 +82,9 @@ export interface OrderStockEngineDeps {
   orders: Order[];
   db: Firestore;
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
-  createProductionRecordsForOrder: (order: Order, inputs?: OrderUnitInputs) => Promise<void>;
+  /** gen0 시험 주입만 호환한다. 실제 Admin은 새 순수 계획을 제공한다. */
+  createProductionRecordsForOrder?: (order: Order, inputs?: OrderUnitInputs) => Promise<void>;
+  createProductionRecordPlan?:(order:Order,inputs:OrderUnitInputs|undefined,generation:OrderInventoryGeneration)=>OrderProductionRecordPlan;
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
@@ -116,7 +119,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
   const hasProductComponent = (product: Pick<Item, 'id'> | undefined) =>
     bomOf(product?.id).some(line => line.child?.type === 'product' || line.child?.type === '완제품');
   const { actorName, allItems, submaterials, partners, allOrders, orders, db,
-    buildFormula, createProductionRecordsForOrder, updateItem, addItem,
+    buildFormula, createProductionRecordsForOrder,createProductionRecordPlan, updateItem, addItem,
     claimOrderOperation, runRawInventoryJob: runRawJob = runRawInventoryJob } = deps;
   let actorAuth:typeof import('../../shared/firebase').auth|undefined;
   const ensureGenerationActor=async(generation:OrderInventoryGeneration|null)=>{if(generation&&!deps.getActorUid)actorAuth=(await import('../../shared/firebase')).auth;};
@@ -135,9 +138,31 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     applyItemStockDeltas,
   } = createOrderItemStockOperations({ db, allItems, bomIndex: inputs.bom,getActorUid:deps.getActorUid??(()=>actorAuth?.currentUser?.uid) });
   const generationOf=(order:Order)=>generationFromOrder(order);
+  const expectedRecordIndex=async(generation:OrderInventoryGeneration,fallback:Order['productionRecordIndex'])=>{
+    const first=readOrderRawBatchAttempt(generation.companyId,generation.actorUid,generation.orderId);
+    if(!first)return fallback;
+    const plan=first.request.plan.productionRecords as OrderProductionRecordPlan;
+    validateOrderProductionRecordPlan(plan);
+    const {orderRawBatchRequestHash}=await import('../../shared/services/orderRawBatchService');
+    return deriveNextProductionRecordIndex(plan,await orderRawBatchRequestHash(first.request));
+  };
   const fixedTime=(order:Order)=>generationOf(order)?.startedAt??new Date().toISOString();
   const plain=<T,>(value:T):T=>JSON.parse(JSON.stringify(value));
   const rawItemSelectionText=(items:readonly OrderItem[])=>rawPressText(items.map(row=>({itemId:row.itemId,lineId:row.lineId,quantity:row.quantity,boxQuantity:row.boxQuantity,checked:row.checked})));
+  const requireRecordContract=(order:Order,generation:OrderInventoryGeneration|null)=>{
+    if(generation&&order.inventoryOperation?.productionRecordContractVersion!==1)throw Error('이전 작업에는 최초 생산기록 계약이 없습니다. 원문을 보존했습니다.');
+    if(generation&&!createProductionRecordPlan)throw Error('최초 생산기록 계획 제공자가 없어 원료를 쓰지 않았습니다.');
+    if(!generation&&!createProductionRecordsForOrder)throw Error('옛 생산기록 경로는 지원하지 않습니다. 원료를 쓰지 않았습니다.');
+  };
+  const recordPlan=(order:Order,generation:OrderInventoryGeneration,stored?:unknown)=>{
+    const plan=stored as OrderProductionRecordPlan|undefined;
+    if(stored===undefined)throw Error('이전 원료 요청에는 최초 생산기록 계획이 없습니다. 새 원문을 추정하지 않았습니다.');
+    validateOrderProductionRecordPlan(plan!);if(rawPressText(plan!.generation)!==rawPressText(generation))throw Error('최초 생산기록 계획의 세대가 다릅니다.');return plan!;
+  };
+  const writeProductionRecords=async(request:Parameters<typeof import('../../shared/services/orderProductionRecordService').executeOrderProductionRecords>[0])=>{
+    const result=await (await import('../../shared/services/orderProductionRecordService')).executeOrderProductionRecords(request);
+    if(result.status==='blocked')throw Error(result.reason??'생산기록 완료를 확인하지 못했습니다.');return result;
+  };
   const saveReservation=(value:NonNullable<Awaited<ReturnType<typeof reserveOrderStock>>>)=>plain({...value,quantities:[...value.quantities],stockSnapshot:[...value.stockSnapshot],previousReservations:[...value.previousReservations],allocationQuantities:value.allocationQuantities?[...value.allocationQuantities]:[]});
   const restoreReservation=(value:ReturnType<typeof saveReservation>)=>({...value,quantities:new Map(value.quantities),stockSnapshot:new Map(value.stockSnapshot),previousReservations:new Map(value.previousReservations),allocationQuantities:new Map(value.allocationQuantities)}) as NonNullable<Awaited<ReturnType<typeof reserveOrderStock>>>;
   /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
@@ -462,6 +487,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     }
     const already = freshOrder.rawConsumedLots ?? [];
     const generation=generationOf(freshOrder);
+    requireRecordContract(freshOrder,generation);
     if(generation&&already.length)throw Error('기존 부분 생산의 원료 근거를 새 일괄 작업으로 자동 보완하지 않습니다.');
     if (addPreviousProductionRollback(freshOrder, deltas)) {
       /*
@@ -473,6 +499,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       await reverseOrderRawUsage(freshOrder);
     }
     const retained=generation?readOrderRawBatchAttempt(generation.companyId,generation.actorUid,generation.orderId):null;
+    if(generation&&retained)recordPlan(freshOrder,generation,retained.request.plan.productionRecords);
     const attempt = retained?Number(retained.request.plan.attempt):(freshOrder.rawInventoryAttempt ?? 0) + 1;
     const beforeProduction = new Map(deltas);
     let production = retained?retained.request.plan.production as ReturnType<typeof planOrderProduction>:planOrderProduction(freshOrder, deltas, stockSnapshot, plan);
@@ -487,16 +514,20 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const built=retained?{commands:retained.request.commands}:buildOrderRawCommands({order:freshOrder,physicalUsage:production.rawUsage,ledgerOnlyUsage:production.rawUsageLedgerOnly,attempt,allItems,partners,actorName});
       const shipment=new Map<string,number>();if(!retained)shipOrder(freshOrder,shipment);
       const productLots=retained?.request.plan.productLots??freezeProductLots(productionDeltas,`${freshOrder.id}-${attempt}`,generation.startedAt);
+      const normalizedItems=retained?.request.plan.normalizedItems??ensureOrderLineIds((finalPlan?.completionPatch as Partial<Order>|undefined)?.items??freshOrder.items);
+      const productionRecords=retained?recordPlan(freshOrder,generation,retained.request.plan.productionRecords):createProductionRecordPlan!({...freshOrder,items:ensureOrderLineIds(freshOrder.items)},inputs,generation);
+      validateOrderProductionRecordPlan(productionRecords);
       const shipped=[OrderStatus.SHIPPED,OrderStatus.DELIVERED].includes(freshOrder.inventoryOperation!.targetStatus!);
-      const storedPlan=retained?.request.plan??plain({production,productionDeltas:deltaRows(productionDeltas),reservationDeltas:reservationDeltas??[],attempt,productLots,bomLines:bomSnapshotOf(freshOrder),shipmentDeltas:deltaRows(shipment),finalPlan,finalLotItemIds:[...new Set([...(productLots as FrozenProductLots).mutationItemIds,...(shipped?deductProductLotsForOrder(freshOrder).map(row=>row.itemId):[])])]});
+      const storedPlan=retained?.request.plan??plain({production,productionRecords,normalizedItems,productionDeltas:deltaRows(productionDeltas),reservationDeltas:reservationDeltas??[],attempt,productLots,bomLines:bomSnapshotOf(freshOrder),shipmentDeltas:deltaRows(shipment),finalPlan,finalLotItemIds:[...new Set([...(productLots as FrozenProductLots).mutationItemIds,...(shipped?deductProductLotsForOrder(freshOrder).map(row=>row.itemId):[])])]});
       const applied=await applyOrderAtomicRawPlan({order:freshOrder,generation,selection:plain({kind:'status',targetStatus:freshOrder.inventoryOperation!.targetStatus,stockUsePlan:plan??null}),plan:storedPlan,commands:built.commands,legacyJobIds:[`production:${freshOrder.id}:a${attempt}`]});
       production=applied.request.plan.production as typeof production;
       deltas.clear();beforeProduction.forEach((value,key)=>deltas.set(key,value));productionDeltas.clear();
       for(const row of applied.request.plan.productionDeltas as {itemId:string;delta:number}[]){addDelta(deltas,row.itemId,row.delta);addDelta(productionDeltas,row.itemId,row.delta);}
       consumedLots=applied.traces.flat();
       frozenProductLots=applied.request.plan.productLots as FrozenProductLots;firstBomLines=applied.request.plan.bomLines as OrderInventorySnapshot['bomLines'];frozenShipment=applied.request.plan.shipmentDeltas as typeof frozenShipment;
+      onStage?.('production-record');await writeProductionRecords(applied.request);
     }else consumedLots=await applyOrderRawUsage(freshOrder,production.rawUsage,attempt,production.rawUsageLedgerOnly);
-    onStage?.('production-record');await createProductionRecordsForOrder(freshOrder, inputs);
+    if(!generation){onStage?.('production-record');await createProductionRecordsForOrder!(freshOrder, inputs);}
     return { consumedLots, ...production, attempt, alreadyProduced: false, productionDeltas,frozenProductLots,firstBomLines,frozenShipment, previousProducedLots: already.length ? freshOrder.inventorySnapshots?.production?.productProducedLots : undefined, previousConsumedLots: already.length ? freshOrder.inventorySnapshots?.production?.productConsumedLots : undefined };
   };
 
@@ -590,6 +621,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     onStage?:(stage:NonNullable<Order['inventoryOperation']>['stage'])=>void,
   ) => {
     const generation=generationOf(order);
+    const initialRecordIndex=order.productionRecordIndex===undefined?undefined:plain(order.productionRecordIndex);
     await ensureGenerationActor(generation);
     const capturedAt=fixedTime(order);
     if (target === OrderStatus.ON_HOLD) return { patch: {} as Partial<Order>, stockAdjustments: [] as { itemId: string; delta: number }[] };
@@ -601,6 +633,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     let shipmentStockDeltas: { itemId: string; delta: number }[] | undefined;
     let firstShipmentDeltas:typeof shipmentStockDeltas;
     const needsForwardProduction = wantProduced && !order.producedAt;
+    if(needsForwardProduction)requireRecordContract(order,generation);
     const needsForwardShipment = wantShipped && !order.shippedOut;
     const wantsAllocationUntilShipment = !isStockProduction(order) && wantProduced && !wantShipped;
     const reservationExtraItemIds = [
@@ -608,6 +641,9 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       ...(order.inventorySnapshots?.shipment?.stockDeltas.map(row => row.itemId) ?? []),
     ];
     const retained=generation?readOrderRawBatchAttempt(generation.companyId,generation.actorUid,order.id):null;
+    if(generation&&retained)recordPlan(order,generation,retained.request.plan.productionRecords);
+    const normalizedItems=generation?retained?.request.plan.normalizedItems as OrderItem[]|undefined??ensureOrderLineIds((completionPatch?.items as OrderItem[]|undefined)??order.items):undefined;
+    const firstCompletionPatch=generation?retained?(retained.request.plan.finalPlan as {completionPatch:Record<string,unknown>}).completionPatch:{...completionPatch,items:normalizedItems}:completionPatch;
     let firstReservationDeltas:{itemId:string;delta:number}[]=[];
     onStage?.('reservation');
     const reservation = needsForwardProduction || needsForwardShipment || wantsAllocationUntilShipment
@@ -676,7 +712,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         inventoryMayHaveChanged = true;
         if (!reservation) throw new Error(`주문 재고 예약이 없습니다: ${order.id}`);
         const { consumedLots, autoBuilt, producedUnits, rawCalculationEvidence, attempt, alreadyProduced, productionDeltas,frozenProductLots,firstBomLines,frozenShipment, previousProducedLots, previousConsumedLots } = await produceOrder(
-          order, deltas, reservation.stockSnapshot, plan,firstReservationDeltas,plain({kind:'status',order,target,completionPatch:completionPatch??{},reservation:saveReservation(reservation)}),onStage,
+          order, deltas, reservation.stockSnapshot, plan,firstReservationDeltas,plain({kind:'status',order,target,completionPatch:firstCompletionPatch??{},reservation:saveReservation(reservation)}),onStage,
         );
         if (!alreadyProduced) {
           patch.producedAt = capturedAt; patch.rawLotsDeducted = true;
@@ -732,12 +768,12 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           },
         };
       }
-      return { ...patch, ...completionPatch };
+      return { ...patch, ...firstCompletionPatch };
       };
       const orderCommitted = !deferOrderPatch || !!completionPatch;
       onStage?.('final-stock');
       const productConsumedLots = await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservationContext,
-        orderCommitted ? { orderId: order.id, patch: finalizePatch,...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(order)}:{}) } : undefined);
+        orderCommitted ? { orderId: order.id, patch: finalizePatch,...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(order),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:{}) } : undefined);
       stockCommitted = true;
       if (!orderCommitted) finalizePatch(productConsumedLots);
       return { patch, stockAdjustments: deltaRows(deltas), orderCommitted };
@@ -780,11 +816,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     if(uid!==marker.generation.actorUid)throw Error('최초 주문 작업의 로그인 사용자를 확인해 주세요.');
     const request=retained.request;
     if(rawPressText(request.generation)!==rawPressText(marker.generation)||rawPressText(request.business.selection)!==rawPressText(selection))throw Error('최초 주문 원료 작업의 결과부터 확인해 주세요.');
-    const finalPlan=request.plan.finalPlan as {kind:'status'|'line';order:Order;target?:OrderStatus;nextItems?:OrderItem[];effectiveStatus?:OrderStatus;reservation:ReturnType<typeof saveReservation>};
+    const finalPlan=request.plan.finalPlan as {kind:'status'|'line';order:Order;target?:OrderStatus;nextItems?:OrderItem[];effectiveStatus?:OrderStatus;completionPatch?:Record<string,unknown>;reservation:ReturnType<typeof saveReservation>};
     if(!finalPlan?.reservation)throw Error('최초 최종 재고 계획이 없습니다. 원문을 보존했습니다.');
     if(requestedItem){const saved=finalPlan.nextItems?.find(row=>row.lineId===requestedItem.lineId);const itemText=(row:OrderItem|undefined)=>rawPressText(row&&{itemId:row.itemId,lineId:row.lineId,quantity:row.quantity,boxQuantity:row.boxQuantity,checked:row.checked});if(itemText(saved)!==itemText(requestedItem))throw Error('최초 품목 수량과 선택이 달라 원문을 보존했습니다.');}
     const {executeOrderRawBatch}=await import('../../shared/services/orderRawBatchService');
     const raw=await executeOrderRawBatch(request);if(raw.status!=='duplicate')throw Error(raw.reason??'원료 완료 영수증을 확인하지 못했습니다.');
+    recordPlan(finalPlan.order,request.generation,request.plan.productionRecords);
+    const productionAck=await writeProductionRecords(request);if(productionAck.status!=='acknowledged')throw Error('최종 완료에 대응하는 생산기록 완료 근거를 확인하지 못했습니다.');
     const latest=await getFreshOrder(live.id,true);
     if(!latest||latest.inventoryOperation!=null||!hasOrderInventoryGenerationCompletion(latest,request.generation))throw Error('완료 확인 중 주문 작업이 바뀌었습니다.');
     let payload:{patch:Record<string,unknown>};try{payload=JSON.parse(latest.inventoryGenerationCompletion!.requestText);}catch{throw Error('최종 완료 원문이 손상되었습니다.');}
@@ -793,8 +831,13 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     else{for(const row of request.plan.productionDeltas as {itemId:string;delta:number}[])addDelta(deltas,row.itemId,row.delta);if([OrderStatus.SHIPPED,OrderStatus.DELIVERED].includes(finalPlan.target!)&&!isStockProduction(finalPlan.order))for(const row of request.plan.shipmentDeltas as {itemId:string;delta:number}[])addDelta(deltas,row.itemId,row.delta);}
     const target=finalPlan.kind==='line'?finalPlan.effectiveStatus:finalPlan.target;if(payload.patch.status!==target)throw Error('최종 완료 상태가 최초 계획과 다릅니다.');
     if(finalPlan.kind==='line'&&rawPressText(payload.patch.items)!==rawPressText(finalPlan.nextItems))throw Error('최종 완료 품목이 최초 계획과 다릅니다.');
+    if(finalPlan.kind==='status'&&rawPressText(payload.patch.items)!==rawPressText(request.plan.normalizedItems))throw Error('최종 완료 줄 번호와 품목이 최초 계획과 다릅니다.');
+    const approvedPatch=finalPlan.kind==='status'?finalPlan.completionPatch:{items:finalPlan.nextItems,status:finalPlan.effectiveStatus,inventoryOperation:null};
+    if(!approvedPatch||Object.entries(approvedPatch).some(([key,value])=>rawPressText(value)!==rawPressText(payload.patch[key])))throw Error('최종 완료의 승인 내용이 최초 원문과 다릅니다.');
     const mutations=(request.plan.finalLotItemIds as string[]).map(itemId=>({itemId,apply:()=>{throw Error('완료 재확인에서는 재고를 다시 쓰지 않습니다.');}}));
-    await applyItemStockDeltas(deltas,mutations,restoreReservation(finalPlan.reservation),{orderId:live.id,generation:request.generation,expectedOrderText:request.business.orderText as string,patch:payload.patch});
+    const {orderRawBatchRequestHash}=await import('../../shared/services/orderRawBatchService');
+    const expectedProductionRecordIndex=deriveNextProductionRecordIndex(request.plan.productionRecords as OrderProductionRecordPlan,await orderRawBatchRequestHash(request));
+    await applyItemStockDeltas(deltas,mutations,restoreReservation(finalPlan.reservation),{orderId:live.id,generation:request.generation,expectedOrderText:request.business.orderText as string,expectedProductionRecordIndex,patch:payload.patch});
     if((deps.getActorUid??(()=>actorAuth?.currentUser?.uid))()!==uid)throw Error('완료 확인 중 로그인 사용자가 바뀌었습니다.');
     clearOrderRawBatchAttempt(request,retained.encoded);return true;
   };
@@ -867,6 +910,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       claimed = true;
       const operationOrder = live;
       const generation=generationOf(operationOrder);
+      const initialRecordIndex=operationOrder.productionRecordIndex===undefined?undefined:plain(operationOrder.productionRecordIndex);
       await ensureGenerationActor(generation);
       operationGeneration=generation;
       if(generation){now=generation.startedAt;operationId=generation.operationId;}
@@ -909,6 +953,8 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       ];
       failureStage = 'reservation';
       const retainedRaw=generation?readOrderRawBatchAttempt(generation.companyId,generation.actorUid,id):null;
+      if(applying)requireRecordContract(operationOrder,generation);
+      if(generation&&retainedRaw)recordPlan(operationOrder,generation,retainedRaw.request.plan.productionRecords);
       let firstReservationDeltas:{itemId:string;delta:number}[]=[];
       reservation = await reserveOrderStock(
         inventoryOrder,
@@ -957,9 +1003,12 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
           const appliedStates={...currentStates,...Object.fromEntries(planned.map(row=>[row.lineId,{applied:true}]))} as Record<string,OrderItemInventoryState>;
           const finalAllocation=isStockProduction(operationOrder)?new Map<string,number>():completedLineAllocation(operationOrder,nextItems,appliedStates);
           const finalPlan=retained?.request.plan.finalPlan??plain({kind:'line',order:operationOrder,nextItems,currentStates,effectiveStatus,reservation:saveReservation({...reservation,allocationQuantities:finalAllocation})});
+          const productionRecords=retained?recordPlan(operationOrder,generation,retained.request.plan.productionRecords):createProductionRecordPlan!({...operationOrder,items:pendingApplyRows.map(row=>row.item)},inputs,generation);
+          validateOrderProductionRecordPlan(productionRecords);
           failureStage='raw-inventory';
-          const result=await applyOrderAtomicRawPlan({order:operationOrder,generation,selection:plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),plan:plain({lines:planned,reservationDeltas:firstReservationDeltas,finalPlan,finalLotItemIds:[...new Set(planned.flatMap(row=>row.productLots.mutationItemIds))]}),commands,legacyJobIds:planned.map(row=>`production:${id}:${row.lineId}:a${row.attempt}`)});
+          const result=await applyOrderAtomicRawPlan({order:operationOrder,generation,selection:plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),plan:plain({lines:planned,productionRecords,reservationDeltas:firstReservationDeltas,finalPlan,finalLotItemIds:[...new Set(planned.flatMap(row=>row.productLots.mutationItemIds))]}),commands,legacyJobIds:planned.map(row=>`production:${id}:${row.lineId}:a${row.attempt}`)});
           atomicPlans=result.request.plan.lines as SavedLinePlan[];atomicTraces=result.traces;
+          failureStage='production-record';await writeProductionRecords(result.request);
         }
         for (const row of pendingApplyRows) {
           const rowLineId = row.item.lineId!;
@@ -976,7 +1025,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
             single, production.rawUsage, attempt, production.rawUsageLedgerOnly, rowLineId,
           );
           failureStage = 'production-record';
-          await createProductionRecordsForOrder(single, inputs);
+          if(!generation)await createProductionRecordsForOrder!(single, inputs);
           const rowDeltas = new Map<string, number>();
           if(savedPlan)for(const row of savedPlan.rowDeltas){addDelta(deltas,row.itemId,row.delta);addDelta(rowDeltas,row.itemId,row.delta);}
           else for (const [itemId, value] of deltas) addDelta(rowDeltas, itemId, value - (rowBefore.get(itemId) ?? 0));
@@ -1001,7 +1050,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         }
       } else {
         if (!previousState?.applied) {
-          if(generation)await applyItemStockDeltas(new Map(),[],reservation,{orderId:id,patch:{items:nextItems,status:effectiveStatus,inventoryOperation:null},generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder)});
+          if(generation)await applyItemStockDeltas(new Map(),[],reservation,{orderId:id,patch:{items:nextItems,status:effectiveStatus,inventoryOperation:null},generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)});
           else{await updateItem('orders', id, { items: nextItems, status: effectiveStatus, inventoryOperation: null });await releaseOrderStockReservation(reservation);}
           reservation = undefined;
           return;
@@ -1029,7 +1078,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
         inventoryOperation: null,
       };
       failureStage = 'final-stock';
-      await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservation, { orderId: id, patch: () => ({ ...orderPatch, ...aggregateOrderLineInventory(operationOrder, states) }),...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder)}:{}) });
+      await applyItemStockDeltas(deltas, combineProductLotMutations(productLotMutations), reservation, { orderId: id, patch: () => ({ ...orderPatch, ...aggregateOrderLineInventory(operationOrder, states) }),...(generation?{generation,expectedOrderText:orderRawBatchOrderEvidence(operationOrder),expectedProductionRecordIndex:await expectedRecordIndex(generation,initialRecordIndex)}:{}) });
       stockCommitted = true;
       if(generation&&readOrderRawBatchAttempt(generation.companyId,generation.actorUid,id)){const completed=await getFreshOrder(id,true);if(!completed||!await confirmCompletedAtomicRaw(completed,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))throw Error('최종 완료 근거를 확인하지 못해 최초 원문을 보존했습니다.');}
 

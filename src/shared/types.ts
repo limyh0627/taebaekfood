@@ -228,7 +228,13 @@ export interface OrderRawInventoryTrace {
   kg: number;
 }
 
+export interface OrderProductionRecordIndexEntry {
+  recordId:string;
+  generation:import('./orderInventoryGeneration').OrderInventoryGeneration;
+  requestHash:string;
+}
 export interface Order {
+  productionRecordIndex?:Record<string,OrderProductionRecordIndexEntry>;
   id: string;
   /** 어느 회사 주문인가. 옛 주문은 없으며 [companyOf]가 태백으로 읽는다. */
   companyId?: CompanyId;
@@ -340,6 +346,8 @@ export interface Order {
     id: string;
     /** 새 원료 batch·제품 확정이 같은 최초 세대를 확인한다. 옛 잠금은 자동 승격하지 않는다. */
     contractVersion?: 1;
+    /** 최초 생산기록 계획까지 고정한 새 claim만 사용한다. 옛 실패에는 추정해 붙이지 않는다. */
+    productionRecordContractVersion?:1;
     actorUid?: string;
     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */
     kind?: 'line' | 'status';
@@ -933,7 +941,13 @@ export type ViewType = 'data-integrity' | 'dashboard' | 'orders' | 'shipping' | 
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
+  supersededBy?:OrderProductionRecordIndexEntry;
+  legacySourceCandidates?:{recordId:string;companyId:CompanyId;itemId:string;note:string}[];
   id: string;
+  companyId?:CompanyId;
+  orderId?:string;
+  lineId?:string;
+  generation?:import('./orderInventoryGeneration').OrderInventoryGeneration;
   date: string;               // YYYY-MM-DD
   itemId: string;
   itemName: string;
