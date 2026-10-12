@@ -96,3 +96,8 @@ describe('박스 개봉', () => {
     expect(writes).toBe(3);
   });
 });
+it('신규 박스 원문은 첫 kg·시각을 저장하고 품목 삭제·다른회사 재생성 뒤 inspect0쓰기이다',async()=>{
+ const request={version:1 as const,kind:'box-unpack' as const,operationId:'box-first',companyId:'taebaek' as const,uid:'employee',capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',boxItemId:'box',unitItemId:'unit',count:10,unitKg:1};const check=async()=>{};
+ expect((await unpackBoxStock(request,undefined,{request,mode:'apply',check})).status).toBe('applied');store.delete('items/box');store.set('items/unit',{companyId:'punghoe'});const before=JSON.stringify([...store]);const count=writes;
+ expect((await unpackBoxStock(request,undefined,{request,mode:'inspect',check})).status).toBe('duplicate');expect(writes).toBe(count);expect(JSON.stringify([...store])).toBe(before);
+});

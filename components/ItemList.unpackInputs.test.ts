@@ -14,7 +14,14 @@ const start=source.indexOf('  const unpackBox = async');
 const end=source.indexOf('\n  /**',start);
 if(start<0||end<start)throw new Error('실제 개봉 함수 경계를 찾을 수 없습니다.');
 const compiled=ts.transpileModule(`${source.slice(start,end)}\nreturn unpackBox;`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
-const make=new Function('getBomIndex','getPackIndex','unpackComponent','items','appConfirm','unpackBoxStock','setToast','alert','unpackMounted','orderUnitInputs',compiled);
+const create=new Function('getBomIndex','getPackIndex','unpackComponent','items','runInventoryAttempt','companyId','auth','itemKg','orderUnitInputs',compiled);
+function make(getBom:typeof getBomIndex,getPack:typeof getPackIndex,component:typeof unpackComponent,items:Item[],confirm:()=>Promise<boolean>,save:(...args:any[])=>any,toast:(...args:any[])=>any,alert:(...args:any[])=>any,mounted:{current:boolean},inputs?:OrderUnitInputs){
+ return create(getBom,getPack,component,items,async(_kind:string,build:()=>any)=>{
+  const request=build();if(!await confirm()||!mounted.current)return false;
+  const result=await save(request);if(!mounted.current)return false;
+  if(result.ok)toast({message:result.message});else alert(result.message);return result.ok;
+ },'taebaek',{currentUser:{uid:'employee'}},itemKg,inputs);
+}
 const items=['box','unit','loose'].map(id=>({id,name:id,type:'product',companyId:'taebaek',unit:'개',spec:id==='unit'?'1kg * 20':'1kg',stock:id==='box'?2:0,minStock:0,image:''} as Item));
 const a={bom:buildBomIndex(items,[{parent_id:'box',child_id:'unit',quantity:10},{parent_id:'unit',child_id:'loose',quantity:20}]),pack:buildPackIndex()};
 const b=buildBomIndex(items,[]),original=getBomIndex();
@@ -34,8 +41,8 @@ it('작업 시작부터 다른 전역 BOM이어도 회사 props 입력으로 개
  setBomIndex(b);const save=vi.fn().mockResolvedValue({ok:true,message:''});
  await make(getBomIndex,getPackIndex,unpackComponent,items,async()=>true,save,vi.fn(),vi.fn(),{current:true},a)(items[0]);
  expect(save).toHaveBeenCalledOnce();
- const [params,inputs]=save.mock.calls[0];
- expect(itemKg(items[1],inputs)*params.count).toBe(200);expect(getBomIndex()).toBe(b);
+ const [params]=save.mock.calls[0];
+ expect(params.unitKg*params.count).toBe(200);expect(getBomIndex()).toBe(b);
 });
 it('실제 인스턴스 생명주기는 같은 회사에서 유지하고 회사 key 교체 시 종료한다',()=>{
  const hookStart=source.indexOf('  const unpackMounted =');
@@ -50,15 +57,15 @@ it('실제 개봉 함수는 확인창 대기 이전 입력을 구성과 저장�
  setBomIndex(a.bom);
  let approve!:(yes:boolean)=>void;
  const confirmation=new Promise<boolean>(resolve=>{approve=resolve;});
- const save=vi.fn(async(params:{count:number},inputs?:OrderUnitInputs)=>{
-  expect(itemKg(items[1],inputs)*params.count).toBe(200);
+ const save=vi.fn(async(params:{count:number;unitKg:number})=>{
+  expect(params.unitKg*params.count).toBe(200);
   return{ok:true,message:''};
  });
  const run=make(getBomIndex,getPackIndex,unpackComponent,items,()=>confirmation,save,vi.fn(),vi.fn(),{current:true});
  const pending=run(items[0]);
  setBomIndex(b);approve(true);await pending;
  expect(save).toHaveBeenCalledOnce();
- expect(save.mock.calls[0][1]?.bom).toBe(a.bom);
+ expect(save.mock.calls[0][0].unitKg).toBe(20);
  expect(getBomIndex()).toBe(b);
 });
 it('확인을 취소하면 서비스 호출을 하지 않는다',async()=>{

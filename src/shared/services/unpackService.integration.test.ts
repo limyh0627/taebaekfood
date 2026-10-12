@@ -126,3 +126,23 @@ describe('품목 실사와 최소 수량은 함께 저장한다', () => {
     expect(store.get('items/can-x')).toMatchObject({ stock: 5, minStock: 2 });
   });
 });
+it('새 캔 원문은 첫 시각·FIFO 결과를 보존하고 품목 삭제 후 inspect 쓰기0이다',async()=>{
+ const request={version:1 as const,kind:'can-unpack' as const,operationId:'can-first',companyId:'taebaek' as const,uid:'employee',capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};
+ const check=async()=>{};expect((await unpack(plan,{request,mode:'apply',check})).status).toBe('applied');
+ store.delete('items/can-x');store.delete('items/raw-x');const before=JSON.stringify([...store]),count=writes;
+ expect((await unpack(plan,{request,mode:'inspect',check})).status).toBe('duplicate');expect(writes).toBe(count);expect(JSON.stringify([...store])).toBe(before);
+});
+it('새 캔 부족·미러 불일치는 확실한 쓰기전 거절이고 inspect 부재는 미확인이다',async()=>{
+ const request={version:1 as const,kind:'can-unpack' as const,operationId:'can-rejected',companyId:'taebaek' as const,uid:'employee',capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};const check=async()=>{};
+ store.set('items/raw-x',{...store.get('items/raw-x'),stock:99});expect((await unpack(plan,{request,mode:'apply',check})).status).toBe('rejected');expect(writes).toBe(0);
+ expect((await unpack(plan,{request,mode:'inspect',check})).status).toBe('unknown');expect(writes).toBe(0);
+});
+it('새 캔 receipt의 result 숫자 손상은 자기복사 text가 있어도 성공0이다',async()=>{
+ const request={version:1 as const,kind:'can-unpack' as const,operationId:'can-broken',companyId:'taebaek' as const,uid:'employee',capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};const check=async()=>{};
+ await unpack(plan,{request,mode:'apply',check});const receipt=[...store.entries()].find(([key])=>key.startsWith('rawMaterialLedger/'))![1] as any;receipt.inventoryResult.canAfter=99;const count=writes;expect((await unpack(plan,{request,mode:'inspect',check})).status).toBe('unknown');expect(writes).toBe(count);
+});
+it('나눠진 소수 로트는 기존 행별 반올림 결과를 유지하고 같은 원문 inspect한다',async()=>{
+ store.set('items/can-x',{...store.get('items/can-x'),stock:2,lots:[{id:'a',supplierName:'공급처',qtyRemaining:1,kgRemaining:1,unitKg:1,status:'active'},{id:'b',supplierName:'공급처',qtyRemaining:1,kgRemaining:1,unitKg:1,status:'active'}]});
+ const split={...plan,cans:2,perCan:0.33335,bulkQty:0.667};const request={version:1 as const,kind:'can-unpack' as const,operationId:'can-split',companyId:'taebaek' as const,uid:'employee',capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan:split};const check=async()=>{};
+ expect((await unpack(split,{request,mode:'apply',check})).ok).toBe(true);expect(store.get('items/raw-x')!.stock).toBe(100.666);expect((await unpack(split,{request,mode:'inspect',check})).status).toBe('duplicate');
+});

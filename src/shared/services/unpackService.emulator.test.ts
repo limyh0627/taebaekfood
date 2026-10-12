@@ -6,11 +6,11 @@ import {connectFirestoreEmulator,getFirestore} from 'firebase/firestore';
 import {initializeApp as initializeAdminApp,deleteApp as deleteAdminApp} from 'firebase-admin/app';
 import {getAuth as getAdminAuth} from 'firebase-admin/auth';
 import {getFirestore as getAdminFirestore} from 'firebase-admin/firestore';
-import {unpack} from './unpackService';
-import {inventoryDocId} from '../rawInventoryCore';
+import {unpack,productStocktakeActor} from './unpackService';
+import {inventoryDocId,operationDocId} from '../rawInventoryCore';
 import type {CompanyId} from '../types';
-const gateway=vi.hoisted(()=>({db:undefined as any}));
-vi.mock('../firebase',()=>({get db(){return gateway.db;}}));
+const gateway=vi.hoisted(()=>({db:undefined as any,auth:undefined as any}));
+vi.mock('../firebase',()=>({get db(){return gateway.db;},get auth(){return gateway.auth;},authReady:Promise.resolve()}));
 describe.skipIf(process.env.CAN_UNPACK_EMULATOR_TEST!=='true')('캔 개봉 실제 Auth·Firestore 계약',()=>{
  const projectId='demo-taebaekfood-local',prefix='can-unpack-'+randomUUID();
  let app:ReturnType<typeof initializeApp>|undefined,adminApp:ReturnType<typeof initializeAdminApp>|undefined,adminDb:ReturnType<typeof getAdminFirestore>|undefined,adminAuth:ReturnType<typeof getAdminAuth>|undefined;
@@ -32,7 +32,7 @@ describe.skipIf(process.env.CAN_UNPACK_EMULATOR_TEST!=='true')('캔 개봉 실�
   process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8082';process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';process.env.GCLOUD_PROJECT=projectId;
   adminApp=initializeAdminApp({projectId},prefix+'-admin');adminDb=getAdminFirestore(adminApp);adminAuth=getAdminAuth(adminApp);
   uid=prefix;const password=randomUUID()+'A1!',email=prefix+'@example.invalid';await adminAuth.createUser({uid,email,password});await adminAuth.setCustomUserClaims(uid,{employeeId:uid,companyId:'taebaek',isAdmin:true});
-  app=initializeApp({projectId,apiKey:'local-emulator-only'},prefix+'-sdk');gateway.db=getFirestore(app);connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);const auth=getAuth(app);connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
+  app=initializeApp({projectId,apiKey:'local-emulator-only'},prefix+'-sdk');gateway.db=getFirestore(app);connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);const auth=getAuth(app);gateway.auth=auth;connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
   await signInWithEmailAndPassword(auth,email,password);expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({employeeId:uid,companyId:'taebaek',isAdmin:true});
  },90_000);
  afterAll(async()=>{const errors:string[]=[];if(adminDb)for(const location of paths){try{if(!location.includes(prefix) && !(await adminDb.doc(location).get()).data()?.operationId?.includes(prefix))throw new Error('범위');await adminDb.doc(location).delete();expect((await adminDb.doc(location).get()).exists).toBe(false);}catch{errors.push(location);}}
@@ -50,4 +50,9 @@ describe.skipIf(process.env.CAN_UNPACK_EMULATOR_TEST!=='true')('캔 개봉 실�
  it('원료 미러 불일치 실패는 캔·벌크·본체를 보존하고 이동 기록을 생성하지 않는다',async()=>{
   const {locations,plan}=await seed('mirror','taebaek','taebaek',99);const before=await read(locations);const result=await unpack(plan);expect(result.ok).toBe(false);expect(result.message).toContain('어긋나');expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);
  },60_000);
-});
+ it('신규 최초 원문은 실제 직원 회사UID 확인 후 한번만 적용하고 현재품목삭제·타회사재생성 후 inspect0쓰기이다',async()=>{
+  await adminAuth!.setCustomUserClaims(uid!,{employeeId:uid,companyId:'taebaek',isAdmin:false});expect((await gateway.auth.currentUser.getIdTokenResult(true)).claims.isAdmin).toBe(false);const {locations,plan}=await seed('durable');const request={version:1 as const,kind:'can-unpack' as const,operationId:prefix+'-durable-op',companyId:'taebaek' as const,uid:uid!,capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};
+  const movement='rawMaterialLedger/'+operationDocId(request.operationId);paths.add(movement);let lose=true;const check=async()=>{await productStocktakeActor(request.companyId,request.uid,true);if(lose&&(await adminDb!.doc(movement).get()).exists){lose=false;throw Error('응답 유실');}};
+  expect((await unpack(plan,{request,mode:'apply',check})).status).toBe('unknown');const first=await adminDb!.doc(movement).get();await adminDb!.doc(locations[0]).delete();await adminDb!.doc(locations[1]).set({companyId:'punghoe',name:'타회사 합성'});
+  expect((await unpack(plan,{request,mode:'inspect',check})).status).toBe('duplicate');expect((await adminDb!.doc(movement).get()).updateTime?.isEqual(first.updateTime!)).toBe(true);
+ },60_000);});

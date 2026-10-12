@@ -7,9 +7,10 @@ import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { unpackBoxStock } from './boxUnpackService';
+import {productStocktakeActor} from './unpackService';
 
-const gateway = vi.hoisted(() => ({ db: undefined as any }));
-vi.mock('../firebase', () => ({ get db() { return gateway.db; } }));
+const gateway = vi.hoisted(() => ({ db: undefined as any,auth:undefined as any }));
+vi.mock('../firebase', () => ({ get db() { return gateway.db; },get auth(){return gateway.auth;},authReady:Promise.resolve() }));
 
 describe.skipIf(process.env.BOX_UNPACK_EMULATOR_TEST !== 'true')('박스 개봉 실제 Auth·Firestore 계약', () => {
  const projectId = 'demo-taebaekfood-local';
@@ -31,7 +32,7 @@ describe.skipIf(process.env.BOX_UNPACK_EMULATOR_TEST !== 'true')('박스 개봉 
   await adminAuth.createUser({uid, email:prefix+'@example.invalid',password});
   await adminAuth.setCustomUserClaims(uid,{employeeId:uid,companyId:'taebaek',isAdmin:false});
   app=initializeApp({projectId,apiKey:'local-emulator-only'},prefix+'-sdk'); gateway.db=getFirestore(app); connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);
-  const auth=getAuth(app); connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
+  const auth=getAuth(app);gateway.auth=auth; connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
   await signInWithEmailAndPassword(auth,prefix+'@example.invalid',password);
   expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({employeeId:uid,companyId:'taebaek',isAdmin:false});
  },90_000);
@@ -76,4 +77,8 @@ describe.skipIf(process.env.BOX_UNPACK_EMULATOR_TEST !== 'true')('박스 개봉 
   const result=await unpackBoxStock(request);expect(result).toMatchObject({ok:false});expect(result.message).toContain('실사');
   expect(await state(request)).toEqual(before);expect(before.move).toBeUndefined();
  },60_000);
-});
+ it('새 박스 최초 원문은 직원UID·회사·kg를 고정하며 삭제된 현재품목 없이 결과만 확인한다',async()=>{
+  const base=await fixture('durable'),request={...base,version:1 as const,kind:'box-unpack' as const,companyId:'taebaek' as const,uid:uid!,capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',unitKg:1,boxItemName:'합성 박스',unitItemName:'합성 낱개'};let lose=true;const check=async()=>{await productStocktakeActor(request.companyId,request.uid,true);if(lose&&(await adminDb!.doc('itemUnpackMovements/'+request.operationId).get()).exists){lose=false;throw Error('응답 유실');}};
+  expect((await unpackBoxStock(request,undefined,{request,mode:'apply',check})).status).toBe('unknown');const move=await adminDb!.doc('itemUnpackMovements/'+request.operationId).get();expect(move.data()!.inventoryRequest).toMatchObject({boxItemName:'합성 박스',unitItemName:'합성 낱개'});await adminDb!.doc('items/'+request.boxItemId).delete();await adminDb!.doc('items/'+request.unitItemId).set({companyId:'punghoe'});
+  expect((await unpackBoxStock(request,undefined,{request,mode:'inspect',check})).status).toBe('duplicate');expect((await adminDb!.doc('itemUnpackMovements/'+request.operationId).get()).updateTime?.isEqual(move.updateTime!)).toBe(true);
+ },60_000);});

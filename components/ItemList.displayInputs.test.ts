@@ -18,12 +18,12 @@ it.each(['unitsPerBoxOf','itemKg','unpackQty'])('실제 %s 잔여 호출은 명�
  const parsed=ts.createSourceFile('ItemList.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
  const calls:string[]=[];
  const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===name)calls.push(node.getText(parsed));ts.forEachChild(node,visit);};
- visit(parsed);expect(calls).toHaveLength(name==='unitsPerBoxOf'?11:1);
+ visit(parsed);expect(calls).toHaveLength(name==='unitsPerBoxOf'?11:name==='itemKg'?2:1);
  setBomIndex(b.bom);setPackIndex(b.pack);
  const empty={bom:buildBomIndex([],[]),pack:buildPackIndex([])};
  for(const call of calls){
-  const run=new Function('unitsPerBoxOf','itemKg','unpackQty','items','product','item','c','orderUnitInputs',`return ${call};`);
-  const evaluate=(inputs?:OrderUnitInputs)=>run(unitsPerBoxOf,itemKg,unpackQty,items,items[0],{...items[0],spec:'1kg * 20',itemId:'box',qty:2},{id:'box'},inputs);
+  const run=new Function('unitsPerBoxOf','itemKg','unpackQty','items','product','item','c','orderUnitInputs','target','inputs',`return ${call};`);
+  const evaluate=(inputs?:OrderUnitInputs)=>run(unitsPerBoxOf,itemKg,unpackQty,items,items[0],{...items[0],spec:'1kg * 20',itemId:'box',qty:2},{id:'box'},inputs,{...items[0],spec:'1kg * 20'},inputs ?? {bom:getBomIndex(),pack:getPackIndex()});
   const expected=name==='unitsPerBoxOf'?20:name==='itemKg'?20:40;
   expect(evaluate(a)).toBe(expected);
   expect(evaluate(empty)).toBe(name==='unitsPerBoxOf'?0:name==='itemKg'?1:2);

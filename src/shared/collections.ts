@@ -30,6 +30,8 @@ export const COL = {
   productionWorkDocumentLines: 'productionWorkDocumentLines',
   // ── 품목·거래처 ──
   items: 'items',
+  // 여러 품목을 함께 늘린 최초 요청과 결과를 보존해 응답 유실 뒤 재적용을 막는다.
+  itemStockAddOperations: 'itemStockAddOperations',
   itemBom: 'item_bom',
   partners: 'partners',
   partnerItem: 'partner_item',

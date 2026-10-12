@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-12T02:09:22.901Z",
-  "sourceFiles": 465,
-  "unresolvedAccesses": 2458,
+  "generatedAt": "2026-10-12T04:35:26.062Z",
+  "sourceFiles": 468,
+  "unresolvedAccesses": 2526,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:104",
@@ -1845,14 +1845,259 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/unpackService.ts:249",
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.state",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request.companyId",
+      "receiverExpression": "value.request",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request.uid",
+      "receiverExpression": "value.request",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request.kind",
+      "receiverExpression": "value.request",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/itemInventoryAttempt.ts:40",
+      "expression": "value.request",
+      "receiverExpression": "value",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:79",
+      "expression": "saved.inventoryResult?.movesText",
+      "receiverExpression": "saved.inventoryResult",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:81",
+      "expression": "saved.source?.type",
+      "receiverExpression": "saved.source",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:81",
+      "expression": "saved.source.id",
+      "receiverExpression": "saved.source",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "moves.length",
+      "receiverExpression": "moves",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "moves.some",
+      "receiverExpression": "moves",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.supplierName",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.cans",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.cans",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.bulkQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.cans",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.canLotId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.canLotId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.canLotId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "moves.reduce",
+      "receiverExpression": "moves",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.cans",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.canBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.canAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.bulkBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.bulkAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.canBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.canAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.canAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.bulkAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.bulkAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "result.bulkBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "moves.reduce",
+      "receiverExpression": "moves",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:82",
+      "expression": "row.bulkQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/unpackService.ts:271",
       "expression": "previous.request",
       "receiverExpression": "previous",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:249",
+      "location": "src/shared/services/unpackService.ts:271",
       "expression": "previous.targetQty",
       "receiverExpression": "previous",
       "receiverType": "any",
@@ -3014,364 +3259,595 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "components/ItemList.tsx:327",
+      "location": "src/shared/services/boxUnpackService.ts:36",
+      "expression": "row.qty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:36",
+      "expression": "row.qty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:36",
+      "expression": "row.qty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:36",
+      "expression": "move.inventoryResult?.sourceText",
+      "receiverExpression": "move.inventoryResult",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "move.sourceLots.length",
+      "receiverExpression": "move.sourceLots",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.boxBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.boxAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitKg",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.boxBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.boxAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitBefore",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitKg",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.boxAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "result.unitAfter",
+      "receiverExpression": "result",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "move.sourceLots.some",
+      "receiverExpression": "move.sourceLots",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "row.lotId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/boxUnpackService.ts:37",
+      "expression": "row.lotId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.itemId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.deltaQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.beforeQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.afterQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.afterQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.anchorId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.afterQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.beforeQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.deltaQty",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:21",
+      "expression": "row.anchorId",
+      "receiverExpression": "row",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:31",
+      "expression": "lots.find((lot:any)=>lot.unitKg)?.unitKg",
+      "receiverExpression": "lots.find((lot:any)=>lot.unitKg)",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:31",
+      "expression": "lots.find",
+      "receiverExpression": "lots",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/itemStockAddService.ts:31",
+      "expression": "lot.unitKg",
+      "receiverExpression": "lot",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "components/ItemList.tsx:329",
       "expression": "(p?.lots ?? []).length",
       "receiverExpression": "(p?.lots ?? [])",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:327",
+      "location": "components/ItemList.tsx:329",
       "expression": "p?.lots",
       "receiverExpression": "p",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:328",
+      "location": "components/ItemList.tsx:330",
       "expression": "p.lots",
       "receiverExpression": "p",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:329",
+      "location": "components/ItemList.tsx:331",
       "expression": "p?.stock",
       "receiverExpression": "p",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:330",
+      "location": "components/ItemList.tsx:332",
       "expression": "p?.density",
       "receiverExpression": "p",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:330",
+      "location": "components/ItemList.tsx:332",
       "expression": "p.density",
       "receiverExpression": "p",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:561",
+      "location": "components/ItemList.tsx:621",
       "expression": "canvas.toBlob",
       "receiverExpression": "canvas",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:590",
+      "location": "components/ItemList.tsx:650",
       "expression": "(e as any)?.message",
       "receiverExpression": "(e as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:602",
+      "location": "components/ItemList.tsx:670",
       "expression": "nav.canShare",
       "receiverExpression": "nav",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:602",
+      "location": "components/ItemList.tsx:670",
       "expression": "nav.canShare",
       "receiverExpression": "nav",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:603",
+      "location": "components/ItemList.tsx:671",
       "expression": "nav.share",
       "receiverExpression": "nav",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.id",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.companyId",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.poType",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.status",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.oemCancelledAt",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po?.oemCancelOperationId",
       "receiverExpression": "value.po",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1137",
+      "location": "components/ItemList.tsx:1214",
       "expression": "value.po",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "value.returns",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "value.returns.every",
       "receiverExpression": "value.returns",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "value.returns",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "row.qty",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1138",
+      "location": "components/ItemList.tsx:1215",
       "expression": "row.qty",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "value.bulk",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "value.bulk.every",
       "receiverExpression": "value.bulk",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "value.bulk",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "row.material",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "row.material",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "row.kg",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1139",
+      "location": "components/ItemList.tsx:1216",
       "expression": "row.kg",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.returns.length",
       "receiverExpression": "value.returns",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.returns",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.bulk.length",
       "receiverExpression": "value.bulk",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.bulk",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.unitPricePerKg",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.unitPricePerKg",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.date",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:1140",
+      "location": "components/ItemList.tsx:1217",
       "expression": "value.date",
       "receiverExpression": "value",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2066",
+      "location": "components/ItemList.tsx:2153",
       "expression": "(e as any).lotChanges?.some",
       "receiverExpression": "(e as any).lotChanges",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2066",
+      "location": "components/ItemList.tsx:2153",
       "expression": "(e as any).lotChanges",
       "receiverExpression": "(e as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2066",
+      "location": "components/ItemList.tsx:2153",
       "expression": "change.lotId",
       "receiverExpression": "change",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2068",
+      "location": "components/ItemList.tsx:2155",
       "expression": "(e as any).source?.type",
       "receiverExpression": "(e as any).source",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2068",
+      "location": "components/ItemList.tsx:2155",
       "expression": "(e as any).source",
       "receiverExpression": "(e as any)",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2068",
+      "location": "components/ItemList.tsx:2155",
       "expression": "(e as any).source?.id",
       "receiverExpression": "(e as any).source",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "components/ItemList.tsx:2068",
+      "location": "components/ItemList.tsx:2155",
       "expression": "(e as any).source",
       "receiverExpression": "(e as any)",
       "receiverType": "any",
@@ -17281,6 +17757,10 @@
       "collection": "items"
     },
     {
+      "key": "itemStockAddOperations",
+      "collection": "itemStockAddOperations"
+    },
+    {
       "key": "itemBom",
       "collection": "item_bom"
     },
@@ -17626,8 +18106,8 @@
       "references": [
         "components/DeliveryManager.tsx:194",
         "components/DeliveryManager.tsx:382",
-        "components/ItemList.tsx:403",
-        "components/ItemList.tsx:405",
+        "components/ItemList.tsx:463",
+        "components/ItemList.tsx:465",
         "components/OrdersList.tsx:1027",
         "components/OrdersList.tsx:1988",
         "components/OrdersList.tsx:2061",
@@ -17905,7 +18385,7 @@
         "components/DeliveryManager.tsx:1149",
         "components/DeliveryManager.tsx:192",
         "components/DeliveryManager.tsx:83",
-        "components/ItemList.tsx:402",
+        "components/ItemList.tsx:462",
         "components/OrdersList.tsx:1995",
         "components/OrdersList.tsx:2109",
         "components/OrdersList.tsx:2499",
@@ -18416,12 +18896,12 @@
         "components/AdminChecklist.tsx:181",
         "components/Dashboard.tsx:209",
         "components/Dashboard.tsx:268",
-        "components/ItemList.tsx:2255",
-        "components/ItemList.tsx:2445",
-        "components/ItemList.tsx:394",
-        "components/ItemList.tsx:420",
-        "components/ItemList.tsx:911",
-        "components/ItemList.tsx:916",
+        "components/ItemList.tsx:2342",
+        "components/ItemList.tsx:2532",
+        "components/ItemList.tsx:454",
+        "components/ItemList.tsx:480",
+        "components/ItemList.tsx:979",
+        "components/ItemList.tsx:984",
         "components/ItemManager.tsx:1049",
         "components/ItemManager.tsx:1168",
         "components/ItemManager.tsx:1213",
@@ -18496,11 +18976,11 @@
         "components/AdminChecklist.tsx:181",
         "components/Dashboard.tsx:209",
         "components/Dashboard.tsx:268",
-        "components/ItemList.tsx:2255",
-        "components/ItemList.tsx:2446",
-        "components/ItemList.tsx:394",
-        "components/ItemList.tsx:420",
-        "components/ItemList.tsx:916",
+        "components/ItemList.tsx:2342",
+        "components/ItemList.tsx:2533",
+        "components/ItemList.tsx:454",
+        "components/ItemList.tsx:480",
+        "components/ItemList.tsx:984",
         "components/ItemManager.tsx:1049",
         "components/ItemManager.tsx:1169",
         "components/ItemManager.tsx:1213",
@@ -18560,12 +19040,12 @@
       "references": [
         "components/AdminChecklist.tsx:129",
         "components/AdminChecklist.tsx:181",
-        "components/ItemList.tsx:2255",
-        "components/ItemList.tsx:2445",
-        "components/ItemList.tsx:394",
-        "components/ItemList.tsx:420",
-        "components/ItemList.tsx:911",
-        "components/ItemList.tsx:916",
+        "components/ItemList.tsx:2342",
+        "components/ItemList.tsx:2532",
+        "components/ItemList.tsx:454",
+        "components/ItemList.tsx:480",
+        "components/ItemList.tsx:979",
+        "components/ItemList.tsx:984",
         "components/ItemManager.tsx:264",
         "components/ItemManager.tsx:265",
         "components/OrdersList.tsx:1025",
@@ -19648,8 +20128,8 @@
         "components/DeliveryManager.tsx:871",
         "components/DeliveryManager.tsx:958",
         "components/DeliveryManager.tsx:967",
-        "components/ItemList.tsx:870",
-        "components/ItemList.tsx:885",
+        "components/ItemList.tsx:938",
+        "components/ItemList.tsx:953",
         "components/OrderInventoryRecoveryPanel.tsx:12",
         "components/OrderInventoryRecoveryPanel.tsx:15",
         "components/OrderInventoryRecoveryPanel.tsx:28",
@@ -20030,8 +20510,8 @@
         "components/DeliveryManager.tsx:839",
         "components/DeliveryManager.tsx:876",
         "components/DeliveryManager.tsx:972",
-        "components/ItemList.tsx:871",
-        "components/ItemList.tsx:885",
+        "components/ItemList.tsx:939",
+        "components/ItemList.tsx:953",
         "components/OrderInventoryRecoveryPanel.tsx:12",
         "components/OrderInventoryRecoveryPanel.tsx:15",
         "components/OrderPicker.tsx:465",
@@ -20127,7 +20607,7 @@
         "components/DeliveryManager.tsx:233",
         "components/DeliveryManager.tsx:381",
         "components/DeliveryManager.tsx:83",
-        "components/ItemList.tsx:401",
+        "components/ItemList.tsx:461",
         "components/OrderPicker.tsx:108",
         "components/OrderPicker.tsx:109",
         "components/OrdersList.tsx:1027",
@@ -20369,7 +20849,7 @@
         "components/DeliveryManager.tsx:589",
         "components/DeliveryManager.tsx:590",
         "components/DeliveryManager.tsx:636",
-        "components/ItemList.tsx:400",
+        "components/ItemList.tsx:460",
         "components/OrderPicker.tsx:265",
         "components/OrderPicker.tsx:466",
         "components/OrdersList.tsx:1142",
@@ -20556,8 +21036,8 @@
         "components/DeliveryManager.tsx:374",
         "components/DeliveryManager.tsx:398",
         "components/DeliveryManager.tsx:399",
-        "components/ItemList.tsx:872",
-        "components/ItemList.tsx:886",
+        "components/ItemList.tsx:940",
+        "components/ItemList.tsx:954",
         "components/OrderPicker.tsx:211",
         "components/OrderPicker.tsx:242",
         "components/OrderPicker.tsx:437",
@@ -20804,7 +21284,7 @@
       "type": "string | null",
       "declaration": "src/shared/types.ts:301",
       "references": [
-        "components/ItemList.tsx:886",
+        "components/ItemList.tsx:954",
         "components/OrdersList.tsx:3370",
         "src/features/admin/itemLedger.ts:128",
         "src/shared/orderActivityLog.ts:121",
@@ -20818,8 +21298,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:302",
       "references": [
-        "components/ItemList.tsx:872",
-        "components/ItemList.tsx:886",
+        "components/ItemList.tsx:940",
+        "components/ItemList.tsx:954",
         "components/OrdersList.tsx:2024",
         "components/OrdersList.tsx:4077",
         "components/OrdersList.tsx:4089",
@@ -20946,8 +21426,8 @@
       "type": "{ itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number; lotSnapshot?: RawMaterialLot }[]",
       "declaration": "src/shared/types.ts:322",
       "references": [
-        "components/ItemList.tsx:866",
-        "components/ItemList.tsx:882",
+        "components/ItemList.tsx:934",
+        "components/ItemList.tsx:950",
         "src/features/admin/orderInventoryCancellation.ts:45",
         "src/features/admin/orderInventoryCancellation.ts:73",
         "src/features/admin/orderProductLots.ts:133",
@@ -22185,103 +22665,103 @@
         "components/ItemLedger.tsx:103",
         "components/ItemLedger.tsx:63",
         "components/ItemLedger.tsx:66",
-        "components/ItemList.tsx:1040",
-        "components/ItemList.tsx:1045",
-        "components/ItemList.tsx:1062",
-        "components/ItemList.tsx:1068",
-        "components/ItemList.tsx:1069",
-        "components/ItemList.tsx:1132",
-        "components/ItemList.tsx:1172",
-        "components/ItemList.tsx:1241",
-        "components/ItemList.tsx:1243",
-        "components/ItemList.tsx:1260",
-        "components/ItemList.tsx:1265",
-        "components/ItemList.tsx:1274",
-        "components/ItemList.tsx:1277",
-        "components/ItemList.tsx:1312",
-        "components/ItemList.tsx:1325",
-        "components/ItemList.tsx:1327",
-        "components/ItemList.tsx:1981",
-        "components/ItemList.tsx:2024",
-        "components/ItemList.tsx:2034",
-        "components/ItemList.tsx:2065",
+        "components/ItemList.tsx:1004",
+        "components/ItemList.tsx:1027",
+        "components/ItemList.tsx:1030",
+        "components/ItemList.tsx:1108",
+        "components/ItemList.tsx:1113",
+        "components/ItemList.tsx:1131",
+        "components/ItemList.tsx:1134",
+        "components/ItemList.tsx:1135",
+        "components/ItemList.tsx:1209",
+        "components/ItemList.tsx:1249",
+        "components/ItemList.tsx:1318",
+        "components/ItemList.tsx:1320",
+        "components/ItemList.tsx:1337",
+        "components/ItemList.tsx:1342",
+        "components/ItemList.tsx:1351",
+        "components/ItemList.tsx:1354",
+        "components/ItemList.tsx:1389",
+        "components/ItemList.tsx:1402",
+        "components/ItemList.tsx:1404",
         "components/ItemList.tsx:2068",
-        "components/ItemList.tsx:2081",
-        "components/ItemList.tsx:2107",
-        "components/ItemList.tsx:2176",
-        "components/ItemList.tsx:2177",
-        "components/ItemList.tsx:2178",
-        "components/ItemList.tsx:2187",
-        "components/ItemList.tsx:2215",
-        "components/ItemList.tsx:2228",
-        "components/ItemList.tsx:2229",
-        "components/ItemList.tsx:2230",
-        "components/ItemList.tsx:2244",
-        "components/ItemList.tsx:2255",
-        "components/ItemList.tsx:2257",
-        "components/ItemList.tsx:2261",
-        "components/ItemList.tsx:2278",
-        "components/ItemList.tsx:2282",
-        "components/ItemList.tsx:2303",
-        "components/ItemList.tsx:2341",
-        "components/ItemList.tsx:2343",
-        "components/ItemList.tsx:2353",
-        "components/ItemList.tsx:2356",
-        "components/ItemList.tsx:2359",
-        "components/ItemList.tsx:2374",
-        "components/ItemList.tsx:2381",
-        "components/ItemList.tsx:2392",
-        "components/ItemList.tsx:2434",
-        "components/ItemList.tsx:2436",
-        "components/ItemList.tsx:2445",
-        "components/ItemList.tsx:2448",
-        "components/ItemList.tsx:2452",
-        "components/ItemList.tsx:2518",
-        "components/ItemList.tsx:2592",
-        "components/ItemList.tsx:2593",
-        "components/ItemList.tsx:2596",
-        "components/ItemList.tsx:2664",
-        "components/ItemList.tsx:2682",
-        "components/ItemList.tsx:2715",
-        "components/ItemList.tsx:2730",
-        "components/ItemList.tsx:2816",
-        "components/ItemList.tsx:2844",
-        "components/ItemList.tsx:2848",
-        "components/ItemList.tsx:2850",
-        "components/ItemList.tsx:2971",
-        "components/ItemList.tsx:2978",
-        "components/ItemList.tsx:3094",
-        "components/ItemList.tsx:3101",
-        "components/ItemList.tsx:3128",
-        "components/ItemList.tsx:3134",
-        "components/ItemList.tsx:3135",
-        "components/ItemList.tsx:3266",
-        "components/ItemList.tsx:3271",
-        "components/ItemList.tsx:3274",
-        "components/ItemList.tsx:3300",
-        "components/ItemList.tsx:3326",
-        "components/ItemList.tsx:3476",
-        "components/ItemList.tsx:3478",
-        "components/ItemList.tsx:3486",
-        "components/ItemList.tsx:3516",
-        "components/ItemList.tsx:3543",
-        "components/ItemList.tsx:3551",
-        "components/ItemList.tsx:3702",
-        "components/ItemList.tsx:3718",
-        "components/ItemList.tsx:3726",
-        "components/ItemList.tsx:3741",
-        "components/ItemList.tsx:3947",
-        "components/ItemList.tsx:3952",
-        "components/ItemList.tsx:403",
-        "components/ItemList.tsx:434",
-        "components/ItemList.tsx:522",
-        "components/ItemList.tsx:581",
-        "components/ItemList.tsx:672",
-        "components/ItemList.tsx:673",
-        "components/ItemList.tsx:839",
-        "components/ItemList.tsx:936",
-        "components/ItemList.tsx:959",
-        "components/ItemList.tsx:962",
+        "components/ItemList.tsx:2111",
+        "components/ItemList.tsx:2121",
+        "components/ItemList.tsx:2152",
+        "components/ItemList.tsx:2155",
+        "components/ItemList.tsx:2168",
+        "components/ItemList.tsx:2194",
+        "components/ItemList.tsx:2263",
+        "components/ItemList.tsx:2264",
+        "components/ItemList.tsx:2265",
+        "components/ItemList.tsx:2274",
+        "components/ItemList.tsx:2302",
+        "components/ItemList.tsx:2315",
+        "components/ItemList.tsx:2316",
+        "components/ItemList.tsx:2317",
+        "components/ItemList.tsx:2331",
+        "components/ItemList.tsx:2342",
+        "components/ItemList.tsx:2344",
+        "components/ItemList.tsx:2348",
+        "components/ItemList.tsx:2365",
+        "components/ItemList.tsx:2369",
+        "components/ItemList.tsx:2390",
+        "components/ItemList.tsx:2428",
+        "components/ItemList.tsx:2430",
+        "components/ItemList.tsx:2440",
+        "components/ItemList.tsx:2443",
+        "components/ItemList.tsx:2446",
+        "components/ItemList.tsx:2461",
+        "components/ItemList.tsx:2468",
+        "components/ItemList.tsx:2479",
+        "components/ItemList.tsx:2521",
+        "components/ItemList.tsx:2523",
+        "components/ItemList.tsx:2532",
+        "components/ItemList.tsx:2535",
+        "components/ItemList.tsx:2539",
+        "components/ItemList.tsx:2605",
+        "components/ItemList.tsx:2679",
+        "components/ItemList.tsx:2680",
+        "components/ItemList.tsx:2683",
+        "components/ItemList.tsx:2751",
+        "components/ItemList.tsx:2769",
+        "components/ItemList.tsx:2802",
+        "components/ItemList.tsx:2817",
+        "components/ItemList.tsx:2903",
+        "components/ItemList.tsx:2931",
+        "components/ItemList.tsx:2935",
+        "components/ItemList.tsx:2937",
+        "components/ItemList.tsx:3058",
+        "components/ItemList.tsx:3065",
+        "components/ItemList.tsx:3181",
+        "components/ItemList.tsx:3188",
+        "components/ItemList.tsx:3216",
+        "components/ItemList.tsx:3218",
+        "components/ItemList.tsx:3219",
+        "components/ItemList.tsx:3345",
+        "components/ItemList.tsx:3350",
+        "components/ItemList.tsx:3353",
+        "components/ItemList.tsx:3379",
+        "components/ItemList.tsx:3409",
+        "components/ItemList.tsx:3563",
+        "components/ItemList.tsx:3565",
+        "components/ItemList.tsx:3573",
+        "components/ItemList.tsx:3603",
+        "components/ItemList.tsx:3630",
+        "components/ItemList.tsx:3638",
+        "components/ItemList.tsx:3789",
+        "components/ItemList.tsx:3805",
+        "components/ItemList.tsx:3813",
+        "components/ItemList.tsx:3828",
+        "components/ItemList.tsx:4034",
+        "components/ItemList.tsx:4039",
+        "components/ItemList.tsx:463",
+        "components/ItemList.tsx:494",
+        "components/ItemList.tsx:582",
+        "components/ItemList.tsx:641",
+        "components/ItemList.tsx:740",
+        "components/ItemList.tsx:741",
+        "components/ItemList.tsx:907",
         "components/ItemManager.tsx:101",
         "components/ItemManager.tsx:102",
         "components/ItemManager.tsx:1038",
@@ -22865,59 +23345,58 @@
         "components/ItemLedger.tsx:127",
         "components/ItemLedger.tsx:57",
         "components/ItemLedger.tsx:66",
-        "components/ItemList.tsx:1016",
-        "components/ItemList.tsx:1020",
-        "components/ItemList.tsx:1021",
-        "components/ItemList.tsx:1041",
-        "components/ItemList.tsx:1066",
-        "components/ItemList.tsx:1072",
-        "components/ItemList.tsx:1155",
-        "components/ItemList.tsx:1163",
-        "components/ItemList.tsx:1164",
-        "components/ItemList.tsx:1272",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1648",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1860",
-        "components/ItemList.tsx:1994",
-        "components/ItemList.tsx:2026",
-        "components/ItemList.tsx:2063",
-        "components/ItemList.tsx:2069",
-        "components/ItemList.tsx:2184",
-        "components/ItemList.tsx:2188",
-        "components/ItemList.tsx:2303",
-        "components/ItemList.tsx:2435",
-        "components/ItemList.tsx:2437",
-        "components/ItemList.tsx:2551",
-        "components/ItemList.tsx:2730",
-        "components/ItemList.tsx:2778",
-        "components/ItemList.tsx:2850",
-        "components/ItemList.tsx:2978",
-        "components/ItemList.tsx:3062",
-        "components/ItemList.tsx:3075",
-        "components/ItemList.tsx:3134",
-        "components/ItemList.tsx:3362",
-        "components/ItemList.tsx:3482",
-        "components/ItemList.tsx:3547",
-        "components/ItemList.tsx:3954",
-        "components/ItemList.tsx:4001",
-        "components/ItemList.tsx:4003",
-        "components/ItemList.tsx:4004",
-        "components/ItemList.tsx:4083",
-        "components/ItemList.tsx:475",
-        "components/ItemList.tsx:494",
-        "components/ItemList.tsx:495",
-        "components/ItemList.tsx:496",
-        "components/ItemList.tsx:497",
-        "components/ItemList.tsx:498",
-        "components/ItemList.tsx:499",
-        "components/ItemList.tsx:787",
-        "components/ItemList.tsx:793",
-        "components/ItemList.tsx:830",
-        "components/ItemList.tsx:91",
-        "components/ItemList.tsx:970",
-        "components/ItemList.tsx:984",
-        "components/ItemList.tsx:990",
+        "components/ItemList.tsx:1038",
+        "components/ItemList.tsx:1052",
+        "components/ItemList.tsx:1058",
+        "components/ItemList.tsx:1084",
+        "components/ItemList.tsx:1088",
+        "components/ItemList.tsx:1089",
+        "components/ItemList.tsx:1109",
+        "components/ItemList.tsx:1135",
+        "components/ItemList.tsx:1232",
+        "components/ItemList.tsx:1240",
+        "components/ItemList.tsx:1241",
+        "components/ItemList.tsx:1349",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1735",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:1947",
+        "components/ItemList.tsx:2081",
+        "components/ItemList.tsx:2113",
+        "components/ItemList.tsx:2150",
+        "components/ItemList.tsx:2156",
+        "components/ItemList.tsx:2271",
+        "components/ItemList.tsx:2275",
+        "components/ItemList.tsx:2390",
+        "components/ItemList.tsx:2522",
+        "components/ItemList.tsx:2524",
+        "components/ItemList.tsx:2638",
+        "components/ItemList.tsx:2817",
+        "components/ItemList.tsx:2865",
+        "components/ItemList.tsx:2937",
+        "components/ItemList.tsx:3065",
+        "components/ItemList.tsx:3149",
+        "components/ItemList.tsx:3162",
+        "components/ItemList.tsx:3218",
+        "components/ItemList.tsx:3445",
+        "components/ItemList.tsx:3569",
+        "components/ItemList.tsx:3634",
+        "components/ItemList.tsx:4041",
+        "components/ItemList.tsx:4088",
+        "components/ItemList.tsx:4090",
+        "components/ItemList.tsx:4091",
+        "components/ItemList.tsx:4170",
+        "components/ItemList.tsx:535",
+        "components/ItemList.tsx:554",
+        "components/ItemList.tsx:555",
+        "components/ItemList.tsx:556",
+        "components/ItemList.tsx:557",
+        "components/ItemList.tsx:558",
+        "components/ItemList.tsx:559",
+        "components/ItemList.tsx:855",
+        "components/ItemList.tsx:861",
+        "components/ItemList.tsx:898",
+        "components/ItemList.tsx:93",
         "components/ItemManager.tsx:169",
         "components/ItemManager.tsx:1794",
         "components/ItemManager.tsx:1814",
@@ -23160,38 +23639,38 @@
         "components/BomIntegrityPanel.tsx:59",
         "components/BomIntegrityPanel.tsx:60",
         "components/Dashboard.tsx:135",
-        "components/ItemList.tsx:1111",
-        "components/ItemList.tsx:1175",
-        "components/ItemList.tsx:1221",
-        "components/ItemList.tsx:1249",
-        "components/ItemList.tsx:1264",
-        "components/ItemList.tsx:1285",
-        "components/ItemList.tsx:1292",
-        "components/ItemList.tsx:1294",
-        "components/ItemList.tsx:1295",
-        "components/ItemList.tsx:2117",
-        "components/ItemList.tsx:2180",
-        "components/ItemList.tsx:2187",
-        "components/ItemList.tsx:2202",
-        "components/ItemList.tsx:2203",
-        "components/ItemList.tsx:2226",
-        "components/ItemList.tsx:2335",
-        "components/ItemList.tsx:2347",
-        "components/ItemList.tsx:2386",
-        "components/ItemList.tsx:2436",
-        "components/ItemList.tsx:2451",
-        "components/ItemList.tsx:2453",
-        "components/ItemList.tsx:2494",
-        "components/ItemList.tsx:2496",
-        "components/ItemList.tsx:2520",
-        "components/ItemList.tsx:2536",
-        "components/ItemList.tsx:2542",
-        "components/ItemList.tsx:2561",
-        "components/ItemList.tsx:2836",
-        "components/ItemList.tsx:3045",
-        "components/ItemList.tsx:469",
-        "components/ItemList.tsx:786",
-        "components/ItemList.tsx:970",
+        "components/ItemList.tsx:1038",
+        "components/ItemList.tsx:1188",
+        "components/ItemList.tsx:1252",
+        "components/ItemList.tsx:1298",
+        "components/ItemList.tsx:1326",
+        "components/ItemList.tsx:1341",
+        "components/ItemList.tsx:1362",
+        "components/ItemList.tsx:1369",
+        "components/ItemList.tsx:1371",
+        "components/ItemList.tsx:1372",
+        "components/ItemList.tsx:2204",
+        "components/ItemList.tsx:2267",
+        "components/ItemList.tsx:2274",
+        "components/ItemList.tsx:2289",
+        "components/ItemList.tsx:2290",
+        "components/ItemList.tsx:2313",
+        "components/ItemList.tsx:2422",
+        "components/ItemList.tsx:2434",
+        "components/ItemList.tsx:2473",
+        "components/ItemList.tsx:2523",
+        "components/ItemList.tsx:2538",
+        "components/ItemList.tsx:2540",
+        "components/ItemList.tsx:2581",
+        "components/ItemList.tsx:2583",
+        "components/ItemList.tsx:2607",
+        "components/ItemList.tsx:2623",
+        "components/ItemList.tsx:2629",
+        "components/ItemList.tsx:2648",
+        "components/ItemList.tsx:2923",
+        "components/ItemList.tsx:3132",
+        "components/ItemList.tsx:529",
+        "components/ItemList.tsx:854",
         "components/ItemManager.tsx:1045",
         "components/ItemManager.tsx:1197",
         "components/ItemManager.tsx:1207",
@@ -23282,16 +23761,16 @@
         "components/AddItemModal.tsx:662",
         "components/AddOrderModal.tsx:197",
         "components/AddOrderModal.tsx:317",
-        "components/ItemList.tsx:1111",
-        "components/ItemList.tsx:1175",
-        "components/ItemList.tsx:1264",
-        "components/ItemList.tsx:1292",
-        "components/ItemList.tsx:1991",
-        "components/ItemList.tsx:3088",
-        "components/ItemList.tsx:3109",
-        "components/ItemList.tsx:3723",
-        "components/ItemList.tsx:493",
-        "components/ItemList.tsx:517",
+        "components/ItemList.tsx:1188",
+        "components/ItemList.tsx:1252",
+        "components/ItemList.tsx:1341",
+        "components/ItemList.tsx:1369",
+        "components/ItemList.tsx:2078",
+        "components/ItemList.tsx:3175",
+        "components/ItemList.tsx:3196",
+        "components/ItemList.tsx:3810",
+        "components/ItemList.tsx:553",
+        "components/ItemList.tsx:577",
         "components/ItemManager.tsx:234",
         "components/ItemManager.tsx:344",
         "components/ItemManager.tsx:509",
@@ -23324,17 +23803,17 @@
       "declaration": "src/shared/types.ts:534",
       "references": [
         "components/AddItemModal.tsx:104",
-        "components/ItemList.tsx:1111",
-        "components/ItemList.tsx:1251",
-        "components/ItemList.tsx:1991",
-        "components/ItemList.tsx:2474",
-        "components/ItemList.tsx:2476",
-        "components/ItemList.tsx:3084",
-        "components/ItemList.tsx:3086",
-        "components/ItemList.tsx:3280",
-        "components/ItemList.tsx:3281",
-        "components/ItemList.tsx:3932",
-        "components/ItemList.tsx:3933",
+        "components/ItemList.tsx:1188",
+        "components/ItemList.tsx:1328",
+        "components/ItemList.tsx:2078",
+        "components/ItemList.tsx:2561",
+        "components/ItemList.tsx:2563",
+        "components/ItemList.tsx:3171",
+        "components/ItemList.tsx:3173",
+        "components/ItemList.tsx:3359",
+        "components/ItemList.tsx:3360",
+        "components/ItemList.tsx:4019",
+        "components/ItemList.tsx:4020",
         "components/ItemManager.tsx:344",
         "components/ItemManager.tsx:508",
         "components/ItemManager.tsx:700",
@@ -23418,29 +23897,29 @@
         "components/ItemLedger.tsx:104",
         "components/ItemLedger.tsx:120",
         "components/ItemLedger.tsx:139",
-        "components/ItemList.tsx:1064",
-        "components/ItemList.tsx:1089",
-        "components/ItemList.tsx:2127",
-        "components/ItemList.tsx:2199",
-        "components/ItemList.tsx:2201",
-        "components/ItemList.tsx:2301",
-        "components/ItemList.tsx:2311",
-        "components/ItemList.tsx:2443",
-        "components/ItemList.tsx:2612",
-        "components/ItemList.tsx:2622",
-        "components/ItemList.tsx:2626",
-        "components/ItemList.tsx:2628",
-        "components/ItemList.tsx:2629",
-        "components/ItemList.tsx:2665",
-        "components/ItemList.tsx:2723",
-        "components/ItemList.tsx:2977",
-        "components/ItemList.tsx:3358",
-        "components/ItemList.tsx:3359",
-        "components/ItemList.tsx:3707",
-        "components/ItemList.tsx:3762",
-        "components/ItemList.tsx:3912",
-        "components/ItemList.tsx:532",
-        "components/ItemList.tsx:967",
+        "components/ItemList.tsx:1035",
+        "components/ItemList.tsx:1133",
+        "components/ItemList.tsx:1158",
+        "components/ItemList.tsx:2214",
+        "components/ItemList.tsx:2286",
+        "components/ItemList.tsx:2288",
+        "components/ItemList.tsx:2388",
+        "components/ItemList.tsx:2398",
+        "components/ItemList.tsx:2530",
+        "components/ItemList.tsx:2699",
+        "components/ItemList.tsx:2709",
+        "components/ItemList.tsx:2713",
+        "components/ItemList.tsx:2715",
+        "components/ItemList.tsx:2716",
+        "components/ItemList.tsx:2752",
+        "components/ItemList.tsx:2810",
+        "components/ItemList.tsx:3064",
+        "components/ItemList.tsx:3441",
+        "components/ItemList.tsx:3442",
+        "components/ItemList.tsx:3794",
+        "components/ItemList.tsx:3849",
+        "components/ItemList.tsx:3999",
+        "components/ItemList.tsx:592",
         "components/OrdersList.tsx:1944",
         "components/OrdersList.tsx:1989",
         "components/OrdersList.tsx:3048",
@@ -23497,15 +23976,15 @@
       "declaration": "src/shared/types.ts:585",
       "references": [
         "components/AddItemModal.tsx:729",
-        "components/ItemList.tsx:2197",
-        "components/ItemList.tsx:2441",
-        "components/ItemList.tsx:2577",
-        "components/ItemList.tsx:2620",
-        "components/ItemList.tsx:2622",
-        "components/ItemList.tsx:2623",
-        "components/ItemList.tsx:3917",
-        "components/ItemList.tsx:971",
-        "components/ItemList.tsx:992",
+        "components/ItemList.tsx:1039",
+        "components/ItemList.tsx:1060",
+        "components/ItemList.tsx:2284",
+        "components/ItemList.tsx:2528",
+        "components/ItemList.tsx:2664",
+        "components/ItemList.tsx:2707",
+        "components/ItemList.tsx:2709",
+        "components/ItemList.tsx:2710",
+        "components/ItemList.tsx:4004",
         "components/ItemManager.tsx:247",
         "src/features/admin/AdminApp.tsx:3120",
         "src/features/admin/AdminApp.tsx:4566",
@@ -23526,21 +24005,21 @@
         "components/Dashboard.tsx:224",
         "components/Dashboard.tsx:267",
         "components/Dashboard.tsx:284",
-        "components/ItemList.tsx:1285",
-        "components/ItemList.tsx:1294",
-        "components/ItemList.tsx:1295",
-        "components/ItemList.tsx:2202",
-        "components/ItemList.tsx:2218",
-        "components/ItemList.tsx:2320",
-        "components/ItemList.tsx:2326",
-        "components/ItemList.tsx:2348",
-        "components/ItemList.tsx:2392",
-        "components/ItemList.tsx:2487",
-        "components/ItemList.tsx:2638",
-        "components/ItemList.tsx:2666",
-        "components/ItemList.tsx:3269",
-        "components/ItemList.tsx:3295",
-        "components/ItemList.tsx:972",
+        "components/ItemList.tsx:1040",
+        "components/ItemList.tsx:1362",
+        "components/ItemList.tsx:1371",
+        "components/ItemList.tsx:1372",
+        "components/ItemList.tsx:2289",
+        "components/ItemList.tsx:2305",
+        "components/ItemList.tsx:2407",
+        "components/ItemList.tsx:2413",
+        "components/ItemList.tsx:2435",
+        "components/ItemList.tsx:2479",
+        "components/ItemList.tsx:2574",
+        "components/ItemList.tsx:2725",
+        "components/ItemList.tsx:2753",
+        "components/ItemList.tsx:3348",
+        "components/ItemList.tsx:3374",
         "src/features/admin/AdminApp.tsx:845"
       ]
     },
@@ -23568,36 +24047,36 @@
         "components/ItemLedger.tsx:139",
         "components/ItemLedger.tsx:149",
         "components/ItemLedger.tsx:159",
-        "components/ItemList.tsx:1149",
-        "components/ItemList.tsx:1164",
-        "components/ItemList.tsx:1650",
-        "components/ItemList.tsx:1669",
-        "components/ItemList.tsx:2125",
-        "components/ItemList.tsx:2139",
-        "components/ItemList.tsx:2206",
-        "components/ItemList.tsx:2328",
-        "components/ItemList.tsx:2335",
-        "components/ItemList.tsx:2341",
-        "components/ItemList.tsx:2343",
-        "components/ItemList.tsx:2348",
-        "components/ItemList.tsx:2379",
-        "components/ItemList.tsx:2490",
-        "components/ItemList.tsx:2517",
-        "components/ItemList.tsx:2561",
-        "components/ItemList.tsx:2603",
-        "components/ItemList.tsx:2617",
-        "components/ItemList.tsx:2650",
-        "components/ItemList.tsx:2722",
-        "components/ItemList.tsx:2749",
-        "components/ItemList.tsx:2843",
-        "components/ItemList.tsx:2877",
-        "components/ItemList.tsx:2977",
-        "components/ItemList.tsx:2995",
-        "components/ItemList.tsx:3294",
-        "components/ItemList.tsx:3919",
-        "components/ItemList.tsx:4085",
-        "components/ItemList.tsx:972",
-        "components/ItemList.tsx:985",
+        "components/ItemList.tsx:1040",
+        "components/ItemList.tsx:1053",
+        "components/ItemList.tsx:1226",
+        "components/ItemList.tsx:1241",
+        "components/ItemList.tsx:1737",
+        "components/ItemList.tsx:1756",
+        "components/ItemList.tsx:2212",
+        "components/ItemList.tsx:2226",
+        "components/ItemList.tsx:2293",
+        "components/ItemList.tsx:2415",
+        "components/ItemList.tsx:2422",
+        "components/ItemList.tsx:2428",
+        "components/ItemList.tsx:2430",
+        "components/ItemList.tsx:2435",
+        "components/ItemList.tsx:2466",
+        "components/ItemList.tsx:2577",
+        "components/ItemList.tsx:2604",
+        "components/ItemList.tsx:2648",
+        "components/ItemList.tsx:2690",
+        "components/ItemList.tsx:2704",
+        "components/ItemList.tsx:2737",
+        "components/ItemList.tsx:2809",
+        "components/ItemList.tsx:2836",
+        "components/ItemList.tsx:2930",
+        "components/ItemList.tsx:2964",
+        "components/ItemList.tsx:3064",
+        "components/ItemList.tsx:3082",
+        "components/ItemList.tsx:3373",
+        "components/ItemList.tsx:4006",
+        "components/ItemList.tsx:4172",
         "components/ItemManager.tsx:1903",
         "components/ItemManager.tsx:249",
         "components/LotTimeline.tsx:180",
@@ -23734,10 +24213,10 @@
         "components/AddItemModal.tsx:111",
         "components/AddItemModal.tsx:257",
         "components/AddItemModal.tsx:390",
-        "components/ItemList.tsx:3075",
-        "components/ItemList.tsx:3098",
-        "components/ItemList.tsx:3718",
-        "components/ItemList.tsx:91",
+        "components/ItemList.tsx:3162",
+        "components/ItemList.tsx:3185",
+        "components/ItemList.tsx:3805",
+        "components/ItemList.tsx:93",
         "components/QuotationManager.tsx:288",
         "components/TradeStatement.tsx:2648",
         "src/features/admin/AdminApp.tsx:3282",
@@ -23776,27 +24255,27 @@
         "components/ItemLedger.tsx:104",
         "components/ItemLedger.tsx:119",
         "components/ItemLedger.tsx:128",
-        "components/ItemList.tsx:1222",
-        "components/ItemList.tsx:1254",
-        "components/ItemList.tsx:1273",
-        "components/ItemList.tsx:1303",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1995",
-        "components/ItemList.tsx:2026",
-        "components/ItemList.tsx:2069",
-        "components/ItemList.tsx:2188",
-        "components/ItemList.tsx:2437",
-        "components/ItemList.tsx:2850",
-        "components/ItemList.tsx:3062",
-        "components/ItemList.tsx:3286",
-        "components/ItemList.tsx:3483",
-        "components/ItemList.tsx:3548",
-        "components/ItemList.tsx:3702",
-        "components/ItemList.tsx:3741",
-        "components/ItemList.tsx:3941",
-        "components/ItemList.tsx:475",
-        "components/ItemList.tsx:793",
+        "components/ItemList.tsx:1299",
+        "components/ItemList.tsx:1331",
+        "components/ItemList.tsx:1350",
+        "components/ItemList.tsx:1380",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:2082",
+        "components/ItemList.tsx:2113",
+        "components/ItemList.tsx:2156",
+        "components/ItemList.tsx:2275",
+        "components/ItemList.tsx:2524",
+        "components/ItemList.tsx:2937",
+        "components/ItemList.tsx:3149",
+        "components/ItemList.tsx:3365",
+        "components/ItemList.tsx:3570",
+        "components/ItemList.tsx:3635",
+        "components/ItemList.tsx:3789",
+        "components/ItemList.tsx:3828",
+        "components/ItemList.tsx:4028",
+        "components/ItemList.tsx:535",
+        "components/ItemList.tsx:861",
         "components/ItemManager.tsx:1121",
         "components/ItemManager.tsx:1889",
         "components/ItemManager.tsx:1898",
@@ -23920,8 +24399,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:615",
       "references": [
-        "components/ItemList.tsx:2184",
-        "components/ItemList.tsx:2435",
+        "components/ItemList.tsx:2271",
+        "components/ItemList.tsx:2522",
         "src/shared/services/firebaseService.ts:650",
         "src/shared/services/firebaseService.ts:653",
         "src/shared/services/firebaseService.ts:722",
@@ -23948,8 +24427,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:617",
       "references": [
-        "components/ItemList.tsx:2188",
-        "components/ItemList.tsx:2437"
+        "components/ItemList.tsx:2275",
+        "components/ItemList.tsx:2524"
       ]
     },
     {
@@ -23959,23 +24438,23 @@
       "type": "RawMaterialLot[]",
       "declaration": "src/shared/types.ts:618",
       "references": [
-        "components/ItemList.tsx:2190",
-        "components/ItemList.tsx:2194",
-        "components/ItemList.tsx:2439",
-        "components/ItemList.tsx:2440",
-        "components/ItemList.tsx:2441",
-        "components/ItemList.tsx:2573",
-        "components/ItemList.tsx:2580",
-        "components/ItemList.tsx:393",
-        "components/ItemList.tsx:786",
-        "components/ItemList.tsx:799",
-        "components/ItemList.tsx:814",
-        "components/ItemList.tsx:840",
-        "components/ItemList.tsx:842",
-        "components/ItemList.tsx:848",
-        "components/ItemList.tsx:853",
-        "components/ItemList.tsx:964",
-        "components/ItemList.tsx:987",
+        "components/ItemList.tsx:1032",
+        "components/ItemList.tsx:1055",
+        "components/ItemList.tsx:2277",
+        "components/ItemList.tsx:2281",
+        "components/ItemList.tsx:2526",
+        "components/ItemList.tsx:2527",
+        "components/ItemList.tsx:2528",
+        "components/ItemList.tsx:2660",
+        "components/ItemList.tsx:2667",
+        "components/ItemList.tsx:453",
+        "components/ItemList.tsx:854",
+        "components/ItemList.tsx:867",
+        "components/ItemList.tsx:882",
+        "components/ItemList.tsx:908",
+        "components/ItemList.tsx:910",
+        "components/ItemList.tsx:916",
+        "components/ItemList.tsx:921",
         "components/LotTimeline.tsx:100",
         "components/LotTimeline.tsx:21",
         "components/LotTimeline.tsx:23",
@@ -24007,8 +24486,8 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:619",
       "references": [
-        "components/ItemList.tsx:803",
-        "components/ItemList.tsx:808",
+        "components/ItemList.tsx:871",
+        "components/ItemList.tsx:876",
         "components/RawMaterialLotPanel.tsx:49",
         "src/shared/lotUtils.ts:14"
       ]
@@ -24032,9 +24511,9 @@
       "type": "{ lotId: string; percent: number }[]",
       "declaration": "src/shared/types.ts:621",
       "references": [
-        "components/ItemList.tsx:804",
-        "components/ItemList.tsx:806",
-        "components/ItemList.tsx:808",
+        "components/ItemList.tsx:872",
+        "components/ItemList.tsx:874",
+        "components/ItemList.tsx:876",
         "components/RawMaterialLotPanel.tsx:51",
         "components/RawMaterialLotPanel.tsx:52",
         "components/RawMaterialLotPanel.tsx:59",
@@ -24054,7 +24533,7 @@
         "components/BomIntegrityPanel.tsx:27",
         "components/BomIntegrityPanel.tsx:46",
         "components/FinancialReports.tsx:143",
-        "components/ItemList.tsx:3045",
+        "components/ItemList.tsx:3132",
         "components/OemManager.tsx:132",
         "src/features/admin/AdminApp.tsx:711",
         "src/features/admin/bom.ts:32",
@@ -24077,13 +24556,13 @@
         "components/BomIntegrityPanel.tsx:28",
         "components/FinancialReports.tsx:143",
         "components/ItemLedger.tsx:57",
-        "components/ItemList.tsx:1110",
-        "components/ItemList.tsx:1222",
-        "components/ItemList.tsx:1241",
-        "components/ItemList.tsx:1243",
-        "components/ItemList.tsx:1245",
-        "components/ItemList.tsx:3045",
-        "components/ItemList.tsx:469",
+        "components/ItemList.tsx:1187",
+        "components/ItemList.tsx:1299",
+        "components/ItemList.tsx:1318",
+        "components/ItemList.tsx:1320",
+        "components/ItemList.tsx:1322",
+        "components/ItemList.tsx:3132",
+        "components/ItemList.tsx:529",
         "components/ItemManager.tsx:1823",
         "components/ItemManager.tsx:222",
         "components/ItemManager.tsx:283",
@@ -27295,7 +27774,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1091",
       "references": [
-        "components/ItemList.tsx:2775",
+        "components/ItemList.tsx:2862",
         "components/ProfitAnalysis.tsx:1049",
         "components/ReceivingReturnsManager.tsx:341",
         "components/TaxStatement.tsx:523",
@@ -27633,8 +28112,8 @@
         "components/CashLedger.tsx:379",
         "components/FinancialReports.tsx:153",
         "components/FinancialReports.tsx:208",
-        "components/ItemList.tsx:756",
-        "components/ItemList.tsx:758",
+        "components/ItemList.tsx:824",
+        "components/ItemList.tsx:826",
         "components/OrderPicker.tsx:311",
         "components/PartnerLedger.tsx:485",
         "components/PartnerLedger.tsx:629",
@@ -27952,7 +28431,7 @@
       "type": "'매출' | '매입' | '비용'",
       "declaration": "src/shared/types.ts:1148",
       "references": [
-        "components/ItemList.tsx:2773",
+        "components/ItemList.tsx:2860",
         "components/PartnerLedger.tsx:150",
         "components/PartnerLedger.tsx:495",
         "components/PartnerLedger.tsx:497",
@@ -28185,8 +28664,8 @@
         "components/CashLedger.tsx:355",
         "components/CashLedger.tsx:383",
         "components/FinancialReports.tsx:213",
-        "components/ItemList.tsx:757",
-        "components/ItemList.tsx:758",
+        "components/ItemList.tsx:825",
+        "components/ItemList.tsx:826",
         "components/ProfitAnalysis.tsx:1049",
         "components/ProfitAnalysis.tsx:948",
         "components/ReceivingReturnsManager.tsx:345",
@@ -28334,7 +28813,7 @@
       "declaration": "src/shared/types.ts:1156",
       "references": [
         "components/FinancialReports.tsx:153",
-        "components/ItemList.tsx:2775",
+        "components/ItemList.tsx:2862",
         "components/PartnerLedger.tsx:150",
         "components/PartnerLedger.tsx:490",
         "components/PartnerLedger.tsx:544",
@@ -28451,7 +28930,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1180",
       "references": [
-        "components/ItemList.tsx:2773",
+        "components/ItemList.tsx:2860",
         "components/TaxStatement.tsx:118",
         "components/TaxStatement.tsx:126",
         "components/TaxStatement.tsx:303",
@@ -28502,19 +28981,19 @@
         "components/AdminChecklist.tsx:181",
         "components/AdminChecklist.tsx:182",
         "components/AdminChecklist.tsx:184",
-        "components/ItemList.tsx:1149",
-        "components/ItemList.tsx:1155",
-        "components/ItemList.tsx:1162",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1648",
-        "components/ItemList.tsx:1650",
-        "components/ItemList.tsx:1725",
-        "components/ItemList.tsx:1744",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1770",
-        "components/ItemList.tsx:1784",
-        "components/ItemList.tsx:1859",
-        "components/ItemList.tsx:1860",
+        "components/ItemList.tsx:1226",
+        "components/ItemList.tsx:1232",
+        "components/ItemList.tsx:1239",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1735",
+        "components/ItemList.tsx:1737",
+        "components/ItemList.tsx:1812",
+        "components/ItemList.tsx:1831",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:1857",
+        "components/ItemList.tsx:1871",
+        "components/ItemList.tsx:1946",
+        "components/ItemList.tsx:1947",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
         "components/TradeStatement.tsx:1403",
@@ -28560,12 +29039,12 @@
         "components/AdminChecklist.tsx:185",
         "components/AdminChecklist.tsx:499",
         "components/AdminChecklist.tsx:591",
-        "components/ItemList.tsx:1155",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1648",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1860",
-        "components/ItemList.tsx:1861",
+        "components/ItemList.tsx:1232",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1735",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:1947",
+        "components/ItemList.tsx:1948",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
         "components/TradeStatement.tsx:381",
@@ -28593,15 +29072,15 @@
         "components/AdminChecklist.tsx:187",
         "components/AdminChecklist.tsx:499",
         "components/AdminChecklist.tsx:591",
-        "components/ItemList.tsx:1149",
-        "components/ItemList.tsx:1165",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1650",
-        "components/ItemList.tsx:1725",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1770",
-        "components/ItemList.tsx:1861",
-        "components/ItemList.tsx:1862",
+        "components/ItemList.tsx:1226",
+        "components/ItemList.tsx:1242",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1737",
+        "components/ItemList.tsx:1812",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:1857",
+        "components/ItemList.tsx:1948",
+        "components/ItemList.tsx:1949",
         "components/OrderPicker.tsx:321",
         "components/TradeStatement.tsx:381",
         "src/features/admin/dataIntegrityAudit.ts:145",
@@ -28631,8 +29110,8 @@
         "components/AdminChecklist.tsx:186",
         "components/AdminChecklist.tsx:499",
         "components/AdminChecklist.tsx:591",
-        "components/ItemList.tsx:1149",
-        "components/ItemList.tsx:1650",
+        "components/ItemList.tsx:1226",
+        "components/ItemList.tsx:1737",
         "components/TradeStatement.tsx:392",
         "src/features/admin/dataIntegrityAudit.ts:144",
         "src/features/admin/dataIntegrityAudit.ts:425",
@@ -28660,31 +29139,31 @@
         "components/AdminChecklist.tsx:136",
         "components/AdminChecklist.tsx:196",
         "components/AdminChecklist.tsx:493",
-        "components/ItemList.tsx:1136",
-        "components/ItemList.tsx:1137",
-        "components/ItemList.tsx:1241",
-        "components/ItemList.tsx:1243",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1642",
-        "components/ItemList.tsx:1643",
-        "components/ItemList.tsx:1747",
-        "components/ItemList.tsx:1764",
-        "components/ItemList.tsx:1817",
-        "components/ItemList.tsx:1844",
-        "components/ItemList.tsx:1984",
-        "components/ItemList.tsx:2176",
-        "components/ItemList.tsx:2777",
-        "components/ItemList.tsx:2814",
-        "components/ItemList.tsx:2817",
-        "components/ItemList.tsx:2819",
-        "components/ItemList.tsx:2823",
-        "components/ItemList.tsx:2827",
-        "components/ItemList.tsx:2859",
-        "components/ItemList.tsx:2892",
-        "components/ItemList.tsx:2897",
-        "components/ItemList.tsx:3540",
-        "components/ItemList.tsx:3541",
-        "components/ItemList.tsx:4059",
+        "components/ItemList.tsx:1213",
+        "components/ItemList.tsx:1214",
+        "components/ItemList.tsx:1318",
+        "components/ItemList.tsx:1320",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1729",
+        "components/ItemList.tsx:1730",
+        "components/ItemList.tsx:1834",
+        "components/ItemList.tsx:1851",
+        "components/ItemList.tsx:1904",
+        "components/ItemList.tsx:1931",
+        "components/ItemList.tsx:2071",
+        "components/ItemList.tsx:2263",
+        "components/ItemList.tsx:2864",
+        "components/ItemList.tsx:2901",
+        "components/ItemList.tsx:2904",
+        "components/ItemList.tsx:2906",
+        "components/ItemList.tsx:2910",
+        "components/ItemList.tsx:2914",
+        "components/ItemList.tsx:2946",
+        "components/ItemList.tsx:2979",
+        "components/ItemList.tsx:2984",
+        "components/ItemList.tsx:3627",
+        "components/ItemList.tsx:3628",
+        "components/ItemList.tsx:4146",
         "components/OemManager.tsx:233",
         "components/OemManager.tsx:240",
         "components/OemManager.tsx:242",
@@ -28785,9 +29264,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1223",
       "references": [
-        "components/ItemList.tsx:1241",
-        "components/ItemList.tsx:1243",
-        "components/ItemList.tsx:2176",
+        "components/ItemList.tsx:1318",
+        "components/ItemList.tsx:1320",
+        "components/ItemList.tsx:2263",
         "components/TradeStatement.tsx:1403",
         "src/shared/types.ts:1279"
       ]
@@ -28811,8 +29290,8 @@
       "references": [
         "components/AdminChecklist.tsx:125",
         "components/AdminChecklist.tsx:507",
-        "components/ItemList.tsx:1616",
-        "components/ItemList.tsx:1744",
+        "components/ItemList.tsx:1703",
+        "components/ItemList.tsx:1831",
         "components/OemManager.tsx:243",
         "components/OrderPicker.tsx:293",
         "components/OrderPicker.tsx:294",
@@ -28837,9 +29316,9 @@
         "components/AdminChecklist.tsx:126",
         "components/AdminChecklist.tsx:496",
         "components/AdminChecklist.tsx:507",
-        "components/ItemList.tsx:1647",
-        "components/ItemList.tsx:1745",
-        "components/ItemList.tsx:1853",
+        "components/ItemList.tsx:1734",
+        "components/ItemList.tsx:1832",
+        "components/ItemList.tsx:1940",
         "components/OemManager.tsx:241",
         "components/OemManager.tsx:243",
         "components/OemManager.tsx:403",
@@ -28865,11 +29344,11 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1227",
       "references": [
-        "components/ItemList.tsx:2206",
-        "components/ItemList.tsx:2843",
-        "components/ItemList.tsx:2850",
-        "components/ItemList.tsx:2859",
-        "components/ItemList.tsx:3549",
+        "components/ItemList.tsx:2293",
+        "components/ItemList.tsx:2930",
+        "components/ItemList.tsx:2937",
+        "components/ItemList.tsx:2946",
+        "components/ItemList.tsx:3636",
         "components/TradeStatement.tsx:1320",
         "components/TradeStatement.tsx:1326",
         "src/features/admin/AdminApp.tsx:2701",
@@ -28905,24 +29384,23 @@
       "type": "'pending' | 'invoiced' | 'received' | 'cancelled'",
       "declaration": "src/shared/types.ts:1231",
       "references": [
-        "components/ItemList.tsx:1134",
-        "components/ItemList.tsx:1160",
-        "components/ItemList.tsx:1645",
-        "components/ItemList.tsx:1726",
-        "components/ItemList.tsx:1728",
-        "components/ItemList.tsx:1737",
-        "components/ItemList.tsx:1750",
-        "components/ItemList.tsx:1771",
-        "components/ItemList.tsx:1772",
-        "components/ItemList.tsx:1779",
-        "components/ItemList.tsx:1781",
-        "components/ItemList.tsx:1789",
+        "components/ItemList.tsx:1211",
+        "components/ItemList.tsx:1237",
+        "components/ItemList.tsx:1732",
+        "components/ItemList.tsx:1813",
+        "components/ItemList.tsx:1815",
         "components/ItemList.tsx:1824",
-        "components/ItemList.tsx:1838",
-        "components/ItemList.tsx:1839",
-        "components/ItemList.tsx:1852",
-        "components/ItemList.tsx:1853",
-        "components/ItemList.tsx:1984",
+        "components/ItemList.tsx:1837",
+        "components/ItemList.tsx:1858",
+        "components/ItemList.tsx:1859",
+        "components/ItemList.tsx:1868",
+        "components/ItemList.tsx:1876",
+        "components/ItemList.tsx:1911",
+        "components/ItemList.tsx:1925",
+        "components/ItemList.tsx:1926",
+        "components/ItemList.tsx:1939",
+        "components/ItemList.tsx:1940",
+        "components/ItemList.tsx:2071",
         "components/TradeStatement.tsx:1403",
         "src/features/admin/AdminApp.tsx:2283",
         "src/features/admin/AdminApp.tsx:2306",
@@ -28974,8 +29452,8 @@
       "type": "{operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string}",
       "declaration": "src/shared/types.ts:1232",
       "references": [
-        "components/ItemList.tsx:1646",
-        "components/ItemList.tsx:1779"
+        "components/ItemList.tsx:1733",
+        "components/ItemList.tsx:1866"
       ]
     },
     {
@@ -28999,11 +29477,11 @@
         "components/AdminChecklist.tsx:108",
         "components/AdminChecklist.tsx:494",
         "components/AdminChecklist.tsx:506",
-        "components/ItemList.tsx:1733",
-        "components/ItemList.tsx:1773",
-        "components/ItemList.tsx:1782",
-        "components/ItemList.tsx:1839",
-        "components/ItemList.tsx:1855",
+        "components/ItemList.tsx:1820",
+        "components/ItemList.tsx:1860",
+        "components/ItemList.tsx:1869",
+        "components/ItemList.tsx:1926",
+        "components/ItemList.tsx:1942",
         "components/OrderPicker.tsx:311",
         "components/OrderPicker.tsx:338",
         "components/OrderPicker.tsx:365",
@@ -29048,9 +29526,9 @@
       "declaration": "src/shared/types.ts:1241",
       "references": [
         "components/AdminChecklist.tsx:572",
-        "components/ItemList.tsx:1657",
-        "components/ItemList.tsx:1779",
-        "components/ItemList.tsx:1780",
+        "components/ItemList.tsx:1744",
+        "components/ItemList.tsx:1866",
+        "components/ItemList.tsx:1867",
         "components/OrderPicker.tsx:325",
         "components/OrderPicker.tsx:326",
         "components/OrderPicker.tsx:339",
@@ -29067,8 +29545,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1242",
       "references": [
-        "components/ItemList.tsx:1658",
-        "components/ItemList.tsx:1779",
+        "components/ItemList.tsx:1745",
+        "components/ItemList.tsx:1866",
         "components/OrderPicker.tsx:339",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:44",
         "src/shared/services/confirmPendingPurchaseOrderService.ts:45"
@@ -29083,8 +29561,8 @@
       "references": [
         "components/AdminChecklist.tsx:110",
         "components/AdminChecklist.tsx:495",
-        "components/ItemList.tsx:1659",
-        "components/ItemList.tsx:1779",
+        "components/ItemList.tsx:1746",
+        "components/ItemList.tsx:1866",
         "components/OrderPicker.tsx:339",
         "src/features/admin/dataIntegrityAudit.ts:388",
         "src/features/admin/dataIntegrityAudit.ts:391"
@@ -29100,7 +29578,7 @@
         "components/AdminChecklist.tsx:499",
         "components/AdminChecklist.tsx:500",
         "components/AdminChecklist.tsx:503",
-        "components/ItemList.tsx:1146",
+        "components/ItemList.tsx:1223",
         "components/TradeStatement.tsx:1403",
         "src/features/admin/AdminApp.tsx:1207",
         "src/features/admin/AdminApp.tsx:1208",
@@ -29141,24 +29619,24 @@
       "declaration": "src/shared/types.ts:1250",
       "references": [
         "components/AdminChecklist.tsx:104",
-        "components/ItemList.tsx:1134",
-        "components/ItemList.tsx:1160",
-        "components/ItemList.tsx:1652",
-        "components/ItemList.tsx:1737",
-        "components/ItemList.tsx:1750",
-        "components/ItemList.tsx:1783",
-        "components/ItemList.tsx:1788",
-        "components/ItemList.tsx:1789",
-        "components/ItemList.tsx:1808",
+        "components/ItemList.tsx:1211",
+        "components/ItemList.tsx:1237",
+        "components/ItemList.tsx:1739",
         "components/ItemList.tsx:1824",
-        "components/ItemList.tsx:1838",
-        "components/ItemList.tsx:1839",
-        "components/ItemList.tsx:1840",
-        "components/ItemList.tsx:1856",
-        "components/ItemList.tsx:1858",
-        "components/ItemList.tsx:1859",
-        "components/ItemList.tsx:1861",
-        "components/ItemList.tsx:1864",
+        "components/ItemList.tsx:1837",
+        "components/ItemList.tsx:1870",
+        "components/ItemList.tsx:1875",
+        "components/ItemList.tsx:1876",
+        "components/ItemList.tsx:1895",
+        "components/ItemList.tsx:1911",
+        "components/ItemList.tsx:1925",
+        "components/ItemList.tsx:1926",
+        "components/ItemList.tsx:1927",
+        "components/ItemList.tsx:1943",
+        "components/ItemList.tsx:1945",
+        "components/ItemList.tsx:1946",
+        "components/ItemList.tsx:1948",
+        "components/ItemList.tsx:1951",
         "src/features/admin/AdminApp.tsx:840",
         "src/features/admin/dataIntegrityAudit.ts:388",
         "src/features/admin/oem.ts:55",
@@ -29234,7 +29712,7 @@
       "type": "{ material: string; kg: number; rawItemId?: string }[]",
       "declaration": "src/shared/types.ts:1258",
       "references": [
-        "components/ItemList.tsx:1145",
+        "components/ItemList.tsx:1222",
         "components/OemManager.tsx:241",
         "components/OemManager.tsx:244",
         "components/OemManager.tsx:368",
@@ -29284,18 +29762,21 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1262",
       "references": [
-        "components/ItemList.tsx:1134",
-        "components/ItemList.tsx:1645",
-        "components/ItemList.tsx:1646",
-        "components/ItemList.tsx:1728",
-        "components/ItemList.tsx:1736",
-        "components/ItemList.tsx:1750",
-        "components/ItemList.tsx:1789",
-        "components/ItemList.tsx:1824",
-        "components/ItemList.tsx:1838",
-        "components/ItemList.tsx:1839",
-        "components/ItemList.tsx:1902",
-        "components/ItemList.tsx:1903",
+        "components/ItemList.tsx:1211",
+        "components/ItemList.tsx:1732",
+        "components/ItemList.tsx:1733",
+        "components/ItemList.tsx:1813",
+        "components/ItemList.tsx:1815",
+        "components/ItemList.tsx:1823",
+        "components/ItemList.tsx:1837",
+        "components/ItemList.tsx:1858",
+        "components/ItemList.tsx:1866",
+        "components/ItemList.tsx:1876",
+        "components/ItemList.tsx:1911",
+        "components/ItemList.tsx:1925",
+        "components/ItemList.tsx:1926",
+        "components/ItemList.tsx:1989",
+        "components/ItemList.tsx:1990",
         "src/features/admin/oem.ts:55",
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemExternalStock.ts:19",
@@ -29316,10 +29797,10 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1263",
       "references": [
-        "components/ItemList.tsx:1134",
-        "components/ItemList.tsx:1750",
-        "components/ItemList.tsx:1824",
-        "components/ItemList.tsx:1838",
+        "components/ItemList.tsx:1211",
+        "components/ItemList.tsx:1837",
+        "components/ItemList.tsx:1911",
+        "components/ItemList.tsx:1925",
         "src/features/admin/oem.ts:55",
         "src/features/admin/oem.ts:63",
         "src/features/admin/oemExternalStock.ts:19",
@@ -29383,7 +29864,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1268",
       "references": [
-        "components/ItemList.tsx:1151",
+        "components/ItemList.tsx:1228",
         "components/OemManager.tsx:517",
         "components/OemManager.tsx:530",
         "src/features/admin/oemEngine.ts:261",
@@ -29399,7 +29880,7 @@
       "type": "{ material: string; kg: number }[]",
       "declaration": "src/shared/types.ts:1269",
       "references": [
-        "components/ItemList.tsx:1147",
+        "components/ItemList.tsx:1224",
         "src/features/admin/oemEngine.ts:272",
         "src/features/admin/oemReconciliation.ts:76",
         "src/features/admin/oemReconciliation.ts:84",
@@ -29812,7 +30293,7 @@
       "declaration": "src/shared/types.ts:1369",
       "references": [
         "components/ItemLedger.tsx:66",
-        "components/ItemList.tsx:2065",
+        "components/ItemList.tsx:2152",
         "components/LotTimeline.tsx:61",
         "src/features/admin/AdminApp.tsx:605",
         "src/features/admin/dataIntegrityAudit.ts:294",
@@ -29875,14 +30356,14 @@
       "declaration": "src/shared/types.ts:1373",
       "references": [
         "components/ItemLedger.tsx:66",
-        "components/ItemList.tsx:1950",
-        "components/ItemList.tsx:1951",
-        "components/ItemList.tsx:2065",
-        "components/ItemList.tsx:3441",
-        "components/ItemList.tsx:3447",
-        "components/ItemList.tsx:3454",
-        "components/ItemList.tsx:4069",
-        "components/ItemList.tsx:4077",
+        "components/ItemList.tsx:2037",
+        "components/ItemList.tsx:2038",
+        "components/ItemList.tsx:2152",
+        "components/ItemList.tsx:3528",
+        "components/ItemList.tsx:3534",
+        "components/ItemList.tsx:3541",
+        "components/ItemList.tsx:4156",
+        "components/ItemList.tsx:4164",
         "components/ProductionManager.tsx:140",
         "components/RawLedgerList.tsx:273",
         "components/RawLedgerList.tsx:275",
@@ -29923,9 +30404,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1374",
       "references": [
-        "components/ItemList.tsx:4074",
-        "components/ItemList.tsx:4079",
-        "components/ItemList.tsx:4080",
+        "components/ItemList.tsx:4161",
+        "components/ItemList.tsx:4166",
+        "components/ItemList.tsx:4167",
         "components/LotTimeline.tsx:75",
         "components/LotTimeline.tsx:78",
         "components/LotTimeline.tsx:80",
@@ -29956,9 +30437,9 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1375",
       "references": [
-        "components/ItemList.tsx:3445",
-        "components/ItemList.tsx:3451",
-        "components/ItemList.tsx:3452",
+        "components/ItemList.tsx:3532",
+        "components/ItemList.tsx:3538",
+        "components/ItemList.tsx:3539",
         "components/LotTimeline.tsx:72",
         "components/RawLedgerList.tsx:106",
         "components/RawLedgerList.tsx:130",
@@ -29987,8 +30468,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1376",
       "references": [
-        "components/ItemList.tsx:3445",
-        "components/ItemList.tsx:3451",
+        "components/ItemList.tsx:3532",
+        "components/ItemList.tsx:3538",
         "components/ProductionManager.tsx:84",
         "components/RawLedgerList.tsx:106",
         "components/RawLedgerList.tsx:131",
@@ -30224,7 +30705,7 @@
       "type": "'kg' | 'L'",
       "declaration": "src/shared/types.ts:1393",
       "references": [
-        "components/ItemList.tsx:3453",
+        "components/ItemList.tsx:3540",
         "components/RawLedgerList.tsx:275",
         "components/RawLedgerList.tsx:276",
         "components/RawLedgerList.tsx:87",
@@ -30455,12 +30936,12 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1429",
       "references": [
-        "components/ItemList.tsx:1669",
-        "components/ItemList.tsx:1770",
-        "components/ItemList.tsx:1784",
-        "components/ItemList.tsx:1859",
-        "components/ItemList.tsx:1860",
-        "components/ItemList.tsx:717",
+        "components/ItemList.tsx:1756",
+        "components/ItemList.tsx:1857",
+        "components/ItemList.tsx:1871",
+        "components/ItemList.tsx:1946",
+        "components/ItemList.tsx:1947",
+        "components/ItemList.tsx:785",
         "components/ReturnManager.tsx:173",
         "components/ReturnManager.tsx:179",
         "components/ReturnManager.tsx:192",
@@ -30482,9 +30963,9 @@
       "declaration": "src/shared/types.ts:1430",
       "references": [
         "components/AdminChecklist.tsx:460",
-        "components/ItemList.tsx:1667",
-        "components/ItemList.tsx:1860",
-        "components/ItemList.tsx:1861",
+        "components/ItemList.tsx:1754",
+        "components/ItemList.tsx:1947",
+        "components/ItemList.tsx:1948",
         "components/ReturnManager.tsx:173",
         "components/ReturnManager.tsx:424",
         "components/ReturnManager.tsx:427",
@@ -30499,12 +30980,12 @@
       "declaration": "src/shared/types.ts:1431",
       "references": [
         "components/AdminChecklist.tsx:460",
-        "components/ItemList.tsx:1669",
-        "components/ItemList.tsx:1770",
-        "components/ItemList.tsx:1861",
-        "components/ItemList.tsx:1862",
-        "components/ItemList.tsx:717",
-        "components/ItemList.tsx:718",
+        "components/ItemList.tsx:1756",
+        "components/ItemList.tsx:1857",
+        "components/ItemList.tsx:1948",
+        "components/ItemList.tsx:1949",
+        "components/ItemList.tsx:785",
+        "components/ItemList.tsx:786",
         "components/ReturnManager.tsx:173",
         "components/ReturnManager.tsx:179",
         "components/ReturnManager.tsx:192",
@@ -30589,11 +31070,11 @@
         "components/AdminChecklist.tsx:163",
         "components/AdminChecklist.tsx:454",
         "components/AdminChecklist.tsx:469",
-        "components/ItemList.tsx:1661",
-        "components/ItemList.tsx:1662",
-        "components/ItemList.tsx:1765",
-        "components/ItemList.tsx:717",
-        "components/ItemList.tsx:738",
+        "components/ItemList.tsx:1748",
+        "components/ItemList.tsx:1749",
+        "components/ItemList.tsx:1852",
+        "components/ItemList.tsx:785",
+        "components/ItemList.tsx:806",
         "components/ReturnManager.tsx:223",
         "components/ReturnManager.tsx:487",
         "components/ReturnManager.tsx:490",
@@ -30613,7 +31094,7 @@
       "type": "CompanyId",
       "declaration": "src/shared/types.ts:1442",
       "references": [
-        "components/ItemList.tsx:739",
+        "components/ItemList.tsx:807",
         "src/features/admin/AdminApp.tsx:1286",
         "src/features/admin/purchaseReturnRows.ts:7",
         "src/features/admin/returnCommands.ts:13",
@@ -30651,9 +31132,9 @@
       "declaration": "src/shared/types.ts:1445",
       "references": [
         "components/AdminChecklist.tsx:457",
-        "components/ItemList.tsx:1666",
-        "components/ItemList.tsx:1853",
-        "components/ItemList.tsx:745",
+        "components/ItemList.tsx:1753",
+        "components/ItemList.tsx:1940",
+        "components/ItemList.tsx:813",
         "components/ReturnManager.tsx:221",
         "components/ReturnManager.tsx:522"
       ]
@@ -30668,13 +31149,13 @@
         "components/AdminChecklist.tsx:460",
         "components/AdminChecklist.tsx:461",
         "components/AdminChecklist.tsx:465",
-        "components/ItemList.tsx:1667",
-        "components/ItemList.tsx:1668",
-        "components/ItemList.tsx:1669",
-        "components/ItemList.tsx:1670",
-        "components/ItemList.tsx:1767",
-        "components/ItemList.tsx:717",
-        "components/ItemList.tsx:718",
+        "components/ItemList.tsx:1754",
+        "components/ItemList.tsx:1755",
+        "components/ItemList.tsx:1756",
+        "components/ItemList.tsx:1757",
+        "components/ItemList.tsx:1854",
+        "components/ItemList.tsx:785",
+        "components/ItemList.tsx:786",
         "components/ReturnManager.tsx:534",
         "components/ReturnManager.tsx:564",
         "src/features/admin/purchaseReturnRows.ts:7",
@@ -30691,8 +31172,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1447",
       "references": [
-        "components/ItemList.tsx:1851",
-        "components/ItemList.tsx:745",
+        "components/ItemList.tsx:1938",
+        "components/ItemList.tsx:813",
         "components/ReturnManager.tsx:534",
         "src/features/admin/returnCommands.ts:15",
         "src/features/admin/returnCommands.ts:18"
@@ -30707,10 +31188,10 @@
       "references": [
         "components/AdminChecklist.tsx:468",
         "components/AdminChecklist.tsx:99",
-        "components/ItemList.tsx:1664",
-        "components/ItemList.tsx:1665",
-        "components/ItemList.tsx:1772",
-        "components/ItemList.tsx:740",
+        "components/ItemList.tsx:1751",
+        "components/ItemList.tsx:1752",
+        "components/ItemList.tsx:1859",
+        "components/ItemList.tsx:808",
         "components/ReceivingReturnsManager.tsx:255",
         "components/ReturnManager.tsx:258",
         "components/ReturnManager.tsx:260",
@@ -30747,8 +31228,8 @@
       "references": [
         "components/AdminChecklist.tsx:100",
         "components/AdminChecklist.tsx:456",
-        "components/ItemList.tsx:1665",
-        "components/ItemList.tsx:1780",
+        "components/ItemList.tsx:1752",
+        "components/ItemList.tsx:1867",
         "components/ReturnManager.tsx:233",
         "components/ReturnManager.tsx:234",
         "components/ReturnManager.tsx:534"
@@ -30769,8 +31250,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1452",
       "references": [
-        "components/ItemList.tsx:1665",
-        "components/ItemList.tsx:1780",
+        "components/ItemList.tsx:1752",
+        "components/ItemList.tsx:1867",
         "components/ReturnManager.tsx:593",
         "components/ReturnManager.tsx:595"
       ]
@@ -30792,13 +31273,14 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1454",
       "references": [
-        "components/ItemList.tsx:1664",
-        "components/ItemList.tsx:1665",
-        "components/ItemList.tsx:1728",
-        "components/ItemList.tsx:1771",
-        "components/ItemList.tsx:1780",
-        "components/ItemList.tsx:740",
-        "components/ItemList.tsx:741",
+        "components/ItemList.tsx:1751",
+        "components/ItemList.tsx:1752",
+        "components/ItemList.tsx:1813",
+        "components/ItemList.tsx:1815",
+        "components/ItemList.tsx:1858",
+        "components/ItemList.tsx:1867",
+        "components/ItemList.tsx:808",
+        "components/ItemList.tsx:809",
         "components/ReceivingReturnsManager.tsx:255",
         "components/ReturnManager.tsx:258",
         "components/ReturnManager.tsx:260",
@@ -30832,9 +31314,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1457",
       "references": [
-        "components/ItemList.tsx:1733",
-        "components/ItemList.tsx:1773",
-        "components/ItemList.tsx:1855",
+        "components/ItemList.tsx:1820",
+        "components/ItemList.tsx:1860",
+        "components/ItemList.tsx:1942",
         "components/ReturnManager.tsx:559",
         "components/ReturnManager.tsx:560",
         "src/features/admin/purchaseReturnRows.ts:7",
@@ -34516,7 +34998,7 @@
     },
     {
       "model": "CollectionName",
-      "declaration": "src/shared/collections.ts:121",
+      "declaration": "src/shared/collections.ts:123",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -37615,7 +38097,7 @@
     },
     {
       "model": "ModalShellProps",
-      "declaration": "src/shared/components/ModalShell.tsx:4",
+      "declaration": "src/shared/components/ModalShell.tsx:5",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -37623,55 +38105,55 @@
           "field": "title",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/components/ModalShell.tsx:6"
+          "declaration": "src/shared/components/ModalShell.tsx:7"
         },
         {
           "field": "subtitle",
           "optional": true,
           "type": "React.ReactNode",
-          "declaration": "src/shared/components/ModalShell.tsx:7"
+          "declaration": "src/shared/components/ModalShell.tsx:8"
         },
         {
           "field": "onClose",
           "optional": false,
           "type": "() => void",
-          "declaration": "src/shared/components/ModalShell.tsx:8"
+          "declaration": "src/shared/components/ModalShell.tsx:9"
         },
         {
           "field": "children",
           "optional": false,
           "type": "React.ReactNode",
-          "declaration": "src/shared/components/ModalShell.tsx:9"
+          "declaration": "src/shared/components/ModalShell.tsx:10"
         },
         {
           "field": "footer",
           "optional": true,
           "type": "React.ReactNode",
-          "declaration": "src/shared/components/ModalShell.tsx:10"
+          "declaration": "src/shared/components/ModalShell.tsx:11"
         },
         {
           "field": "className",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/components/ModalShell.tsx:11"
+          "declaration": "src/shared/components/ModalShell.tsx:12"
         },
         {
           "field": "bodyClassName",
           "optional": true,
           "type": "string",
-          "declaration": "src/shared/components/ModalShell.tsx:12"
+          "declaration": "src/shared/components/ModalShell.tsx:13"
         },
         {
           "field": "layer",
           "optional": true,
           "type": "number",
-          "declaration": "src/shared/components/ModalShell.tsx:14"
+          "declaration": "src/shared/components/ModalShell.tsx:15"
         },
         {
           "field": "size",
           "optional": true,
           "type": "'standard' | 'large'",
-          "declaration": "src/shared/components/ModalShell.tsx:16"
+          "declaration": "src/shared/components/ModalShell.tsx:17"
         }
       ]
     },
@@ -38609,7 +39091,7 @@
     },
     {
       "model": "AlertTone",
-      "declaration": "src/shared/components/AlertModalShell.tsx:21",
+      "declaration": "src/shared/components/AlertModalShell.tsx:22",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -38617,7 +39099,7 @@
     },
     {
       "model": "Props",
-      "declaration": "src/shared/components/AlertModalShell.tsx:36",
+      "declaration": "src/shared/components/AlertModalShell.tsx:37",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -38625,43 +39107,43 @@
           "field": "title",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/components/AlertModalShell.tsx:38"
+          "declaration": "src/shared/components/AlertModalShell.tsx:39"
         },
         {
           "field": "tone",
           "optional": false,
           "type": "AlertTone",
-          "declaration": "src/shared/components/AlertModalShell.tsx:39"
+          "declaration": "src/shared/components/AlertModalShell.tsx:40"
         },
         {
           "field": "icon",
           "optional": false,
           "type": "LucideIcon",
-          "declaration": "src/shared/components/AlertModalShell.tsx:40"
+          "declaration": "src/shared/components/AlertModalShell.tsx:41"
         },
         {
           "field": "onClose",
           "optional": false,
           "type": "() => void",
-          "declaration": "src/shared/components/AlertModalShell.tsx:41"
+          "declaration": "src/shared/components/AlertModalShell.tsx:42"
         },
         {
           "field": "wide",
           "optional": true,
           "type": "boolean",
-          "declaration": "src/shared/components/AlertModalShell.tsx:43"
+          "declaration": "src/shared/components/AlertModalShell.tsx:44"
         },
         {
           "field": "children",
           "optional": false,
           "type": "React.ReactNode",
-          "declaration": "src/shared/components/AlertModalShell.tsx:44"
+          "declaration": "src/shared/components/AlertModalShell.tsx:45"
         },
         {
           "field": "footer",
           "optional": false,
           "type": "React.ReactNode",
-          "declaration": "src/shared/components/AlertModalShell.tsx:46"
+          "declaration": "src/shared/components/AlertModalShell.tsx:47"
         }
       ]
     },
@@ -39362,8 +39844,158 @@
       ]
     },
     {
+      "model": "Base",
+      "declaration": "src/shared/itemInventoryAttempt.ts:5",
+      "kind": "type-alias",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "version",
+          "optional": false,
+          "type": "1",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        },
+        {
+          "field": "operationId",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        },
+        {
+          "field": "companyId",
+          "optional": false,
+          "type": "CompanyId",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        },
+        {
+          "field": "uid",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        },
+        {
+          "field": "capturedAt",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        },
+        {
+          "field": "date",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:5"
+        }
+      ]
+    },
+    {
+      "model": "ItemStockAddRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:6",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "Base&{kind:'stock-add';rows:{itemId:string;itemName:string;deltaQty:number;unitKg:number;note:string}[]}"
+    },
+    {
+      "model": "CanUnpackRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:7",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "Base&{kind:'can-unpack';plan:UnpackPlan}"
+    },
+    {
+      "model": "BoxUnpackRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:8",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "Base&{kind:'box-unpack';boxItemId:string;unitItemId:string;boxItemName?:string;unitItemName?:string;count:number;unitKg:number}"
+    },
+    {
+      "model": "ItemInventoryRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:9",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "ItemStockAddRequest|CanUnpackRequest|BoxUnpackRequest"
+    },
+    {
+      "model": "ItemInventoryKind",
+      "declaration": "src/shared/itemInventoryAttempt.ts:10",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "ItemInventoryRequest['kind']"
+    },
+    {
+      "model": "ItemInventoryRetained",
+      "declaration": "src/shared/itemInventoryAttempt.ts:11",
+      "kind": "type-alias",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "request",
+          "optional": false,
+          "type": "ItemInventoryRequest",
+          "declaration": "src/shared/itemInventoryAttempt.ts:11"
+        },
+        {
+          "field": "state",
+          "optional": false,
+          "type": "'prepared'|'submitted'",
+          "declaration": "src/shared/itemInventoryAttempt.ts:11"
+        },
+        {
+          "field": "encoded",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:11"
+        }
+      ]
+    },
+    {
+      "model": "ItemInventoryOutcome",
+      "declaration": "src/shared/itemInventoryAttempt.ts:12",
+      "kind": "type-alias",
+      "scope": "direct-properties-only",
+      "fields": [
+        {
+          "field": "ok",
+          "optional": false,
+          "type": "boolean",
+          "declaration": "src/shared/itemInventoryAttempt.ts:12"
+        },
+        {
+          "field": "message",
+          "optional": false,
+          "type": "string",
+          "declaration": "src/shared/itemInventoryAttempt.ts:12"
+        },
+        {
+          "field": "status",
+          "optional": false,
+          "type": "'applied'|'duplicate'|'rejected'|'unknown'|'blocked'",
+          "declaration": "src/shared/itemInventoryAttempt.ts:12"
+        },
+        {
+          "field": "retainPending",
+          "optional": false,
+          "type": "boolean",
+          "declaration": "src/shared/itemInventoryAttempt.ts:12"
+        }
+      ]
+    },
+    {
+      "model": "Initial",
+      "declaration": "src/shared/itemInventoryAttempt.ts:13",
+      "kind": "type-alias",
+      "scope": "non-object-alias-not-expanded",
+      "fields": [],
+      "type": "T extends Base?Omit<T,'version'|'operationId'|'capturedAt'|'date'>&{operationId?:string}:never"
+    },
+    {
       "model": "UnpackOutcome",
-      "declaration": "src/shared/services/unpackService.ts:47",
+      "declaration": "src/shared/services/unpackService.ts:48",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -39371,19 +40003,25 @@
           "field": "ok",
           "optional": false,
           "type": "boolean",
-          "declaration": "src/shared/services/unpackService.ts:48"
+          "declaration": "src/shared/services/unpackService.ts:49"
         },
         {
           "field": "message",
           "optional": false,
           "type": "string",
-          "declaration": "src/shared/services/unpackService.ts:49"
+          "declaration": "src/shared/services/unpackService.ts:50"
         },
         {
           "field": "moves",
           "optional": true,
           "type": "UnpackLotMove[]",
-          "declaration": "src/shared/services/unpackService.ts:50"
+          "declaration": "src/shared/services/unpackService.ts:51"
+        },
+        {
+          "field": "status",
+          "optional": true,
+          "type": "ItemInventoryOutcome['status']",
+          "declaration": "src/shared/services/unpackService.ts:52"
         }
       ]
     },
@@ -43909,7 +44547,7 @@
     },
     {
       "model": "StockClosingRow",
-      "declaration": "components/ItemList.tsx:183",
+      "declaration": "components/ItemList.tsx:185",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -43917,49 +44555,49 @@
           "field": "itemId",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "name",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "spec",
           "optional": true,
           "type": "string",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "boxSize",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "boxes",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "loose",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         },
         {
           "field": "total",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:183"
+          "declaration": "components/ItemList.tsx:185"
         }
       ]
     },
     {
       "model": "StockClosing",
-      "declaration": "components/ItemList.tsx:184",
+      "declaration": "components/ItemList.tsx:186",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -43967,43 +44605,43 @@
           "field": "id",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         },
         {
           "field": "date",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         },
         {
           "field": "closedBy",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         },
         {
           "field": "createdAt",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         },
         {
           "field": "items",
           "optional": false,
           "type": "StockClosingRow[]",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         },
         {
           "field": "totalStock",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:184"
+          "declaration": "components/ItemList.tsx:186"
         }
       ]
     },
     {
       "model": "ItemListProps",
-      "declaration": "components/ItemList.tsx:195",
+      "declaration": "components/ItemList.tsx:197",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -44011,343 +44649,343 @@
           "field": "orderUnitInputs",
           "optional": true,
           "type": "OrderUnitInputs",
-          "declaration": "components/ItemList.tsx:196"
+          "declaration": "components/ItemList.tsx:198"
         },
         {
           "field": "mode",
           "optional": true,
           "type": "'inventory' | 'lots'",
-          "declaration": "components/ItemList.tsx:197"
+          "declaration": "components/ItemList.tsx:199"
         },
         {
           "field": "companyId",
           "optional": false,
           "type": "import('../src/shared/types').CompanyId",
-          "declaration": "components/ItemList.tsx:198"
+          "declaration": "components/ItemList.tsx:200"
         },
         {
           "field": "items",
           "optional": false,
           "type": "Item[]",
-          "declaration": "components/ItemList.tsx:199"
+          "declaration": "components/ItemList.tsx:201"
         },
         {
           "field": "orderRequests",
           "optional": false,
           "type": "PurchaseOrder[]",
-          "declaration": "components/ItemList.tsx:200"
+          "declaration": "components/ItemList.tsx:202"
         },
         {
           "field": "confirmedOrders",
           "optional": false,
           "type": "PurchaseOrder[]",
-          "declaration": "components/ItemList.tsx:201"
+          "declaration": "components/ItemList.tsx:203"
         },
         {
           "field": "dispatchedQtyByItem",
           "optional": true,
           "type": "Record<string, number>",
-          "declaration": "components/ItemList.tsx:203"
+          "declaration": "components/ItemList.tsx:205"
         },
         {
           "field": "onUpdateItem",
           "optional": false,
           "type": "(product: Item) => void",
-          "declaration": "components/ItemList.tsx:204"
+          "declaration": "components/ItemList.tsx:206"
         },
         {
           "field": "onAddItem",
           "optional": false,
           "type": "(product: Item) => void",
-          "declaration": "components/ItemList.tsx:205"
+          "declaration": "components/ItemList.tsx:207"
         },
         {
           "field": "onAddOrderRequest",
           "optional": false,
           "type": "(id: string, qty: number, isBox?: boolean) => void",
-          "declaration": "components/ItemList.tsx:206"
+          "declaration": "components/ItemList.tsx:208"
         },
         {
           "field": "onRemoveOrderRequest",
           "optional": false,
           "type": "(id: string) => void",
-          "declaration": "components/ItemList.tsx:207"
+          "declaration": "components/ItemList.tsx:209"
         },
         {
           "field": "onUpdateOrderRequestQty",
           "optional": false,
           "type": "(id: string, qty: number) => void",
-          "declaration": "components/ItemList.tsx:208"
+          "declaration": "components/ItemList.tsx:210"
         },
         {
           "field": "onUpdatePoItemQty",
           "optional": true,
           "type": "(poId: string, index: number, qty: number) => void",
-          "declaration": "components/ItemList.tsx:209"
+          "declaration": "components/ItemList.tsx:211"
         },
         {
           "field": "onRemovePoItem",
           "optional": true,
           "type": "(poId: string, index: number) => void",
-          "declaration": "components/ItemList.tsx:210"
+          "declaration": "components/ItemList.tsx:212"
         },
         {
           "field": "onRequestPoEdit",
           "optional": true,
           "type": "(poId: string, newLines: { itemId: string; quantity: number }[], reason: string) => void",
-          "declaration": "components/ItemList.tsx:212"
+          "declaration": "components/ItemList.tsx:214"
         },
         {
           "field": "onToggleConfirmRequestQty",
           "optional": false,
           "type": "(id: string) => void",
-          "declaration": "components/ItemList.tsx:213"
+          "declaration": "components/ItemList.tsx:215"
         },
         {
           "field": "onConfirmRequest",
           "optional": false,
           "type": "(id: string) => void",
-          "declaration": "components/ItemList.tsx:214"
+          "declaration": "components/ItemList.tsx:216"
         },
         {
           "field": "onConfirmRequests",
           "optional": false,
           "type": "(ids: string[]) => void",
-          "declaration": "components/ItemList.tsx:215"
+          "declaration": "components/ItemList.tsx:217"
         },
         {
           "field": "onBulkAddConfirmedOrders",
           "optional": false,
           "type": "(items: { id: string, quantity: number, boxQuantity?: number, partnerId?: string }[]) => void",
-          "declaration": "components/ItemList.tsx:217"
+          "declaration": "components/ItemList.tsx:219"
         },
         {
           "field": "onConfirmAllRequests",
           "optional": false,
           "type": "() => Promise<void>",
-          "declaration": "components/ItemList.tsx:218"
+          "declaration": "components/ItemList.tsx:220"
         },
         {
           "field": "onFinishConfirmedOrder",
           "optional": false,
           "type": "(id: string) => Promise<boolean | void> | void",
-          "declaration": "components/ItemList.tsx:219"
+          "declaration": "components/ItemList.tsx:221"
         },
         {
           "field": "onUpdateConfirmedQty",
           "optional": false,
           "type": "(id: string, qty: number) => void",
-          "declaration": "components/ItemList.tsx:220"
+          "declaration": "components/ItemList.tsx:222"
         },
         {
           "field": "onUpdatePendingFlowQty",
           "optional": true,
           "type": "(type: '입고' | '반품', id: string, lines: { itemId: string; previousQuantity: number; quantity: number }[]) => Promise<void>",
-          "declaration": "components/ItemList.tsx:221"
+          "declaration": "components/ItemList.tsx:223"
         },
         {
           "field": "onRemoveConfirmedOrder",
           "optional": false,
           "type": "(id: string) => Promise<void> | void",
-          "declaration": "components/ItemList.tsx:222"
+          "declaration": "components/ItemList.tsx:224"
         },
         {
           "field": "onEditProduct",
           "optional": false,
           "type": "(product: Item) => void",
-          "declaration": "components/ItemList.tsx:223"
+          "declaration": "components/ItemList.tsx:225"
         },
         {
           "field": "onDeleteItem",
           "optional": false,
           "type": "(id: string) => void",
-          "declaration": "components/ItemList.tsx:224"
+          "declaration": "components/ItemList.tsx:226"
         },
         {
           "field": "onAddAdjustmentRequest",
           "optional": false,
           "type": "(req: AdjustmentRequest) => void",
-          "declaration": "components/ItemList.tsx:225"
+          "declaration": "components/ItemList.tsx:227"
         },
         {
           "field": "inboundPartners",
           "optional": false,
           "type": "{ id: string; name: string }[]",
-          "declaration": "components/ItemList.tsx:226"
+          "declaration": "components/ItemList.tsx:228"
         },
         {
           "field": "partners",
           "optional": true,
           "type": "{ id: string; name: string; partnerType?: string; companyId?: import('../src/shared/types').CompanyId; isOemFactory?: boolean }[]",
-          "declaration": "components/ItemList.tsx:227"
+          "declaration": "components/ItemList.tsx:229"
         },
         {
           "field": "partnerItems",
           "optional": true,
           "type": "PartnerItem[]",
-          "declaration": "components/ItemList.tsx:228"
+          "declaration": "components/ItemList.tsx:230"
         },
         {
           "field": "rawMaterialLedger",
           "optional": false,
           "type": "RawMaterialEntry[]",
-          "declaration": "components/ItemList.tsx:229"
+          "declaration": "components/ItemList.tsx:231"
         },
         {
           "field": "linesUsingRaw",
           "optional": true,
           "type": "(order: Order, material: string) => Order['items'] | undefined",
-          "declaration": "components/ItemList.tsx:231"
+          "declaration": "components/ItemList.tsx:233"
         },
         {
           "field": "orders",
           "optional": true,
           "type": "Order[]",
-          "declaration": "components/ItemList.tsx:233"
+          "declaration": "components/ItemList.tsx:235"
         },
         {
           "field": "onRequestPurchaseInvoice",
           "optional": true,
           "type": "(partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>, poIds?: string[]) => void",
-          "declaration": "components/ItemList.tsx:234"
+          "declaration": "components/ItemList.tsx:236"
         },
         {
           "field": "onOpenVoucher",
           "optional": true,
           "type": "(docNo: string, statementId: string) => void",
-          "declaration": "components/ItemList.tsx:235"
+          "declaration": "components/ItemList.tsx:237"
         },
         {
           "field": "issuedStatements",
           "optional": true,
           "type": "IssuedStatement[]",
-          "declaration": "components/ItemList.tsx:236"
+          "declaration": "components/ItemList.tsx:238"
         },
         {
           "field": "onAddRawMaterialEntry",
           "optional": false,
           "type": "(entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string; canEditRetry?:boolean }>",
-          "declaration": "components/ItemList.tsx:238"
+          "declaration": "components/ItemList.tsx:240"
         },
         {
           "field": "onDeleteRawMaterialEntry",
           "optional": false,
           "type": "(id: string) => void",
-          "declaration": "components/ItemList.tsx:239"
+          "declaration": "components/ItemList.tsx:241"
         },
         {
           "field": "onLedgerChanged",
           "optional": true,
           "type": "() => void",
-          "declaration": "components/ItemList.tsx:240"
+          "declaration": "components/ItemList.tsx:242"
         },
         {
           "field": "currentUser",
           "optional": true,
           "type": "{ name: string; id: string } | null",
-          "declaration": "components/ItemList.tsx:241"
+          "declaration": "components/ItemList.tsx:243"
         },
         {
           "field": "isAdmin",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/ItemList.tsx:242"
+          "declaration": "components/ItemList.tsx:244"
         },
         {
           "field": "onUpdateSubmaterial",
           "optional": true,
           "type": "(id: string, data: Partial<Item>) => void",
-          "declaration": "components/ItemList.tsx:243"
+          "declaration": "components/ItemList.tsx:245"
         },
         {
           "field": "receivedOrders",
           "optional": true,
           "type": "PurchaseOrder[]",
-          "declaration": "components/ItemList.tsx:244"
+          "declaration": "components/ItemList.tsx:246"
         },
         {
           "field": "returnRequests",
           "optional": true,
           "type": "ReturnRequest[]",
-          "declaration": "components/ItemList.tsx:245"
+          "declaration": "components/ItemList.tsx:247"
         },
         {
           "field": "returnContent",
           "optional": true,
           "type": "React.ReactNode",
-          "declaration": "components/ItemList.tsx:246"
+          "declaration": "components/ItemList.tsx:248"
         },
         {
           "field": "onProcessReturn",
           "optional": true,
           "type": "(request: ReturnRequest) => Promise<void>",
-          "declaration": "components/ItemList.tsx:247"
+          "declaration": "components/ItemList.tsx:249"
         },
         {
           "field": "onResumeReturn",
           "optional": true,
           "type": "(requestId: string) => Promise<void>",
-          "declaration": "components/ItemList.tsx:248"
+          "declaration": "components/ItemList.tsx:250"
         },
         {
           "field": "returnBadge",
           "optional": true,
           "type": "number",
-          "declaration": "components/ItemList.tsx:249"
+          "declaration": "components/ItemList.tsx:251"
         },
         {
           "field": "oemEnabled",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/ItemList.tsx:251"
+          "declaration": "components/ItemList.tsx:253"
         },
         {
           "field": "oemIssueDrafts",
           "optional": true,
           "type": "PurchaseOrder[]",
-          "declaration": "components/ItemList.tsx:252"
+          "declaration": "components/ItemList.tsx:254"
         },
         {
           "field": "rawStockKg",
           "optional": true,
           "type": "(material: string) => number",
-          "declaration": "components/ItemList.tsx:253"
+          "declaration": "components/ItemList.tsx:255"
         },
         {
           "field": "rawYieldRules",
           "optional": true,
           "type": "Record<string,{product:string;rate:number}>",
-          "declaration": "components/ItemList.tsx:254"
+          "declaration": "components/ItemList.tsx:256"
         },
         {
           "field": "onOemIssue",
           "optional": true,
           "type": "(input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>",
-          "declaration": "components/ItemList.tsx:255"
+          "declaration": "components/ItemList.tsx:257"
         },
         {
           "field": "onOemReceive",
           "optional": true,
           "type": "(input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>",
-          "declaration": "components/ItemList.tsx:256"
+          "declaration": "components/ItemList.tsx:258"
         },
         {
           "field": "onOemCancel",
           "optional": true,
           "type": "(po: PurchaseOrder) => Promise<unknown>",
-          "declaration": "components/ItemList.tsx:257"
+          "declaration": "components/ItemList.tsx:259"
         },
         {
           "field": "onOemIssueFee",
           "optional": true,
           "type": "(input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>",
-          "declaration": "components/ItemList.tsx:258"
+          "declaration": "components/ItemList.tsx:260"
         }
       ]
     },
     {
       "model": "MainTab",
-      "declaration": "components/ItemList.tsx:272",
+      "declaration": "components/ItemList.tsx:274",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -44355,7 +44993,7 @@
     },
     {
       "model": "FlowTypeFilter",
-      "declaration": "components/ItemList.tsx:312",
+      "declaration": "components/ItemList.tsx:314",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -44363,7 +45001,7 @@
     },
     {
       "model": "FlowStatusFilter",
-      "declaration": "components/ItemList.tsx:313",
+      "declaration": "components/ItemList.tsx:315",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -44371,7 +45009,7 @@
     },
     {
       "model": "InboundSubTab",
-      "declaration": "components/ItemList.tsx:314",
+      "declaration": "components/ItemList.tsx:316",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -44379,7 +45017,7 @@
     },
     {
       "model": "TopTab",
-      "declaration": "components/ItemList.tsx:317",
+      "declaration": "components/ItemList.tsx:319",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -44387,7 +45025,7 @@
     },
     {
       "model": "GroupRow",
-      "declaration": "components/ItemList.tsx:1308",
+      "declaration": "components/ItemList.tsx:1385",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -44395,31 +45033,31 @@
           "field": "p",
           "optional": false,
           "type": "Item",
-          "declaration": "components/ItemList.tsx:1308"
+          "declaration": "components/ItemList.tsx:1385"
         },
         {
           "field": "isChild",
           "optional": false,
           "type": "boolean",
-          "declaration": "components/ItemList.tsx:1308"
+          "declaration": "components/ItemList.tsx:1385"
         },
         {
           "field": "parentId",
           "optional": true,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1308"
+          "declaration": "components/ItemList.tsx:1385"
         },
         {
           "field": "boxCount",
           "optional": false,
           "type": "number",
-          "declaration": "components/ItemList.tsx:1308"
+          "declaration": "components/ItemList.tsx:1385"
         }
       ]
     },
     {
       "model": "FlowRow",
-      "declaration": "components/ItemList.tsx:1628",
+      "declaration": "components/ItemList.tsx:1715",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -44427,61 +45065,61 @@
           "field": "key",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1629"
+          "declaration": "components/ItemList.tsx:1716"
         },
         {
           "field": "id",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1630"
+          "declaration": "components/ItemList.tsx:1717"
         },
         {
           "field": "type",
           "optional": false,
           "type": "'입고' | '반품'",
-          "declaration": "components/ItemList.tsx:1631"
+          "declaration": "components/ItemList.tsx:1718"
         },
         {
           "field": "status",
           "optional": false,
           "type": "'예정' | '대기' | '완료'",
-          "declaration": "components/ItemList.tsx:1632"
+          "declaration": "components/ItemList.tsx:1719"
         },
         {
           "field": "date",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1633"
+          "declaration": "components/ItemList.tsx:1720"
         },
         {
           "field": "partnerName",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1634"
+          "declaration": "components/ItemList.tsx:1721"
         },
         {
           "field": "itemSummary",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1635"
+          "declaration": "components/ItemList.tsx:1722"
         },
         {
           "field": "quantitySummary",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:1636"
+          "declaration": "components/ItemList.tsx:1723"
         },
         {
           "field": "source",
           "optional": false,
           "type": "PurchaseOrder | ReturnRequest",
-          "declaration": "components/ItemList.tsx:1637"
+          "declaration": "components/ItemList.tsx:1724"
         }
       ]
     },
     {
       "model": "GridRow",
-      "declaration": "components/ItemList.tsx:3699",
+      "declaration": "components/ItemList.tsx:3786",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -44489,37 +45127,37 @@
           "field": "itemId",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         },
         {
           "field": "label",
           "optional": false,
           "type": "string",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         },
         {
           "field": "spec",
           "optional": true,
           "type": "string",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         },
         {
           "field": "editable",
           "optional": false,
           "type": "boolean",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         },
         {
           "field": "isChild",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         },
         {
           "field": "group",
           "optional": true,
           "type": "string",
-          "declaration": "components/ItemList.tsx:3699"
+          "declaration": "components/ItemList.tsx:3786"
         }
       ]
     },
@@ -63795,7 +64433,7 @@
     },
     {
       "model": "CollectionName",
-      "declaration": "src/shared/collections.ts:121",
+      "declaration": "src/shared/collections.ts:123",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
@@ -76122,7 +76760,7 @@
     },
     {
       "model": "ModalShellProps",
-      "declaration": "src/shared/components/ModalShell.tsx:4",
+      "declaration": "src/shared/components/ModalShell.tsx:5",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -76130,7 +76768,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:6"
+            "src/shared/components/ModalShell.tsx:7"
           ],
           "inherited": false
         },
@@ -76139,7 +76777,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:7"
+            "src/shared/components/ModalShell.tsx:8"
           ],
           "inherited": false
         },
@@ -76148,7 +76786,7 @@
           "optional": false,
           "type": "() => void",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:8"
+            "src/shared/components/ModalShell.tsx:9"
           ],
           "inherited": false
         },
@@ -76157,7 +76795,7 @@
           "optional": false,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:9"
+            "src/shared/components/ModalShell.tsx:10"
           ],
           "inherited": false
         },
@@ -76166,7 +76804,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:10"
+            "src/shared/components/ModalShell.tsx:11"
           ],
           "inherited": false
         },
@@ -76175,7 +76813,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:11"
+            "src/shared/components/ModalShell.tsx:12"
           ],
           "inherited": false
         },
@@ -76184,7 +76822,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:12"
+            "src/shared/components/ModalShell.tsx:13"
           ],
           "inherited": false
         },
@@ -76193,7 +76831,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:14"
+            "src/shared/components/ModalShell.tsx:15"
           ],
           "inherited": false
         },
@@ -76202,7 +76840,7 @@
           "optional": true,
           "type": "\"standard\" | \"large\" | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:16"
+            "src/shared/components/ModalShell.tsx:17"
           ],
           "inherited": false
         }
@@ -76218,7 +76856,7 @@
           "optional": false,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:9"
+            "src/shared/components/ModalShell.tsx:10"
           ],
           "inherited": true
         },
@@ -76227,7 +76865,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:11"
+            "src/shared/components/ModalShell.tsx:12"
           ],
           "inherited": true
         },
@@ -76236,7 +76874,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:10"
+            "src/shared/components/ModalShell.tsx:11"
           ],
           "inherited": true
         },
@@ -76245,7 +76883,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:6"
+            "src/shared/components/ModalShell.tsx:7"
           ],
           "inherited": true
         },
@@ -76254,7 +76892,7 @@
           "optional": false,
           "type": "() => void",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:8"
+            "src/shared/components/ModalShell.tsx:9"
           ],
           "inherited": true
         },
@@ -76263,7 +76901,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:7"
+            "src/shared/components/ModalShell.tsx:8"
           ],
           "inherited": true
         },
@@ -76272,7 +76910,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:12"
+            "src/shared/components/ModalShell.tsx:13"
           ],
           "inherited": true
         },
@@ -76281,7 +76919,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "src/shared/components/ModalShell.tsx:14"
+            "src/shared/components/ModalShell.tsx:15"
           ],
           "inherited": true
         }
@@ -78040,13 +78678,13 @@
     },
     {
       "model": "AlertTone",
-      "declaration": "src/shared/components/AlertModalShell.tsx:21",
+      "declaration": "src/shared/components/AlertModalShell.tsx:22",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
     {
       "model": "Props",
-      "declaration": "src/shared/components/AlertModalShell.tsx:36",
+      "declaration": "src/shared/components/AlertModalShell.tsx:37",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -78054,7 +78692,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:38"
+            "src/shared/components/AlertModalShell.tsx:39"
           ],
           "inherited": false
         },
@@ -78063,7 +78701,7 @@
           "optional": false,
           "type": "AlertTone",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:39"
+            "src/shared/components/AlertModalShell.tsx:40"
           ],
           "inherited": false
         },
@@ -78072,7 +78710,7 @@
           "optional": false,
           "type": "LucideIcon",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:40"
+            "src/shared/components/AlertModalShell.tsx:41"
           ],
           "inherited": false
         },
@@ -78081,7 +78719,7 @@
           "optional": false,
           "type": "() => void",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:41"
+            "src/shared/components/AlertModalShell.tsx:42"
           ],
           "inherited": false
         },
@@ -78090,7 +78728,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:43"
+            "src/shared/components/AlertModalShell.tsx:44"
           ],
           "inherited": false
         },
@@ -78099,7 +78737,7 @@
           "optional": false,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:44"
+            "src/shared/components/AlertModalShell.tsx:45"
           ],
           "inherited": false
         },
@@ -78108,7 +78746,7 @@
           "optional": false,
           "type": "ReactNode",
           "declarations": [
-            "src/shared/components/AlertModalShell.tsx:46"
+            "src/shared/components/AlertModalShell.tsx:47"
           ],
           "inherited": false
         }
@@ -79512,8 +80150,397 @@
       ]
     },
     {
-      "model": "UnpackOutcome",
-      "declaration": "src/shared/services/unpackService.ts:47",
+      "model": "Base",
+      "declaration": "src/shared/itemInventoryAttempt.ts:5",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "version",
+          "optional": false,
+          "type": "1",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "operationId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "companyId",
+          "optional": false,
+          "type": "CompanyId",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "uid",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "capturedAt",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "date",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "ItemStockAddRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:6",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "version",
+          "optional": false,
+          "type": "1",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "operationId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "companyId",
+          "optional": false,
+          "type": "CompanyId",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "uid",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "capturedAt",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "date",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "kind",
+          "optional": false,
+          "type": "\"stock-add\"",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:6"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "rows",
+          "optional": false,
+          "type": "{ itemId: string; itemName: string; deltaQty: number; unitKg: number; note: string; }[]",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:6"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "CanUnpackRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:7",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "version",
+          "optional": false,
+          "type": "1",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "operationId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "companyId",
+          "optional": false,
+          "type": "CompanyId",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "uid",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "capturedAt",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "date",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "kind",
+          "optional": false,
+          "type": "\"can-unpack\"",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:7"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "plan",
+          "optional": false,
+          "type": "UnpackPlan",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:7"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "BoxUnpackRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:8",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "version",
+          "optional": false,
+          "type": "1",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "operationId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "companyId",
+          "optional": false,
+          "type": "CompanyId",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "uid",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "capturedAt",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "date",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:5"
+          ],
+          "inherited": true
+        },
+        {
+          "field": "kind",
+          "optional": false,
+          "type": "\"box-unpack\"",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "boxItemId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "unitItemId",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "boxItemName",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "unitItemName",
+          "optional": true,
+          "type": "string | undefined",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "count",
+          "optional": false,
+          "type": "number",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "unitKg",
+          "optional": false,
+          "type": "number",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:8"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "ItemInventoryRequest",
+      "declaration": "src/shared/itemInventoryAttempt.ts:9",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "ItemInventoryKind",
+      "declaration": "src/shared/itemInventoryAttempt.ts:10",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "ItemInventoryRetained",
+      "declaration": "src/shared/itemInventoryAttempt.ts:11",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "request",
+          "optional": false,
+          "type": "ItemInventoryRequest",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:11"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "state",
+          "optional": false,
+          "type": "\"prepared\" | \"submitted\"",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:11"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "encoded",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:11"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "ItemInventoryOutcome",
+      "declaration": "src/shared/itemInventoryAttempt.ts:12",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -79521,7 +80548,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "src/shared/services/unpackService.ts:48"
+            "src/shared/itemInventoryAttempt.ts:12"
           ],
           "inherited": false
         },
@@ -79530,7 +80557,56 @@
           "optional": false,
           "type": "string",
           "declarations": [
+            "src/shared/itemInventoryAttempt.ts:12"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "status",
+          "optional": false,
+          "type": "\"applied\" | \"duplicate\" | \"rejected\" | \"blocked\" | \"unknown\"",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:12"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "retainPending",
+          "optional": false,
+          "type": "boolean",
+          "declarations": [
+            "src/shared/itemInventoryAttempt.ts:12"
+          ],
+          "inherited": false
+        }
+      ]
+    },
+    {
+      "model": "Initial",
+      "declaration": "src/shared/itemInventoryAttempt.ts:13",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "UnpackOutcome",
+      "declaration": "src/shared/services/unpackService.ts:48",
+      "scope": "checker-resolved-properties-only",
+      "fields": [
+        {
+          "field": "ok",
+          "optional": false,
+          "type": "boolean",
+          "declarations": [
             "src/shared/services/unpackService.ts:49"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "message",
+          "optional": false,
+          "type": "string",
+          "declarations": [
+            "src/shared/services/unpackService.ts:50"
           ],
           "inherited": false
         },
@@ -79539,7 +80615,16 @@
           "optional": true,
           "type": "UnpackLotMove[] | undefined",
           "declarations": [
-            "src/shared/services/unpackService.ts:50"
+            "src/shared/services/unpackService.ts:51"
+          ],
+          "inherited": false
+        },
+        {
+          "field": "status",
+          "optional": true,
+          "type": "\"applied\" | \"duplicate\" | \"rejected\" | \"blocked\" | \"unknown\" | undefined",
+          "declarations": [
+            "src/shared/services/unpackService.ts:52"
           ],
           "inherited": false
         }
@@ -86637,7 +87722,7 @@
     },
     {
       "model": "StockClosingRow",
-      "declaration": "components/ItemList.tsx:183",
+      "declaration": "components/ItemList.tsx:185",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -86645,7 +87730,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86654,7 +87739,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86663,7 +87748,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86672,7 +87757,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86681,7 +87766,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86690,7 +87775,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         },
@@ -86699,7 +87784,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:183"
+            "components/ItemList.tsx:185"
           ],
           "inherited": false
         }
@@ -86707,7 +87792,7 @@
     },
     {
       "model": "StockClosing",
-      "declaration": "components/ItemList.tsx:184",
+      "declaration": "components/ItemList.tsx:186",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -86715,7 +87800,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         },
@@ -86724,7 +87809,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         },
@@ -86733,7 +87818,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         },
@@ -86742,7 +87827,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         },
@@ -86751,7 +87836,7 @@
           "optional": false,
           "type": "StockClosingRow[]",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         },
@@ -86760,7 +87845,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:184"
+            "components/ItemList.tsx:186"
           ],
           "inherited": false
         }
@@ -86768,7 +87853,7 @@
     },
     {
       "model": "ItemListProps",
-      "declaration": "components/ItemList.tsx:195",
+      "declaration": "components/ItemList.tsx:197",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -86776,7 +87861,7 @@
           "optional": true,
           "type": "OrderUnitInputs | undefined",
           "declarations": [
-            "components/ItemList.tsx:196"
+            "components/ItemList.tsx:198"
           ],
           "inherited": false
         },
@@ -86785,7 +87870,7 @@
           "optional": true,
           "type": "\"lots\" | \"inventory\" | undefined",
           "declarations": [
-            "components/ItemList.tsx:197"
+            "components/ItemList.tsx:199"
           ],
           "inherited": false
         },
@@ -86794,7 +87879,7 @@
           "optional": false,
           "type": "CompanyId",
           "declarations": [
-            "components/ItemList.tsx:198"
+            "components/ItemList.tsx:200"
           ],
           "inherited": false
         },
@@ -86803,7 +87888,7 @@
           "optional": false,
           "type": "Item[]",
           "declarations": [
-            "components/ItemList.tsx:199"
+            "components/ItemList.tsx:201"
           ],
           "inherited": false
         },
@@ -86812,7 +87897,7 @@
           "optional": false,
           "type": "PurchaseOrder[]",
           "declarations": [
-            "components/ItemList.tsx:200"
+            "components/ItemList.tsx:202"
           ],
           "inherited": false
         },
@@ -86821,7 +87906,7 @@
           "optional": false,
           "type": "PurchaseOrder[]",
           "declarations": [
-            "components/ItemList.tsx:201"
+            "components/ItemList.tsx:203"
           ],
           "inherited": false
         },
@@ -86830,7 +87915,7 @@
           "optional": true,
           "type": "Record<string, number> | undefined",
           "declarations": [
-            "components/ItemList.tsx:203"
+            "components/ItemList.tsx:205"
           ],
           "inherited": false
         },
@@ -86839,7 +87924,7 @@
           "optional": false,
           "type": "(product: Item) => void",
           "declarations": [
-            "components/ItemList.tsx:204"
+            "components/ItemList.tsx:206"
           ],
           "inherited": false
         },
@@ -86848,7 +87933,7 @@
           "optional": false,
           "type": "(product: Item) => void",
           "declarations": [
-            "components/ItemList.tsx:205"
+            "components/ItemList.tsx:207"
           ],
           "inherited": false
         },
@@ -86857,7 +87942,7 @@
           "optional": false,
           "type": "(id: string, qty: number, isBox?: boolean | undefined) => void",
           "declarations": [
-            "components/ItemList.tsx:206"
+            "components/ItemList.tsx:208"
           ],
           "inherited": false
         },
@@ -86866,7 +87951,7 @@
           "optional": false,
           "type": "(id: string) => void",
           "declarations": [
-            "components/ItemList.tsx:207"
+            "components/ItemList.tsx:209"
           ],
           "inherited": false
         },
@@ -86875,7 +87960,7 @@
           "optional": false,
           "type": "(id: string, qty: number) => void",
           "declarations": [
-            "components/ItemList.tsx:208"
+            "components/ItemList.tsx:210"
           ],
           "inherited": false
         },
@@ -86884,7 +87969,7 @@
           "optional": true,
           "type": "((poId: string, index: number, qty: number) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:209"
+            "components/ItemList.tsx:211"
           ],
           "inherited": false
         },
@@ -86893,7 +87978,7 @@
           "optional": true,
           "type": "((poId: string, index: number) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:210"
+            "components/ItemList.tsx:212"
           ],
           "inherited": false
         },
@@ -86902,7 +87987,7 @@
           "optional": true,
           "type": "((poId: string, newLines: { itemId: string; quantity: number; }[], reason: string) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:212"
+            "components/ItemList.tsx:214"
           ],
           "inherited": false
         },
@@ -86911,7 +87996,7 @@
           "optional": false,
           "type": "(id: string) => void",
           "declarations": [
-            "components/ItemList.tsx:213"
+            "components/ItemList.tsx:215"
           ],
           "inherited": false
         },
@@ -86920,7 +88005,7 @@
           "optional": false,
           "type": "(id: string) => void",
           "declarations": [
-            "components/ItemList.tsx:214"
+            "components/ItemList.tsx:216"
           ],
           "inherited": false
         },
@@ -86929,7 +88014,7 @@
           "optional": false,
           "type": "(ids: string[]) => void",
           "declarations": [
-            "components/ItemList.tsx:215"
+            "components/ItemList.tsx:217"
           ],
           "inherited": false
         },
@@ -86938,7 +88023,7 @@
           "optional": false,
           "type": "(items: { id: string; quantity: number; boxQuantity?: number | undefined; partnerId?: string | undefined; }[]) => void",
           "declarations": [
-            "components/ItemList.tsx:217"
+            "components/ItemList.tsx:219"
           ],
           "inherited": false
         },
@@ -86947,7 +88032,7 @@
           "optional": false,
           "type": "() => Promise<void>",
           "declarations": [
-            "components/ItemList.tsx:218"
+            "components/ItemList.tsx:220"
           ],
           "inherited": false
         },
@@ -86956,7 +88041,7 @@
           "optional": false,
           "type": "(id: string) => void | Promise<boolean | void>",
           "declarations": [
-            "components/ItemList.tsx:219"
+            "components/ItemList.tsx:221"
           ],
           "inherited": false
         },
@@ -86965,7 +88050,7 @@
           "optional": false,
           "type": "(id: string, qty: number) => void",
           "declarations": [
-            "components/ItemList.tsx:220"
+            "components/ItemList.tsx:222"
           ],
           "inherited": false
         },
@@ -86974,7 +88059,7 @@
           "optional": true,
           "type": "((type: \"입고\" | \"반품\", id: string, lines: { itemId: string; previousQuantity: number; quantity: number; }[]) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:221"
+            "components/ItemList.tsx:223"
           ],
           "inherited": false
         },
@@ -86983,7 +88068,7 @@
           "optional": false,
           "type": "(id: string) => void | Promise<void>",
           "declarations": [
-            "components/ItemList.tsx:222"
+            "components/ItemList.tsx:224"
           ],
           "inherited": false
         },
@@ -86992,7 +88077,7 @@
           "optional": false,
           "type": "(product: Item) => void",
           "declarations": [
-            "components/ItemList.tsx:223"
+            "components/ItemList.tsx:225"
           ],
           "inherited": false
         },
@@ -87001,7 +88086,7 @@
           "optional": false,
           "type": "(id: string) => void",
           "declarations": [
-            "components/ItemList.tsx:224"
+            "components/ItemList.tsx:226"
           ],
           "inherited": false
         },
@@ -87010,7 +88095,7 @@
           "optional": false,
           "type": "(req: AdjustmentRequest) => void",
           "declarations": [
-            "components/ItemList.tsx:225"
+            "components/ItemList.tsx:227"
           ],
           "inherited": false
         },
@@ -87019,7 +88104,7 @@
           "optional": false,
           "type": "{ id: string; name: string; }[]",
           "declarations": [
-            "components/ItemList.tsx:226"
+            "components/ItemList.tsx:228"
           ],
           "inherited": false
         },
@@ -87028,7 +88113,7 @@
           "optional": true,
           "type": "{ id: string; name: string; partnerType?: string | undefined; companyId?: CompanyId | undefined; isOemFactory?: boolean | undefined; }[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:227"
+            "components/ItemList.tsx:229"
           ],
           "inherited": false
         },
@@ -87037,7 +88122,7 @@
           "optional": true,
           "type": "PartnerItem[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:228"
+            "components/ItemList.tsx:230"
           ],
           "inherited": false
         },
@@ -87046,7 +88131,7 @@
           "optional": false,
           "type": "RawMaterialEntry[]",
           "declarations": [
-            "components/ItemList.tsx:229"
+            "components/ItemList.tsx:231"
           ],
           "inherited": false
         },
@@ -87055,7 +88140,7 @@
           "optional": true,
           "type": "((order: Order, material: string) => OrderItem[] | undefined) | undefined",
           "declarations": [
-            "components/ItemList.tsx:231"
+            "components/ItemList.tsx:233"
           ],
           "inherited": false
         },
@@ -87064,7 +88149,7 @@
           "optional": true,
           "type": "Order[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:233"
+            "components/ItemList.tsx:235"
           ],
           "inherited": false
         },
@@ -87073,7 +88158,7 @@
           "optional": true,
           "type": "((partnerId: string, partnerName: string, items: { itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean | undefined; }[], poIds?: string[] | undefined) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:234"
+            "components/ItemList.tsx:236"
           ],
           "inherited": false
         },
@@ -87082,7 +88167,7 @@
           "optional": true,
           "type": "((docNo: string, statementId: string) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:235"
+            "components/ItemList.tsx:237"
           ],
           "inherited": false
         },
@@ -87091,7 +88176,7 @@
           "optional": true,
           "type": "IssuedStatement[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:236"
+            "components/ItemList.tsx:238"
           ],
           "inherited": false
         },
@@ -87100,7 +88185,7 @@
           "optional": false,
           "type": "(entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number | undefined; reason?: string | undefined; canEditRetry?: boolean | undefined; }>",
           "declarations": [
-            "components/ItemList.tsx:238"
+            "components/ItemList.tsx:240"
           ],
           "inherited": false
         },
@@ -87109,7 +88194,7 @@
           "optional": false,
           "type": "(id: string) => void",
           "declarations": [
-            "components/ItemList.tsx:239"
+            "components/ItemList.tsx:241"
           ],
           "inherited": false
         },
@@ -87118,7 +88203,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:240"
+            "components/ItemList.tsx:242"
           ],
           "inherited": false
         },
@@ -87127,7 +88212,7 @@
           "optional": true,
           "type": "{ name: string; id: string; } | null | undefined",
           "declarations": [
-            "components/ItemList.tsx:241"
+            "components/ItemList.tsx:243"
           ],
           "inherited": false
         },
@@ -87136,7 +88221,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/ItemList.tsx:242"
+            "components/ItemList.tsx:244"
           ],
           "inherited": false
         },
@@ -87145,7 +88230,7 @@
           "optional": true,
           "type": "((id: string, data: Partial<Item>) => void) | undefined",
           "declarations": [
-            "components/ItemList.tsx:243"
+            "components/ItemList.tsx:245"
           ],
           "inherited": false
         },
@@ -87154,7 +88239,7 @@
           "optional": true,
           "type": "PurchaseOrder[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:244"
+            "components/ItemList.tsx:246"
           ],
           "inherited": false
         },
@@ -87163,7 +88248,7 @@
           "optional": true,
           "type": "ReturnRequest[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:245"
+            "components/ItemList.tsx:247"
           ],
           "inherited": false
         },
@@ -87172,7 +88257,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "components/ItemList.tsx:246"
+            "components/ItemList.tsx:248"
           ],
           "inherited": false
         },
@@ -87181,7 +88266,7 @@
           "optional": true,
           "type": "((request: ReturnRequest) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:247"
+            "components/ItemList.tsx:249"
           ],
           "inherited": false
         },
@@ -87190,7 +88275,7 @@
           "optional": true,
           "type": "((requestId: string) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:248"
+            "components/ItemList.tsx:250"
           ],
           "inherited": false
         },
@@ -87199,7 +88284,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "components/ItemList.tsx:249"
+            "components/ItemList.tsx:251"
           ],
           "inherited": false
         },
@@ -87208,7 +88293,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/ItemList.tsx:251"
+            "components/ItemList.tsx:253"
           ],
           "inherited": false
         },
@@ -87217,7 +88302,7 @@
           "optional": true,
           "type": "PurchaseOrder[] | undefined",
           "declarations": [
-            "components/ItemList.tsx:252"
+            "components/ItemList.tsx:254"
           ],
           "inherited": false
         },
@@ -87226,7 +88311,7 @@
           "optional": true,
           "type": "((material: string) => number) | undefined",
           "declarations": [
-            "components/ItemList.tsx:253"
+            "components/ItemList.tsx:255"
           ],
           "inherited": false
         },
@@ -87235,7 +88320,7 @@
           "optional": true,
           "type": "Record<string, { product: string; rate: number; }> | undefined",
           "declarations": [
-            "components/ItemList.tsx:254"
+            "components/ItemList.tsx:256"
           ],
           "inherited": false
         },
@@ -87244,7 +88329,7 @@
           "optional": true,
           "type": "((input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number; }[]; date: string; note?: string | undefined; }) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:255"
+            "components/ItemList.tsx:257"
           ],
           "inherited": false
         },
@@ -87253,7 +88338,7 @@
           "optional": true,
           "type": "((input: { po: PurchaseOrder; returns: { itemId: string; qty: number; }[]; bulk: { material: string; kg: number; }[]; unitPricePerKg: number; date: string; }) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:256"
+            "components/ItemList.tsx:258"
           ],
           "inherited": false
         },
@@ -87262,7 +88347,7 @@
           "optional": true,
           "type": "((po: PurchaseOrder) => Promise<unknown>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:257"
+            "components/ItemList.tsx:259"
           ],
           "inherited": false
         },
@@ -87271,7 +88356,7 @@
           "optional": true,
           "type": "((input: { po: PurchaseOrder; unitPricePerKg: number; date: string; }) => Promise<void>) | undefined",
           "declarations": [
-            "components/ItemList.tsx:258"
+            "components/ItemList.tsx:260"
           ],
           "inherited": false
         }
@@ -87279,37 +88364,37 @@
     },
     {
       "model": "MainTab",
-      "declaration": "components/ItemList.tsx:272",
+      "declaration": "components/ItemList.tsx:274",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
     {
       "model": "FlowTypeFilter",
-      "declaration": "components/ItemList.tsx:312",
-      "scope": "non-object-model-not-expanded",
-      "fields": []
-    },
-    {
-      "model": "FlowStatusFilter",
-      "declaration": "components/ItemList.tsx:313",
-      "scope": "non-object-model-not-expanded",
-      "fields": []
-    },
-    {
-      "model": "InboundSubTab",
       "declaration": "components/ItemList.tsx:314",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
     {
+      "model": "FlowStatusFilter",
+      "declaration": "components/ItemList.tsx:315",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
+      "model": "InboundSubTab",
+      "declaration": "components/ItemList.tsx:316",
+      "scope": "non-object-model-not-expanded",
+      "fields": []
+    },
+    {
       "model": "TopTab",
-      "declaration": "components/ItemList.tsx:317",
+      "declaration": "components/ItemList.tsx:319",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
     {
       "model": "GroupRow",
-      "declaration": "components/ItemList.tsx:1308",
+      "declaration": "components/ItemList.tsx:1385",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -87317,7 +88402,7 @@
           "optional": false,
           "type": "Item",
           "declarations": [
-            "components/ItemList.tsx:1308"
+            "components/ItemList.tsx:1385"
           ],
           "inherited": false
         },
@@ -87326,7 +88411,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "components/ItemList.tsx:1308"
+            "components/ItemList.tsx:1385"
           ],
           "inherited": false
         },
@@ -87335,7 +88420,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/ItemList.tsx:1308"
+            "components/ItemList.tsx:1385"
           ],
           "inherited": false
         },
@@ -87344,7 +88429,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/ItemList.tsx:1308"
+            "components/ItemList.tsx:1385"
           ],
           "inherited": false
         }
@@ -87352,7 +88437,7 @@
     },
     {
       "model": "FlowRow",
-      "declaration": "components/ItemList.tsx:1628",
+      "declaration": "components/ItemList.tsx:1715",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -87360,7 +88445,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1629"
+            "components/ItemList.tsx:1716"
           ],
           "inherited": false
         },
@@ -87369,7 +88454,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1630"
+            "components/ItemList.tsx:1717"
           ],
           "inherited": false
         },
@@ -87378,7 +88463,7 @@
           "optional": false,
           "type": "\"입고\" | \"반품\"",
           "declarations": [
-            "components/ItemList.tsx:1631"
+            "components/ItemList.tsx:1718"
           ],
           "inherited": false
         },
@@ -87387,7 +88472,7 @@
           "optional": false,
           "type": "\"대기\" | \"완료\" | \"예정\"",
           "declarations": [
-            "components/ItemList.tsx:1632"
+            "components/ItemList.tsx:1719"
           ],
           "inherited": false
         },
@@ -87396,7 +88481,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1633"
+            "components/ItemList.tsx:1720"
           ],
           "inherited": false
         },
@@ -87405,7 +88490,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1634"
+            "components/ItemList.tsx:1721"
           ],
           "inherited": false
         },
@@ -87414,7 +88499,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1635"
+            "components/ItemList.tsx:1722"
           ],
           "inherited": false
         },
@@ -87423,7 +88508,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:1636"
+            "components/ItemList.tsx:1723"
           ],
           "inherited": false
         },
@@ -87432,7 +88517,7 @@
           "optional": false,
           "type": "PurchaseOrder | ReturnRequest",
           "declarations": [
-            "components/ItemList.tsx:1637"
+            "components/ItemList.tsx:1724"
           ],
           "inherited": false
         }
@@ -87440,7 +88525,7 @@
     },
     {
       "model": "GridRow",
-      "declaration": "components/ItemList.tsx:3699",
+      "declaration": "components/ItemList.tsx:3786",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -87448,7 +88533,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         },
@@ -87457,7 +88542,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         },
@@ -87466,7 +88551,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         },
@@ -87475,7 +88560,7 @@
           "optional": false,
           "type": "boolean",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         },
@@ -87484,7 +88569,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         },
@@ -87493,7 +88578,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/ItemList.tsx:3699"
+            "components/ItemList.tsx:3786"
           ],
           "inherited": false
         }
@@ -96106,7 +97191,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
+            "node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -96115,7 +97200,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
+            "node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -96124,7 +97209,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
+            "node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -96133,7 +97218,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
+            "node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -96142,7 +97227,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
+            "node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -96151,7 +97236,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
+            "node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -96160,7 +97245,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
+            "node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -96169,7 +97254,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
+            "node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -111348,7 +112433,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
+            "node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -111357,7 +112442,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
+            "node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -111366,7 +112451,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
+            "node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -111375,7 +112460,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
+            "node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -111384,7 +112469,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
+            "node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -111393,7 +112478,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
+            "node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -111402,7 +112487,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
+            "node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -111411,7 +112496,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
+            "node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -118942,7 +120027,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:63",
+        "location": "src/shared/services/unpackService.ts:69",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -118968,7 +120053,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:64",
+        "location": "src/shared/services/unpackService.ts:70",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -118994,7 +120079,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:65",
+        "location": "src/shared/services/unpackService.ts:71",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119021,7 +120106,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:83",
+        "location": "src/shared/services/unpackService.ts:98",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119048,7 +120133,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:237",
+        "location": "src/shared/services/unpackService.ts:259",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119074,7 +120159,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:315",
+        "location": "src/shared/services/unpackService.ts:337",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119774,7 +120859,7 @@
         "wrapperDeclaration": "src/shared/services/oemExternalStockEvidence.ts:22"
       },
       {
-        "location": "src/shared/services/boxUnpackService.ts:23",
+        "location": "src/shared/services/boxUnpackService.ts:28",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119800,7 +120885,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/boxUnpackService.ts:24",
+        "location": "src/shared/services/boxUnpackService.ts:29",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119826,7 +120911,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/boxUnpackService.ts:25",
+        "location": "src/shared/services/boxUnpackService.ts:30",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -119850,6 +120935,60 @@
         "outsideRegistry": [
           "itemUnpackMovements"
         ],
+        "unresolved": true,
+        "resolutionKind": "known-collection-dynamic-document"
+      },
+      {
+        "location": "src/shared/services/itemStockAddService.ts:17",
+        "runtime": "client",
+        "api": "doc",
+        "style": "modular",
+        "evidence": "firebase/firestore import",
+        "expression": "doc(store,COL.itemStockAddOperations,operationDocId(request.operationId))",
+        "path": "itemStockAddOperations/{operationDocId(request.operationId)}",
+        "segments": [
+          {
+            "value": "itemStockAddOperations",
+            "kind": "COL",
+            "key": "itemStockAddOperations"
+          },
+          {
+            "expression": "operationDocId(request.operationId)",
+            "kind": "dynamic"
+          }
+        ],
+        "context": "root",
+        "pathKind": "top-level-candidate",
+        "depth": null,
+        "argumentDepthCandidate": 1,
+        "outsideRegistry": [],
+        "unresolved": true,
+        "resolutionKind": "known-collection-dynamic-document"
+      },
+      {
+        "location": "src/shared/services/itemStockAddService.ts:25",
+        "runtime": "client",
+        "api": "doc",
+        "style": "modular",
+        "evidence": "firebase/firestore import",
+        "expression": "doc(store,COL.items,row.itemId)",
+        "path": "items/{row.itemId}",
+        "segments": [
+          {
+            "value": "items",
+            "kind": "COL",
+            "key": "items"
+          },
+          {
+            "expression": "row.itemId",
+            "kind": "dynamic"
+          }
+        ],
+        "context": "root",
+        "pathKind": "top-level-candidate",
+        "depth": null,
+        "argumentDepthCandidate": 1,
+        "outsideRegistry": [],
         "unresolved": true,
         "resolutionKind": "known-collection-dynamic-document"
       },
@@ -134947,7 +136086,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:536",
+            "location": "components/ItemList.tsx:596",
             "callee": "subscribeToCollection",
             "resolvedPaths": [
               {
@@ -136054,7 +137193,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:512",
+            "location": "components/ItemList.tsx:572",
             "callee": "fetchCollection",
             "resolvedPaths": [
               {
@@ -136080,7 +137219,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:567",
+            "location": "components/ItemList.tsx:627",
             "callee": "fetchCollection",
             "resolvedPaths": [
               {
@@ -136106,7 +137245,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:569",
+            "location": "components/ItemList.tsx:629",
             "callee": "fetchCollection",
             "resolvedPaths": [
               {
@@ -137140,7 +138279,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:568",
+            "location": "components/ItemList.tsx:628",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -137194,7 +138333,7 @@
             ]
           },
           {
-            "location": "components/ItemList.tsx:571",
+            "location": "components/ItemList.tsx:631",
             "callee": "addItem",
             "resolvedPaths": [
               {
@@ -145037,12 +146176,12 @@
       "src/shared/services/rawPressService.ts:66",
       "src/shared/services/rawPressService.ts:127",
       "src/shared/services/rawPressService.ts:170",
-      "src/shared/services/unpackService.ts:63",
-      "src/shared/services/unpackService.ts:64",
-      "src/shared/services/unpackService.ts:65",
-      "src/shared/services/unpackService.ts:83",
-      "src/shared/services/unpackService.ts:237",
-      "src/shared/services/unpackService.ts:315",
+      "src/shared/services/unpackService.ts:69",
+      "src/shared/services/unpackService.ts:70",
+      "src/shared/services/unpackService.ts:71",
+      "src/shared/services/unpackService.ts:98",
+      "src/shared/services/unpackService.ts:259",
+      "src/shared/services/unpackService.ts:337",
       "src/shared/services/pendingFlowQuantityService.ts:15",
       "src/shared/services/workOrderResetService.ts:9",
       "src/shared/services/deleteIssuedStatementService.ts:21",
@@ -145061,9 +146200,11 @@
       "src/features/admin/oemIssueJob.ts:135",
       "src/features/admin/oemIssueJob.ts:148",
       "src/shared/services/oemExternalStockEvidence.ts:23",
-      "src/shared/services/boxUnpackService.ts:23",
-      "src/shared/services/boxUnpackService.ts:24",
-      "src/shared/services/boxUnpackService.ts:25",
+      "src/shared/services/boxUnpackService.ts:28",
+      "src/shared/services/boxUnpackService.ts:29",
+      "src/shared/services/boxUnpackService.ts:30",
+      "src/shared/services/itemStockAddService.ts:17",
+      "src/shared/services/itemStockAddService.ts:25",
       "src/shared/services/pushTokenService.ts:12",
       "src/shared/services/orderRawBatchService.ts:56",
       "src/shared/services/orderRawBatchService.ts:56",

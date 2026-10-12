@@ -53,7 +53,7 @@ import { unpackPlan, unpackSummary } from '../src/shared/canUnpack';
 import { hasPendingReturnQuantity, resumePendingReturnQuantity } from '../src/shared/services/pendingFlowQuantityService';
 import { cancelReturnRequest, hasPendingReturnCancellation, resumeReturnCancellation } from '../src/shared/services/returnRequestCancellation';
 import { flowItemsChanged } from '../src/features/admin/pendingFlowQuantity';
-import { adjustStockByQty, unpack, durableProductStocktake as stocktakeByQty } from '../src/shared/services/unpackService';
+import { productStocktakeActor, durableCanUnpack, durableProductStocktake as stocktakeByQty } from '../src/shared/services/unpackService';
 import { getPackIndex, packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -74,7 +74,9 @@ import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
-import { unpackBoxStock } from '../src/shared/services/boxUnpackService';
+import { durableBoxUnpack } from '../src/shared/services/boxUnpackService';
+import { durableItemStockAdd } from '../src/shared/services/itemStockAddService';
+import { beginItemInventoryAttempt, readItemInventoryAttempt, clearItemInventoryAttempt, type ItemInventoryRequest, type ItemInventoryRetained } from '../src/shared/itemInventoryAttempt';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, auth } from '../src/shared/firebase';
 import { lotQtyRemaining } from '../src/shared/lotUtils';
@@ -390,6 +392,64 @@ const ItemListContent: React.FC<ItemListProps> = ({
     return () => { unpackMounted.current = false; };
   }, []);
   const inventoryItems = useMemo(() => items.filter(isPhysicalInventoryItem), [items]);
+  // 확인창을 기다리는 동안 다른 회사·사용자·새 모달로 바뀐 요청을 보내지 않는다.
+  const inventoryScope = useRef({companyId, uid: auth.currentUser?.uid, epoch: 0});
+  if (inventoryScope.current.companyId !== companyId || inventoryScope.current.uid !== auth.currentUser?.uid) {
+    inventoryScope.current = {companyId, uid: auth.currentUser?.uid, epoch: inventoryScope.current.epoch + 1};
+  }
+  const inventoryBusyRef = useRef<symbol | null>(null);
+  const [inventoryBusy, setInventoryBusy] = useState(false);
+  const [, setInventoryAttemptRevision] = useState(0);
+  const inventoryKinds = ['stock-add','can-unpack','box-unpack'] as const;
+  const pendingInventory = inventoryKinds.flatMap<{kind:ItemInventoryRequest['kind'];retained:ItemInventoryRetained|null;error:string}>(kind => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return [];
+    try { const retained = readItemInventoryAttempt(companyId,uid,kind); return retained ? [{kind,retained,error:''}] : []; }
+    catch (error) { return [{kind,retained:null,error:String(error)}]; }
+  });
+  const inventoryLabel = (kind: ItemInventoryRequest['kind']) => kind === 'stock-add' ? '재고 추가' : kind === 'can-unpack' ? '캔 개봉' : '박스 개봉';
+  const inventoryRequestSummary = (request: ItemInventoryRequest) => request.kind === 'stock-add'
+    ? request.rows.map(row => row.itemName + ' +' + row.deltaQty).join(', ')
+    : request.kind === 'can-unpack' ? request.plan.canName + ' ' + request.plan.cans + '개 → ' + request.plan.bulkName + ' ' + request.plan.bulkQty + request.plan.bulkUnit + ' (개당 ' + request.plan.perCan + request.plan.bulkUnit + ')'
+    : (request.boxItemName || '박스') + ' 1개 → ' + (request.unitItemName || '낱개') + ' +' + request.count + '개';
+  const runInventoryAttempt = async (kind: ItemInventoryRequest['kind'], build?: () => Parameters<typeof beginItemInventoryAttempt>[0]) => {
+    if (inventoryBusyRef.current || !unpackMounted.current) return false;
+    const owner = Symbol(); inventoryBusyRef.current = owner; setInventoryBusy(true);
+    const scope = inventoryScope.current, uid = auth.currentUser?.uid;
+    const active = () => unpackMounted.current && inventoryScope.current === scope && auth.currentUser?.uid === uid;
+    try {
+      if (!uid) throw Error('로그인 후 재고 작업을 진행해 주세요.');
+      let retained = readItemInventoryAttempt(companyId,uid,kind);
+      if (!retained) {
+        if (!build) throw Error('보존된 재고 작업이 없습니다.');
+        retained = beginItemInventoryAttempt(build());
+      }
+      if (active()) setInventoryAttemptRevision(value => value + 1);
+      const {request} = retained;
+      await productStocktakeActor(companyId,uid,true);
+      if (!active()) return false;
+      if (retained.state === 'prepared') {
+        const accepted = await appConfirm(inventoryLabel(kind) + ' — ' + inventoryRequestSummary(request) + '\n보존된 최초 입력으로 처리할까요?');
+        await productStocktakeActor(companyId,uid,true);
+        if (!active()) return false;
+        if (!accepted) { clearItemInventoryAttempt(retained); setInventoryAttemptRevision(value => value + 1); return false; }
+      }
+      if (!active()) return false;
+      const result = request.kind === 'stock-add' ? await durableItemStockAdd(request)
+        : request.kind === 'can-unpack' ? await durableCanUnpack(request) : await durableBoxUnpack(request);
+      if (!active()) return false;
+      setInventoryAttemptRevision(value => value + 1); setToast({message:result.message});
+      return result.ok;
+    } catch (error) {
+      if (active()) { setToast({message:String(error)}); setInventoryAttemptRevision(value => value + 1); }
+      return false;
+    } finally {
+      if (inventoryBusyRef.current === owner) {
+        inventoryBusyRef.current = null;
+        if (unpackMounted.current) setInventoryBusy(false);
+      }
+    }
+  };
   const rawLotsForMaterial = useCallback((material: string) => rawHolderByName(items, material, companyId)?.lots ?? [], [items,companyId]);
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const scheduledOutboundQty = useMemo(() => {
@@ -591,7 +651,15 @@ const ItemListContent: React.FC<ItemListProps> = ({
     } finally { setClosingSaving(false); }
   };
   // 품목 추가하기 — 만들기 모달(검색·수량·확정으로 재고 ADD) 열기
-  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setMakeVessel(''); setMakeGrade(''); setIsAddModalOpen(true); };
+  const makeTrigger = useRef<{node:HTMLButtonElement;scope:typeof inventoryScope.current}|null>(null);
+  const closeMakeModal = () => {
+    const previous = inventoryScope.current;
+    inventoryScope.current = {...previous,epoch:previous.epoch+1};
+    // 사용자가 같은 모달을 닫는 것은 옛 비동기 작업만 끊고 부모 초점은 복원한다.
+    if (makeTrigger.current?.scope === previous) makeTrigger.current.scope = inventoryScope.current;
+    setIsAddModalOpen(false);
+  };
+  const openMakeModal = (event:React.MouseEvent<HTMLButtonElement>) => { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; makeTrigger.current = {node:event.currentTarget,scope:inventoryScope.current}; setMakeBusy(false); setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setMakeVessel(''); setMakeGrade(''); setIsAddModalOpen(true); };
 
   const shareClosingImage = async () => {
     try {
@@ -1056,20 +1124,17 @@ const ItemListContent: React.FC<ItemListProps> = ({
   //  예전엔 옛 `unpackTo` 필드만 봤는데 BOM으로 옮기면서 그 필드가 전부 지워져
   //  (박스 품목 137건 중 보유 0건) 버튼이 한 번도 안 떴다.
   const unpackBox = async (product: Item) => {
-    const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
-    const uc = unpackComponent(product, inputs);
-    if (!uc) return;                                   // 박스 품목이 아니면 아무것도 안 한다
-    const target = items.find(i => i.id === uc.itemId);
-    if (!target) { alert('개봉 대상 낱개 품목을 찾을 수 없습니다.'); return; }
-    const boxStock = product.stock ?? 0;
-    if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
-    if (!await appConfirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
-    if (!unpackMounted.current) return;
-    const result = await unpackBoxStock({ boxItemId: product.id, unitItemId: target.id,
-      count: uc.count, operationId: `box-unpack-${product.id}-${crypto.randomUUID()}` }, inputs);
-    if (!unpackMounted.current) return;
-    if (!result.ok) { alert(result.message); return; }
-    setToast({ message: `${product.name} −1박스 → ${target.name} +${uc.count}개` });
+    const ok = await runInventoryAttempt('box-unpack', () => {
+      const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+      const uc = unpackComponent(product, inputs);
+      if (!uc) throw Error('박스 개봉 구성을 찾을 수 없습니다.');
+      const target = items.find(i => i.id === uc.itemId);
+      if (!target) throw Error('개봉 대상 낱개 품목을 찾을 수 없습니다.');
+      if ((product.stock ?? 0) < 1) throw Error('개봉할 박스 재고가 없습니다.');
+      return {kind:'box-unpack',companyId,uid:auth.currentUser!.uid,boxItemId:product.id,
+        unitItemId:target.id,boxItemName:product.name,unitItemName:target.name,count:uc.count,unitKg:itemKg(target,inputs)};
+    });
+    return ok;
   };
 
   /**
@@ -1085,21 +1150,33 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   const 개봉확정 = async () => {
     if (!unpackModal || unpackBusy) return;
-    const { item } = unpackModal;
-    const r = unpackPlan(item, Number(unpackModal.count), item.stock ?? 0, orderUnitInputs?.bom);
-    if (!r.ok) return;                                  // 단추가 이미 막혀 있다
     setUnpackBusy(true);
+    const scope = inventoryScope.current;
     try {
-      const out = await unpack(r.plan);
-      setToast({ message: out.message });
-      if (out.ok) setUnpackModal(null);
-    } finally {
-      setUnpackBusy(false);
-    }
+      const ok = await runInventoryAttempt('can-unpack', () => {
+        const item = unpackModal.item;
+        const r = unpackPlan(item, Number(unpackModal.count), item.stock ?? 0, orderUnitInputs?.bom);
+        if (!r.ok) throw Error('개봉 입력과 구성을 확인해 주세요.');
+        return {kind:'can-unpack',companyId,uid:auth.currentUser!.uid,plan:r.plan};
+      });
+      if (unpackMounted.current && inventoryScope.current === scope && ok) setUnpackModal(null);
+    } finally { if (unpackMounted.current && inventoryScope.current === scope) setUnpackBusy(false); }
   };
 
   const [confirmModal, setConfirmModal] = useState<{ title?: string; message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // 확인창과 자식 작성 모달이 함께 사라질 때 공용 cleanup이 끊어진 버튼을 복원할 수 있다.
+  useEffect(() => {
+    if (isAddModalOpen || !makeTrigger.current) return;
+    const captured = makeTrigger.current; makeTrigger.current = null;
+    queueMicrotask(() => {
+      if (!unpackMounted.current || inventoryScope.current !== captured.scope || auth.currentUser?.uid !== captured.scope.uid || !captured.node.isConnected || captured.node.getClientRects().length === 0) return;
+      const top = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'))
+        .sort((a,b) => (Number(getComputedStyle(a.parentElement!).zIndex)||0) - (Number(getComputedStyle(b.parentElement!).zIndex)||0)).at(-1);
+      if (top?.contains(captured.node) && !captured.node.closest('[hidden],[aria-hidden="true"]')) captured.node.focus();
+    });
+  },[isAddModalOpen]);
 
   // 분류 체계 — 이름·하위 분류는 사용자가 정한다(itemTaxonomy). 저장본이 없으면 기본값.
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
@@ -1364,6 +1441,16 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   return (
     <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
+      {pendingInventory.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3" aria-label="보존된 재고 작업">
+        <p className="text-sm font-bold">처리 결과를 확인할 재고 작업</p>
+        {pendingInventory.map(({kind,retained,error}) => <div key={kind} className="flex flex-wrap items-center gap-2 mt-2">
+          <span>{inventoryLabel(kind)} · {error || (retained?.state === 'submitted' ? '결과 미확인' : '확인 대기')}</span>
+          {retained && <p className="w-full text-xs">{inventoryRequestSummary(retained.request)} · 결과 확인은 이 최초 입력을 사용합니다.</p>}
+          {!error && <button disabled={inventoryBusy} onClick={() => void runInventoryAttempt(kind)} className="rounded-lg bg-white px-3 py-2 text-sm font-bold">
+            {retained?.state === 'submitted' ? '결과 확인' : '보존된 입력으로 계속'}
+          </button>}
+        </div>)}
+      </div>}
       <PageHeader
         title={mode === 'lots' ? '생산 관리' : '재고 관리'}
         subtitle={mode === 'lots' ? '원료 사용과 활성·완료 로트를 한곳에서 관리하세요.' : '실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.'}
@@ -2307,7 +2394,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                             if (!r.ok) return null;
                             return (
                               <button
-                                onClick={e => { e.stopPropagation(); setUnpackModal({ item: product, count: '1' }); }}
+                                onClick={e => { e.stopPropagation(); inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; setUnpackBusy(false); setUnpackModal({ item: product, count: '1' }); }}
                                 disabled={(product.stock ?? 0) < 1}
                                 className="shrink-0 text-[9px] font-black text-amber-600 hover:text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
                                 title={unpackSummary(r.plan)}
@@ -2462,7 +2549,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 <div className="flex gap-2">
                   {(directUnpack || plannedUnpack.ok) && <button onClick={() => {
                     setDetailProduct(null);
-                    if (directUnpack) void unpackBox(product); else setUnpackModal({ item: product, count: '1' });
+                    if (directUnpack) void unpackBox(product); else { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; setUnpackBusy(false); setUnpackModal({ item: product, count: '1' }); }
                   }} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-black text-slate-600">개봉</button>}
                   <button onClick={() => setDetailProduct(null)} className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-black text-white">닫기</button>
                 </div>
@@ -3119,35 +3206,27 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const listed = groupLooseBoxRows(listedItems, orderUnitInputs);
 
         const commit = async () => {
-          if (picked.length === 0 || makeBusy || !unpackMounted.current) return;
-          const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+          if (makeBusy || !unpackMounted.current) return;
+          const scope = inventoryScope.current;
           setMakeBusy(true);
           try {
-            for (const [id, v] of picked) {
-              if (!unpackMounted.current) return;
-              const p = items.find(x => x.id === id);
-              if (!p || isRawHolder(p)) continue;   // 원료는 대상 아님
-              const add = parseFloat(v) || 0;
-              if (add <= 0) continue;
-              //  화면 값에 더하면 여러 품목을 연달아 늘릴 때 서로를 덮어쓴다 — DB 에서 읽어 더한다
-              const result = await adjustStockByQty({
-                itemId: p.id, itemName: p.name, deltaQty: add,
-                unitKg: stockKg(1, p, key => items.find(x => x.id === key), inputs) ?? 0,
-                note: '재고 추가',
+            const ok = await runInventoryAttempt('stock-add', () => {
+              const inputs = orderUnitInputs ?? { bom: getBomIndex(), pack: getPackIndex() };
+              const rows = picked.map(([id,v]) => {
+                const p = items.find(x => x.id === id);
+                if (!p || isRawHolder(p)) throw Error('재고 추가 품목을 다시 확인해 주세요.');
+                return {itemId:p.id,itemName:p.name,deltaQty:parseFloat(v),
+                  unitKg:stockKg(1,p,key => items.find(x => x.id === key),inputs) ?? 0,note:'재고 추가'};
               });
-              if (!unpackMounted.current) return;
-              if (!result.ok) throw new Error(result.message);
-            }
-            setToast({ message: `${picked.length}개 품목 재고를 늘렸습니다` });
-            setIsAddModalOpen(false);
-          } finally {
-            if (unpackMounted.current) setMakeBusy(false);
-          }
+              return {kind:'stock-add',companyId,uid:auth.currentUser!.uid,rows};
+            });
+            if (unpackMounted.current && inventoryScope.current === scope && ok) setIsAddModalOpen(false);
+          } finally { if (unpackMounted.current && inventoryScope.current === scope) setMakeBusy(false); }
         };
 
         return (
           <ModalShell title="품목 추가하기" subtitle="전체 품목에서 검색 → 수량 입력 → 확정하면 그만큼 재고가 생깁니다"
-            onClose={() => setIsAddModalOpen(false)} layer={1100} className="h-[92dvh] md:h-[85vh]" bodyClassName="!p-0 !overflow-hidden flex flex-col">
+            onClose={closeMakeModal} layer={1100} className="h-[92dvh] md:h-[85vh]" bodyClassName="!p-0 !overflow-hidden flex flex-col">
 
               {/* 필터는 전부 드롭다운 한 줄로 — 탭이 늘어서면 그 줄이 화면을 먹는다 */}
               <div className="px-5 pt-3 flex items-center gap-2 flex-wrap shrink-0">
@@ -3318,6 +3397,10 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 })}
               </div>
 
+              {pendingInventory.find(row => row.kind === 'stock-add')?.retained && <div className="mx-5 rounded-lg bg-amber-50 p-3 text-xs">
+                <p>보존된 최초 재고 추가 입력으로 결과를 확인합니다. 현재 입력은 새로 저장하지 않습니다.</p>
+                <button onClick={commit} disabled={inventoryBusy || makeBusy} className="mt-2 rounded-lg bg-white px-3 py-2 font-bold">재고 추가 결과 확인</button>
+              </div>}
               {/* 고른 것 — 목록은 안 흔들고, 여기에 모아서 보여준다 */}
               {picked.length > 0 && (
                 <div className="px-5 py-3 border-t border-slate-100 bg-indigo-50/40 shrink-0 max-h-32 overflow-y-auto">
@@ -3341,7 +3424,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 <p className="flex-1 text-[11px] font-bold text-slate-400">
                   {picked.length > 0 ? `${picked.length}개 품목 선택됨` : '수량을 입력하면 선택됩니다'}
                 </p>
-                <button onClick={() => setIsAddModalOpen(false)} className="px-5 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
+                <button onClick={closeMakeModal} className="px-5 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button onClick={commit} disabled={picked.length === 0 || makeBusy}
                   className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 disabled:opacity-30 transition-all">
                   {makeBusy ? '반영 중…' : '확정'}
@@ -3358,7 +3441,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const r = unpackPlan(unpackModal.item, Number(unpackModal.count), unpackModal.item.stock ?? 0, orderUnitInputs?.bom);
         const 있는것 = unpackModal.item.stock ?? 0;
         return (
-          <ModalShell title="개봉" onClose={() => { if (!unpackBusy) setUnpackModal(null); }} className="md:max-w-sm">
+          <ModalShell title="개봉" onClose={() => { if (!unpackBusy) { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; setUnpackModal(null); } }} className="md:max-w-sm">
               <p className="mt-1 truncate text-xs font-bold text-slate-500">{unpackModal.item.name}</p>
 
               <label className="mt-4 block text-[11px] font-black text-slate-500">몇 개를 깔까요 <span className="font-bold text-slate-400">(있는 것 {있는것}개)</span></label>
@@ -3388,8 +3471,12 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 </p>
               )}
 
+              {pendingInventory.find(row => row.kind === 'can-unpack')?.retained && <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs">
+                <p>보존된 최초 개봉 입력으로 결과를 확인합니다. 현재 구성이나 수량으로 다시 개봉하지 않습니다.</p>
+                <button onClick={개봉확정} disabled={inventoryBusy || unpackBusy} className="mt-2 rounded-lg bg-white px-3 py-2 font-bold">캔 개봉 결과 확인</button>
+              </div>}
               <div className="mt-4 flex justify-end gap-2">
-                <button onClick={() => setUnpackModal(null)} disabled={unpackBusy}
+                <button onClick={() => { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; setUnpackModal(null); }} disabled={unpackBusy}
                   className="rounded-xl px-3 py-2 text-xs font-black text-slate-500 hover:bg-slate-100 disabled:opacity-40">취소</button>
                 <button onClick={개봉확정} disabled={!r.ok || unpackBusy}
                   className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-white hover:bg-amber-600 disabled:opacity-40">

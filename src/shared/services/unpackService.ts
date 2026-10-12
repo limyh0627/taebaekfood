@@ -14,6 +14,7 @@ import { today } from '../day';
 import { inventoryDocId, operationDocId, type LotChange, type RawInventoryMovement } from '../rawInventoryCore';
 import { normalizeRawInventoryState, toLedgerDoc } from './rawInventoryService';
 import { rawMirrorMatches } from '../rawMirror';
+import {ItemInventoryRejected,rejectItemInventory,prepareItemInventory,assertItemInventoryWriteBudget,validateItemInventoryRequest,itemInventoryRequestHash,itemInventoryRequestText,itemInventoryResultText,runItemInventoryAttempt,type CanUnpackRequest,type ItemInventoryOutcome} from '../itemInventoryAttempt';
 
 /**
  * **캔을 까서 벌크로 되돌린다 — 실제로 쓰는 자리.**
@@ -48,48 +49,64 @@ export interface UnpackOutcome {
   ok: boolean;
   message: string;
   moves?: UnpackLotMove[];
+  status?:ItemInventoryOutcome['status'];
 }
 
-export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
-  const now = new Date().toISOString();
-  const 오늘 = today();
+export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest;mode:'apply'|'inspect';check:()=>Promise<void>}): Promise<UnpackOutcome> {
+  const now = context?.request.capturedAt??new Date().toISOString();
+  const 오늘 = context?.request.date??today();
   //  같은 호출을 Firestore가 재시도해도 작업번호·로트번호는 바뀌지 않는다.
-  const operationId = `unpack:${plan.canItemId}:${Date.parse(now)}`;
+  const operationId = context?.request.operationId??`unpack:${plan.canItemId}:${Date.parse(now)}`;
   const operationDocumentId = operationDocId(operationId);
   const lotIdPrefix = `lot-${operationDocumentId}`;
 
   try {
+    if(context){validateItemInventoryRequest(context.request);if(context.request.kind!=='can-unpack'||itemInventoryRequestText(context.request)!==itemInventoryRequestText({...context.request,plan}))throw Error('개봉 계획이 최초 원문과 다릅니다.');context={...context,request:JSON.parse(JSON.stringify(context.request))};plan=context.request.plan;await context.check();}
+    const requestHash=context?await itemInventoryRequestHash(context.request):undefined;
+    if(context)await context.check();let duplicate=false;
     const moves = await runTransaction(db, async tx => {
+      if(context)await context.check();
       const canRef = doc(db, 'items', plan.canItemId);
       const bulkRef = doc(db, 'items', plan.bulkItemId);
       const movementRef = doc(db, COL.rawMaterialLedger, operationDocumentId);
       // 원자화 상태 문서 열쇠에는 회사가 필요하다. 벌크 품목을 읽은 뒤 다시 읽으면
       // Firestore의 '모든 읽기는 쓰기 전' 규칙은 지키지만 왕복이 늘 뿐 안전성은 같다.
-      const [canSnap, bulkSnap, movementSnap] = await Promise.all([
-        tx.get(canRef), tx.get(bulkRef), tx.get(movementRef),
-      ]);
-      if (!canSnap.exists()) throw new Error(`${plan.canName} 품목을 찾을 수 없습니다.`);
-      if (!bulkSnap.exists()) throw new Error(`${plan.bulkName} 품목을 찾을 수 없습니다.`);
-
+      const movementSnap = await tx.get(movementRef);
       // 모바일에서 성공 응답을 못 받고 같은 호출이 재시도돼도 두 번 까지 않는다.
-      if (movementSnap.exists()) return (movementSnap.data().unpackMoves ?? []) as UnpackLotMove[];
+      if(context)await context.check();
+      if (movementSnap.exists()) {
+        const saved=movementSnap.data();
+        if(context&&(saved.inventoryRequestHash!==requestHash||itemInventoryRequestText(saved.inventoryRequest)!==itemInventoryRequestText(context.request)||saved.companyId!==context.request.companyId||saved.operationId!==operationId||saved.rawItemId!==plan.bulkItemId||saved.kind!=='unpack'||saved.reportedDeltaKg!==plan.bulkQty||saved.appliedDeltaKg!==plan.bulkQty||saved.effectiveAt!==now||saved.recordedAt!==now||!Number.isFinite(saved.balanceAfterKg)||!Array.isArray(saved.unpackMoves)||saved.inventoryResult?.movesText!==itemInventoryResultText(saved.unpackMoves)))throw Error('캔 개봉 영수증이 최초 원문과 다릅니다.');
+        if(context){const result=saved.inventoryResult,moves=saved.unpackMoves;
+          if(saved.id!==operationDocumentId||saved.source?.type!=='unpack'||saved.source.id!==plan.canItemId||saved.commandHash!==`unpack:${plan.canItemId}:${plan.bulkItemId}:${plan.cans}:${plan.perCan}`||!Number.isSafeInteger(saved.sequence)||saved.sequence<=0)throw Error('캔 개봉 원장 식별 근거가 다릅니다.');
+          if(!moves.length||moves.some((row:any)=>typeof row.supplierName!=='string'||!Number.isFinite(row.cans)||row.cans<=0||row.bulkQty!==Math.round(row.cans*plan.perCan*1000)/1000||row.canLotId!==undefined&&(typeof row.canLotId!=='string'||!row.canLotId)||Object.keys(row).some(key=>!['canLotId','lotNo','supplierName','receivedDate','cans','bulkQty'].includes(key)))||Math.abs(moves.reduce((sum:number,row:any)=>sum+row.cans,0)-plan.cans)>0.000001||![result.canBefore,result.canAfter,result.bulkBefore,result.bulkAfter].every(Number.isFinite)||Math.abs(result.canBefore-result.canAfter-plan.cans)>0.000001||result.canAfter<0||result.bulkAfter!==saved.balanceAfterKg||Math.round((result.bulkAfter-result.bulkBefore)*1000)!==Math.round(moves.reduce((sum:number,row:any)=>sum+row.bulkQty,0)*1000))throw Error('캔 개봉 수량·로트 결과 근거가 다릅니다.');
+        }
+        duplicate=true;return (saved.unpackMoves??[]) as UnpackLotMove[];
+      }
+      if(context?.mode==='inspect')throw Error('최초 캔 개봉 영수증이 없습니다. 다시 개봉하지 않았습니다.');
+      const [canSnap,bulkSnap]=await Promise.all([tx.get(canRef),tx.get(bulkRef)]);if(context)await context.check();
+      if (!canSnap.exists()) rejectItemInventory(`${plan.canName} 품목을 찾을 수 없습니다.`);
+      if (!bulkSnap.exists()) rejectItemInventory(`${plan.bulkName} 품목을 찾을 수 없습니다.`);
 
-      const canData = canSnap.data();
-      const bulkData = bulkSnap.data();
+      const canData = canSnap.data()!;
+      const bulkData = bulkSnap.data()!;
       const canCompany = companyOf(canData);
       const bulkCompany = companyOf(bulkData);
-      if (canCompany !== bulkCompany) throw new Error('캔과 벌크 품목의 회사가 다릅니다.');
+      if (canCompany !== bulkCompany) rejectItemInventory('캔과 벌크 품목의 회사가 다릅니다.');
+      if(context&&canCompany!==context.request.companyId)rejectItemInventory('최초 캔 개봉 회사가 다릅니다.');
 
       const stateRef = doc(db, COL.rawInventories, inventoryDocId(bulkCompany, plan.bulkItemId));
       const stateSnap = await tx.get(stateRef);
-      if (!stateSnap.exists()) throw new Error(`${plan.bulkName} 원료가 아직 원자화되지 않았습니다.`);
-      const state = normalizeRawInventoryState(stateSnap.data());
+      if(context)await context.check();
+      if (!stateSnap.exists()) rejectItemInventory(`${plan.bulkName} 원료가 아직 원자화되지 않았습니다.`);
+      const state = normalizeRawInventoryState(stateSnap.data()!);
+      if(context&&(state.companyId!==context.request.companyId||state.rawItemId!==plan.bulkItemId))rejectItemInventory('캔 개봉 원료 상태의 회사·품목이 다릅니다.');
       if (!rawMirrorMatches(Number(bulkData.stock ?? 0), state.stockKg)) {
-        throw new Error(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
+        rejectItemInventory(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
       }
       const canStock = Number(canData.stock ?? 0);
       if (!Number.isFinite(plan.cans) || plan.cans <= 0 || canStock < plan.cans) {
-        throw new Error(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
+        rejectItemInventory(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
       }
 
       /**
@@ -108,15 +125,15 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
       // 벌크는 원자화 상태가 본체다. items.lots를 다시 근거로 삼으면 두 경로가 또 생긴다.
       const bulkLots = withCarryOverLot(state.activeLots, state.stockKg, plan.bulkName);
 
-      const r = unpackLots({
+      const r = prepareItemInventory(()=>unpackLots({
         canLots, bulkLots,
         cans: plan.cans,
         perCan: plan.perCan,
         material: plan.bulkName,
         det: { now, receivedDate: 오늘, lotIdPrefix },
-      });
+      }));
       if (canStockAfter(r.canLots) < 0) {
-        throw new Error(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
+        rejectItemInventory(`${plan.canName} 재고가 부족합니다. 현재 ${canStock}, 개봉 ${plan.cans}`);
       }
 
       const activeLots = r.bulkLots.filter(l => l.status !== 'depleted');
@@ -164,6 +181,9 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
       };
 
       // 네 문서가 한 트랜잭션이다. 하나라도 실패하면 캔도 벌크도 전혀 움직이지 않는다.
+      const evidence=context?{inventoryRequest:context.request,inventoryRequestHash:requestHash,inventoryResult:{movesText:itemInventoryResultText(r.moves),canBefore:canStock,canAfter:canStockAfter(r.canLots),bulkBefore:state.stockKg,bulkAfter:balanceAfterKg}}:{};
+      assertItemInventoryWriteBudget([{...canData,lots:pruneDepletedLots(r.canLots)},{...bulkData,lots:[...activeLots,...recentDepletedLots]},nextState,{...toLedgerDoc(movement,{note:unpackSummary(plan),type:'manual',addedBy:'캔 개봉',canSize:plan.perCan,canCount:plan.cans}),...evidence,unpackMoves:r.moves}]);
+      if(context)await context.check();
       tx.update(canRef, { lots: strip(pruneDepletedLots(r.canLots)), stock: canStockAfter(r.canLots) });
       tx.update(bulkRef, { lots: strip([...activeLots, ...recentDepletedLots]), stock: balanceAfterKg });
       tx.set(stateRef, strip(nextState));
@@ -173,18 +193,20 @@ export async function unpack(plan: UnpackPlan): Promise<UnpackOutcome> {
           canSize: plan.perCan, canCount: plan.cans,
         }),
         unpackMoves: r.moves,
+        ...evidence,
       }));
       return r.moves;
     });
 
     //  **공캔은 안 건드린다**(`plan.discarded`) — 깐 캔은 버린다. 되돌리면 다음 생산 때
     //  있지도 않은 공캔을 집어 쓴다.
-    return { ok: true, message: unpackSummary(plan), moves };
+    if(context)await context.check();
+    return { ok: true, message: unpackSummary(plan), moves,status:duplicate?'duplicate':'applied' };
   } catch (error) {
-    //  트랜잭션이라 중간 상태가 없다 — 실패하면 아무것도 안 움직였다.
-    console.error('[개봉] 실패 — 아무것도 안 움직였다:', error);
+    // 쓰기 전 도메인 거절만 미반영이다. SDK/응답/후행 인증 실패는 원문을 보존한다.
+    console.error(context?'[개봉] 결과 확인 실패:':'[개봉] 처리 실패:', error);
     const 사유 = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: `개봉하지 못했습니다 — ${사유}` };
+    return { ok: false,status:context?.mode==='apply'&&error instanceof ItemInventoryRejected?'rejected':context?'unknown':'blocked',message:context?.mode==='apply'&&error instanceof ItemInventoryRejected?`개봉하지 않았습니다 — ${사유}`:context?`개봉 결과 미확인 — ${사유}`:`개봉하지 못했습니다 — ${사유}` };
   }
 }
 
@@ -342,9 +364,12 @@ export async function adjustStockByQty(params: {
 }
 
 /** 인증 회사와 실제 로그인 UID를 모두 확인한다. */
-export async function productStocktakeActor(companyId: CompanyId): Promise<string> {
+export async function productStocktakeActor(companyId: CompanyId,expectedUid?:string,requireEmployee=false): Promise<string> {
  await authReady; const user=auth.currentUser;if(!user)throw Error('로그인 후 제품 실사를 확인해 주세요.');
- const token=await user.getIdTokenResult();if(auth.currentUser?.uid!==user.uid || token.claims.companyId!==companyId)throw Error('제품 실사의 회사·로그인이 변경되었습니다.');return user.uid;
+ const token=await user.getIdTokenResult();if(auth.currentUser?.uid!==user.uid || token.claims.companyId!==companyId||expectedUid!==undefined&&user.uid!==expectedUid||requireEmployee&&(typeof token.claims.employeeId!=='string'||!token.claims.employeeId.trim()))throw Error('제품 실사의 회사·로그인이 변경되었습니다.');return user.uid;
+}
+export async function durableCanUnpack(request:CanUnpackRequest):Promise<ItemInventoryOutcome>{
+ const companyId=request.companyId,uid=request.uid;return runItemInventoryAttempt(request,async()=>{await productStocktakeActor(companyId,uid,true);},async(mode,check,first)=>{const fixed=first as CanUnpackRequest;const result=await unpack(fixed.plan,{request:fixed,mode,check});return {ok:result.ok,status:result.status??'unknown',message:result.message,retainPending:!result.ok};});
 }
 /** 최초 원문 보존 후 한번만 적용하고, 보존된 요청 재개는 저장 앵커만 확인한다. */
 export async function durableProductStocktake(params: {companyId:CompanyId;itemId:string;itemName:string;targetQty:number;minStock?:number;unitKg?:number;operationId?:string}): Promise<{ok:boolean;message:string;deltaQty?:number}> {
