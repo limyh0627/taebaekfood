@@ -1,6 +1,6 @@
 # 현재 코드 필드 사전
 
-COL 87개, 선언 필드 737개, 운영 소스 468개를 분석했다.
+COL 87개, 선언 필드 737개, 운영 소스 469개를 분석했다.
 
 TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.
 
@@ -15,8 +15,8 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
 | doc | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:19 | functions/src/financialOpeningCommand.ts:27: 미해석; functions/src/financialOpeningCommand.ts:28: 미해석; functions/src/financialOpeningCommand.ts:30: 미해석; functions/src/financialOpeningCommand.ts:61: 미해석; functions/src/financialOpeningCommand.ts:62: 미해석; functions/src/financialOpeningCommand.ts:63: 미해석; functions/src/financialOpeningCommand.ts:64: 미해석; functions/src/financialOpeningCommand.ts:100: 미해석; functions/src/financialOpeningCommand.ts:101: 미해석; functions/src/financialOpeningCommand.ts:150: 미해석; functions/src/financialOpeningCommand.ts:151: 미해석; functions/src/financialOpeningCommand.ts:152: 미해석; functions/src/financialOpeningCommand.ts:194: 미해석; functions/src/financialOpeningCommand.ts:195: 미해석 |
-| subscribeToDocument | src/shared/services/firebaseService.ts:148 | src/shared/services/firebaseService.ts:153 | src/shared/deliveryTimeSlot.ts:24: settings; components/OrdersList.tsx:1726: settings; components/DeliveryManager.tsx:140: settings; components/LeaveManager.tsx:181: settings; src/shared/hooks/useAppData.ts:326: settings |
-| setDocument | src/shared/services/firebaseService.ts:158 | src/shared/services/firebaseService.ts:160 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1732: settings; components/DeliveryManager.tsx:302: deliveryScheduleAudits; components/DeliveryManager.tsx:304: settings; components/DeliveryManager.tsx:305: deliveryScheduleAudits; components/DeliveryManager.tsx:311: deliveryScheduleAudits; components/DeliveryManager.tsx:482: settings; components/DeliveryManager.tsx:488: settings; components/DeliveryManager.tsx:1206: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:403: partner_item; src/features/admin/AdminApp.tsx:4277: settings; src/features/admin/AdminApp.tsx:4461: cashFlowManual |
+| subscribeToDocument | src/shared/services/firebaseService.ts:148 | src/shared/services/firebaseService.ts:153 | src/shared/deliveryTimeSlot.ts:24: settings; components/OrdersList.tsx:1727: settings; components/DeliveryManager.tsx:140: settings; components/LeaveManager.tsx:181: settings; src/shared/hooks/useAppData.ts:326: settings |
+| setDocument | src/shared/services/firebaseService.ts:158 | src/shared/services/firebaseService.ts:160 | src/shared/deliveryTimeSlot.ts:34: settings; components/OrdersList.tsx:1733: settings; components/DeliveryManager.tsx:302: deliveryScheduleAudits; components/DeliveryManager.tsx:304: settings; components/DeliveryManager.tsx:305: deliveryScheduleAudits; components/DeliveryManager.tsx:311: deliveryScheduleAudits; components/DeliveryManager.tsx:482: settings; components/DeliveryManager.tsx:488: settings; components/DeliveryManager.tsx:1206: settings; components/LeaveManager.tsx:215: settings; components/PartnerSignupApproval.tsx:59: users; components/PartnerSignupApproval.tsx:74: users; components/HaccpChecklist.tsx:2881: haccp_templates; components/HaccpChecklist.tsx:3008: haccp_templates; components/HaccpChecklist.tsx:3144: haccp_templates; components/HaccpChecklist.tsx:3316: haccp_templates; components/HaccpChecklist.tsx:3459: haccp_templates; components/HaccpChecklist.tsx:4019: haccp_templates; components/HaccpChecklist.tsx:4489: haccp_templates; src/features/admin/AdminApp.tsx:403: partner_item; src/features/admin/AdminApp.tsx:4277: settings; src/features/admin/AdminApp.tsx:4461: cashFlowManual |
 | subscribeToCollection | src/shared/services/firebaseService.ts:244 | src/shared/services/firebaseService.ts:250 | src/shared/services/firebaseService.ts:290: 미해석; components/ItemList.tsx:596: stockClosings; src/shared/hooks/useAppData.ts:252: 미해석; src/shared/hooks/useAppData.ts:258: issuedStatements; src/shared/hooks/useAppData.ts:272: cashAccounts; src/shared/hooks/useAppData.ts:273: returnOperations; src/shared/hooks/useAppData.ts:276: cashEntries; src/shared/hooks/useAppData.ts:277: settlements; src/shared/hooks/useAppData.ts:278: partnerAdvanceOperations; src/shared/hooks/useAppData.ts:279: inventorySnapshots; src/shared/hooks/useAppData.ts:298: 미해석; src/shared/hooks/useAppData.ts:307: notices; src/shared/hooks/useAppData.ts:308: pallets; src/shared/hooks/useAppData.ts:310: employees; src/shared/hooks/useAppData.ts:311: leaveRequests; src/shared/hooks/useAppData.ts:312: adjustmentRequests; src/shared/hooks/useAppData.ts:313: purchaseOrders; src/shared/hooks/useAppData.ts:314: items; src/shared/hooks/useAppData.ts:315: partners; src/shared/hooks/useAppData.ts:316: chatRooms; src/shared/hooks/useAppData.ts:321: notifications; src/shared/hooks/useAppData.ts:322: workOrderItems; src/shared/hooks/useAppData.ts:324: itemReceipts; src/shared/hooks/useAppData.ts:344: orders; src/hooks/useAdminData.ts:56: fixedCosts; src/hooks/useAdminData.ts:61: productionRecords; components/HRManager.tsx:128: payrolls; components/PartnerSignupApproval.tsx:40: users; components/DocumentManager.tsx:78: fileCabinetCategories; components/DocumentManager.tsx:79: fileCabinetSubCategories; components/DocumentManager.tsx:80: fileCabinetDocs; components/QuotationManager.tsx:117: quotations; components/ReturnManager.tsx:104: returnRequests; components/ReceivingReturnsManager.tsx:56: returnRequests |
 | fetchCollection | src/shared/services/firebaseService.ts:267 | src/shared/services/firebaseService.ts:271 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:572: itemTaxonomy; components/ItemList.tsx:627: fileCabinetCategories; components/ItemList.tsx:629: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:555: rawMaterialLedger; src/features/admin/AdminApp.tsx:568: rawMaterialLedger |
 | fetchDateRange | src/shared/services/firebaseService.ts:298 | src/shared/services/firebaseService.ts:306 | src/features/admin/useProductionSalesHistory.ts:14: productionSalesLogs; components/PalletManager.tsx:65: palletTransactions; components/TaxStatement.tsx:58: issuedStatements; src/features/admin/useVoucherLedger.ts:152: issuedStatements; src/features/admin/useVoucherLedger.ts:169: issuedStatements |
@@ -27,7 +27,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | addSubItem | src/shared/services/firebaseService.ts:420 | src/shared/services/firebaseService.ts:429, src/shared/services/firebaseService.ts:432 | 정적 호출 연결 없음 |
 | updateSubItem | src/shared/services/firebaseService.ts:437 | src/shared/services/firebaseService.ts:444 | 정적 호출 연결 없음 |
 | deleteSubItem | src/shared/services/firebaseService.ts:448 | src/shared/services/firebaseService.ts:454 | 정적 호출 연결 없음 |
-| fetchWhere | src/shared/services/firebaseService.ts:537 | src/shared/services/firebaseService.ts:542 | src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:16: productionWorkDocuments; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:17: productionWorkDocumentLines; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:129: orders; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:130: rawMaterialLedger; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:131: items; components/OrdersList.tsx:1646: orderStatusAudits; components/OrdersList.tsx:1647: orderItemEdits; src/features/admin/useVoucherLedger.ts:102: openingBalances; src/features/admin/useVoucherLedger.ts:114: partnerBalanceSnapshots; src/shared/useLoanContracts.ts:12: loanContracts; components/ProfitAnalysis.tsx:99: openingBalances; components/FinancialReports.tsx:111: openingBalances; components/LoanManager.tsx:76: loanContracts |
+| fetchWhere | src/shared/services/firebaseService.ts:537 | src/shared/services/firebaseService.ts:542 | src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:16: productionWorkDocuments; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:17: productionWorkDocumentLines; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:129: orders; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:130: rawMaterialLedger; src/features/production-documents/infrastructure/productionWorkDocumentRepository.ts:131: items; components/OrdersList.tsx:1647: orderStatusAudits; components/OrdersList.tsx:1648: orderItemEdits; src/features/admin/useVoucherLedger.ts:102: openingBalances; src/features/admin/useVoucherLedger.ts:114: partnerBalanceSnapshots; src/shared/useLoanContracts.ts:12: loanContracts; components/ProfitAnalysis.tsx:99: openingBalances; components/FinancialReports.tsx:111: openingBalances; components/LoanManager.tsx:76: loanContracts |
 | fetchWhereIn | src/shared/services/firebaseService.ts:547 | src/shared/services/firebaseService.ts:557 | src/features/admin/AdminApp.tsx:1386: orders |
 | fetchByIds | src/shared/services/firebaseService.ts:570 | src/shared/services/firebaseService.ts:578 | src/features/admin/useVoucherLedger.ts:136: issuedStatements |
 | subscribeWhere | src/shared/services/firebaseService.ts:584 | src/shared/services/firebaseService.ts:591 | 정적 호출 연결 없음 |
@@ -166,9 +166,9 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/itemStockAddService.ts:17 | client | doc | root / top-level-candidate | 미해석 | itemStockAddOperations/{operationDocId(request.operationId)} |  |
 | src/shared/services/itemStockAddService.ts:25 | client | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
 | src/shared/services/pushTokenService.ts:12 | client | doc | root / top-level-candidate | 미해석 | employees/{employeeId} |  |
-| src/shared/services/orderRawBatchService.ts:56 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{request.jobId} |  |
-| src/shared/services/orderRawBatchService.ts:56 | client | doc | root / top-level-candidate | 미해석 | orders/{request.generation.orderId} |  |
-| src/shared/services/orderRawBatchService.ts:57 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{id} |  |
+| src/shared/services/orderRawBatchService.ts:66 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{request.jobId} |  |
+| src/shared/services/orderRawBatchService.ts:66 | client | doc | root / top-level-candidate | 미해석 | orders/{request.generation.orderId} |  |
+| src/shared/services/orderRawBatchService.ts:67 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{id} |  |
 | src/features/admin/orderItemStock.ts:122 | client | doc | root / top-level-candidate | 미해석 | orders/{generation.orderId} |  |
 | src/features/admin/orderItemStock.ts:151 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
 | src/features/admin/orderItemStock.ts:211 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
@@ -190,8 +190,8 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/orderProductionRecordService.ts:39 | client | doc | root / top-level-candidate | 미해석 | items/{id} |  |
 | src/shared/services/orderProductionRecordService.ts:40 | client | doc | root / top-level-candidate | 미해석 | productionRecords/{row.entry.recordId} |  |
 | src/shared/services/orderProductionRecordService.ts:41 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{orderRawBatchJobId(row.entry.generation)} |  |
-| src/shared/services/orderProductionRecordService.ts:82 | client | doc | root / top-level-candidate | 미해석 | productionRecords/{record.id} |  |
-| src/shared/services/orderProductionRecordService.ts:83 | client | doc | root / top-level-candidate | 미해석 | productionRecords/{row.entry.recordId} |  |
+| src/shared/services/orderProductionRecordService.ts:83 | client | doc | root / top-level-candidate | 미해석 | productionRecords/{record.id} |  |
+| src/shared/services/orderProductionRecordService.ts:84 | client | doc | root / top-level-candidate | 미해석 | productionRecords/{row.entry.recordId} |  |
 | src/features/admin/orderStockEngine.ts:472 | client | doc | root / top-level-candidate | 미해석 | orders/{order.id} |  |
 | src/features/admin/orderStockEngine.ts:800 | client | doc | root / top-level-candidate | 미해석 | orders/{id} |  |
 | src/shared/ledgerLotCheck.ts:66 | client | doc | root / top-level-candidate | 미해석 | items/{rawItemId} |  |
@@ -836,8 +836,8 @@ shared/types.ts 외 interface/type alias 760개를 별도 목록에 기록한다
 | AppDialogRequest | src/shared/components/appDialog.ts:20 | type-alias | non-object-alias-not-expanded |  |
 | OrderInventoryRecoveryResult | src/shared/services/orderInventoryRecoveryService.ts:6 | interface | direct-properties-only | status, orderId, failedOperationId, failedStartedAt, inventoryApplied, reason, failureMessage, targetStatus |
 | PendingOrderInventoryRecovery | src/shared/services/orderInventoryRecoveryService.ts:27 | interface | direct-properties-only | version, companyId, uid, orderId, failedOperationId, failedStartedAt, expectedSaved |
-| Props | components/OrderInventoryRecoveryPanel.tsx:5 | interface | direct-properties-only | companyId, actorUid, orders, pending, isCurrentActor, onRecovered |
-| Entry | components/OrderInventoryRecoveryPanel.tsx:6 | type-alias | direct-properties-only | orderId, partnerName, operationId, startedAt, pending |
+| Props | components/OrderInventoryRecoveryPanel.tsx:6 | interface | direct-properties-only | companyId, actorUid, orders, pending, isCurrentActor, onRecovered |
+| Entry | components/OrderInventoryRecoveryPanel.tsx:7 | type-alias | direct-properties-only | orderId, partnerName, operationId, startedAt, pending |
 | Row | functions/src/cashMutationReceipt.ts:4 | type-alias | non-object-alias-not-expanded |  |
 | LedgerCashEntry | functions/src/shared/cashAccountLedger.ts:2 | type-alias | direct-properties-only | id, date, createdAt, cashAccountId, companyId, dir, amount, balanceAdjustment |
 | LedgerCashAccount | functions/src/shared/cashAccountLedger.ts:7 | type-alias | direct-properties-only | id, companyId, openingDate, openingBalance, confirmedBalances |
@@ -990,13 +990,13 @@ shared/types.ts 외 interface/type alias 760개를 별도 목록에 기록한다
 | ModalActionFooterProps | src/shared/components/ModalActionFooter.tsx:3 | interface | direct-properties-only | onCancel, onPrimary, primaryLabel, primaryDisabled, cancelLabel |
 | OrderEditModalShellProps | components/OrderEditModalShell.tsx:5 | interface | direct-properties-only | title, partnerName, context, onClose, onSave, saveDisabled, headerAction, children |
 | Props | src/shared/components/DateChipButton.tsx:17 | interface | direct-properties-only | label, value, onChange, text, disabled, block |
-| CardDatePickerButtonProps | components/OrdersList.tsx:119 | interface | direct-properties-only | label, value, onChange, className, children, disabled |
-| OrdersListProps | components/OrdersList.tsx:239 | interface | direct-properties-only | renderOrderRecovery, orderRecoveryOrphans, orderUnitInputs, companyId, title, employees, subtitle, groupBy, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms, onUpdateStatus, onUpdateDeliveryDate, onUpdateReceivedDate, onUpdatePallets, onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, onAddClick, onPasteClick, currentUserName, highlightOrderId, onHighlightClear, newOrderId, onNewOrderIdClear, workOrderItems, onSetWorkOrderItems, onLoadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, onChangeOrdersMonths, embeddedListOnly, calendarSlot |
-| OrderCardProps | components/OrdersList.tsx:307 | interface | direct-properties-only | renderOrderRecovery, orderUnitInputs, order, partners, items, partnerItems, palletStocks, itemBoms, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleItemChecked, onDeleteOrder, currentUserName, gridCols, isListView, tintedHeader, isHighlighted, highlightOrderId, readOnly, onEditOrder, onRequestShip |
-| OrderSourceGroupProps | components/OrdersList.tsx:349 | interface | direct-properties-only | orderUnitInputs, colId, source, orders, gridCols, collapsedCategories, onToggleCategory, partners, items, partnerItems, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onToggleInvoicePrinted, onToggleItemChecked, onDeleteOrder, currentUserName, isListView, highlightOrderId, onCardClick, onEditOrder, tintedHeader |
-| DeliveryRowProps | components/OrdersList.tsx:383 | interface | direct-properties-only | order, partnerName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes |
-| TabType | components/OrdersList.tsx:391 | type-alias | non-object-alias-not-expanded |  |
-| WorkItem | components/OrdersList.tsx:1710 | type-alias | direct-properties-only | key, orderId, itemId, lineKey, itemName, partnerName, qty, category, workGroup, groupId, groupName |
+| CardDatePickerButtonProps | components/OrdersList.tsx:120 | interface | direct-properties-only | label, value, onChange, className, children, disabled |
+| OrdersListProps | components/OrdersList.tsx:240 | interface | direct-properties-only | renderOrderRecovery, orderRecoveryOrphans, orderUnitInputs, companyId, title, employees, subtitle, groupBy, allowedStatuses, orders, partners, items, partnerItems, palletStocks, itemBoms, onUpdateStatus, onUpdateDeliveryDate, onUpdateReceivedDate, onUpdatePallets, onUpdateItems, onUpdateNote, onUpdateDeliveryBoxes, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleShipmentComplete, onToggleItemChecked, onDeleteOrder, onAddClick, onPasteClick, currentUserName, highlightOrderId, onHighlightClear, newOrderId, onNewOrderIdClear, workOrderItems, onSetWorkOrderItems, onLoadHistoricalOrders, isLoadingHistoricalOrders, ordersMonths, onChangeOrdersMonths, embeddedListOnly, calendarSlot |
+| OrderCardProps | components/OrdersList.tsx:308 | interface | direct-properties-only | renderOrderRecovery, orderUnitInputs, order, partners, items, partnerItems, palletStocks, itemBoms, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets, onToggleInvoicePrinted, onUpdateInvoiceType, onToggleItemChecked, onDeleteOrder, currentUserName, gridCols, isListView, tintedHeader, isHighlighted, highlightOrderId, readOnly, onEditOrder, onRequestShip |
+| OrderSourceGroupProps | components/OrdersList.tsx:350 | interface | direct-properties-only | orderUnitInputs, colId, source, orders, gridCols, collapsedCategories, onToggleCategory, partners, items, partnerItems, editingOrderId, setEditingOrderId, showAddProductSelect, setShowAddProductSelect, onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onToggleInvoicePrinted, onToggleItemChecked, onDeleteOrder, currentUserName, isListView, highlightOrderId, onCardClick, onEditOrder, tintedHeader |
+| DeliveryRowProps | components/OrdersList.tsx:384 | interface | direct-properties-only | order, partnerName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes |
+| TabType | components/OrdersList.tsx:392 | type-alias | non-object-alias-not-expanded |  |
+| WorkItem | components/OrdersList.tsx:1711 | type-alias | direct-properties-only | key, orderId, itemId, lineKey, itemName, partnerName, qty, category, workGroup, groupId, groupName |
 | Command | src/shared/services/returnRequestCancellation.ts:5 | type-alias | direct-properties-only | companyId, requestId, operationId, expectedRequest |
 | Result | src/shared/services/returnRequestCancellation.ts:6 | type-alias | direct-properties-only | status, requestId, operationId, requestHash |
 | RoleLike | src/shared/partnerRole.ts:17 | type-alias | non-object-alias-not-expanded |  |
@@ -1689,8 +1689,8 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | AppDialogRequest | src/shared/components/appDialog.ts:20 | non-object-model-not-expanded | 0 |
 | OrderInventoryRecoveryResult | src/shared/services/orderInventoryRecoveryService.ts:6 | checker-resolved-properties-only | 8 |
 | PendingOrderInventoryRecovery | src/shared/services/orderInventoryRecoveryService.ts:27 | checker-resolved-properties-only | 7 |
-| Props | components/OrderInventoryRecoveryPanel.tsx:5 | checker-resolved-properties-only | 6 |
-| Entry | components/OrderInventoryRecoveryPanel.tsx:6 | checker-resolved-properties-only | 5 |
+| Props | components/OrderInventoryRecoveryPanel.tsx:6 | checker-resolved-properties-only | 6 |
+| Entry | components/OrderInventoryRecoveryPanel.tsx:7 | checker-resolved-properties-only | 5 |
 | Row | functions/src/cashMutationReceipt.ts:4 | checker-resolved-properties-only | 0 |
 | LedgerCashEntry | functions/src/shared/cashAccountLedger.ts:2 | checker-resolved-properties-only | 8 |
 | LedgerCashAccount | functions/src/shared/cashAccountLedger.ts:7 | checker-resolved-properties-only | 5 |
@@ -1843,13 +1843,13 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | ModalActionFooterProps | src/shared/components/ModalActionFooter.tsx:3 | checker-resolved-properties-only | 5 |
 | OrderEditModalShellProps | components/OrderEditModalShell.tsx:5 | checker-resolved-properties-only | 8 |
 | Props | src/shared/components/DateChipButton.tsx:17 | checker-resolved-properties-only | 6 |
-| CardDatePickerButtonProps | components/OrdersList.tsx:119 | checker-resolved-properties-only | 6 |
-| OrdersListProps | components/OrdersList.tsx:239 | checker-resolved-properties-only | 42 |
-| OrderCardProps | components/OrdersList.tsx:307 | checker-resolved-properties-only | 29 |
-| OrderSourceGroupProps | components/OrdersList.tsx:349 | checker-resolved-properties-only | 26 |
-| DeliveryRowProps | components/OrdersList.tsx:383 | checker-resolved-properties-only | 5 |
-| TabType | components/OrdersList.tsx:391 | non-object-model-not-expanded | 0 |
-| WorkItem | components/OrdersList.tsx:1710 | checker-resolved-properties-only | 11 |
+| CardDatePickerButtonProps | components/OrdersList.tsx:120 | checker-resolved-properties-only | 6 |
+| OrdersListProps | components/OrdersList.tsx:240 | checker-resolved-properties-only | 42 |
+| OrderCardProps | components/OrdersList.tsx:308 | checker-resolved-properties-only | 29 |
+| OrderSourceGroupProps | components/OrdersList.tsx:350 | checker-resolved-properties-only | 26 |
+| DeliveryRowProps | components/OrdersList.tsx:384 | checker-resolved-properties-only | 5 |
+| TabType | components/OrdersList.tsx:392 | non-object-model-not-expanded | 0 |
+| WorkItem | components/OrdersList.tsx:1711 | checker-resolved-properties-only | 11 |
 | Command | src/shared/services/returnRequestCancellation.ts:5 | checker-resolved-properties-only | 4 |
 | Result | src/shared/services/returnRequestCancellation.ts:6 | checker-resolved-properties-only | 4 |
 | RoleLike | src/shared/partnerRole.ts:17 | checker-resolved-properties-only | 1 |
@@ -2921,24 +2921,28 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/PasteOrderModal.tsx:213 | r.Direction | any | any-receiver |
 | components/PasteOrderModal.tsx:215 | r.itemId | any | any-receiver |
 | src/shared/push.ts:97 | e?.message | any | any-receiver |
-| src/shared/services/orderRawBatchService.ts:41 | data.results | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:43 | data.atomicVersion | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:43 | data.status | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:43 | data.companyId | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:43 | data.actorUid | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:44 | data.id | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:44 | data.source?.type | any | any-receiver |
-| src/shared/services/orderRawBatchService.ts:44 | data.source | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:44 | data.source.id | any | any-receiver |
-| src/shared/services/orderRawBatchService.ts:44 | data.source | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:44 | data.createdAt | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:44 | data.completedAt | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:45 | data.requestHash | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:45 | data.expectedOperationIds | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:46 | data.request | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:74 | request.business.orderText | Record<string, unknown> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:75 | request.plan.productionRecords | Record<string, unknown> | property-symbol-unresolved |
-| src/shared/services/orderRawBatchService.ts:90 | itemData.stock | { [x: string]: any; } | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:38 | data.requestText | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:38 | data.requestText | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:38 | data.request | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:40 | data.requestText | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:41 | data.request | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:50 | data.results | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:53 | data.atomicVersion | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:53 | data.status | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:53 | data.companyId | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:53 | data.actorUid | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:54 | data.id | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:54 | data.source?.type | any | any-receiver |
+| src/shared/services/orderRawBatchService.ts:54 | data.source | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:54 | data.source.id | any | any-receiver |
+| src/shared/services/orderRawBatchService.ts:54 | data.source | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:54 | data.createdAt | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:54 | data.completedAt | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:55 | data.requestHash | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:55 | data.expectedOperationIds | Record<string, any> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:84 | request.business.orderText | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:85 | request.plan.productionRecords | Record<string, unknown> | property-symbol-unresolved |
+| src/shared/services/orderRawBatchService.ts:100 | itemData.stock | { [x: string]: any; } | property-symbol-unresolved |
 | src/features/admin/orderItemStock.ts:102 | data.inventoryReservations | Record<string, any> | property-symbol-unresolved |
 | src/features/admin/orderItemStock.ts:105 | data.stock | Record<string, any> | property-symbol-unresolved |
 | src/features/admin/orderItemStock.ts:112 | data.stock | Record<string, any> | property-symbol-unresolved |
@@ -2972,12 +2976,11 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/services/orderProductionRecordService.ts:16 | request.plan.productionRecords | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/orderProductionRecordService.ts:63 | request.business.orderText | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/services/orderProductionRecordService.ts:67 | priorData?.productionRecordReceipt | DocumentData \| undefined | property-symbol-unresolved |
-| src/shared/services/orderProductionRecordService.ts:68 | priorData.request?.generation | any | any-receiver |
-| src/shared/services/orderProductionRecordService.ts:68 | receipt.requestHash | any | any-receiver |
-| src/shared/services/orderProductionRecordService.ts:68 | receipt.generation | any | any-receiver |
-| src/shared/services/orderProductionRecordService.ts:68 | receipt.recordIds | any | any-receiver |
-| src/shared/services/orderProductionRecordService.ts:68 | receipt.recordIds.includes | any | any-receiver |
-| src/shared/services/orderProductionRecordService.ts:68 | receipt.recordIds | any | any-receiver |
+| src/shared/services/orderProductionRecordService.ts:69 | receipt.requestHash | any | any-receiver |
+| src/shared/services/orderProductionRecordService.ts:69 | receipt.generation | any | any-receiver |
+| src/shared/services/orderProductionRecordService.ts:69 | receipt.recordIds | any | any-receiver |
+| src/shared/services/orderProductionRecordService.ts:69 | receipt.recordIds.includes | any | any-receiver |
+| src/shared/services/orderProductionRecordService.ts:69 | receipt.recordIds | any | any-receiver |
 | src/features/admin/orderStockEngine.ts:144 | first.request.plan.productionRecords | Record<string, unknown> | property-symbol-unresolved |
 | src/features/admin/orderStockEngine.ts:502 | retained.request.plan.productionRecords | Record<string, unknown> | property-symbol-unresolved |
 | src/features/admin/orderStockEngine.ts:503 | retained.request.plan.attempt | Record<string, unknown> | property-symbol-unresolved |

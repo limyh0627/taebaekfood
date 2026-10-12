@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-12T05:34:10.704Z",
-  "sourceFiles": 468,
-  "unresolvedAccesses": 2528,
+  "generatedAt": "2026-10-12T07:58:05.720Z",
+  "sourceFiles": 469,
+  "unresolvedAccesses": 2531,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:104",
@@ -3924,126 +3924,154 @@
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:41",
-      "expression": "data.results",
+      "location": "src/shared/services/orderRawBatchService.ts:38",
+      "expression": "data.requestText",
       "receiverExpression": "data",
       "receiverType": "Record<string, any>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:43",
-      "expression": "data.atomicVersion",
+      "location": "src/shared/services/orderRawBatchService.ts:38",
+      "expression": "data.requestText",
       "receiverExpression": "data",
       "receiverType": "Record<string, any>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:43",
-      "expression": "data.status",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:43",
-      "expression": "data.companyId",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:43",
-      "expression": "data.actorUid",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.id",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.source?.type",
-      "receiverExpression": "data.source",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.source",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.source.id",
-      "receiverExpression": "data.source",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.source",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.createdAt",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:44",
-      "expression": "data.completedAt",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:45",
-      "expression": "data.requestHash",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:45",
-      "expression": "data.expectedOperationIds",
-      "receiverExpression": "data",
-      "receiverType": "Record<string, any>",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "src/shared/services/orderRawBatchService.ts:46",
+      "location": "src/shared/services/orderRawBatchService.ts:38",
       "expression": "data.request",
       "receiverExpression": "data",
       "receiverType": "Record<string, any>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:74",
+      "location": "src/shared/services/orderRawBatchService.ts:40",
+      "expression": "data.requestText",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:41",
+      "expression": "data.request",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:50",
+      "expression": "data.results",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:53",
+      "expression": "data.atomicVersion",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:53",
+      "expression": "data.status",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:53",
+      "expression": "data.companyId",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:53",
+      "expression": "data.actorUid",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.id",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.source?.type",
+      "receiverExpression": "data.source",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.source",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.source.id",
+      "receiverExpression": "data.source",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.source",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.createdAt",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:54",
+      "expression": "data.completedAt",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:55",
+      "expression": "data.requestHash",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:55",
+      "expression": "data.expectedOperationIds",
+      "receiverExpression": "data",
+      "receiverType": "Record<string, any>",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "src/shared/services/orderRawBatchService.ts:84",
       "expression": "request.business.orderText",
       "receiverExpression": "request.business",
       "receiverType": "Record<string, unknown>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:75",
+      "location": "src/shared/services/orderRawBatchService.ts:85",
       "expression": "request.plan.productionRecords",
       "receiverExpression": "request.plan",
       "receiverType": "Record<string, unknown>",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderRawBatchService.ts:90",
+      "location": "src/shared/services/orderRawBatchService.ts:100",
       "expression": "itemData.stock",
       "receiverExpression": "itemData",
       "receiverType": "{ [x: string]: any; }",
@@ -4281,42 +4309,35 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
-      "expression": "priorData.request?.generation",
-      "receiverExpression": "priorData.request",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
+      "location": "src/shared/services/orderProductionRecordService.ts:69",
       "expression": "receipt.requestHash",
       "receiverExpression": "receipt",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
+      "location": "src/shared/services/orderProductionRecordService.ts:69",
       "expression": "receipt.generation",
       "receiverExpression": "receipt",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
+      "location": "src/shared/services/orderProductionRecordService.ts:69",
       "expression": "receipt.recordIds",
       "receiverExpression": "receipt",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
+      "location": "src/shared/services/orderProductionRecordService.ts:69",
       "expression": "receipt.recordIds.includes",
       "receiverExpression": "receipt.recordIds",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/orderProductionRecordService.ts:68",
+      "location": "src/shared/services/orderProductionRecordService.ts:69",
       "expression": "receipt.recordIds",
       "receiverExpression": "receipt",
       "receiverType": "any",
@@ -18122,43 +18143,43 @@
         "components/DeliveryManager.tsx:382",
         "components/ItemList.tsx:463",
         "components/ItemList.tsx:465",
-        "components/OrdersList.tsx:1027",
-        "components/OrdersList.tsx:1988",
-        "components/OrdersList.tsx:2061",
-        "components/OrdersList.tsx:2066",
-        "components/OrdersList.tsx:2482",
-        "components/OrdersList.tsx:2488",
-        "components/OrdersList.tsx:3000",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3047",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3376",
-        "components/OrdersList.tsx:3403",
-        "components/OrdersList.tsx:3433",
+        "components/OrdersList.tsx:1028",
+        "components/OrdersList.tsx:1989",
+        "components/OrdersList.tsx:2062",
+        "components/OrdersList.tsx:2067",
+        "components/OrdersList.tsx:2483",
+        "components/OrdersList.tsx:2489",
+        "components/OrdersList.tsx:3001",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3048",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3377",
+        "components/OrdersList.tsx:3404",
         "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4208",
-        "components/OrdersList.tsx:4221",
-        "components/OrdersList.tsx:4234",
-        "components/OrdersList.tsx:4287",
-        "components/OrdersList.tsx:4291",
-        "components/OrdersList.tsx:4299",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4209",
+        "components/OrdersList.tsx:4222",
+        "components/OrdersList.tsx:4235",
+        "components/OrdersList.tsx:4288",
+        "components/OrdersList.tsx:4292",
         "components/OrdersList.tsx:4300",
-        "components/OrdersList.tsx:4326",
-        "components/OrdersList.tsx:4329",
-        "components/OrdersList.tsx:445",
-        "components/OrdersList.tsx:642",
-        "components/OrdersList.tsx:711",
-        "components/OrdersList.tsx:716",
-        "components/OrdersList.tsx:772",
-        "components/OrdersList.tsx:792",
-        "components/OrdersList.tsx:939",
+        "components/OrdersList.tsx:4301",
+        "components/OrdersList.tsx:4327",
+        "components/OrdersList.tsx:4330",
+        "components/OrdersList.tsx:446",
+        "components/OrdersList.tsx:643",
+        "components/OrdersList.tsx:712",
+        "components/OrdersList.tsx:717",
+        "components/OrdersList.tsx:773",
+        "components/OrdersList.tsx:793",
         "components/OrdersList.tsx:940",
-        "components/OrdersList.tsx:958",
-        "components/OrdersList.tsx:966",
-        "components/OrdersList.tsx:987",
-        "components/OrdersList.tsx:995",
+        "components/OrdersList.tsx:941",
+        "components/OrdersList.tsx:959",
+        "components/OrdersList.tsx:967",
+        "components/OrdersList.tsx:988",
+        "components/OrdersList.tsx:996",
         "components/ProductionCalculationEvidence.tsx:12",
         "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:268",
@@ -18252,33 +18273,33 @@
         "components/DeliveryManager.tsx:1497",
         "components/DeliveryManager.tsx:193",
         "components/DeliveryManager.tsx:233",
-        "components/OrdersList.tsx:2063",
-        "components/OrdersList.tsx:2100",
-        "components/OrdersList.tsx:2110",
-        "components/OrdersList.tsx:2485",
-        "components/OrdersList.tsx:3003",
-        "components/OrdersList.tsx:3019",
-        "components/OrdersList.tsx:3037",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3380",
-        "components/OrdersList.tsx:3405",
-        "components/OrdersList.tsx:3451",
-        "components/OrdersList.tsx:3470",
-        "components/OrdersList.tsx:4127",
-        "components/OrdersList.tsx:4300",
-        "components/OrdersList.tsx:4326",
-        "components/OrdersList.tsx:4349",
-        "components/OrdersList.tsx:4360",
-        "components/OrdersList.tsx:4373",
-        "components/OrdersList.tsx:4386",
-        "components/OrdersList.tsx:511",
-        "components/OrdersList.tsx:664",
-        "components/OrdersList.tsx:740",
-        "components/OrdersList.tsx:746",
-        "components/OrdersList.tsx:889",
-        "components/OrdersList.tsx:906",
-        "components/OrdersList.tsx:956",
-        "components/OrdersList.tsx:985",
+        "components/OrdersList.tsx:2064",
+        "components/OrdersList.tsx:2101",
+        "components/OrdersList.tsx:2111",
+        "components/OrdersList.tsx:2486",
+        "components/OrdersList.tsx:3004",
+        "components/OrdersList.tsx:3020",
+        "components/OrdersList.tsx:3038",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3381",
+        "components/OrdersList.tsx:3406",
+        "components/OrdersList.tsx:3452",
+        "components/OrdersList.tsx:3471",
+        "components/OrdersList.tsx:4128",
+        "components/OrdersList.tsx:4301",
+        "components/OrdersList.tsx:4327",
+        "components/OrdersList.tsx:4350",
+        "components/OrdersList.tsx:4361",
+        "components/OrdersList.tsx:4374",
+        "components/OrdersList.tsx:4387",
+        "components/OrdersList.tsx:512",
+        "components/OrdersList.tsx:665",
+        "components/OrdersList.tsx:741",
+        "components/OrdersList.tsx:747",
+        "components/OrdersList.tsx:890",
+        "components/OrdersList.tsx:907",
+        "components/OrdersList.tsx:957",
+        "components/OrdersList.tsx:986",
         "components/ProductionCalculationEvidence.tsx:12",
         "components/ProductionCalculationEvidence.tsx:22",
         "components/ProductionManager.tsx:278",
@@ -18334,22 +18355,22 @@
         "components/Dashboard.tsx:371",
         "components/DeliveryManager.tsx:194",
         "components/DeliveryManager.tsx:383",
-        "components/OrdersList.tsx:1989",
-        "components/OrdersList.tsx:2065",
-        "components/OrdersList.tsx:2111",
-        "components/OrdersList.tsx:2487",
-        "components/OrdersList.tsx:3001",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3048",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4219",
-        "components/OrdersList.tsx:688",
-        "components/OrdersList.tsx:756",
-        "components/OrdersList.tsx:966",
-        "components/OrdersList.tsx:995",
+        "components/OrdersList.tsx:1990",
+        "components/OrdersList.tsx:2066",
+        "components/OrdersList.tsx:2112",
+        "components/OrdersList.tsx:2488",
+        "components/OrdersList.tsx:3002",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3049",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4220",
+        "components/OrdersList.tsx:689",
+        "components/OrdersList.tsx:757",
+        "components/OrdersList.tsx:967",
+        "components/OrdersList.tsx:996",
         "components/ProductionManager.tsx:279",
         "components/SmartStoreAnalytics.tsx:140",
         "components/SmartStoreAnalytics.tsx:141",
@@ -18400,25 +18421,25 @@
         "components/DeliveryManager.tsx:192",
         "components/DeliveryManager.tsx:83",
         "components/ItemList.tsx:462",
-        "components/OrdersList.tsx:1995",
-        "components/OrdersList.tsx:2109",
-        "components/OrdersList.tsx:2499",
-        "components/OrdersList.tsx:3003",
-        "components/OrdersList.tsx:3015",
-        "components/OrdersList.tsx:3033",
-        "components/OrdersList.tsx:3376",
-        "components/OrdersList.tsx:3378",
-        "components/OrdersList.tsx:3403",
-        "components/OrdersList.tsx:3433",
-        "components/OrdersList.tsx:3440",
-        "components/OrdersList.tsx:3480",
-        "components/OrdersList.tsx:4341",
-        "components/OrdersList.tsx:449",
-        "components/OrdersList.tsx:452",
-        "components/OrdersList.tsx:715",
-        "components/OrdersList.tsx:914",
-        "components/OrdersList.tsx:949",
-        "components/OrdersList.tsx:978",
+        "components/OrdersList.tsx:1996",
+        "components/OrdersList.tsx:2110",
+        "components/OrdersList.tsx:2500",
+        "components/OrdersList.tsx:3004",
+        "components/OrdersList.tsx:3016",
+        "components/OrdersList.tsx:3034",
+        "components/OrdersList.tsx:3377",
+        "components/OrdersList.tsx:3379",
+        "components/OrdersList.tsx:3404",
+        "components/OrdersList.tsx:3434",
+        "components/OrdersList.tsx:3441",
+        "components/OrdersList.tsx:3481",
+        "components/OrdersList.tsx:4342",
+        "components/OrdersList.tsx:450",
+        "components/OrdersList.tsx:453",
+        "components/OrdersList.tsx:716",
+        "components/OrdersList.tsx:915",
+        "components/OrdersList.tsx:950",
+        "components/OrdersList.tsx:979",
         "src/features/admin/AdminApp.tsx:1857",
         "src/features/admin/AdminApp.tsx:1879",
         "src/features/admin/AdminApp.tsx:2052",
@@ -18444,10 +18465,10 @@
       "type": "string",
       "declaration": "src/shared/types.ts:48",
       "references": [
-        "components/OrdersList.tsx:3003",
-        "components/OrdersList.tsx:4129",
-        "components/OrdersList.tsx:914",
+        "components/OrdersList.tsx:3004",
+        "components/OrdersList.tsx:4130",
         "components/OrdersList.tsx:915",
+        "components/OrdersList.tsx:916",
         "src/shared/orderActivityLog.ts:110",
         "src/shared/orderActivityLog.ts:111"
       ]
@@ -18459,7 +18480,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:49",
       "references": [
-        "components/OrdersList.tsx:3003",
+        "components/OrdersList.tsx:3004",
         "src/features/admin/dataIntegrityAudit.ts:218",
         "src/features/admin/dataIntegrityAudit.ts:222",
         "src/shared/orderActivityLog.ts:110",
@@ -18473,20 +18494,20 @@
       "type": "string",
       "declaration": "src/shared/types.ts:50",
       "references": [
-        "components/OrdersList.tsx:2753",
-        "components/OrdersList.tsx:2759",
-        "components/OrdersList.tsx:2761",
-        "components/OrdersList.tsx:3004",
-        "components/OrdersList.tsx:3462",
-        "components/OrdersList.tsx:3472",
-        "components/OrdersList.tsx:3474",
-        "components/OrdersList.tsx:4371",
-        "components/OrdersList.tsx:4376",
-        "components/OrdersList.tsx:4378",
-        "components/OrdersList.tsx:697",
-        "components/OrdersList.tsx:903",
-        "components/OrdersList.tsx:909",
-        "components/OrdersList.tsx:911",
+        "components/OrdersList.tsx:2754",
+        "components/OrdersList.tsx:2760",
+        "components/OrdersList.tsx:2762",
+        "components/OrdersList.tsx:3005",
+        "components/OrdersList.tsx:3463",
+        "components/OrdersList.tsx:3473",
+        "components/OrdersList.tsx:3475",
+        "components/OrdersList.tsx:4372",
+        "components/OrdersList.tsx:4377",
+        "components/OrdersList.tsx:4379",
+        "components/OrdersList.tsx:698",
+        "components/OrdersList.tsx:904",
+        "components/OrdersList.tsx:910",
+        "components/OrdersList.tsx:912",
         "src/features/admin/AdminApp.tsx:3184",
         "src/features/admin/AdminApp.tsx:3361",
         "src/shared/orderActivityLog.ts:117",
@@ -18523,16 +18544,16 @@
       "declaration": "src/shared/types.ts:53",
       "references": [
         "components/DeliveryManager.tsx:195",
-        "components/OrdersList.tsx:2112",
-        "components/OrdersList.tsx:2714",
-        "components/OrdersList.tsx:3004",
-        "components/OrdersList.tsx:3021",
-        "components/OrdersList.tsx:3039",
-        "components/OrdersList.tsx:3443",
-        "components/OrdersList.tsx:3450",
-        "components/OrdersList.tsx:4342",
-        "components/OrdersList.tsx:635",
-        "components/OrdersList.tsx:718",
+        "components/OrdersList.tsx:2113",
+        "components/OrdersList.tsx:2715",
+        "components/OrdersList.tsx:3005",
+        "components/OrdersList.tsx:3022",
+        "components/OrdersList.tsx:3040",
+        "components/OrdersList.tsx:3444",
+        "components/OrdersList.tsx:3451",
+        "components/OrdersList.tsx:4343",
+        "components/OrdersList.tsx:636",
+        "components/OrdersList.tsx:719",
         "src/shared/orderActivityLog.ts:114",
         "src/shared/stampOrderItemEdits.ts:31"
       ]
@@ -18569,24 +18590,24 @@
         "components/CalendarView.tsx:87",
         "components/CalendarView.tsx:88",
         "components/DeliveryManager.tsx:194",
-        "components/OrdersList.tsx:3001",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4219",
-        "components/OrdersList.tsx:4317",
-        "components/OrdersList.tsx:4321",
-        "components/OrdersList.tsx:4326",
-        "components/OrdersList.tsx:4329",
-        "components/OrdersList.tsx:489",
-        "components/OrdersList.tsx:492",
-        "components/OrdersList.tsx:675",
-        "components/OrdersList.tsx:680",
-        "components/OrdersList.tsx:755",
-        "components/OrdersList.tsx:964",
-        "components/OrdersList.tsx:993",
+        "components/OrdersList.tsx:3002",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4220",
+        "components/OrdersList.tsx:4318",
+        "components/OrdersList.tsx:4322",
+        "components/OrdersList.tsx:4327",
+        "components/OrdersList.tsx:4330",
+        "components/OrdersList.tsx:490",
+        "components/OrdersList.tsx:493",
+        "components/OrdersList.tsx:676",
+        "components/OrdersList.tsx:681",
+        "components/OrdersList.tsx:756",
+        "components/OrdersList.tsx:965",
+        "components/OrdersList.tsx:994",
         "src/features/admin/AdminApp.tsx:1083",
         "src/shared/orderUnits.ts:154",
         "src/shared/shipDeduction.ts:32",
@@ -18601,20 +18622,20 @@
       "declaration": "src/shared/types.ts:63",
       "references": [
         "components/CalendarView.tsx:87",
-        "components/OrdersList.tsx:3001",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4219",
-        "components/OrdersList.tsx:682",
-        "components/OrdersList.tsx:755",
+        "components/OrdersList.tsx:3002",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4220",
+        "components/OrdersList.tsx:683",
         "components/OrdersList.tsx:756",
-        "components/OrdersList.tsx:964",
+        "components/OrdersList.tsx:757",
         "components/OrdersList.tsx:965",
-        "components/OrdersList.tsx:993",
+        "components/OrdersList.tsx:966",
         "components/OrdersList.tsx:994",
+        "components/OrdersList.tsx:995",
         "src/features/admin/AdminApp.tsx:1083",
         "src/features/admin/AdminApp.tsx:1084",
         "src/features/admin/orderStockEngine.ts:151",
@@ -18634,11 +18655,11 @@
       "type": "number",
       "declaration": "src/shared/types.ts:64",
       "references": [
-        "components/OrdersList.tsx:4317",
-        "components/OrdersList.tsx:4322",
-        "components/OrdersList.tsx:489",
-        "components/OrdersList.tsx:491",
-        "components/OrdersList.tsx:656",
+        "components/OrdersList.tsx:4318",
+        "components/OrdersList.tsx:4323",
+        "components/OrdersList.tsx:490",
+        "components/OrdersList.tsx:492",
+        "components/OrdersList.tsx:657",
         "src/shared/shipDeduction.ts:29",
         "src/shared/statementLines.ts:181"
       ]
@@ -18651,7 +18672,7 @@
       "declaration": "src/shared/types.ts:65",
       "references": [
         "components/DeliveryManager.tsx:196",
-        "components/OrdersList.tsx:2113"
+        "components/OrdersList.tsx:2114"
       ]
     },
     {
@@ -18661,7 +18682,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:66",
       "references": [
-        "components/OrdersList.tsx:785"
+        "components/OrdersList.tsx:786"
       ]
     },
     {
@@ -18687,14 +18708,14 @@
         "components/AddOrderModal.tsx:938",
         "components/AddOrderModal.tsx:942",
         "components/DeliveryManager.tsx:197",
-        "components/OrdersList.tsx:1220",
-        "components/OrdersList.tsx:1224",
-        "components/OrdersList.tsx:2114",
-        "components/OrdersList.tsx:2981",
-        "components/OrdersList.tsx:3551",
-        "components/OrdersList.tsx:3555",
-        "components/OrdersList.tsx:4436",
-        "components/OrdersList.tsx:4440",
+        "components/OrdersList.tsx:1221",
+        "components/OrdersList.tsx:1225",
+        "components/OrdersList.tsx:2115",
+        "components/OrdersList.tsx:2982",
+        "components/OrdersList.tsx:3552",
+        "components/OrdersList.tsx:3556",
+        "components/OrdersList.tsx:4437",
+        "components/OrdersList.tsx:4441",
         "components/PalletManager.tsx:124",
         "components/PalletManager.tsx:235",
         "components/PalletManager.tsx:344",
@@ -18712,13 +18733,13 @@
         "components/AddOrderModal.tsx:930",
         "components/AddOrderModal.tsx:938",
         "components/DeliveryManager.tsx:197",
-        "components/OrdersList.tsx:1211",
-        "components/OrdersList.tsx:1221",
-        "components/OrdersList.tsx:2979",
-        "components/OrdersList.tsx:2982",
-        "components/OrdersList.tsx:3552",
-        "components/OrdersList.tsx:4427",
-        "components/OrdersList.tsx:4437",
+        "components/OrdersList.tsx:1212",
+        "components/OrdersList.tsx:1222",
+        "components/OrdersList.tsx:2980",
+        "components/OrdersList.tsx:2983",
+        "components/OrdersList.tsx:3553",
+        "components/OrdersList.tsx:4428",
+        "components/OrdersList.tsx:4438",
         "components/PalletManager.tsx:125",
         "components/PalletManager.tsx:232",
         "components/PalletManager.tsx:319",
@@ -18735,10 +18756,10 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:73",
       "references": [
-        "components/OrdersList.tsx:1222",
-        "components/OrdersList.tsx:2982",
-        "components/OrdersList.tsx:3553",
-        "components/OrdersList.tsx:4438",
+        "components/OrdersList.tsx:1223",
+        "components/OrdersList.tsx:2983",
+        "components/OrdersList.tsx:3554",
+        "components/OrdersList.tsx:4439",
         "components/PalletManager.tsx:123",
         "components/PalletManager.tsx:319",
         "components/PalletManager.tsx:342"
@@ -18751,9 +18772,9 @@
       "type": "string",
       "declaration": "src/shared/types.ts:77",
       "references": [
-        "components/OrdersList.tsx:1359",
-        "components/OrdersList.tsx:1407",
-        "components/OrdersList.tsx:1409"
+        "components/OrdersList.tsx:1360",
+        "components/OrdersList.tsx:1408",
+        "components/OrdersList.tsx:1410"
       ]
     },
     {
@@ -18763,7 +18784,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:78",
       "references": [
-        "components/OrdersList.tsx:1410"
+        "components/OrdersList.tsx:1411"
       ]
     },
     {
@@ -18773,8 +18794,8 @@
       "type": "number",
       "declaration": "src/shared/types.ts:79",
       "references": [
-        "components/OrdersList.tsx:1359",
-        "components/OrdersList.tsx:1410"
+        "components/OrdersList.tsx:1360",
+        "components/OrdersList.tsx:1411"
       ]
     },
     {
@@ -18833,7 +18854,7 @@
         "components/DeliveryManager.tsx:1481",
         "components/DeliveryManager.tsx:571",
         "components/OrderPicker.tsx:465",
-        "components/OrdersList.tsx:482",
+        "components/OrdersList.tsx:483",
         "components/PasteOrderModal.tsx:435",
         "components/TradeStatement.tsx:616",
         "src/shared/components/ShipToEditor.tsx:30",
@@ -18925,8 +18946,8 @@
         "components/ItemManager.tsx:494",
         "components/ItemManager.tsx:690",
         "components/ItemManager.tsx:970",
-        "components/OrdersList.tsx:1025",
-        "components/OrdersList.tsx:4294",
+        "components/OrdersList.tsx:1026",
+        "components/OrdersList.tsx:4295",
         "components/QuotationManager.tsx:214",
         "components/QuotationManager.tsx:290",
         "components/ReceivingReturnsManager.tsx:180",
@@ -19005,8 +19026,8 @@
         "components/ItemManager.tsx:494",
         "components/ItemManager.tsx:690",
         "components/ItemManager.tsx:970",
-        "components/OrdersList.tsx:1025",
-        "components/OrdersList.tsx:4294",
+        "components/OrdersList.tsx:1026",
+        "components/OrdersList.tsx:4295",
         "components/QuotationManager.tsx:214",
         "components/QuotationManager.tsx:290",
         "components/ReceivingReturnsManager.tsx:180",
@@ -19062,8 +19083,8 @@
         "components/ItemList.tsx:984",
         "components/ItemManager.tsx:264",
         "components/ItemManager.tsx:265",
-        "components/OrdersList.tsx:1025",
-        "components/OrdersList.tsx:4294",
+        "components/OrdersList.tsx:1026",
+        "components/OrdersList.tsx:4295",
         "components/QuotationManager.tsx:214",
         "components/ReceivingReturnsManager.tsx:180",
         "components/TradeStatement.tsx:1270",
@@ -19094,7 +19115,7 @@
         "components/ItemManager.tsx:1214",
         "components/ItemManager.tsx:87",
         "components/ItemManager.tsx:971",
-        "components/OrdersList.tsx:4294",
+        "components/OrdersList.tsx:4295",
         "components/QuotationManager.tsx:214",
         "components/TradeStatement.tsx:1159",
         "components/TradeStatement.tsx:1326",
@@ -19275,23 +19296,23 @@
         "components/OrderPicker.tsx:433",
         "components/OrderPicker.tsx:451",
         "components/OrderPicker.tsx:519",
-        "components/OrdersList.tsx:2038",
-        "components/OrdersList.tsx:2108",
-        "components/OrdersList.tsx:2129",
-        "components/OrdersList.tsx:2151",
-        "components/OrdersList.tsx:2170",
-        "components/OrdersList.tsx:2313",
-        "components/OrdersList.tsx:2473",
-        "components/OrdersList.tsx:2987",
-        "components/OrdersList.tsx:3014",
-        "components/OrdersList.tsx:3032",
-        "components/OrdersList.tsx:3224",
-        "components/OrdersList.tsx:3283",
-        "components/OrdersList.tsx:4123",
-        "components/OrdersList.tsx:4166",
-        "components/OrdersList.tsx:4200",
-        "components/OrdersList.tsx:4484",
-        "components/OrdersList.tsx:479",
+        "components/OrdersList.tsx:2039",
+        "components/OrdersList.tsx:2109",
+        "components/OrdersList.tsx:2130",
+        "components/OrdersList.tsx:2152",
+        "components/OrdersList.tsx:2171",
+        "components/OrdersList.tsx:2314",
+        "components/OrdersList.tsx:2474",
+        "components/OrdersList.tsx:2988",
+        "components/OrdersList.tsx:3015",
+        "components/OrdersList.tsx:3033",
+        "components/OrdersList.tsx:3225",
+        "components/OrdersList.tsx:3284",
+        "components/OrdersList.tsx:4124",
+        "components/OrdersList.tsx:4167",
+        "components/OrdersList.tsx:4201",
+        "components/OrdersList.tsx:4485",
+        "components/OrdersList.tsx:480",
         "components/PalletManager.tsx:113",
         "components/PalletManager.tsx:137",
         "components/PalletManager.tsx:255",
@@ -19462,23 +19483,23 @@
         "components/OrderPicker.tsx:433",
         "components/OrderPicker.tsx:465",
         "components/OrderPicker.tsx:519",
-        "components/OrdersList.tsx:2038",
-        "components/OrdersList.tsx:2108",
-        "components/OrdersList.tsx:2129",
-        "components/OrdersList.tsx:2151",
-        "components/OrdersList.tsx:2170",
-        "components/OrdersList.tsx:2313",
-        "components/OrdersList.tsx:2473",
-        "components/OrdersList.tsx:2988",
-        "components/OrdersList.tsx:3014",
-        "components/OrdersList.tsx:3032",
-        "components/OrdersList.tsx:3224",
-        "components/OrdersList.tsx:3284",
-        "components/OrdersList.tsx:4123",
-        "components/OrdersList.tsx:4166",
-        "components/OrdersList.tsx:4200",
-        "components/OrdersList.tsx:4484",
-        "components/OrdersList.tsx:482",
+        "components/OrdersList.tsx:2039",
+        "components/OrdersList.tsx:2109",
+        "components/OrdersList.tsx:2130",
+        "components/OrdersList.tsx:2152",
+        "components/OrdersList.tsx:2171",
+        "components/OrdersList.tsx:2314",
+        "components/OrdersList.tsx:2474",
+        "components/OrdersList.tsx:2989",
+        "components/OrdersList.tsx:3015",
+        "components/OrdersList.tsx:3033",
+        "components/OrdersList.tsx:3225",
+        "components/OrdersList.tsx:3285",
+        "components/OrdersList.tsx:4124",
+        "components/OrdersList.tsx:4167",
+        "components/OrdersList.tsx:4201",
+        "components/OrdersList.tsx:4485",
+        "components/OrdersList.tsx:483",
         "components/PalletManager.tsx:113",
         "components/PalletManager.tsx:138",
         "components/PalletManager.tsx:331",
@@ -19681,8 +19702,8 @@
         "components/DeliveryManager.tsx:191",
         "components/DeliveryManager.tsx:232",
         "components/DeliveryManager.tsx:347",
-        "components/OrdersList.tsx:2989",
-        "components/OrdersList.tsx:3285",
+        "components/OrdersList.tsx:2990",
+        "components/OrdersList.tsx:3286",
         "components/PartnerManager.tsx:172",
         "components/PartnerManager.tsx:377",
         "components/PartnerSignupApproval.tsx:188",
@@ -19699,8 +19720,8 @@
         "components/DeliveryManager.tsx:1850",
         "components/DeliveryManager.tsx:191",
         "components/DeliveryManager.tsx:232",
-        "components/OrdersList.tsx:2989",
-        "components/OrdersList.tsx:3285",
+        "components/OrdersList.tsx:2990",
+        "components/OrdersList.tsx:3286",
         "components/PartnerManager.tsx:172",
         "components/PartnerManager.tsx:393",
         "src/shared/docParty.ts:47"
@@ -20033,10 +20054,10 @@
         "src/shared/productionRecordProjection.ts:36",
         "src/shared/productionRecordProjection.ts:40",
         "src/shared/services/orderProductionRecordService.ts:40",
-        "src/shared/services/orderProductionRecordService.ts:68",
-        "src/shared/services/orderProductionRecordService.ts:71",
-        "src/shared/services/orderProductionRecordService.ts:75",
-        "src/shared/services/orderProductionRecordService.ts:83"
+        "src/shared/services/orderProductionRecordService.ts:69",
+        "src/shared/services/orderProductionRecordService.ts:72",
+        "src/shared/services/orderProductionRecordService.ts:76",
+        "src/shared/services/orderProductionRecordService.ts:84"
       ]
     },
     {
@@ -20051,8 +20072,8 @@
         "src/shared/productionRecordProjection.ts:35",
         "src/shared/productionRecordProjection.ts:40",
         "src/shared/services/orderProductionRecordService.ts:41",
-        "src/shared/services/orderProductionRecordService.ts:68",
-        "src/shared/services/orderProductionRecordService.ts:75"
+        "src/shared/services/orderProductionRecordService.ts:69",
+        "src/shared/services/orderProductionRecordService.ts:76"
       ]
     },
     {
@@ -20063,8 +20084,8 @@
       "declaration": "src/shared/types.ts:234",
       "references": [
         "src/shared/orderProductionRecordPlan.ts:60",
-        "src/shared/services/orderProductionRecordService.ts:68",
-        "src/shared/services/orderProductionRecordService.ts:71"
+        "src/shared/services/orderProductionRecordService.ts:69",
+        "src/shared/services/orderProductionRecordService.ts:72"
       ]
     },
     {
@@ -20083,7 +20104,7 @@
         "src/shared/productionRecordProjection.ts:31",
         "src/shared/services/orderProductionRecordService.ts:55",
         "src/shared/services/orderProductionRecordService.ts:64",
-        "src/shared/services/orderRawBatchService.ts:79"
+        "src/shared/services/orderRawBatchService.ts:89"
       ]
     },
     {
@@ -20144,9 +20165,9 @@
         "components/DeliveryManager.tsx:967",
         "components/ItemList.tsx:938",
         "components/ItemList.tsx:953",
-        "components/OrderInventoryRecoveryPanel.tsx:12",
-        "components/OrderInventoryRecoveryPanel.tsx:15",
-        "components/OrderInventoryRecoveryPanel.tsx:28",
+        "components/OrderInventoryRecoveryPanel.tsx:13",
+        "components/OrderInventoryRecoveryPanel.tsx:16",
+        "components/OrderInventoryRecoveryPanel.tsx:29",
         "components/OrderPicker.tsx:121",
         "components/OrderPicker.tsx:225",
         "components/OrderPicker.tsx:229",
@@ -20163,89 +20184,89 @@
         "components/OrderPicker.tsx:476",
         "components/OrderPicker.tsx:479",
         "components/OrderPicker.tsx:495",
-        "components/OrdersList.tsx:1011",
-        "components/OrdersList.tsx:1100",
-        "components/OrdersList.tsx:1115",
-        "components/OrdersList.tsx:1145",
-        "components/OrdersList.tsx:1156",
-        "components/OrdersList.tsx:1175",
-        "components/OrdersList.tsx:1195",
-        "components/OrdersList.tsx:1226",
-        "components/OrdersList.tsx:1262",
-        "components/OrdersList.tsx:1275",
-        "components/OrdersList.tsx:1335",
-        "components/OrdersList.tsx:1368",
-        "components/OrdersList.tsx:1376",
-        "components/OrdersList.tsx:1807",
-        "components/OrdersList.tsx:1814",
-        "components/OrdersList.tsx:1948",
-        "components/OrdersList.tsx:2013",
-        "components/OrdersList.tsx:2057",
-        "components/OrdersList.tsx:2059",
+        "components/OrdersList.tsx:1012",
+        "components/OrdersList.tsx:1101",
+        "components/OrdersList.tsx:1116",
+        "components/OrdersList.tsx:1146",
+        "components/OrdersList.tsx:1157",
+        "components/OrdersList.tsx:1176",
+        "components/OrdersList.tsx:1196",
+        "components/OrdersList.tsx:1227",
+        "components/OrdersList.tsx:1263",
+        "components/OrdersList.tsx:1276",
+        "components/OrdersList.tsx:1336",
+        "components/OrdersList.tsx:1369",
+        "components/OrdersList.tsx:1377",
+        "components/OrdersList.tsx:1808",
+        "components/OrdersList.tsx:1815",
+        "components/OrdersList.tsx:1949",
+        "components/OrdersList.tsx:2014",
+        "components/OrdersList.tsx:2058",
         "components/OrdersList.tsx:2060",
-        "components/OrdersList.tsx:2098",
-        "components/OrdersList.tsx:2168",
-        "components/OrdersList.tsx:2428",
-        "components/OrdersList.tsx:2452",
-        "components/OrdersList.tsx:2480",
+        "components/OrdersList.tsx:2061",
+        "components/OrdersList.tsx:2099",
+        "components/OrdersList.tsx:2169",
+        "components/OrdersList.tsx:2429",
+        "components/OrdersList.tsx:2453",
         "components/OrdersList.tsx:2481",
-        "components/OrdersList.tsx:2492",
-        "components/OrdersList.tsx:2712",
-        "components/OrdersList.tsx:2991",
-        "components/OrdersList.tsx:3061",
-        "components/OrdersList.tsx:3226",
-        "components/OrdersList.tsx:3230",
-        "components/OrdersList.tsx:3235",
-        "components/OrdersList.tsx:3295",
-        "components/OrdersList.tsx:3302",
-        "components/OrdersList.tsx:3315",
-        "components/OrdersList.tsx:3323",
-        "components/OrdersList.tsx:3329",
-        "components/OrdersList.tsx:3355",
-        "components/OrdersList.tsx:3364",
-        "components/OrdersList.tsx:3409",
-        "components/OrdersList.tsx:3448",
-        "components/OrdersList.tsx:3467",
-        "components/OrdersList.tsx:3502",
-        "components/OrdersList.tsx:3522",
-        "components/OrdersList.tsx:3537",
-        "components/OrdersList.tsx:3540",
-        "components/OrdersList.tsx:3544",
-        "components/OrdersList.tsx:3546",
-        "components/OrdersList.tsx:3556",
-        "components/OrdersList.tsx:3597",
-        "components/OrdersList.tsx:3962",
-        "components/OrdersList.tsx:405",
-        "components/OrdersList.tsx:4092",
-        "components/OrdersList.tsx:4125",
-        "components/OrdersList.tsx:4164",
-        "components/OrdersList.tsx:4173",
-        "components/OrdersList.tsx:4198",
-        "components/OrdersList.tsx:4214",
-        "components/OrdersList.tsx:4223",
-        "components/OrdersList.tsx:4225",
-        "components/OrdersList.tsx:4227",
-        "components/OrdersList.tsx:4231",
-        "components/OrdersList.tsx:4240",
-        "components/OrdersList.tsx:4260",
+        "components/OrdersList.tsx:2482",
+        "components/OrdersList.tsx:2493",
+        "components/OrdersList.tsx:2713",
+        "components/OrdersList.tsx:2992",
+        "components/OrdersList.tsx:3062",
+        "components/OrdersList.tsx:3227",
+        "components/OrdersList.tsx:3231",
+        "components/OrdersList.tsx:3236",
+        "components/OrdersList.tsx:3296",
+        "components/OrdersList.tsx:3303",
+        "components/OrdersList.tsx:3316",
+        "components/OrdersList.tsx:3324",
+        "components/OrdersList.tsx:3330",
+        "components/OrdersList.tsx:3356",
+        "components/OrdersList.tsx:3365",
+        "components/OrdersList.tsx:3410",
+        "components/OrdersList.tsx:3449",
+        "components/OrdersList.tsx:3468",
+        "components/OrdersList.tsx:3503",
+        "components/OrdersList.tsx:3523",
+        "components/OrdersList.tsx:3538",
+        "components/OrdersList.tsx:3541",
+        "components/OrdersList.tsx:3545",
+        "components/OrdersList.tsx:3547",
+        "components/OrdersList.tsx:3557",
+        "components/OrdersList.tsx:3598",
+        "components/OrdersList.tsx:3963",
+        "components/OrdersList.tsx:406",
+        "components/OrdersList.tsx:4093",
+        "components/OrdersList.tsx:4126",
+        "components/OrdersList.tsx:4165",
+        "components/OrdersList.tsx:4174",
+        "components/OrdersList.tsx:4199",
+        "components/OrdersList.tsx:4215",
+        "components/OrdersList.tsx:4224",
+        "components/OrdersList.tsx:4226",
+        "components/OrdersList.tsx:4228",
+        "components/OrdersList.tsx:4232",
+        "components/OrdersList.tsx:4241",
         "components/OrdersList.tsx:4261",
-        "components/OrdersList.tsx:432",
+        "components/OrdersList.tsx:4262",
         "components/OrdersList.tsx:433",
-        "components/OrdersList.tsx:4351",
-        "components/OrdersList.tsx:4441",
-        "components/OrdersList.tsx:4467",
-        "components/OrdersList.tsx:4478",
-        "components/OrdersList.tsx:498",
-        "components/OrdersList.tsx:504",
-        "components/OrdersList.tsx:515",
-        "components/OrdersList.tsx:526",
-        "components/OrdersList.tsx:532",
-        "components/OrdersList.tsx:607",
-        "components/OrdersList.tsx:738",
-        "components/OrdersList.tsx:799",
-        "components/OrdersList.tsx:888",
-        "components/OrdersList.tsx:952",
-        "components/OrdersList.tsx:981",
+        "components/OrdersList.tsx:434",
+        "components/OrdersList.tsx:4352",
+        "components/OrdersList.tsx:4442",
+        "components/OrdersList.tsx:4468",
+        "components/OrdersList.tsx:4479",
+        "components/OrdersList.tsx:499",
+        "components/OrdersList.tsx:505",
+        "components/OrdersList.tsx:516",
+        "components/OrdersList.tsx:527",
+        "components/OrdersList.tsx:533",
+        "components/OrdersList.tsx:608",
+        "components/OrdersList.tsx:739",
+        "components/OrdersList.tsx:800",
+        "components/OrdersList.tsx:889",
+        "components/OrdersList.tsx:953",
+        "components/OrdersList.tsx:982",
         "components/PalletManager.tsx:230",
         "components/PalletManager.tsx:234",
         "components/PalletManager.tsx:343",
@@ -20450,26 +20471,26 @@
         "components/OrderPicker.tsx:458",
         "components/OrderPicker.tsx:465",
         "components/OrderPicker.tsx:519",
-        "components/OrdersList.tsx:1023",
-        "components/OrdersList.tsx:2038",
-        "components/OrdersList.tsx:2108",
-        "components/OrdersList.tsx:2129",
-        "components/OrdersList.tsx:2170",
-        "components/OrdersList.tsx:2313",
-        "components/OrdersList.tsx:2449",
-        "components/OrdersList.tsx:2473",
-        "components/OrdersList.tsx:2987",
-        "components/OrdersList.tsx:3014",
-        "components/OrdersList.tsx:3032",
-        "components/OrdersList.tsx:3224",
-        "components/OrdersList.tsx:3283",
-        "components/OrdersList.tsx:4123",
-        "components/OrdersList.tsx:4166",
-        "components/OrdersList.tsx:4200",
-        "components/OrdersList.tsx:4211",
-        "components/OrdersList.tsx:4294",
-        "components/OrdersList.tsx:4484",
-        "components/OrdersList.tsx:479",
+        "components/OrdersList.tsx:1024",
+        "components/OrdersList.tsx:2039",
+        "components/OrdersList.tsx:2109",
+        "components/OrdersList.tsx:2130",
+        "components/OrdersList.tsx:2171",
+        "components/OrdersList.tsx:2314",
+        "components/OrdersList.tsx:2450",
+        "components/OrdersList.tsx:2474",
+        "components/OrdersList.tsx:2988",
+        "components/OrdersList.tsx:3015",
+        "components/OrdersList.tsx:3033",
+        "components/OrdersList.tsx:3225",
+        "components/OrdersList.tsx:3284",
+        "components/OrdersList.tsx:4124",
+        "components/OrdersList.tsx:4167",
+        "components/OrdersList.tsx:4201",
+        "components/OrdersList.tsx:4212",
+        "components/OrdersList.tsx:4295",
+        "components/OrdersList.tsx:4485",
+        "components/OrdersList.tsx:480",
         "components/PalletManager.tsx:120",
         "components/PalletManager.tsx:226",
         "components/ProductionManager.tsx:541",
@@ -20526,31 +20547,31 @@
         "components/DeliveryManager.tsx:972",
         "components/ItemList.tsx:939",
         "components/ItemList.tsx:953",
-        "components/OrderInventoryRecoveryPanel.tsx:12",
-        "components/OrderInventoryRecoveryPanel.tsx:15",
+        "components/OrderInventoryRecoveryPanel.tsx:13",
+        "components/OrderInventoryRecoveryPanel.tsx:16",
         "components/OrderPicker.tsx:465",
         "components/OrderPicker.tsx:519",
         "components/OrderPicker.tsx:538",
-        "components/OrdersList.tsx:2012",
-        "components/OrdersList.tsx:2038",
-        "components/OrdersList.tsx:2097",
-        "components/OrdersList.tsx:2108",
-        "components/OrdersList.tsx:2129",
-        "components/OrdersList.tsx:2170",
-        "components/OrdersList.tsx:2313",
-        "components/OrdersList.tsx:2449",
-        "components/OrdersList.tsx:2473",
-        "components/OrdersList.tsx:2988",
-        "components/OrdersList.tsx:3014",
-        "components/OrdersList.tsx:3032",
-        "components/OrdersList.tsx:3224",
-        "components/OrdersList.tsx:3284",
-        "components/OrdersList.tsx:3962",
-        "components/OrdersList.tsx:4123",
-        "components/OrdersList.tsx:4166",
-        "components/OrdersList.tsx:4200",
-        "components/OrdersList.tsx:4484",
-        "components/OrdersList.tsx:482",
+        "components/OrdersList.tsx:2013",
+        "components/OrdersList.tsx:2039",
+        "components/OrdersList.tsx:2098",
+        "components/OrdersList.tsx:2109",
+        "components/OrdersList.tsx:2130",
+        "components/OrdersList.tsx:2171",
+        "components/OrdersList.tsx:2314",
+        "components/OrdersList.tsx:2450",
+        "components/OrdersList.tsx:2474",
+        "components/OrdersList.tsx:2989",
+        "components/OrdersList.tsx:3015",
+        "components/OrdersList.tsx:3033",
+        "components/OrdersList.tsx:3225",
+        "components/OrdersList.tsx:3285",
+        "components/OrdersList.tsx:3963",
+        "components/OrdersList.tsx:4124",
+        "components/OrdersList.tsx:4167",
+        "components/OrdersList.tsx:4201",
+        "components/OrdersList.tsx:4485",
+        "components/OrdersList.tsx:483",
         "components/PalletManager.tsx:121",
         "components/PalletManager.tsx:343",
         "components/ProductionManager.tsx:252",
@@ -20624,67 +20645,67 @@
         "components/ItemList.tsx:461",
         "components/OrderPicker.tsx:108",
         "components/OrderPicker.tsx:109",
-        "components/OrdersList.tsx:1027",
-        "components/OrdersList.tsx:1816",
-        "components/OrdersList.tsx:1987",
-        "components/OrdersList.tsx:1993",
-        "components/OrdersList.tsx:1995",
-        "components/OrdersList.tsx:2050",
-        "components/OrdersList.tsx:2057",
-        "components/OrdersList.tsx:2059",
-        "components/OrdersList.tsx:2062",
+        "components/OrdersList.tsx:1028",
+        "components/OrdersList.tsx:1817",
+        "components/OrdersList.tsx:1988",
+        "components/OrdersList.tsx:1994",
+        "components/OrdersList.tsx:1996",
+        "components/OrdersList.tsx:2051",
+        "components/OrdersList.tsx:2058",
+        "components/OrdersList.tsx:2060",
         "components/OrdersList.tsx:2063",
-        "components/OrdersList.tsx:2100",
-        "components/OrdersList.tsx:2109",
+        "components/OrdersList.tsx:2064",
+        "components/OrdersList.tsx:2101",
         "components/OrdersList.tsx:2110",
         "components/OrdersList.tsx:2111",
         "components/OrdersList.tsx:2112",
         "components/OrdersList.tsx:2113",
-        "components/OrdersList.tsx:2474",
-        "components/OrdersList.tsx:2480",
-        "components/OrdersList.tsx:2483",
-        "components/OrdersList.tsx:2485",
-        "components/OrdersList.tsx:2497",
-        "components/OrdersList.tsx:2706",
-        "components/OrdersList.tsx:2710",
-        "components/OrdersList.tsx:3009",
-        "components/OrdersList.tsx:3015",
-        "components/OrdersList.tsx:3019",
+        "components/OrdersList.tsx:2114",
+        "components/OrdersList.tsx:2475",
+        "components/OrdersList.tsx:2481",
+        "components/OrdersList.tsx:2484",
+        "components/OrdersList.tsx:2486",
+        "components/OrdersList.tsx:2498",
+        "components/OrdersList.tsx:2707",
+        "components/OrdersList.tsx:2711",
+        "components/OrdersList.tsx:3010",
+        "components/OrdersList.tsx:3016",
         "components/OrdersList.tsx:3020",
         "components/OrdersList.tsx:3021",
         "components/OrdersList.tsx:3022",
         "components/OrdersList.tsx:3023",
-        "components/OrdersList.tsx:3033",
-        "components/OrdersList.tsx:3037",
+        "components/OrdersList.tsx:3024",
+        "components/OrdersList.tsx:3034",
         "components/OrdersList.tsx:3038",
         "components/OrdersList.tsx:3039",
         "components/OrdersList.tsx:3040",
         "components/OrdersList.tsx:3041",
-        "components/OrdersList.tsx:3046",
-        "components/OrdersList.tsx:3225",
-        "components/OrdersList.tsx:3286",
-        "components/OrdersList.tsx:3446",
-        "components/OrdersList.tsx:3465",
-        "components/OrdersList.tsx:4127",
+        "components/OrdersList.tsx:3042",
+        "components/OrdersList.tsx:3047",
+        "components/OrdersList.tsx:3226",
+        "components/OrdersList.tsx:3287",
+        "components/OrdersList.tsx:3447",
+        "components/OrdersList.tsx:3466",
         "components/OrdersList.tsx:4128",
         "components/OrdersList.tsx:4129",
-        "components/OrdersList.tsx:4340",
-        "components/OrdersList.tsx:444",
-        "components/OrdersList.tsx:487",
-        "components/OrdersList.tsx:502",
-        "components/OrdersList.tsx:508",
-        "components/OrdersList.tsx:515",
-        "components/OrdersList.tsx:526",
-        "components/OrdersList.tsx:633",
-        "components/OrdersList.tsx:710",
-        "components/OrdersList.tsx:714",
-        "components/OrdersList.tsx:888",
-        "components/OrdersList.tsx:939",
+        "components/OrdersList.tsx:4130",
+        "components/OrdersList.tsx:4341",
+        "components/OrdersList.tsx:445",
+        "components/OrdersList.tsx:488",
+        "components/OrdersList.tsx:503",
+        "components/OrdersList.tsx:509",
+        "components/OrdersList.tsx:516",
+        "components/OrdersList.tsx:527",
+        "components/OrdersList.tsx:634",
+        "components/OrdersList.tsx:711",
+        "components/OrdersList.tsx:715",
+        "components/OrdersList.tsx:889",
         "components/OrdersList.tsx:940",
-        "components/OrdersList.tsx:948",
-        "components/OrdersList.tsx:956",
-        "components/OrdersList.tsx:977",
-        "components/OrdersList.tsx:985",
+        "components/OrdersList.tsx:941",
+        "components/OrdersList.tsx:949",
+        "components/OrdersList.tsx:957",
+        "components/OrdersList.tsx:978",
+        "components/OrdersList.tsx:986",
         "components/PasteOrderModal.tsx:357",
         "components/ProductionCalculationEvidence.tsx:12",
         "components/ProductionCalculationEvidence.tsx:22",
@@ -20762,16 +20783,16 @@
       "declaration": "src/shared/types.ts:263",
       "references": [
         "components/DeliveryManager.tsx:233",
-        "components/OrdersList.tsx:1817",
-        "components/OrdersList.tsx:2993",
-        "components/OrdersList.tsx:3247",
+        "components/OrdersList.tsx:1818",
+        "components/OrdersList.tsx:2994",
         "components/OrdersList.tsx:3248",
-        "components/OrdersList.tsx:3600",
+        "components/OrdersList.tsx:3249",
         "components/OrdersList.tsx:3601",
-        "components/OrdersList.tsx:4226",
+        "components/OrdersList.tsx:3602",
         "components/OrdersList.tsx:4227",
-        "components/OrdersList.tsx:4401",
+        "components/OrdersList.tsx:4228",
         "components/OrdersList.tsx:4402",
+        "components/OrdersList.tsx:4403",
         "src/shared/orderActivityLog.ts:105",
         "src/shared/orderActivityLog.ts:106",
         "src/shared/orderListSort.ts:46"
@@ -20784,10 +20805,10 @@
       "type": "boolean",
       "declaration": "src/shared/types.ts:264",
       "references": [
-        "components/OrdersList.tsx:1818",
-        "components/OrdersList.tsx:3248",
-        "components/OrdersList.tsx:3600",
-        "components/OrdersList.tsx:4226"
+        "components/OrdersList.tsx:1819",
+        "components/OrdersList.tsx:3249",
+        "components/OrdersList.tsx:3601",
+        "components/OrdersList.tsx:4227"
       ]
     },
     {
@@ -20866,40 +20887,40 @@
         "components/ItemList.tsx:460",
         "components/OrderPicker.tsx:265",
         "components/OrderPicker.tsx:466",
-        "components/OrdersList.tsx:1142",
-        "components/OrdersList.tsx:1151",
-        "components/OrdersList.tsx:1153",
-        "components/OrdersList.tsx:1261",
-        "components/OrdersList.tsx:1384",
+        "components/OrdersList.tsx:1143",
+        "components/OrdersList.tsx:1152",
+        "components/OrdersList.tsx:1154",
+        "components/OrdersList.tsx:1262",
         "components/OrdersList.tsx:1385",
-        "components/OrdersList.tsx:2019",
-        "components/OrdersList.tsx:2023",
-        "components/OrdersList.tsx:2030",
-        "components/OrdersList.tsx:2036",
-        "components/OrdersList.tsx:2135",
+        "components/OrdersList.tsx:1386",
+        "components/OrdersList.tsx:2020",
+        "components/OrdersList.tsx:2024",
+        "components/OrdersList.tsx:2031",
+        "components/OrdersList.tsx:2037",
         "components/OrdersList.tsx:2136",
-        "components/OrdersList.tsx:214",
-        "components/OrdersList.tsx:2143",
-        "components/OrdersList.tsx:2341",
-        "components/OrdersList.tsx:2469",
-        "components/OrdersList.tsx:2500",
-        "components/OrdersList.tsx:2830",
-        "components/OrdersList.tsx:2991",
-        "components/OrdersList.tsx:3011",
-        "components/OrdersList.tsx:3056",
-        "components/OrdersList.tsx:3127",
-        "components/OrdersList.tsx:3231",
-        "components/OrdersList.tsx:3316",
-        "components/OrdersList.tsx:3340",
-        "components/OrdersList.tsx:3351",
-        "components/OrdersList.tsx:4076",
-        "components/OrdersList.tsx:4170",
+        "components/OrdersList.tsx:2137",
+        "components/OrdersList.tsx:2144",
+        "components/OrdersList.tsx:215",
+        "components/OrdersList.tsx:2342",
+        "components/OrdersList.tsx:2470",
+        "components/OrdersList.tsx:2501",
+        "components/OrdersList.tsx:2831",
+        "components/OrdersList.tsx:2992",
+        "components/OrdersList.tsx:3012",
+        "components/OrdersList.tsx:3057",
+        "components/OrdersList.tsx:3128",
+        "components/OrdersList.tsx:3232",
+        "components/OrdersList.tsx:3317",
+        "components/OrdersList.tsx:3341",
+        "components/OrdersList.tsx:3352",
+        "components/OrdersList.tsx:4077",
         "components/OrdersList.tsx:4171",
-        "components/OrdersList.tsx:456",
-        "components/OrdersList.tsx:540",
-        "components/OrdersList.tsx:546",
-        "components/OrdersList.tsx:584",
-        "components/OrdersList.tsx:589",
+        "components/OrdersList.tsx:4172",
+        "components/OrdersList.tsx:457",
+        "components/OrdersList.tsx:541",
+        "components/OrdersList.tsx:547",
+        "components/OrdersList.tsx:585",
+        "components/OrdersList.tsx:590",
         "components/PalletManager.tsx:118",
         "components/PalletManager.tsx:226",
         "components/PalletManager.tsx:297",
@@ -20982,24 +21003,24 @@
         "components/OrderPicker.tsx:211",
         "components/OrderPicker.tsx:250",
         "components/OrderPicker.tsx:437",
-        "components/OrdersList.tsx:1953",
-        "components/OrdersList.tsx:1998",
-        "components/OrdersList.tsx:2020",
-        "components/OrdersList.tsx:2024",
-        "components/OrdersList.tsx:2115",
-        "components/OrdersList.tsx:215",
-        "components/OrdersList.tsx:2575",
-        "components/OrdersList.tsx:2993",
+        "components/OrdersList.tsx:1954",
+        "components/OrdersList.tsx:1999",
+        "components/OrdersList.tsx:2021",
+        "components/OrdersList.tsx:2025",
+        "components/OrdersList.tsx:2116",
+        "components/OrdersList.tsx:216",
+        "components/OrdersList.tsx:2576",
         "components/OrdersList.tsx:2994",
-        "components/OrdersList.tsx:3025",
-        "components/OrdersList.tsx:3043",
-        "components/OrdersList.tsx:3238",
-        "components/OrdersList.tsx:404",
-        "components/OrdersList.tsx:4077",
-        "components/OrdersList.tsx:4089",
+        "components/OrdersList.tsx:2995",
+        "components/OrdersList.tsx:3026",
+        "components/OrdersList.tsx:3044",
+        "components/OrdersList.tsx:3239",
+        "components/OrdersList.tsx:405",
+        "components/OrdersList.tsx:4078",
         "components/OrdersList.tsx:4090",
-        "components/OrdersList.tsx:4130",
-        "components/OrdersList.tsx:4236",
+        "components/OrdersList.tsx:4091",
+        "components/OrdersList.tsx:4131",
+        "components/OrdersList.tsx:4237",
         "components/ProductionManager.tsx:276",
         "components/ReceivingReturnsManager.tsx:155",
         "components/ReturnManager.tsx:125",
@@ -21056,29 +21077,29 @@
         "components/OrderPicker.tsx:242",
         "components/OrderPicker.tsx:437",
         "components/OrderPicker.tsx:463",
-        "components/OrdersList.tsx:1114",
-        "components/OrdersList.tsx:1127",
-        "components/OrdersList.tsx:1815",
-        "components/OrdersList.tsx:1954",
-        "components/OrdersList.tsx:2003",
-        "components/OrdersList.tsx:2005",
-        "components/OrdersList.tsx:2024",
-        "components/OrdersList.tsx:2116",
-        "components/OrdersList.tsx:2144",
-        "components/OrdersList.tsx:2506",
-        "components/OrdersList.tsx:2574",
-        "components/OrdersList.tsx:2993",
+        "components/OrdersList.tsx:1115",
+        "components/OrdersList.tsx:1128",
+        "components/OrdersList.tsx:1816",
+        "components/OrdersList.tsx:1955",
+        "components/OrdersList.tsx:2004",
+        "components/OrdersList.tsx:2006",
+        "components/OrdersList.tsx:2025",
+        "components/OrdersList.tsx:2117",
+        "components/OrdersList.tsx:2145",
+        "components/OrdersList.tsx:2507",
+        "components/OrdersList.tsx:2575",
         "components/OrdersList.tsx:2994",
-        "components/OrdersList.tsx:3026",
-        "components/OrdersList.tsx:3044",
-        "components/OrdersList.tsx:3239",
-        "components/OrdersList.tsx:3322",
-        "components/OrdersList.tsx:403",
-        "components/OrdersList.tsx:4077",
-        "components/OrdersList.tsx:4089",
+        "components/OrdersList.tsx:2995",
+        "components/OrdersList.tsx:3027",
+        "components/OrdersList.tsx:3045",
+        "components/OrdersList.tsx:3240",
+        "components/OrdersList.tsx:3323",
+        "components/OrdersList.tsx:404",
+        "components/OrdersList.tsx:4078",
         "components/OrdersList.tsx:4090",
-        "components/OrdersList.tsx:4131",
-        "components/OrdersList.tsx:4222",
+        "components/OrdersList.tsx:4091",
+        "components/OrdersList.tsx:4132",
+        "components/OrdersList.tsx:4223",
         "components/PalletManager.tsx:233",
         "components/PalletManager.tsx:298",
         "components/PalletManager.tsx:319",
@@ -21132,25 +21153,25 @@
         "components/DeliveryManager.tsx:199",
         "components/DeliveryManager.tsx:233",
         "components/OrderPicker.tsx:432",
-        "components/OrdersList.tsx:1387",
-        "components/OrdersList.tsx:2105",
-        "components/OrdersList.tsx:2143",
-        "components/OrdersList.tsx:2835",
+        "components/OrdersList.tsx:1388",
+        "components/OrdersList.tsx:2106",
+        "components/OrdersList.tsx:2144",
         "components/OrdersList.tsx:2836",
         "components/OrdersList.tsx:2837",
-        "components/OrdersList.tsx:2991",
+        "components/OrdersList.tsx:2838",
         "components/OrdersList.tsx:2992",
-        "components/OrdersList.tsx:3016",
-        "components/OrdersList.tsx:3018",
-        "components/OrdersList.tsx:3034",
-        "components/OrdersList.tsx:3036",
-        "components/OrdersList.tsx:3337",
+        "components/OrdersList.tsx:2993",
+        "components/OrdersList.tsx:3017",
+        "components/OrdersList.tsx:3019",
+        "components/OrdersList.tsx:3035",
+        "components/OrdersList.tsx:3037",
         "components/OrdersList.tsx:3338",
-        "components/OrdersList.tsx:4105",
+        "components/OrdersList.tsx:3339",
         "components/OrdersList.tsx:4106",
         "components/OrdersList.tsx:4107",
-        "components/OrdersList.tsx:596",
+        "components/OrdersList.tsx:4108",
         "components/OrdersList.tsx:597",
+        "components/OrdersList.tsx:598",
         "components/SmartStoreAnalytics.tsx:37"
       ]
     },
@@ -21162,16 +21183,16 @@
       "declaration": "src/shared/types.ts:275",
       "references": [
         "components/DeliveryManager.tsx:197",
-        "components/OrdersList.tsx:1211",
-        "components/OrdersList.tsx:1220",
-        "components/OrdersList.tsx:1224",
-        "components/OrdersList.tsx:2114",
-        "components/OrdersList.tsx:2978",
-        "components/OrdersList.tsx:3551",
-        "components/OrdersList.tsx:3555",
-        "components/OrdersList.tsx:4427",
-        "components/OrdersList.tsx:4436",
-        "components/OrdersList.tsx:4440",
+        "components/OrdersList.tsx:1212",
+        "components/OrdersList.tsx:1221",
+        "components/OrdersList.tsx:1225",
+        "components/OrdersList.tsx:2115",
+        "components/OrdersList.tsx:2979",
+        "components/OrdersList.tsx:3552",
+        "components/OrdersList.tsx:3556",
+        "components/OrdersList.tsx:4428",
+        "components/OrdersList.tsx:4437",
+        "components/OrdersList.tsx:4441",
         "components/PalletManager.tsx:118",
         "components/PalletManager.tsx:123",
         "components/PalletManager.tsx:226",
@@ -21201,7 +21222,7 @@
         "components/DeliveryManager.tsx:1481",
         "components/DeliveryManager.tsx:571",
         "components/OrderPicker.tsx:465",
-        "components/OrdersList.tsx:482",
+        "components/OrdersList.tsx:483",
         "components/TradeStatement.tsx:616"
       ]
     },
@@ -21213,15 +21234,15 @@
       "declaration": "src/shared/types.ts:285",
       "references": [
         "components/DeliveryManager.tsx:199",
-        "components/OrdersList.tsx:1359",
-        "components/OrdersList.tsx:1402",
-        "components/OrdersList.tsx:1406",
-        "components/OrdersList.tsx:2143",
-        "components/OrdersList.tsx:2992",
-        "components/OrdersList.tsx:3018",
-        "components/OrdersList.tsx:3036",
-        "components/OrdersList.tsx:4106",
-        "components/OrdersList.tsx:4107"
+        "components/OrdersList.tsx:1360",
+        "components/OrdersList.tsx:1403",
+        "components/OrdersList.tsx:1407",
+        "components/OrdersList.tsx:2144",
+        "components/OrdersList.tsx:2993",
+        "components/OrdersList.tsx:3019",
+        "components/OrdersList.tsx:3037",
+        "components/OrdersList.tsx:4107",
+        "components/OrdersList.tsx:4108"
       ]
     },
     {
@@ -21240,20 +21261,20 @@
       "declaration": "src/shared/types.ts:288",
       "references": [
         "components/DeliveryManager.tsx:199",
-        "components/OrdersList.tsx:1186",
-        "components/OrdersList.tsx:1373",
-        "components/OrdersList.tsx:1376",
+        "components/OrdersList.tsx:1187",
+        "components/OrdersList.tsx:1374",
         "components/OrdersList.tsx:1377",
-        "components/OrdersList.tsx:1379",
-        "components/OrdersList.tsx:1383",
-        "components/OrdersList.tsx:2107",
-        "components/OrdersList.tsx:2416",
-        "components/OrdersList.tsx:2419",
-        "components/OrdersList.tsx:2437",
-        "components/OrdersList.tsx:2992",
-        "components/OrdersList.tsx:3018",
-        "components/OrdersList.tsx:3036",
-        "components/OrdersList.tsx:3513",
+        "components/OrdersList.tsx:1378",
+        "components/OrdersList.tsx:1380",
+        "components/OrdersList.tsx:1384",
+        "components/OrdersList.tsx:2108",
+        "components/OrdersList.tsx:2417",
+        "components/OrdersList.tsx:2420",
+        "components/OrdersList.tsx:2438",
+        "components/OrdersList.tsx:2993",
+        "components/OrdersList.tsx:3019",
+        "components/OrdersList.tsx:3037",
+        "components/OrdersList.tsx:3514",
         "components/TradeStatement.tsx:2024"
       ]
     },
@@ -21264,8 +21285,8 @@
       "type": "'printed' | 'attached'",
       "declaration": "src/shared/types.ts:297",
       "references": [
-        "components/OrdersList.tsx:1186",
-        "components/OrdersList.tsx:3513"
+        "components/OrdersList.tsx:1187",
+        "components/OrdersList.tsx:3514"
       ]
     },
     {
@@ -21275,8 +21296,8 @@
       "type": "InvoiceType",
       "declaration": "src/shared/types.ts:299",
       "references": [
-        "components/OrdersList.tsx:1174",
-        "components/OrdersList.tsx:3501"
+        "components/OrdersList.tsx:1175",
+        "components/OrdersList.tsx:3502"
       ]
     },
     {
@@ -21286,7 +21307,7 @@
       "type": "string | null",
       "declaration": "src/shared/types.ts:300",
       "references": [
-        "components/OrdersList.tsx:3370",
+        "components/OrdersList.tsx:3371",
         "src/shared/orderActivityLog.ts:121",
         "src/shared/orderActivityLog.ts:122"
       ]
@@ -21299,7 +21320,7 @@
       "declaration": "src/shared/types.ts:301",
       "references": [
         "components/ItemList.tsx:954",
-        "components/OrdersList.tsx:3370",
+        "components/OrdersList.tsx:3371",
         "src/features/admin/itemLedger.ts:128",
         "src/shared/orderActivityLog.ts:121",
         "src/shared/orderActivityLog.ts:122"
@@ -21314,11 +21335,11 @@
       "references": [
         "components/ItemList.tsx:940",
         "components/ItemList.tsx:954",
-        "components/OrdersList.tsx:2024",
-        "components/OrdersList.tsx:4077",
-        "components/OrdersList.tsx:4089",
+        "components/OrdersList.tsx:2025",
+        "components/OrdersList.tsx:4078",
         "components/OrdersList.tsx:4090",
-        "components/OrdersList.tsx:4132",
+        "components/OrdersList.tsx:4091",
+        "components/OrdersList.tsx:4133",
         "components/ProductionManager.tsx:276",
         "src/features/admin/itemLedger.ts:128",
         "src/features/admin/orderProductionPreflight.ts:20",
@@ -21649,11 +21670,11 @@
       "type": "{\n    id: string;\n    /** 새 원료 batch·제품 확정이 같은 최초 세대를 확인한다. 옛 잠금은 자동 승격하지 않는다. */\n    contractVersion?: 1;\n    /** 최초 생산기록 계획까지 고정한 새 claim만 사용한다. 옛 실패에는 추정해 붙이지 않는다. */\n    productionRecordContractVersion?:1;\n    actorUid?: string;\n    /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */\n    kind?: 'line' | 'status';\n    lineId?: string;\n    stage?: 'claim' | 'reservation' | 'raw-inventory' | 'production-record' | 'final-stock';\n    targetStatus: OrderStatus;\n    state: 'processing' | 'failed';\n    startedAt: string;\n    actor: string;\n    error?: string;\n  } | null",
       "declaration": "src/shared/types.ts:345",
       "references": [
-        "components/OrderInventoryRecoveryPanel.tsx:12",
-        "components/OrderInventoryRecoveryPanel.tsx:28",
-        "components/OrdersList.tsx:230",
+        "components/OrderInventoryRecoveryPanel.tsx:13",
+        "components/OrderInventoryRecoveryPanel.tsx:29",
         "components/OrdersList.tsx:231",
-        "components/OrdersList.tsx:234",
+        "components/OrdersList.tsx:232",
+        "components/OrdersList.tsx:235",
         "src/features/admin/AdminApp.tsx:1766",
         "src/features/admin/dataIntegrityAudit.ts:212",
         "src/features/admin/dataIntegrityAudit.ts:213",
@@ -21686,11 +21707,11 @@
         "src/shared/services/firebaseService.ts:897",
         "src/shared/services/orderProductionRecordService.ts:35",
         "src/shared/services/orderProductionRecordService.ts:47",
-        "src/shared/services/orderProductionRecordService.ts:78",
-        "src/shared/services/orderRawBatchService.ts:63",
-        "src/shared/services/orderRawBatchService.ts:76",
-        "src/shared/services/orderRawBatchService.ts:77",
-        "src/shared/services/orderRawBatchService.ts:83"
+        "src/shared/services/orderProductionRecordService.ts:79",
+        "src/shared/services/orderRawBatchService.ts:73",
+        "src/shared/services/orderRawBatchService.ts:86",
+        "src/shared/services/orderRawBatchService.ts:87",
+        "src/shared/services/orderRawBatchService.ts:93"
       ]
     },
     {
@@ -22861,64 +22882,64 @@
         "components/OrderPicker.tsx:110",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
-        "components/OrdersList.tsx:1029",
-        "components/OrdersList.tsx:1036",
+        "components/OrdersList.tsx:1030",
         "components/OrdersList.tsx:1037",
-        "components/OrdersList.tsx:1070",
-        "components/OrdersList.tsx:1076",
-        "components/OrdersList.tsx:1080",
-        "components/OrdersList.tsx:1366",
+        "components/OrdersList.tsx:1038",
+        "components/OrdersList.tsx:1071",
+        "components/OrdersList.tsx:1077",
+        "components/OrdersList.tsx:1081",
         "components/OrdersList.tsx:1367",
-        "components/OrdersList.tsx:1407",
-        "components/OrdersList.tsx:1422",
-        "components/OrdersList.tsx:1424",
-        "components/OrdersList.tsx:1430",
-        "components/OrdersList.tsx:1435",
-        "components/OrdersList.tsx:1438",
-        "components/OrdersList.tsx:1903",
-        "components/OrdersList.tsx:1943",
-        "components/OrdersList.tsx:1988",
-        "components/OrdersList.tsx:2066",
-        "components/OrdersList.tsx:2075",
-        "components/OrdersList.tsx:2488",
-        "components/OrdersList.tsx:2502",
-        "components/OrdersList.tsx:2697",
-        "components/OrdersList.tsx:3000",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3047",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:3970",
-        "components/OrdersList.tsx:4034",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4211",
-        "components/OrdersList.tsx:4293",
+        "components/OrdersList.tsx:1368",
+        "components/OrdersList.tsx:1408",
+        "components/OrdersList.tsx:1423",
+        "components/OrdersList.tsx:1425",
+        "components/OrdersList.tsx:1431",
+        "components/OrdersList.tsx:1436",
+        "components/OrdersList.tsx:1439",
+        "components/OrdersList.tsx:1904",
+        "components/OrdersList.tsx:1944",
+        "components/OrdersList.tsx:1989",
+        "components/OrdersList.tsx:2067",
+        "components/OrdersList.tsx:2076",
+        "components/OrdersList.tsx:2489",
+        "components/OrdersList.tsx:2503",
+        "components/OrdersList.tsx:2698",
+        "components/OrdersList.tsx:3001",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3048",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:3971",
+        "components/OrdersList.tsx:4035",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4212",
         "components/OrdersList.tsx:4294",
-        "components/OrdersList.tsx:4300",
-        "components/OrdersList.tsx:4303",
-        "components/OrdersList.tsx:4326",
-        "components/OrdersList.tsx:4329",
-        "components/OrdersList.tsx:445",
-        "components/OrdersList.tsx:523",
-        "components/OrdersList.tsx:642",
-        "components/OrdersList.tsx:711",
-        "components/OrdersList.tsx:716",
-        "components/OrdersList.tsx:773",
-        "components/OrdersList.tsx:775",
-        "components/OrdersList.tsx:786",
-        "components/OrdersList.tsx:793",
-        "components/OrdersList.tsx:797",
-        "components/OrdersList.tsx:824",
-        "components/OrdersList.tsx:839",
-        "components/OrdersList.tsx:850",
-        "components/OrdersList.tsx:855",
-        "components/OrdersList.tsx:939",
+        "components/OrdersList.tsx:4295",
+        "components/OrdersList.tsx:4301",
+        "components/OrdersList.tsx:4304",
+        "components/OrdersList.tsx:4327",
+        "components/OrdersList.tsx:4330",
+        "components/OrdersList.tsx:446",
+        "components/OrdersList.tsx:524",
+        "components/OrdersList.tsx:643",
+        "components/OrdersList.tsx:712",
+        "components/OrdersList.tsx:717",
+        "components/OrdersList.tsx:774",
+        "components/OrdersList.tsx:776",
+        "components/OrdersList.tsx:787",
+        "components/OrdersList.tsx:794",
+        "components/OrdersList.tsx:798",
+        "components/OrdersList.tsx:825",
+        "components/OrdersList.tsx:840",
+        "components/OrdersList.tsx:851",
+        "components/OrdersList.tsx:856",
         "components/OrdersList.tsx:940",
-        "components/OrdersList.tsx:958",
-        "components/OrdersList.tsx:966",
-        "components/OrdersList.tsx:987",
-        "components/OrdersList.tsx:995",
+        "components/OrdersList.tsx:941",
+        "components/OrdersList.tsx:959",
+        "components/OrdersList.tsx:967",
+        "components/OrdersList.tsx:988",
+        "components/OrdersList.tsx:996",
         "components/PartnerPortal.tsx:222",
         "components/PartnerPortal.tsx:224",
         "components/PartnerPortal.tsx:233",
@@ -23438,23 +23459,23 @@
         "components/OemManager.tsx:453",
         "components/OrderPicker.tsx:319",
         "components/OrderPicker.tsx:418",
-        "components/OrdersList.tsx:1038",
-        "components/OrdersList.tsx:1068",
-        "components/OrdersList.tsx:1078",
-        "components/OrdersList.tsx:1082",
-        "components/OrdersList.tsx:1353",
-        "components/OrdersList.tsx:1367",
-        "components/OrdersList.tsx:1426",
-        "components/OrdersList.tsx:3971",
-        "components/OrdersList.tsx:4212",
-        "components/OrdersList.tsx:4294",
-        "components/OrdersList.tsx:4303",
-        "components/OrdersList.tsx:523",
-        "components/OrdersList.tsx:786",
-        "components/OrdersList.tsx:797",
-        "components/OrdersList.tsx:843",
-        "components/OrdersList.tsx:859",
-        "components/OrdersList.tsx:866",
+        "components/OrdersList.tsx:1039",
+        "components/OrdersList.tsx:1069",
+        "components/OrdersList.tsx:1079",
+        "components/OrdersList.tsx:1083",
+        "components/OrdersList.tsx:1354",
+        "components/OrdersList.tsx:1368",
+        "components/OrdersList.tsx:1427",
+        "components/OrdersList.tsx:3972",
+        "components/OrdersList.tsx:4213",
+        "components/OrdersList.tsx:4295",
+        "components/OrdersList.tsx:4304",
+        "components/OrdersList.tsx:524",
+        "components/OrdersList.tsx:787",
+        "components/OrdersList.tsx:798",
+        "components/OrdersList.tsx:844",
+        "components/OrdersList.tsx:860",
+        "components/OrdersList.tsx:867",
         "components/PartnerPortal.tsx:231",
         "components/PartnerPortal.tsx:89",
         "components/PasteOrderModal.tsx:230",
@@ -23699,18 +23720,18 @@
         "components/ItemManager.tsx:695",
         "components/ItemManager.tsx:964",
         "components/ItemManager.tsx:969",
-        "components/OrdersList.tsx:1044",
-        "components/OrdersList.tsx:1353",
-        "components/OrdersList.tsx:2075",
-        "components/OrdersList.tsx:4210",
-        "components/OrdersList.tsx:446",
-        "components/OrdersList.tsx:712",
-        "components/OrdersList.tsx:769",
-        "components/OrdersList.tsx:774",
-        "components/OrdersList.tsx:795",
-        "components/OrdersList.tsx:852",
-        "components/OrdersList.tsx:939",
+        "components/OrdersList.tsx:1045",
+        "components/OrdersList.tsx:1354",
+        "components/OrdersList.tsx:2076",
+        "components/OrdersList.tsx:4211",
+        "components/OrdersList.tsx:447",
+        "components/OrdersList.tsx:713",
+        "components/OrdersList.tsx:770",
+        "components/OrdersList.tsx:775",
+        "components/OrdersList.tsx:796",
+        "components/OrdersList.tsx:853",
         "components/OrdersList.tsx:940",
+        "components/OrdersList.tsx:941",
         "components/PartnerPortal.tsx:53",
         "components/PasteOrderModal.tsx:220",
         "components/PasteOrderModal.tsx:230",
@@ -23791,11 +23812,11 @@
         "components/ItemManager.tsx:701",
         "components/ItemManager.tsx:702",
         "components/ItemManager.tsx:705",
-        "components/OrdersList.tsx:1904",
-        "components/OrdersList.tsx:2066",
-        "components/OrdersList.tsx:2488",
-        "components/OrdersList.tsx:2503",
-        "components/OrdersList.tsx:769",
+        "components/OrdersList.tsx:1905",
+        "components/OrdersList.tsx:2067",
+        "components/OrdersList.tsx:2489",
+        "components/OrdersList.tsx:2504",
+        "components/OrdersList.tsx:770",
         "components/PasteOrderModal.tsx:643",
         "components/ProfitAnalysis.tsx:1474",
         "components/TradeStatement.tsx:1814",
@@ -23934,9 +23955,9 @@
         "components/ItemList.tsx:3849",
         "components/ItemList.tsx:3999",
         "components/ItemList.tsx:592",
-        "components/OrdersList.tsx:1944",
-        "components/OrdersList.tsx:1989",
-        "components/OrdersList.tsx:3048",
+        "components/OrdersList.tsx:1945",
+        "components/OrdersList.tsx:1990",
+        "components/OrdersList.tsx:3049",
         "components/ProfitAnalysis.tsx:1433",
         "src/features/admin/AdminApp.tsx:1120",
         "src/features/admin/AdminApp.tsx:1127",
@@ -24095,21 +24116,21 @@
         "components/ItemManager.tsx:249",
         "components/LotTimeline.tsx:180",
         "components/OemManager.tsx:431",
-        "components/OrdersList.tsx:1072",
-        "components/OrdersList.tsx:2697",
-        "components/OrdersList.tsx:3001",
-        "components/OrdersList.tsx:3020",
-        "components/OrdersList.tsx:3038",
-        "components/OrdersList.tsx:3243",
-        "components/OrdersList.tsx:3434",
-        "components/OrdersList.tsx:4034",
-        "components/OrdersList.tsx:4128",
-        "components/OrdersList.tsx:4326",
-        "components/OrdersList.tsx:4329",
-        "components/OrdersList.tsx:691",
-        "components/OrdersList.tsx:757",
-        "components/OrdersList.tsx:966",
-        "components/OrdersList.tsx:995",
+        "components/OrdersList.tsx:1073",
+        "components/OrdersList.tsx:2698",
+        "components/OrdersList.tsx:3002",
+        "components/OrdersList.tsx:3021",
+        "components/OrdersList.tsx:3039",
+        "components/OrdersList.tsx:3244",
+        "components/OrdersList.tsx:3435",
+        "components/OrdersList.tsx:4035",
+        "components/OrdersList.tsx:4129",
+        "components/OrdersList.tsx:4327",
+        "components/OrdersList.tsx:4330",
+        "components/OrdersList.tsx:692",
+        "components/OrdersList.tsx:758",
+        "components/OrdersList.tsx:967",
+        "components/OrdersList.tsx:996",
         "components/PartnerPortal.tsx:235",
         "components/PasteOrderModal.tsx:230",
         "components/ProductionManager.tsx:377",
@@ -24192,7 +24213,7 @@
       "type": "string",
       "declaration": "src/shared/types.ts:591",
       "references": [
-        "components/OrdersList.tsx:917",
+        "components/OrdersList.tsx:918",
         "src/features/statements/ui/StatementManualItemRows.tsx:76",
         "src/features/statements/ui/StatementQuickItemBar.tsx:65"
       ]
@@ -24213,8 +24234,8 @@
       "declaration": "src/shared/types.ts:593",
       "references": [
         "components/AddItemModal.tsx:109",
-        "components/OrdersList.tsx:1410",
-        "components/OrdersList.tsx:1427"
+        "components/OrdersList.tsx:1411",
+        "components/OrdersList.tsx:1428"
       ]
     },
     {
@@ -24300,17 +24321,17 @@
         "components/ItemManager.tsx:706",
         "components/ItemManager.tsx:707",
         "components/OemManager.tsx:431",
-        "components/OrdersList.tsx:1038",
-        "components/OrdersList.tsx:1072",
+        "components/OrdersList.tsx:1039",
         "components/OrdersList.tsx:1073",
-        "components/OrdersList.tsx:3971",
+        "components/OrdersList.tsx:1074",
         "components/OrdersList.tsx:3972",
-        "components/OrdersList.tsx:4302",
-        "components/OrdersList.tsx:668",
-        "components/OrdersList.tsx:670",
-        "components/OrdersList.tsx:750",
-        "components/OrdersList.tsx:959",
-        "components/OrdersList.tsx:988",
+        "components/OrdersList.tsx:3973",
+        "components/OrdersList.tsx:4303",
+        "components/OrdersList.tsx:669",
+        "components/OrdersList.tsx:671",
+        "components/OrdersList.tsx:751",
+        "components/OrdersList.tsx:960",
+        "components/OrdersList.tsx:989",
         "components/PasteOrderModal.tsx:230",
         "components/ProductionManager.tsx:147",
         "components/ProfitAnalysis.tsx:1551",
@@ -24589,9 +24610,9 @@
         "components/ItemManager.tsx:694",
         "components/OemManager.tsx:130",
         "components/OemManager.tsx:132",
-        "components/OrdersList.tsx:1036",
         "components/OrdersList.tsx:1037",
-        "components/OrdersList.tsx:4210",
+        "components/OrdersList.tsx:1038",
+        "components/OrdersList.tsx:4211",
         "components/PasteOrderModal.tsx:220",
         "components/ProductionManager.tsx:163",
         "components/ProductionManager.tsx:168",
@@ -24615,20 +24636,20 @@
         "components/AddOrderModal.tsx:943",
         "components/AddOrderModal.tsx:947",
         "components/DeliveryManager.tsx:197",
-        "components/OrdersList.tsx:1220",
-        "components/OrdersList.tsx:1224",
+        "components/OrdersList.tsx:1221",
         "components/OrdersList.tsx:1225",
-        "components/OrdersList.tsx:1229",
-        "components/OrdersList.tsx:2114",
-        "components/OrdersList.tsx:2981",
-        "components/OrdersList.tsx:3551",
-        "components/OrdersList.tsx:3555",
+        "components/OrdersList.tsx:1226",
+        "components/OrdersList.tsx:1230",
+        "components/OrdersList.tsx:2115",
+        "components/OrdersList.tsx:2982",
+        "components/OrdersList.tsx:3552",
         "components/OrdersList.tsx:3556",
-        "components/OrdersList.tsx:3559",
-        "components/OrdersList.tsx:4436",
-        "components/OrdersList.tsx:4440",
+        "components/OrdersList.tsx:3557",
+        "components/OrdersList.tsx:3560",
+        "components/OrdersList.tsx:4437",
         "components/OrdersList.tsx:4441",
-        "components/OrdersList.tsx:4444",
+        "components/OrdersList.tsx:4442",
+        "components/OrdersList.tsx:4445",
         "components/PalletManager.tsx:141",
         "components/PalletManager.tsx:212",
         "components/PalletManager.tsx:280",
@@ -24657,13 +24678,13 @@
         "components/AddOrderModal.tsx:936",
         "components/AddOrderModal.tsx:949",
         "components/DeliveryManager.tsx:197",
-        "components/OrdersList.tsx:1231",
-        "components/OrdersList.tsx:2114",
-        "components/OrdersList.tsx:2981",
-        "components/OrdersList.tsx:3561",
-        "components/OrdersList.tsx:4445",
-        "components/OrdersList.tsx:4450",
-        "components/OrdersList.tsx:4453",
+        "components/OrdersList.tsx:1232",
+        "components/OrdersList.tsx:2115",
+        "components/OrdersList.tsx:2982",
+        "components/OrdersList.tsx:3562",
+        "components/OrdersList.tsx:4446",
+        "components/OrdersList.tsx:4451",
+        "components/OrdersList.tsx:4454",
         "components/PalletManager.tsx:101",
         "components/PalletManager.tsx:104",
         "components/PalletManager.tsx:142",
@@ -24732,10 +24753,10 @@
       "references": [
         "components/AddOrderModal.tsx:925",
         "components/AddOrderModal.tsx:935",
-        "components/OrdersList.tsx:3538",
-        "components/OrdersList.tsx:3550",
-        "components/OrdersList.tsx:4415",
-        "components/OrdersList.tsx:4435",
+        "components/OrdersList.tsx:3539",
+        "components/OrdersList.tsx:3551",
+        "components/OrdersList.tsx:4416",
+        "components/OrdersList.tsx:4436",
         "components/PalletManager.tsx:103",
         "components/PasteOrderModal.tsx:677",
         "components/PasteOrderModal.tsx:687"
@@ -26947,8 +26968,8 @@
         "src/shared/productionRecordProjection.ts:40",
         "src/shared/productionRecordProjection.ts:50",
         "src/shared/productionRecordProjection.ts:51",
-        "src/shared/services/orderProductionRecordService.ts:71",
-        "src/shared/services/orderProductionRecordService.ts:82"
+        "src/shared/services/orderProductionRecordService.ts:72",
+        "src/shared/services/orderProductionRecordService.ts:83"
       ]
     },
     {
@@ -26992,10 +27013,10 @@
         "src/shared/productionRecordProjection.ts:8",
         "src/shared/services/orderProductionRecordService.ts:27",
         "src/shared/services/orderProductionRecordService.ts:56",
-        "src/shared/services/orderProductionRecordService.ts:71",
-        "src/shared/services/orderProductionRecordService.ts:75",
-        "src/shared/services/orderProductionRecordService.ts:83",
-        "src/shared/services/orderRawBatchService.ts:80"
+        "src/shared/services/orderProductionRecordService.ts:72",
+        "src/shared/services/orderProductionRecordService.ts:76",
+        "src/shared/services/orderProductionRecordService.ts:84",
+        "src/shared/services/orderRawBatchService.ts:90"
       ]
     },
     {
@@ -30885,8 +30906,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1417",
       "references": [
-        "components/OrdersList.tsx:772",
-        "components/OrdersList.tsx:792",
+        "components/OrdersList.tsx:773",
+        "components/OrdersList.tsx:793",
         "src/features/admin/AdminApp.tsx:4971",
         "src/features/admin/AdminApp.tsx:4981",
         "src/features/admin/AdminApp.tsx:760",
@@ -30908,8 +30929,8 @@
       "type": "string",
       "declaration": "src/shared/types.ts:1418",
       "references": [
-        "components/OrdersList.tsx:773",
-        "components/OrdersList.tsx:793",
+        "components/OrdersList.tsx:774",
+        "components/OrdersList.tsx:794",
         "src/features/admin/catalogItemDelete.ts:55",
         "src/features/admin/catalogItemDelete.ts:58",
         "src/features/admin/dataIntegrityAudit.ts:532",
@@ -30928,7 +30949,7 @@
       "type": "number",
       "declaration": "src/shared/types.ts:1419",
       "references": [
-        "components/OrdersList.tsx:793",
+        "components/OrdersList.tsx:794",
         "src/features/admin/dataIntegrityAudit.ts:530",
         "src/features/admin/dataIntegrityAudit.ts:539"
       ]
@@ -37075,7 +37096,7 @@
     },
     {
       "model": "Props",
-      "declaration": "components/OrderInventoryRecoveryPanel.tsx:5",
+      "declaration": "components/OrderInventoryRecoveryPanel.tsx:6",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -37083,43 +37104,43 @@
           "field": "companyId",
           "optional": false,
           "type": "CompanyId",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         },
         {
           "field": "actorUid",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         },
         {
           "field": "orders",
           "optional": false,
           "type": "readonly Order[]",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         },
         {
           "field": "pending",
           "optional": true,
           "type": "readonly PendingOrderInventoryRecovery[]",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         },
         {
           "field": "isCurrentActor",
           "optional": true,
           "type": "()=>boolean",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         },
         {
           "field": "onRecovered",
           "optional": false,
           "type": "(result:OrderInventoryRecoveryResult,expectedSaved:string|null)=>void",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:5"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
         }
       ]
     },
     {
       "model": "Entry",
-      "declaration": "components/OrderInventoryRecoveryPanel.tsx:6",
+      "declaration": "components/OrderInventoryRecoveryPanel.tsx:7",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -37127,31 +37148,31 @@
           "field": "orderId",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:7"
         },
         {
           "field": "partnerName",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:7"
         },
         {
           "field": "operationId",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:7"
         },
         {
           "field": "startedAt",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:7"
         },
         {
           "field": "pending",
           "optional": true,
           "type": "PendingOrderInventoryRecovery",
-          "declaration": "components/OrderInventoryRecoveryPanel.tsx:6"
+          "declaration": "components/OrderInventoryRecoveryPanel.tsx:7"
         }
       ]
     },
@@ -41913,7 +41934,7 @@
     },
     {
       "model": "CardDatePickerButtonProps",
-      "declaration": "components/OrdersList.tsx:119",
+      "declaration": "components/OrdersList.tsx:120",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -41921,43 +41942,43 @@
           "field": "label",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:120"
+          "declaration": "components/OrdersList.tsx:121"
         },
         {
           "field": "value",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:121"
+          "declaration": "components/OrdersList.tsx:122"
         },
         {
           "field": "onChange",
           "optional": false,
           "type": "(value: string) => void",
-          "declaration": "components/OrdersList.tsx:122"
+          "declaration": "components/OrdersList.tsx:123"
         },
         {
           "field": "className",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:123"
+          "declaration": "components/OrdersList.tsx:124"
         },
         {
           "field": "children",
           "optional": false,
           "type": "React.ReactNode",
-          "declaration": "components/OrdersList.tsx:124"
+          "declaration": "components/OrdersList.tsx:125"
         },
         {
           "field": "disabled",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:125"
+          "declaration": "components/OrdersList.tsx:126"
         }
       ]
     },
     {
       "model": "OrdersListProps",
-      "declaration": "components/OrdersList.tsx:239",
+      "declaration": "components/OrdersList.tsx:240",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -41965,259 +41986,259 @@
           "field": "renderOrderRecovery",
           "optional": true,
           "type": "(order: Order) => React.ReactNode",
-          "declaration": "components/OrdersList.tsx:240"
+          "declaration": "components/OrdersList.tsx:241"
         },
         {
           "field": "orderRecoveryOrphans",
           "optional": true,
           "type": "React.ReactNode",
-          "declaration": "components/OrdersList.tsx:241"
+          "declaration": "components/OrdersList.tsx:242"
         },
         {
           "field": "orderUnitInputs",
           "optional": true,
           "type": "OrderUnitInputs",
-          "declaration": "components/OrdersList.tsx:242"
+          "declaration": "components/OrdersList.tsx:243"
         },
         {
           "field": "companyId",
           "optional": false,
           "type": "CompanyId",
-          "declaration": "components/OrdersList.tsx:243"
+          "declaration": "components/OrdersList.tsx:244"
         },
         {
           "field": "title",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:244"
+          "declaration": "components/OrdersList.tsx:245"
         },
         {
           "field": "employees",
           "optional": true,
           "type": "{ id: string; name: string }[]",
-          "declaration": "components/OrdersList.tsx:249"
+          "declaration": "components/OrdersList.tsx:250"
         },
         {
           "field": "subtitle",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:251"
+          "declaration": "components/OrdersList.tsx:252"
         },
         {
           "field": "groupBy",
           "optional": false,
           "type": "'status' | 'source'",
-          "declaration": "components/OrdersList.tsx:252"
+          "declaration": "components/OrdersList.tsx:253"
         },
         {
           "field": "allowedStatuses",
           "optional": false,
           "type": "OrderStatus[]",
-          "declaration": "components/OrdersList.tsx:253"
+          "declaration": "components/OrdersList.tsx:254"
         },
         {
           "field": "orders",
           "optional": false,
           "type": "Order[]",
-          "declaration": "components/OrdersList.tsx:254"
+          "declaration": "components/OrdersList.tsx:255"
         },
         {
           "field": "partners",
           "optional": false,
           "type": "Partner[]",
-          "declaration": "components/OrdersList.tsx:255"
+          "declaration": "components/OrdersList.tsx:256"
         },
         {
           "field": "items",
           "optional": false,
           "type": "Item[]",
-          "declaration": "components/OrdersList.tsx:256"
+          "declaration": "components/OrdersList.tsx:257"
         },
         {
           "field": "partnerItems",
           "optional": true,
           "type": "PartnerItem[]",
-          "declaration": "components/OrdersList.tsx:257"
+          "declaration": "components/OrdersList.tsx:258"
         },
         {
           "field": "palletStocks",
           "optional": true,
           "type": "PalletStock[]",
-          "declaration": "components/OrdersList.tsx:258"
+          "declaration": "components/OrdersList.tsx:259"
         },
         {
           "field": "itemBoms",
           "optional": true,
           "type": "ItemBom[]",
-          "declaration": "components/OrdersList.tsx:259"
+          "declaration": "components/OrdersList.tsx:260"
         },
         {
           "field": "onUpdateStatus",
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
-          "declaration": "components/OrdersList.tsx:260"
+          "declaration": "components/OrdersList.tsx:261"
         },
         {
           "field": "onUpdateDeliveryDate",
           "optional": false,
           "type": "(id: string, date: string) => void",
-          "declaration": "components/OrdersList.tsx:261"
+          "declaration": "components/OrdersList.tsx:262"
         },
         {
           "field": "onUpdateReceivedDate",
           "optional": true,
           "type": "(id: string, date: string) => void",
-          "declaration": "components/OrdersList.tsx:262"
+          "declaration": "components/OrdersList.tsx:263"
         },
         {
           "field": "onUpdatePallets",
           "optional": true,
           "type": "(id: string, pallets: OrderPallet[]) => void",
-          "declaration": "components/OrdersList.tsx:263"
+          "declaration": "components/OrdersList.tsx:264"
         },
         {
           "field": "onUpdateItems",
           "optional": true,
           "type": "(id: string, items: OrderItem[]) => void",
-          "declaration": "components/OrdersList.tsx:264"
+          "declaration": "components/OrdersList.tsx:265"
         },
         {
           "field": "onUpdateNote",
           "optional": true,
           "type": "(id: string, note: string, important: boolean) => void",
-          "declaration": "components/OrdersList.tsx:265"
+          "declaration": "components/OrdersList.tsx:266"
         },
         {
           "field": "onUpdateDeliveryBoxes",
           "optional": true,
           "type": "(id: string, boxes: DeliveryBox[]) => void",
-          "declaration": "components/OrdersList.tsx:266"
+          "declaration": "components/OrdersList.tsx:267"
         },
         {
           "field": "onToggleInvoicePrinted",
           "optional": true,
           "type": "(id: string, value: boolean | 'printed' | 'attached' | undefined) => void",
-          "declaration": "components/OrdersList.tsx:272"
+          "declaration": "components/OrdersList.tsx:273"
         },
         {
           "field": "onUpdateInvoiceType",
           "optional": true,
           "type": "(id: string, value: InvoiceType | undefined) => void",
-          "declaration": "components/OrdersList.tsx:274"
+          "declaration": "components/OrdersList.tsx:275"
         },
         {
           "field": "onToggleShipmentComplete",
           "optional": true,
           "type": "(id: string, value: boolean) => void",
-          "declaration": "components/OrdersList.tsx:275"
+          "declaration": "components/OrdersList.tsx:276"
         },
         {
           "field": "onToggleItemChecked",
           "optional": true,
           "type": "(orderId: string, itemIdx: number, checkedBy?: string) => void",
-          "declaration": "components/OrdersList.tsx:276"
+          "declaration": "components/OrdersList.tsx:277"
         },
         {
           "field": "onDeleteOrder",
           "optional": false,
           "type": "(id: string) => Promise<boolean> | void",
-          "declaration": "components/OrdersList.tsx:277"
+          "declaration": "components/OrdersList.tsx:278"
         },
         {
           "field": "onAddClick",
           "optional": false,
           "type": "() => void",
-          "declaration": "components/OrdersList.tsx:278"
+          "declaration": "components/OrdersList.tsx:279"
         },
         {
           "field": "onPasteClick",
           "optional": true,
           "type": "() => void",
-          "declaration": "components/OrdersList.tsx:279"
+          "declaration": "components/OrdersList.tsx:280"
         },
         {
           "field": "currentUserName",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:280"
+          "declaration": "components/OrdersList.tsx:281"
         },
         {
           "field": "highlightOrderId",
           "optional": true,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:281"
+          "declaration": "components/OrdersList.tsx:282"
         },
         {
           "field": "onHighlightClear",
           "optional": true,
           "type": "() => void",
-          "declaration": "components/OrdersList.tsx:282"
+          "declaration": "components/OrdersList.tsx:283"
         },
         {
           "field": "newOrderId",
           "optional": true,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:283"
+          "declaration": "components/OrdersList.tsx:284"
         },
         {
           "field": "onNewOrderIdClear",
           "optional": true,
           "type": "() => void",
-          "declaration": "components/OrdersList.tsx:284"
+          "declaration": "components/OrdersList.tsx:285"
         },
         {
           "field": "workOrderItems",
           "optional": true,
           "type": "{ key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]",
-          "declaration": "components/OrdersList.tsx:285"
+          "declaration": "components/OrdersList.tsx:286"
         },
         {
           "field": "onSetWorkOrderItems",
           "optional": true,
           "type": "(items: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void",
-          "declaration": "components/OrdersList.tsx:286"
+          "declaration": "components/OrdersList.tsx:287"
         },
         {
           "field": "onLoadHistoricalOrders",
           "optional": true,
           "type": "(start: string, end: string) => Promise<void>",
-          "declaration": "components/OrdersList.tsx:287"
+          "declaration": "components/OrdersList.tsx:288"
         },
         {
           "field": "isLoadingHistoricalOrders",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:288"
+          "declaration": "components/OrdersList.tsx:289"
         },
         {
           "field": "ordersMonths",
           "optional": true,
           "type": "number",
-          "declaration": "components/OrdersList.tsx:289"
+          "declaration": "components/OrdersList.tsx:290"
         },
         {
           "field": "onChangeOrdersMonths",
           "optional": true,
           "type": "(n: number) => void",
-          "declaration": "components/OrdersList.tsx:290"
+          "declaration": "components/OrdersList.tsx:291"
         },
         {
           "field": "embeddedListOnly",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:291"
+          "declaration": "components/OrdersList.tsx:292"
         },
         {
           "field": "calendarSlot",
           "optional": true,
           "type": "(_sort: 'delivery' | 'order' | 'stock' | 'workLow' | 'workHigh') => React.ReactNode",
-          "declaration": "components/OrdersList.tsx:304"
+          "declaration": "components/OrdersList.tsx:305"
         }
       ]
     },
     {
       "model": "OrderCardProps",
-      "declaration": "components/OrdersList.tsx:307",
+      "declaration": "components/OrdersList.tsx:308",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42225,181 +42246,181 @@
           "field": "renderOrderRecovery",
           "optional": true,
           "type": "(order: Order) => React.ReactNode",
-          "declaration": "components/OrdersList.tsx:308"
+          "declaration": "components/OrdersList.tsx:309"
         },
         {
           "field": "orderUnitInputs",
           "optional": true,
           "type": "OrderUnitInputs",
-          "declaration": "components/OrdersList.tsx:309"
+          "declaration": "components/OrdersList.tsx:310"
         },
         {
           "field": "order",
           "optional": false,
           "type": "Order",
-          "declaration": "components/OrdersList.tsx:310"
+          "declaration": "components/OrdersList.tsx:311"
         },
         {
           "field": "partners",
           "optional": false,
           "type": "Partner[]",
-          "declaration": "components/OrdersList.tsx:311"
+          "declaration": "components/OrdersList.tsx:312"
         },
         {
           "field": "items",
           "optional": false,
           "type": "Item[]",
-          "declaration": "components/OrdersList.tsx:312"
+          "declaration": "components/OrdersList.tsx:313"
         },
         {
           "field": "partnerItems",
           "optional": true,
           "type": "PartnerItem[]",
-          "declaration": "components/OrdersList.tsx:313"
+          "declaration": "components/OrdersList.tsx:314"
         },
         {
           "field": "palletStocks",
           "optional": true,
           "type": "PalletStock[]",
-          "declaration": "components/OrdersList.tsx:314"
+          "declaration": "components/OrdersList.tsx:315"
         },
         {
           "field": "itemBoms",
           "optional": true,
           "type": "ItemBom[]",
-          "declaration": "components/OrdersList.tsx:315"
+          "declaration": "components/OrdersList.tsx:316"
         },
         {
           "field": "editingOrderId",
           "optional": false,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:316"
+          "declaration": "components/OrdersList.tsx:317"
         },
         {
           "field": "setEditingOrderId",
           "optional": false,
           "type": "(id: string | null) => void",
-          "declaration": "components/OrdersList.tsx:317"
+          "declaration": "components/OrdersList.tsx:318"
         },
         {
           "field": "showAddProductSelect",
           "optional": false,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:318"
+          "declaration": "components/OrdersList.tsx:319"
         },
         {
           "field": "setShowAddProductSelect",
           "optional": false,
           "type": "(id: string | null) => void",
-          "declaration": "components/OrdersList.tsx:319"
+          "declaration": "components/OrdersList.tsx:320"
         },
         {
           "field": "onUpdateItems",
           "optional": true,
           "type": "(id: string, items: OrderItem[]) => void",
-          "declaration": "components/OrdersList.tsx:320"
+          "declaration": "components/OrdersList.tsx:321"
         },
         {
           "field": "onUpdateDeliveryDate",
           "optional": false,
           "type": "(id: string, date: string) => void",
-          "declaration": "components/OrdersList.tsx:321"
+          "declaration": "components/OrdersList.tsx:322"
         },
         {
           "field": "onUpdateStatus",
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
-          "declaration": "components/OrdersList.tsx:322"
+          "declaration": "components/OrdersList.tsx:323"
         },
         {
           "field": "onUpdatePallets",
           "optional": true,
           "type": "(id: string, pallets: OrderPallet[]) => void",
-          "declaration": "components/OrdersList.tsx:323"
+          "declaration": "components/OrdersList.tsx:324"
         },
         {
           "field": "onToggleInvoicePrinted",
           "optional": true,
           "type": "(id: string, value: boolean | 'printed' | 'attached' | undefined) => void",
-          "declaration": "components/OrdersList.tsx:329"
+          "declaration": "components/OrdersList.tsx:330"
         },
         {
           "field": "onUpdateInvoiceType",
           "optional": true,
           "type": "(id: string, value: InvoiceType | undefined) => void",
-          "declaration": "components/OrdersList.tsx:331"
+          "declaration": "components/OrdersList.tsx:332"
         },
         {
           "field": "onToggleItemChecked",
           "optional": true,
           "type": "(orderId: string, itemIdx: number, checkedBy?: string) => void",
-          "declaration": "components/OrdersList.tsx:332"
+          "declaration": "components/OrdersList.tsx:333"
         },
         {
           "field": "onDeleteOrder",
           "optional": false,
           "type": "(id: string) => Promise<boolean> | void",
-          "declaration": "components/OrdersList.tsx:333"
+          "declaration": "components/OrdersList.tsx:334"
         },
         {
           "field": "currentUserName",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:334"
+          "declaration": "components/OrdersList.tsx:335"
         },
         {
           "field": "gridCols",
           "optional": true,
           "type": "number",
-          "declaration": "components/OrdersList.tsx:335"
+          "declaration": "components/OrdersList.tsx:336"
         },
         {
           "field": "isListView",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:336"
+          "declaration": "components/OrdersList.tsx:337"
         },
         {
           "field": "tintedHeader",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:337"
+          "declaration": "components/OrdersList.tsx:338"
         },
         {
           "field": "isHighlighted",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:338"
+          "declaration": "components/OrdersList.tsx:339"
         },
         {
           "field": "highlightOrderId",
           "optional": true,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:339"
+          "declaration": "components/OrdersList.tsx:340"
         },
         {
           "field": "readOnly",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:341"
+          "declaration": "components/OrdersList.tsx:342"
         },
         {
           "field": "onEditOrder",
           "optional": true,
           "type": "(orderId: string) => void",
-          "declaration": "components/OrdersList.tsx:343"
+          "declaration": "components/OrdersList.tsx:344"
         },
         {
           "field": "onRequestShip",
           "optional": true,
           "type": "(orderId: string) => void",
-          "declaration": "components/OrdersList.tsx:346"
+          "declaration": "components/OrdersList.tsx:347"
         }
       ]
     },
     {
       "model": "OrderSourceGroupProps",
-      "declaration": "components/OrdersList.tsx:349",
+      "declaration": "components/OrdersList.tsx:350",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42407,163 +42428,163 @@
           "field": "orderUnitInputs",
           "optional": true,
           "type": "OrderUnitInputs",
-          "declaration": "components/OrdersList.tsx:350"
+          "declaration": "components/OrdersList.tsx:351"
         },
         {
           "field": "colId",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:351"
+          "declaration": "components/OrdersList.tsx:352"
         },
         {
           "field": "source",
           "optional": false,
           "type": "OrderSource",
-          "declaration": "components/OrdersList.tsx:352"
+          "declaration": "components/OrdersList.tsx:353"
         },
         {
           "field": "orders",
           "optional": false,
           "type": "Order[]",
-          "declaration": "components/OrdersList.tsx:353"
+          "declaration": "components/OrdersList.tsx:354"
         },
         {
           "field": "gridCols",
           "optional": true,
           "type": "number",
-          "declaration": "components/OrdersList.tsx:354"
+          "declaration": "components/OrdersList.tsx:355"
         },
         {
           "field": "collapsedCategories",
           "optional": false,
           "type": "Set<string>",
-          "declaration": "components/OrdersList.tsx:355"
+          "declaration": "components/OrdersList.tsx:356"
         },
         {
           "field": "onToggleCategory",
           "optional": false,
           "type": "(colId: string, source: OrderSource) => void",
-          "declaration": "components/OrdersList.tsx:356"
+          "declaration": "components/OrdersList.tsx:357"
         },
         {
           "field": "partners",
           "optional": false,
           "type": "Partner[]",
-          "declaration": "components/OrdersList.tsx:357"
+          "declaration": "components/OrdersList.tsx:358"
         },
         {
           "field": "items",
           "optional": false,
           "type": "Item[]",
-          "declaration": "components/OrdersList.tsx:358"
+          "declaration": "components/OrdersList.tsx:359"
         },
         {
           "field": "partnerItems",
           "optional": true,
           "type": "PartnerItem[]",
-          "declaration": "components/OrdersList.tsx:359"
+          "declaration": "components/OrdersList.tsx:360"
         },
         {
           "field": "editingOrderId",
           "optional": false,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:360"
+          "declaration": "components/OrdersList.tsx:361"
         },
         {
           "field": "setEditingOrderId",
           "optional": false,
           "type": "(id: string | null) => void",
-          "declaration": "components/OrdersList.tsx:361"
+          "declaration": "components/OrdersList.tsx:362"
         },
         {
           "field": "showAddProductSelect",
           "optional": false,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:362"
+          "declaration": "components/OrdersList.tsx:363"
         },
         {
           "field": "setShowAddProductSelect",
           "optional": false,
           "type": "(id: string | null) => void",
-          "declaration": "components/OrdersList.tsx:363"
+          "declaration": "components/OrdersList.tsx:364"
         },
         {
           "field": "onUpdateItems",
           "optional": true,
           "type": "(id: string, items: OrderItem[]) => void",
-          "declaration": "components/OrdersList.tsx:364"
+          "declaration": "components/OrdersList.tsx:365"
         },
         {
           "field": "onUpdateDeliveryDate",
           "optional": false,
           "type": "(id: string, date: string) => void",
-          "declaration": "components/OrdersList.tsx:365"
+          "declaration": "components/OrdersList.tsx:366"
         },
         {
           "field": "onUpdateStatus",
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
-          "declaration": "components/OrdersList.tsx:366"
+          "declaration": "components/OrdersList.tsx:367"
         },
         {
           "field": "onToggleInvoicePrinted",
           "optional": true,
           "type": "(id: string, value: boolean | 'printed' | 'attached' | undefined) => void",
-          "declaration": "components/OrdersList.tsx:372"
+          "declaration": "components/OrdersList.tsx:373"
         },
         {
           "field": "onToggleItemChecked",
           "optional": true,
           "type": "(orderId: string, itemIdx: number, checkedBy?: string) => void",
-          "declaration": "components/OrdersList.tsx:373"
+          "declaration": "components/OrdersList.tsx:374"
         },
         {
           "field": "onDeleteOrder",
           "optional": false,
           "type": "(id: string) => Promise<boolean> | void",
-          "declaration": "components/OrdersList.tsx:374"
+          "declaration": "components/OrdersList.tsx:375"
         },
         {
           "field": "currentUserName",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:375"
+          "declaration": "components/OrdersList.tsx:376"
         },
         {
           "field": "isListView",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:376"
+          "declaration": "components/OrdersList.tsx:377"
         },
         {
           "field": "highlightOrderId",
           "optional": true,
           "type": "string | null",
-          "declaration": "components/OrdersList.tsx:377"
+          "declaration": "components/OrdersList.tsx:378"
         },
         {
           "field": "onCardClick",
           "optional": true,
           "type": "(orderId: string) => void",
-          "declaration": "components/OrdersList.tsx:378"
+          "declaration": "components/OrdersList.tsx:379"
         },
         {
           "field": "onEditOrder",
           "optional": true,
           "type": "(orderId: string) => void",
-          "declaration": "components/OrdersList.tsx:379"
+          "declaration": "components/OrdersList.tsx:380"
         },
         {
           "field": "tintedHeader",
           "optional": true,
           "type": "boolean",
-          "declaration": "components/OrdersList.tsx:380"
+          "declaration": "components/OrdersList.tsx:381"
         }
       ]
     },
     {
       "model": "DeliveryRowProps",
-      "declaration": "components/OrdersList.tsx:383",
+      "declaration": "components/OrdersList.tsx:384",
       "kind": "interface",
       "scope": "direct-properties-only",
       "fields": [
@@ -42571,37 +42592,37 @@
           "field": "order",
           "optional": false,
           "type": "Order",
-          "declaration": "components/OrdersList.tsx:384"
+          "declaration": "components/OrdersList.tsx:385"
         },
         {
           "field": "partnerName",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:385"
+          "declaration": "components/OrdersList.tsx:386"
         },
         {
           "field": "items",
           "optional": false,
           "type": "Item[]",
-          "declaration": "components/OrdersList.tsx:386"
+          "declaration": "components/OrdersList.tsx:387"
         },
         {
           "field": "onToggleInvoicePrinted",
           "optional": true,
           "type": "(id: string, val: boolean) => void",
-          "declaration": "components/OrdersList.tsx:387"
+          "declaration": "components/OrdersList.tsx:388"
         },
         {
           "field": "onUpdateDeliveryBoxes",
           "optional": true,
           "type": "(id: string, boxes: DeliveryBox[]) => void",
-          "declaration": "components/OrdersList.tsx:388"
+          "declaration": "components/OrdersList.tsx:389"
         }
       ]
     },
     {
       "model": "TabType",
-      "declaration": "components/OrdersList.tsx:391",
+      "declaration": "components/OrdersList.tsx:392",
       "kind": "type-alias",
       "scope": "non-object-alias-not-expanded",
       "fields": [],
@@ -42609,7 +42630,7 @@
     },
     {
       "model": "WorkItem",
-      "declaration": "components/OrdersList.tsx:1710",
+      "declaration": "components/OrdersList.tsx:1711",
       "kind": "type-alias",
       "scope": "direct-properties-only",
       "fields": [
@@ -42617,67 +42638,67 @@
           "field": "key",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "orderId",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "itemId",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "lineKey",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "itemName",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "partnerName",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "qty",
           "optional": false,
           "type": "number",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "category",
           "optional": false,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "workGroup",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "groupId",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         },
         {
           "field": "groupName",
           "optional": true,
           "type": "string",
-          "declaration": "components/OrdersList.tsx:1710"
+          "declaration": "components/OrdersList.tsx:1711"
         }
       ]
     },
@@ -75029,7 +75050,7 @@
     },
     {
       "model": "Props",
-      "declaration": "components/OrderInventoryRecoveryPanel.tsx:5",
+      "declaration": "components/OrderInventoryRecoveryPanel.tsx:6",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -75037,7 +75058,7 @@
           "optional": false,
           "type": "CompanyId",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         },
@@ -75046,7 +75067,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         },
@@ -75055,7 +75076,7 @@
           "optional": false,
           "type": "readonly Order[]",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         },
@@ -75064,7 +75085,7 @@
           "optional": true,
           "type": "readonly PendingOrderInventoryRecovery[] | undefined",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         },
@@ -75073,7 +75094,7 @@
           "optional": true,
           "type": "(() => boolean) | undefined",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         },
@@ -75082,7 +75103,7 @@
           "optional": false,
           "type": "(result: OrderInventoryRecoveryResult, expectedSaved: string | null) => void",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:5"
+            "components/OrderInventoryRecoveryPanel.tsx:6"
           ],
           "inherited": false
         }
@@ -75090,7 +75111,7 @@
     },
     {
       "model": "Entry",
-      "declaration": "components/OrderInventoryRecoveryPanel.tsx:6",
+      "declaration": "components/OrderInventoryRecoveryPanel.tsx:7",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -75098,7 +75119,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:6"
+            "components/OrderInventoryRecoveryPanel.tsx:7"
           ],
           "inherited": false
         },
@@ -75107,7 +75128,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:6"
+            "components/OrderInventoryRecoveryPanel.tsx:7"
           ],
           "inherited": false
         },
@@ -75116,7 +75137,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:6"
+            "components/OrderInventoryRecoveryPanel.tsx:7"
           ],
           "inherited": false
         },
@@ -75125,7 +75146,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:6"
+            "components/OrderInventoryRecoveryPanel.tsx:7"
           ],
           "inherited": false
         },
@@ -75134,7 +75155,7 @@
           "optional": true,
           "type": "PendingOrderInventoryRecovery | undefined",
           "declarations": [
-            "components/OrderInventoryRecoveryPanel.tsx:6"
+            "components/OrderInventoryRecoveryPanel.tsx:7"
           ],
           "inherited": false
         }
@@ -83292,7 +83313,7 @@
     },
     {
       "model": "CardDatePickerButtonProps",
-      "declaration": "components/OrdersList.tsx:119",
+      "declaration": "components/OrdersList.tsx:120",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -83300,7 +83321,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:120"
+            "components/OrdersList.tsx:121"
           ],
           "inherited": false
         },
@@ -83309,7 +83330,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:121"
+            "components/OrdersList.tsx:122"
           ],
           "inherited": false
         },
@@ -83318,7 +83339,7 @@
           "optional": false,
           "type": "(value: string) => void",
           "declarations": [
-            "components/OrdersList.tsx:122"
+            "components/OrdersList.tsx:123"
           ],
           "inherited": false
         },
@@ -83327,7 +83348,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:123"
+            "components/OrdersList.tsx:124"
           ],
           "inherited": false
         },
@@ -83336,7 +83357,7 @@
           "optional": false,
           "type": "ReactNode",
           "declarations": [
-            "components/OrdersList.tsx:124"
+            "components/OrdersList.tsx:125"
           ],
           "inherited": false
         },
@@ -83345,7 +83366,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:125"
+            "components/OrdersList.tsx:126"
           ],
           "inherited": false
         }
@@ -83353,7 +83374,7 @@
     },
     {
       "model": "OrdersListProps",
-      "declaration": "components/OrdersList.tsx:239",
+      "declaration": "components/OrdersList.tsx:240",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -83361,7 +83382,7 @@
           "optional": true,
           "type": "((order: Order) => ReactNode) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:240"
+            "components/OrdersList.tsx:241"
           ],
           "inherited": false
         },
@@ -83370,7 +83391,7 @@
           "optional": true,
           "type": "ReactNode",
           "declarations": [
-            "components/OrdersList.tsx:241"
+            "components/OrdersList.tsx:242"
           ],
           "inherited": false
         },
@@ -83379,7 +83400,7 @@
           "optional": true,
           "type": "OrderUnitInputs | undefined",
           "declarations": [
-            "components/OrdersList.tsx:242"
+            "components/OrdersList.tsx:243"
           ],
           "inherited": false
         },
@@ -83388,7 +83409,7 @@
           "optional": false,
           "type": "CompanyId",
           "declarations": [
-            "components/OrdersList.tsx:243"
+            "components/OrdersList.tsx:244"
           ],
           "inherited": false
         },
@@ -83397,7 +83418,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:244"
+            "components/OrdersList.tsx:245"
           ],
           "inherited": false
         },
@@ -83406,7 +83427,7 @@
           "optional": true,
           "type": "{ id: string; name: string; }[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:249"
+            "components/OrdersList.tsx:250"
           ],
           "inherited": false
         },
@@ -83415,7 +83436,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:251"
+            "components/OrdersList.tsx:252"
           ],
           "inherited": false
         },
@@ -83424,7 +83445,7 @@
           "optional": false,
           "type": "\"status\" | \"source\"",
           "declarations": [
-            "components/OrdersList.tsx:252"
+            "components/OrdersList.tsx:253"
           ],
           "inherited": false
         },
@@ -83433,7 +83454,7 @@
           "optional": false,
           "type": "OrderStatus[]",
           "declarations": [
-            "components/OrdersList.tsx:253"
+            "components/OrdersList.tsx:254"
           ],
           "inherited": false
         },
@@ -83442,7 +83463,7 @@
           "optional": false,
           "type": "Order[]",
           "declarations": [
-            "components/OrdersList.tsx:254"
+            "components/OrdersList.tsx:255"
           ],
           "inherited": false
         },
@@ -83451,7 +83472,7 @@
           "optional": false,
           "type": "Partner[]",
           "declarations": [
-            "components/OrdersList.tsx:255"
+            "components/OrdersList.tsx:256"
           ],
           "inherited": false
         },
@@ -83460,7 +83481,7 @@
           "optional": false,
           "type": "Item[]",
           "declarations": [
-            "components/OrdersList.tsx:256"
+            "components/OrdersList.tsx:257"
           ],
           "inherited": false
         },
@@ -83469,7 +83490,7 @@
           "optional": true,
           "type": "PartnerItem[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:257"
+            "components/OrdersList.tsx:258"
           ],
           "inherited": false
         },
@@ -83478,7 +83499,7 @@
           "optional": true,
           "type": "PalletStock[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:258"
+            "components/OrdersList.tsx:259"
           ],
           "inherited": false
         },
@@ -83487,7 +83508,7 @@
           "optional": true,
           "type": "ItemBom[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:259"
+            "components/OrdersList.tsx:260"
           ],
           "inherited": false
         },
@@ -83496,7 +83517,7 @@
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
           "declarations": [
-            "components/OrdersList.tsx:260"
+            "components/OrdersList.tsx:261"
           ],
           "inherited": false
         },
@@ -83505,7 +83526,7 @@
           "optional": false,
           "type": "(id: string, date: string) => void",
           "declarations": [
-            "components/OrdersList.tsx:261"
+            "components/OrdersList.tsx:262"
           ],
           "inherited": false
         },
@@ -83514,7 +83535,7 @@
           "optional": true,
           "type": "((id: string, date: string) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:262"
+            "components/OrdersList.tsx:263"
           ],
           "inherited": false
         },
@@ -83523,7 +83544,7 @@
           "optional": true,
           "type": "((id: string, pallets: OrderPallet[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:263"
+            "components/OrdersList.tsx:264"
           ],
           "inherited": false
         },
@@ -83532,7 +83553,7 @@
           "optional": true,
           "type": "((id: string, items: OrderItem[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:264"
+            "components/OrdersList.tsx:265"
           ],
           "inherited": false
         },
@@ -83541,7 +83562,7 @@
           "optional": true,
           "type": "((id: string, note: string, important: boolean) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:265"
+            "components/OrdersList.tsx:266"
           ],
           "inherited": false
         },
@@ -83550,7 +83571,7 @@
           "optional": true,
           "type": "((id: string, boxes: DeliveryBox[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:266"
+            "components/OrdersList.tsx:267"
           ],
           "inherited": false
         },
@@ -83559,7 +83580,7 @@
           "optional": true,
           "type": "((id: string, value: boolean | \"printed\" | \"attached\" | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:272"
+            "components/OrdersList.tsx:273"
           ],
           "inherited": false
         },
@@ -83568,7 +83589,7 @@
           "optional": true,
           "type": "((id: string, value: InvoiceType | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:274"
+            "components/OrdersList.tsx:275"
           ],
           "inherited": false
         },
@@ -83577,7 +83598,7 @@
           "optional": true,
           "type": "((id: string, value: boolean) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:275"
+            "components/OrdersList.tsx:276"
           ],
           "inherited": false
         },
@@ -83586,7 +83607,7 @@
           "optional": true,
           "type": "((orderId: string, itemIdx: number, checkedBy?: string | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:276"
+            "components/OrdersList.tsx:277"
           ],
           "inherited": false
         },
@@ -83595,7 +83616,7 @@
           "optional": false,
           "type": "(id: string) => void | Promise<boolean>",
           "declarations": [
-            "components/OrdersList.tsx:277"
+            "components/OrdersList.tsx:278"
           ],
           "inherited": false
         },
@@ -83604,7 +83625,7 @@
           "optional": false,
           "type": "() => void",
           "declarations": [
-            "components/OrdersList.tsx:278"
+            "components/OrdersList.tsx:279"
           ],
           "inherited": false
         },
@@ -83613,7 +83634,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:279"
+            "components/OrdersList.tsx:280"
           ],
           "inherited": false
         },
@@ -83622,7 +83643,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:280"
+            "components/OrdersList.tsx:281"
           ],
           "inherited": false
         },
@@ -83631,7 +83652,7 @@
           "optional": true,
           "type": "string | null | undefined",
           "declarations": [
-            "components/OrdersList.tsx:281"
+            "components/OrdersList.tsx:282"
           ],
           "inherited": false
         },
@@ -83640,7 +83661,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:282"
+            "components/OrdersList.tsx:283"
           ],
           "inherited": false
         },
@@ -83649,7 +83670,7 @@
           "optional": true,
           "type": "string | null | undefined",
           "declarations": [
-            "components/OrdersList.tsx:283"
+            "components/OrdersList.tsx:284"
           ],
           "inherited": false
         },
@@ -83658,7 +83679,7 @@
           "optional": true,
           "type": "(() => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:284"
+            "components/OrdersList.tsx:285"
           ],
           "inherited": false
         },
@@ -83667,7 +83688,7 @@
           "optional": true,
           "type": "{ key: string; orderId: string; itemId: string; lineKey?: string | undefined; itemName: string; partnerName: string; qty: number; category: string; groupId?: string | undefined; groupName?: string | undefined; }[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:285"
+            "components/OrdersList.tsx:286"
           ],
           "inherited": false
         },
@@ -83676,7 +83697,7 @@
           "optional": true,
           "type": "((items: { key: string; orderId: string; itemId: string; lineKey?: string | undefined; itemName: string; partnerName: string; qty: number; category: string; groupId?: string | undefined; groupName?: string | undefined; }[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:286"
+            "components/OrdersList.tsx:287"
           ],
           "inherited": false
         },
@@ -83685,7 +83706,7 @@
           "optional": true,
           "type": "((start: string, end: string) => Promise<void>) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:287"
+            "components/OrdersList.tsx:288"
           ],
           "inherited": false
         },
@@ -83694,7 +83715,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:288"
+            "components/OrdersList.tsx:289"
           ],
           "inherited": false
         },
@@ -83703,7 +83724,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "components/OrdersList.tsx:289"
+            "components/OrdersList.tsx:290"
           ],
           "inherited": false
         },
@@ -83712,7 +83733,7 @@
           "optional": true,
           "type": "((n: number) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:290"
+            "components/OrdersList.tsx:291"
           ],
           "inherited": false
         },
@@ -83721,7 +83742,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:291"
+            "components/OrdersList.tsx:292"
           ],
           "inherited": false
         },
@@ -83730,7 +83751,7 @@
           "optional": true,
           "type": "((_sort: \"stock\" | \"order\" | \"delivery\" | \"workLow\" | \"workHigh\") => ReactNode) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:304"
+            "components/OrdersList.tsx:305"
           ],
           "inherited": false
         }
@@ -83738,7 +83759,7 @@
     },
     {
       "model": "OrderCardProps",
-      "declaration": "components/OrdersList.tsx:307",
+      "declaration": "components/OrdersList.tsx:308",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -83746,7 +83767,7 @@
           "optional": true,
           "type": "((order: Order) => ReactNode) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:308"
+            "components/OrdersList.tsx:309"
           ],
           "inherited": false
         },
@@ -83755,7 +83776,7 @@
           "optional": true,
           "type": "OrderUnitInputs | undefined",
           "declarations": [
-            "components/OrdersList.tsx:309"
+            "components/OrdersList.tsx:310"
           ],
           "inherited": false
         },
@@ -83764,7 +83785,7 @@
           "optional": false,
           "type": "Order",
           "declarations": [
-            "components/OrdersList.tsx:310"
+            "components/OrdersList.tsx:311"
           ],
           "inherited": false
         },
@@ -83773,7 +83794,7 @@
           "optional": false,
           "type": "Partner[]",
           "declarations": [
-            "components/OrdersList.tsx:311"
+            "components/OrdersList.tsx:312"
           ],
           "inherited": false
         },
@@ -83782,7 +83803,7 @@
           "optional": false,
           "type": "Item[]",
           "declarations": [
-            "components/OrdersList.tsx:312"
+            "components/OrdersList.tsx:313"
           ],
           "inherited": false
         },
@@ -83791,7 +83812,7 @@
           "optional": true,
           "type": "PartnerItem[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:313"
+            "components/OrdersList.tsx:314"
           ],
           "inherited": false
         },
@@ -83800,7 +83821,7 @@
           "optional": true,
           "type": "PalletStock[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:314"
+            "components/OrdersList.tsx:315"
           ],
           "inherited": false
         },
@@ -83809,7 +83830,7 @@
           "optional": true,
           "type": "ItemBom[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:315"
+            "components/OrdersList.tsx:316"
           ],
           "inherited": false
         },
@@ -83818,7 +83839,7 @@
           "optional": false,
           "type": "string | null",
           "declarations": [
-            "components/OrdersList.tsx:316"
+            "components/OrdersList.tsx:317"
           ],
           "inherited": false
         },
@@ -83827,7 +83848,7 @@
           "optional": false,
           "type": "(id: string | null) => void",
           "declarations": [
-            "components/OrdersList.tsx:317"
+            "components/OrdersList.tsx:318"
           ],
           "inherited": false
         },
@@ -83836,7 +83857,7 @@
           "optional": false,
           "type": "string | null",
           "declarations": [
-            "components/OrdersList.tsx:318"
+            "components/OrdersList.tsx:319"
           ],
           "inherited": false
         },
@@ -83845,7 +83866,7 @@
           "optional": false,
           "type": "(id: string | null) => void",
           "declarations": [
-            "components/OrdersList.tsx:319"
+            "components/OrdersList.tsx:320"
           ],
           "inherited": false
         },
@@ -83854,7 +83875,7 @@
           "optional": true,
           "type": "((id: string, items: OrderItem[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:320"
+            "components/OrdersList.tsx:321"
           ],
           "inherited": false
         },
@@ -83863,7 +83884,7 @@
           "optional": false,
           "type": "(id: string, date: string) => void",
           "declarations": [
-            "components/OrdersList.tsx:321"
+            "components/OrdersList.tsx:322"
           ],
           "inherited": false
         },
@@ -83872,7 +83893,7 @@
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
           "declarations": [
-            "components/OrdersList.tsx:322"
+            "components/OrdersList.tsx:323"
           ],
           "inherited": false
         },
@@ -83881,7 +83902,7 @@
           "optional": true,
           "type": "((id: string, pallets: OrderPallet[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:323"
+            "components/OrdersList.tsx:324"
           ],
           "inherited": false
         },
@@ -83890,7 +83911,7 @@
           "optional": true,
           "type": "((id: string, value: boolean | \"printed\" | \"attached\" | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:329"
+            "components/OrdersList.tsx:330"
           ],
           "inherited": false
         },
@@ -83899,7 +83920,7 @@
           "optional": true,
           "type": "((id: string, value: InvoiceType | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:331"
+            "components/OrdersList.tsx:332"
           ],
           "inherited": false
         },
@@ -83908,7 +83929,7 @@
           "optional": true,
           "type": "((orderId: string, itemIdx: number, checkedBy?: string | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:332"
+            "components/OrdersList.tsx:333"
           ],
           "inherited": false
         },
@@ -83917,7 +83938,7 @@
           "optional": false,
           "type": "(id: string) => void | Promise<boolean>",
           "declarations": [
-            "components/OrdersList.tsx:333"
+            "components/OrdersList.tsx:334"
           ],
           "inherited": false
         },
@@ -83926,7 +83947,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:334"
+            "components/OrdersList.tsx:335"
           ],
           "inherited": false
         },
@@ -83935,21 +83956,12 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "components/OrdersList.tsx:335"
-          ],
-          "inherited": false
-        },
-        {
-          "field": "isListView",
-          "optional": true,
-          "type": "boolean | undefined",
-          "declarations": [
             "components/OrdersList.tsx:336"
           ],
           "inherited": false
         },
         {
-          "field": "tintedHeader",
+          "field": "isListView",
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
@@ -83958,7 +83970,7 @@
           "inherited": false
         },
         {
-          "field": "isHighlighted",
+          "field": "tintedHeader",
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
@@ -83967,11 +83979,20 @@
           "inherited": false
         },
         {
+          "field": "isHighlighted",
+          "optional": true,
+          "type": "boolean | undefined",
+          "declarations": [
+            "components/OrdersList.tsx:339"
+          ],
+          "inherited": false
+        },
+        {
           "field": "highlightOrderId",
           "optional": true,
           "type": "string | null | undefined",
           "declarations": [
-            "components/OrdersList.tsx:339"
+            "components/OrdersList.tsx:340"
           ],
           "inherited": false
         },
@@ -83980,7 +84001,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:341"
+            "components/OrdersList.tsx:342"
           ],
           "inherited": false
         },
@@ -83989,7 +84010,7 @@
           "optional": true,
           "type": "((orderId: string) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:343"
+            "components/OrdersList.tsx:344"
           ],
           "inherited": false
         },
@@ -83998,7 +84019,7 @@
           "optional": true,
           "type": "((orderId: string) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:346"
+            "components/OrdersList.tsx:347"
           ],
           "inherited": false
         }
@@ -84006,7 +84027,7 @@
     },
     {
       "model": "OrderSourceGroupProps",
-      "declaration": "components/OrdersList.tsx:349",
+      "declaration": "components/OrdersList.tsx:350",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -84014,7 +84035,7 @@
           "optional": true,
           "type": "OrderUnitInputs | undefined",
           "declarations": [
-            "components/OrdersList.tsx:350"
+            "components/OrdersList.tsx:351"
           ],
           "inherited": false
         },
@@ -84023,7 +84044,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:351"
+            "components/OrdersList.tsx:352"
           ],
           "inherited": false
         },
@@ -84032,7 +84053,7 @@
           "optional": false,
           "type": "OrderSource",
           "declarations": [
-            "components/OrdersList.tsx:352"
+            "components/OrdersList.tsx:353"
           ],
           "inherited": false
         },
@@ -84041,7 +84062,7 @@
           "optional": false,
           "type": "Order[]",
           "declarations": [
-            "components/OrdersList.tsx:353"
+            "components/OrdersList.tsx:354"
           ],
           "inherited": false
         },
@@ -84050,7 +84071,7 @@
           "optional": true,
           "type": "number | undefined",
           "declarations": [
-            "components/OrdersList.tsx:354"
+            "components/OrdersList.tsx:355"
           ],
           "inherited": false
         },
@@ -84059,7 +84080,7 @@
           "optional": false,
           "type": "Set<string>",
           "declarations": [
-            "components/OrdersList.tsx:355"
+            "components/OrdersList.tsx:356"
           ],
           "inherited": false
         },
@@ -84068,7 +84089,7 @@
           "optional": false,
           "type": "(colId: string, source: OrderSource) => void",
           "declarations": [
-            "components/OrdersList.tsx:356"
+            "components/OrdersList.tsx:357"
           ],
           "inherited": false
         },
@@ -84077,7 +84098,7 @@
           "optional": false,
           "type": "Partner[]",
           "declarations": [
-            "components/OrdersList.tsx:357"
+            "components/OrdersList.tsx:358"
           ],
           "inherited": false
         },
@@ -84086,7 +84107,7 @@
           "optional": false,
           "type": "Item[]",
           "declarations": [
-            "components/OrdersList.tsx:358"
+            "components/OrdersList.tsx:359"
           ],
           "inherited": false
         },
@@ -84095,7 +84116,7 @@
           "optional": true,
           "type": "PartnerItem[] | undefined",
           "declarations": [
-            "components/OrdersList.tsx:359"
+            "components/OrdersList.tsx:360"
           ],
           "inherited": false
         },
@@ -84104,7 +84125,7 @@
           "optional": false,
           "type": "string | null",
           "declarations": [
-            "components/OrdersList.tsx:360"
+            "components/OrdersList.tsx:361"
           ],
           "inherited": false
         },
@@ -84113,7 +84134,7 @@
           "optional": false,
           "type": "(id: string | null) => void",
           "declarations": [
-            "components/OrdersList.tsx:361"
+            "components/OrdersList.tsx:362"
           ],
           "inherited": false
         },
@@ -84122,7 +84143,7 @@
           "optional": false,
           "type": "string | null",
           "declarations": [
-            "components/OrdersList.tsx:362"
+            "components/OrdersList.tsx:363"
           ],
           "inherited": false
         },
@@ -84131,7 +84152,7 @@
           "optional": false,
           "type": "(id: string | null) => void",
           "declarations": [
-            "components/OrdersList.tsx:363"
+            "components/OrdersList.tsx:364"
           ],
           "inherited": false
         },
@@ -84140,7 +84161,7 @@
           "optional": true,
           "type": "((id: string, items: OrderItem[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:364"
+            "components/OrdersList.tsx:365"
           ],
           "inherited": false
         },
@@ -84149,7 +84170,7 @@
           "optional": false,
           "type": "(id: string, date: string) => void",
           "declarations": [
-            "components/OrdersList.tsx:365"
+            "components/OrdersList.tsx:366"
           ],
           "inherited": false
         },
@@ -84158,7 +84179,7 @@
           "optional": false,
           "type": "(id: string, status: OrderStatus) => void",
           "declarations": [
-            "components/OrdersList.tsx:366"
+            "components/OrdersList.tsx:367"
           ],
           "inherited": false
         },
@@ -84167,7 +84188,7 @@
           "optional": true,
           "type": "((id: string, value: boolean | \"printed\" | \"attached\" | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:372"
+            "components/OrdersList.tsx:373"
           ],
           "inherited": false
         },
@@ -84176,7 +84197,7 @@
           "optional": true,
           "type": "((orderId: string, itemIdx: number, checkedBy?: string | undefined) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:373"
+            "components/OrdersList.tsx:374"
           ],
           "inherited": false
         },
@@ -84185,7 +84206,7 @@
           "optional": false,
           "type": "(id: string) => void | Promise<boolean>",
           "declarations": [
-            "components/OrdersList.tsx:374"
+            "components/OrdersList.tsx:375"
           ],
           "inherited": false
         },
@@ -84194,7 +84215,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:375"
+            "components/OrdersList.tsx:376"
           ],
           "inherited": false
         },
@@ -84203,7 +84224,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:376"
+            "components/OrdersList.tsx:377"
           ],
           "inherited": false
         },
@@ -84212,7 +84233,7 @@
           "optional": true,
           "type": "string | null | undefined",
           "declarations": [
-            "components/OrdersList.tsx:377"
+            "components/OrdersList.tsx:378"
           ],
           "inherited": false
         },
@@ -84221,7 +84242,7 @@
           "optional": true,
           "type": "((orderId: string) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:378"
+            "components/OrdersList.tsx:379"
           ],
           "inherited": false
         },
@@ -84230,7 +84251,7 @@
           "optional": true,
           "type": "((orderId: string) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:379"
+            "components/OrdersList.tsx:380"
           ],
           "inherited": false
         },
@@ -84239,7 +84260,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "components/OrdersList.tsx:380"
+            "components/OrdersList.tsx:381"
           ],
           "inherited": false
         }
@@ -84247,7 +84268,7 @@
     },
     {
       "model": "DeliveryRowProps",
-      "declaration": "components/OrdersList.tsx:383",
+      "declaration": "components/OrdersList.tsx:384",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -84255,7 +84276,7 @@
           "optional": false,
           "type": "Order",
           "declarations": [
-            "components/OrdersList.tsx:384"
+            "components/OrdersList.tsx:385"
           ],
           "inherited": false
         },
@@ -84264,7 +84285,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:385"
+            "components/OrdersList.tsx:386"
           ],
           "inherited": false
         },
@@ -84273,7 +84294,7 @@
           "optional": false,
           "type": "Item[]",
           "declarations": [
-            "components/OrdersList.tsx:386"
+            "components/OrdersList.tsx:387"
           ],
           "inherited": false
         },
@@ -84282,7 +84303,7 @@
           "optional": true,
           "type": "((id: string, val: boolean) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:387"
+            "components/OrdersList.tsx:388"
           ],
           "inherited": false
         },
@@ -84291,7 +84312,7 @@
           "optional": true,
           "type": "((id: string, boxes: DeliveryBox[]) => void) | undefined",
           "declarations": [
-            "components/OrdersList.tsx:388"
+            "components/OrdersList.tsx:389"
           ],
           "inherited": false
         }
@@ -84299,13 +84320,13 @@
     },
     {
       "model": "TabType",
-      "declaration": "components/OrdersList.tsx:391",
+      "declaration": "components/OrdersList.tsx:392",
       "scope": "non-object-model-not-expanded",
       "fields": []
     },
     {
       "model": "WorkItem",
-      "declaration": "components/OrdersList.tsx:1710",
+      "declaration": "components/OrdersList.tsx:1711",
       "scope": "checker-resolved-properties-only",
       "fields": [
         {
@@ -84313,7 +84334,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84322,7 +84343,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84331,7 +84352,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84340,7 +84361,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84349,7 +84370,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84358,7 +84379,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84367,7 +84388,7 @@
           "optional": false,
           "type": "number",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84376,7 +84397,7 @@
           "optional": false,
           "type": "string",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84385,7 +84406,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84394,7 +84415,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         },
@@ -84403,7 +84424,7 @@
           "optional": true,
           "type": "string | undefined",
           "declarations": [
-            "components/OrdersList.tsx:1710"
+            "components/OrdersList.tsx:1711"
           ],
           "inherited": false
         }
@@ -97205,7 +97226,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
+            "node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -97214,7 +97235,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
+            "node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -97223,7 +97244,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
+            "node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -97232,7 +97253,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
+            "node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -97241,7 +97262,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
+            "node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -97250,7 +97271,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
+            "node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -97259,7 +97280,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
+            "node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -97268,7 +97289,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
+            "node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -112447,7 +112468,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
+            "node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -112456,7 +112477,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
+            "node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -112465,7 +112486,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
+            "node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -112474,7 +112495,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
+            "node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -112483,7 +112504,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
+            "node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -112492,7 +112513,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
+            "node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -112501,7 +112522,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
+            "node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -112510,7 +112531,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
+            "node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -121034,7 +121055,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/orderRawBatchService.ts:56",
+        "location": "src/shared/services/orderRawBatchService.ts:66",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -121061,7 +121082,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/orderRawBatchService.ts:56",
+        "location": "src/shared/services/orderRawBatchService.ts:66",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -121088,7 +121109,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/orderRawBatchService.ts:57",
+        "location": "src/shared/services/orderRawBatchService.ts:67",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -121667,7 +121688,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/orderProductionRecordService.ts:82",
+        "location": "src/shared/services/orderProductionRecordService.ts:83",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -121694,7 +121715,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/orderProductionRecordService.ts:83",
+        "location": "src/shared/services/orderProductionRecordService.ts:84",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -135189,7 +135210,7 @@
             ]
           },
           {
-            "location": "components/OrdersList.tsx:1726",
+            "location": "components/OrdersList.tsx:1727",
             "callee": "subscribeToDocument",
             "resolvedPaths": [
               {
@@ -135358,7 +135379,7 @@
             ]
           },
           {
-            "location": "components/OrdersList.tsx:1732",
+            "location": "components/OrdersList.tsx:1733",
             "callee": "setDocument",
             "resolvedPaths": [
               {
@@ -144919,7 +144940,7 @@
             ]
           },
           {
-            "location": "components/OrdersList.tsx:1646",
+            "location": "components/OrdersList.tsx:1647",
             "callee": "fetchWhere",
             "resolvedPaths": [
               {
@@ -144951,7 +144972,7 @@
             ]
           },
           {
-            "location": "components/OrdersList.tsx:1647",
+            "location": "components/OrdersList.tsx:1648",
             "callee": "fetchWhere",
             "resolvedPaths": [
               {
@@ -146172,9 +146193,9 @@
       "src/shared/services/itemStockAddService.ts:17",
       "src/shared/services/itemStockAddService.ts:25",
       "src/shared/services/pushTokenService.ts:12",
-      "src/shared/services/orderRawBatchService.ts:56",
-      "src/shared/services/orderRawBatchService.ts:56",
-      "src/shared/services/orderRawBatchService.ts:57",
+      "src/shared/services/orderRawBatchService.ts:66",
+      "src/shared/services/orderRawBatchService.ts:66",
+      "src/shared/services/orderRawBatchService.ts:67",
       "src/features/admin/orderItemStock.ts:122",
       "src/features/admin/orderItemStock.ts:151",
       "src/features/admin/orderItemStock.ts:211",
@@ -146196,8 +146217,8 @@
       "src/shared/services/orderProductionRecordService.ts:39",
       "src/shared/services/orderProductionRecordService.ts:40",
       "src/shared/services/orderProductionRecordService.ts:41",
-      "src/shared/services/orderProductionRecordService.ts:82",
       "src/shared/services/orderProductionRecordService.ts:83",
+      "src/shared/services/orderProductionRecordService.ts:84",
       "src/features/admin/orderStockEngine.ts:472",
       "src/features/admin/orderStockEngine.ts:800",
       "src/shared/ledgerLotCheck.ts:66",

@@ -3,7 +3,8 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const runtime=vi.hoisted(()=>({auth:{currentUser:null as any},transaction:vi.fn()}));
 vi.mock('../firebase',()=>({auth:runtime.auth,authReady:Promise.resolve(),db:{}}));
 vi.mock('firebase/firestore',async importOriginal=>({...await importOriginal<typeof import('firebase/firestore')>(),doc:(_db:unknown,...parts:string[])=>({path:parts.join('/'),id:parts.at(-1)}),runTransaction:runtime.transaction}));
-import {executeOrderRawBatch,executeOrderRawBatchWithDb,orderRawBatchProofProblem,orderRawBatchReceiptMatches} from './orderRawBatchService';
+import {executeOrderRawBatch,executeOrderRawBatchWithDb,orderRawBatchProofProblem,orderRawBatchReceiptMatches,readOrderRawBatchJobRequest,orderRawBatchRequestHash} from './orderRawBatchService';
+import {rawPressText} from '../rawPressAttempt';
 import {commandHash,operationDocId} from '../rawInventoryCore';
 import {toLedgerDoc} from './rawInventoryService';
 import {orderRawBatchAttemptKey,orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../orderRawBatchAttempt';
@@ -16,7 +17,7 @@ const read=(value:any,dual=false)=>({movementSnap:{exists:()=>true,data:()=>valu
 describe('일괄 원료 영수증 증거',()=>{
  it('공용 job proof는 source/hash와 품목·상태 회사까지 같은 판정으로 검증한다',()=>{
   const g={contractVersion:1 as const,companyId:'taebaek' as const,orderId:'order',operationId:'first',actorUid:'employee',startedAt:command.effectiveAt};
-  const request={generation:g,jobId:orderRawBatchJobId(g),recordedAt:g.startedAt,commands:[{command}]} as OrderRawBatchRequest;
+  const request={version:1,legacyJobIds:[],business:{orderText:'original'},plan:{},generation:g,jobId:orderRawBatchJobId(g),recordedAt:g.startedAt,commands:[{command}]} as OrderRawBatchRequest;
   const snapshot=(data:any)=>({exists:()=>true,data:()=>data});const row={...read(movement),itemSnap:snapshot({companyId:'taebaek'}),stateSnap:snapshot({companyId:'taebaek',rawItemId:'raw'})};
   const job={atomicVersion:1,status:'complete',companyId:'taebaek',actorUid:'employee',id:request.jobId,source:{type:'production',id:'order'},createdAt:g.startedAt,completedAt:g.startedAt,requestHash:'hash',expectedOperationIds:[command.operationId],request,results:[result]};
   expect(orderRawBatchProofProblem(job,request,[row],'hash')).toBeNull();expect(orderRawBatchProofProblem({...job,requestHash:'other'},request,[row],'hash')).toBeTruthy();expect(orderRawBatchProofProblem(job,request,[{...row,stateSnap:snapshot({companyId:'punghoe',rawItemId:'raw'})}],'hash')).toBeTruthy();
@@ -28,6 +29,19 @@ describe('일괄 원료 영수증 증거',()=>{
   const original=(movement as any)[key],value=typeof original==='number'?original+1:'other';expect(orderRawBatchReceiptMatches(request,0,read({...movement,[key]:value}),result)).toBe(false);
  });
  it('옛·새 문서 둘 모두 있으면 임의로 하나를 고르지 않는다',()=>{expect(orderRawBatchReceiptMatches(request,0,read(movement,true),result)).toBe(false);});
+});
+describe('Firestore 저장 원문 형식',()=>{
+ const generation={contractVersion:1 as const,companyId:'taebaek' as const,orderId:'order',operationId:'first',actorUid:'employee',startedAt:command.effectiveAt};
+ const request:OrderRawBatchRequest={version:1,generation,jobId:orderRawBatchJobId(generation),recordedAt:generation.startedAt,legacyJobIds:[],business:{orderText:'original'},plan:{finalPlan:{reservation:{quantities:[['product',2]],stockSnapshot:[['product',0]],previousReservations:[['product',null]],allocationQuantities:[['product',2]]}}},commands:[{command}]};
+ it('실제 예약 tuple 원문과 hash는 문자열 저장·판독에도 그대로다',async()=>{
+  const text=rawPressText(request),before=JSON.stringify(request),restored=readOrderRawBatchJobRequest({requestText:text});
+  expect(restored).toEqual(request);expect(await orderRawBatchRequestHash(restored)).toBe(await orderRawBatchRequestHash(request));expect(JSON.stringify(request)).toBe(before);
+  expect(readOrderRawBatchJobRequest({request})).toEqual(request);
+  expect(readOrderRawBatchJobRequest({request,requestText:text})).toEqual(request);
+ });
+ it.each([{requestText:''},{requestText:null},{requestText:'[]'},{requestText:'{}'},{requestText:rawPressText(request),request:{...request,recordedAt:'changed'}}])('손상·충돌 원문은 임의로 다른 형식을 채택하지 않는다 %j',data=>{
+  expect(()=>readOrderRawBatchJobRequest(data)).toThrow();
+ });
 });
 describe('실제 서비스 최초 저장 경계',()=>{
  beforeEach(()=>{localStorage.clear();vi.clearAllMocks();});

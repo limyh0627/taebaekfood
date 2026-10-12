@@ -1,3 +1,4 @@
+import {orderInventoryErrorMessage} from '../src/shared/orderInventoryError';
 import React,{useEffect,useRef,useState} from 'react';
 import {companyOf,type CompanyId,type Order} from '../src/shared/types';
 import {appConfirm} from '../src/shared/components/appDialog';
@@ -20,7 +21,7 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
  const finish=(result:OrderInventoryRecoveryResult)=>{if(!valid())return;onRecovered(result,expectedSaved);if(!valid())return;clearPendingOrderInventoryRecovery(companyId,actorUid,result,expectedSaved);setMessages(m=>({...m,[key]:'작업 잠금을 해제했습니다. 원래 출고 취소·주문 삭제는 목록에서 다시 확인하고 승인해 주세요.'}));};
  try{
   const result=await recoverOrderInventoryLock(companyId,'inspect',orderId,operationId,failedStartedAt);if(!valid())return;
-  if(result.status==='blocked'||result.inventoryApplied!=='none'){setMessages(m=>({...m,[key]:'잠금을 유지합니다. '+(result.failureMessage??result.reason??'재고 반영 여부를 확인해야 합니다.')}));return;}
+  if(result.status==='blocked'||result.inventoryApplied!=='none'){setMessages(m=>({...m,[key]:'잠금을 유지합니다. '+orderInventoryErrorMessage(result.failureMessage??result.reason)}));return;}
   if(['recovered','duplicate'].includes(result.status)){finish(result);return;}
   if(result.status==='ready'){
    setMessages(m=>({...m,[key]:'재고 반영 없음이 확인되었습니다. 사용자 확인을 기다립니다.'}));
@@ -28,9 +29,9 @@ export default function OrderInventoryRecoveryPanel({companyId,actorUid,orders,p
    if(!approved||!valid()||!latest.current.some(candidate=>candidate.id===orderId&&candidate.inventoryOperation?.id===operationId&&candidate.inventoryOperation.state==='failed'&&candidate.inventoryOperation.startedAt===failedStartedAt))return;
    const recovered=await recoverOrderInventoryLock(companyId,'recover',orderId,operationId,failedStartedAt,expectedSaved);if(!valid())return;
    if(['recovered','duplicate'].includes(recovered.status)&&recovered.inventoryApplied==='none')finish(recovered);
-   else setMessages(m=>({...m,[key]:'잠금을 유지합니다. '+(recovered.failureMessage??recovered.reason??'근거가 변경되어 다시 확인해야 합니다.')}));
+   else setMessages(m=>({...m,[key]:'잠금을 유지합니다. '+orderInventoryErrorMessage(recovered.failureMessage??recovered.reason)}));
   }
- }catch(error){if(valid())setMessages(m=>({...m,[key]:error instanceof Error?error.message:'완료 여부를 확인하지 못했습니다. 같은 작업을 다시 확인하세요.'}));}
+ }catch(error){if(valid())setMessages(m=>({...m,[key]:orderInventoryErrorMessage(error)}));}
  finally{inFlight.current=false;if(valid())setBusy(null);}}
  if(!entries.length)return null;
  return <div aria-label="실패 재고 작업 확인" className="mt-3 border-t border-amber-200 pt-2"><p className="text-xs font-bold">실패한 주문 재고 작업</p>{entries.map(entry=>{const key=entryKey(entry);return <div key={key} className="mt-2"><button type="button" disabled={busy!==null} onClick={()=>void inspect(entry)} className="text-sm font-bold text-indigo-700 underline">{busy===key?'재고 작업 확인 중':entry.pending?'잠금 해제 결과 확인':'작업 확인·잠금 해제'} · {entry.partnerName} · {entry.orderId}</button>{messages[key]&&<p role="status" className="mt-1 text-xs">{messages[key]}</p>}</div>;})}</div>;

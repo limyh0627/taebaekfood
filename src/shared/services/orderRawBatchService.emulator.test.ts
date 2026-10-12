@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {initializeApp,deleteApp} from 'firebase/app';
 import {connectAuthEmulator,getAuth,signInWithEmailAndPassword} from 'firebase/auth';
@@ -6,11 +8,21 @@ import {connectFirestoreEmulator,getFirestore} from 'firebase/firestore';
 import {initializeApp as adminApp,deleteApp as deleteAdminApp} from 'firebase-admin/app';
 import {getAuth as adminAuth} from 'firebase-admin/auth';
 import {getFirestore as adminFirestore} from 'firebase-admin/firestore';
-import {executeOrderRawBatchWithDb} from './orderRawBatchService';
+import {executeOrderRawBatchWithDb,readOrderRawBatchJobRequest,orderRawBatchRequestHash} from './orderRawBatchService';
 import {executeRawInventoryCommand} from './rawInventoryService';
 import {inventoryDocId,operationDocId} from '../rawInventoryCore';
 import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../orderRawBatchAttempt';
 import type {Order} from '../types';
+// 운영 오류가 난 실제 엔진의 Map 저장 함수를 실행한다. 단순한 서비스 fixture로 다시 축소하지 않는다.
+function reservationFromEngine(){
+ const source=readFileSync('src/features/admin/orderStockEngine.ts','utf8'),file=ts.createSourceFile('engine.ts',source,ts.ScriptTarget.Latest,true);
+ let declaration:ts.VariableDeclaration|undefined;
+ const visit=(node:ts.Node)=>{if(ts.isVariableDeclaration(node)&&node.name.getText(file)==='saveReservation')declaration=node;ts.forEachChild(node,visit);};visit(file);
+ if(!declaration?.initializer)throw Error('실제 엔진 예약 저장 함수를 찾지 못했습니다.');
+ const code=ts.transpileModule('const save = '+declaration.initializer.getText(file)+'; return save;',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+ const save=new Function('plain',code)((value:unknown)=>JSON.parse(JSON.stringify(value)));
+ return save({quantities:new Map([['product',2]]),stockSnapshot:new Map([['product',0]]),previousReservations:new Map([['product',null]]),allocationQuantities:new Map([['product',2]])});
+}
 
 describe.skipIf(process.env.ORDER_RAW_BATCH_EMULATOR_TEST!=='true')('새 주문 원료 일괄 실제 직원 Auth·Firestore',()=>{
  const prefix='order-batch-'+randomUUID(),paths=new Set<string>();
@@ -29,11 +41,20 @@ describe.skipIf(process.env.ORDER_RAW_BATCH_EMULATOR_TEST!=='true')('새 주문 
   const order={id,companyId:'taebaek',status:'PENDING',items:[],inventoryOperation:{id:generation.operationId,contractVersion:1,actorUid:uid,startedAt,state:'processing',stage:'reservation'}} as unknown as Order;
   paths.add('orders/'+id);await store.doc('orders/'+id).set(order);paths.add('items/'+raw);await store.doc('items/'+raw).set({companyId:'taebaek',name:'참깨',stock:0,lots:[]});paths.add('rawInventories/'+inventoryDocId('taebaek',raw));
   paths.add('rawMaterialLedger/'+operationDocId(id+'-seed'));expect((await executeRawInventoryCommand({operationId:id+'-seed',companyId:'taebaek',rawItemId:raw,kind:'receive',kg:10,effectiveAt:'2026-10-01T00:00:00Z',source:{type:'manual',id:id+'-seed'},materialSnapshot:'참깨',lot:{supplierName:'합성'}},{db:database})).status).toBe('applied');
-  const request:OrderRawBatchRequest={version:1,generation,jobId:orderRawBatchJobId(generation),recordedAt:startedAt,legacyJobIds:[],business:{orderText:orderRawBatchOrderEvidence(order),selection:{targetStatus:'DISPATCHED'}},plan:{fixed:true},commands:[1,2].map(index=>({command:{operationId:id+'-raw-'+index,companyId:'taebaek',rawItemId:raw,kind:'consume',kg:3,effectiveAt:startedAt,source:{type:'production',id},materialSnapshot:'참깨'},options:{legacy:{type:'auto',note:'옛 화면 표시'}}}))};
+  const request:OrderRawBatchRequest={version:1,generation,jobId:orderRawBatchJobId(generation),recordedAt:startedAt,legacyJobIds:[],business:{orderText:orderRawBatchOrderEvidence(order),selection:{targetStatus:'DISPATCHED'}},plan:{fixed:true,finalPlan:{reservation:reservationFromEngine()}},commands:[1,2].map(index=>({command:{operationId:id+'-raw-'+index,companyId:'taebaek',rawItemId:raw,kind:'consume',kg:3,effectiveAt:startedAt,source:{type:'production',id},materialSnapshot:'참깨'},options:{legacy:{type:'auto',note:'옛 화면 표시'}}}))};
   paths.add('rawInventoryJobs/'+request.jobId);request.commands.forEach(row=>paths.add('rawMaterialLedger/'+operationDocId(row.command.operationId)));return {id,raw,request};
  }
  const scope=async()=>{const user=auth.currentUser;if(user?.uid!==uid)throw Error('사용자 변경');const token=await user.getIdTokenResult();if(auth.currentUser?.uid!==uid||token.claims.companyId!=='taebaek'||token.claims.employeeId!==uid)throw Error('회사 변경');};
  const snapshot=async()=>Promise.all([...paths].map(async path=>[path,(await store.doc(path).get()).data()]));
+ it('예약 Map tuple이 든 실제 직원 첫 원문은 문자열로 저장되고 응답유실 재개도 쓰기0이다',async()=>{
+  const {request}=await seed('nested-reservation');const first=JSON.stringify(request),hash=await orderRawBatchRequestHash(request);
+  expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('committed');
+  const location='rawInventoryJobs/'+request.jobId,doc=await store.doc(location).get(),saved=doc.data()!;
+  expect(saved).not.toHaveProperty('request');expect(typeof saved.requestText).toBe('string');
+  expect(readOrderRawBatchJobRequest(saved)).toEqual(request);expect(saved.requestHash).toBe(hash);expect(JSON.stringify(request)).toBe(first);
+  const before=await snapshot();expect((await executeOrderRawBatchWithDb(database,readOrderRawBatchJobRequest(saved),scope)).status).toBe('duplicate');
+  expect(await snapshot()).toEqual(before);expect((await store.doc(location).get()).updateTime!.isEqual(doc.updateTime!)).toBe(true);
+ },60000);
  it('동일 홀더 두 명령과 legacy 칸이 있는 실제 영수증을 재개해도 다시 쓰지 않는다',async()=>{const {raw,request}=await seed('same');expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('committed');expect((await store.doc('items/'+raw).get()).data()!.stock).toBe(4);const before=await snapshot();expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('duplicate');expect(await snapshot()).toEqual(before);},60000);
  it('두번째 명령 부족이면 첫 명령·job·단계도 그대로이다',async()=>{const {request}=await seed('reject');request.commands[1].command={...request.commands[1].command,kg:8} as typeof request.commands[number]['command'];const before=await snapshot();expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('rejected');expect(await snapshot()).toEqual(before);},60000);
  it('같은 세대의 주문 원문 변경과 failed 새효과는 쓰기0이다',async()=>{const {id,request}=await seed('changed');await store.doc('orders/'+id).update({purpose:'make-stock'});const before=await snapshot();expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('blocked');expect(await snapshot()).toEqual(before);await store.doc('orders/'+id).update({'inventoryOperation.state':'failed'});const failed=await snapshot();expect((await executeOrderRawBatchWithDb(database,request,scope)).status).toBe('blocked');expect(await snapshot()).toEqual(failed);},60000);

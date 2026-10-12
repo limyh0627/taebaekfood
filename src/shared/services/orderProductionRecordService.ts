@@ -8,7 +8,7 @@ import {orderRawBatchAttemptKey,orderRawBatchJobId,orderRawBatchOrderEvidence,re
 import {deriveNextProductionRecordIndex,makeOrderProductionRecordReceipt,validateOrderProductionRecordPlan,type OrderProductionRecordPlan} from '../orderProductionRecordPlan';
 import {rawPressText} from '../rawPressAttempt';
 import {readRawCommandInTransaction} from './rawInventoryService';
-import {orderRawBatchProofProblem,orderRawBatchRequestHash} from './orderRawBatchService';
+import {orderRawBatchProofProblem,orderRawBatchRequestHash,readOrderRawBatchJobRequest} from './orderRawBatchService';
 
 export type OrderProductionRecordOutcome={status:'recorded'|'duplicate'|'acknowledged'|'blocked';recordIds:string[];historyChanged?:boolean;reason?:string};
 export function productionRecordPlanFromRawRequest(request:OrderRawBatchRequest):OrderProductionRecordPlan{
@@ -65,10 +65,11 @@ export async function executeOrderProductionRecordsWithDb(database:Firestore,req
   for(let index=0;index<priorRows.length;index++){
    const {record,entry}=priorRows[index],prior=priorSnaps[index],priorJob=priorJobs[index];
    const priorData=priorJob.exists()?priorJob.data():undefined,receipt=priorData?.productionRecordReceipt;
-   if(!priorData||priorData.atomicVersion!==1||priorData.status!=='complete'||priorData.companyId!==plan.generation.companyId||priorData.id!==orderRawBatchJobId(entry.generation)||priorData.requestHash!==entry.requestHash||!sameOrderInventoryGeneration(priorData.request?.generation,entry.generation)||!receipt||receipt.requestHash!==entry.requestHash||!sameOrderInventoryGeneration(receipt.generation,entry.generation)||!Array.isArray(receipt.recordIds)||!receipt.recordIds.includes(entry.recordId))return blocked('이전 생산기록의 원래 완료 근거를 확인할 수 없습니다.');
+   let priorRequest:OrderRawBatchRequest;try{priorRequest=readOrderRawBatchJobRequest(priorData??{});}catch{return blocked('이전 생산기록의 원료 저장 원문을 확인할 수 없습니다.');}
+   if(!priorData||priorData.atomicVersion!==1||priorData.status!=='complete'||priorData.companyId!==plan.generation.companyId||priorData.id!==orderRawBatchJobId(entry.generation)||priorData.requestHash!==entry.requestHash||!sameOrderInventoryGeneration(priorRequest.generation,entry.generation)||!receipt||receipt.requestHash!==entry.requestHash||!sameOrderInventoryGeneration(receipt.generation,entry.generation)||!Array.isArray(receipt.recordIds)||!receipt.recordIds.includes(entry.recordId))return blocked('이전 생산기록의 원래 완료 근거를 확인할 수 없습니다.');
    try{
-    const priorPlan=productionRecordPlanFromRawRequest(priorData.request);
-    if(await orderRawBatchRequestHash(priorData.request)!==entry.requestHash||rawPressText(makeOrderProductionRecordReceipt(priorPlan,entry.requestHash))!==rawPressText(receipt)||!priorPlan.records.some(row=>row.id===entry.recordId&&row.lineId===record.lineId))return blocked('이전 생산기록의 최초 원문과 완료 근거가 다릅니다.');
+    const priorPlan=productionRecordPlanFromRawRequest(priorRequest);
+    if(await orderRawBatchRequestHash(priorRequest)!==entry.requestHash||rawPressText(makeOrderProductionRecordReceipt(priorPlan,entry.requestHash))!==rawPressText(receipt)||!priorPlan.records.some(row=>row.id===entry.recordId&&row.lineId===record.lineId))return blocked('이전 생산기록의 최초 원문과 완료 근거가 다릅니다.');
    }catch{return blocked('이전 생산기록의 최초 원문을 확인할 수 없습니다.');}
    if(prior.exists()){
     const data=prior.data();

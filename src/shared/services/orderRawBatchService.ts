@@ -32,6 +32,15 @@ export function orderRawBatchReceiptMatches(request:OrderRawBatchRequest,index:n
   &&result.movement.commandHash===m.commandHash&&result.movement.reportedDeltaKg===m.reportedDeltaKg&&result.movement.appliedDeltaKg===m.appliedDeltaKg;
 }
 export const orderRawBatchRequestHash=async(request:OrderRawBatchRequest)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(rawPressText(request)))),byte=>byte.toString(16).padStart(2,'0')).join('');
+/** 예약 Map의 tuple은 Firestore 중첩 배열 금지에 걸린다. 원문·해시는 바꾸지 않고 저장 형식만 분리한다. */
+export function readOrderRawBatchJobRequest(data:Record<string,any>):OrderRawBatchRequest {
+ const hasText=Object.prototype.hasOwnProperty.call(data,'requestText');
+ const request=hasText?(typeof data.requestText==='string'?JSON.parse(data.requestText):undefined):data.request;
+ validateOrderRawBatchRequest(request);
+ if(hasText&&rawPressText(request)!==data.requestText)throw Error('원료 일괄 저장 원문의 문자열 근거가 다릅니다.');
+ if(hasText&&Object.prototype.hasOwnProperty.call(data,'request')&&rawPressText(data.request)!==rawPressText(request))throw Error('원료 일괄 저장의 옛·새 원문이 다릅니다.');
+ return request;
+}
 /** 원료 완료와 생산기록 소비가 같은 회사·상태·모든 영수증 판정을 쓴다. */
 export function orderRawBatchReadsMatch(request:OrderRawBatchRequest,reads:readonly Read[]):boolean{
  return reads.length===request.commands.length&&!reads.some((read,index)=>!read.itemSnap.exists()||companyOf(read.itemSnap.data())!==request.generation.companyId
@@ -39,11 +48,12 @@ export function orderRawBatchReadsMatch(request:OrderRawBatchRequest,reads:reado
 }
 export function orderRawBatchProofProblem(data:Record<string,any>,request:OrderRawBatchRequest,reads:readonly Read[],requestHash:string):string|null{
  const results=data.results as Applied[];
+ let savedRequest:OrderRawBatchRequest;try{savedRequest=readOrderRawBatchJobRequest(data);}catch{return '원료 일괄 저장 원문을 확인해 주세요.';}
  if(!orderRawBatchReadsMatch(request,reads))return '원료 품목·상태의 회사와 식별자를 확인해 주세요.';
  if(data.atomicVersion!==1||data.status!=='complete'||data.companyId!==request.generation.companyId||data.actorUid!==request.generation.actorUid
   ||data.id!==request.jobId||data.source?.type!=='production'||data.source.id!==request.generation.orderId||data.createdAt!==request.recordedAt||data.completedAt!==request.recordedAt
   ||data.requestHash!==requestHash||rawPressText(data.expectedOperationIds)!==rawPressText(request.commands.map(row=>row.command.operationId))
-  ||rawPressText(data.request)!==rawPressText(request)||!Array.isArray(results)||results.length!==request.commands.length
+  ||rawPressText(savedRequest)!==rawPressText(request)||!Array.isArray(results)||results.length!==request.commands.length
   ||results.some((result,index)=>result?.status!=='applied'||!orderRawBatchReceiptMatches(request,index,reads[index],result)))return '원료 일괄 완료 원문과 모든 영수증을 확인해 주세요.';
  return null;
 }
@@ -91,7 +101,7 @@ export async function executeOrderRawBatchWithDb(database:Firestore,request:Orde
    virtual.set(key,{state:result.state,itemData});results.push(result);
   }
   const saved={id:request.jobId,atomicVersion:1,status:'complete',companyId:request.generation.companyId,actorUid:request.generation.actorUid,
-   source:{type:'production',id:request.generation.orderId},createdAt:request.recordedAt,completedAt:request.recordedAt,request,requestHash,expectedOperationIds:request.commands.map(row=>row.command.operationId),results};
+   source:{type:'production',id:request.generation.orderId},createdAt:request.recordedAt,completedAt:request.recordedAt,requestText:rawPressText(request),requestHash,expectedOperationIds:request.commands.map(row=>row.command.operationId),results};
   // 요청과 계산 결과를 함께 담은 최종 문서의 크기를 쓰기 전에 검사한다.
   let serialized:string;try{serialized=JSON.stringify(saved,(_key,value)=>{if(typeof value==='number'&&!Number.isFinite(value))throw Error('원료 계산 결과가 유한하지 않습니다.');return value;});}catch{return blocked('원료 일괄 계산 결과를 확인해 주세요.','rejected');}
   const reserved=recordPlan?JSON.stringify({...saved,productionRecordReceipt:makeOrderProductionRecordReceipt(recordPlan,requestHash)}):serialized;

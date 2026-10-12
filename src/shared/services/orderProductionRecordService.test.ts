@@ -10,6 +10,7 @@ import {buildOrderProductionRecordPlan,orderProductionRecordId} from '../orderPr
 import {orderRawBatchRequestHash,executeOrderRawBatchWithDb} from './orderRawBatchService';
 import {commandHash,operationDocId} from '../rawInventoryCore';
 import {finalOrderInventoryRequestText} from '../orderInventoryGeneration';
+import {rawPressText} from '../rawPressAttempt';
 import {OrderStatus,type Order,type Item} from '../types';
 const generation={contractVersion:1 as const,companyId:'taebaek' as const,orderId:'order',operationId:'op',startedAt:'2026-10-12T15:01:00Z',actorUid:'actor'};
 const snapshot=(data:any)=>({exists:()=>data!==undefined,data:()=>data});
@@ -27,6 +28,14 @@ async function seed(empty=false,quantity=2){
 }
 const run=(request:OrderRawBatchRequest)=>executeOrderProductionRecordsWithDb({} as any,request,actor);
 const state=()=>structuredClone([...mem.docs]);
+it('중첩 예약 원문을 문자열로 저장한 현재·이전 job도 같은 해시로 생산기록을 잇는다',async()=>{
+ const first=await seed();first.request.plan.finalPlan={reservation:{quantities:[['a',2]],stockSnapshot:[['a',0]],previousReservations:[['a',null]],allocationQuantities:[['a',2]]}};
+ const job=mem.docs.get('rawInventoryJobs/'+first.request.jobId);job.requestText=rawPressText(first.request);job.requestHash=await orderRawBatchRequestHash(first.request);delete job.request;
+ expect((await run(first.request)).status).toBe('recorded');
+ const second=await nextProduction(first),nextJob=mem.docs.get('rawInventoryJobs/'+second.request.jobId);nextJob.requestText=rawPressText(second.request);delete nextJob.request;
+ expect((await run(second.request)).status).toBe('recorded');
+ const before=state(),count=mem.writes.length;expect((await run(second.request)).status).toBe('duplicate');expect(state()).toEqual(before);expect(mem.writes).toHaveLength(count);
+});
 it('다품목 전부와 job 완료표·단계를 한 거래로 저장하며 cost0·최초 날짜를 보존한다',async()=>{const {request,plan}=await seed();expect((await run(request)).status).toBe('recorded');expect(mem.writes).toHaveLength(4);for(const record of plan.records)expect(mem.docs.get('productionRecords/'+record.id)).toEqual({...record,date:'2026-10-13',cost:0});expect(mem.docs.get('orders/order').inventoryOperation.stage).toBe('production-record');const before=state(),count=mem.writes.length;expect((await run(request)).status).toBe('duplicate');expect(state()).toEqual(before);expect(mem.writes).toHaveLength(count);});
 it('일부 기록이 존재하면 전체와 완료표 쓰기0으로 원문을 보존한다',async()=>{const {request,plan}=await seed();mem.docs.set('productionRecords/'+plan.records[0].id,plan.records[0]);const before=state();expect((await run(request)).status).toBe('blocked');expect(state()).toEqual(before);expect(mem.writes).toEqual([]);});
 it.each(['job','receipt','flag','generation','company','business'])('%s 손상은 원료 완료를 추정해 생산기록을 쓰지 않는다',async key=>{const {request}=await seed();const job=mem.docs.get('rawInventoryJobs/'+request.jobId),order=mem.docs.get('orders/order');if(key==='job')job.requestHash='changed';if(key==='receipt')mem.receipts.get('raw-op').movementSnap=snapshot({...job.results[0].movement,appliedDeltaKg:-1});if(key==='flag')delete order.inventoryOperation.productionRecordContractVersion;if(key==='generation')order.inventoryOperation.startedAt='2026-10-13T00:00:00Z';if(key==='company')mem.docs.get('items/a').companyId='punghoe';if(key==='business')order.purpose='make-stock';const before=state();expect((await run(request)).status).toBe('blocked');expect(state()).toEqual(before);expect(mem.writes).toEqual([]);});

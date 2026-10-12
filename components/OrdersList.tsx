@@ -1,3 +1,4 @@
+import { orderInventoryErrorMessage } from '../src/shared/orderInventoryError';
 import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { appConfirm, appNotice, appPrompt } from '../src/shared/components/appDialog';
@@ -231,7 +232,7 @@ export function OrderRecoveryEntry({order,renderOrderRecovery}:{order:Order;rend
   const action=order.inventoryOperation?.state==='processing' ? null : renderOrderRecovery?.(order);
   if(!failed&&!action)return null;
   return <section aria-label="주문 재고 작업 상태" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
-    {failed&&<><p className="font-bold text-amber-900">재고 작업 실패</p><p className="mt-1 break-words">{order.inventoryOperation?.error||'실패 작업의 처리 결과를 확인해 주세요.'}</p></>}
+    {failed&&<><p className="font-bold text-amber-900">재고 작업 실패</p><p className="mt-1 break-words">{orderInventoryErrorMessage(order.inventoryOperation?.error)}</p></>}
     {action}
   </section>;
 }
