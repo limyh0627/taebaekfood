@@ -1,6 +1,8 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
-## 신규 원료 매입 원가 이력의 근거 — 검증 완료·배포 준비
+## 신규 원료 매입 원가 이력의 근거 — 배포 완료
+
+소스 `3aaf596` 정확6을 main/GitHub에 반영하고 `issueTradeStatementCommand`만 배포했다(51798 exit0·asia-northeast3/nodejs22/gcfv2/ACTIVE). 일반4775PASS7제외·로컬 Admin TX36PASS·타입/서버 빌드0이며 Hosting·Rules·다른 함수·운영 자료는 변경하지 않았다. 원본028 전체 잔여와 부분 코드 완료를 구분한다.
 
 `5d80901` 이후 서버 후보는 신규 원가 변경 이력 `itemCostHistory`에 optional `purchaseCostBasis`를 저장한다. 최초 전표 행의 공급가·확인 kg·거래 수량·단가·세금과 기존 원가 계산 결과, 사용 행 번호 및 원가용 수동 kg/매입 단위 snapshot을 보존한다. 기존 `costFromPurchaseLine/Lines`를 사용하고 수동 원가 kg를 실입고량으로 바꾸거나 원물 소유회사·임가공을 추정하지 않는다. 이 근거는 수정·삭제될 수 있는 관측 이력이며 금융 발행 완료 판단은 보호된 원전표·생성/삭제 영수증과 기존 연결을 사용한다. mutable history의 삭제·before/after 변경 때문에 완료 확인을 막던 조건을 제외하되, 다른 최초 payload와 회사·작업번호는 기존 검증으로 계속 거절한다. 같은 요청으로 과거 이력이나 현재 수동 원가를 다시 쓰지 않는다. 새 UI·DTO·컬렉션·Rules·gate는 없고 실제 배포 결과는 [후속 기록](purchase-cost-history-basis-followup-20261012.md)에서 확인한다.
 
