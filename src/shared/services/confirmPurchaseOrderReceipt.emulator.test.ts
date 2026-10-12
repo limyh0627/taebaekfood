@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import {randomUUID} from 'node:crypto';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, where, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, deleteDoc, where, type Firestore } from 'firebase/firestore';
+/** 바리어가 없는 기존 시험은 그대로 실제 SDK transaction을 실행한다. */
+const raceRuntime=vi.hoisted(()=>({gate:null as null|{path:string;kind:'delete'|'receive';attempts:number;reached:()=>void;release:Promise<void>}}));
+vi.mock('firebase/firestore',async original=>{const actual=await original<typeof import('firebase/firestore')>();return {...actual,runTransaction:(database:any,callback:any,options:any)=>actual.runTransaction(database,async tx=>{const kind=callback.toString().includes('tx.delete(')?'delete':'receive';const wrapped=new Proxy(tx,{get(target,key){if(key==='get')return async(ref:any)=>{const snap=await target.get(ref);const gate=raceRuntime.gate;if(gate&&ref.path===gate.path&&kind===gate.kind){gate.attempts++;if(gate.attempts===1){gate.reached();await gate.release;}}return snap;};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});return callback(wrapped);},options)};});
 vi.mock('../firebase', () => ({ db: null, auth: { currentUser: null }, authReady: Promise.resolve() }));
 const { confirmUnitPurchaseOrderReceiptWithDb, deletePendingPurchaseOrderWithDb } = await import('./firebaseService');
 
@@ -274,4 +278,22 @@ describe.skipIf(!ready)('발주 입고확정 원자성 (Firestore Emulator)', ()
     expect(await confirmUnitPurchaseOrderReceiptWithDb(userDb(),company,id,'검수자')).toBe(false);
     expect((await getDoc(doc(userDb(),'items',rawId))).get('stock')).toBe(45);
   },30000);
+  it.each(['delete','receive'] as const)('일반 발주 %s 먼저 확정 시 반대 actual SDK 거래는 재시도 후 쓰기0으로 거절된다',async winner=>{
+    const suffix=randomUUID(),id='po-race-'+suffix+'-'+winner,itemId='sub-race-'+suffix+'-'+winner,receiptId='rcv-po-'+id+'-'+itemId;
+    const ownPaths=['purchaseOrders/'+id,'items/'+itemId,'itemReceipts/'+receiptId];
+    await seed(id,[{itemId,quantity:3}]);
+    const database=userDb();let release!:()=>void,reached!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;}),observed=new Promise<void>(resolve=>{reached=resolve;});
+    const gate={path:'purchaseOrders/'+id,kind:winner==='delete'?'receive' as const:'delete' as const,attempts:0,reached,release:held};raceRuntime.gate=gate;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const delayed=(winner==='delete'?confirmUnitPurchaseOrderReceiptWithDb(database,company,id):deletePendingPurchaseOrderWithDb(database,company,id)).then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+    try{
+      await Promise.race([observed,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('첫 PO 조회 바리어 timeout')),7000);})]);if(timer)clearTimeout(timer);
+      if(winner==='delete')await deletePendingPurchaseOrderWithDb(database,company,id);else expect(await confirmUnitPurchaseOrderReceiptWithDb(database,company,id)).toBe(true);
+      release();const result=await delayed;expect(result.status).toBe('rejected');// 삭제 승리는 현 Rules가 없는 PO의 update를 거절할 수 있어 SDK 재시도보다 먼저 원자 거절된다.
+      if(winner==='receive')expect(gate.attempts).toBeGreaterThanOrEqual(2);else{expect(gate.attempts).toBeGreaterThanOrEqual(1);if(gate.attempts===1&&result.status==='rejected')expect(result.reason).toMatchObject({code:'permission-denied'});}
+      const poSnap=await getDoc(doc(database,'purchaseOrders',id)),itemSnap=await getDoc(doc(database,'items',itemId)),receipt=await getDoc(doc(database,'itemReceipts',receiptId));
+      if(winner==='delete'){expect(poSnap.exists()).toBe(false);expect(itemSnap.data()!.stock).toBe(10);expect(receipt.exists()).toBe(false);}else{expect(poSnap.data()!.status).toBe('received');expect(itemSnap.data()!.stock).toBe(13);expect(receipt.data()!.quantity).toBe(3);}
+    }finally{if(timer)clearTimeout(timer);release();await delayed;raceRuntime.gate=null;await env.withSecurityRulesDisabled(async context=>{for(const path of ownPaths){await deleteDoc(doc(context.firestore(),path));expect((await getDoc(doc(context.firestore(),path))).exists()).toBe(false);}});}
+  },30000);
+
 });

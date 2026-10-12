@@ -1654,7 +1654,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
           };
         };
         const rows: FlowRow[] = [
-          ...orderRequests.map(po => purchaseRow(po, '예정', po.createdAt)),
+          ...orderRequests.map(po => purchaseRow(po, '예정', po.createdAt || '')),
           ...confirmedOrders.map(po => purchaseRow(po, '대기', po.invoicedAt || '')),
           ...receivedOrders.map(po => purchaseRow(po, '완료', po.receivedAt || '')),
           ...returnRequests.map(request => ({
@@ -1662,7 +1662,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
             id: request.id,
             type: '반품' as const,
             status: request.cancelledAt || request.status === 'processed' ? '완료' as const : '대기' as const,
-            date: request.cancelledAt || (request.status === 'processed' ? request.processedAt || '' : request.createdAt),
+            date: request.cancelledAt || (request.status === 'processed' ? request.processedAt || '' : request.createdAt || ''),
             partnerName: request.partnerName || '거래처 미지정',
             itemSummary: (request.items[0]?.name || '품목 미지정') + (request.items.length > 1 ? ` 외 ${request.items.length - 1}개` : ''),
             quantitySummary: request.items.length === 1
@@ -1723,7 +1723,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 <tbody>
                   {visible.map(row => (
                     <tr key={row.key} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.currentTarget.click(); } }} onClick={() => { if (row.type === '반품') { openReturnDetail(row.source as ReturnRequest); return; } const lines = poLines(row.source as PurchaseOrder); setFlowDetail({ type: row.type, id: row.id, lines: lines.map(line => ({ itemId: line.itemId, quantity: line.quantity })) }); setFlowQuantities(lines.map(line => String(line.quantity))); }} className="cursor-pointer border-b border-slate-300 last:border-b-0 hover:bg-slate-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500">
-                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? (row.source as PurchaseOrder).status === 'cancelled' ? '취소' : row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
+                      <td className="px-3 py-3 text-xs font-bold tabular-nums text-slate-500"><div className="text-[10px] font-medium text-slate-400">{row.type === '입고' ? ((row.source as PurchaseOrder).oemCancelledAt || (row.source as PurchaseOrder).status === 'cancelled') ? '취소' : row.status === '예정' ? '생성' : row.status === '대기' ? '발주확정' : '실입고' : (row.source as ReturnRequest).cancelledAt ? '취소' : row.status === '완료' ? '반품처리' : '생성'}</div><span>{row.date ? dateOfLocal(row.date) : '미기록'}</span>{row.date.includes('T') && <div>{timeOfLocal(row.date)}</div>}</td>
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{row.type}</td>
                       <td className="px-3 py-3 text-[11px] font-black"><span className={`inline-flex rounded-md px-2 py-1 ${row.status === '완료' ? 'bg-emerald-50 text-emerald-700' : row.status === '대기' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>{(row.type === '입고' && ((row.source as PurchaseOrder).oemCancelledAt || (row.source as PurchaseOrder).status === 'cancelled')) || (row.type === '반품' && (row.source as ReturnRequest).cancelledAt) ? '취소' : row.status}</span></td>
                       <td className="truncate px-3 py-3 text-xs font-black text-slate-700">{row.partnerName}</td>
@@ -1768,15 +1768,15 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const returnState = flowDetail.type === '반품' ? pendingReturnState(flowDetail.id) : { pending: false, error: '' };
         const returnOriginalChanged = flowDetail.type === '반품' && (!flowDetail.returnOriginal || returnBusinessText(record as ReturnRequest) !== returnBusinessText(flowDetail.returnOriginal));
         const sourceChanged = returnOriginalChanged || flowItemsChanged(flowDetail.lines.map(line => line.itemId), lines.map(line => line.itemId)) || lines.some((line, index) => line.quantity !== flowDetail.lines[index]?.quantity);
-        const cancelled = flowDetail.type === '반품' ? !!(record as ReturnRequest).cancelledAt : (record as PurchaseOrder).status === 'cancelled';
-        const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' : (record as ReturnRequest).status === 'pending' && !cancelled;
+        const cancelled = flowDetail.type === '반품' ? !!(record as ReturnRequest).cancelledAt : !!(record as PurchaseOrder).oemCancelledAt || (record as PurchaseOrder).status === 'cancelled';
+        const pending = flowDetail.type === '입고' ? (record as PurchaseOrder).status === 'invoiced' && !cancelled : (record as ReturnRequest).status === 'pending' && !cancelled;
         const issued = !!record.linkedStatementId;
         const quantityPending = flowDetail.type === '반품' && hasPendingReturnQuantity(companyId,flowDetail.id);
         const cancellationPending = flowDetail.type === '반품' && hasPendingReturnCancellation(companyId,flowDetail.id);
         const canReceive = flowDetail.type === '입고' && canConfirmReceipt(record as PurchaseOrder);
         const po = flowDetail.type === '입고' ? record as PurchaseOrder : null;
         const eventDates = po
-          ? [['생성', po.createdAt], ['발주확정', po.invoicedAt], ['실입고', po.receivedAt], ...(po.status === 'cancelled' ? [['취소', po.duplicateReceiptCorrection?.cancelledAt]] : [])]
+          ? [['생성', po.createdAt], ['발주확정', po.invoicedAt], ['실입고', po.receivedAt], ...(cancelled ? [['취소', po.oemCancelledAt || po.duplicateReceiptCorrection?.cancelledAt]] : [])]
           : [['생성', record.createdAt], ['반품처리', (record as ReturnRequest).processedAt], ['취소', (record as ReturnRequest).cancelledAt]];
         const deleteReason = !po ? '' : po.status === 'cancelled' ? '취소된 입고 기록은 보존합니다.' : po.status === 'received' ? '입고 완료된 발주는 삭제할 수 없습니다.'
           : po.linkedStatementId ? '연결 전표가 있어 발주만 삭제할 수 없습니다.'

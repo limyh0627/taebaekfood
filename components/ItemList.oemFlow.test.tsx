@@ -99,7 +99,7 @@ it('취소 원문은 이력에 남고 입고와 가공비 실행을 제공하지
  view('invoiced',{oemCancelledAt:'2026-10-08',oemCancelOperationId:'oem-cancel:fumi-po'});
  expect(screen.queryByText('푸미푸드')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'이력'}));
- expect(screen.getAllByText('취소')).toHaveLength(2);
+ expect(within(screen.getByText('푸미푸드').closest('tr')!).getAllByRole('cell')[2]).toHaveTextContent('취소');
  fireEvent.click(screen.getByText('푸미푸드').closest('tr')!);
  expect(screen.queryByRole('button',{name:'가공입고'})).toBeNull();
  expect(screen.queryByRole('button',{name:'가공비 발행'})).toBeNull();

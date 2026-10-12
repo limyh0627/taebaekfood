@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, type LucideIcon } from 'lucide-react';
+import { useDialogFocus } from './useDialogFocus';
 
 /**
  * **알림창 한 벌 — 주문·배송 화면의 모든 알림이 이 모양이다.**
@@ -48,10 +49,14 @@ interface Props {
 
 const AlertModalShell: React.FC<Props> = ({ title, tone, icon: Icon, onClose, wide = false, children, footer }) => {
   const 색 = alertToneClass(tone);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef);
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
