@@ -1,5 +1,13 @@
 # 태백 ERP 현재 관계와 지향 설계 대조 — 2026-10-12
 
+## 제품 실사·캔 개봉 최초 요청 필수화 — 검증 완료·배포 준비
+
+`9101d53` 이후 후속은 `stocktakeByQty`의 무요청 저장 fallback을 종료한다. 현재 UI 두 호출은 이미 `durableProductStocktake`를 사용한다. 새 컬렉션 없이 기존 품목의 `stocktakeAnchors[].request`와 최초 회사·UID·수량·최소 재고·환산·시각·작업번호를 대조한다. 최초 요청은 await 전에 복사하고 앵커/로트 날짜도 최초 시각의 KST 날짜로 고정한다. 기존 공용 앵커·재고 계산과 과거 앵커는 유지하며, 결과 확인에서 앵커가 없으면 쓰기 없이 미확인으로 남긴다. 검증·배포 결과와 제한은 [구형 경로 조사](deprecated-field-audit-20261006.md)를 따른다.
+
+캔 개봉의 무context 저장 분기도 종료하며 현재 `durableCanUnpack`의 최초 요청·기존 `rawMaterialLedger` 영수증을 사용한다. 새 DB 관계·수량 계산을 만들지 않는다. 확인사항의 구형 `quantity_change`는 목표/증가량 의미 확인이 남아 현역 승인 소비자를 그대로 보존한다.
+
+최종 일반61908은527파일4781PASS7제외 exit0, 앱/서버 타입·양빌드64077 exit0, 실제 일반직원 Auth/Firestore SDK11과 별도 관리자SDK4·관련35 및 변이 검출/원본통과·자기35경로/UID4정리를 확인했다. 필드 사전59605는87/737/468/634/2528/517로 재생성·check-only exit0이다. 독립 검수 추가P1/P2 없으며 운영 자료·Rules·Functions는 변경하지 않는다.
+
 ## 신규 원료 매입 원가 이력의 근거 — 배포 완료
 
 소스 `3aaf596` 정확6을 main/GitHub에 반영하고 `issueTradeStatementCommand`만 배포했다(51798 exit0·asia-northeast3/nodejs22/gcfv2/ACTIVE). 일반4775PASS7제외·로컬 Admin TX36PASS·타입/서버 빌드0이며 Hosting·Rules·다른 함수·운영 자료는 변경하지 않았다. 원본028 전체 잔여와 부분 코드 완료를 구분한다.

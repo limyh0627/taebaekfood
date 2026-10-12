@@ -10,7 +10,7 @@ import { unpackSummary } from '../canUnpack';
 import { unpackLots, canStockAfter, bulkStockAfter, type UnpackLotMove } from '../unpackLots';
 import { pruneDepletedLots, withCarryOverProductLot, withCarryOverLot } from '../lotUtils';
 import { anchorLotsByQty } from '../lotAnchor';
-import { today } from '../day';
+import { today, kstDateOf } from '../day';
 import { inventoryDocId, operationDocId, type LotChange, type RawInventoryMovement } from '../rawInventoryCore';
 import { normalizeRawInventoryState, toLedgerDoc } from './rawInventoryService';
 import { rawMirrorMatches } from '../rawMirror';
@@ -52,20 +52,24 @@ export interface UnpackOutcome {
   status?:ItemInventoryOutcome['status'];
 }
 
-export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest;mode:'apply'|'inspect';check:()=>Promise<void>}): Promise<UnpackOutcome> {
-  const now = context?.request.capturedAt??new Date().toISOString();
-  const 오늘 = context?.request.date??today();
-  //  같은 호출을 Firestore가 재시도해도 작업번호·로트번호는 바뀌지 않는다.
-  const operationId = context?.request.operationId??`unpack:${plan.canItemId}:${Date.parse(now)}`;
-  const operationDocumentId = operationDocId(operationId);
-  const lotIdPrefix = `lot-${operationDocumentId}`;
-
+export async function unpack(plan: UnpackPlan,context:{request:CanUnpackRequest;mode:'apply'|'inspect';check:()=>Promise<void>}): Promise<UnpackOutcome> {
   try {
-    if(context){validateItemInventoryRequest(context.request);if(context.request.kind!=='can-unpack'||itemInventoryRequestText(context.request)!==itemInventoryRequestText({...context.request,plan}))throw Error('개봉 계획이 최초 원문과 다릅니다.');context={...context,request:JSON.parse(JSON.stringify(context.request))};plan=context.request.plan;await context.check();}
-    const requestHash=context?await itemInventoryRequestHash(context.request):undefined;
-    if(context)await context.check();let duplicate=false;
+    if (!context || !context.request || !['apply','inspect'].includes(context.mode) || typeof context.check !== 'function') throw Error('최초 캔 개봉 요청과 실행·결과 확인 방식이 필요합니다.');
+    const now = context.request.capturedAt;
+    const 오늘 = context.request.date;
+    const operationId = context.request.operationId;
+    const operationDocumentId = operationDocId(operationId);
+    const lotIdPrefix = `lot-${operationDocumentId}`;
+
+    validateItemInventoryRequest(context.request);
+    if(context.request.kind!=='can-unpack'||itemInventoryRequestText(context.request)!==itemInventoryRequestText({...context.request,plan}))throw Error('개봉 계획이 최초 원문과 다릅니다.');
+    context={...context,request:JSON.parse(JSON.stringify(context.request))};
+    plan=context.request.plan;
+    await context.check();
+    const requestHash=await itemInventoryRequestHash(context.request);
+    await context.check();let duplicate=false;
     const moves = await runTransaction(db, async tx => {
-      if(context)await context.check();
+      await context.check();
       const canRef = doc(db, 'items', plan.canItemId);
       const bulkRef = doc(db, 'items', plan.bulkItemId);
       const movementRef = doc(db, COL.rawMaterialLedger, operationDocumentId);
@@ -73,18 +77,18 @@ export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest
       // Firestore의 '모든 읽기는 쓰기 전' 규칙은 지키지만 왕복이 늘 뿐 안전성은 같다.
       const movementSnap = await tx.get(movementRef);
       // 모바일에서 성공 응답을 못 받고 같은 호출이 재시도돼도 두 번 까지 않는다.
-      if(context)await context.check();
+      await context.check();
       if (movementSnap.exists()) {
         const saved=movementSnap.data();
-        if(context&&(saved.inventoryRequestHash!==requestHash||itemInventoryRequestText(saved.inventoryRequest)!==itemInventoryRequestText(context.request)||saved.companyId!==context.request.companyId||saved.operationId!==operationId||saved.rawItemId!==plan.bulkItemId||saved.kind!=='unpack'||saved.reportedDeltaKg!==plan.bulkQty||saved.appliedDeltaKg!==plan.bulkQty||saved.effectiveAt!==now||saved.recordedAt!==now||!Number.isFinite(saved.balanceAfterKg)||!Array.isArray(saved.unpackMoves)||saved.inventoryResult?.movesText!==itemInventoryResultText(saved.unpackMoves)))throw Error('캔 개봉 영수증이 최초 원문과 다릅니다.');
-        if(context){const result=saved.inventoryResult,moves=saved.unpackMoves;
+        if((saved.inventoryRequestHash!==requestHash||itemInventoryRequestText(saved.inventoryRequest)!==itemInventoryRequestText(context.request)||saved.companyId!==context.request.companyId||saved.operationId!==operationId||saved.rawItemId!==plan.bulkItemId||saved.kind!=='unpack'||saved.reportedDeltaKg!==plan.bulkQty||saved.appliedDeltaKg!==plan.bulkQty||saved.effectiveAt!==now||saved.recordedAt!==now||!Number.isFinite(saved.balanceAfterKg)||!Array.isArray(saved.unpackMoves)||saved.inventoryResult?.movesText!==itemInventoryResultText(saved.unpackMoves)))throw Error('캔 개봉 영수증이 최초 원문과 다릅니다.');
+        {const result=saved.inventoryResult,moves=saved.unpackMoves;
           if(saved.id!==operationDocumentId||saved.source?.type!=='unpack'||saved.source.id!==plan.canItemId||saved.commandHash!==`unpack:${plan.canItemId}:${plan.bulkItemId}:${plan.cans}:${plan.perCan}`||!Number.isSafeInteger(saved.sequence)||saved.sequence<=0)throw Error('캔 개봉 원장 식별 근거가 다릅니다.');
           if(!moves.length||moves.some((row:any)=>typeof row.supplierName!=='string'||!Number.isFinite(row.cans)||row.cans<=0||row.bulkQty!==Math.round(row.cans*plan.perCan*1000)/1000||row.canLotId!==undefined&&(typeof row.canLotId!=='string'||!row.canLotId)||Object.keys(row).some(key=>!['canLotId','lotNo','supplierName','receivedDate','cans','bulkQty'].includes(key)))||Math.abs(moves.reduce((sum:number,row:any)=>sum+row.cans,0)-plan.cans)>0.000001||![result.canBefore,result.canAfter,result.bulkBefore,result.bulkAfter].every(Number.isFinite)||Math.abs(result.canBefore-result.canAfter-plan.cans)>0.000001||result.canAfter<0||result.bulkAfter!==saved.balanceAfterKg||Math.round((result.bulkAfter-result.bulkBefore)*1000)!==Math.round(moves.reduce((sum:number,row:any)=>sum+row.bulkQty,0)*1000))throw Error('캔 개봉 수량·로트 결과 근거가 다릅니다.');
         }
         duplicate=true;return (saved.unpackMoves??[]) as UnpackLotMove[];
       }
-      if(context?.mode==='inspect')throw Error('최초 캔 개봉 영수증이 없습니다. 다시 개봉하지 않았습니다.');
-      const [canSnap,bulkSnap]=await Promise.all([tx.get(canRef),tx.get(bulkRef)]);if(context)await context.check();
+      if(context.mode==='inspect')throw Error('최초 캔 개봉 영수증이 없습니다. 다시 개봉하지 않았습니다.');
+      const [canSnap,bulkSnap]=await Promise.all([tx.get(canRef),tx.get(bulkRef)]);await context.check();
       if (!canSnap.exists()) rejectItemInventory(`${plan.canName} 품목을 찾을 수 없습니다.`);
       if (!bulkSnap.exists()) rejectItemInventory(`${plan.bulkName} 품목을 찾을 수 없습니다.`);
 
@@ -93,14 +97,14 @@ export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest
       const canCompany = companyOf(canData);
       const bulkCompany = companyOf(bulkData);
       if (canCompany !== bulkCompany) rejectItemInventory('캔과 벌크 품목의 회사가 다릅니다.');
-      if(context&&canCompany!==context.request.companyId)rejectItemInventory('최초 캔 개봉 회사가 다릅니다.');
+      if(canCompany!==context.request.companyId)rejectItemInventory('최초 캔 개봉 회사가 다릅니다.');
 
       const stateRef = doc(db, COL.rawInventories, inventoryDocId(bulkCompany, plan.bulkItemId));
       const stateSnap = await tx.get(stateRef);
-      if(context)await context.check();
+      await context.check();
       if (!stateSnap.exists()) rejectItemInventory(`${plan.bulkName} 원료가 아직 원자화되지 않았습니다.`);
       const state = normalizeRawInventoryState(stateSnap.data()!);
-      if(context&&(state.companyId!==context.request.companyId||state.rawItemId!==plan.bulkItemId))rejectItemInventory('캔 개봉 원료 상태의 회사·품목이 다릅니다.');
+      if((state.companyId!==context.request.companyId||state.rawItemId!==plan.bulkItemId))rejectItemInventory('캔 개봉 원료 상태의 회사·품목이 다릅니다.');
       if (!rawMirrorMatches(Number(bulkData.stock ?? 0), state.stockKg)) {
         rejectItemInventory(`품목 재고와 원료 상태가 어긋나 있습니다: items.stock ${Number(bulkData.stock ?? 0)} ≠ ${state.stockKg}. 실사로 맞춘 뒤 다시 시도하세요.`);
       }
@@ -181,9 +185,9 @@ export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest
       };
 
       // 네 문서가 한 트랜잭션이다. 하나라도 실패하면 캔도 벌크도 전혀 움직이지 않는다.
-      const evidence=context?{inventoryRequest:context.request,inventoryRequestHash:requestHash,inventoryResult:{movesText:itemInventoryResultText(r.moves),canBefore:canStock,canAfter:canStockAfter(r.canLots),bulkBefore:state.stockKg,bulkAfter:balanceAfterKg}}:{};
+      const evidence={inventoryRequest:context.request,inventoryRequestHash:requestHash,inventoryResult:{movesText:itemInventoryResultText(r.moves),canBefore:canStock,canAfter:canStockAfter(r.canLots),bulkBefore:state.stockKg,bulkAfter:balanceAfterKg}};
       assertItemInventoryWriteBudget([{...canData,lots:pruneDepletedLots(r.canLots)},{...bulkData,lots:[...activeLots,...recentDepletedLots]},nextState,{...toLedgerDoc(movement,{note:unpackSummary(plan),type:'manual',addedBy:'캔 개봉',canSize:plan.perCan,canCount:plan.cans}),...evidence,unpackMoves:r.moves}]);
-      if(context)await context.check();
+      await context.check();
       tx.update(canRef, { lots: strip(pruneDepletedLots(r.canLots)), stock: canStockAfter(r.canLots) });
       tx.update(bulkRef, { lots: strip([...activeLots, ...recentDepletedLots]), stock: balanceAfterKg });
       tx.set(stateRef, strip(nextState));
@@ -200,7 +204,7 @@ export async function unpack(plan: UnpackPlan,context?:{request:CanUnpackRequest
 
     //  **공캔은 안 건드린다**(`plan.discarded`) — 깐 캔은 버린다. 되돌리면 다음 생산 때
     //  있지도 않은 공캔을 집어 쓴다.
-    if(context)await context.check();
+    await context.check();
     return { ok: true, message: unpackSummary(plan), moves,status:duplicate?'duplicate':'applied' };
   } catch (error) {
     // 쓰기 전 도메인 거절만 미반영이다. SDK/응답/후행 인증 실패는 원문을 보존한다.
@@ -236,44 +240,44 @@ export async function stocktakeByQty(params: {
   operationId?: string;
   /** 로트가 아직 없을 때 새 실사 로트에 기록할 1재고단위의 kg. */
   unitKg?: number;
-  request?: ProductStocktakeRequest;
-  mode?: 'apply' | 'inspect';
+  request: ProductStocktakeRequest;
+  mode: 'apply' | 'inspect';
 }): Promise<{ ok: boolean; message: string; deltaQty?: number }> {
   const { itemId, itemName, targetQty, minStock, operationId, unitKg = 0 } = params;
+  const mode = params.mode;
   if (!Number.isFinite(targetQty) || targetQty < 0) return { ok: false, message: '실사 수량은 0 이상의 숫자여야 합니다.' };
   if (minStock !== undefined && (!Number.isFinite(minStock) || minStock < 0)) return { ok: false, message: '최소 수량은 0 이상의 숫자여야 합니다.' };
-  const request = params.request;
-  const now = request?.capturedAt ?? new Date().toISOString();
-  const 오늘 = today();
-
   try {
-    if (request) {
-      validateProductStocktakeRequest(request);
-      if (params.mode !== 'apply' && params.mode !== 'inspect') throw Error('제품 실사 실행 또는 결과 확인 방식을 지정해 주세요.');
-      if (request.itemId !== itemId || request.itemName !== itemName || request.targetQty !== targetQty || request.minStock !== minStock || request.unitKg !== unitKg || request.operationId !== operationId) throw Error('실사 입력이 최초 요청 원문과 다릅니다.');
-      if (await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.');
-    }
-    const currentActor = () => { if (request && auth.currentUser?.uid !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.'); };
+    if (!params.request) throw Error('최초 제품 실사 요청 원문이 필요합니다.');
+    validateProductStocktakeRequest(params.request);
+    const request: ProductStocktakeRequest = JSON.parse(JSON.stringify(params.request));
+    const now = request.capturedAt;
+    // 다음 날 결과를 확인해도 최초 실사일을 바꾸지 않는다.
+    const 오늘 = kstDateOf(new Date(now));
+    if (mode !== 'apply' && mode !== 'inspect') throw Error('제품 실사 실행 또는 결과 확인 방식을 지정해 주세요.');
+    if (request.itemId !== itemId || request.itemName !== itemName || request.targetQty !== targetQty || request.minStock !== minStock || request.unitKg !== unitKg || request.operationId !== operationId) throw Error('실사 입력이 최초 요청 원문과 다릅니다.');
+    if (await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.');
+    const currentActor = () => { if (auth.currentUser?.uid !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.'); };
     const r = await runTransaction(db, async tx => {
       currentActor();
       const ref = doc(db, 'items', itemId);
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new Error(`${itemName} 품목을 찾을 수 없습니다.`);
       const data = snap.data();
-      if (request && companyOf(data) !== request.companyId) throw Error('다른 회사의 제품 실사는 처리할 수 없습니다.');
-      if (request && isRawHolder({...data,id:itemId} as Item)) throw Error('원료 홀더는 원료 원자 실사로 처리해 주세요.');
+      if (companyOf(data) !== request.companyId) throw Error('다른 회사의 제품 실사는 처리할 수 없습니다.');
+      if (isRawHolder({...data,id:itemId} as Item)) throw Error('원료 홀더는 원료 원자 실사로 처리해 주세요.');
       const lots = (data.lots ?? []) as RawMaterialLot[];
       const stocktakeAnchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
-      const anchorId = operationId ?? `stocktake-${itemId}-${Date.parse(now)}`;
+      const anchorId = request.operationId;
       const previous = stocktakeAnchors.find((anchor: { id?: string }) => anchor.id === anchorId);
       // 수량이 같은 새 실사는 마지막 실사일을 갱신한다. 같은 요청의 재시도만 ID로 거른다.
       if (previous) {
-        if (request ? !sameProductStocktakeRequest(previous.request,request) : Number(previous.targetQty) !== targetQty || (minStock !== undefined && Number(data.minStock ?? 0) !== minStock)) {
+        if (!sameProductStocktakeRequest(previous.request,request)) {
           throw new Error('이미 처리된 실사 요청의 내용을 바꿀 수 없습니다. 다시 열어 새 실사를 등록하세요.');
         }
         return { deltaQty: 0, beforeQty: targetQty };
       }
-      if (request && params.mode === 'inspect') throw Error('이 실사 요청의 저장 근거를 찾지 못했습니다. 재고를 다시 적용하지 않았습니다. 확인 후 새 실사를 시작하세요.');
+      if (mode === 'inspect') throw Error('이 실사 요청의 저장 근거를 찾지 못했습니다. 재고를 다시 적용하지 않았습니다. 확인 후 새 실사를 시작하세요.');
 
       const a = anchorLotsByQty({
         lots,
@@ -292,7 +296,7 @@ export async function stocktakeByQty(params: {
         targetQty,
         beforeQty: a.beforeQty,
         deltaQty: a.deltaQty,
-        ...(request ? {request} : {}),
+        request,
       };
       currentActor();
       tx.update(ref, {
@@ -304,19 +308,15 @@ export async function stocktakeByQty(params: {
       return { deltaQty: a.deltaQty, beforeQty: a.beforeQty };
     });
 
-    if (request && await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되어 결과를 확인하지 못했습니다.');
+    if (await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되어 결과를 확인하지 못했습니다.');
     return {
       ok: true,
       deltaQty: r.deltaQty,
       message: `${itemName} 실사 ${targetQty} — 로트도 ${r.deltaQty > 0 ? '+' : ''}${r.deltaQty} 맞췄습니다`,
     };
   } catch (error) {
-    if (request) {
-      console.error('[제품 실사] 저장 결과 미확인:', error);
-      return {ok:false,message:`실사 저장 결과 미확인 — ${error instanceof Error ? error.message : String(error)}. 보존된 최초 요청으로 결과를 확인하세요.`};
-    }
-    console.error('[실사] 실패 — 아무것도 안 움직였다:', error);
-    return { ok: false, message: `실사하지 못했습니다 — ${error instanceof Error ? error.message : String(error)}` };
+    console.error('[제품 실사] 저장 결과 미확인:', error);
+    return {ok:false,message:`실사 저장 결과 미확인 — ${error instanceof Error ? error.message : String(error)}. 보존된 최초 요청으로 결과를 확인하세요.`};
   }
 }
 

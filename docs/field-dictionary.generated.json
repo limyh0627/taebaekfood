@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-12T05:15:18.749Z",
+  "generatedAt": "2026-10-12T05:34:10.704Z",
   "sourceFiles": 468,
-  "unresolvedAccesses": 2533,
+  "unresolvedAccesses": 2528,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:104",
@@ -1901,204 +1901,169 @@
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:79",
+      "location": "src/shared/services/unpackService.ts:83",
       "expression": "saved.inventoryResult?.movesText",
       "receiverExpression": "saved.inventoryResult",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:81",
+      "location": "src/shared/services/unpackService.ts:85",
       "expression": "saved.source?.type",
       "receiverExpression": "saved.source",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:81",
+      "location": "src/shared/services/unpackService.ts:85",
       "expression": "saved.source.id",
       "receiverExpression": "saved.source",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
-      "expression": "moves.length",
-      "receiverExpression": "moves",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/unpackService.ts:82",
-      "expression": "moves.some",
-      "receiverExpression": "moves",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.supplierName",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.cans",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.cans",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.bulkQty",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.cans",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.canLotId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.canLotId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.canLotId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
-      "expression": "moves.reduce",
-      "receiverExpression": "moves",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.cans",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.canBefore",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.canAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.bulkBefore",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.bulkAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.canBefore",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.canAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.canAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.bulkAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.bulkAfter",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "result.bulkBefore",
       "receiverExpression": "result",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:82",
-      "expression": "moves.reduce",
-      "receiverExpression": "moves",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/unpackService.ts:82",
+      "location": "src/shared/services/unpackService.ts:86",
       "expression": "row.bulkQty",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "src/shared/services/unpackService.ts:271",
+      "location": "src/shared/services/unpackService.ts:275",
       "expression": "previous.request",
-      "receiverExpression": "previous",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "src/shared/services/unpackService.ts:271",
-      "expression": "previous.targetQty",
       "receiverExpression": "previous",
       "receiverType": "any",
       "reason": "any-receiver"
@@ -120076,7 +120041,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:69",
+        "location": "src/shared/services/unpackService.ts:73",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -120102,7 +120067,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:70",
+        "location": "src/shared/services/unpackService.ts:74",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -120128,7 +120093,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:71",
+        "location": "src/shared/services/unpackService.ts:75",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -120155,7 +120120,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:98",
+        "location": "src/shared/services/unpackService.ts:102",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -120182,7 +120147,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "src/shared/services/unpackService.ts:259",
+        "location": "src/shared/services/unpackService.ts:263",
         "runtime": "client",
         "api": "doc",
         "style": "modular",
@@ -146177,11 +146142,11 @@
       "src/shared/services/rawPressService.ts:66",
       "src/shared/services/rawPressService.ts:127",
       "src/shared/services/rawPressService.ts:170",
-      "src/shared/services/unpackService.ts:69",
-      "src/shared/services/unpackService.ts:70",
-      "src/shared/services/unpackService.ts:71",
-      "src/shared/services/unpackService.ts:98",
-      "src/shared/services/unpackService.ts:259",
+      "src/shared/services/unpackService.ts:73",
+      "src/shared/services/unpackService.ts:74",
+      "src/shared/services/unpackService.ts:75",
+      "src/shared/services/unpackService.ts:102",
+      "src/shared/services/unpackService.ts:263",
       "src/shared/services/unpackService.ts:337",
       "src/shared/services/pendingFlowQuantityService.ts:15",
       "src/shared/services/workOrderResetService.ts:9",

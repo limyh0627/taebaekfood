@@ -9,6 +9,8 @@ import {getFirestore as getAdminFirestore} from 'firebase-admin/firestore';
 import {unpack,productStocktakeActor} from './unpackService';
 import {inventoryDocId,operationDocId} from '../rawInventoryCore';
 import type {CompanyId} from '../types';
+import type {UnpackPlan} from '../canUnpack';
+import type {CanUnpackRequest} from '../itemInventoryAttempt';
 const gateway=vi.hoisted(()=>({db:undefined as any,auth:undefined as any}));
 vi.mock('../firebase',()=>({get db(){return gateway.db;},get auth(){return gateway.auth;},authReady:Promise.resolve()}));
 describe.skipIf(process.env.CAN_UNPACK_EMULATOR_TEST!=='true')('캔 개봉 실제 Auth·Firestore 계약',()=>{
@@ -24,35 +26,45 @@ describe.skipIf(process.env.CAN_UNPACK_EMULATOR_TEST!=='true')('캔 개봉 실�
   return {locations,plan:{canItemId:can,canName:'합성 캔',cans:1,bulkItemId:bulk,bulkName:'합성 원료',bulkUnit:'kg',perCan:16.5,bulkQty:16.5,discarded:[]}};
  }
  const read=async(locations:string[])=>Promise.all(locations.map(async location=>(await adminDb!.doc(location).get()).data()));
- async function movements(canId:string){const all=await adminDb!.collection('rawMaterialLedger').get();return all.docs.filter(doc=>doc.data().operationId?.startsWith('unpack:'+canId+':'));}
+ async function movements(canId:string){const all=await adminDb!.collection('rawMaterialLedger').where('source.id','==',canId).get();return all.docs.filter(doc=>doc.data().source?.type==='unpack');}
+ async function applyFirst(plan:UnpackPlan){const request:CanUnpackRequest={version:1,kind:'can-unpack',operationId:prefix+'-'+plan.canItemId+'-op',companyId:'taebaek',uid:uid!,capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};paths.add('rawMaterialLedger/'+operationDocId(request.operationId));return unpack(plan,{request,mode:'apply',check:async()=>{await productStocktakeActor(request.companyId,request.uid,true);}});}
  beforeAll(async()=>{
   if(process.env.FIRESTORE_EMULATOR_HOST&&process.env.FIRESTORE_EMULATOR_HOST!=='127.0.0.1:8082')throw new Error('Firestore 주소 불일치');
   if(process.env.FIREBASE_AUTH_EMULATOR_HOST&&process.env.FIREBASE_AUTH_EMULATOR_HOST!=='127.0.0.1:9099')throw new Error('Auth 주소 불일치');
   if(process.env.GCLOUD_PROJECT&&process.env.GCLOUD_PROJECT!==projectId)throw new Error('프로젝트 불일치');
   process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8082';process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';process.env.GCLOUD_PROJECT=projectId;
   adminApp=initializeAdminApp({projectId},prefix+'-admin');adminDb=getAdminFirestore(adminApp);adminAuth=getAdminAuth(adminApp);
-  uid=prefix;const password=randomUUID()+'A1!',email=prefix+'@example.invalid';await adminAuth.createUser({uid,email,password});await adminAuth.setCustomUserClaims(uid,{employeeId:uid,companyId:'taebaek',isAdmin:true});
+  uid=prefix;const password=randomUUID()+'A1!',email=prefix+'@example.invalid';await adminAuth.createUser({uid,email,password});await adminAuth.setCustomUserClaims(uid,{employeeId:uid,companyId:'taebaek',isAdmin:false});
   app=initializeApp({projectId,apiKey:'local-emulator-only'},prefix+'-sdk');gateway.db=getFirestore(app);connectFirestoreEmulator(gateway.db,'127.0.0.1',8082);const auth=getAuth(app);gateway.auth=auth;connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
-  await signInWithEmailAndPassword(auth,email,password);expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({employeeId:uid,companyId:'taebaek',isAdmin:true});
+  await signInWithEmailAndPassword(auth,email,password);expect((await auth.currentUser!.getIdTokenResult(true)).claims).toMatchObject({employeeId:uid,companyId:'taebaek',isAdmin:false});
  },90_000);
- afterAll(async()=>{const errors:string[]=[];if(adminDb)for(const location of paths){try{if(!location.includes(prefix) && !(await adminDb.doc(location).get()).data()?.operationId?.includes(prefix))throw new Error('범위');await adminDb.doc(location).delete();expect((await adminDb.doc(location).get()).exists).toBe(false);}catch{errors.push(location);}}
+ afterAll(async()=>{const errors:string[]=[];if(adminDb)for(const location of paths){try{const existing=await adminDb.doc(location).get();if(!location.includes(prefix) && existing.exists && !existing.data()?.operationId?.includes(prefix))throw new Error('범위');await adminDb.doc(location).delete();expect((await adminDb.doc(location).get()).exists).toBe(false);}catch{errors.push(location);}}
  if(uid&&adminAuth){try{await adminAuth.deleteUser(uid);await expect(adminAuth.getUser(uid)).rejects.toMatchObject({code:'auth/user-not-found'});}catch{errors.push(uid);}}
  if(app)await deleteApp(app);if(adminApp)await deleteAdminApp(adminApp);expect(errors).toEqual([]);},90_000);
 
  it('자기 회사 캔·벌크 사본·원료 본체·이동 원장을 함께 갱신한다',async()=>{
-  const {locations,plan}=await seed('own');expect((await unpack(plan)).ok).toBe(true);
+  const {locations,plan}=await seed('own');expect((await applyFirst(plan)).ok).toBe(true);
   const [can,bulk,state]=await read(locations);expect(can!.stock).toBe(2);expect(bulk!.stock).toBe(116.5);expect(state!.stockKg).toBe(116.5);expect(state!.revision).toBe(2);
   const rows=await movements(plan.canItemId);for(const row of rows)paths.add(row.ref.path);expect(rows).toHaveLength(1);expect(rows[0].data()).toMatchObject({companyId:'taebaek',balanceAfterKg:116.5});
  },60_000);
  it('타회사와 회사 혼합은 거절하며 모든 원문과 새 이동 기록 부재를 유지한다',async()=>{
-  for(const scenario of ['foreign','mixed']){const {locations,plan}=await seed(scenario,scenario==='foreign'?'punghoe':'taebaek','punghoe');const before=await read(locations);expect((await unpack(plan)).ok).toBe(false);expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);}
+  for(const scenario of ['foreign','mixed']){const {locations,plan}=await seed(scenario,scenario==='foreign'?'punghoe':'taebaek','punghoe');const before=await read(locations);expect((await applyFirst(plan)).ok).toBe(false);expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);}
  },60_000);
  it('원료 미러 불일치 실패는 캔·벌크·본체를 보존하고 이동 기록을 생성하지 않는다',async()=>{
-  const {locations,plan}=await seed('mirror','taebaek','taebaek',99);const before=await read(locations);const result=await unpack(plan);expect(result.ok).toBe(false);expect(result.message).toContain('어긋나');expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);
+  const {locations,plan}=await seed('mirror','taebaek','taebaek',99);const before=await read(locations);const result=await applyFirst(plan);expect(result.ok).toBe(false);expect(result.message).toContain('어긋나');expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);
  },60_000);
  it('신규 최초 원문은 실제 직원 회사UID 확인 후 한번만 적용하고 현재품목삭제·타회사재생성 후 inspect0쓰기이다',async()=>{
   await adminAuth!.setCustomUserClaims(uid!,{employeeId:uid,companyId:'taebaek',isAdmin:false});expect((await gateway.auth.currentUser.getIdTokenResult(true)).claims.isAdmin).toBe(false);const {locations,plan}=await seed('durable');const request={version:1 as const,kind:'can-unpack' as const,operationId:prefix+'-durable-op',companyId:'taebaek' as const,uid:uid!,capturedAt:'2026-10-12T01:00:00.000Z',date:'2026-10-12',plan};
   const movement='rawMaterialLedger/'+operationDocId(request.operationId);paths.add(movement);let lose=true;const check=async()=>{await productStocktakeActor(request.companyId,request.uid,true);if(lose&&(await adminDb!.doc(movement).get()).exists){lose=false;throw Error('응답 유실');}};
   expect((await unpack(plan,{request,mode:'apply',check})).status).toBe('unknown');const first=await adminDb!.doc(movement).get();await adminDb!.doc(locations[0]).delete();await adminDb!.doc(locations[1]).set({companyId:'punghoe',name:'타회사 합성'});
   expect((await unpack(plan,{request,mode:'inspect',check})).status).toBe('duplicate');expect((await adminDb!.doc(movement).get()).updateTime?.isEqual(first.updateTime!)).toBe(true);
- },60_000);});
+ },60_000);
+ it('최초 context 없는 옛 캔 개봉은 실제 일반 직원 권한에서도 어떤 문서도 바꾸지 않는다',async()=>{
+  const {locations,plan}=await seed('no-context'),before=await read(locations),snapshots=await Promise.all(locations.map(location=>adminDb!.doc(location).get()));
+  const result=await unpack(plan,undefined as unknown as Parameters<typeof unpack>[1]);
+  for(const row of await movements(plan.canItemId))paths.add(row.ref.path);
+  expect(result.ok).toBe(false);
+  expect(await read(locations)).toEqual(before);expect(await movements(plan.canItemId)).toHaveLength(0);
+  for(const old of snapshots)expect((await old.ref.get()).updateTime!.isEqual(old.updateTime!)).toBe(true);
+ },60000);
+});

@@ -128,11 +128,11 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | src/shared/services/rawPressService.ts:66 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{`raw-press-${operationDocId(source.operationId)}`} |  |
 | src/shared/services/rawPressService.ts:127 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{`raw-press-${operationDocId(request.originalOperationId)}`} |  |
 | src/shared/services/rawPressService.ts:170 | client | doc | root / top-level-candidate | 미해석 | rawInventoryJobs/{`raw-press-${operationDocId(input.originalOperationId)}`} |  |
-| src/shared/services/unpackService.ts:69 | client | doc | root / top-level-candidate | 미해석 | items/{plan.canItemId} |  |
-| src/shared/services/unpackService.ts:70 | client | doc | root / top-level-candidate | 미해석 | items/{plan.bulkItemId} |  |
-| src/shared/services/unpackService.ts:71 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(operationId)} |  |
-| src/shared/services/unpackService.ts:98 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(bulkCompany, plan.bulkItemId)} |  |
-| src/shared/services/unpackService.ts:259 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
+| src/shared/services/unpackService.ts:73 | client | doc | root / top-level-candidate | 미해석 | items/{plan.canItemId} |  |
+| src/shared/services/unpackService.ts:74 | client | doc | root / top-level-candidate | 미해석 | items/{plan.bulkItemId} |  |
+| src/shared/services/unpackService.ts:75 | client | doc | root / top-level-candidate | 미해석 | rawMaterialLedger/{operationDocId(operationId)} |  |
+| src/shared/services/unpackService.ts:102 | client | doc | root / top-level-candidate | 미해석 | rawInventories/{inventoryDocId(bulkCompany, plan.bulkItemId)} |  |
+| src/shared/services/unpackService.ts:263 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
 | src/shared/services/unpackService.ts:337 | client | doc | root / top-level-candidate | 미해석 | items/{itemId} |  |
 | src/shared/services/pendingFlowQuantityService.ts:15 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{id} |  |
 | src/shared/services/workOrderResetService.ts:9 | client | doc | root / top-level-candidate | 미해석 | appMeta/{`workOrderReset_${companyId}`} |  |
@@ -2632,35 +2632,30 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/itemInventoryAttempt.ts:40 | value.request | any | any-receiver |
 | src/shared/itemInventoryAttempt.ts:40 | value.request.kind | any | any-receiver |
 | src/shared/itemInventoryAttempt.ts:40 | value.request | any | any-receiver |
-| src/shared/services/unpackService.ts:79 | saved.inventoryResult?.movesText | any | any-receiver |
-| src/shared/services/unpackService.ts:81 | saved.source?.type | any | any-receiver |
-| src/shared/services/unpackService.ts:81 | saved.source.id | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | moves.length | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | moves.some | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.supplierName | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.cans | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.cans | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.bulkQty | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.cans | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.canLotId | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.canLotId | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.canLotId | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | moves.reduce | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.cans | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.canBefore | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.canAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.bulkBefore | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.bulkAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.canBefore | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.canAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.canAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.bulkAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.bulkAfter | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | result.bulkBefore | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | moves.reduce | any | any-receiver |
-| src/shared/services/unpackService.ts:82 | row.bulkQty | any | any-receiver |
-| src/shared/services/unpackService.ts:271 | previous.request | any | any-receiver |
-| src/shared/services/unpackService.ts:271 | previous.targetQty | any | any-receiver |
+| src/shared/services/unpackService.ts:83 | saved.inventoryResult?.movesText | any | any-receiver |
+| src/shared/services/unpackService.ts:85 | saved.source?.type | any | any-receiver |
+| src/shared/services/unpackService.ts:85 | saved.source.id | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.supplierName | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.cans | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.cans | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.bulkQty | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.cans | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.canLotId | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.canLotId | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.canLotId | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.cans | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.canBefore | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.canAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.bulkBefore | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.bulkAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.canBefore | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.canAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.canAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.bulkAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.bulkAfter | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | result.bulkBefore | any | any-receiver |
+| src/shared/services/unpackService.ts:86 | row.bulkQty | any | any-receiver |
+| src/shared/services/unpackService.ts:275 | previous.request | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof?.version | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof.terminalConfirmed | any | any-receiver |
 | src/shared/services/pendingFlowQuantityService.ts:52 | proof.status | any | any-receiver |
