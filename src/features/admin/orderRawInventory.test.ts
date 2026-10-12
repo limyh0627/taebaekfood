@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { operationDocId } from '../../shared/rawInventoryCore';
-import { rawLedgerDocIds } from './orderRawInventory';
+import { orderRawTracesFromMovement,rawLedgerDocIds } from './orderRawInventory';
+import type {RawInventoryCommand,RawInventoryMovement} from '../../shared/rawInventoryCore';
 
 describe('rawLedgerDocIds', () => {
+  it('일괄과 순차가 같은 영수증의 실제 로트 메타를 보존한다',()=>{
+    const command={operationId:'operation',rawItemId:'raw',materialSnapshot:'참깨',kind:'consume'} as RawInventoryCommand;
+    const movement={id:'saved',lotChanges:[{lotId:'lot',lotNo:'no',supplierName:'공급',receivedDate:'2026-10-01',deltaKg:-3}]} as RawInventoryMovement;
+    expect(orderRawTracesFromMovement(command,movement)).toEqual([{operationId:'operation',rawItemId:'raw',material:'참깨',ledgerId:'saved',supplierName:'공급',kg:3,lotId:'lot',lotNo:'no',receivedDate:'2026-10-01'}]);
+  });
+  it('소급 적용0의 physical은 로트를 추정하지 않고 ledger-only는 보고 사용량을 보존한다',()=>{
+    const command={operationId:'operation',rawItemId:'raw',materialSnapshot:'참깨',kind:'consume'} as RawInventoryCommand;
+    const movement={id:'saved',reportedDeltaKg:-3,appliedDeltaKg:0,lotChanges:[]} as unknown as RawInventoryMovement;
+    expect(orderRawTracesFromMovement(command,movement)).toEqual([]);
+    expect(orderRawTracesFromMovement({...command,kind:'ledger-consume',kg:3},movement)).toMatchObject([{kg:3,ledgerOnly:true,operationId:'operation',ledgerId:'saved'}]);
+  });
   it('재개된 옛 원장은 계산 ID가 아니라 실제 저장 문서 ID를 남긴다', () => {
     const operationId = 'production:order-1:line-1:a1:raw-1';
     expect(rawLedgerDocIds([{

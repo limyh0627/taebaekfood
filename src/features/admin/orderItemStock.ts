@@ -1,3 +1,6 @@
+import {rawPressText} from '../../shared/rawPressAttempt';
+import {orderRawBatchOrderEvidence} from '../../shared/orderRawBatchAttempt';
+import {advanceOrderInventoryStage,sameOrderInventoryGeneration,assertOrderInventoryGeneration,hasOrderInventoryGenerationCompletion,finalOrderInventoryRequestText,validateOrderInventoryConsumedLots,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import { doc, runTransaction, type Firestore } from 'firebase/firestore';
 import { bomOf, type BomIndex } from '../../shared/bomIndex';
 import { pruneDepletedLots } from '../../shared/lotUtils';
@@ -8,6 +11,7 @@ export interface OrderItemStockDeps {
   db: Firestore;
   allItems: Item[];
   bomIndex?: BomIndex;
+  getActorUid?:()=>string|undefined;
 }
 
 const stock3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -17,6 +21,7 @@ const RESERVATION_TTL_MS = 60 * 60 * 1000;
 export interface OrderStockReservation {
   operationId: string;
   orderId: string;
+  generation?:OrderInventoryGeneration;
   itemIds: string[];
   quantities: ReadonlyMap<string, number>;
   stockSnapshot: ReadonlyMap<string, number>;
@@ -111,6 +116,11 @@ export function planOrderStockReservation(orderId:string, dataByItem:ReadonlyMap
 
 export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
   const { db, allItems, bomIndex } = deps;
+  const assertActor=(generation?:OrderInventoryGeneration)=>{if(generation&&deps.getActorUid?.()!==generation.actorUid)throw Error('주문 재고 작업 로그인 계정이 바뀌었습니다.');};
+  const readGeneration=async(tx:import('firebase/firestore').Transaction,generation:OrderInventoryGeneration,allowFailed=false)=>{
+    assertActor(generation);const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
+    const order={...snap.data(),id:generation.orderId} as Order;assertOrderInventoryGeneration(order,generation,{allowFailed});assertActor(generation);return {ref,order};
+  };
 
   /**
    * 생산량을 정하기 전에 가용 재고를 주문 작업 ID로 선점한다.
@@ -125,14 +135,18 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     operationId: string,
     planDeltas: (stockSnapshot: ReadonlyMap<string, number>) => ReadonlyMap<string, number>,
     extraItemIds: readonly string[] = [],
-    options: { preserveOwnAllocation?: boolean } = {},
+    options: { preserveOwnAllocation?: boolean;generation?:OrderInventoryGeneration } = {},
   ): Promise<OrderStockReservation> => {
+    const generation=options.generation;
+    if(generation&&(generation.orderId!==order.id||generation.operationId!==operationId))throw Error('주문 예약의 최초 세대가 다릅니다.');
+    assertActor(generation);
     const ids = [...new Set([...orderStockTouchedIds(order, bomIndex), ...extraItemIds])];
     const now = new Date();
     const nowMs = now.getTime();
     const createdAt = now.toISOString();
 
     return runTransaction(db, async tx => {
+      const current=generation?await readGeneration(tx,generation):null;
       const refs = ids.map(itemId => doc(db, 'items', itemId));
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
       const missing = ids.filter((_, index) => !snapshots[index]!.exists());
@@ -140,6 +154,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         throw new Error(`주문 재고 예약 중 품목을 찾을 수 없습니다: ${missing.join(', ')}`);
       }
 
+      assertActor(generation);
+      if(generation&&snapshots.some(snapshot=>snapshot.data()?.companyId!==generation.companyId))throw Error('예약 품목의 명시 회사가 다릅니다.');
       const {activeByItem,previousReservations,available,quantities,shortages}=planOrderStockReservation(order.id,new Map(ids.map((id,index)=>[id,snapshots[index]!.data()??{}])),planDeltas,{...options,nowMs});
       if(shortages.length){const row=shortages[0],item=allItems.find(candidate=>candidate.id===row.itemId);throw new OrderInventoryPreconditionError(`${item?.name??row.itemId} 재고가 부족합니다. 현재 ${row.current}, 다른 주문 예약 ${row.other}, 이번 주문 ${row.required}`);}
 
@@ -148,7 +164,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         const active = activeByItem.get(itemId) ?? [];
         const qty = quantities.get(itemId) ?? 0;
         const next = qty > 0
-          ? [...active, { operationId, orderId: order.id, qty, createdAt, state: 'processing' as const }]
+          ? [...active, { operationId, orderId: order.id, qty, createdAt, state: 'processing' as const,...(generation?{generation}:{}) }]
           : active;
         // 만료되었거나 같은 작업의 낡은 예약도 이 transaction에서 걷어낸다.
         if (qty > 0 || Array.isArray(data.inventoryReservations)) {
@@ -156,9 +172,11 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         }
       });
 
+      if(current)tx.update(current.ref,{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}});
       return {
         operationId,
         orderId: order.id,
+        ...(generation?{generation}:{}),
         itemIds: ids,
         quantities,
         stockSnapshot: available,
@@ -184,11 +202,16 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
 
   /** 원료 작업 등이 실패해 최종 재고 반영까지 가지 못한 예약을 풀어 준다. */
   const releaseOrderStockReservation = async (reservation: OrderStockReservation): Promise<void> => {
-    if (reservation.itemIds.length === 0) return;
+    const generation=reservation.generation;assertActor(generation);
+    if (reservation.itemIds.length === 0&&!generation) return;
     const nowMs = Date.now();
     await runTransaction(db, async tx => {
+      if(generation)await readGeneration(tx,generation,true);
       const refs = reservation.itemIds.map(itemId => doc(db, 'items', itemId));
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
+      assertActor(generation);
+      if(generation&&snapshots.some(snapshot=>!snapshot.exists()||snapshot.data()?.companyId!==generation.companyId))throw Error('예약 복원 품목의 명시 회사·원문을 확인해 주세요.');
+      if(generation&&snapshots.some(snapshot=>liveItemInventoryReservations(snapshot.data()?.inventoryReservations,nowMs).some(row=>row.orderId===reservation.orderId&&(row.operationId!==reservation.operationId||!sameOrderInventoryGeneration((row as ItemInventoryReservation&{generation?:OrderInventoryGeneration}).generation,generation)))))throw Error('같은 주문의 다른 세대 예약은 복원하지 않습니다.');
       snapshots.forEach((snapshot, index) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data() ?? {};
@@ -206,8 +229,13 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     deltas: ReadonlyMap<string, number>,
     lotMutations: readonly OrderProductLotMutation[] = [],
     reservation?: OrderStockReservation,
-    orderMutation?: { orderId: string; patch: Record<string, unknown> | ((consumedLots: NonNullable<Order['productConsumedLots']>) => Record<string, unknown>) },
+    orderMutation?: { orderId: string; generation?:OrderInventoryGeneration; expectedOrderText?:string; patch: Record<string, unknown> | ((consumedLots: NonNullable<Order['productConsumedLots']>) => Record<string, unknown>) },
   ): Promise<NonNullable<Order['productConsumedLots']>> => {
+    const generation=orderMutation?.generation??reservation?.generation;
+    if(generation&&(!orderMutation||orderMutation.orderId!==generation.orderId||typeof orderMutation.expectedOrderText!=='string'||!orderMutation.expectedOrderText))throw Error('재고 확정 주문과 최초 세대가 다릅니다.');
+    assertActor(generation);
+    const reservationData=reservation?{operationId:reservation.operationId,orderId:reservation.orderId,generation:reservation.generation,itemIds:[...reservation.itemIds].sort(),quantities:[...reservation.quantities].sort(([a],[b])=>a.localeCompare(b)),allocationQuantities:reservation.allocationQuantities?[...reservation.allocationQuantities].sort(([a],[b])=>a.localeCompare(b)):null}:undefined;
+    const reservationEvidence={reservation:reservationData,expectedOrderText:orderMutation?.expectedOrderText};
     const lotMutationByItem = new Map<string, OrderProductLotMutation>();
     for (const mutation of lotMutations) {
       if (lotMutationByItem.has(mutation.itemId)) {
@@ -227,7 +255,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         lotMutation: lotMutationByItem.get(itemId),
         item: allItems.find(item => item.id === itemId),
       }));
-    if (rows.length === 0) {
+    if (rows.length === 0&&!generation) {
       if (orderMutation) await runTransaction(db, async tx => {
         tx.update(doc(db, 'orders', orderMutation.orderId), stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch));
       });
@@ -240,6 +268,18 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     }
 
     const changed = await runTransaction(db, async tx => {
+      let current:{ref:ReturnType<typeof doc>;order:Order}|null=null;
+      if(generation){
+        assertActor(generation);const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
+        const order={...snap.data(),id:generation.orderId} as Order;assertActor(generation);
+        if(hasOrderInventoryGenerationCompletion(order,generation)){
+          if(order.inventoryOperation!=null)throw Error('완료 뒤 다른 작업 표식이 있어 이전 확정을 성공으로 처리하지 않았습니다.');
+          const marker=order.inventoryGenerationCompletion!,patch=typeof orderMutation!.patch==='function'?orderMutation!.patch(marker.consumedLots):orderMutation!.patch;
+          if(finalOrderInventoryRequestText(generation,deltas,lotMutations.map(row=>row.itemId),patch,reservationEvidence)!==marker.requestText)throw Error('같은 세대의 최종 재고 요청 원문이 다릅니다.');
+          return marker.consumedLots;
+        }
+        assertOrderInventoryGeneration(order,generation);if(orderRawBatchOrderEvidence(order)!==orderMutation!.expectedOrderText)throw Error('같은 세대의 주문 원문이 변경되었습니다.');current={ref,order};
+      }
       const refs = rows.map(row => doc(db, 'items', row.itemId));
       // Firestore transaction은 첫 write 전에 모든 read가 끝나야 한다.
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
@@ -248,6 +288,8 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         throw new Error(`재고 반영 중 품목 문서를 찾을 수 없습니다: ${missingDocs.join(', ')}`);
       }
 
+      assertActor(generation);
+      if(generation&&snapshots.some(snapshot=>snapshot.data()?.companyId!==generation.companyId))throw Error('재고 확정 품목의 명시 회사가 다릅니다.');
       const updates = rows.map((row, index) => {
         const data = snapshots[index]!.data() ?? {};
         const before = Number(data.stock ?? 0);
@@ -281,6 +323,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
               qty: stock3(allocatedQty),
               createdAt: new Date().toISOString(),
               state: 'allocated',
+              ...(generation?{generation}:{}),
             });
           }
           if (allocatedQty > 0 || Array.isArray(data.inventoryReservations)) {
@@ -296,17 +339,18 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
           ref: refs[index]!,
         };
       });
-      for (const update of updates) {
-        if (Object.keys(update.patch).length > 0) tx.update(update.ref, update.patch);
-      }
-      // 품목별 완료에서는 재고 숫자와 그 근거인 주문 줄 스냅샷이 한 transaction이어야 한다.
-      // 둘 사이에서 브라우저가 닫히면 재시도 때 같은 BOM을 또 뺄 수 있다.
-      if (orderMutation) tx.update(doc(db, 'orders', orderMutation.orderId), stripUndefined(typeof orderMutation.patch === 'function'
-        ? orderMutation.patch(updates.flatMap(row => row.consumedLots)) : orderMutation.patch));
-      return updates.map(({ itemId, delta, before, after, consumedLots }) => ({ itemId, delta, before, after, consumedLots }));
+      const consumed=updates.flatMap(row=>row.consumedLots),patch=orderMutation?(typeof orderMutation.patch==='function'?orderMutation.patch(consumed):orderMutation.patch):null;
+      if(generation)validateOrderInventoryConsumedLots(consumed);
+      const requestText=generation?finalOrderInventoryRequestText(generation,deltas,lotMutations.map(row=>row.itemId),patch!,reservationEvidence):null;
+      if(generation&&patch?.inventoryOperation!=null)throw Error('최종 확정에서 다른 작업 표식을 만들 수 없습니다.');
+      assertActor(generation);
+      for(const update of updates)if(Object.keys(update.patch).length>0)tx.update(update.ref,update.patch);
+      if(current)tx.update(current.ref,stripUndefined({...patch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}}));
+      else if(orderMutation)tx.update(doc(db,'orders',orderMutation.orderId),stripUndefined(patch!));
+      return consumed;
     });
 
-    return changed.flatMap(row => row.consumedLots);
+    return changed;
   };
 
   return {

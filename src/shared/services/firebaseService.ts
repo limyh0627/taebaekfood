@@ -1,3 +1,4 @@
+import {advanceOrderInventoryStage,assertOrderInventoryGeneration,generationFromOrder,hasOrderInventoryGenerationCompletion,validateOrderInventoryGeneration,type OrderInventoryGeneration} from '../orderInventoryGeneration';
 import { itemWritePayload } from '../itemWritePayload';
 import { readPurchaseUnitSnapshot } from '../purchaseUnit';
 import {runFinancialOpening} from './financialOpeningCommands';
@@ -47,7 +48,6 @@ import { readRawCommandInTransaction, prepareRawCommand, writePreparedRawCommand
 import type { RawInventoryCommand } from '../rawInventoryCore';
 import type { ItemReceipt } from '../receipt';
 import { statementBlockReason } from "../statementGuard";
-import { canResumeFailedInventoryOperation } from '../orderCompletion';
 //  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
 import type { CollectionName } from '../collections';
 import { COL } from '../collections';
@@ -835,23 +835,64 @@ export const writeMany = async (
  * 주문 상태·재고 작업을 DB에서 선점한다. 화면별 메모리 잠금만으로는 다른 탭의 동시 승인을
  * 막지 못하므로, 주문 문서의 현재 상태를 확인하고 작업 표식을 같은 트랜잭션에 기록한다.
  */
+/** 표시명 대신 최초 로그인 UID와 명시 회사를 검증한다. await 뒤에도 같은 계정이어야 한다. */
+export async function assertOrderInventoryGenerationActor(generation:OrderInventoryGeneration):Promise<void>{
+ validateOrderInventoryGeneration(generation);await authReady;
+ const user=auth.currentUser;if(!user||user.uid!==generation.actorUid)throw Error('주문 재고 작업 로그인 계정이 바뀌었습니다.');
+ const token=await user.getIdTokenResult();
+ if(typeof token.claims.employeeId!=='string'||!token.claims.employeeId.trim())throw Error('직원 계정의 주문 재고 작업만 처리할 수 있습니다.');
+ withClaimCompany('orders',{companyId:generation.companyId},{companyId:token.claims.companyId});
+ if(auth.currentUser?.uid!==generation.actorUid)throw Error('주문 재고 작업 로그인 계정이 바뀌었습니다.');
+}
 export const claimOrderInventoryOperation = async (
-  orderId: string,
-  expectedStatus: OrderStatus,
-  operation: NonNullable<Order['inventoryOperation']>,
-): Promise<Order> => runTransaction(db, async tx => {
-  const ref = doc(db, 'orders', orderId);
-  const snap = await tx.get(ref);
-  if (!snap.exists()) throw new Error('주문을 찾을 수 없습니다.');
-  const current = { id: snap.id, ...snap.data() } as Order;
-  if (current.status !== expectedStatus) throw new Error('주문 상태가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
-  if (current.inventoryOperation?.state === 'processing') throw new Error('이 주문의 재고 작업이 이미 진행 중입니다.');
-  if (current.inventoryOperation?.state === 'failed') {
-    // 품목 한 줄 작업은 원료·생산실적 ID가 결정적이라 같은 체크를 다시 누르면 이미 끝난 단계는
-    // duplicate로 건너뛴다. 반면 옛 주문 전체 상태 작업은 재실행 범위가 불명확하므로 계속 막는다.
-    const retryableLine = canResumeFailedInventoryOperation(current.inventoryOperation, operation);
-    if (!retryableLine) throw new Error('이 주문의 이전 재고 작업이 실패 상태입니다. 재고·로트·수불부를 점검한 뒤 작업 잠금을 해제해 주세요.');
-  }
-  tx.update(ref, { inventoryOperation: operation });
-  return { ...current, inventoryOperation: operation };
+ orderId:string,expectedStatus:OrderStatus,operation:NonNullable<Order['inventoryOperation']>,
+):Promise<Order>=>{
+ await authReady;const actorUid=auth.currentUser?.uid;
+ if(!actorUid)throw Error('주문 재고 작업은 직원 로그인이 필요합니다.');
+ if(operation.contractVersion!==undefined&&operation.contractVersion!==1)throw Error('주문 재고 세대 계약 버전이 잘못되었습니다.');
+ if(!['line','status'].includes(operation.kind??'')||operation.kind==='line'&&(typeof operation.lineId!=='string'||!operation.lineId.trim()))throw Error('주문 재고 작업 종류·줄 번호를 확인해 주세요.');
+ if(operation.contractVersion===1&&operation.actorUid!==actorUid)throw Error('최초 요청의 로그인 계정이 다릅니다.');
+ const requestedOperation:NonNullable<Order['inventoryOperation']>={...operation,contractVersion:1,actorUid};
+ return runTransaction(db,async tx=>{
+ const ref=doc(db,'orders',orderId),snap=await tx.get(ref);
+ if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
+ const current={...snap.data(),id:snap.id??orderId} as Order;
+ if(current.status!==expectedStatus)throw Error('주문 상태가 이미 변경되었습니다. 새로고침 후 다시 확인해 주세요.');
+ if(current.inventoryOperation?.state==='processing')throw Error('이 주문의 재고 작업이 이미 진행 중입니다.');
+ let selected=requestedOperation;
+ const previous=current.inventoryOperation;
+ if(requestedOperation.contractVersion===1){
+  const requested=generationFromOrder({...current,inventoryOperation:requestedOperation})!;await assertOrderInventoryGenerationActor(requested);
+  if(previous?.state==='failed'){
+   if(previous.contractVersion!==1)throw Error('옛 실패 작업은 새 세대로 자동 재개할 수 없습니다. 최초 원문을 확인해 주세요.');
+   const original=generationFromOrder(current)!;
+   if(original.actorUid!==requested.actorUid||previous.kind!==requestedOperation.kind||previous.lineId!==requestedOperation.lineId||previous.targetStatus!==requestedOperation.targetStatus)throw Error('이전 작업의 최초 계정·대상과 다른 재개입니다.');
+   selected={...previous,state:'processing'}; // ID·시각·실패 원문은 최초 세대 그대로다.
+  }else selected={...requestedOperation,stage:'claim'};
+ }
+ if(selected.contractVersion===1)await assertOrderInventoryGenerationActor(generationFromOrder({...current,inventoryOperation:selected})!);
+ tx.update(ref,{inventoryOperation:selected});return {...current,inventoryOperation:selected};
 });
+};
+/** 세대 표식이나 완료 증거는 호출자 패치로 만들거나 지우지 않는다. */
+export async function guardedUpdateOrderInventoryGeneration(generation:OrderInventoryGeneration,patch:Record<string,unknown>):Promise<void>{
+ if(Object.keys(patch).some(key=>['inventoryOperation','inventoryGenerationCompletion','id','companyId'].some(prefix=>key===prefix||key.startsWith(prefix+'.'))))throw Error('재고 작업 표식은 임의 패치할 수 없습니다.');
+ await assertOrderInventoryGenerationActor(generation);
+ await runTransaction(db,async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');assertOrderInventoryGeneration({...snap.data(),id:generation.orderId} as Order,generation);await assertOrderInventoryGenerationActor(generation);tx.update(ref,patch);});
+ await assertOrderInventoryGenerationActor(generation);
+}
+export async function markOrderInventoryGenerationFailed(generation:OrderInventoryGeneration,error:string,stage:NonNullable<Order['inventoryOperation']>['stage']):Promise<void>{
+ await assertOrderInventoryGenerationActor(generation);
+ await runTransaction(db,async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');const order={...snap.data(),id:generation.orderId} as Order;assertOrderInventoryGeneration(order,generation,{allowFailed:true});await assertOrderInventoryGenerationActor(generation);tx.update(ref,{inventoryOperation:{...order.inventoryOperation!,state:'failed',error:order.inventoryOperation?.error??error,stage:advanceOrderInventoryStage(order.inventoryOperation?.stage,stage)}});});
+ await assertOrderInventoryGenerationActor(generation);
+}
+/** 원료 거절·unknown은 해제 근거가 아니다. 시작 전 no-op과 이미 확정된 final marker만 확인한다. */
+export async function clearOrderInventoryGeneration(generation:OrderInventoryGeneration,options:{mode:'pre-reservation-noop'|'completed'}):Promise<void>{
+ await assertOrderInventoryGenerationActor(generation);
+ await runTransaction(db,async tx=>{const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');const order={...snap.data(),id:generation.orderId} as Order;
+  if(options.mode==='completed'){if(order.inventoryOperation!=null||!hasOrderInventoryGenerationCompletion(order,generation))throw Error('동일 세대 최종 완료를 확인하지 못했습니다.');await assertOrderInventoryGenerationActor(generation);return;}
+  if(options.mode!=='pre-reservation-noop')throw Error('잠금 해제 방식이 잘못되었습니다.');
+  assertOrderInventoryGeneration(order,generation);if(order.inventoryOperation?.stage!=='claim')throw Error('예약 이후 작업은 자동 해제하지 않습니다.');await assertOrderInventoryGenerationActor(generation);tx.update(ref,{inventoryOperation:null});
+ });
+ await assertOrderInventoryGenerationActor(generation);
+}

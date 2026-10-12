@@ -16,6 +16,13 @@ export interface OrderProductLotMutation {
 export class OrderInventoryPreconditionError extends Error {
   inventoryUnchanged = true;
 }
+/** 최초 생성한 로트와 저장 원문 재개가 같은 적용 함수를 소비한다. */
+export function productionProductLotMutation(itemId:string,lot:RawMaterialLot):OrderProductLotMutation{
+  return {itemId,apply:(lots,stock=0)=>{
+    if(lots.some(row=>row.id===lot.id))throw new Error('이미 반영된 생산 로트입니다. 주문 생산 기록을 확인해 주세요.');
+    return {lots:[...withCarryOverProductLot(lots,stock,lot.material??'',lot.unitKg??0,{id:`carry-${lot.id}`,createdAt:lot.createdAt,receivedDate:lot.receivedDate}),lot],consumedLots:[]};
+  }};
+}
 
 /** 재고 증가와 같은 transaction에 전달한다. 기존 로트 부족은 과거 생산으로 단정해 보충하지 않는다. */
 export function productionProductLots(allItems: Item[], deltas: ReadonlyMap<string, number>, operationId: string, inputs?: OrderUnitInputs) {
@@ -42,10 +49,7 @@ export function productionProductLots(allItems: Item[], deltas: ReadonlyMap<stri
     lot.id = `production-${operationId}-${itemId}`;
     lot.poId = operationId;
     traces.push({ itemId, lotId: lot.id, qty });
-    mutations.push({ itemId, apply: (lots, stock = 0) => {
-      if (lots.some(row => row.id === lot.id)) throw new Error('이미 반영된 생산 로트입니다. 주문 생산 기록을 확인해 주세요.');
-      return { lots: [...withCarryOverProductLot(lots, stock, item.name, unitKg, { id: `carry-${lot.id}`, createdAt: lot.createdAt, receivedDate: lot.receivedDate }), lot], consumedLots: [] };
-    } });
+    mutations.push(productionProductLotMutation(itemId,lot));
   }
   return { traces, mutations, consumedLots };
 }

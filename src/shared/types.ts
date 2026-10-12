@@ -335,8 +335,12 @@ export interface Order {
    */
   itemInventory?: Record<string, OrderItemInventoryState>;
   /** 여러 창에서 같은 주문 상태를 동시에 바꾸지 못하게 하는 짧은 작업 잠금. */
+  inventoryGenerationCompletion?: {generation:import('./orderInventoryGeneration').OrderInventoryGeneration;completedAt:string;requestText:string;consumedLotsText:string;consumedLots:NonNullable<Order['productConsumedLots']>};
   inventoryOperation?: {
     id: string;
+    /** 새 원료 batch·제품 확정이 같은 최초 세대를 확인한다. 옛 잠금은 자동 승격하지 않는다. */
+    contractVersion?: 1;
+    actorUid?: string;
     /** 품목 한 줄은 결정적 원료 작업번호로 중단 지점부터 재개할 수 있다. */
     kind?: 'line' | 'status';
     lineId?: string;
@@ -479,6 +483,7 @@ export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
  */
 export interface ItemInventoryReservation {
   operationId: string;
+  generation?:import('./orderInventoryGeneration').OrderInventoryGeneration;
   orderId: string;
   qty: number;
   createdAt: string;

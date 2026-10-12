@@ -5,9 +5,11 @@ import { companyOf } from '../../shared/types';
 import { baseRawName, toKg } from '../../constants/formula';
 import { isBoxStockItem, unpackQty, type OrderUnitInputs } from '../../shared/orderUnits';
 import { rawHolderByName, rawLedgerKeys } from '../../shared/rawHolder';
-import { operationDocId } from '../../shared/rawInventoryCore';
+import { operationDocId,type RawInventoryCommand,type RawInventoryMovement } from '../../shared/rawInventoryCore';
 import { lotMixSettingOf } from '../../shared/lotUtils';
 import { runRawInventoryJob, type JobCommandInput } from '../../shared/services/rawInventoryJob';
+import {orderRawBatchJobId,orderRawBatchOrderEvidence,type OrderRawBatchRequest} from '../../shared/orderRawBatchAttempt';
+import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 
 export type RawUsageKg = Record<string, number>;
 
@@ -46,6 +48,23 @@ export function rawLedgerDocIds(traces: readonly OrderRawInventoryTrace[]): stri
   return [...new Set(traces.flatMap(trace =>
     trace.ledgerId ? [trace.ledgerId] : trace.operationId ? [operationDocId(trace.operationId)] : [],
   ))];
+}
+
+/** 순차·새 일괄 경로가 같은 실제 영수증에서 주문 소비 이력을 만든다. */
+export function orderRawTracesFromMovement(command:RawInventoryCommand,movement:RawInventoryMovement):OrderRawInventoryTrace[]{
+ const base={material:command.materialSnapshot,rawItemId:command.rawItemId,operationId:command.operationId,ledgerId:movement.id};
+ if(command.kind==='ledger-consume')return [{...base,supplierName:'임가공',kg:kg3(Math.abs(movement.reportedDeltaKg)),ledgerOnly:true}];
+ return movement.lotChanges.filter(change=>change.deltaKg<0).map(change=>({...base,supplierName:change.supplierName??'',kg:kg3(-change.deltaKg),...(change.lotId?{lotId:change.lotId}:{}),...(change.lotNo?{lotNo:change.lotNo}:{}),...(change.receivedDate?{receivedDate:change.receivedDate}:{})}));
+}
+/** 여러 줄의 첫 계획을 한 원료 TX로 넘긴다. 재개 결과는 현재 계산값 대신 최초 plan을 돌려준다. */
+export async function applyOrderAtomicRawPlan(input:{order:Order;generation:OrderInventoryGeneration;selection:Record<string,unknown>;plan:Record<string,unknown>;commands:JobCommandInput[];legacyJobIds:string[]}){
+ const request:OrderRawBatchRequest={version:1,generation:input.generation,jobId:orderRawBatchJobId(input.generation),recordedAt:input.generation.startedAt,
+  business:{orderText:orderRawBatchOrderEvidence(input.order),selection:input.selection},plan:input.plan,legacyJobIds:input.legacyJobIds,
+  commands:input.commands.map(row=>({command:row.command,...(row.options?{options:row.options}:{})}))};
+ const {executeOrderRawBatch}=await import('../../shared/services/orderRawBatchService');
+ const result=await executeOrderRawBatch(request);
+ if(result.status!=='committed'&&result.status!=='duplicate')throw Error(result.reason??'원료 일괄 처리를 확정하지 못했습니다. 최초 요청을 보존했습니다.');
+ return {request:result.request,traces:result.results.map((row,index)=>orderRawTracesFromMovement(result.request.commands[index].command,row.movement))};
 }
 
 /**
@@ -163,34 +182,7 @@ export function createOrderRawInventoryOperations(deps: OrderRawInventoryDeps) {
 
     for (const { input, result } of results) {
       if (result.status === 'applied' || result.status === 'duplicate') {
-        const material = input.command.materialSnapshot;
-        if (input.command.kind === 'ledger-consume') {
-          // 로트가 없어도 operationId를 보관해야 생산 취소가 이 원장 줄을 reverse 한다.
-          traces.push({
-            material,
-            rawItemId: input.command.rawItemId,
-            operationId: input.command.operationId,
-            ledgerId: result.movement.id,
-            supplierName: '임가공',
-            kg: kg3(Math.abs(result.movement.reportedDeltaKg)),
-            ledgerOnly: true,
-          });
-          continue;
-        }
-        for (const change of result.movement.lotChanges) {
-          if (change.deltaKg >= 0) continue;
-          traces.push({
-            material,
-            rawItemId: input.command.rawItemId,
-            operationId: input.command.operationId,
-            ledgerId: result.movement.id,
-            supplierName: change.supplierName ?? '',
-            kg: kg3(-change.deltaKg),
-            ...(change.lotId ? { lotId: change.lotId } : {}),
-            ...(change.lotNo ? { lotNo: change.lotNo } : {}),
-            ...(change.receivedDate ? { receivedDate: change.receivedDate } : {}),
-          });
-        }
+        traces.push(...orderRawTracesFromMovement(input.command,result.movement));
         continue;
       }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OrderStatus, type Item, type Order, type RawMaterialLot } from '../../shared/types';
-import { combineProductLotMutations, createOrderProductLotOperations, productionProductLots, reverseProductionProductLots, OrderInventoryPreconditionError } from './orderProductLots';
+import { combineProductLotMutations, createOrderProductLotOperations,productionProductLotMutation, productionProductLots, reverseProductionProductLots, OrderInventoryPreconditionError } from './orderProductLots';
 
 const product = { id: 'p1', name: '완제품', type: 'product', unit: '개' } as Item;
 const order = {
@@ -116,3 +116,5 @@ it('소비 스냅샷 없는 과거 원로트가 사라졌으면 잔량을 추정
   try { restore.apply([]); throw new Error('거절이 필요합니다'); }
   catch (error) { expect(error).toBeInstanceOf(OrderInventoryPreconditionError); expect(error).toMatchObject({ inventoryUnchanged: true }); }
 });
+
+it('저장된 자체 생산 로트 재개도 최초 생성과 같은 공용 적용 함수를 쓴다',()=>{const built=productionProductLots([product],new Map([[product.id,2]]),'first');const original=built.mutations[0]!.apply([],0).lots.at(-1)!;const frozen={...original,createdAt:'2026-10-12T01:00:00Z',receivedDate:'2026-10-12'};const replay=productionProductLotMutation(product.id,frozen);expect(replay.apply([],3).lots.at(-1)).toEqual(frozen);expect(replay.apply([],3).lots.reduce((sum,lot)=>sum+(lot.qtyRemaining??0),0)).toBe(5);expect(()=>replay.apply([frozen],5)).toThrow('이미 반영');});
