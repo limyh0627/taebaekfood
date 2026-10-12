@@ -26,6 +26,33 @@ const conflict = (message: string): never => { throw new HttpsError('failed-prec
 const finite = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
 const purchaseCost = (line: Row) => costFromPurchaseLine(line, 'supply-first');
 const oldCompany = (row: Row) => row.companyId ?? 'taebaek';
+// 원가 이력은 관측 근거다. 발행 증명이나 실입고량으로 재해석하지 않는다.
+const purchaseCostBasis = (raw: Row, cost: Cost, item: Row) => {
+  if (!isRawPurchaseItem(item)) return undefined;
+  const sourceLineIndices = cost.sourceLineIndices ?? [cost.sourceLineIndex];
+  const sourceLines = sourceLineIndices.map(index => raw.items[index] as Row);
+  const calculatedCost = cost.sourceLineIndices
+    ? costFromPurchaseLines(sourceLines) : purchaseCost(sourceLines[0]);
+  if (calculatedCost === null) return undefined;
+  const lines = sourceLines.map((line, index) => {
+    const snapshot = readPurchaseUnitSnapshot(line);
+    const confirmedKg = snapshot?.inventoryQty ?? line.purchaseQuantityKg;
+    if (!finite(confirmedKg) || confirmedKg <= 0) return undefined;
+    return {
+      sourceLineIndex: sourceLineIndices[index], qty: line.qty, price: line.price,
+      supply: line.supply, tax: line.tax, total: line.total,
+      isTaxExempt: Boolean(line.isTaxExempt), confirmedKg,
+      ...(snapshot ? { kgBasis: 'registered-purchase-unit' as const, ...snapshot }
+        : { kgBasis: 'manual-purchase-kg' as const, purchaseQuantityKg: confirmedKg }),
+    };
+  });
+  if (lines.some(line => !line)) return undefined;
+  const supplyAmount = sourceLines.reduce((sum, line) => sum + line.supply, 0);
+  const confirmedKg = lines.reduce((sum, line) => sum + line!.confirmedKg, 0);
+  if (!finite(supplyAmount) || !finite(confirmedKg)) return undefined;
+  return { version: 1, kind: 'raw', baseUnit: 'kg', supplyAmount, confirmedKg,
+    calculatedCost, sourceLineIndices, lines };
+};
 const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
   : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value as Row).filter(([, v]) => v !== undefined)
@@ -135,8 +162,6 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const costRefs = costUpdates.map(c => db.collection('items').doc(c.itemId));
   const newPoItemRefs = newPo ? [...new Set(newPo.items.map(item => item.itemId as string))]
     .map(id => db.collection('items').doc(id)) : [];
-  const historyRefs = costUpdates.filter(c => c.beforeCost !== c.price)
-    .map(c => db.collection('itemCostHistory').doc(`${raw.id}_${c.itemId}_${c.sourceLineIndex}`));
   const cardNoQuery = newPo ? db.collection('purchaseOrders').where('cardNo', '==', newPo.cardNo) : null;
   const poNumberRef = (cardNo: string) => db.collection('appMeta').doc(`poCardNo_${companyId}_${cardNo}`);
   const poReservationRef = newPo ? poNumberRef(newPo.cardNo) : null;
@@ -146,11 +171,11 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const releaseGate = releaseGateRef(db);
   return db.runTransaction(async tx => {
     const recordedAt = new Date().toISOString();
-    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, histories, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems, unitRegistrations] = await Promise.all([
+    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems, unitRegistrations] = await Promise.all([
       tx.get(statementRef), tx.get(otherKindRef), tx.get(counterRef), tx.get(catchUpCounterRef), tx.get(partnerRef),
       Promise.all(orderRefs.map(ref => tx.get(ref))), Promise.all(poRefs.map(ref => tx.get(ref))),
       newPoRef ? tx.get(newPoRef) : Promise.resolve(null), Promise.all(costRefs.map(ref => tx.get(ref))),
-      Promise.all(newPoItemRefs.map(ref => tx.get(ref))), Promise.all(historyRefs.map(ref => tx.get(ref))),
+      Promise.all(newPoItemRefs.map(ref => tx.get(ref))),
       cardNoQuery ? tx.get(cardNoQuery) : Promise.resolve(null),
       poReservationRef ? tx.get(poReservationRef) : Promise.resolve(null),
       tx.get(accountCodesQuery),
@@ -199,13 +224,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
         if (!savedReservation?.exists || savedReservation.data()!.statementId !== raw.id
           || savedReservation.data()!.poId !== newPo.id) conflict('기존 발주카드 번호 예약이 변경되었습니다.');
       }
-      const historyCosts = costUpdates.filter(c => c.beforeCost !== c.price);
-      if (histories.some((snap, i) => !snap.exists || snap.data()!.sourceStatementId !== raw.id
-        || snap.data()!.itemId !== historyCosts[i].itemId
-        || snap.data()!.beforeCost !== historyCosts[i].beforeCost
-        || snap.data()!.afterCost !== historyCosts[i].price)) {
-        conflict('기존 전표의 원가 이력이 변경되었습니다.');
-      }
+      // 사용자가 수정·삭제할 수 있는 원가 이력은 발행 완료의 권위 있는 증명이 아니다.
       return { status: 'duplicate' as const, id: raw.id, docNo: saved.docNo };
     }
     unitLines.forEach((line: Row, index: number) => {
@@ -299,11 +318,13 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     if (poReservationRef && newPo) tx.create(poReservationRef, { companyId, cardNo: newPo.cardNo, statementId: raw.id, poId: newPo.id });
     costUpdates.forEach((cost, i) => {
       tx.update(costRefs[i], { cost: cost.price });
+      const basis = purchaseCostBasis(raw, cost, items[i].data()!);
       if (cost.beforeCost !== cost.price) tx.set(db.collection('itemCostHistory').doc(`${raw.id}_${cost.itemId}_${cost.sourceLineIndex}`), {
         companyId, itemId: cost.itemId, beforeCost: cost.beforeCost, afterCost: cost.price,
         effectiveAt: date, recordedAt, actorId,
         sourceStatementId: raw.id, sourceLineIndex: cost.sourceLineIndex,
         ...(cost.sourceLineIndices ? {sourceLineIndices:cost.sourceLineIndices} : {}),
+        ...(basis ? { purchaseCostBasis: basis } : {}),
       });
     });
     return { status: 'applied' as const, id: raw.id, docNo };

@@ -6,11 +6,11 @@ TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처�
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 696건. 동적 문서 ID도 미해석으로 보존하며, 미해석 365건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 694건. 동적 문서 ID도 미해석으로 보존하며, 미해석 364건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 39건과 정적 컬렉션의 동적 문서 경로 325건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 39건과 정적 컬렉션의 동적 문서 경로 324건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
@@ -449,39 +449,37 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`. 이 목록은 운영 DB 
 | functions/src/employeeLogin.ts:32 | server | doc | root / top-level-candidate | 미해석 | authLoginAttempts/{loginKey(username, request.rawRequest.ip ?? 'unknown')} |  |
 | functions/src/employeeLogin.ts:32 | server | collection | root / top-level | 1 | authLoginAttempts |  |
 | functions/src/employeeLogin.ts:39 | server | collection | root / top-level | 1 | employees |  |
-| functions/src/tradeStatementIssue.ts:124 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{raw.id} |  |
-| functions/src/tradeStatementIssue.ts:124 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/tradeStatementIssue.ts:125 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{raw.id} |  |
-| functions/src/tradeStatementIssue.ts:125 | server | collection | root / top-level | 1 | cashEntries |  |
-| functions/src/tradeStatementIssue.ts:126 | server | doc | root / top-level-candidate | 미해석 | appMeta/{voucherSequenceKey(companyId, date, '')} |  |
-| functions/src/tradeStatementIssue.ts:126 | server | collection | root / top-level | 1 | appMeta |  |
-| functions/src/tradeStatementIssue.ts:127 | server | doc | root / top-level-candidate | 미해석 | appMeta/{voucherSequenceKey(companyId, date, '추가')} |  |
-| functions/src/tradeStatementIssue.ts:127 | server | collection | root / top-level | 1 | appMeta |  |
-| functions/src/tradeStatementIssue.ts:128 | server | doc | root / top-level-candidate | 미해석 | partners/{raw.partnerId} |  |
-| functions/src/tradeStatementIssue.ts:128 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/tradeStatementIssue.ts:129 | server | doc | root / top-level-candidate | 미해석 | orders/{id} |  |
-| functions/src/tradeStatementIssue.ts:129 | server | collection | root / top-level | 1 | orders |  |
-| functions/src/tradeStatementIssue.ts:130 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{id} |  |
-| functions/src/tradeStatementIssue.ts:130 | server | collection | root / top-level | 1 | purchaseOrders |  |
-| functions/src/tradeStatementIssue.ts:131 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{newPo.id} |  |
-| functions/src/tradeStatementIssue.ts:131 | server | collection | root / top-level | 1 | purchaseOrders |  |
-| functions/src/tradeStatementIssue.ts:133 | server | doc | root / top-level-candidate | 미해석 | items/{id} |  |
-| functions/src/tradeStatementIssue.ts:133 | server | collection | root / top-level | 1 | items |  |
-| functions/src/tradeStatementIssue.ts:134 | server | doc | root / top-level-candidate | 미해석 | item_purchase_unit/{line.purchaseUnitId} |  |
-| functions/src/tradeStatementIssue.ts:134 | server | collection | root / top-level | 1 | item_purchase_unit |  |
-| functions/src/tradeStatementIssue.ts:135 | server | doc | root / top-level-candidate | 미해석 | items/{c.itemId} |  |
-| functions/src/tradeStatementIssue.ts:135 | server | collection | root / top-level | 1 | items |  |
-| functions/src/tradeStatementIssue.ts:137 | server | doc | root / top-level-candidate | 미해석 | items/{id} |  |
-| functions/src/tradeStatementIssue.ts:137 | server | collection | root / top-level | 1 | items |  |
-| functions/src/tradeStatementIssue.ts:139 | server | doc | root / top-level-candidate | 미해석 | itemCostHistory/{`${raw.id}_${c.itemId}_${c.sourceLineIndex}`} |  |
-| functions/src/tradeStatementIssue.ts:139 | server | collection | root / top-level | 1 | itemCostHistory |  |
-| functions/src/tradeStatementIssue.ts:140 | server | collection | root / top-level | 1 | purchaseOrders |  |
-| functions/src/tradeStatementIssue.ts:141 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`poCardNo_${companyId}_${cardNo}`} |  |
-| functions/src/tradeStatementIssue.ts:141 | server | collection | root / top-level | 1 | appMeta |  |
-| functions/src/tradeStatementIssue.ts:143 | server | collection | root / top-level | 1 | accountCodes |  |
-| functions/src/tradeStatementIssue.ts:145 | server | collection | root / top-level | 1 | issuedStatements |  |
-| functions/src/tradeStatementIssue.ts:302 | server | doc | root / top-level-candidate | 미해석 | itemCostHistory/{`${raw.id}_${cost.itemId}_${cost.sourceLineIndex}`} |  |
-| functions/src/tradeStatementIssue.ts:302 | server | collection | root / top-level | 1 | itemCostHistory |  |
+| functions/src/tradeStatementIssue.ts:151 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{raw.id} |  |
+| functions/src/tradeStatementIssue.ts:151 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/tradeStatementIssue.ts:152 | server | doc | root / top-level-candidate | 미해석 | cashEntries/{raw.id} |  |
+| functions/src/tradeStatementIssue.ts:152 | server | collection | root / top-level | 1 | cashEntries |  |
+| functions/src/tradeStatementIssue.ts:153 | server | doc | root / top-level-candidate | 미해석 | appMeta/{voucherSequenceKey(companyId, date, '')} |  |
+| functions/src/tradeStatementIssue.ts:153 | server | collection | root / top-level | 1 | appMeta |  |
+| functions/src/tradeStatementIssue.ts:154 | server | doc | root / top-level-candidate | 미해석 | appMeta/{voucherSequenceKey(companyId, date, '추가')} |  |
+| functions/src/tradeStatementIssue.ts:154 | server | collection | root / top-level | 1 | appMeta |  |
+| functions/src/tradeStatementIssue.ts:155 | server | doc | root / top-level-candidate | 미해석 | partners/{raw.partnerId} |  |
+| functions/src/tradeStatementIssue.ts:155 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/tradeStatementIssue.ts:156 | server | doc | root / top-level-candidate | 미해석 | orders/{id} |  |
+| functions/src/tradeStatementIssue.ts:156 | server | collection | root / top-level | 1 | orders |  |
+| functions/src/tradeStatementIssue.ts:157 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{id} |  |
+| functions/src/tradeStatementIssue.ts:157 | server | collection | root / top-level | 1 | purchaseOrders |  |
+| functions/src/tradeStatementIssue.ts:158 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{newPo.id} |  |
+| functions/src/tradeStatementIssue.ts:158 | server | collection | root / top-level | 1 | purchaseOrders |  |
+| functions/src/tradeStatementIssue.ts:160 | server | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| functions/src/tradeStatementIssue.ts:160 | server | collection | root / top-level | 1 | items |  |
+| functions/src/tradeStatementIssue.ts:161 | server | doc | root / top-level-candidate | 미해석 | item_purchase_unit/{line.purchaseUnitId} |  |
+| functions/src/tradeStatementIssue.ts:161 | server | collection | root / top-level | 1 | item_purchase_unit |  |
+| functions/src/tradeStatementIssue.ts:162 | server | doc | root / top-level-candidate | 미해석 | items/{c.itemId} |  |
+| functions/src/tradeStatementIssue.ts:162 | server | collection | root / top-level | 1 | items |  |
+| functions/src/tradeStatementIssue.ts:164 | server | doc | root / top-level-candidate | 미해석 | items/{id} |  |
+| functions/src/tradeStatementIssue.ts:164 | server | collection | root / top-level | 1 | items |  |
+| functions/src/tradeStatementIssue.ts:165 | server | collection | root / top-level | 1 | purchaseOrders |  |
+| functions/src/tradeStatementIssue.ts:166 | server | doc | root / top-level-candidate | 미해석 | appMeta/{`poCardNo_${companyId}_${cardNo}`} |  |
+| functions/src/tradeStatementIssue.ts:166 | server | collection | root / top-level | 1 | appMeta |  |
+| functions/src/tradeStatementIssue.ts:168 | server | collection | root / top-level | 1 | accountCodes |  |
+| functions/src/tradeStatementIssue.ts:170 | server | collection | root / top-level | 1 | issuedStatements |  |
+| functions/src/tradeStatementIssue.ts:322 | server | doc | root / top-level-candidate | 미해석 | itemCostHistory/{`${raw.id}_${cost.itemId}_${cost.sourceLineIndex}`} |  |
+| functions/src/tradeStatementIssue.ts:322 | server | collection | root / top-level | 1 | itemCostHistory |  |
 | functions/src/oemFeeVoucher.ts:67 | server | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
 | functions/src/oemFeeVoucher.ts:67 | server | collection | root / top-level | 1 | purchaseOrders |  |
 | functions/src/oemFeeVoucher.ts:68 | server | doc | root / top-level-candidate | 미해석 | issuedStatements/{`OEMFEE-${poId}`} |  |
@@ -4298,217 +4296,224 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | functions/src/employeeLogin.ts:51 | employee?.passwordHash | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/employeeLogin.ts:80 | error?.code | any | any-receiver |
 | functions/src/tradeStatementIssue.ts:28 | row.companyId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:53 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:53 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:54 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:55 | raw.tradeDate | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:59 | raw.companyId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:59 | raw.companyId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:60 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:60 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:61 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:61 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:63 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:65 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:68 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:68 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:68 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:69 | line.accountCode | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:69 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:70 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:70 | line.price | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:70 | line.price | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:70 | line.supply | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:71 | line.tax | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:71 | line.total | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:72 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:72 | line.price | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:73 | line.isTaxExempt | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:74 | line.total | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:74 | line.supply | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:74 | line.tax | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:76 | raw.items.filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:76 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:79 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:79 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:79 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:80 | line.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:80 | line.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:80 | raw.items.indexOf | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:80 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:81 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:81 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:85 | raw.items.filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:85 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:85 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:86 | kgLines.some | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:86 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:86 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:86 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:87 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:87 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:87 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:89 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:90 | raw.items.some | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:90 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:90 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:90 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:90 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:90 | item.quantity | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:91 | item.quantity | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:91 | item.quantity | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:91 | item.isBox | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:93 | item.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:94 | line.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:98 | raw.items.reduce | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:98 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:98 | line.supply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:33 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:39 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:42 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:42 | line.price | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:43 | line.supply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:43 | line.tax | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:43 | line.total | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:44 | line.isTaxExempt | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:50 | line.supply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:80 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:80 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:81 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:82 | raw.tradeDate | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:86 | raw.companyId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:86 | raw.companyId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:87 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:87 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:88 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:88 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:90 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:92 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:95 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:95 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:95 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:96 | line.accountCode | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:96 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:97 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:97 | line.price | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:97 | line.price | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:97 | line.supply | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:98 | line.tax | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:98 | line.total | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:99 | raw.totalSupply | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:99 | raw.totalTax | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:99 | raw.totalAmount | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:100 | raw.totalAmount | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:100 | sums.some | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:100 | raw.totalSupply | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:100 | raw.totalTax | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:100 | raw.totalAmount | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:101 | raw.orderId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:102 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:103 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:99 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:99 | line.price | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:100 | line.isTaxExempt | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:101 | line.total | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:101 | line.supply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:101 | line.tax | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:103 | raw.items.filter | any | any-receiver |
 | functions/src/tradeStatementIssue.ts:103 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:103 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:105 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:106 | line.itemId | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:107 | raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1).filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:107 | raw.items.map | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:106 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:106 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:106 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:107 | line.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:107 | line.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:107 | raw.items.indexOf | any | any-receiver |
 | functions/src/tradeStatementIssue.ts:107 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:107 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:110 | raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1).filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:110 | raw.items.map | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:110 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:110 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:113 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:115 | allUnitIndexes.length | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:115 | raw.items.filter((row:Row)=>row.itemId===cost.itemId).length | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:115 | raw.items.filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:115 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:115 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:115 | line.purchaseQuantityKg | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:116 | raw.items.some | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:116 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:116 | candidate.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:124 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:125 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:128 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:132 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:134 | line.purchaseUnitId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:136 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:139 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:145 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:167 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:168 | row.issueOperationId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:168 | row.issuePrefix | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:169 | row.issuePayloadHash | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:169 | row.issueStatementHash | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:170 | row.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:170 | row.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:170 | row.issueVoucherNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:170 | row.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:171 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:171 | deleted.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:174 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:175 | original.companyId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:175 | original.issueOperationId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:176 | original.issuePrefix | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:176 | original.issuePayloadHash | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:177 | original.issueStatementHash | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:178 | original.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:178 | original.docNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:178 | original.issueVoucherNo | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:184 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:185 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:189 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:191 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:108 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:108 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:112 | raw.items.filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:112 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:112 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:113 | kgLines.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:113 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:113 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:113 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:114 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:114 | line.purchaseQuantityKg | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:114 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:116 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:117 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:117 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:117 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:117 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:117 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:117 | item.quantity | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:118 | item.quantity | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:118 | item.quantity | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:118 | item.isBox | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:120 | item.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:121 | line.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:125 | raw.items.reduce | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:125 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:125 | line.supply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:125 | line.tax | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:125 | line.total | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:126 | raw.totalSupply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:126 | raw.totalTax | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:126 | raw.totalAmount | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:127 | raw.totalAmount | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:127 | sums.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:127 | raw.totalSupply | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:127 | raw.totalTax | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:127 | raw.totalAmount | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:128 | raw.orderId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:129 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:130 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:130 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:130 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:132 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:133 | line.itemId | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:134 | raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1).filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:134 | raw.items.map | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:134 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:134 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:137 | raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1).filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:137 | raw.items.map | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:137 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:137 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:140 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:142 | allUnitIndexes.length | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:142 | raw.items.filter((row:Row)=>row.itemId===cost.itemId).length | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:142 | raw.items.filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:142 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:142 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:142 | line.purchaseQuantityKg | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:143 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:143 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:143 | candidate.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:151 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:152 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:155 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:159 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:161 | line.purchaseUnitId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:163 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:170 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:192 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:193 | row.issueOperationId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:193 | row.issuePrefix | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:194 | row.issuePayloadHash | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:194 | row.issueStatementHash | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:195 | row.docNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:195 | row.docNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:195 | row.issueVoucherNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:195 | row.docNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:196 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:196 | deleted.docNo | Row | property-symbol-unresolved |
 | functions/src/tradeStatementIssue.ts:199 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:203 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:209 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:216 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:216 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:221 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:222 | raw.items.filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:222 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:222 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:222 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:222 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:222 | row.quantity | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:223 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:223 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:223 | raw.items[row.sourceLineIndex]?.itemId | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:223 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:223 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:223 | row.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:224 | raw.items[row.sourceLineIndex]?.qty | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:224 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:224 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:224 | row.quantity | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:224 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:224 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:225 | matching.length | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:225 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:225 | row.sourceLineIndex | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:225 | matching[0].sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:226 | matching.length | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:230 | po.data()?.items | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:230 | po.data()?.itemId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:230 | po.data()?.quantity | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:232 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:233 | raw.items.filter | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:233 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:233 | line.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:233 | row.itemId | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:233 | line.qty | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:233 | row.quantity | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:234 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:234 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:234 | raw.items[row.sourceLineIndex]?.itemId | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:234 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:234 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:234 | row.itemId | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:235 | raw.items[row.sourceLineIndex]?.qty | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:235 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:235 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:235 | row.quantity | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:235 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:235 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:236 | matching.some | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:237 | matching.length | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:237 | row.sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:237 | matching[0].sourceLineIndex | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:243 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:200 | original.companyId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:200 | original.issueOperationId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:201 | original.issuePrefix | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:201 | original.issuePayloadHash | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:202 | original.issueStatementHash | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:203 | original.docNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:203 | original.docNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:203 | original.issueVoucherNo | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:209 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:210 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:214 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:216 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:224 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:228 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:235 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:235 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:240 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:241 | raw.items.filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:241 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:241 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:241 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:241 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:241 | row.quantity | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:242 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:242 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:242 | raw.items[row.sourceLineIndex]?.itemId | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:242 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:242 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:242 | row.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | raw.items[row.sourceLineIndex]?.qty | any | any-receiver |
 | functions/src/tradeStatementIssue.ts:243 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:243 | line.accountCode | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:246 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:249 | raw.type | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:249 | snap.data()?.purpose | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:252 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:257 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:267 | item.itemId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:268 | item.itemName | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:268 | item.unit | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:274 | raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg | any | any-receiver |
-| functions/src/tradeStatementIssue.ts:274 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:275 | raw.items | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:289 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:291 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:292 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:295 | raw.partnerId | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:295 | raw.partnerName | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:297 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:299 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:302 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:305 | raw.id | Row | property-symbol-unresolved |
-| functions/src/tradeStatementIssue.ts:309 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | row.quantity | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:243 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:244 | matching.length | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:244 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:244 | row.sourceLineIndex | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:244 | matching[0].sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:245 | matching.length | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:249 | po.data()?.items | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:249 | po.data()?.itemId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:249 | po.data()?.quantity | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:251 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:252 | raw.items.filter | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:252 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:252 | line.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:252 | row.itemId | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:252 | line.qty | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:252 | row.quantity | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:253 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:253 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:253 | raw.items[row.sourceLineIndex]?.itemId | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:253 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:253 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:253 | row.itemId | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:254 | raw.items[row.sourceLineIndex]?.qty | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:254 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:254 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:254 | row.quantity | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:254 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:254 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:255 | matching.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:256 | matching.length | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:256 | row.sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:256 | matching[0].sourceLineIndex | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:262 | raw.items.some | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:262 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:262 | line.accountCode | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:265 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:268 | raw.type | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:268 | snap.data()?.purpose | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:271 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:276 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:286 | item.itemId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:287 | item.itemName | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:287 | item.unit | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:293 | raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg | any | any-receiver |
+| functions/src/tradeStatementIssue.ts:293 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:294 | raw.items | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:308 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:310 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:311 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:314 | raw.partnerId | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:314 | raw.partnerName | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:316 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:318 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:322 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:325 | raw.id | Row | property-symbol-unresolved |
+| functions/src/tradeStatementIssue.ts:330 | raw.id | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:14 | row.companyId | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:46 | stmt.id | Row | property-symbol-unresolved |
 | functions/src/oemFeeVoucher.ts:46 | stmt.orderId | Row | property-symbol-unresolved |

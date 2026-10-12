@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-12T04:35:26.062Z",
+  "generatedAt": "2026-10-12T05:15:18.749Z",
   "sourceFiles": 468,
-  "unresolvedAccesses": 2526,
+  "unresolvedAccesses": 2533,
   "unresolvedPropertyAccesses": [
     {
       "location": "functions/src/shared/oemBatchCost.ts:104",
@@ -13549,455 +13549,210 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:53",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:53",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:54",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:55",
-      "expression": "raw.tradeDate",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:59",
-      "expression": "raw.companyId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:59",
-      "expression": "raw.companyId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:60",
-      "expression": "raw.type",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:60",
-      "expression": "raw.type",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:61",
-      "expression": "raw.partnerId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:61",
-      "expression": "raw.partnerId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:63",
-      "expression": "raw.type",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:65",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:68",
+      "location": "functions/src/tradeStatementIssue.ts:33",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:68",
-      "expression": "raw.items",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:68",
-      "expression": "raw.items",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:69",
-      "expression": "line.accountCode",
+      "location": "functions/src/tradeStatementIssue.ts:39",
+      "expression": "line.purchaseQuantityKg",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:69",
+      "location": "functions/src/tradeStatementIssue.ts:42",
       "expression": "line.qty",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:70",
-      "expression": "line.qty",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:70",
+      "location": "functions/src/tradeStatementIssue.ts:42",
       "expression": "line.price",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:70",
-      "expression": "line.price",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:70",
+      "location": "functions/src/tradeStatementIssue.ts:43",
       "expression": "line.supply",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:71",
+      "location": "functions/src/tradeStatementIssue.ts:43",
       "expression": "line.tax",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:71",
+      "location": "functions/src/tradeStatementIssue.ts:43",
       "expression": "line.total",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:72",
-      "expression": "line.qty",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:72",
-      "expression": "line.price",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:73",
+      "location": "functions/src/tradeStatementIssue.ts:44",
       "expression": "line.isTaxExempt",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:74",
-      "expression": "line.total",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:74",
+      "location": "functions/src/tradeStatementIssue.ts:50",
       "expression": "line.supply",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:74",
-      "expression": "line.tax",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:76",
-      "expression": "raw.items.filter",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:76",
-      "expression": "raw.items",
+      "location": "functions/src/tradeStatementIssue.ts:80",
+      "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:79",
-      "expression": "raw.type",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:79",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:79",
-      "expression": "line.qty",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
       "location": "functions/src/tradeStatementIssue.ts:80",
-      "expression": "line.sourceLineIndex",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:80",
-      "expression": "line.sourceLineIndex",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:80",
-      "expression": "raw.items.indexOf",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:80",
-      "expression": "raw.items",
+      "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:81",
-      "expression": "line.purchaseQuantityKg",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:81",
-      "expression": "line.purchaseQuantityKg",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:85",
-      "expression": "raw.items.filter",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:85",
-      "expression": "raw.items",
+      "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:85",
-      "expression": "line.purchaseQuantityKg",
-      "receiverExpression": "line",
+      "location": "functions/src/tradeStatementIssue.ts:82",
+      "expression": "raw.tradeDate",
+      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:86",
-      "expression": "kgLines.some",
-      "receiverExpression": "kgLines",
-      "receiverType": "any",
-      "reason": "any-receiver"
+      "expression": "raw.companyId",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:86",
+      "expression": "raw.companyId",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:87",
       "expression": "raw.type",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:86",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:86",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
       "location": "functions/src/tradeStatementIssue.ts:87",
-      "expression": "line.purchaseQuantityKg",
-      "receiverExpression": "line",
+      "expression": "raw.type",
+      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:87",
-      "expression": "line.purchaseQuantityKg",
-      "receiverExpression": "line",
+      "location": "functions/src/tradeStatementIssue.ts:88",
+      "expression": "raw.partnerId",
+      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:87",
-      "expression": "line.qty",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:89",
-      "expression": "item.itemId",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "raw.items.some",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "raw.items",
+      "location": "functions/src/tradeStatementIssue.ts:88",
+      "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
+      "expression": "raw.type",
+      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "item.itemId",
-      "receiverExpression": "item",
+      "location": "functions/src/tradeStatementIssue.ts:92",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "line.qty",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:90",
-      "expression": "item.quantity",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:91",
-      "expression": "item.quantity",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:91",
-      "expression": "item.quantity",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:91",
-      "expression": "item.isBox",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:93",
-      "expression": "item.sourceLineIndex",
-      "receiverExpression": "item",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:94",
-      "expression": "line.sourceLineIndex",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:98",
-      "expression": "raw.items.reduce",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:98",
+      "location": "functions/src/tradeStatementIssue.ts:95",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:98",
+      "location": "functions/src/tradeStatementIssue.ts:95",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:95",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:96",
+      "expression": "line.accountCode",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:96",
+      "expression": "line.qty",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:97",
+      "expression": "line.qty",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:97",
+      "expression": "line.price",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:97",
+      "expression": "line.price",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:97",
       "expression": "line.supply",
       "receiverExpression": "line",
       "receiverType": "Row",
@@ -14019,77 +13774,49 @@
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:99",
-      "expression": "raw.totalSupply",
-      "receiverExpression": "raw",
+      "expression": "line.qty",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:99",
-      "expression": "raw.totalTax",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:99",
-      "expression": "raw.totalAmount",
-      "receiverExpression": "raw",
+      "expression": "line.price",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:100",
-      "expression": "raw.totalAmount",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:100",
-      "expression": "sums.some",
-      "receiverExpression": "sums",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:100",
-      "expression": "raw.totalSupply",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:100",
-      "expression": "raw.totalTax",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:100",
-      "expression": "raw.totalAmount",
-      "receiverExpression": "raw",
+      "expression": "line.isTaxExempt",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:101",
-      "expression": "raw.orderId",
-      "receiverExpression": "raw",
+      "expression": "line.total",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:102",
-      "expression": "raw.type",
-      "receiverExpression": "raw",
+      "location": "functions/src/tradeStatementIssue.ts:101",
+      "expression": "line.supply",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:101",
+      "expression": "line.tax",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:103",
-      "expression": "raw.items.some",
+      "expression": "raw.items.filter",
       "receiverExpression": "raw.items",
       "receiverType": "any",
       "reason": "any-receiver"
@@ -14102,15 +13829,8 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:103",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:105",
-      "expression": "raw.items",
+      "location": "functions/src/tradeStatementIssue.ts:106",
+      "expression": "raw.type",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
@@ -14119,19 +13839,33 @@
       "location": "functions/src/tradeStatementIssue.ts:106",
       "expression": "line.itemId",
       "receiverExpression": "line",
-      "receiverType": "any",
-      "reason": "any-receiver"
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:106",
+      "expression": "line.qty",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:107",
-      "expression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1).filter",
-      "receiverExpression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1)",
-      "receiverType": "any",
-      "reason": "any-receiver"
+      "expression": "line.sourceLineIndex",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:107",
-      "expression": "raw.items.map",
+      "expression": "line.sourceLineIndex",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:107",
+      "expression": "raw.items.indexOf",
       "receiverExpression": "raw.items",
       "receiverType": "any",
       "reason": "any-receiver"
@@ -14144,331 +13878,562 @@
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:107",
-      "expression": "row.itemId",
-      "receiverExpression": "row",
+      "location": "functions/src/tradeStatementIssue.ts:108",
+      "expression": "line.purchaseQuantityKg",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:110",
-      "expression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1).filter",
-      "receiverExpression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1)",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:110",
-      "expression": "raw.items.map",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:110",
-      "expression": "raw.items",
-      "receiverExpression": "raw",
+      "location": "functions/src/tradeStatementIssue.ts:108",
+      "expression": "line.purchaseQuantityKg",
+      "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:110",
-      "expression": "row.itemId",
-      "receiverExpression": "row",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:113",
-      "expression": "raw.items",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:115",
-      "expression": "allUnitIndexes.length",
-      "receiverExpression": "allUnitIndexes",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:115",
-      "expression": "raw.items.filter((row:Row)=>row.itemId===cost.itemId).length",
-      "receiverExpression": "raw.items.filter((row:Row)=>row.itemId===cost.itemId)",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:115",
+      "location": "functions/src/tradeStatementIssue.ts:112",
       "expression": "raw.items.filter",
       "receiverExpression": "raw.items",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:115",
+      "location": "functions/src/tradeStatementIssue.ts:112",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:115",
-      "expression": "row.itemId",
-      "receiverExpression": "row",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:115",
+      "location": "functions/src/tradeStatementIssue.ts:112",
       "expression": "line.purchaseQuantityKg",
       "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:113",
+      "expression": "kgLines.some",
+      "receiverExpression": "kgLines",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:116",
-      "expression": "raw.items.some",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:116",
-      "expression": "raw.items",
+      "location": "functions/src/tradeStatementIssue.ts:113",
+      "expression": "raw.type",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:116",
-      "expression": "candidate.itemId",
-      "receiverExpression": "candidate",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:124",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:125",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:128",
-      "expression": "raw.partnerId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:132",
+      "location": "functions/src/tradeStatementIssue.ts:113",
       "expression": "line.itemId",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:134",
-      "expression": "line.purchaseUnitId",
+      "location": "functions/src/tradeStatementIssue.ts:113",
+      "expression": "line.itemId",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:136",
+      "location": "functions/src/tradeStatementIssue.ts:114",
+      "expression": "line.purchaseQuantityKg",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:114",
+      "expression": "line.purchaseQuantityKg",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:114",
+      "expression": "line.qty",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:116",
       "expression": "item.itemId",
       "receiverExpression": "item",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:139",
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "raw.items.some",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "line.itemId",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "item.itemId",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "line.qty",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:117",
+      "expression": "item.quantity",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:118",
+      "expression": "item.quantity",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:118",
+      "expression": "item.quantity",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:118",
+      "expression": "item.isBox",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:120",
+      "expression": "item.sourceLineIndex",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:121",
+      "expression": "line.sourceLineIndex",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:125",
+      "expression": "raw.items.reduce",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:125",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:125",
+      "expression": "line.supply",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:125",
+      "expression": "line.tax",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:125",
+      "expression": "line.total",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:126",
+      "expression": "raw.totalSupply",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:126",
+      "expression": "raw.totalTax",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:126",
+      "expression": "raw.totalAmount",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:127",
+      "expression": "raw.totalAmount",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:127",
+      "expression": "sums.some",
+      "receiverExpression": "sums",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:127",
+      "expression": "raw.totalSupply",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:127",
+      "expression": "raw.totalTax",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:127",
+      "expression": "raw.totalAmount",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:128",
+      "expression": "raw.orderId",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:129",
+      "expression": "raw.type",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:130",
+      "expression": "raw.items.some",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:130",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:130",
+      "expression": "line.itemId",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:132",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:133",
+      "expression": "line.itemId",
+      "receiverExpression": "line",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:134",
+      "expression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1).filter",
+      "receiverExpression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId && readPurchaseUnitSnapshot(row)?index:-1)",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:134",
+      "expression": "raw.items.map",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:134",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:134",
+      "expression": "row.itemId",
+      "receiverExpression": "row",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:137",
+      "expression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1).filter",
+      "receiverExpression": "raw.items.map((row:Row,index:number)=>row.itemId===cost.itemId?index:-1)",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:137",
+      "expression": "raw.items.map",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:137",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:137",
+      "expression": "row.itemId",
+      "receiverExpression": "row",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:140",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "allUnitIndexes.length",
+      "receiverExpression": "allUnitIndexes",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "raw.items.filter((row:Row)=>row.itemId===cost.itemId).length",
+      "receiverExpression": "raw.items.filter((row:Row)=>row.itemId===cost.itemId)",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "raw.items.filter",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "row.itemId",
+      "receiverExpression": "row",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:142",
+      "expression": "line.purchaseQuantityKg",
+      "receiverExpression": "line",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:143",
+      "expression": "raw.items.some",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:143",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:143",
+      "expression": "candidate.itemId",
+      "receiverExpression": "candidate",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:151",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:145",
+      "location": "functions/src/tradeStatementIssue.ts:152",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:155",
       "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:167",
+      "location": "functions/src/tradeStatementIssue.ts:159",
+      "expression": "line.itemId",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:161",
+      "expression": "line.purchaseUnitId",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:163",
+      "expression": "item.itemId",
+      "receiverExpression": "item",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:170",
+      "expression": "raw.partnerId",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:192",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:168",
+      "location": "functions/src/tradeStatementIssue.ts:193",
       "expression": "row.issueOperationId",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:168",
+      "location": "functions/src/tradeStatementIssue.ts:193",
       "expression": "row.issuePrefix",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:169",
+      "location": "functions/src/tradeStatementIssue.ts:194",
       "expression": "row.issuePayloadHash",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:169",
+      "location": "functions/src/tradeStatementIssue.ts:194",
       "expression": "row.issueStatementHash",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:170",
+      "location": "functions/src/tradeStatementIssue.ts:195",
       "expression": "row.docNo",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:170",
+      "location": "functions/src/tradeStatementIssue.ts:195",
       "expression": "row.docNo",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:170",
+      "location": "functions/src/tradeStatementIssue.ts:195",
       "expression": "row.issueVoucherNo",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:170",
+      "location": "functions/src/tradeStatementIssue.ts:195",
       "expression": "row.docNo",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:171",
+      "location": "functions/src/tradeStatementIssue.ts:196",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:171",
+      "location": "functions/src/tradeStatementIssue.ts:196",
       "expression": "deleted.docNo",
       "receiverExpression": "deleted",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:174",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:175",
-      "expression": "original.companyId",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:175",
-      "expression": "original.issueOperationId",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:176",
-      "expression": "original.issuePrefix",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:176",
-      "expression": "original.issuePayloadHash",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:177",
-      "expression": "original.issueStatementHash",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:178",
-      "expression": "original.docNo",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:178",
-      "expression": "original.docNo",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:178",
-      "expression": "original.issueVoucherNo",
-      "receiverExpression": "original",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:184",
-      "expression": "raw.partnerId",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:185",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:189",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:191",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
@@ -14480,546 +14445,630 @@
       "reason": "property-symbol-unresolved"
     },
     {
+      "location": "functions/src/tradeStatementIssue.ts:200",
+      "expression": "original.companyId",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:200",
+      "expression": "original.issueOperationId",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:201",
+      "expression": "original.issuePrefix",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:201",
+      "expression": "original.issuePayloadHash",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:202",
+      "expression": "original.issueStatementHash",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
       "location": "functions/src/tradeStatementIssue.ts:203",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
+      "expression": "original.docNo",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:203",
+      "expression": "original.docNo",
+      "receiverExpression": "original",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:203",
+      "expression": "original.issueVoucherNo",
+      "receiverExpression": "original",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
       "location": "functions/src/tradeStatementIssue.ts:209",
-      "expression": "raw.id",
-      "receiverExpression": "raw",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:216",
-      "expression": "line.itemId",
-      "receiverExpression": "line",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:216",
       "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:221",
-      "expression": "row.sourceLineIndex",
-      "receiverExpression": "row",
-      "receiverType": "Row",
-      "reason": "property-symbol-unresolved"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:222",
-      "expression": "raw.items.filter",
-      "receiverExpression": "raw.items",
-      "receiverType": "any",
-      "reason": "any-receiver"
-    },
-    {
-      "location": "functions/src/tradeStatementIssue.ts:222",
-      "expression": "raw.items",
+      "location": "functions/src/tradeStatementIssue.ts:210",
+      "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:222",
+      "location": "functions/src/tradeStatementIssue.ts:214",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:216",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:224",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:228",
+      "expression": "raw.id",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:235",
       "expression": "line.itemId",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:222",
+      "location": "functions/src/tradeStatementIssue.ts:235",
+      "expression": "raw.partnerId",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:240",
+      "expression": "row.sourceLineIndex",
+      "receiverExpression": "row",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:241",
+      "expression": "raw.items.filter",
+      "receiverExpression": "raw.items",
+      "receiverType": "any",
+      "reason": "any-receiver"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:241",
+      "expression": "raw.items",
+      "receiverExpression": "raw",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:241",
+      "expression": "line.itemId",
+      "receiverExpression": "line",
+      "receiverType": "Row",
+      "reason": "property-symbol-unresolved"
+    },
+    {
+      "location": "functions/src/tradeStatementIssue.ts:241",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:222",
+      "location": "functions/src/tradeStatementIssue.ts:241",
       "expression": "line.qty",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:222",
+      "location": "functions/src/tradeStatementIssue.ts:241",
       "expression": "row.quantity",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "raw.items[row.sourceLineIndex]?.itemId",
       "receiverExpression": "raw.items[row.sourceLineIndex]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:223",
+      "location": "functions/src/tradeStatementIssue.ts:242",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "raw.items[row.sourceLineIndex]?.qty",
       "receiverExpression": "raw.items[row.sourceLineIndex]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "row.quantity",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:224",
+      "location": "functions/src/tradeStatementIssue.ts:243",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:225",
+      "location": "functions/src/tradeStatementIssue.ts:244",
       "expression": "matching.length",
       "receiverExpression": "matching",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:225",
+      "location": "functions/src/tradeStatementIssue.ts:244",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:225",
+      "location": "functions/src/tradeStatementIssue.ts:244",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:225",
+      "location": "functions/src/tradeStatementIssue.ts:244",
       "expression": "matching[0].sourceLineIndex",
       "receiverExpression": "matching[0]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:226",
+      "location": "functions/src/tradeStatementIssue.ts:245",
       "expression": "matching.length",
       "receiverExpression": "matching",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:230",
+      "location": "functions/src/tradeStatementIssue.ts:249",
       "expression": "po.data()?.items",
       "receiverExpression": "po.data()",
       "receiverType": "DocumentData | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:230",
+      "location": "functions/src/tradeStatementIssue.ts:249",
       "expression": "po.data()?.itemId",
       "receiverExpression": "po.data()",
       "receiverType": "DocumentData | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:230",
+      "location": "functions/src/tradeStatementIssue.ts:249",
       "expression": "po.data()?.quantity",
       "receiverExpression": "po.data()",
       "receiverType": "DocumentData | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:232",
+      "location": "functions/src/tradeStatementIssue.ts:251",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "raw.items.filter",
       "receiverExpression": "raw.items",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "line.itemId",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "line.qty",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:233",
+      "location": "functions/src/tradeStatementIssue.ts:252",
       "expression": "row.quantity",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "raw.items[row.sourceLineIndex]?.itemId",
       "receiverExpression": "raw.items[row.sourceLineIndex]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:234",
+      "location": "functions/src/tradeStatementIssue.ts:253",
       "expression": "row.itemId",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "raw.items[row.sourceLineIndex]?.qty",
       "receiverExpression": "raw.items[row.sourceLineIndex]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "row.quantity",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:235",
+      "location": "functions/src/tradeStatementIssue.ts:254",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:236",
+      "location": "functions/src/tradeStatementIssue.ts:255",
       "expression": "matching.some",
       "receiverExpression": "matching",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:237",
+      "location": "functions/src/tradeStatementIssue.ts:256",
       "expression": "matching.length",
       "receiverExpression": "matching",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:237",
+      "location": "functions/src/tradeStatementIssue.ts:256",
       "expression": "row.sourceLineIndex",
       "receiverExpression": "row",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:237",
+      "location": "functions/src/tradeStatementIssue.ts:256",
       "expression": "matching[0].sourceLineIndex",
       "receiverExpression": "matching[0]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:243",
+      "location": "functions/src/tradeStatementIssue.ts:262",
       "expression": "raw.items.some",
       "receiverExpression": "raw.items",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:243",
+      "location": "functions/src/tradeStatementIssue.ts:262",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:243",
+      "location": "functions/src/tradeStatementIssue.ts:262",
       "expression": "line.accountCode",
       "receiverExpression": "line",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:246",
+      "location": "functions/src/tradeStatementIssue.ts:265",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:249",
+      "location": "functions/src/tradeStatementIssue.ts:268",
       "expression": "raw.type",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:249",
+      "location": "functions/src/tradeStatementIssue.ts:268",
       "expression": "snap.data()?.purpose",
       "receiverExpression": "snap.data()",
       "receiverType": "DocumentData | undefined",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:252",
+      "location": "functions/src/tradeStatementIssue.ts:271",
       "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:257",
+      "location": "functions/src/tradeStatementIssue.ts:276",
       "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:267",
+      "location": "functions/src/tradeStatementIssue.ts:286",
       "expression": "item.itemId",
       "receiverExpression": "item",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:268",
+      "location": "functions/src/tradeStatementIssue.ts:287",
       "expression": "item.itemName",
       "receiverExpression": "item",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:268",
+      "location": "functions/src/tradeStatementIssue.ts:287",
       "expression": "item.unit",
       "receiverExpression": "item",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:274",
+      "location": "functions/src/tradeStatementIssue.ts:293",
       "expression": "raw.items[costUpdates[i].sourceLineIndex].purchaseQuantityKg",
       "receiverExpression": "raw.items[costUpdates[i].sourceLineIndex]",
       "receiverType": "any",
       "reason": "any-receiver"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:274",
+      "location": "functions/src/tradeStatementIssue.ts:293",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:275",
+      "location": "functions/src/tradeStatementIssue.ts:294",
       "expression": "raw.items",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:289",
+      "location": "functions/src/tradeStatementIssue.ts:308",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:291",
+      "location": "functions/src/tradeStatementIssue.ts:310",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:292",
+      "location": "functions/src/tradeStatementIssue.ts:311",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:295",
+      "location": "functions/src/tradeStatementIssue.ts:314",
       "expression": "raw.partnerId",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:295",
+      "location": "functions/src/tradeStatementIssue.ts:314",
       "expression": "raw.partnerName",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:297",
+      "location": "functions/src/tradeStatementIssue.ts:316",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:299",
+      "location": "functions/src/tradeStatementIssue.ts:318",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:302",
+      "location": "functions/src/tradeStatementIssue.ts:322",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:305",
+      "location": "functions/src/tradeStatementIssue.ts:325",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
       "reason": "property-symbol-unresolved"
     },
     {
-      "location": "functions/src/tradeStatementIssue.ts:309",
+      "location": "functions/src/tradeStatementIssue.ts:330",
       "expression": "raw.id",
       "receiverExpression": "raw",
       "receiverType": "Row",
@@ -97191,7 +97240,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2919"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -97200,7 +97249,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2920"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -97209,7 +97258,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2921"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -97218,7 +97267,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2922"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -97227,7 +97276,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2923"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -97236,7 +97285,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2924"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -97245,7 +97294,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2925"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -97254,7 +97303,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:3397"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -112433,7 +112482,7 @@
           "optional": true,
           "type": "HandoffFunction | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2919"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2919"
           ],
           "inherited": true
         },
@@ -112442,7 +112491,7 @@
           "optional": true,
           "type": "((elementId: string) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2920"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2920"
           ],
           "inherited": true
         },
@@ -112451,7 +112500,7 @@
           "optional": true,
           "type": "((elementId: string) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2921"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2921"
           ],
           "inherited": true
         },
@@ -112460,7 +112509,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined) => boolean) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2922"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2922"
           ],
           "inherited": true
         },
@@ -112469,7 +112518,7 @@
           "optional": true,
           "type": "((elementId?: string | undefined, valueName?: string | undefined, frame?: Batcher | undefined, canResume?: boolean | undefined) => void) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2923"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2923"
           ],
           "inherited": true
         },
@@ -112478,7 +112527,7 @@
           "optional": true,
           "type": "((visualElement: WithAppearProps, valueName: string, value: MotionValue<any>) => void | VoidFunction) | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2924"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2924"
           ],
           "inherited": true
         },
@@ -112487,7 +112536,7 @@
           "optional": true,
           "type": "boolean | undefined",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:2925"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:2925"
           ],
           "inherited": true
         },
@@ -112496,7 +112545,7 @@
           "optional": false,
           "type": "ScrollTimeline",
           "declarations": [
-            "node_modules/motion-dom/dist/index.d.ts:3397"
+            "../../taebaekfood/node_modules/motion-dom/dist/index.d.ts:3397"
           ],
           "inherited": true
         },
@@ -127843,7 +127892,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:124",
+        "location": "functions/src/tradeStatementIssue.ts:151",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -127869,7 +127918,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:124",
+        "location": "functions/src/tradeStatementIssue.ts:151",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -127891,7 +127940,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:125",
+        "location": "functions/src/tradeStatementIssue.ts:152",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -127917,7 +127966,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:125",
+        "location": "functions/src/tradeStatementIssue.ts:152",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -127939,7 +127988,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:126",
+        "location": "functions/src/tradeStatementIssue.ts:153",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -127965,7 +128014,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:126",
+        "location": "functions/src/tradeStatementIssue.ts:153",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -127987,7 +128036,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:127",
+        "location": "functions/src/tradeStatementIssue.ts:154",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128013,7 +128062,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:127",
+        "location": "functions/src/tradeStatementIssue.ts:154",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128035,7 +128084,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:128",
+        "location": "functions/src/tradeStatementIssue.ts:155",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128061,7 +128110,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:128",
+        "location": "functions/src/tradeStatementIssue.ts:155",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128083,7 +128132,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:129",
+        "location": "functions/src/tradeStatementIssue.ts:156",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128109,7 +128158,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:129",
+        "location": "functions/src/tradeStatementIssue.ts:156",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128131,7 +128180,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:130",
+        "location": "functions/src/tradeStatementIssue.ts:157",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128157,7 +128206,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:130",
+        "location": "functions/src/tradeStatementIssue.ts:157",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128179,7 +128228,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:131",
+        "location": "functions/src/tradeStatementIssue.ts:158",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128205,7 +128254,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:131",
+        "location": "functions/src/tradeStatementIssue.ts:158",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128227,7 +128276,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:133",
+        "location": "functions/src/tradeStatementIssue.ts:160",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128253,7 +128302,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:133",
+        "location": "functions/src/tradeStatementIssue.ts:160",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128275,7 +128324,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:134",
+        "location": "functions/src/tradeStatementIssue.ts:161",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128301,7 +128350,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:134",
+        "location": "functions/src/tradeStatementIssue.ts:161",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128323,7 +128372,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:135",
+        "location": "functions/src/tradeStatementIssue.ts:162",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128349,7 +128398,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:135",
+        "location": "functions/src/tradeStatementIssue.ts:162",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128371,7 +128420,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:137",
+        "location": "functions/src/tradeStatementIssue.ts:164",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128397,7 +128446,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:137",
+        "location": "functions/src/tradeStatementIssue.ts:164",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128419,55 +128468,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:139",
-        "runtime": "server",
-        "api": "doc",
-        "style": "method",
-        "evidence": "Firestore SDK declaration",
-        "expression": "db.collection('itemCostHistory').doc(`${raw.id}_${c.itemId}_${c.sourceLineIndex}`)",
-        "path": "itemCostHistory/{`${raw.id}_${c.itemId}_${c.sourceLineIndex}`}",
-        "segments": [
-          {
-            "value": "itemCostHistory",
-            "kind": "literal"
-          },
-          {
-            "expression": "`${raw.id}_${c.itemId}_${c.sourceLineIndex}`",
-            "kind": "dynamic"
-          }
-        ],
-        "context": "root",
-        "pathKind": "top-level-candidate",
-        "depth": null,
-        "argumentDepthCandidate": 1,
-        "outsideRegistry": [],
-        "unresolved": true,
-        "resolutionKind": "known-collection-dynamic-document"
-      },
-      {
-        "location": "functions/src/tradeStatementIssue.ts:139",
-        "runtime": "server",
-        "api": "collection",
-        "style": "method",
-        "evidence": "Firestore SDK declaration",
-        "expression": "db.collection('itemCostHistory')",
-        "path": "itemCostHistory",
-        "segments": [
-          {
-            "value": "itemCostHistory",
-            "kind": "literal"
-          }
-        ],
-        "context": "root",
-        "pathKind": "top-level",
-        "depth": 1,
-        "argumentDepthCandidate": 1,
-        "outsideRegistry": [],
-        "unresolved": false,
-        "resolutionKind": "static-path"
-      },
-      {
-        "location": "functions/src/tradeStatementIssue.ts:140",
+        "location": "functions/src/tradeStatementIssue.ts:165",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128489,7 +128490,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:141",
+        "location": "functions/src/tradeStatementIssue.ts:166",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128515,7 +128516,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:141",
+        "location": "functions/src/tradeStatementIssue.ts:166",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128537,7 +128538,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:143",
+        "location": "functions/src/tradeStatementIssue.ts:168",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128559,7 +128560,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:145",
+        "location": "functions/src/tradeStatementIssue.ts:170",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -128581,7 +128582,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:302",
+        "location": "functions/src/tradeStatementIssue.ts:322",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -128607,7 +128608,7 @@
         "resolutionKind": "known-collection-dynamic-document"
       },
       {
-        "location": "functions/src/tradeStatementIssue.ts:302",
+        "location": "functions/src/tradeStatementIssue.ts:322",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -146349,21 +146350,20 @@
       "functions/src/editIssuedStatementCommand.ts:145",
       "functions/src/editIssuedStatementCommand.ts:146",
       "functions/src/employeeLogin.ts:32",
-      "functions/src/tradeStatementIssue.ts:124",
-      "functions/src/tradeStatementIssue.ts:125",
-      "functions/src/tradeStatementIssue.ts:126",
-      "functions/src/tradeStatementIssue.ts:127",
-      "functions/src/tradeStatementIssue.ts:128",
-      "functions/src/tradeStatementIssue.ts:129",
-      "functions/src/tradeStatementIssue.ts:130",
-      "functions/src/tradeStatementIssue.ts:131",
-      "functions/src/tradeStatementIssue.ts:133",
-      "functions/src/tradeStatementIssue.ts:134",
-      "functions/src/tradeStatementIssue.ts:135",
-      "functions/src/tradeStatementIssue.ts:137",
-      "functions/src/tradeStatementIssue.ts:139",
-      "functions/src/tradeStatementIssue.ts:141",
-      "functions/src/tradeStatementIssue.ts:302",
+      "functions/src/tradeStatementIssue.ts:151",
+      "functions/src/tradeStatementIssue.ts:152",
+      "functions/src/tradeStatementIssue.ts:153",
+      "functions/src/tradeStatementIssue.ts:154",
+      "functions/src/tradeStatementIssue.ts:155",
+      "functions/src/tradeStatementIssue.ts:156",
+      "functions/src/tradeStatementIssue.ts:157",
+      "functions/src/tradeStatementIssue.ts:158",
+      "functions/src/tradeStatementIssue.ts:160",
+      "functions/src/tradeStatementIssue.ts:161",
+      "functions/src/tradeStatementIssue.ts:162",
+      "functions/src/tradeStatementIssue.ts:164",
+      "functions/src/tradeStatementIssue.ts:166",
+      "functions/src/tradeStatementIssue.ts:322",
       "functions/src/oemFeeVoucher.ts:67",
       "functions/src/oemFeeVoucher.ts:68",
       "functions/src/oemFeeVoucher.ts:69",

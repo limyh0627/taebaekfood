@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as admin from 'firebase-admin';
+import { randomUUID } from 'node:crypto';
 
 vi.mock('firebase-functions/v2/https', () => ({
   HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
@@ -39,6 +40,96 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+
+  // 실제 로컬 Admin SDK TX를 호출한다. Callable·실제 로그인 검증 시험으로 확대하지 않는다.
+  it.each(['manual','unit','mixed','same-cost','missing-kg','truthy-tax-exempt'] as const)('TODO028 신규 원가 근거 %s는 최초 공급가·kg만 보존하고 입고를 만들지 않는다',async scenario=>{
+    await seed();
+    const id='basis-'+randomUUID(),rawId=id+'-raw',cardNo='PO-261003-'+Math.floor(100000000+Math.random()*899999999);
+    const owned:admin.firestore.DocumentReference[]=[];
+    const own=(collection:string,key:string)=>{const ref=db.collection(collection).doc(key);owned.push(ref);return ref;};
+    const item=own('items',rawId),rawState=own('rawInventories','taebaek__'+rawId),history=own('itemCostHistory',id+'_'+rawId+'_0');
+    const issued=own('issuedStatements',id),po=own('purchaseOrders','po-'+id),reservation=own('appMeta','poCardNo_taebaek_'+cardNo);
+    const beforeCost=scenario==='same-cost'?1000:80;
+    const lot={id:id+'-lot',qtyIn:7,qtyRemaining:7,kgIn:7,kgRemaining:7,unitKg:1,status:'active'};
+    try{
+      await item.set({companyId:'taebaek',name:'합성 원료',type:'raw',subtype:'벌크',unit:'포',cost:beforeCost,stock:7,lots:[lot]});
+      await rawState.set({companyId:'taebaek',rawItemId:rawId,stockKg:7,revision:3,activeLots:[lot]});
+      let lines:Record<string,any>[];
+      if(scenario==='unit'||scenario==='mixed'){
+        const weights=scenario==='mixed'?[20,25]:[22.5];
+        lines=weights.map((unitKg,index)=>{const qty=scenario==='unit'?1.5:1,isTaxExempt=scenario==='mixed'&&index===1;
+          const price=scenario==='unit'?7333:unitKg*(isTaxExempt?1000:1100),total=Math.round(qty*price),supply=isTaxExempt?total:Math.round(total/1.1);
+          return {itemId:rawId,name:'합성 원료',qty,price,supply,tax:total-supply,total,isTaxExempt,accountCode:'500',sourceLineIndex:index,
+            purchaseUnitId:id+'-u'+index,purchaseUnit:'포',purchaseQty:qty,unitKg,inventoryQty:qty*unitKg};});
+        for(const line of lines)await own('item_purchase_unit',line.purchaseUnitId).set({companyId:'taebaek',itemId:rawId,purchaseUnit:'포',unitKg:line.unitKg,active:true,isDefault:false});
+      }else lines=[{itemId:rawId,name:'합성 원료',qty:2,price:22000,supply:scenario==='truthy-tax-exempt'?44000:40000,tax:scenario==='truthy-tax-exempt'?0:4000,total:44000,isTaxExempt:scenario==='truthy-tax-exempt'?'면세':false,accountCode:'500',...(scenario==='missing-kg'?{}:{purchaseQuantityKg:40})}];
+      const supply=lines.reduce((n,line)=>n+line.supply,0),tax=lines.reduce((n,line)=>n+line.tax,0),total=supply+tax;
+      const kg=lines.reduce((n,line)=>n+(line.inventoryQty??line.purchaseQuantityKg??0),0),cost=kg?Math.round(supply/kg):null;
+      const request:Parameters<typeof issueTradeStatement>[3]={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:supply,totalTax:tax,totalAmount:total,items:lines},
+        newPo:{id:po.id,cardNo,items:lines.map((line,index)=>({itemId:rawId,itemName:line.name,quantity:line.qty,isBox:false,unit:'포',...(line.purchaseUnitId?{sourceLineIndex:index,purchaseUnitId:line.purchaseUnitId,purchaseUnit:line.purchaseUnit,purchaseQty:line.purchaseQty,unitKg:line.unitKg,inventoryQty:line.inventoryQty}:{})}))},
+        costUpdates:cost===null?[]:[{itemId:rawId,price:cost,beforeCost,sourceLineIndex:0,...(scenario==='mixed'?{sourceLineIndices:[0,1]}:{})}]};
+      const initialItem=await item.get(),initialRaw=await rawState.get();const first=await issue(request);
+      const saved=await issued.get(),savedPo=await po.get(),savedItem=await item.get();
+      expect(saved.get('items')).toEqual(lines);
+      if(scenario==='truthy-tax-exempt'){expect(saved.get('items')[0].isTaxExempt).toBe('면세');expect(saved.get('items')[0].tax).toBe(0);expect(saved.get('items')[0].supply).toBe(44000);}expect(savedItem.get('stock')).toBe(7);expect(savedItem.get('lots')).toEqual([lot]);expect((await db.collection('rawMaterialLedger').where('rawItemId','==',rawId).get()).empty).toBe(true);
+      expect((await rawState.get()).updateTime!.isEqual(initialRaw.updateTime!)).toBe(true);
+      expect(savedPo.get('items').map((row:any)=>row.quantity)).toEqual(lines.map(line=>line.qty));
+      expect(savedItem.get('cost')).toBe(cost??beforeCost);
+      if(scenario==='manual'||scenario==='same-cost'||scenario==='missing-kg'||scenario==='truthy-tax-exempt'){
+        expect(savedPo.get('items')[0]).not.toHaveProperty('inventoryQty');expect(savedPo.get('items')[0]).not.toHaveProperty('purchaseQuantityKg');
+      }
+      const h=await history.get();
+      if(scenario==='same-cost'||scenario==='missing-kg'){expect(h.exists).toBe(false);if(scenario==='missing-kg')expect(savedItem.updateTime!.isEqual(initialItem.updateTime!)).toBe(true);}
+      else{
+        const expectedLines=lines.map((line,index)=>({sourceLineIndex:index,qty:line.qty,price:line.price,supply:line.supply,tax:line.tax,total:line.total,isTaxExempt:Boolean(line.isTaxExempt),confirmedKg:line.inventoryQty??line.purchaseQuantityKg,
+          ...(line.purchaseUnitId?{kgBasis:'registered-purchase-unit',purchaseUnitId:line.purchaseUnitId,purchaseUnit:line.purchaseUnit,purchaseQty:line.purchaseQty,unitKg:line.unitKg,inventoryQty:line.inventoryQty}:{kgBasis:'manual-purchase-kg',purchaseQuantityKg:line.purchaseQuantityKg})}));
+        expect(h.get('purchaseCostBasis')).toEqual({version:1,kind:'raw',baseUnit:'kg',supplyAmount:supply,confirmedKg:kg,calculatedCost:cost,sourceLineIndices:lines.map((_line,index)=>index),lines:expectedLines});
+        expect(h.get('purchaseCostBasis')).not.toHaveProperty('ownerCompanyId');
+      }
+      const snapshots=await Promise.all([issued,po,item,rawState,reservation,db.collection('appMeta').doc('voucherNo_taebaek_'+date+'_general')].map(ref=>ref.get()));
+      expect(await issue(request)).toEqual({...first,status:'duplicate'});
+      for(const old of snapshots)expect((await old.ref.get()).updateTime!.isEqual(old.updateTime!)).toBe(true);
+      if(h.exists)expect((await history.get()).updateTime!.isEqual(h.updateTime!)).toBe(true);
+      if(scenario==='unit'){
+        const changedLines=lines.map(line=>({...line,unitKg:line.unitKg+1,inventoryQty:line.inventoryQty+line.purchaseQty}));
+        const changedKg=changedLines.reduce((n,line)=>n+line.inventoryQty,0);
+        const changed={...request,statement:{...request.statement,items:changedLines},newPo:{...request.newPo!,items:request.newPo!.items.map((line,index)=>({...line,unitKg:changedLines[index].unitKg,inventoryQty:changedLines[index].inventoryQty}))},costUpdates:[{...request.costUpdates[0],price:Math.round(supply/changedKg)}]};
+        await expect(issue(changed)).rejects.toThrow();
+        for(const old of snapshots)expect((await old.ref.get()).updateTime!.isEqual(old.updateTime!)).toBe(true);
+      }
+
+    }finally{
+      await Promise.all(owned.map(ref=>ref.delete()));
+      expect((await Promise.all(owned.map(ref=>ref.get()))).every(snap=>!snap.exists)).toBe(true);
+    }
+  },30_000);
+
+  it.each(['metadata-edit','legacy-metadata-missing','history-delete','history-amount-edit'] as const)('TODO028 원가 이력 %s는 금융 duplicate 증거가 아니며 되쓰지 않는다',async mutation=>{
+    await seed();const id='basis-ack-'+randomUUID(),rawId=id+'-raw';
+    const owned=[db.collection('items').doc(rawId),db.collection('issuedStatements').doc(id),db.collection('itemCostHistory').doc(id+'_'+rawId+'_0')];
+    const [item,issued,history]=owned;
+    try{
+      await item.set({companyId:'taebaek',name:'합성 원료',type:'raw',subtype:'벌크',stock:7,lots:[],cost:80});
+      const line={itemId:rawId,name:'합성 원료',qty:2,price:22000,supply:40000,tax:4000,total:44000,isTaxExempt:false,accountCode:'500',purchaseQuantityKg:40};
+      const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:40000,totalTax:4000,totalAmount:44000,items:[line]},costUpdates:[{itemId:rawId,price:1000,beforeCost:80,sourceLineIndex:0}]};
+      const first=await issue(request);expect((await history.get()).get('purchaseCostBasis')).toMatchObject({confirmedKg:40,calculatedCost:1000});
+      await item.update({cost:777});
+      if(mutation==='metadata-edit')await history.update({purchaseCostBasis:{userNote:'수동 이력 보존',confirmedKg:999}});
+      if(mutation==='legacy-metadata-missing')await history.update({purchaseCostBasis:admin.firestore.FieldValue.delete()});
+      if(mutation==='history-delete')await history.delete();
+      if(mutation==='history-amount-edit')await history.update({beforeCost:11,afterCost:404,userNote:'수동 금액 보존'});
+      const refs=[...owned,db.collection('appMeta').doc('voucherNo_taebaek_'+date+'_general')],before=await Promise.all(refs.map(ref=>ref.get()));
+      expect(await issue(request)).toEqual({...first,status:'duplicate'});
+      const after=await Promise.all(refs.map(ref=>ref.get()));
+      for(let i=0;i<before.length;i++){expect(after[i].exists).toBe(before[i].exists);expect(after[i].data()).toEqual(before[i].data());if(before[i].exists)expect(after[i].updateTime!.isEqual(before[i].updateTime!)).toBe(true);}
+      expect((await item.get()).get('cost')).toBe(777);
+      for(const changed of [
+        {...request,statement:{...request.statement,items:[{...line,purchaseQuantityKg:20}]},costUpdates:[{...request.costUpdates[0],price:2000}]},
+        {...request,statement:{...request.statement,totalSupply:40200,totalTax:4020,totalAmount:44220,items:[{...line,price:22110,supply:40200,tax:4020,total:44220}]},costUpdates:[{...request.costUpdates[0],price:1005}]},
+      ])await expect(issue(changed)).rejects.toThrow();
+      for(let i=0;i<before.length;i++){const current=await refs[i].get();expect(current.data()).toEqual(before[i].data());if(before[i].exists)expect(current.updateTime!.isEqual(before[i].updateTime!)).toBe(true);}
+    }finally{await Promise.all(owned.map(ref=>ref.delete()));expect((await Promise.all(owned.map(ref=>ref.get()))).every(snap=>!snap.exists)).toBe(true);}
+  },30_000);
 
   it.each([false,true])('TODO027 소수 포 매입은 면세=%s에서도 거래금액 반올림과 저장 kg 원가를 보존한다',async isTaxExempt=>{
     await seed();const id='fraction-unit-'+isTaxExempt,rawId=id+'-raw',unitId=id+'-unit';
