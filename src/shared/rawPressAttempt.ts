@@ -42,6 +42,58 @@ export function validateRawPressRequest(request: RawPressRequest): void {
     || (r.entry.companyId !== undefined && r.entry.companyId !== r.companyId)) throw Error('압착 최초 요청 원문을 확인해 주세요.');
 }
 export const rawPressAttemptKey = (companyId: CompanyId, actorUid: string) => `raw-press:${encodeURIComponent(actorUid)}:${companyId}`;
+export type RawPressRetained={request:RawPressRequest;encoded:string;storageKey?:string;state?:'prepared'|'submitted'};
+export type RawPressEntry={key:string;retained:RawPressRetained|null;deleted:boolean;error:string};
+const pressPrefix=(companyId:CompanyId,uid:string)=>`raw-press-v2:${companyId}:${encodeURIComponent(uid)}:`;
+const pressKey=(r:RawPressRequest)=>pressPrefix(r.companyId,r.actorUid)+encodeURIComponent(r.entry.id);
+const pressStateKey=(key:string)=>key+':state';
+export function listRawPressAttempts(companyId:CompanyId,uid:string):RawPressEntry[]{
+ const prefix=pressPrefix(companyId,uid),legacy=rawPressAttemptKey(companyId,uid);
+ return Object.keys(localStorage).filter(key=>key===legacy||key.startsWith(prefix)&&!key.endsWith(':state')).sort().map(key=>{
+  const encoded=localStorage.getItem(key)!;
+  try{const value=JSON.parse(encoded),request=(key===legacy?value:value.request) as RawPressRequest;validateRawPressRequest(request);
+   if(request.companyId!==companyId||request.actorUid!==uid||key!==legacy&&(pressKey(request)!==key||!['prepared','submitted'].includes(value.state)))throw Error();
+   let marker:any;try{marker=JSON.parse(localStorage.getItem(pressStateKey(key))??'null');}catch{/* 손상 표식으로 원문을 숨기지 않는다. */}
+   return {key,retained:{request,encoded,storageKey:key,state:key===legacy?'submitted':value.state},deleted:marker?.encoded===encoded&&marker.deleted===true,error:''};
+  }catch{return {key,retained:null,deleted:false,error:'보존된 압착 최초 원문이 손상되었습니다. 원문을 유지했습니다.'};}
+ });
+}
+export async function withRawPressLock<T>(company:CompanyId,uid:string,current:()=>boolean,work:()=>T|Promise<T>):Promise<T>{
+ if(!current())throw Error('압착 회사나 로그인 계정이 변경되었습니다.');if(typeof navigator==='undefined'||!navigator.locks?.request)throw Error('창 간 안전 잠금을 지원하는 브라우저에서 압착 요청을 확인해 주세요.');
+ return navigator.locks.request(pressPrefix(company,uid),{mode:'exclusive'},async()=>{if(!current())throw Error('압착 로그인 계정이 변경되었습니다.');return work();});
+}
+export function assertRawPressAttempt(retained:RawPressRetained){
+ const key=retained.storageKey??rawPressAttemptKey(retained.request.companyId,retained.request.actorUid);
+ if(key!==pressKey(retained.request)&&key!==rawPressAttemptKey(retained.request.companyId,retained.request.actorUid))throw Error('선택한 압착 저장 범위가 다릅니다.');
+ if(localStorage.getItem(key)!==retained.encoded)throw Error('압착 최초 원문이 변경되었습니다. 현재 원문을 보존했습니다.');
+ const parsed=JSON.parse(retained.encoded),request=key.startsWith('raw-press-v2:')?parsed.request:parsed;
+ if(key.startsWith('raw-press-v2:')&&parsed.state!==retained.state)throw Error('압착 제출 상태가 최초 저장 원문과 다릅니다.');
+ if(!key.startsWith('raw-press-v2:')&&retained.state!==undefined&&retained.state!=='submitted')throw Error('과거 압착 요청은 결과 확인만 가능합니다.');
+ if(rawPressText(request)!==rawPressText(retained.request))throw Error('선택한 압착 요청이 최초 원문과 다릅니다.');
+}
+export async function beginNewRawPressAttempt(input:RawPressRequest,current:()=>boolean):Promise<RawPressRetained>{
+ const request=JSON.parse(JSON.stringify(input)) as RawPressRequest;validateRawPressRequest(request);
+ return withRawPressLock(request.companyId,request.actorUid,current,()=>{
+  const entries=listRawPressAttempts(request.companyId,request.actorUid),targets=[request.sourceCommand.rawItemId,request.derivedCommand.rawItemId];
+  for(const entry of entries){if(!entry.retained)throw Error(entry.error);const other=entry.retained.request;
+   if(other.entry.id===request.entry.id)throw Error('같은 압착 최초 요청을 실패 목록에서 선택해 확인해 주세요.');
+   if([other.sourceCommand.rawItemId,other.derivedCommand.rawItemId].some(id=>targets.includes(id)))throw Error('같은 원료나 파생 품목의 이전 압착 결과를 먼저 확인해 주세요. 삭제한 실패 요청도 근거는 유지됩니다.');
+  }
+  const storageKey=pressKey(request),encoded=JSON.stringify({request,state:'prepared'});localStorage.setItem(storageKey,encoded);
+  if(!current()||localStorage.getItem(storageKey)!==encoded)throw Error('압착 최초 원문 저장을 확인하지 못했습니다.');return {request,encoded,storageKey,state:'prepared'};
+ });
+}
+export async function deleteRawPressAttempt(retained:RawPressRetained,current:()=>boolean){
+ await withRawPressLock(retained.request.companyId,retained.request.actorUid,current,()=>{assertRawPressAttempt(retained);const key=retained.storageKey??rawPressAttemptKey(retained.request.companyId,retained.request.actorUid),marker=JSON.stringify({encoded:retained.encoded,deleted:true});localStorage.setItem(pressStateKey(key),marker);if(!current()||localStorage.getItem(pressStateKey(key))!==marker)throw Error('압착 실패 목록 삭제를 확인하지 못했습니다.');});
+}
+export async function submitRawPressAttempt(retained:RawPressRetained,current:()=>boolean):Promise<RawPressRetained>{
+ return withRawPressLock(retained.request.companyId,retained.request.actorUid,current,()=>{assertRawPressAttempt(retained);if(retained.state!=='prepared')return retained;
+  const targets=[retained.request.sourceCommand.rawItemId,retained.request.derivedCommand.rawItemId];
+  if(listRawPressAttempts(retained.request.companyId,retained.request.actorUid).some(entry=>entry.key!==retained.storageKey&&(!entry.retained||[entry.retained.request.sourceCommand.rawItemId,entry.retained.request.derivedCommand.rawItemId].some(id=>targets.includes(id)))))throw Error('같은 원료나 파생 품목의 이전 요청을 확인해 주세요.');
+  const key=retained.storageKey!,encoded=JSON.stringify({request:retained.request,state:'submitted'});localStorage.setItem(key,encoded);if(!current()||localStorage.getItem(key)!==encoded)throw Error('압착 제출 원문 저장을 확인하지 못했습니다.');return {...retained,encoded,state:'submitted'};
+ });
+}
+export function clearSelectedRawPressAttempt(retained:RawPressRetained){assertRawPressAttempt(retained);const key=retained.storageKey??rawPressAttemptKey(retained.request.companyId,retained.request.actorUid);localStorage.removeItem(key);localStorage.removeItem(pressStateKey(key));}
 export function readRawPressAttempt(companyId: CompanyId, actorUid: string): { request: RawPressRequest; encoded: string } | null {
   const encoded = localStorage.getItem(rawPressAttemptKey(companyId, actorUid));
   if (encoded === null) return null;

@@ -16,7 +16,27 @@ import { executeRawPress, executeRawPressWithDb, executeRawPressCancellation, ex
 import { executeRawInventoryCommand } from './rawInventoryService';
 import { operationDocId,inventoryDocId,legacyOperationDocId } from '../rawInventoryCore';
 import { makeRawPressCancellationRequest,readRawPressCancellationAttempt,readRawPressAttempt, type RawPressRequest } from '../rawPressAttempt';
+import {beginNewRawPressAttempt,submitRawPressAttempt,listRawPressAttempts} from '../rawPressAttempt';
 function request():RawPressRequest{return {version:1,companyId:'taebaek',actorUid:'uid',entry:{id:'press',material:'참깨',date:'2026-10-12',received:0,used:10,note:'메모',type:'manual',createdAt:'2026-10-12T01:00:00Z',effectiveAt:'2026-10-12T01:00:00Z',targetLotId:'source-lot'},yieldRule:{product:'통깨참기름',rate:0.48},sourceCommand:{operationId:'press',companyId:'taebaek',rawItemId:'source',materialSnapshot:'참깨',effectiveAt:'2026-10-12T01:00:00Z',source:{type:'manual',id:'press'},kind:'consume-lot',kg:10,lotId:'source-lot'},derivedCommand:{operationId:'yield:press',companyId:'taebaek',rawItemId:'derived',materialSnapshot:'통깨참기름',effectiveAt:'2026-10-12T01:00:00Z',source:{type:'manual',id:'press'},kind:'receive',kg:4.8,lot:{supplierName:'참깨 압착',qtyIn:0}},sourceLegacy:{note:'메모',type:'manual'},derivedLegacy:{note:'참깨 압착 (수율 48%)',type:'auto'}};}
+it('명시 선택한 submitted 요청의 조회0은 원료·파생 재적용 없이 원문을 유지한다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_opts:any,work:any)=>work()}});
+ const retained=await submitRawPressAttempt(await beginNewRawPressAttempt(request(),()=>true),()=>true),before=structuredClone(mem.store);
+ expect(await executeRawPress(retained.request,{retained,isCurrent:()=>true})).toMatchObject({status:'blocked',retainPending:true});expect(mem.store).toEqual(before);expect(listRawPressAttempts('taebaek','uid')).toHaveLength(1);
+});
+it('명시 선택한 최초 압착은 한 번만 적용하고 응답 유실 재조회로 완료한다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_opts:any,work:any)=>work()}});
+ const retained=await beginNewRawPressAttempt(request(),()=>true);mem.commitThenThrow=true;
+ await expect(executeRawPress(retained.request,{retained,isCurrent:()=>true})).rejects.toThrow('응답 유실');
+ const stored=listRawPressAttempts('taebaek','uid')[0].retained!;expect(stored.state).toBe('submitted');expect((await executeRawPress(stored.request,{retained:stored,isCurrent:()=>true})).status).toBe('duplicate');expect(mem.store.get('items/source').stock).toBe(90);expect(listRawPressAttempts('taebaek','uid')).toHaveLength(0);
+});
+it('현대 압착 commit 후 같은 회사 UID가 바뀌면 ACK 정리 없이 submitted 원문을 보존한다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_opts:any,work:any)=>work()}});
+ const retained=await beginNewRawPressAttempt(request(),()=>true);mem.afterCommit=()=>{mem.uid='other';};
+ await expect(executeRawPress(retained.request,{retained,isCurrent:()=>mem.uid==='uid'})).rejects.toThrow('계정');
+ expect(listRawPressAttempts('taebaek','uid')[0].retained?.state).toBe('submitted');expect(mem.store.get('items/source').stock).toBe(90);
+ mem.uid='uid';mem.afterCommit=null;const saved=listRawPressAttempts('taebaek','uid')[0].retained!;
+ expect((await executeRawPress(saved.request,{retained:saved,isCurrent:()=>true})).status).toBe('duplicate');expect(mem.store.get('items/source').stock).toBe(90);
+});
 beforeEach(async()=>{mem.store.clear();localStorage.clear();mem.uid='uid';mem.company='taebaek';mem.commitThenThrow=false;mem.afterCommit=null;
  mem.store.set('items/source',{companyId:'taebaek',name:'참깨',stock:0,lots:[]});mem.store.set('items/derived',{companyId:'taebaek',name:'통깨참기름',stock:0,lots:[]});
  const r=await executeRawInventoryCommand({operationId:'seed',companyId:'taebaek',rawItemId:'source',materialSnapshot:'참깨',effectiveAt:'2026-10-01T01:00:00Z',source:{type:'manual',id:'seed'},kind:'receive',kg:100,lot:{supplierName:'공급'}},{db:{} as any,newLotId:'source-lot'});expect(r.status).toBe('applied');

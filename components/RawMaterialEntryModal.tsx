@@ -5,9 +5,9 @@ import { RawMaterialEntry, RawMaterialLot } from '../types';
 import { unitOf, DENSITY } from '../src/constants/formula';
 import ModalShell from '../src/shared/components/ModalShell';
 import type { CompanyId } from '../src/shared/types';
-import { readRawPressAttempt, rawPressYieldKg, rawPressText } from '../src/shared/rawPressAttempt';
+import { listRawPressAttempts, assertRawPressAttempt, deleteRawPressAttempt, rawPressYieldKg, type RawPressRetained } from '../src/shared/rawPressAttempt';
 
-export type RawEntrySubmitResult=boolean|void|{ok:false;canEditRetry?:boolean;reason?:string};
+export type RawEntrySubmitResult=boolean|void|{ok:false;canEditRetry?:boolean;reason?:string;relatedRetained?:RawPressRetained};
 interface Props {
   open: boolean;
   mode: 'inbound' | 'usage';
@@ -16,7 +16,7 @@ interface Props {
   currentUserName?: string;
   lotsForMaterial?: (material: string) => RawMaterialLot[];
   onClose: () => void;
-  onSubmit: (entry: RawMaterialEntry) => RawEntrySubmitResult | Promise<RawEntrySubmitResult>;
+  onSubmit: (entry: RawMaterialEntry,intent?:'new'|'resume',retained?:RawPressRetained) => RawEntrySubmitResult | Promise<RawEntrySubmitResult>;
   companyId?: CompanyId;
   actorUid?: string;
   getActorUid?: () => string | undefined;
@@ -32,24 +32,46 @@ function RawEntrySession({
   open, mode, materials, defaultMaterial, currentUserName, lotsForMaterial, onClose, onSubmit,
   companyId='taebaek', actorUid, getActorUid, rawYieldRules={},
 }:Props) {
-  const initial = useMemo(() => {
-    try { return { entry: mode==='usage'&&actorUid ? readRawPressAttempt(companyId,actorUid)?.request.entry ?? null : null, error:'' }; }
-    catch { return {entry:null,error:'보존된 압착 요청을 읽을 수 없습니다. 원문을 유지했습니다.'}; }
-  }, []);
-  const [retainedEntry,setRetainedEntry]=useState<RawMaterialEntry|null>(initial.entry);
-  const submittedEntry=useRef<RawMaterialEntry|null>(initial.entry);
-  const [notice,setNotice]=useState(initial.error);
+  const [notice,setNotice]=useState('');
+  const [recoveryOpen,setRecoveryOpen]=useState(false);
+  const [selected,setSelected]=useState<RawPressRetained|null>(null);
+  const [,refresh]=useState(0);
   const busyRef=useRef(false),alive=useRef(true);
   React.useLayoutEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
-  const sameScope=()=>alive.current && (!getActorUid || getActorUid()===actorUid);
+  React.useEffect(()=>{const changed=()=>refresh(v=>v+1);window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[]);
+  const sameScope=()=>alive.current&&(!getActorUid||getActorUid()===actorUid);
   const close=()=>{if(!busyRef.current&&sameScope())onClose();};
-  const [date, setDate] = useState(initial.entry?.date??todayStr());
-  const [material, setMaterial] = useState(initial.entry?.material??defaultMaterial??materials[0]??'');
-  const [amount, setAmount] = useState(initial.entry?String(initial.entry.originalAmount??initial.entry.used):'');
-  const [note, setNote] = useState(initial.entry?.note??'');
-  const [submitting, setSubmitting] = useState(false);
-  const [targetLotId, setTargetLotId] = useState(()=>initial.entry?.targetLotId??lotsForMaterial?.(defaultMaterial ?? materials[0] ?? '').find(lot=>lot.status!=='depleted')?.id??'');
-
+  const [date,setDate]=useState(todayStr());
+  const [material,setMaterial]=useState(defaultMaterial??materials[0]??'');
+  const [amount,setAmount]=useState('');
+  const [note,setNote]=useState('');
+  const [submitting,setSubmitting]=useState(false);
+  const [targetLotId,setTargetLotId]=useState(()=>lotsForMaterial?.(defaultMaterial??materials[0]??'').find(lot=>lot.status!=='depleted')?.id??'');
+  const entries=mode==='usage'&&actorUid?listRawPressAttempts(companyId,actorUid):[];
+  const showFailure=(id:string,message:string,relatedRetained?:RawPressRetained)=>{
+    if(!sameScope())return;
+    setNotice(message);refresh(v=>v+1);
+    const fresh=actorUid?listRawPressAttempts(companyId,actorUid):[];
+    const own=fresh.find(e=>e.retained?.request.entry.id===id);
+    const related=relatedRetained?.request.companyId===companyId&&relatedRetained.request.actorUid===actorUid?fresh.find(row=>row.retained?.storageKey===relatedRetained.storageKey&&row.retained?.encoded===relatedRetained.encoded):undefined;
+    const selectedEntry=own??related;
+    if(selectedEntry||fresh.some(row=>!row.retained)){setSelected(selectedEntry?.retained??null);setRecoveryOpen(true);}
+  };
+  const resume=async()=>{
+    if(!selected||busyRef.current||!sameScope())return;
+    busyRef.current=true;setSubmitting(true);
+    try{assertRawPressAttempt(selected);const saved=await onSubmit(selected.request.entry,'resume',selected);if(!sameScope())return;
+      if(saved===false||typeof saved==='object'&&saved.ok===false)setNotice(typeof saved==='object'?saved.reason??'처리 결과를 확인하지 못했습니다.':'처리 결과를 확인하지 못했습니다.');
+      else {setSelected(null);refresh(v=>v+1);setNotice('최초 요청의 처리 결과를 확인했습니다.');}
+    }catch(error){if(sameScope())setNotice(error instanceof Error?error.message:String(error));}
+    finally{if(sameScope()){busyRef.current=false;setSubmitting(false);}}
+  };
+  const remove=async()=>{
+    if(!selected||busyRef.current||!sameScope())return;busyRef.current=true;setSubmitting(true);
+    try{await deleteRawPressAttempt(selected,sameScope);if(sameScope()){setSelected(null);setNotice('');refresh(v=>v+1);}}
+    catch(error){if(sameScope())setNotice(error instanceof Error?error.message:String(error));}
+    finally{if(sameScope()){busyRef.current=false;setSubmitting(false);}}
+  };
   const activeLots = useMemo(() => (lotsForMaterial?.(material) ?? []).filter(lot => lot.status !== 'depleted'), [lotsForMaterial, material]);
 
   // 선택된 원료의 운영 단위 (kg / L)
@@ -70,18 +92,14 @@ function RawEntrySession({
 
   const handleSubmit = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
-    if(busyRef.current||!sameScope()||initial.error)return;
-    let pending:RawMaterialEntry|null=null;
-    try { pending=mode==='usage'&&actorUid?readRawPressAttempt(companyId,actorUid)?.request.entry??null:null; }
-    catch {setNotice('보존된 압착 요청을 읽을 수 없습니다. 원문을 유지했습니다.');return;}
-    if(pending && submittedEntry.current && rawPressText(pending)!==rawPressText(submittedEntry.current)){setNotice('보존된 요청 원문이 변경되었습니다. 다른 요청으로 대체하지 않았습니다.');return;}
-    const fixed=pending??submittedEntry.current;
-    const amt = parseFloat(amount);
-    if (!fixed && !material) { alert('원료를 선택해주세요.'); return; }
-    if (!fixed && (!Number.isFinite(amt) || amt <= 0)) { alert(`양(${unit})을 0보다 큰 값으로 입력해주세요.`); return; }
-    if (!fixed && mode === 'usage' && !targetLotId) { alert('사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.'); return; }
+    if(busyRef.current||!sameScope())return;
+    const amt=parseFloat(amount);
+    if(!material){alert('원료를 선택해주세요.');return;}
+    if(!Number.isFinite(amt)||amt<=0){alert(`양(${unit})을 0보다 큰 값으로 입력해주세요.`);return;}
+    if(mode==='usage'&&!targetLotId){alert('사용할 활성 로트가 없습니다. 로트를 먼저 입고해주세요.');return;}
     busyRef.current=true;
     setSubmitting(true);
+    let submittedId='';
     try {
       const id = `${mode==='inbound'?'rm-in':'rm-use'}-${crypto.randomUUID()}`;
       // L 입력은 저장 시 kg으로 환산. 비고에 원본 입력값 자동 추가
@@ -90,7 +108,7 @@ function RawEntrySession({
       const inputTag = unit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
       const finalNote = (note.trim() + inputTag).trim();
       const createdAt=new Date().toISOString();
-      const entry=fixed??{
+      const entry:RawMaterialEntry={
         id,
         companyId,
         material,
@@ -107,21 +125,16 @@ function RawEntrySession({
         originalUnit: unit,  // 'kg' or 'L'
         ...(mode === 'usage' && targetLotId ? { targetLotId } : {}),
       };
-      submittedEntry.current=entry;
-      setRetainedEntry(entry);
-      const saved = await onSubmit(entry);
+      submittedId=entry.id;
+      const saved = await onSubmit(entry,'new');
       if(!sameScope())return;
       if (saved === false || typeof saved==='object'&&saved.ok===false) {
-        if(typeof saved==='object'&&saved.canEditRetry){
-          const stillPending=mode==='usage'&&actorUid?readRawPressAttempt(companyId,actorUid):null;
-          if(!stillPending){submittedEntry.current=null;setRetainedEntry(null);setNotice(saved.reason??'저장하지 않았습니다. 입력을 수정해서 다시 저장해주세요.');return;}
-        }
-        setNotice(typeof saved==='object'&&saved.reason?saved.reason:'저장 결과가 확인되지 않았습니다. 보존된 원문으로 다시 확인해주세요.');return;
+        showFailure(entry.id,typeof saved==='object'&&saved.reason?saved.reason:'저장 결과를 확인하지 못했습니다. 최초 요청을 확인해주세요.',typeof saved==='object'?saved.relatedRetained:undefined);return;
       }
       onClose();
     } catch (err) {
       // 저장 실패를 조용히 묻지 않음 — 예전엔 throw 시 모달이 안 닫히고 멈춘 듯 보였다(모바일).
-      if(sameScope())setNotice(err instanceof Error?err.message:'저장 결과가 확인되지 않았습니다. 보존된 원문으로 재개해주세요.');
+      if(sameScope())showFailure(submittedId,err instanceof Error?err.message:'저장 결과를 확인하지 못했습니다. 최초 요청을 확인해주세요.');
     } finally {
       if(sameScope()){busyRef.current=false;setSubmitting(false);}
     }
@@ -133,11 +146,21 @@ function RawEntrySession({
     : { bg: 'bg-rose-500',    hover: 'hover:bg-rose-600',    tint: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200' };
 
   return (
-    <ModalShell title={isInbound ? '원료 입고 기록' : '원료 사용 기록'} onClose={close} bodyClassName="!p-0">
+    <>
+    {mode==='usage'&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>{setSelected(null);setNotice('');setRecoveryOpen(true);}}>착유 실패 작업 {entries.filter(e=>!e.deleted).length}</button>}
+    {recoveryOpen&&<ModalShell title={selected?'착유 실패 작업 상세':'착유 실패 작업 목록'} layer={1400} onClose={()=>{if(!busyRef.current){if(selected)setSelected(null);else setRecoveryOpen(false);}}}>
+      {notice&&<p role="alert">{notice}</p>}
+      {!selected?<><p>최초 요청을 선택해 처리 결과를 확인해주세요.</p>{!entries.some(e=>!e.deleted)&&<p>실패 작업이 없습니다.</p>}{entries.filter(e=>!e.deleted).map(e=><button type="button" key={e.key} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setSelected(e.retained);setNotice(e.error);}}>{e.retained?`${e.retained.request.entry.material} · ${e.retained.request.entry.date} · ${e.retained.request.entry.used}kg · 처리 결과 미확인`:e.error}</button>)}</>:<div className="space-y-3">
+        <p>{selected.request.entry.material} · {selected.request.entry.date} · {selected.request.entry.used}kg</p><p>이전 착유 결과를 아직 확인하지 못했습니다. 최초 사용 로트와 파생 입고 내역, 실제 재고를 확인해주세요.</p>
+        <p>{selected.request.yieldRule.product} · {selected.request.derivedCommand.kg}kg</p>
+        <div className="flex gap-2"><button type="button" disabled={submitting} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void resume()}>{selected.state==='submitted'?'처리 결과 확인':'같은 내용 다시 시도'}</button><button type="button" disabled={submitting} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void remove()}>실패 요청 삭제</button></div>
+        <p>실패 목록에서 요청을 삭제합니다. 실제 원료·입고·재고는 바뀌지 않습니다. 관련 품목의 이전 처리 결과는 확인해야 합니다.</p>
+      </div>}
+    </ModalShell>}
+    <div hidden={recoveryOpen}><ModalShell title={isInbound ? '원료 입고 기록' : '원료 사용 기록'} onClose={close} bodyClassName="!p-0">
       <form onSubmit={handleSubmit}>
         {notice&&<p role="alert" className="px-5 pt-3 text-xs text-amber-800">{notice}</p>}
-        {retainedEntry&&<p className="px-5 pt-3 text-xs font-bold">보존 요청 · {retainedEntry.material} · {retainedEntry.date} · 사용 {retainedEntry.used}kg / 입고 {retainedEntry.received}kg</p>}
-        <fieldset disabled={submitting||!!retainedEntry||!!initial.error}>
+        <fieldset disabled={submitting}>
         <div className="px-5 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -244,14 +267,14 @@ function RawEntrySession({
           </button>
           <button
             type="submit"
-            disabled={submitting || !!initial.error || (!retainedEntry && !isInbound && !targetLotId)}
+            disabled={submitting || (!isInbound && !targetLotId)}
             className={`px-5 py-2 rounded-xl text-xs font-black text-white ${accent.bg} ${accent.hover} transition-colors disabled:opacity-50`}
           >
-            {submitting ? '저장 중...' : retainedEntry ? '이전 요청 재개' : '저장'}
+            {submitting ? '저장 중...' : '저장'}
           </button>
         </div>
       </form>
-    </ModalShell>
+    </ModalShell></div></>
   );
 }
 

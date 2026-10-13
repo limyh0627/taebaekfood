@@ -4,6 +4,7 @@ import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import OemManager from './OemManager';
 import type {Item,Partner,PurchaseOrder} from '../src/shared/types';
+import {beginOemIssueAttempt,listOemIssueAttempts} from '../src/shared/oemIssuePending';
 import {readOemReceiptEntry,pinOemReceiptPacket,acknowledgeOemReceiptPacket,listOemReceiptEntries} from '../src/shared/oemReceiptPending';
 beforeEach(()=>{localStorage.clear();sessionStorage.clear();vi.spyOn(window,'alert').mockImplementation(()=>{});Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async(_key:string,_opts:unknown,fn:()=>unknown)=>fn()}});});afterEach(()=>{cleanup();vi.restoreAllMocks();sessionStorage.clear();localStorage.clear();});
 const storageFor=(key:string)=>key.startsWith('oem-receipt-draft-v1:')?localStorage:sessionStorage;
@@ -16,7 +17,7 @@ const partner={id:'oem',name:'외주공장',companyId:'taebaek',isOemFactory:tru
 const props=()=>({actorUid:'actor',companyId:'taebaek' as const,items:[raw],partners:[partner],rawStockKg:()=>1000,issueDrafts:[],issueOpen:true,receiveTarget:null,feeTarget:null,onClose:vi.fn(),onIssue:vi.fn(async(_input:any)=>{}),onReceive:vi.fn(),onIssueFee:vi.fn()});
 function fill(){const selections=screen.getAllByRole('combobox');fireEvent.change(selections[0],{target:{value:'oem'}});fireEvent.change(selections[1],{target:{value:'들깨'}});fireEvent.change(screen.getByPlaceholderText('kg'),{target:{value:'100'}});}
 it('일부 원가 입력을 해도 실제 발주 콜백은 근거 없이 진행한다',async()=>{const p=props();render(<OemManager {...p}/>);fill();expect(screen.getByLabelText('1행 원료 공급가액')).toHaveValue('');fireEvent.change(screen.getByLabelText('1행 원료 공급가액'),{target:{value:'220000'}});expect(screen.getByText(/이번 원가 근거는 저장하지 않습니다/)).toBeInTheDocument();fireEvent.click(screen.getByText('발주 (원료 내보내기)'));await waitFor(()=>expect(p.onIssue).toHaveBeenCalledOnce());expect(p.onIssue.mock.calls[0][0].oemCostEvidence).toBeUndefined();});
-it('확인한0부자재까지 완성하면 콜백과 재개 원문에 같은 근거가 남는다',async()=>{const p=props();p.onIssue.mockRejectedValue(Error('응답 없음'));const view=render(<OemManager {...p}/>);fill();fireEvent.change(screen.getByLabelText('1행 원료 공급가액'),{target:{value:'220000'}});fireEvent.change(screen.getByLabelText('부자재 공급가액'),{target:{value:'0'}});fireEvent.click(screen.getByLabelText('부자재 공급가액 확인'));fireEvent.click(screen.getByText('발주 (원료 내보내기)'));await waitFor(()=>expect(p.onIssue).toHaveBeenCalledOnce());const original=p.onIssue.mock.calls[0][0];expect(original.oemCostEvidence).toMatchObject({ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:220000}],packaging:{confirmed:true,supplyAmount:0}});view.unmount();render(<OemManager {...p}/>);fireEvent.click(screen.getByText('재개'));await waitFor(()=>expect(p.onIssue).toHaveBeenCalledTimes(2));expect(p.onIssue.mock.calls[1][0]).toEqual(original);});
+it('확인한0부자재까지 완성하면 콜백과 재개 원문에 같은 근거가 남는다',async()=>{const p=props();p.onIssue.mockImplementation(async(input:any)=>{await beginOemIssueAttempt({jobId:input.jobId,companyId:'taebaek',partnerId:input.oemPartnerId,partnerName:input.partnerName,sent:input.sent.map((row:any)=>({...row,rawItemId:'raw'})),date:input.date,...(input.note?{note:input.note}:{}),oemCostEvidence:input.oemCostEvidence},'actor',()=>true);throw Error('응답 없음');});const view=render(<OemManager {...p}/>);fill();fireEvent.change(screen.getByLabelText('1행 원료 공급가액'),{target:{value:'220000'}});fireEvent.change(screen.getByLabelText('부자재 공급가액'),{target:{value:'0'}});fireEvent.click(screen.getByLabelText('부자재 공급가액 확인'));fireEvent.click(screen.getByText('발주 (원료 내보내기)'));await waitFor(()=>expect(p.onIssue).toHaveBeenCalledOnce());const original=p.onIssue.mock.calls[0][0];expect(original.oemCostEvidence).toMatchObject({ownerCompanyId:'taebaek',rawMaterials:[{rawItemId:'raw',kg:100,supplyAmount:220000}],packaging:{confirmed:true,supplyAmount:0}});view.unmount();render(<OemManager {...p}/>);fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(p.onIssue).toHaveBeenCalledTimes(2));expect(p.onIssue.mock.calls[1][0]).toEqual(original);});
 it('과거 근거 없는 배치는0원가로 확정 표시하지 않는다',()=>{const p=props();render(<OemManager {...p} issueOpen={false} feeTarget={{id:'po',companyId:'taebaek',poType:'oem',status:'received',partnerName:'외주',createdAt:'',itemId:'',itemName:'',quantity:0,oemSent:[{material:'들깨',kg:100}],oemReceivedKg:90} as PurchaseOrder}/>);expect(screen.getByText(/OEM 원가 미확인/)).toBeInTheDocument();expect(screen.queryByText(/확정 원가/)).toBeNull();});
 
 
@@ -210,15 +211,14 @@ it('화면 종료 뒤 입고 완료가 도착해도 최초 원문을 남겨 다�
 it.each(['', '{', 'null', '[]', '{}'])('손상 입고 원문 %j는 새 요청으로 바꾸지 않고 그대로 보존한다', async encoded => {
  const p=props();storageSet(receiptStorageKey('taebaek'),encoded);render(<OemManager {...p} items={[raw,receivedProduct]} issueOpen={false} receiveTarget={receivePo()}/>);await startReceipt();await screen.findByRole('dialog',{name:'OEM 실패 작업 목록'});expect(p.onReceive).not.toHaveBeenCalled();expect(storageGet(receiptStorageKey('taebaek'))).toBe(encoded);expect(screen.getByText(/보존된 입고 원문이 변경/)).toBeInTheDocument();
 });
-it.each(['', '{', 'null', '[]', '{}'])('손상 발주 원문 %j는 새 발주로 덮지 않는다', encoded => {
+it.each(['', '{', 'null', '[]', '{}'])('손상 발주 원문 %j는 새 발주로 덮지 않는다', async encoded => {
   const p = props();
   storageSet('oem-issue-pending:taebaek', encoded);
   render(<OemManager {...p} />);
   fill();
-  expect(screen.getByRole('alert')).toHaveTextContent('보존된 OEM 요청을 읽을 수 없습니다');
-  expect(screen.getByRole('button', { name: '발주 (원료 내보내기)' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '발주 (원료 내보내기)' }));
   expect(p.onIssue).not.toHaveBeenCalled();
+  await screen.findByRole('dialog',{name:'OEM 실패 작업 상세'});expect(screen.getByText(/최초 계정과 정규화 원문/)).toBeInTheDocument();
   expect(storageGet('oem-issue-pending:taebaek')).toBe(encoded);
 });
 
@@ -235,7 +235,7 @@ it.each(['company', 'po'] as const)('보존 입고의 %s가 진입 범위와 다
   expect(storageGet(receiptStorageKey('taebaek'))).toBe(encoded);
 });
 
-it.each(['issue', 'receipt'] as const)('최초 %s 원문 보존이 실패하면 업무 호출 없이 입력을 남겨 재시도한다', async mode => {
+it.each(['receipt'] as Array<'issue'|'receipt'>)('최초 %s 원문 보존이 실패하면 업무 호출 없이 입력을 남겨 재시도한다', async mode => {
   const p = props();
   // 실제 Storage 경계에서 한 번만 실패시킨다. 후속 같은 화면 재시도는 정상 저장한다.
   vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => { throw new Error('저장 공간 부족'); });
@@ -252,7 +252,7 @@ it.each(['issue', 'receipt'] as const)('최초 %s 원문 보존이 실패하면 
   await waitFor(() => expect(p.onClose).toHaveBeenCalledOnce());
 });
 
-it.each(['issue', 'receipt'] as const)('%s 성공 뒤 정리 실패는 최초 원문 재개로만 확인하고 정리한다', async mode => {
+it.each(['receipt'] as Array<'issue'|'receipt'>)('%s 성공 뒤 정리 실패는 최초 원문 재개로만 확인하고 정리한다', async mode => {
   const p = props(), call = vi.fn().mockResolvedValue(undefined);
   render(<OemManager {...p} items={[raw, receivedProduct]} issueOpen={mode === 'issue'} receiveTarget={mode === 'receipt' ? receivePo() : null}
     onIssue={call} onReceive={call} />);
@@ -285,7 +285,7 @@ it.each(['issue', 'receipt'] as const)('%s 입력 중 다른 원문이 저장되
   expect(p.onIssue).not.toHaveBeenCalled();
   expect(p.onReceive).not.toHaveBeenCalled();
   expect(storageGet(key)).toBe(changed);
-  if(mode==='issue')expect(screen.getByRole('alert')).toHaveTextContent('보존된 요청이 변경되었습니다');else await screen.findByRole('dialog',{name:'OEM 실패 작업 목록'});
+  if(mode==='issue')await screen.findByRole('dialog',{name:'OEM 실패 작업 상세'});else await screen.findByRole('dialog',{name:'OEM 실패 작업 목록'});
 });
 
 it('응답 유실 packet 재개는 품목 조회가 없어도 최초 입력·계정으로 확인하고 정확 ACK 후 정리한다',async()=>{

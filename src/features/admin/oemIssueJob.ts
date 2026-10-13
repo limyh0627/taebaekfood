@@ -4,6 +4,7 @@ import { COL } from '../../shared/collections';
 import type { RawInventoryCommand } from '../../shared/rawInventoryCore';
 import { runRawInventoryJob, verifyRawInventoryJobComplete } from '../../shared/services/rawInventoryJob';
 import { companyOf, type CompanyId, type PurchaseOrder } from '../../shared/types';
+import {assertOemIssueAttempt,acknowledgeOemIssueAttempt,clearOemIssueAttempt,markOemIssueFailure,type OemIssueRetained} from '../../shared/oemIssuePending';
 
 export type OemIssueLine = { material: string; rawItemId: string; kg: number };
 export interface OemIssueInput {
@@ -48,26 +49,32 @@ export interface OemIssuePorts {
 }
 
 /** 원료 job 완료와 발주 카드 확정은 별개다. 둘 다 끝나기 전에는 성공을 반환하지 않는다. */
-export async function runOemIssueJob(input: OemIssueInput, ports: OemIssuePorts): Promise<{ poId: string }> {
+export async function runOemIssueJob(input: OemIssueInput, ports: OemIssuePorts, assertScope?:()=>Promise<void>): Promise<{ poId: string }> {
+  input=JSON.parse(JSON.stringify(input));await assertScope?.();
   if (!input.jobId || !input.sent.length || new Set(input.sent.map(row => row.rawItemId)).size !== input.sent.length) {
     throw new Error('OEM 작업번호 또는 원료 목록이 잘못되었습니다. 같은 원료는 한 줄로 합쳐야 합니다.');
   }
   if(input.oemCostEvidence) input={...input,oemCostEvidence:validateAndMergeOemCostEvidence(input.oemCostEvidence,input.companyId,input.sent)};
   const draft = await ports.prepareDraft(input);
+  await assertScope?.();
   if (draft.oemIssueStatus === 'complete' && draft.status === 'invoiced') {
     const missing = await ports.missingRawSteps(draft);
+    await assertScope?.();
     if (missing.length > 0) throw new Error(`OEM 카드가 완료됐지만 원료 이력이 없습니다: ${missing.join(', ')}`);
     return { poId: draft.id };
   }
   try {
     await ports.runRawSteps(draft);
+    await assertScope?.();
     const missing = await ports.missingRawSteps(draft);
+    await assertScope?.();
     if (missing.length > 0) throw new Error(`OEM 원료 차감 이력이 아직 없습니다: ${missing.join(', ')}`);
     await ports.finalizeDraft(draft);
+    await assertScope?.();
     return { poId: draft.id };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    try { await ports.markFailed(draft, message); } catch { /* 원래 실패를 가리지 않는다. 초안은 남아 재개할 수 있다. */ }
+    try { await assertScope?.();await ports.markFailed(draft, message); } catch { /* 원래 실패를 가리지 않는다. 초안은 남아 재개할 수 있다. */ }
     throw new Error(`OEM 외주 발주가 부분 완료됐을 수 있습니다. 새 발주를 만들지 말고 이 작업을 재개하세요 (${draft.id}): ${message}`);
   }
 }
@@ -85,11 +92,13 @@ const rawCommands = (draft: OemIssueDraft): RawInventoryCommand[] => draft.oemSe
   kg: row.kg,
 }));
 
-export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
+export function firestoreOemIssuePorts(db: Firestore,assertScope?:()=>Promise<void>): OemIssuePorts {
   return {
     prepareDraft: input => runTransaction(db, async tx => {
+      await assertScope?.();
       const ref = doc(db, 'purchaseOrders', input.jobId);
       const snap = await tx.get(ref);
+      await assertScope?.();
       const fingerprint = oemIssueFingerprint(input);
       if (snap.exists()) {
         const previous = { id: snap.id, ...snap.data() } as OemIssueDraft;
@@ -116,6 +125,7 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
       return draft;
     }),
     runRawSteps: async draft => {
+      await assertScope?.();
       const commands = rawCommands(draft);
       const result = await runRawInventoryJob({
         jobId: jobIdOf(draft.id), companyId: draft.companyId!, source: { type: 'oem', id: draft.id },
@@ -126,14 +136,16 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
             legacy: { note: `OEM 외주출고 → ${draft.partnerName}`, type: 'auto' },
           },
         })),
-        options: { db },
+        options: { db,assertScope },
       });
       if (result.job.status !== 'complete') throw new Error(result.job.lastError ?? 'OEM 원료 차감이 끝나지 않았습니다.');
     },
     missingRawSteps: async draft => (await verifyRawInventoryJobComplete(jobIdOf(draft.id), db)).missing,
     finalizeDraft: draft => runTransaction(db, async tx => {
+      await assertScope?.();
       const ref = doc(db, 'purchaseOrders', draft.id);
       const snap = await tx.get(ref);
+      await assertScope?.();
       if (!snap.exists()) throw new Error('OEM 발주 초안이 사라졌습니다.');
       const current = snap.data() as OemIssueDraft;
       if (current.oemCancelledAt || current.oemCancelOperationId) throw new Error('취소된 OEM 발주는 확정할 수 없습니다.');
@@ -145,8 +157,10 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
       tx.update(ref, { status: 'invoiced', oemIssueStatus: 'complete', oemSentAt: new Date().toISOString() });
     }),
     markFailed: (draft, message) => runTransaction(db, async tx => {
+      await assertScope?.();
       const ref = doc(db, 'purchaseOrders', draft.id);
       const snap = await tx.get(ref);
+      await assertScope?.();
       if (!snap.exists()) return;
       const current = snap.data() as OemIssueDraft;
       if (companyOf(current) !== draft.companyId || current.oemIssueFingerprint !== draft.oemIssueFingerprint) return;
@@ -155,4 +169,17 @@ export function firestoreOemIssuePorts(db: Firestore): OemIssuePorts {
   };
 }
 
-export const issueOemBatchJob = (db: Firestore, input: OemIssueInput) => runOemIssueJob(input, firestoreOemIssuePorts(db));
+export async function issueOemBatchJob(db:Firestore,input:OemIssueInput,context?:{actorUid:string;isCurrent:()=>boolean;retained:OemIssueRetained}){
+ if(!context)return runOemIssueJob(input,firestoreOemIssuePorts(db));
+ const retained=JSON.parse(JSON.stringify(context.retained)) as OemIssueRetained;
+ const actorUid=context.actorUid,companyId=retained.request.companyId,isCurrent=context.isCurrent;
+ if(retained.request.actorUid!==context.actorUid||retained.request.companyId!==input.companyId
+  ||JSON.stringify(retained.request.input)!==JSON.stringify(input))throw Error('선택한 OEM 최초 송출 원문이나 계정이 다릅니다.');
+ const {auth,authReady}=await import('../../shared/firebase');await authReady;
+ const current=()=>isCurrent()&&auth.currentUser?.uid===actorUid;
+ const check=async()=>{if(!current())throw Error('OEM 송출 로그인 계정이 변경되었습니다.');assertOemIssueAttempt(retained);
+  const token=await auth.currentUser!.getIdTokenResult();if(!current()||token.claims.companyId!==companyId)throw Error('OEM 송출 회사나 계정이 변경되었습니다.');assertOemIssueAttempt(retained);};
+ await check();
+ try{const result=await runOemIssueJob(retained.request.input,firestoreOemIssuePorts(db,check),check);await check();acknowledgeOemIssueAttempt(retained);await clearOemIssueAttempt(retained,current);return result;}
+ catch(error){try{await check();await markOemIssueFailure(retained,error instanceof Error?error.message:String(error),false,current);}catch{/* 계정이나 원문이 바뀌면 실패 표식도 덮어쓰지 않는다. */}throw error;}
+}

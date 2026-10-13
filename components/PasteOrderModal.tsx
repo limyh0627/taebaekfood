@@ -11,6 +11,8 @@ import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
+import { matchOrderInterpretationAlias,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
+import type {OrderInterpretationRule} from '../src/shared/services/orderCopyService';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -100,7 +102,12 @@ const matchClient = (name: string, q: string) => {
 };
 
 // ── Props ────────────────────────────────────────────────────
+export interface OrderCopyEvidence {sourceText:string;firstAnalysis:OrderInterpretationJsonObject;inputLines:OrderInterpretationJsonObject[];}
 interface PasteOrderModalProps {
+  suspended?:boolean;
+  isCurrentActor?:()=>boolean;
+  companyId?:'taebaek'|'punghoe';
+  actorUid?:string;
   orderUnitInputs?: OrderUnitInputs;
   items: Item[];
   partners: Partner[];
@@ -116,13 +123,13 @@ interface PasteOrderModalProps {
   initialText?: string;
   onClose: () => void;
   onBack?: () => void;
-  onSave: (_order: Omit<Order, 'id' | 'status'>) => Promise<void>;
+  onSave: (_order: Omit<Order, 'id' | 'status'>,evidence?:OrderCopyEvidence) => Promise<void>;
 }
 
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,
+  companyId,actorUid,suspended=false,isCurrentActor,items, partners, orders, partnerItems, palletStocks, orderUnitInputs, initialText = '', onClose, onBack, onSave,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -138,10 +145,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     return () => { aiRequest.current.open = false; invalidateAiRead(); };
   }, []);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current) closeModal(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !savingRef.current && !suspended) closeModal(); };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [isSaving, onClose]);
+  }, [isSaving, onClose,suspended]);
 
   const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
@@ -157,6 +164,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   }, [selectedClient]);
   const [pasteText, setPasteText] = useState(initialText);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
+  const firstAnalysis=useRef<{sourceText:string;value:OrderInterpretationJsonObject}|null>(null);
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<{ tone: 'good' | 'warn' | 'bad'; text: string } | null>(null);
@@ -252,10 +260,23 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       .slice(0, 12);
   }, [partners]);
 
-  const analyze = () => {
+  const analyze = async () => {
     invalidateAiRead();
-    const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
-    setParsedLines(lines.map(l => parseLine(l, productPool)));
+    const captured={generation:aiRequest.current.generation,snapshot:aiRequest.current.snapshot};
+    let rules:OrderInterpretationRule[]=[];
+    if(companyId&&actorUid){try{const service=await import('../src/shared/services/orderCopyService');rules=await service.listOrderInterpretationRules(companyId);}catch{/* 승인 조회 실패는 새 규칙을 추정하지 않고 기존 판독으로 남긴다. */}
+      if(!aiRequest.current.open||aiRequest.current.generation!==captured.generation||aiRequest.current.snapshot!==captured.snapshot||isCurrentActor&&!isCurrentActor())return;
+    }
+    const lines=pasteText.split('\n').filter(line=>line.trim());
+    const parsed=lines.map(line=>{
+      const result=parseLine(line,productPool);
+      const suffix=/^(.*?)\s*(\d+(?:\.\d+)?)\s*(개|병|박스|캔|포)$/.exec(line.trim());
+      const expression=suffix&&Number(suffix[2])===result.qty&&(result.isBox?suffix[3]==='박스':suffix[3]!=='박스')?suffix[1]:line;
+      const approved=matchOrderInterpretationAlias(expression,rules,selectedClientId??'');
+      return approved&&productPool.some(item=>item.id===approved)?{...result,selectedProductId:approved}:result;
+    });
+    if(firstAnalysis.current?.sourceText!==pasteText)firstAnalysis.current={sourceText:pasteText,value:{kind:'rules',lines:parsed.map(line=>({...line}))}};
+    setParsedLines(parsed);
     setAiNote(null);
     setStep('review');
   };
@@ -279,10 +300,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     const requestId = ++aiRequest.current.sequence;
     aiRequest.current.inFlight = requestId;
     const captured = { generation: aiRequest.current.generation, snapshot: aiRequest.current.snapshot };
-    const current = () => aiRequest.current.open && aiRequest.current.inFlight === requestId &&
+    const current = () => (!isCurrentActor||isCurrentActor()) && aiRequest.current.open && aiRequest.current.inFlight === requestId &&
       aiRequest.current.generation === captured.generation && aiRequest.current.snapshot === captured.snapshot;
     const preserveInput = () => {
-      if (aiRequest.current.open && aiRequest.current.inFlight === requestId)
+      if ((!isCurrentActor||isCurrentActor()) && aiRequest.current.open && aiRequest.current.inFlight === requestId)
         setAiNote({ tone: 'warn', text: 'AI가 읽는 동안 주문 입력이 바뀌어 응답을 적용하지 않았습니다. 현재 입력을 보존했습니다.' });
     };
     setAiBusy(true);
@@ -299,6 +320,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       });
       if (!current()) { preserveInput(); return; }
       const 읽은것 = validateExtract(답.data as Record<string, unknown>, productPool);
+      if(firstAnalysis.current?.sourceText!==pasteText||firstAnalysis.current.value.kind!=='ai')firstAnalysis.current={sourceText:pasteText,value:{kind:'ai',rawResponse:structuredClone(답.data) as OrderInterpretationJsonObject,
+        validatedResult:{lines:읽은것.lines.map(line=>({itemId:line.itemId,name:line.name,qty:line.qty,...(line.isBox!==undefined?{isBox:line.isBox}:{}),...(line.source!==undefined?{source:line.source}:{})})),rejected:읽은것.rejected.map(row=>({...row})),...(읽은것.deliveryDate!==undefined?{deliveryDate:읽은것.deliveryDate}:{}),...(읽은것.note!==undefined?{note:읽은것.note}:{})},
+        ...(firstAnalysis.current?.sourceText===pasteText?{firstRules:firstAnalysis.current.value}:{})}};
 
       if (!읽은것.lines.length) {
         setAiNote({ tone: 'bad', text: '주문으로 읽을 것을 못 찾았습니다. 규칙으로 읽은 결과를 그대로 둡니다.' });
@@ -343,7 +367,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
   const handleSubmit = async () => {
-    if (savingRef.current || !orderDate || !deadline || !selectedClient) return;
+    if (savingRef.current || isCurrentActor&&!isCurrentActor() || !orderDate || !deadline || !selectedClient) return;
     invalidateAiRead();
     const draft = buildNewOrderDraft({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
@@ -359,7 +383,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setIsSaving(true);
     setSaveError('');
     try {
-      await onSave(draft);
+      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox}))});
     } catch (error) {
       console.error('복사 주문 저장 실패', error);
       setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');

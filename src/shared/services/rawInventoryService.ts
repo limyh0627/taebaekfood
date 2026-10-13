@@ -41,6 +41,8 @@ const stripUndefined = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
  * 부르는 쪽이 직접 넘기고 싶으면 넘기고, 안 넘기면 여기서 한 번만 만든다.
  */
 export interface RawCommandOptions {
+  /** 최초 요청의 계정·회사를 유지한다. 현재 계정을 새 요청자로 다시 해석하지 않는다. */
+  assertScope?:()=>Promise<void>;
   now?: string;
   newLotId?: string;
   carryOverLotId?: string;
@@ -120,6 +122,7 @@ export async function executeRawInventoryCommand(
   options: RawCommandOptions = {},
 ): Promise<RawApplyResult> {
   command=JSON.parse(JSON.stringify(command));
+  await options.assertScope?.();
   const database = options.db ?? (await import('../firebase')).db;
   //  ★ 트랜잭션 밖에서 딱 한 번 정한다.
   const now = options.now ?? new Date().toISOString();
@@ -127,8 +130,10 @@ export async function executeRawInventoryCommand(
   const newLotId = options.newLotId ?? `lot-${opId}`;
   const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
 
-  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify(command),companyId:command.companyId}), async tx => {
+  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify(command),companyId:command.companyId,isStillCurrent:async()=>{await options.assertScope?.();return true;}}), async tx => {
+    await options.assertScope?.();
     const read = await readRawCommandInTransaction(tx, database, command);
+    await options.assertScope?.();
     const result = prepareRawCommand(command, read, { ...options, now, newLotId, carryOverLotId });
     if (result.status === 'applied') writePreparedRawCommand(tx, command, read, result, options);
     return result;

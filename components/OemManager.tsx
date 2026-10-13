@@ -14,6 +14,7 @@ import { readOemExternalStockEvidence } from '../src/shared/services/oemExternal
 import type { OemExternalRow } from '../src/features/admin/oemExternalStock';
 import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
 import {listOemReceiptEntries,readOemReceiptEntry,storeOemReceiptDraft,clearOemReceiptAttempt,markOemReceiptFailure,isOemReceiptPreCallFailure,type OemReceiptEntry} from '../src/shared/oemReceiptPending';
+import {listOemIssueAttempts,assertOemIssueAttempt,deleteOemIssueEntry,markOemIssueFailure,type OemIssueRetained,type OemIssueEntry} from '../src/shared/oemIssuePending';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
@@ -33,39 +34,13 @@ interface Props {
   receiveTarget: PurchaseOrder | null;
   feeTarget: PurchaseOrder | null;
   onClose: () => void;
-  onIssue: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string; oemCostEvidence?: OemCostEvidence }) => Promise<void>;
+  onIssue: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string; oemCostEvidence?: OemCostEvidence },intent?:'new'|'resume',expectedActorUid?:string,retained?:OemIssueRetained) => Promise<void>;
   onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }, intent?: 'new' | 'resume',expectedActorUid?:string) => Promise<void>;
   onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
 type IssueInput = Parameters<Props['onIssue']>[0];
 type ReceiveInput = Parameters<Props['onReceive']>[0];
-type StoredPending<T> = { value: T | null; encoded: string | null; error: string };
-const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const text = (value: unknown): value is string => typeof value === 'string';
-const numeric = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-// 재개할 요청의 구조만 확인한다. 재고·원가 유효성은 기존 저장 명령이 판단한다.
-const issuePending = (value: unknown): value is IssueInput => object(value)
-  && text(value.jobId) && !!value.jobId && text(value.oemPartnerId) && text(value.partnerName) && text(value.date)
-  && Array.isArray(value.sent) && value.sent.every(row => object(row) && text(row.material) && numeric(row.kg));
-const receiptPending = (value: unknown, companyId: CompanyId, poId?: string): value is ReceiveInput => object(value)
-  && object(value.po) && value.po.id === poId && companyOf(value.po as Partial<PurchaseOrder>) === companyId
-  && text(value.date) && numeric(value.unitPricePerKg)
-  && Array.isArray(value.returns) && value.returns.every(row => object(row) && text(row.itemId) && numeric(row.qty))
-  && Array.isArray(value.bulk) && value.bulk.every(row => object(row) && text(row.material) && numeric(row.kg));
-function readPending<T>(key: string, accept: (value: unknown) => value is T): StoredPending<T> {
-  let encoded: string | null = null;
-  try {
-    encoded = sessionStorage.getItem(key);
-    if (encoded === null) return { value: null, encoded, error: '' };
-    const value: unknown = JSON.parse(encoded);
-    if (!accept(value)) throw new Error('요청 구조 불일치');
-    return { value, encoded, error: '' };
-  } catch {
-    return { value: null, encoded, error: '보존된 OEM 요청을 읽을 수 없습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.' };
-  }
-}
-
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export default function OemManager(props: Props) {
@@ -81,6 +56,10 @@ function OemSession({
   const [,setReceiptRevision]=useState(0);
   const [recoveryOpen,setRecoveryOpen]=useState(false);
   const [selectedReceipt,setSelectedReceipt]=useState<OemReceiptEntry|null>(null);
+  const [selectedIssueEntry,setSelectedIssueEntry]=useState<OemIssueEntry|null>(null);
+  const selectedIssue=selectedIssueEntry?.retained??null;
+  const legacyIssueSelected=!!selectedIssueEntry&&!selectedIssue;
+  const issues=actorUid?listOemIssueAttempts(companyId,actorUid):[];
   const receipts=actorUid?listOemReceiptEntries(companyId,actorUid):[];
   React.useEffect(()=>{const update=()=>setReceiptRevision(value=>value+1);window.addEventListener('storage',update);return()=>window.removeEventListener('storage',update);},[]);
   const [storageNotice, setStorageNotice] = useState({ message: '', blocked: false });
@@ -94,44 +73,6 @@ function OemSession({
     return () => { alive.current = false; };
   }, []);
   const close = () => { if (alive.current && !busyRef.current) onClose(); };
-  // 완료 응답은 자신이 보존한 원문만 정리한다. 다른 탭/재개가 바꾼 원문은 남긴다.
-  const clearPending = (key: string, encoded: string, clear: () => void) => {
-    if (!alive.current) return false;
-    try {
-      if (sessionStorage.getItem(key) !== encoded) {
-        setStorageNotice({ message: '보존된 요청이 변경되었습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.', blocked: true });
-        return false;
-      }
-      sessionStorage.removeItem(key);
-      clear();
-      setStorageNotice({ message: '', blocked: false });
-      return true;
-    } catch {
-      setStorageNotice({ message: '처리 결과는 확인됐지만 보존 요청을 정리하지 못했습니다. 같은 요청을 재개해 다시 확인해주세요.', blocked: false });
-      return false;
-    }
-  };
-  const pendingKey = `oem-issue-pending:${companyId}`;
-  const [issueStored, setIssueStored] = useState(() => readPending(pendingKey, issuePending));
-  const pendingIssue = issueStored.value;
-  const savePending = <T,>(key: string, before: StoredPending<T>, value: T): string | null => {
-    if (!alive.current || before.error || storageNotice.blocked) return null;
-    try {
-      if (sessionStorage.getItem(key) !== before.encoded) {
-        setStorageNotice({ message: '보존된 요청이 변경되었습니다. 원문을 유지했습니다. 다시 열어 확인해주세요.', blocked: true });
-        return null;
-      }
-      // 재개는 최초 원문을 다시 쓰지 않는다. 저장 성공 전에 업무 명령을 보내지 않는다.
-      const encoded = before.encoded ?? JSON.stringify(value);
-      if (before.encoded === null) sessionStorage.setItem(key, encoded);
-      setStorageNotice({ message: '', blocked: false });
-      return encoded;
-    } catch {
-      setStorageNotice({ message: '요청 원문을 보존하지 못해 전송하지 않았습니다. 입력은 남아 있습니다. 다시 시도해주세요.', blocked: false });
-      return null;
-    }
-  };
-
   const oemItems = useMemo(() => items.filter(i => !i.archived && i.procureType === '임가공'), [items]);
   const rawItems = useMemo(
     () => items.filter(i => !i.archived && !i.phantom && isBulkItem(i)),
@@ -184,13 +125,43 @@ function OemSession({
     catch(error){if(current())setStorageNotice({message:error instanceof Error?error.message:String(error),blocked:false});}
     finally{if(current()){busyRef.current=false;setBusy(false);}}
   };
+  const issueDisplay=(retained:OemIssueRetained):IssueInput=>({jobId:retained.request.input.jobId,oemPartnerId:retained.request.input.partnerId,partnerName:retained.request.input.partnerName,sent:retained.request.input.sent.map(row=>({material:row.material,kg:row.kg})),date:retained.request.input.date,...(retained.request.input.note?{note:retained.request.input.note}:{}),...(retained.request.input.oemCostEvidence?{oemCostEvidence:retained.request.input.oemCostEvidence}:{})});
+  const submitIssue=async(input:IssueInput,intent:'new'|'resume',retained?:OemIssueRetained)=>{
+    if(busyRef.current||!current())return;busyRef.current=true;setBusy(true);
+    try{
+      if(retained)assertOemIssueAttempt(retained);
+      else {const unsafe=listOemIssueAttempts(companyId,actorUid).find(entry=>!entry.retained);if(unsafe)throw Error(unsafe.error); }
+      await onIssue(input,intent,actorUid,retained);
+      if(current()){setSelectedIssueEntry(null);setReceiptRevision(v=>v+1);setStorageNotice({message:'처리 결과를 확인했습니다.',blocked:false});if(intent==='new')onClose();}
+    }catch(error){if(current()){
+      const message=error instanceof Error?error.message:String(error);
+      const fresh=listOemIssueAttempts(companyId,actorUid);
+      const own=retained??fresh.find(e=>e.retained?.request.input.jobId===input.jobId)?.retained;
+      if(own){try{await markOemIssueFailure(own,message,fresh.find(e=>e.key===own.key)?.deleted??false,current);}catch{/* 원문이 바뀌면 새 요청에 실패표식을 덮어쓰지 않는다. */}}
+      if(!current())return;
+      const related=own??fresh.find(e=>e.retained?.request.input.sent.some(row=>input.sent.some(other=>other.material===row.material)))?.retained;
+      setSelectedReceipt(null);setSelectedIssueEntry(fresh.find(e=>e.retained?.key===related?.key)??fresh.find(e=>!e.retained)??null);setStorageNotice({message,blocked:false});setRecoveryOpen(true);setReceiptRevision(v=>v+1);
+    }}finally{if(current()){busyRef.current=false;setBusy(false);}}
+  };
+  const removeIssue=async(entry:OemIssueEntry)=>{
+    if(busyRef.current||!current())return;busyRef.current=true;setBusy(true);
+    try{await deleteOemIssueEntry(entry,current);if(current()){setSelectedIssueEntry(null);setStorageNotice({message:'',blocked:false});setReceiptRevision(v=>v+1);}}
+    catch(error){if(current())setStorageNotice({message:error instanceof Error?error.message:String(error),blocked:false});}
+    finally{if(current()){busyRef.current=false;setBusy(false);}}
+  };
   const recoveryButton='rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold disabled:opacity-50';
   return (
     <>
-      <button type="button" className={recoveryButton} onClick={()=>{setReceiptRevision(value=>value+1);setSelectedReceipt(null);setRecoveryOpen(true);}}>OEM 실패 작업 {receipts.filter(entry=>!entry.deleted).length}</button>
-      {recoveryOpen&&<ModalShell title={selectedReceipt?'OEM 실패 작업 상세':'OEM 실패 작업 목록'} layer={1300} onClose={()=>{if(!busyRef.current){if(selectedReceipt)setSelectedReceipt(null);else setRecoveryOpen(false);}}}>
-        {!selectedReceipt?<><p>최초 입고 요청을 선택해 처리 결과와 확인할 내용을 살펴보세요.</p>{storageNotice.message&&<p>{storageNotice.message}</p>}
-          {!receipts.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+      <button type="button" className={recoveryButton} onClick={()=>{setReceiptRevision(value=>value+1);setSelectedReceipt(null);setSelectedIssueEntry(null);setRecoveryOpen(true);}}>OEM 실패 작업 {receipts.filter(entry=>!entry.deleted).length+issues.filter(entry=>!entry.deleted).length}</button>
+      {recoveryOpen&&<ModalShell title={selectedReceipt||selectedIssue||legacyIssueSelected?'OEM 실패 작업 상세':'OEM 실패 작업 목록'} layer={1300} onClose={()=>{if(!busyRef.current){if(selectedReceipt||selectedIssue||legacyIssueSelected){setSelectedReceipt(null);setSelectedIssueEntry(null);}else setRecoveryOpen(false);}}}>
+        {selectedIssue?<div className="space-y-4"><p className="font-bold">{selectedIssue.request.input.partnerName} · {selectedIssue.request.input.date}</p>
+          <p>{storageNotice.message||'외주 원료 출고 결과를 아직 확인하지 못했습니다.'}</p><p>확인할 내용: 최초 원료·수량·날짜와 외주 출고 이력, 각 원료의 실제 재고를 확인해주세요.</p>
+          <ul>{selectedIssue.request.input.sent.map(row=><li key={row.rawItemId}>{row.material} · {row.kg}kg</li>)}</ul>
+          <div className="flex gap-2"><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void submitIssue(issueDisplay(selectedIssue),'resume',selectedIssue)}>같은 내용 다시 시도</button><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void removeIssue(selectedIssueEntry!)}>실패 요청 삭제</button></div>
+          <p>실패 목록에서 요청을 삭제합니다. 실제 외주 출고·발주·재고는 바뀌지 않습니다. 관련 원료는 이전 처리 결과를 확인해야 합니다.</p>
+        </div>:legacyIssueSelected?<div className="space-y-3"><p>{selectedIssueEntry?.error||'과거 외주 요청의 최초 계정과 원료 송신 원문을 확인할 수 없습니다. 자동으로 다시 출고하지 않습니다.'}</p><p>외주 출고 이력과 원료 재고를 확인해주세요.</p><button type="button" className={recoveryButton} disabled={busy} onClick={()=>void removeIssue(selectedIssueEntry!)}>실패 요청 삭제</button></div>:!selectedReceipt?<><p>최초 입고 요청을 선택해 처리 결과와 확인할 내용을 살펴보세요.</p>{storageNotice.message&&<p>{storageNotice.message}</p>}
+          {!receipts.some(entry=>!entry.deleted)&&!issues.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+          {issues.filter(e=>!e.deleted).map(e=><button type="button" key={e.key} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setSelectedIssueEntry(e);setStorageNotice({message:e.error,blocked:false});}}>{e.retained?`${e.retained.request.input.partnerName} · ${e.retained.request.input.date} · 외주 출고 처리 결과 미확인`:e.error}</button>)}
           {receipts.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.scope.poId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>setSelectedReceipt(entry)}>{entry.draft?.input.po.partnerName??purchaseOrders?.find(po=>po.id===entry.scope.poId)?.partnerName??'OEM 배치'} · {entry.scope.poId} · {entry.draft?.input.date??entry.packet?.request.date??'일자 확인 필요'} · {entry.legacy?'과거 요청 확인 필요':'처리 결과 미확인'}</button>)}
         </>: (()=>{let matches=false;try{const fresh=readOemReceiptEntry(selectedReceipt.scope);matches=fresh.draftText===selectedReceipt.draftText&&fresh.packetText===selectedReceipt.packetText&&fresh.legacy===selectedReceipt.legacy;}catch{/* 판독 불가 원문은 임의 선택하지 않는다. */}
           const input=selectedReceipt.draft?.input,packet=selectedReceipt.packet?.request;
@@ -205,35 +176,8 @@ function OemSession({
           </div>;
         })()}
       </ModalShell>}
-      {issueOpen && (
-        <IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} purchaseOrders={purchaseOrders} pendingIssue={pendingIssue} busy={busy}
-          pendingError={issueStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
-          onClose={close} onSubmit={(v) => {
-            if (busyRef.current) return;
-            if (pendingIssue && pendingIssue.jobId !== v.jobId) {
-              setStorageNotice({ message: '보존된 발주 요청을 먼저 확인해주세요. 다른 발주로 원문을 바꾸지 않았습니다.', blocked: true });
-              return;
-            }
-            const payload = pendingIssue ?? v;
-            const encoded = savePending(pendingKey, issueStored, payload);
-            if (encoded === null) return;
-            setIssueStored({ value: payload, encoded, error: '' });
-            run(async () => {
-              try {
-                await onIssue(payload);
-                return clearPending(pendingKey, encoded, () => setIssueStored({ value: null, encoded: null, error: '' }));
-              } catch (error) {
-                // 이 오류는 발주 초안을 만들기 전의 입력 검사에서만 나온다.
-                // 네트워크/부분 출고 실패는 상태가 불확실하므로 작업번호를 그대로 보존한다.
-                const message = error instanceof Error ? error.message : String(error);
-                if (/^(내보낼 원료가 없습니다|다른 회사이거나 없는 OEM 거래처입니다|현재 회사의 원료 홀더를 찾을 수 없습니다)/.test(message)) {
-                  clearPending(pendingKey, encoded, () => setIssueStored({ value: null, encoded: null, error: '' }));
-                }
-                throw error;
-              }
-            });
-          }} />
-      )}
+      {issueOpen&&<div hidden={recoveryOpen}><IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={[]} purchaseOrders={purchaseOrders} busy={busy}
+        onClose={close} onSubmit={v=>void submitIssue(v,'new')} /></div>}
       {receiveTarget && <div hidden={recoveryOpen}><ReceiveModal companyId={companyId} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs} pendingReceipt={null} onClose={close} onSubmit={v=>void submitReceipt({po:receiveTarget,...v},'new')} /></div>}      {feeTarget && (
         <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy} orderUnitInputs={orderUnitInputs}
           onClose={close} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
@@ -243,14 +187,12 @@ function OemSession({
 }
 
 // ── 외주 발주 (원료 내보내기) ────────────────────────────────────────────────
-function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, purchaseOrders, pendingIssue, pendingError, storageNotice, busy, onClose, onSubmit }: {
-  pendingError?: string; storageNotice?: string;
-  companyId:CompanyId; partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; pendingIssue: IssueInput | null; busy: boolean;
+function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, purchaseOrders, busy, onClose, onSubmit }: {
+  companyId:CompanyId; partners: Partner[]; rawItems: Item[]; rawStockKg: (m: string) => number; issueDrafts: PurchaseOrder[]; busy: boolean;
   purchaseOrders?: PurchaseOrder[];
   onClose: () => void;
   onSubmit: (v: IssueInput) => void;
 }) {
-  const [jobId] = useState(() => `oem-${crypto.randomUUID()}`);
   const [partnerId, setPartnerId] = useState('');
   const [date, setDate] = useState(today());
   const [rows, setRows] = useState<{ material: string; kg: string; supplyAmount?:string }[]>([{ material: '', kg: '' }]);
@@ -263,34 +205,11 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pu
   const partner = partners.find(p => p.id === partnerId);
   const sent = rows.filter(r => r.material && Number(r.kg) > 0).map(r => ({ material: r.material, kg: Number(r.kg) }));
   const shortage = sent.filter(s => s.kg > rawStockKg(s.material));
-  const canSave = !!partnerId && sent.length > 0 && !busy && !pendingError;
+  const canSave = !!partnerId && sent.length > 0 && !busy;
 
   return (
     <ModalShell title="외주 발주 · 원료 내보내기" onClose={onClose} bodyClassName="space-y-4">
         <ExternalDispatchEvidence companyId={companyId} orders={purchaseOrders ?? issueDrafts} />
-        {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
-        {(issueDrafts.length > 0 || pendingIssue) && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
-            <p className="text-xs font-bold text-amber-900">{busy ? '외주 발주 처리 중입니다. 완료될 때까지 기다려 주세요.' : '완료되지 않은 외주 발주가 있습니다. 새로 발주하기 전에 기존 작업을 재개하세요.'}</p>
-            {pendingIssue && !issueDrafts.some(draft => draft.id === pendingIssue.jobId) && (
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0 truncate text-slate-700">{pendingIssue.partnerName} · {pendingIssue.date} · 원료 {pendingIssue.sent.length}종</span>
-                <button type="button" disabled={busy || !!pendingError} onClick={() => onSubmit(pendingIssue)} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
-              </div>
-            )}
-            {issueDrafts.map(draft => (
-              <div key={draft.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0 truncate text-slate-700">{draft.partnerName} · {draft.oemIssueDate} · 원료 {draft.oemSent?.length ?? 0}종</span>
-                <button type="button" disabled={busy || !!pendingError || (!!pendingIssue && pendingIssue.jobId !== draft.id)} onClick={() => onSubmit({
-                  jobId: draft.id, oemPartnerId: draft.oemPartnerId ?? draft.partnerId ?? '', partnerName: draft.partnerName ?? '',
-                  sent: (draft.oemSent ?? []).map(row => ({ material: row.material, kg: row.kg })),
-                  ...(draft.oemCostEvidence ? {oemCostEvidence:draft.oemCostEvidence} : {}),
-                  date: draft.oemIssueDate ?? '', note: draft.note,
-                })} className="shrink-0 rounded-lg bg-amber-700 px-2 py-1 font-bold text-white disabled:opacity-40">재개</button>
-              </div>
-            ))}
-          </div>
-        )}
         <p className="text-[11px] text-slate-400 leading-snug">
           우리 원료를 외주공장에 보냅니다. <b>본재고에서 빠지고 외주로 나갑니다</b>(전표 없음 — 우리 것의 이동).
           발주하면 <b>입고대기</b>에 뜨고, 돌아오면 거기서 가공입고 하시면 됩니다.
@@ -361,8 +280,8 @@ function IssueModal({ companyId, partners, rawItems, rawStockKg, issueDrafts, pu
 
         <div className="flex gap-2">
           <button onClick={onClose} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 disabled:opacity-40">취소</button>
-          <button onClick={() => onSubmit({ jobId, oemPartnerId: partnerId, partnerName: partner?.name ?? '', sent, date, note: note.trim() || undefined, ...(costStatus.evidence ? {oemCostEvidence:costStatus.evidence} : {}) })}
-            disabled={!canSave || issueDrafts.length > 0 || !!pendingIssue}
+          <button onClick={() => onSubmit({ jobId:`oem-${crypto.randomUUID()}`, oemPartnerId: partnerId, partnerName: partner?.name ?? '', sent, date, note: note.trim() || undefined, ...(costStatus.evidence ? {oemCostEvidence:costStatus.evidence} : {}) })}
+            disabled={!canSave}
             className="flex-1 py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 disabled:opacity-30">
             {busy ? '처리 중…' : '발주 (원료 내보내기)'}
           </button>

@@ -10,6 +10,8 @@
  * 지금 있는 이름을 그대로 옮겨 적은 것이다 — **DB 를 바꾸는 게 아니다.**
  */
 export const COL = {
+  orderCopyOperations:'orderCopyOperations',
+  orderInterpretationRules:'orderInterpretationRules',
   authLoginAttempts: 'authLoginAttempts',
   companyTransferOperations: 'companyTransferOperations',
   companyTransferGrants: 'companyTransferGrants',

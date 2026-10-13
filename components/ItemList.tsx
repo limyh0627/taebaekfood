@@ -4,6 +4,7 @@ import { isStockProduction } from '../src/shared/orderPurpose';
 import { hasPendingReturn } from '../src/features/admin/returnCommands';
 import { returnBusinessText } from '../src/shared/returnBusinessEvidence';
 import { appConfirm } from '../src/shared/components/appDialog';
+import type { RawPressRetained } from '../src/shared/rawPressAttempt';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { where } from 'firebase/firestore';
 import { today, dateOfLocal, timeOfLocal } from '../src/shared/day';
@@ -237,7 +238,7 @@ interface ItemListProps {
   onOpenVoucher?: (docNo: string, statementId: string) => void;
   issuedStatements?: IssuedStatement[];
   /** 원료 손입력·실사 — 로트·원장·품목재고를 **한 트랜잭션**에 넣는다(AdminApp 이 명령을 부른다). */
-  onAddRawMaterialEntry: (entry: RawMaterialEntry) => Promise<{ ok: boolean; appliedKg?: number; reason?: string; canEditRetry?:boolean }>;
+  onAddRawMaterialEntry: (entry: RawMaterialEntry, intent?:'new'|'resume', retained?:RawPressRetained) => Promise<{ ok: boolean; appliedKg?: number; reason?: string; canEditRetry?:boolean;relatedRetained?:RawPressRetained }>;
   onDeleteRawMaterialEntry: (id: string) => void;
   onLedgerChanged?: () => void;   // 원장 쓰기 후 상위(AdminApp) 재조회 트리거
   currentUser?: { name: string; id: string } | null;
@@ -3502,7 +3503,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
         rawYieldRules={rawYieldRules}
         lotsForMaterial={rawLotsForMaterial}
         onClose={() => setRawEntryModal(null)}
-        onSubmit={async (entry) => {
+        onSubmit={async (entry,intent,retained) => {
           const generation=rawEntryGeneration.current,uid=auth.currentUser?.uid;
           /**
            * **로트·원장·재고가 한 트랜잭션에서 같이 움직인다**(설계 §6, 이관 5단계).
@@ -3515,12 +3516,11 @@ const ItemListContent: React.FC<ItemListProps> = ({
            * 소급 입력(마지막 실사보다 앞선 날짜) 판정도 명령 안에서 한다 —
            * 화면이 든 배열이 아니라 **트랜잭션에서 읽은 상태**로 본다(§10).
            */
-          const r = await onAddRawMaterialEntry(entry);
+          const r = await onAddRawMaterialEntry(entry,intent,retained);
           if(generation!==rawEntryGeneration.current||uid!==auth.currentUser?.uid)return false;
           if (!r.ok) {
             setToast({ message: `${entry.material} 기록 실패 — ${r.reason}` });
-            if(r.canEditRetry)return {ok:false as const,canEditRetry:true,reason:r.reason};
-            return false;
+            return {ok:false as const,reason:r.reason,...(r.canEditRetry?{canEditRetry:true}:{}),...(r.relatedRetained?{relatedRetained:r.relatedRetained}:{})};
           }
           // 원장은 실시간 구독하지 않으므로 확정 성공 뒤에만 파생 입고까지 다시 조회한다.
           onLedgerChanged?.();

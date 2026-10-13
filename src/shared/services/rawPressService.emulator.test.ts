@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { initializeApp,deleteApp } from 'firebase/app';
-import { connectAuthEmulator,getAuth,signInWithEmailAndPassword } from 'firebase/auth';
+import { connectAuthEmulator,getAuth,signInWithEmailAndPassword,signInWithCustomToken } from 'firebase/auth';
 import { connectFirestoreEmulator,getFirestore } from 'firebase/firestore';
 import { initializeApp as adminApp,deleteApp as deleteAdminApp } from 'firebase-admin/app';
 import { getAuth as adminAuth } from 'firebase-admin/auth';
@@ -33,6 +33,14 @@ describe.skipIf(process.env.RAW_PRESS_EMULATOR_TEST!=='true')('압착 실제 Aut
  const scope=(c:any,r:{actorUid:string;companyId:CompanyId})=>async()=>{const token=await c.auth.currentUser.getIdTokenResult();if(c.auth.currentUser.uid!==r.actorUid||token.claims.companyId!==r.companyId)throw Error('로그인 원문 변경');};
  const cancelRequest=(original:RawPressRequest,actorUid=original.actorUid)=>{const r=makeRawPressCancellationRequest(original,actorUid,original.entry.id+'-cancel-'+actorUid,'2026-10-14T00:00:00Z');for(const command of [r.sourceReverse,r.derivedReverse]){paths.add('rawMaterialLedger/'+operationDocId(command.operationId));paths.add('rawInventoryReversalGuards/'+operationDocId(command.originalOperationId));}return r;};
  const read=async()=>Promise.all([...paths].map(async path=>[path,(await store.doc(path).get()).data()]));
+ it('TX 원료 읽기 후 같은 회사의 다른 UID로 바뀌면 원료·파생·완료표 쓰기를 막는다',async()=>{
+  const {c,request}=await seed('late-same-company-uid'),before=await read();let checks=0;
+  try{
+   const fixed=async()=>{if(++checks===2)await signInWithCustomToken(c.auth,await accounts.createCustomToken(clients[2].uid));await scope(c,request)();};
+   await expect(executeRawPressWithDb(c.db,request,fixed)).rejects.toThrow('로그인 원문 변경');expect(checks).toBe(2);
+   expect(await read()).toEqual(before);expect(c.auth.currentUser.uid).toBe(clients[2].uid);
+  }finally{await signInWithCustomToken(c.auth,await accounts.createCustomToken(c.uid));expect(c.auth.currentUser.uid).toBe(c.uid);}
+ },60000);
  it('동시 동일 원문은 하나의 pair만 만들며 재개도 추가 차감하지 않는다',async()=>{const {c,request,source,derived}=await seed('same');const results=await Promise.all([executeRawPressWithDb(c.db,request,scope(c,request)),executeRawPressWithDb(c.db,request,scope(c,request))]);expect(results.map(x=>x.status).sort()).toEqual(['applied','duplicate']);expect((await store.doc('items/'+source).get()).data()!.stock).toBe(90);expect((await store.doc('items/'+derived).get()).data()!.stock).toBe(4.8);const before=await read();expect((await executeRawPressWithDb(c.db,request,scope(c,request))).status).toBe('duplicate');expect(await read()).toEqual(before);},60000);
  it('파생 회사 거절과 서명된 다른 회사·UID는 어느 쪽도 쓰지 않는다',async()=>{const {c,request,derived}=await seed('boundary');await store.doc('items/'+derived).update({companyId:'punghoe'});const before=await read();await expect(executeRawPressWithDb(c.db,request,scope(c,request))).rejects.toMatchObject({code:'permission-denied'});expect(await read()).toEqual(before);await expect(executeRawPressWithDb(clients[1].db,request,scope(clients[1],request))).rejects.toThrow('로그인');expect(await read()).toEqual(before);},60000);
  it('부족 거절은 원료·파생·job 쓰기0이며 완료 영수증 변조는 보존한다',async()=>{const {c,request}=await seed('reject');const excessive={...request,entry:{...request.entry,used:101},sourceCommand:{...request.sourceCommand,kg:101},derivedCommand:{...request.derivedCommand,kg:48.48}};const before=await read();expect(await executeRawPressWithDb(c.db,excessive,scope(c,excessive))).toMatchObject({status:'blocked',retainPending:false});expect(await read()).toEqual(before);await executeRawPressWithDb(c.db,request,scope(c,request));const receipt='rawMaterialLedger/'+operationDocId(request.entry.id);await store.doc(receipt).update({reportedDeltaKg:-9});const damaged=await read();expect(await executeRawPressWithDb(c.db,request,scope(c,request))).toMatchObject({status:'blocked',retainPending:true});expect(await read()).toEqual(damaged);},60000);

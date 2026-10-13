@@ -124,12 +124,19 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['items', 'orders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['orderCopyOperations', 'orderInterpretationRules', 'items', 'orders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit'];
     }
 
     // 미반영·요청 폐기 근거는 서버만 판독한다. 관리자 조회도 열면 최초 원문이 노출된다.
     // 명시 거절만으로 포괄 허용을 이길 수 없으므로 위 hasOwnRule에서도 제외한다.
+    // 최초 주문 원문과 규칙 승인은 RPC에서 회사·직원·관리자 권한을 확인한다.
+    match /orderCopyOperations/{document=**} {
+      allow read, write: if false;
+    }
+    match /orderInterpretationRules/{document=**} {
+      allow read, write: if false;
+    }
     match /statementIssueOperations/{document=**} {
       allow get, list, create, update, delete: if false;
     }

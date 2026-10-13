@@ -4,7 +4,7 @@ import { doc, getDocFromServer, runTransaction, type Firestore } from 'firebase/
 import { COL } from '../collections';
 import { commandHash, operationDocId, type RawInventoryJob, type RawInventoryCommand } from '../rawInventoryCore';
 import { normalizeRawMovement, prepareRawCommand, readRawCommandInTransaction, writePreparedRawCommand } from './rawInventoryService';
-import { clearRawPressAttempt, rawPressText, saveRawPressAttempt, validateRawPressRequest, type RawPressRequest } from '../rawPressAttempt';
+import { clearRawPressAttempt, rawPressText, saveRawPressAttempt, validateRawPressRequest, type RawPressRequest, type RawPressRetained, assertRawPressAttempt, submitRawPressAttempt, clearSelectedRawPressAttempt, readRawPressAttempt, withRawPressLock } from '../rawPressAttempt';
 import { auth, authReady, db } from '../firebase';
 import { withClaimCompany } from '../companyWriteBoundary';
 import { companyOf } from '../types';
@@ -62,7 +62,7 @@ function cancellationMatches(job:RawPressJob,sourceRead:Read,derivedRead:Read):b
   return saved.derivedAppliedKg===0&&!exists(derivedRead)&&!derivedRead.guardSnap?.exists();
 }
 /** 둘의 이력과 완료 근거를 함께 저장한다. 기존 순차 job을 복구 완료로 추정하지 않는다. */
-export async function executeRawPressWithDb(database: Firestore, request: RawPressRequest, assertScope?: () => Promise<void>): Promise<RawPressOutcome> {
+export async function executeRawPressWithDb(database: Firestore, request: RawPressRequest, assertScope?: () => Promise<void>, mode:'apply'|'inspect'='apply'): Promise<RawPressOutcome> {
   request=JSON.parse(JSON.stringify(request));
   validateRawPressRequest(request);
   const source = request.sourceCommand, derived = request.derivedCommand;
@@ -85,6 +85,7 @@ export async function executeRawPressWithDb(database: Firestore, request: RawPre
       }
       return { status: 'duplicate', sourceAppliedKg: job.sourceAppliedKg, derivedAppliedKg: job.derivedAppliedKg };
     }
+    if(mode==='inspect')return blocked('최초 압착 완료 근거가 없어 결과를 확인하지 못했습니다. 원료 사용·파생 입고 이력을 확인해 주세요. 원문을 보존하고 다시 적용하지 않았습니다.');
     if (exists(sourceRead) || exists(derivedRead)) return blocked('기존 부분 처리 이력이 있습니다. 자동으로 압착을 보완하지 않았습니다.');
     const sr = prepareRawCommand(source, sourceRead, { now: request.entry.createdAt });
     if (sr.status !== 'applied') return blocked(sr.status === 'rejected' ? sr.message : '원료 사용 요청을 확인해 주세요.', false);
@@ -105,21 +106,34 @@ export async function executeRawPressWithDb(database: Firestore, request: RawPre
     return { status: 'applied', sourceAppliedKg, derivedAppliedKg };
   });
 }
-export async function executeRawPress(request: RawPressRequest): Promise<RawPressOutcome> {
+export async function executeRawPress(request: RawPressRequest, options?:{retained?:RawPressRetained;isCurrent?:()=>boolean}): Promise<RawPressOutcome> {
+  request=JSON.parse(JSON.stringify(request));
   await authReady;
   const uid = auth.currentUser?.uid;
   if (!uid || uid !== request.actorUid) throw Error('압착 요청 로그인 계정을 확인해 주세요.');
+  let pending=options?.retained?JSON.parse(JSON.stringify(options.retained)) as RawPressRetained:undefined;
+  const isCurrent=options?.isCurrent;
+  const current=()=>auth.currentUser?.uid===uid&&(!isCurrent||isCurrent());
   const assertScope = async () => {
+    if(!current())throw Error('압착 요청의 회사나 로그인 계정이 변경되었습니다.');
+    if(pending)assertRawPressAttempt(pending);
     if (auth.currentUser?.uid !== uid) throw Error('로그인 계정이 바뀌어 압착 완료 여부를 확인해야 합니다.');
     const token = await auth.currentUser.getIdTokenResult();
     withClaimCompany(COL.rawInventoryJobs, { companyId: request.companyId }, { companyId: token.claims.companyId });
+    if(!current())throw Error('압착 요청의 회사나 로그인 계정이 변경되었습니다.');
+    if(pending)assertRawPressAttempt(pending);
     if (auth.currentUser?.uid !== uid) throw Error('로그인 계정이 바뀌어 압착 완료 여부를 확인해야 합니다.');
   };
   await assertScope();
-  const pending = saveRawPressAttempt(request);
-  const outcome = await executeRawPressWithDb(db, request, assertScope);
+  let mode:'apply'|'inspect'='apply';
+  if(pending){if(rawPressText(pending.request)!==rawPressText(request))throw Error('선택한 압착 최초 원문이 다릅니다.');mode=pending.state==='prepared'?'apply':'inspect';if(mode==='apply')pending=await submitRawPressAttempt(pending,current);}
+  else {const previous=readRawPressAttempt(request.companyId,uid);mode=previous?'inspect':'apply';pending=saveRawPressAttempt(request);}
+  const outcome = await executeRawPressWithDb(db, request, assertScope, mode);
   await assertScope();
-  if ((outcome.status !== 'blocked' || !outcome.retainPending) && auth.currentUser?.uid === uid) clearRawPressAttempt(request.companyId, uid, pending.encoded);
+  if ((outcome.status !== 'blocked' || !outcome.retainPending) && current()) {
+    if(pending.storageKey)await withRawPressLock(request.companyId,uid,current,()=>clearSelectedRawPressAttempt(pending!));
+    else clearRawPressAttempt(request.companyId, uid, pending.encoded);
+  }
   return outcome;
 }
 export type RawPressCancellationOutcome={status:'cancelled'|'duplicate';sourceAppliedKg:number;derivedAppliedKg:number}

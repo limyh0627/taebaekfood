@@ -25,6 +25,7 @@ export interface JobCommandInput {
 export type JobCommandResult = { input: JobCommandInput; result: RawApplyResult };
 
 export interface RunJobOptions {
+  assertScope?:()=>Promise<void>;
   now?: string;
   db?: Firestore;
 }
@@ -51,6 +52,7 @@ export async function runRawInventoryJob(input: {
   commands: JobCommandInput[];
   options?: RunJobOptions;
 }): Promise<RunJobOutcome> {
+  await input.options?.assertScope?.();
   const database = input.options?.db ?? (await import('../firebase')).db;
   const now = input.options?.now ?? new Date().toISOString();
   const jobRef = doc(database, COL.rawInventoryJobs, input.jobId);
@@ -65,8 +67,10 @@ export async function runRawInventoryJob(input: {
   }
 
   //  ① 진행표 준비. 같은 jobId 로 재실행하면 `processing` 이 그대로 이어진다.
-  const initial: RawInventoryJob = await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify({jobId:input.jobId,companyId:input.companyId,source:input.source,expected}),companyId:input.companyId}), async tx => {
+  const initial: RawInventoryJob = await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify({jobId:input.jobId,companyId:input.companyId,source:input.source,expected}),companyId:input.companyId,isStillCurrent:async()=>{await input.options?.assertScope?.();return true;}}), async tx => {
+    await input.options?.assertScope?.();
     const snap = await tx.get(jobRef);
+    await input.options?.assertScope?.();
     if (snap.exists()) {
       const cur = snap.data() as RawInventoryJob;
       const 같은계약 = cur.companyId === input.companyId
@@ -97,19 +101,21 @@ export async function runRawInventoryJob(input: {
 
   for (const item of input.commands) {
     // job의 시각과 DB가 한 업무 안에서 갈리면 재개 결과를 믿을 수 없다.
-    const opts = { ...item.options, now, db: database };
+    await input.options?.assertScope?.();
+    const opts = { ...item.options, now, db: database,assertScope:input.options?.assertScope??item.options?.assertScope };
     const r = await executeRawInventoryCommand(item.command, opts);
+    await input.options?.assertScope?.();
     results.push({ input: item, result: r });
     if (r.status === 'conflict' || r.status === 'rejected') {
       const failedMsg = r.status === 'conflict'
         ? `같은 작업 번호로 다른 내용이 이미 저장돼 있다: ${item.command.operationId}`
         : `${r.code}: ${r.message}`;
-      job = await markJobStatus(database, jobRef, { status: 'failed', lastError: failedMsg, completedAt: undefined });
+      job = await markJobStatus(database, jobRef, { status: 'failed', lastError: failedMsg, completedAt: undefined },input.options?.assertScope);
       return { job, results };
     }
   }
 
-  job = await markJobStatus(database, jobRef, { status: 'complete', completedAt: now, lastError: undefined });
+  job = await markJobStatus(database, jobRef, { status: 'complete', completedAt: now, lastError: undefined },input.options?.assertScope);
   return { job, results };
 }
 
@@ -135,9 +141,12 @@ export async function verifyRawInventoryJobComplete(
 async function markJobStatus(
   db: Firestore, jobRef: ReturnType<typeof doc>,
   patch: Partial<RawInventoryJob>,
+  assertScope?:()=>Promise<void>,
 ): Promise<RawInventoryJob> {
-  return runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({jobId:jobRef.id,patch})}), async tx => {
+  return runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({jobId:jobRef.id,patch}),isStillCurrent:async()=>{await assertScope?.();return true;}}), async tx => {
+    await assertScope?.();
     const snap = await tx.get(jobRef);
+    await assertScope?.();
     if (!snap.exists()) throw new Error(`job 이 사라졌다: ${jobRef.id}`);
     const cur = snap.data() as RawInventoryJob;
     const next: RawInventoryJob = { ...cur, ...patch };

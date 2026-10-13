@@ -51,7 +51,7 @@ import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { executeEmployeeCommand } from '../../shared/services/employeeCommand';
 import { executeRawInventoryCommand } from '../../shared/services/rawInventoryService';
 import { executeRawPress, executeRawPressCancellation } from '../../shared/services/rawPressService';
-import { readRawPressAttempt, rawPressText, rawPressYieldKg, type RawPressRequest } from '../../shared/rawPressAttempt';
+import { beginNewRawPressAttempt, assertRawPressAttempt, listRawPressAttempts, rawPressText, rawPressYieldKg, type RawPressRequest } from '../../shared/rawPressAttempt';
 import { derivedRawDocEntries } from '../../shared/derivedRawDocEntries';
 import { adjustStockByQty, durableProductStocktake as stocktakeByQty } from '../../shared/services/unpackService';
 import { STANDARD_ACCOUNT } from '../../shared/accountChart';
@@ -122,7 +122,10 @@ import ItemList from '../../../components/ItemList';
 const BomIntegrityPanel = React.lazy(() => import('../../../components/BomIntegrityPanel'));
 const AIConsultant = React.lazy(() => import('../../../components/AIConsultant'));
 import AddOrderModal from '../../../components/AddOrderModal';
-import PasteOrderModal from '../../../components/PasteOrderModal';
+import PasteOrderModal,{type OrderCopyEvidence} from '../../../components/PasteOrderModal';
+import OrderInterpretationRules from '../../../components/OrderInterpretationRules';
+import {submitOrderCopy,inspectOrderCopy,listPendingOrderCopies,deletePendingOrderCopy,type PendingOrderCopy} from '../../shared/services/orderCopyService';
+import {validateOrderInterpretation,type OrderInterpretationRequest} from '../../shared/orderInterpretation';
 const PartnerManager = React.lazy(() => import('../../../components/PartnerManager'));
 import DeliveryManager from '../../../components/DeliveryManager';
 import PalletManager from '../../../components/PalletManager';
@@ -161,6 +164,7 @@ import {
 } from './orderCreation';
 import { createOemEngine } from './oemEngine';
 import { issueOemBatchJob, recoverableOemDrafts } from './oemIssueJob';
+import {beginOemIssueAttempt,assertOemIssueAttempt,type OemIssueRetained} from '../../shared/oemIssuePending';
 import { applyOemFeeStatement } from './oemFeeStatement';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
@@ -935,6 +939,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const directOrderCreation = useRef(newOrderCreationSession());
   const pasteOrderCreation = useRef(newOrderCreationSession());
+  const copyPrepared=useRef<{body:string;request:OrderInterpretationRequest}|null>(null);
+  const copyBusy=useRef(false);
+  const [copyRecoveryOpen,setCopyRecoveryOpen]=useState(false),[copySelected,setCopySelected]=useState<PendingOrderCopy|null>(null),[copyError,setCopyError]=useState(''),[copyWorking,setCopyWorking]=useState(false),[copyRulesOpen,setCopyRulesOpen]=useState(false);
+  const [,setCopyRevision]=useState(0);
+  const copyActor=auth.currentUser?.uid??'';
+  const copyScope=useRef({companyId,actorUid:copyActor});
+  if(copyScope.current.companyId!==companyId||copyScope.current.actorUid!==copyActor)copyScope.current={companyId,actorUid:copyActor};
+  useEffect(()=>{copyPrepared.current=null;copyBusy.current=false;setCopyWorking(false);setIsPasteOrderOpen(false);setCopySelected(null);setCopyRecoveryOpen(false);setCopyRulesOpen(false);setCopyError('');},[companyId,copyActor]);
+  useEffect(()=>{const update=()=>setCopyRevision(value=>value+1);window.addEventListener('storage',update);return()=>window.removeEventListener('storage',update);},[]);
+  const copyEntries=copyActor?listPendingOrderCopies(companyId,copyActor):[];
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Item | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -1454,6 +1468,46 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   type NewOrderDraft = Omit<Order, 'id' | 'status'>;
+  const saveCopiedOrder=async(draft:NewOrderDraft,evidence?:OrderCopyEvidence)=>{
+    if(copyBusy.current)return;
+    const scope=copyScope.current;
+    const current=()=>copyScope.current===scope&&auth.currentUser?.uid===scope.actorUid;
+    if(!scope.actorUid||!evidence)throw Error('최초 주문 원문과 로그인 계정을 확인해 주세요.');
+    const body=JSON.stringify({draft,evidence,sourceChatMessageId:pasteOrderSourceMessageId});
+    let first=copyPrepared.current;
+    if(!first||first.body!==body){
+      const requestId=crypto.randomUUID();
+      const request=validateOrderInterpretation({version:1,requestId,companyId,actorUid:scope.actorUid,createdAt:new Date().toISOString(),sourceText:evidence.sourceText,firstAnalysis:evidence.firstAnalysis,
+        confirmed:{inputLines:evidence.inputLines,orderDraft:{...draft,id:`ORD-COPY-${requestId}`,cardNo:nextOrderNo(today(),allOrders),items:ensureOrderLineIds(draft.items),...(pasteOrderSourceMessageId?{sourceChatMessageId:pasteOrderSourceMessageId}:{})}}},scope);
+      first={body,request};copyPrepared.current=first;
+    }
+    copyBusy.current=true;setCopyWorking(true);
+    try{
+      const result=await submitOrderCopy(first.request);if(!current())return;
+      if(result.status==='unknown')throw Error(result.reason??'주문 처리 결과를 아직 확인하지 못했습니다.');
+      if(result.status==='rejected'){if(copyPrepared.current===first)copyPrepared.current=null;throw Error(result.reason??'주문이 저장되지 않았습니다. 입력을 확인해 주세요.');}
+      setNewOrderId(result.orderId);
+      if(copyPrepared.current===first){copyPrepared.current=null;setIsPasteOrderOpen(false);setPasteOrderInitialText('');setPasteOrderSourceMessageId(null);}
+      setCopyRevision(value=>value+1);
+    }catch(error){if(current()){
+      const message=error instanceof Error?error.message:String(error),own=listPendingOrderCopies(companyId,scope.actorUid).find(row=>row.request?.requestId===first!.request.requestId);
+      setCopyError(message);setCopyRevision(value=>value+1);
+      if(own){setCopySelected(own);setCopyRecoveryOpen(true);}else throw error;
+    }}finally{if(current()){copyBusy.current=false;setCopyWorking(false);}}
+  };
+  const actCopiedOrder=async(entry:PendingOrderCopy,action:'retry'|'inspect'|'delete')=>{
+    if(copyBusy.current)return;const scope=copyScope.current,current=()=>copyScope.current===scope&&auth.currentUser?.uid===scope.actorUid;
+    const fresh=listPendingOrderCopies(companyId,scope.actorUid).find(row=>row.key===entry.key);
+    if(!fresh||fresh.text!==entry.text){setCopyError('다른 창에서 최초 원문이 변경되었습니다. 목록에서 다시 선택해 주세요.');return;}
+    copyBusy.current=true;setCopyWorking(true);
+    try{
+      if(action==='delete')await deletePendingOrderCopy(entry);
+      else {if(!entry.request)throw Error(entry.error);const result=await(action==='inspect'?inspectOrderCopy(entry.request):submitOrderCopy(entry.request));if(result.status==='unknown')throw Error(result.reason??'처리 결과를 아직 확인하지 못했습니다. 주문 이력과 최초 내용을 확인해 주세요.');}
+      if(current()){if(copyPrepared.current?.request.requestId===entry.request?.requestId)copyPrepared.current=null;setCopySelected(null);setCopyError('');setCopyRevision(value=>value+1);}
+    }catch(error){if(current())setCopyError(error instanceof Error?error.message:String(error));}
+    finally{if(current()){copyBusy.current=false;setCopyWorking(false);}}
+  };
+
   const saveNewOrder = async (kind: 'direct' | 'paste', draft: NewOrderDraft) => {
     const session = kind === 'direct' ? directOrderCreation.current : pasteOrderCreation.current;
     const label = kind === 'direct' ? 'AddOrder' : 'PasteOrder';
@@ -1727,10 +1781,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const oemReceiptSendTracker=useRef(new Map<string,{entered:boolean;uid:string}>());
+  const oemIssueScopes=useRef(new Map<string,{actorUid:string;isCurrent:()=>boolean}>());
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
     orderUnitInputs: appData.orderUnitInputs,
     companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula,
-    issueOemBatchJob: input => issueOemBatchJob(db, input),
+    issueOemBatchJob: async input => {
+      const scope=oemIssueScopes.current.get(input.jobId);
+      if(!scope||!scope.isCurrent())throw Error('외주 송출의 최초 로그인 계정을 확인해 주세요.');
+      const retained=await beginOemIssueAttempt(input,scope.actorUid,scope.isCurrent);
+      return issueOemBatchJob(db,retained.request.input,{...scope,retained});
+    },
     applyOemReceiptInventory: input => {
       const tracker=oemReceiptSendTracker.current.get(input.poId);if(tracker)tracker.entered=true;
       return receiveOemFinishedGoodsCommand({
@@ -2578,6 +2638,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteOrder={handleDeleteOrder}
             />
           )}
+          {currentView==='orders'&&<div className="mb-3 flex gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>{setCopySelected(null);setCopyError('');setCopyRecoveryOpen(true);}}>복사주문 실패 작업 {copyEntries.filter(entry=>!entry.deleted).length}</button>{isAdmin&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>setCopyRulesOpen(true)}>복사주문 판독 규칙</button>}</div>}
           {currentView === 'orders' && (
             <OrdersList
               renderOrderRecovery={renderOrderRecovery}
@@ -2732,18 +2793,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
               linesUsingRaw={linesUsingRaw}
               rawYieldRules={yieldRules}
               
-              onAddRawMaterialEntry={async (entry) => {
+              onAddRawMaterialEntry={async (entry,intent,retained) => {
                 // 재개는 현재 수율·품목으로 다시 만들지 않고 최초 원문만 확인한다.
                 if (entry.type === 'manual' && entry.used > 0 && entry.targetKg == null) {
                   const uid = auth.currentUser?.uid;
                   if (!uid) return { ok: false, reason: '로그인을 확인해 주세요.' };
-                  const pending = readRawPressAttempt(companyId, uid);
-                  if (pending || yieldRules[entry.material]) {
+                  const owner=rawCancelScopeRef.current;
+                  const isCurrent=()=>rawCancelAlive.current&&rawCancelScopeRef.current===owner&&owner.companyId===companyId&&auth.currentUser?.uid===uid;
+                  if (intent==='resume') {
+                    if(!retained||retained.request.companyId!==companyId||retained.request.actorUid!==uid||rawPressText(retained.request.entry)!==rawPressText(entry))return {ok:false,reason:'선택한 최초 압착 요청과 로그인 범위를 확인해 주세요.'};
+                    assertRawPressAttempt(retained);
+                    const outcome=await executeRawPress(retained.request,{retained,isCurrent});
+                    return outcome.status==='blocked'||outcome.status==='cancelled'?{ok:false,reason:outcome.reason}:{ok:true,appliedKg:outcome.sourceAppliedKg};
+                  }
+                  if (yieldRules[entry.material]) {
                     let request: RawPressRequest;
-                    if (pending) {
-                      if (rawPressText(pending.request.entry) !== rawPressText(entry)) return { ok: false, reason: '이전 압착 요청의 최초 원문으로 재개해 주세요.' };
-                      request = pending.request;
-                    } else {
+                    {
                       const source = rawHolderByName(allItems, entry.material, entry.companyId ?? companyId);
                       const rule = yieldRules[entry.material];
                       const derived = rawHolderByName(allItems, rule.product, companyId);
@@ -2762,7 +2827,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         derivedLegacy: { note: `${entry.material} 압착 (수율 ${rule.rate * 100}%)`, type: 'auto', ...(entry.addedBy ? { addedBy: entry.addedBy } : {}) },
                       };
                     }
-                    const outcome = await executeRawPress(request);
+                    let first;
+                    try {first=await beginNewRawPressAttempt(request,isCurrent);}
+                    catch(error){
+                      if(!isCurrent())return {ok:false,reason:'압착 회사나 로그인 계정이 변경되었습니다.'};
+                      const targets=[request.sourceCommand.rawItemId,request.derivedCommand.rawItemId];
+                      const related=listRawPressAttempts(companyId,uid).find(row=>row.retained&&[row.retained.request.sourceCommand.rawItemId,row.retained.request.derivedCommand.rawItemId].some(id=>targets.includes(id)))?.retained;
+                      return {ok:false,reason:error instanceof Error?error.message:String(error),...(related?{relatedRetained:related}:{})};
+                    }
+                    const outcome = await executeRawPress(first.request,{retained:first,isCurrent});
                     if(outcome.status==='cancelled')return {ok:false,reason:outcome.reason,canEditRetry:true as const};
                     return outcome.status === 'blocked' ? { ok: false, reason: outcome.reason, ...(!outcome.retainPending ? { canEditRetry: true as const } : {}) } : { ok: true, appliedKg: outcome.sourceAppliedKg };
                   }
@@ -2782,6 +2855,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                  */
                 const 홀더 = rawHolderByName(allItems, entry.material, entry.companyId ?? companyId);
                 if (!홀더) return { ok: false, reason: `원료 홀더를 못 찾았다: ${entry.material}` };
+                if(entry.type==='manual'&&entry.used>0&&entry.targetKg==null){
+                  const uid=auth.currentUser?.uid;
+                  if(!uid)return {ok:false,reason:'로그인을 확인해 주세요.'};
+                  const attempts=listRawPressAttempts(companyId,uid),invalid=attempts.find(row=>!row.retained);
+                  if(invalid)return {ok:false,reason:invalid.error};
+                  const related=attempts.find(row=>row.retained&&[row.retained.request.sourceCommand.rawItemId,row.retained.request.derivedCommand.rawItemId].includes(홀더.id))?.retained;
+                  if(related)return {ok:false,reason:'이 원료의 이전 압착 처리 결과를 먼저 확인해 주세요. 수율 설정을 바꾸거나 실패 요청을 삭제해도 이전 처리 근거는 유지됩니다.',relatedRetained:related};
+                }
 
                 const 공통 = {
                   ...rawLedgerKeys(홀더),
@@ -2853,9 +2934,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
               oemEnabled
               oemIssueDrafts={recoverableOemOrders}
               rawStockKg={rawStockKg}
-              onOemIssue={async (v) => {
-                try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); setLedgerReloadKey(k => k + 1); }
-                catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); throw e; }
+              onOemIssue={async (v,intent?:'new'|'resume',expectedActorUid?:string,retained?:OemIssueRetained) => {
+                const uid=expectedActorUid??auth.currentUser?.uid;
+                const owner=rawCancelScopeRef.current;
+                const isCurrent=()=>!!uid&&rawCancelAlive.current&&rawCancelScopeRef.current===owner&&owner.companyId===companyId&&auth.currentUser?.uid===uid;
+                if(!isCurrent())throw Error('외주 송출 로그인 계정이 변경되었습니다.');
+                const scope={actorUid:uid!,isCurrent};
+                try {
+                  if(intent==='resume'){
+                    if(!retained||retained.request.companyId!==companyId||retained.request.actorUid!==uid)throw Error('최초 외주 송출 요청을 선택해 주세요.');
+                    assertOemIssueAttempt(retained);
+                    await issueOemBatchJob(db,retained.request.input,{...scope,retained});
+                  }else{if(sessionStorage.getItem('oem-issue-pending:'+companyId)!==null||localStorage.getItem('oem-issue-pending:'+companyId)!==null)throw Error('과거 외주 출고의 최초 원문과 계정을 확인할 수 없습니다. 외주 출고 이력을 확인해주세요.');if(oemIssueScopes.current.has(v.jobId))throw Error('같은 외주 송출 요청을 확인 중입니다.');oemIssueScopes.current.set(v.jobId,scope);await issueOemBatch({ ...v, addedBy: currentUser?.name });}
+                  if(isCurrent())setLedgerReloadKey(k => k + 1);
+                }
+                catch (e) { if(isCurrent())alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); throw e; }
+                finally{if(oemIssueScopes.current.get(v.jobId)===scope)oemIssueScopes.current.delete(v.jobId);}
               }}
               onOemCancel={async (po) => {
                 await cancelOemIssue(db, companyId, po.id);
@@ -4874,19 +4968,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
           onSave={(order) => saveNewOrder('direct', order)}
         />
       )}
-      {isPasteOrderOpen && (
-        <PasteOrderModal
+      {copyRulesOpen&&<OrderInterpretationRules key={JSON.stringify([companyId,copyActor])} companyId={companyId} actorUid={copyActor} isAdmin={isAdmin} isCurrentActor={()=>auth.currentUser?.uid===copyActor&&copyScope.current.companyId===companyId} onClose={()=>setCopyRulesOpen(false)}/>}
+      {copyRecoveryOpen&&<ModalShell title={copySelected?'복사주문 실패 작업 상세':'복사주문 실패 작업 목록'} layer={1450} onClose={()=>{if(!copyWorking){if(copySelected)setCopySelected(null);else setCopyRecoveryOpen(false);}}}>
+        {copyError&&<p role="alert">{copyError}</p>}
+        {!copySelected?<><p>최초 주문 내용을 선택해 처리 결과를 확인해주세요.</p>{!copyEntries.some(entry=>!entry.deleted)&&<p>실패 작업이 없습니다.</p>}{copyEntries.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.key} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>{setCopySelected(entry);setCopyError(entry.error);}}>{entry.request?`${entry.request.confirmed.orderDraft.partnerName} · ${entry.request.confirmed.orderDraft.deliveryDate} · 처리 결과 미확인`:entry.error}</button>)}</>:<div className="space-y-3"><p>{String(copySelected.request?.confirmed.orderDraft.partnerName??'최초 원문 확인 필요')}</p><p>주문 처리 결과를 아직 확인하지 못했습니다. 주문 이력과 최초 거래처·품목·수량·출고예정일을 확인해주세요.</p><pre className="whitespace-pre-wrap">{copySelected.request?.sourceText??copySelected.error}</pre><div className="flex flex-wrap gap-2"><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'inspect')}>처리 결과 확인</button><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'retry')}>같은 내용 다시 시도</button><button type="button" disabled={copyWorking||!copySelected.request} className="rounded-lg border border-slate-300 bg-white px-3 py-2" onClick={()=>void actCopiedOrder(copySelected,'delete')}>실패 요청 삭제</button></div><p>실패 목록에서 요청을 삭제합니다. 실제 주문·재고·전표는 바뀌지 않습니다.</p></div>}
+      </ModalShell>}
+      {isPasteOrderOpen && (<div hidden={copyRecoveryOpen||copyRulesOpen}>
+        <PasteOrderModal key={JSON.stringify([companyId,copyActor])}
           orderUnitInputs={appData.orderUnitInputs}
           items={allItems}
           partners={partners}
           orders={orders}
           partnerItems={partnerItems}
           palletStocks={pallets}
+          companyId={companyId}
+          actorUid={copyActor}
+          suspended={copyRecoveryOpen||copyRulesOpen}
+          isCurrentActor={()=>auth.currentUser?.uid===copyActor&&copyScope.current.companyId===companyId}
           initialText={pasteOrderInitialText}
           onClose={() => closeOrderCreation('paste')}
           onBack={() => closeOrderCreation('paste', true)}
-          onSave={(order) => saveNewOrder('paste', order)}
-        />
+          onSave={saveCopiedOrder}
+        /></div>
       )}
       {isProductModalOpen && (
         <ProductModal

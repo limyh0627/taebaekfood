@@ -2,11 +2,29 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { clearRawPressAttempt, readRawPressAttempt, saveRawPressAttempt, rawPressText, rawPressYieldKg, validateRawPressRequest, rawPressAttemptKey, type RawPressRequest } from './rawPressAttempt';
 import { makeRawPressCancellationRequest,readRawPressCancellationAttempt,saveRawPressCancellationAttempt,clearRawPressCancellationAttempt,rawPressCancellationAttemptKey } from './rawPressAttempt';
+import {beginNewRawPressAttempt,listRawPressAttempts,deleteRawPressAttempt,submitRawPressAttempt,assertRawPressAttempt} from './rawPressAttempt';
 const request = (): RawPressRequest => ({ version: 1, companyId: 'taebaek', actorUid: 'uid',
   entry: { id:'press', material:'참깨', date:'2026-10-12', received:0, used:10, note:'메모', createdAt:'2026-10-12T01:00:00Z', effectiveAt:'2026-10-12T01:00:00Z', targetLotId:'lot',type:'manual' },
   yieldRule:{product:'통깨참기름',rate:0.48}, sourceCommand:{kind:'consume-lot',companyId:'taebaek',rawItemId:'source',operationId:'press',materialSnapshot:'참깨',effectiveAt:'2026-10-12T01:00:00Z',source:{type:'manual',id:'press'},kg:10,lotId:'lot'},
   derivedCommand:{kind:'receive',companyId:'taebaek',rawItemId:'derived',operationId:'yield:press',materialSnapshot:'통깨참기름',effectiveAt:'2026-10-12T01:00:00Z',source:{type:'manual',id:'press'},kg:4.8,lot:{supplierName:'참깨 압착',qtyIn:0}},sourceLegacy:{note:'메모'},derivedLegacy:{type:'auto'} });
 beforeEach(()=>localStorage.clear());
+it('요청별 압착 삭제 뒤 실제 원료 교집합은 보호하고 무관 요청은 허용한다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_options:any,work:any)=>work()}});
+ const first=await beginNewRawPressAttempt(request(),()=>true);await deleteRawPressAttempt(first,()=>true);expect(listRawPressAttempts('taebaek','uid')[0].deleted).toBe(true);
+ const other=request();other.entry.id='other';other.sourceCommand.operationId='other';other.sourceCommand.source.id='other';other.derivedCommand.operationId='yield:other';other.derivedCommand.source.id='other';
+ await expect(beginNewRawPressAttempt(other,()=>true)).rejects.toThrow('이전 압착');other.sourceCommand.rawItemId='new-source';other.derivedCommand.rawItemId='new-derived';
+ const next=await beginNewRawPressAttempt(other,()=>true);expect((await submitRawPressAttempt(next,()=>true)).state).toBe('submitted');expect(listRawPressAttempts('taebaek','uid')).toHaveLength(2);
+});
+it('압착 first 저장 실패나 UID 변경은 요청 pin을 승인하지 않는다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_options:any,work:any)=>work()}});
+ await expect(beginNewRawPressAttempt(request(),()=>false)).rejects.toThrow('계정');
+ const spy=vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw Error('저장 실패');});await expect(beginNewRawPressAttempt(request(),()=>true)).rejects.toThrow('저장 실패');spy.mockRestore();
+});
+it('submitted 선택 원문의 상태를 prepared로 바꿔 재적용하지 않는다',async()=>{
+ vi.stubGlobal('navigator',{locks:{request:async(_key:string,_options:any,work:any)=>work()}});
+ const saved=await submitRawPressAttempt(await beginNewRawPressAttempt(request(),()=>true),()=>true);
+ expect(()=>assertRawPressAttempt({...saved,state:'prepared'})).toThrow('제출 상태');
+});
 it('최초 원문은 회사 UID별 저장하고 재개 때 다시 쓰지 않는다',()=>{
   const r=request(), first=saveRawPressAttempt(r),set=vi.spyOn(Storage.prototype,'setItem');
   expect(saveRawPressAttempt({...r,entry:{...r.entry}})).toEqual(first);expect(set).not.toHaveBeenCalled();set.mockRestore();
