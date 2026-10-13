@@ -8,7 +8,7 @@ export type CanUnpackRequest=Base&{kind:'can-unpack';plan:UnpackPlan};
 export type BoxUnpackRequest=Base&{kind:'box-unpack';boxItemId:string;unitItemId:string;boxItemName?:string;unitItemName?:string;count:number;unitKg:number};
 export type ItemInventoryRequest=ItemStockAddRequest|CanUnpackRequest|BoxUnpackRequest;
 export type ItemInventoryKind=ItemInventoryRequest['kind'];
-export type ItemInventoryRetained={request:ItemInventoryRequest;state:'prepared'|'submitted';encoded:string};
+export type ItemInventoryRetained={request:ItemInventoryRequest;state:'prepared'|'submitted';encoded:string;storageKey?:string;copies?:{key:string;encoded:string}[]};
 export type ItemInventoryOutcome={ok:boolean;message:string;status:'applied'|'duplicate'|'rejected'|'unknown'|'blocked';retainPending:boolean};
 type Initial<T>=T extends Base?Omit<T,'version'|'operationId'|'capturedAt'|'date'>&{operationId?:string}:never;
 const kinds=['stock-add','can-unpack','box-unpack'];
@@ -35,6 +35,40 @@ export function validateItemInventoryRequest(request:ItemInventoryRequest):void{
  if(new TextEncoder().encode(JSON.stringify(request)).byteLength>700_000)throw Error('재고 요청 원문의 저장 한도를 초과했습니다.');
 }
 export const itemInventoryAttemptKey=(companyId:CompanyId,uid:string,kind:ItemInventoryKind)=>{if(!['taebaek','punghoe'].includes(companyId)||!id(uid)||!kinds.includes(kind))throw Error('재고 요청 범위를 확인해 주세요.');return `item-inventory:${companyId}:${encodeURIComponent(uid)}:${kind}`;};
+export type ItemInventoryEntry={key:string;retained:ItemInventoryRetained|null;error:string;deleted:boolean};
+export class ItemInventoryConflictError extends Error {constructor(public entries:ItemInventoryEntry[]){super('같은 품목의 이전 처리 결과를 확인해야 합니다. 실패 작업에서 최초 요청을 확인해 주세요.');}}
+const operationKey=(r:ItemInventoryRequest)=>`item-inventory-v2:${r.companyId}:${encodeURIComponent(r.uid)}:${encodeURIComponent(r.operationId)}`;
+const attemptScopes=new Map<string,()=>boolean>();
+/** 서비스 계산은 바꾸지 않고 화면의 실제 UID·회사·세션 검사만 같은 최초 요청에 연결한다. */
+export function bindItemInventoryAttemptScope(request:ItemInventoryRequest,current:()=>boolean):()=>void{const key=operationKey(request);if(attemptScopes.has(key)||!current())throw Error('같은 재고 요청을 확인 중이거나 화면이 변경되었습니다.');attemptScopes.set(key,current);return()=>{if(attemptScopes.get(key)===current)attemptScopes.delete(key);};}
+const stateKey=(key:string)=>`item-inventory-state:${encodeURIComponent(key)}`;
+const copiesOf=(retained:ItemInventoryRetained)=>retained.copies??[{key:retained.storageKey??itemInventoryAttemptKey(retained.request.companyId,retained.request.uid,retained.request.kind),encoded:retained.encoded}];
+export const itemInventoryTargets=(r:ItemInventoryRequest):string[]=>r.kind==='stock-add'?r.rows.map(row=>row.itemId):r.kind==='box-unpack'?[r.boxItemId,r.unitItemId]:[r.plan.canItemId,r.plan.bulkItemId];
+export function listItemInventoryAttempts(companyId:CompanyId,uid:string):ItemInventoryEntry[]{
+ itemInventoryAttemptKey(companyId,uid,'stock-add');const prefix=`item-inventory-v2:${companyId}:${encodeURIComponent(uid)}:`;
+ const keys=Object.keys(localStorage).filter(key=>key.startsWith(prefix)||kinds.some(kind=>key===itemInventoryAttemptKey(companyId,uid,kind as ItemInventoryKind))).sort(),entries:ItemInventoryEntry[]=[];
+ for(const key of keys){const encoded=localStorage.getItem(key);if(encoded===null)continue;
+  try{const value=JSON.parse(encoded);validateItemInventoryRequest(value.request);const r=value.request as ItemInventoryRequest;if(r.companyId!==companyId||r.uid!==uid||!['prepared','submitted'].includes(value.state)||Object.keys(value).some(k=>!['request','state'].includes(k))||key!==(key.startsWith(prefix)?operationKey(r):itemInventoryAttemptKey(companyId,uid,r.kind)))throw Error();
+   let deleted=false;try{const marker=JSON.parse(localStorage.getItem(stateKey(key))??'null');deleted=marker?.deleted===true&&marker.encoded===encoded;}catch{/* 표식 손상은 숨김 근거가 아니다. */}
+   const same=entries.find(entry=>entry.retained&&itemInventoryRequestText(entry.retained.request)===itemInventoryRequestText(r));
+   if(same?.retained){same.retained.copies!.push({key,encoded});same.deleted=same.deleted&&deleted;if(value.state==='submitted'){same.retained.state='submitted';same.retained.encoded=encoded;same.retained.storageKey=key;}}
+   else entries.push({key,retained:{request:r,state:value.state,encoded,storageKey:key,copies:[{key,encoded}]},deleted,error:''});
+  }catch{entries.push({key,retained:null,deleted:false,error:'보존된 재고 요청이 손상됐습니다. 원문은 삭제하지 않았습니다.'});}
+ }return entries;
+}
+export function itemInventoryConflicts(entries:ItemInventoryEntry[],request:ItemInventoryRequest):ItemInventoryEntry[]{const targets=itemInventoryTargets(request);return entries.filter(entry=>!entry.retained||entry.retained.request.operationId===request.operationId&&itemInventoryRequestText(entry.retained.request)!==itemInventoryRequestText(request)||entry.retained.request.operationId!==request.operationId&&itemInventoryTargets(entry.retained.request).some(target=>targets.includes(target)));}
+async function inventoryLock<T>(companyId:CompanyId,uid:string,current:()=>boolean,work:()=>T|Promise<T>):Promise<T>{
+ if(!current())throw Error('회사 또는 로그인 사용자가 변경되었습니다.');if(typeof navigator==='undefined'||!navigator.locks?.request)throw Error('이 브라우저는 창 간 안전 잠금을 지원하지 않습니다. 지원되는 브라우저에서 진행해 주세요.');
+ return navigator.locks.request(`item-inventory-lock:${companyId}:${encodeURIComponent(uid)}`,{mode:'exclusive'},async()=>{if(!current())throw Error('회사 또는 로그인 사용자가 변경되었습니다.');return work();});
+}
+export async function beginNewItemInventoryAttempt(input:Initial<ItemInventoryRequest>,current:()=>boolean):Promise<ItemInventoryRetained>{
+ const candidate={...input,version:1,operationId:input.operationId??`item-${input.kind}-${crypto.randomUUID()}`,capturedAt:new Date().toISOString(),date:today()} as ItemInventoryRequest;validateItemInventoryRequest(candidate);const request=JSON.parse(JSON.stringify(candidate)) as ItemInventoryRequest;
+ return inventoryLock(request.companyId,request.uid,current,()=>{const entries=listItemInventoryAttempts(request.companyId,request.uid),conflicts=itemInventoryConflicts(entries,request);if(conflicts.length)throw new ItemInventoryConflictError(conflicts);
+  if(entries.some(entry=>entry.retained?.request.operationId===request.operationId))throw Error('같은 작업의 최초 원문이 이미 있습니다. 결과를 확인해 주세요.');
+  const key=operationKey(request),encoded=JSON.stringify({request,state:'prepared'});if(localStorage.getItem(key)!==null)throw Error('다른 창의 최초 원문을 보존했습니다.');localStorage.setItem(key,encoded);if(!current()||localStorage.getItem(key)!==encoded)throw Error('최초 재고 요청 저장을 확인하지 못했습니다. 원문을 보존했습니다.');return {request,state:'prepared',encoded,storageKey:key,copies:[{key,encoded}]};});
+}
+export async function deleteItemInventoryAttempt(retained:ItemInventoryRetained,current:()=>boolean):Promise<void>{const r=retained.request;await inventoryLock(r.companyId,r.uid,current,()=>{assertItemInventoryAttempt(retained);for(const copy of copiesOf(retained)){if(!current())throw Error('로그인 또는 회사가 변경되었습니다.');const marker=JSON.stringify({deleted:true,encoded:copy.encoded});localStorage.setItem(stateKey(copy.key),marker);if(localStorage.getItem(stateKey(copy.key))!==marker)throw Error('실패 요청 삭제를 확인하지 못했습니다.');}assertItemInventoryAttempt(retained);});}
+export async function cancelPreparedItemInventoryAttempt(retained:ItemInventoryRetained,current:()=>boolean):Promise<void>{if(retained.state!=='prepared')throw Error('제출된 요청은 취소하지 않습니다.');await inventoryLock(retained.request.companyId,retained.request.uid,current,()=>clearItemInventoryAttempt(retained));}
 export function readItemInventoryAttempt(companyId:CompanyId,uid:string,kind:ItemInventoryKind):ItemInventoryRetained|null{
  const encoded=localStorage.getItem(itemInventoryAttemptKey(companyId,uid,kind));if(encoded===null)return null;
  try{const value=JSON.parse(encoded);validateItemInventoryRequest(value.request);if(!['prepared','submitted'].includes(value.state)||Object.keys(value).some(key=>!['request','state'].includes(key))||value.request.companyId!==companyId||value.request.uid!==uid||value.request.kind!==kind)throw Error();return {...value,encoded};}catch{throw Error('보존된 재고 요청이 손상됐습니다. 원문은 삭제하지 않았습니다.');}
@@ -44,19 +78,22 @@ export function beginItemInventoryAttempt(input:Initial<ItemInventoryRequest>):I
  const request={...input,version:1,operationId:input.operationId??`item-${input.kind}-${crypto.randomUUID()}`,capturedAt:new Date().toISOString(),date:today()} as ItemInventoryRequest;validateItemInventoryRequest(request);
  const encoded=JSON.stringify({request,state:'prepared'}),key=itemInventoryAttemptKey(request.companyId,request.uid,request.kind);if(localStorage.getItem(key)!==null)throw Error('다른 창의 최초 재고 요청을 보존했습니다.');localStorage.setItem(key,encoded);return {request,state:'prepared',encoded};
 }
-export function assertItemInventoryAttempt(retained:ItemInventoryRetained):void{const r=retained.request;if(localStorage.getItem(itemInventoryAttemptKey(r.companyId,r.uid,r.kind))!==retained.encoded)throw Error('최초 재고 요청이 바뀌었습니다. 현재 원문을 보존했습니다.');}
-export function clearItemInventoryAttempt(retained:ItemInventoryRetained):void{assertItemInventoryAttempt(retained);const r=retained.request;localStorage.removeItem(itemInventoryAttemptKey(r.companyId,r.uid,r.kind));}
+export function assertItemInventoryAttempt(retained:ItemInventoryRetained):void{if(copiesOf(retained).some(copy=>localStorage.getItem(copy.key)!==copy.encoded))throw Error('최초 재고 요청이 바뀌었습니다. 현재 원문을 보존했습니다.');}
+export function clearItemInventoryAttempt(retained:ItemInventoryRetained):void{assertItemInventoryAttempt(retained);for(const copy of copiesOf(retained)){localStorage.removeItem(copy.key);const marker=localStorage.getItem(stateKey(copy.key));try{if(marker&&JSON.parse(marker).encoded===copy.encoded)localStorage.removeItem(stateKey(copy.key));}catch{/* 손상 표식 보존 */}}}
 const running=new Set<string>();
 /** 최초 제출만 실행하고 이후에는 영수증을 확인한다. 응답 유실을 쓰기0으로 추정하지 않는다. */
 export async function runItemInventoryAttempt(request:ItemInventoryRequest,actor:()=>Promise<void>,execute:(mode:'apply'|'inspect',check:()=>Promise<void>,first:ItemInventoryRequest)=>Promise<ItemInventoryOutcome>):Promise<ItemInventoryOutcome>{
- const key=itemInventoryAttemptKey(request.companyId,request.uid,request.kind);if(running.has(key))return {ok:false,status:'blocked',retainPending:true,message:'같은 재고 요청을 확인 중입니다.'};running.add(key);
+ try{validateItemInventoryRequest(request);request=JSON.parse(JSON.stringify(request)) as ItemInventoryRequest;}catch(error){return {ok:false,status:'unknown',retainPending:true,message:error instanceof Error?error.message:String(error)};}
+ const key=operationKey(request);if(running.has(key))return {ok:false,status:'blocked',retainPending:true,message:'같은 재고 요청을 확인 중입니다.'};running.add(key);
  try{
-  validateItemInventoryRequest(request);let retained=readItemInventoryAttempt(request.companyId,request.uid,request.kind);if(!retained||itemInventoryRequestText(retained.request)!==itemInventoryRequestText(request))throw Error('보존된 최초 재고 요청으로 다시 확인해 주세요.');
+  validateItemInventoryRequest(request);const entries=listItemInventoryAttempts(request.companyId,request.uid);if(entries.some(entry=>entry.retained?.request.operationId===request.operationId&&itemInventoryRequestText(entry.retained.request)!==itemInventoryRequestText(request)))throw Error('같은 작업의 최초 원문이 다릅니다.');let retained=entries.find(entry=>entry.retained&&itemInventoryRequestText(entry.retained.request)===itemInventoryRequestText(request))?.retained;if(!retained)throw Error('보존된 최초 재고 요청으로 다시 확인해 주세요.');
   const first=JSON.parse(JSON.stringify(retained.request)) as ItemInventoryRequest;
   const mode=retained.state==='prepared'?'apply':'inspect';assertItemInventoryAttempt(retained);
-  const check=async()=>{assertItemInventoryAttempt(retained!);await actor();assertItemInventoryAttempt(retained!);};await check();
-  if(mode==='apply'){const encoded=JSON.stringify({request:retained.request,state:'submitted'});localStorage.setItem(key,encoded);retained={request:retained.request,state:'submitted',encoded};}
+  const current=attemptScopes.get(key)??(()=>true);
+  const check=async()=>{if(!current())throw Error('회사 또는 로그인 사용자가 변경되었습니다.');assertItemInventoryAttempt(retained!);await actor();if(!current())throw Error('회사 또는 로그인 사용자가 변경되었습니다.');assertItemInventoryAttempt(retained!);};await check();
+  const locked=async<T>(work:()=>T)=>retained!.storageKey?.startsWith('item-inventory-v2:')||typeof navigator!=='undefined'&&typeof navigator.locks?.request==='function'?inventoryLock(request.companyId,request.uid,current,work):work();
+  if(mode==='apply')await locked(()=>{assertItemInventoryAttempt(retained!);const fresh=listItemInventoryAttempts(request.companyId,request.uid);if(itemInventoryConflicts(fresh,request).length)throw Error('같은 품목의 이전 처리 결과를 확인해 주세요.');const encoded=JSON.stringify({request:retained!.request,state:'submitted'}),copies=copiesOf(retained!).map(copy=>{localStorage.setItem(copy.key,encoded);if(localStorage.getItem(copy.key)!==encoded)throw Error('제출 원문 저장을 확인하지 못했습니다.');return {key:copy.key,encoded};});retained={...retained!,state:'submitted',encoded,copies};});
   await check();const result=await execute(mode,check,first);await check();
-  if(result.ok&&['applied','duplicate'].includes(result.status)||result.status==='rejected'&&mode==='apply'){clearItemInventoryAttempt(retained);return {...result,retainPending:false};}return {...result,retainPending:true};
+  if(result.ok&&['applied','duplicate'].includes(result.status)||result.status==='rejected'&&mode==='apply'){await locked(()=>clearItemInventoryAttempt(retained!));return {...result,retainPending:false};}return {...result,retainPending:true};
  }catch(error){return {ok:false,status:'unknown',retainPending:true,message:error instanceof Error?error.message:String(error)};}finally{running.delete(key);}
 }

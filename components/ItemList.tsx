@@ -76,7 +76,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import { addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
 import { durableBoxUnpack } from '../src/shared/services/boxUnpackService';
 import { durableItemStockAdd } from '../src/shared/services/itemStockAddService';
-import { beginItemInventoryAttempt, readItemInventoryAttempt, clearItemInventoryAttempt, type ItemInventoryRequest, type ItemInventoryRetained } from '../src/shared/itemInventoryAttempt';
+import { beginNewItemInventoryAttempt, listItemInventoryAttempts, assertItemInventoryAttempt, cancelPreparedItemInventoryAttempt, deleteItemInventoryAttempt, bindItemInventoryAttemptScope, ItemInventoryConflictError, type ItemInventoryRequest, type ItemInventoryRetained, type ItemInventoryOutcome } from '../src/shared/itemInventoryAttempt';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, auth } from '../src/shared/firebase';
 import { lotQtyRemaining } from '../src/shared/lotUtils';
@@ -400,31 +400,27 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const inventoryBusyRef = useRef<symbol | null>(null);
   const [inventoryBusy, setInventoryBusy] = useState(false);
   const [, setInventoryAttemptRevision] = useState(0);
-  const inventoryKinds = ['stock-add','can-unpack','box-unpack'] as const;
-  const pendingInventory = inventoryKinds.flatMap<{kind:ItemInventoryRequest['kind'];retained:ItemInventoryRetained|null;error:string}>(kind => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return [];
-    try { const retained = readItemInventoryAttempt(companyId,uid,kind); return retained ? [{kind,retained,error:''}] : []; }
-    catch (error) { return [{kind,retained:null,error:String(error)}]; }
-  });
-  const inventoryLabel = (kind: ItemInventoryRequest['kind']) => kind === 'stock-add' ? '재고 추가' : kind === 'can-unpack' ? '캔 개봉' : '박스 개봉';
+
+  const [inventoryRecoveryOpen,setInventoryRecoveryOpen]=useState(false);
+  const [inventorySelection,setInventorySelection]=useState<ItemInventoryRetained|null>(null);
+  const pendingInventory=auth.currentUser?.uid?listItemInventoryAttempts(companyId,auth.currentUser.uid):[];
+  useEffect(()=>{setInventoryRecoveryOpen(false);setInventorySelection(null);setInventoryAttemptRevision(value=>value+1);const refresh=()=>setInventoryAttemptRevision(value=>value+1);window.addEventListener('storage',refresh);return()=>window.removeEventListener('storage',refresh);},[companyId,auth.currentUser?.uid]);  const inventoryLabel = (kind: ItemInventoryRequest['kind']) => kind === 'stock-add' ? '재고 추가' : kind === 'can-unpack' ? '캔 개봉' : '박스 개봉';
   const inventoryRequestSummary = (request: ItemInventoryRequest) => request.kind === 'stock-add'
     ? request.rows.map(row => row.itemName + ' +' + row.deltaQty).join(', ')
     : request.kind === 'can-unpack' ? unpackSummary(request.plan) + ' (개당 ' + request.plan.perCan + 'kg)'
     : (request.boxItemName || '박스') + ' 1개 → ' + (request.unitItemName || '낱개') + ' +' + request.count + '개';
-  const runInventoryAttempt = async (kind: ItemInventoryRequest['kind'], build?: () => Parameters<typeof beginItemInventoryAttempt>[0]) => {
+  const runInventoryAttempt = async (kind: ItemInventoryRequest['kind'], build?: () => Parameters<typeof beginNewItemInventoryAttempt>[0], selected?:ItemInventoryRetained) => {
     if (inventoryBusyRef.current || !unpackMounted.current) return false;
     const owner = Symbol(); inventoryBusyRef.current = owner; setInventoryBusy(true);
     const scope = inventoryScope.current, uid = auth.currentUser?.uid;
     const active = () => unpackMounted.current && inventoryScope.current === scope && auth.currentUser?.uid === uid;
     try {
       if (!uid) throw Error('로그인 후 재고 작업을 진행해 주세요.');
-      let retained = readItemInventoryAttempt(companyId,uid,kind);
-      if (!retained) {
-        if (!build) throw Error('보존된 재고 작업이 없습니다.');
-        retained = beginItemInventoryAttempt(build());
-      }
-      if (active()) setInventoryAttemptRevision(value => value + 1);
+      if(!navigator.locks?.request)throw Error('이 브라우저는 창 간 안전 잠금을 지원하지 않습니다. 지원되는 브라우저에서 진행해 주세요.');
+      if(build){await productStocktakeActor(companyId,uid,true);if(!active())return false;}
+      const retained=selected??(build?await beginNewItemInventoryAttempt(build(),active):null);
+      if(!retained||retained.request.kind!==kind)throw Error('실패 작업에서 확인할 최초 요청을 선택해 주세요.');
+      assertItemInventoryAttempt(retained);      if (active()) setInventoryAttemptRevision(value => value + 1);
       const {request} = retained;
       await productStocktakeActor(companyId,uid,true);
       if (!active()) return false;
@@ -432,16 +428,17 @@ const ItemListContent: React.FC<ItemListProps> = ({
         const accepted = await appConfirm(inventoryLabel(kind) + ' — ' + inventoryRequestSummary(request) + '\n보존된 최초 입력으로 처리할까요?');
         await productStocktakeActor(companyId,uid,true);
         if (!active()) return false;
-        if (!accepted) { clearItemInventoryAttempt(retained); setInventoryAttemptRevision(value => value + 1); return false; }
+        if (!accepted) { await cancelPreparedItemInventoryAttempt(retained,active); setInventoryAttemptRevision(value => value + 1); return false; }
       }
       if (!active()) return false;
-      const result = request.kind === 'stock-add' ? await durableItemStockAdd(request)
-        : request.kind === 'can-unpack' ? await durableCanUnpack(request) : await durableBoxUnpack(request);
+      const release=bindItemInventoryAttemptScope(request,active);let result:ItemInventoryOutcome;
+      try{result=request.kind === 'stock-add' ? await durableItemStockAdd(request)
+        : request.kind === 'can-unpack' ? await durableCanUnpack(request) : await durableBoxUnpack(request);}finally{release();}
       if (!active()) return false;
-      setInventoryAttemptRevision(value => value + 1); setToast({message:result.message});
+      setInventoryAttemptRevision(value => value + 1); setToast({message:result.message});if(!result.ok&&result.retainPending){setInventorySelection(listItemInventoryAttempts(companyId,uid).find(entry=>entry.retained?.request.operationId===request.operationId)?.retained??retained);setInventoryRecoveryOpen(true);}else if(result.ok)setInventorySelection(null);
       return result.ok;
     } catch (error) {
-      if (active()) { setToast({message:String(error)}); setInventoryAttemptRevision(value => value + 1); }
+      if (active()) { if(error instanceof ItemInventoryConflictError){setInventorySelection(error.entries[0]?.retained??null);setInventoryRecoveryOpen(true);}setToast({message:String(error)}); setInventoryAttemptRevision(value => value + 1); }
       return false;
     } finally {
       if (inventoryBusyRef.current === owner) {
@@ -1441,17 +1438,21 @@ const ItemListContent: React.FC<ItemListProps> = ({
 
   return (
     <div className={`space-y-5 animate-in fade-in duration-300 ${mode === 'lots' ? 'h-auto lg:h-full' : 'h-full'} flex flex-col relative`}>
-      {pendingInventory.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3" aria-label="보존된 재고 작업">
-        <p className="text-sm font-bold">처리 결과를 확인할 재고 작업</p>
-        {pendingInventory.map(({kind,retained,error}) => <div key={kind} className="flex flex-wrap items-center gap-2 mt-2">
-          <span>{inventoryLabel(kind)} · {error || (retained?.state === 'submitted' ? '결과 미확인' : '확인 대기')}</span>
-          {retained && <p className="w-full text-xs">{inventoryRequestSummary(retained.request)} · 결과 확인은 이 최초 입력을 사용합니다.</p>}
-          {!error && <button disabled={inventoryBusy} onClick={() => void runInventoryAttempt(kind)} className="rounded-lg bg-white px-3 py-2 text-sm font-bold">
-            {retained?.state === 'submitted' ? '결과 확인' : '보존된 입력으로 계속'}
-          </button>}
-        </div>)}
-      </div>}
-      <PageHeader
+      <button type="button" className="self-start rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold" onClick={()=>{setInventorySelection(null);setInventoryRecoveryOpen(true);}}>실패 작업 {pendingInventory.filter(entry=>!entry.deleted).length}</button>
+      {inventoryRecoveryOpen&&<ModalShell title={inventorySelection?'재고 실패 작업 상세':'재고 실패 작업 목록'} layer={1300} onClose={()=>{if(!inventoryBusy){if(inventorySelection)setInventorySelection(null);else setInventoryRecoveryOpen(false);}}}>
+        {!inventorySelection?<>
+          <p>처리 결과를 확인하지 못한 요청입니다. 항목을 선택해 최초 품목과 수량을 확인하세요.</p>
+          {!pendingInventory.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+          {pendingInventory.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.key} className="w-full border-b border-slate-200 py-3 text-left" disabled={!entry.retained} onClick={()=>setInventorySelection(entry.retained)}>{entry.retained?`${inventoryLabel(entry.retained.request.kind)} · ${inventoryRequestSummary(entry.retained.request)} · ${entry.retained.request.date} · ${entry.retained.state==='submitted'?'결과 미확인':'확인 대기'}`:entry.error}</button>)}
+        </>: (()=>{let valid=true;try{assertItemInventoryAttempt(inventorySelection);}catch{valid=false;}return <div className="space-y-4">
+          <p>{inventoryLabel(inventorySelection.request.kind)} · {inventoryRequestSummary(inventorySelection.request)} · {inventorySelection.request.date}</p>
+          <p>{valid?(inventorySelection.state==='submitted'?'처리 결과를 아직 확인하지 못했습니다. 최초 요청의 영수증을 확인하며 재고를 다시 변경하지 않습니다.':'아직 제출하지 않은 요청입니다. 최초 품목과 수량을 확인한 뒤 진행할 수 있습니다.'):'다른 창에서 원문이 변경되었습니다. 현재 원문은 유지했습니다. 목록에서 다시 선택해 주세요.'}</p>
+          <p>확인할 내용: 최초 품목·수량과 실제 재고 처리 여부를 확인해 주세요. 결과를 찾을 수 없으면 관리자에게 확인을 요청하세요.</p>
+          <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-bold" disabled={inventoryBusy||!valid} onClick={()=>void runInventoryAttempt(inventorySelection.request.kind,undefined,inventorySelection)}>{inventorySelection.state==='submitted'?'결과 확인':'보존된 입력으로 계속'}</button>
+          <button type="button" className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-bold" disabled={inventoryBusy||!valid} onClick={async()=>{const retained=inventorySelection,scope=inventoryScope.current;const current=()=>unpackMounted.current&&inventoryScope.current===scope&&auth.currentUser?.uid===retained.request.uid&&companyId===retained.request.companyId;if(inventoryBusyRef.current||!current())return;const owner=Symbol();inventoryBusyRef.current=owner;setInventoryBusy(true);try{await deleteItemInventoryAttempt(retained,current);if(current()){setInventoryAttemptRevision(value=>value+1);setInventorySelection(null);}}catch(error){if(current())setToast({message:String(error)});}finally{if(inventoryBusyRef.current===owner){inventoryBusyRef.current=null;if(unpackMounted.current)setInventoryBusy(false);}}}}>실패 요청 삭제</button></div>
+          <p className="text-sm text-slate-600">삭제는 실패 목록에서 요청을 제거합니다. 실제 재고는 바뀌지 않습니다. 같은 품목은 이전 처리 결과를 확인해야 다시 사용할 수 있습니다.</p>
+        </div>;})()}
+      </ModalShell>}      <PageHeader
         title={mode === 'lots' ? '생산 관리' : '재고 관리'}
         subtitle={mode === 'lots' ? '원료 사용과 활성·완료 로트를 한곳에서 관리하세요.' : '실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.'}
         right={mode === 'inventory' ? (
@@ -1978,6 +1979,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
       {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
       {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
         <OemManager
+          actorUid={auth.currentUser?.uid??''}
+          isCurrentActor={()=>auth.currentUser?.uid===inventoryScope.current.uid&&companyId===inventoryScope.current.companyId}
           orderUnitInputs={orderUnitInputs}
           companyId={companyId}
           items={items}
@@ -3396,11 +3399,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
                   );
                 })}
               </div>
-
-              {pendingInventory.find(row => row.kind === 'stock-add')?.retained && <div className="mx-5 rounded-lg bg-amber-50 p-3 text-xs">
-                <p>보존된 최초 재고 추가 입력으로 결과를 확인합니다. 현재 입력은 새로 저장하지 않습니다.</p>
-                <button onClick={commit} disabled={inventoryBusy || makeBusy} className="mt-2 rounded-lg bg-white px-3 py-2 font-bold">재고 추가 결과 확인</button>
-              </div>}
               {/* 고른 것 — 목록은 안 흔들고, 여기에 모아서 보여준다 */}
               {picked.length > 0 && (
                 <div className="px-5 py-3 border-t border-slate-100 bg-indigo-50/40 shrink-0 max-h-32 overflow-y-auto">
@@ -3470,11 +3468,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
                     : '구성에 벌크가 없어 되돌릴 곳이 없습니다.'}
                 </p>
               )}
-
-              {pendingInventory.find(row => row.kind === 'can-unpack')?.retained && <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs">
-                <p>보존된 최초 개봉 입력으로 결과를 확인합니다. 현재 구성이나 수량으로 다시 개봉하지 않습니다.</p>
-                <button onClick={개봉확정} disabled={inventoryBusy || unpackBusy} className="mt-2 rounded-lg bg-white px-3 py-2 font-bold">캔 개봉 결과 확인</button>
-              </div>}
               <div className="mt-4 flex justify-end gap-2">
                 <button onClick={() => { inventoryScope.current = {...inventoryScope.current,epoch:inventoryScope.current.epoch+1}; setUnpackModal(null); }} disabled={unpackBusy}
                   className="rounded-xl px-3 py-2 text-xs font-black text-slate-500 hover:bg-slate-100 disabled:opacity-40">취소</button>

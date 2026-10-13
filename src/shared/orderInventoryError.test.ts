@@ -1,6 +1,8 @@
 import {describe,expect,it} from 'vitest';
-import {orderInventoryErrorMessage} from './orderInventoryError';
+import {orderInventoryErrorMessage,orderInventoryRecoveryChecks} from './orderInventoryError';
 describe('주문 재고 오류 표시',()=>{
+ it.each(['COMPLETION_RECEIPT_PRESENT','COMPLETION_RECEIPT_MISMATCH','RECOVERY_RECEIPT_MISMATCH','RECOVERY_STATE_MISMATCH','OPERATION_GENERATION_CHANGED','OPERATION_CHANGED','OPERATION_NOT_FAILED','ORDER_NOT_FOUND','ORDER_EVIDENCE_INVALID','LEGACY_OPERATION_UNPROVEN','APPROVAL_EVIDENCE_CHANGED','ORDER_STATUS_CHANGED'])('현재 사유 %s에 실제 확인할 항목을 안내한다',reason=>{const checks=orderInventoryRecoveryChecks(reason);expect(checks.length).toBeGreaterThan(0);expect(checks.join(' ')).toMatch(/확인/);expect(checks.join(' ')).not.toContain(reason);});
+ it('모르는 사유는 원문과 잠금을 유지하며 재조회를 안내한다',()=>{const checks=orderInventoryRecoveryChecks('UNKNOWN');expect(checks.join(' ')).toMatch(/다시 조회/);expect(checks.join(' ')).toMatch(/원문과 잠금을 유지/);expect(orderInventoryRecoveryChecks(undefined)).toEqual(checks);});
  it.each(['Firestore Function Transaction.set() called with invalid data. Nested arrays are not supported (found rawInventoryJobs/order-raw-batch-123)', '원료 차감 실패\n at save (https://example.invalid/app.js:12)', 'rawMaterialLedger/private-id', 'UNKNOWN_INTERNAL_ERROR', undefined])('기술 오류와 알 수 없는 내부 값은 한국어로 표시한다',value=>{const result=orderInventoryErrorMessage(value);expect(result).toMatch(/처리 결과를 확인/);expect(result).not.toMatch(/Firestore|rawInventory|private-id|UNKNOWN|https:/);});
  it('한국어 업무 사유는 원문을 보존한다',()=>{const message='들깨 재고가 부족합니다. 현재 0kg, 필요 20kg';expect(orderInventoryErrorMessage(Error(message))).toBe(message);});
  it.each(['OPERATION_GENERATION_CHANGED','LEGACY_OPERATION_UNPROVEN','COMPLETION_RECEIPT_PRESENT','ORDER_STATUS_CHANGED'])('복구 사유 %s는 내부 코드를 표시하지 않는다',reason=>{expect(orderInventoryErrorMessage(reason)).toMatch(/[가-힣]/);expect(orderInventoryErrorMessage(reason)).not.toContain(reason);});

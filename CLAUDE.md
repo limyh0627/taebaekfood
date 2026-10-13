@@ -1,7 +1,7 @@
 # 태백푸드 프로젝트
 
 > **Codex 도 이 저장소에서 일한다** — 그쪽은 [AGENTS.md](AGENTS.md) 를 읽는다.
-> 둘은 같은 시작 안내를 가리킨다. **규칙은 `C:/Users/yhy_0/OneDrive/바탕 화면/notes/MEMORY.md`에 있다.**
+> 새 세션은 **`C:/Users/yhy_0/OneDrive/바탕 화면/notes/MEMORY.md`의 새 세션 시작 안내 절**을 먼저 읽고 해당 작업에 필요한 절만 추가로 읽는다. 시작 안내와 규칙은 MEMORY에만 유지한다.
 > 인수인계.md는 사용자 지시로 삭제했다. 규칙은 MEMORY에서 필요한 절을 찾아 읽고 갱신한다.
 
 ## 먼저 읽을 것

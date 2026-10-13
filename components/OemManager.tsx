@@ -13,12 +13,15 @@ import { inspectStoredOemCostDisplay, reconcileOemBatch } from '../src/features/
 import { readOemExternalStockEvidence } from '../src/shared/services/oemExternalStockEvidence';
 import type { OemExternalRow } from '../src/features/admin/oemExternalStock';
 import { isBoxStockItem, type OrderUnitInputs } from '../src/shared/orderUnits';
+import {listOemReceiptEntries,readOemReceiptEntry,storeOemReceiptDraft,clearOemReceiptAttempt,markOemReceiptFailure,isOemReceiptPreCallFailure,type OemReceiptEntry} from '../src/shared/oemReceiptPending';
 
 /**
  * 임가공(OEM) 모달 호스트 — 목록은 기존 입고대기·입고이력에 녹아 있고,
  * 여기서는 발주/가공입고/가공비전표 모달만 띄운다. 열림 상태는 ItemList가 제어.
  */
 interface Props {
+  actorUid?: string;
+  isCurrentActor?: () => boolean;
   orderUnitInputs?: OrderUnitInputs;
   companyId: CompanyId;
   items: Item[];
@@ -31,7 +34,7 @@ interface Props {
   feeTarget: PurchaseOrder | null;
   onClose: () => void;
   onIssue: (input: { jobId: string; oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string; oemCostEvidence?: OemCostEvidence }) => Promise<void>;
-  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }) => Promise<void>;
+  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string; oemCostEvidence?: OemCostEvidence }, intent?: 'new' | 'resume',expectedActorUid?:string) => Promise<void>;
   onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
@@ -68,21 +71,23 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 export default function OemManager(props: Props) {
   // 닫았다 같은 배치를 다시 열어도 이전 요청과 새 화면은 다른 세대다.
   // 품목 조회 갱신만으로 입력을 버리지 않도록 업무 진입 키만 사용한다.
-  const sessionKey = JSON.stringify([props.companyId, props.issueOpen, props.receiveTarget?.id ?? null, props.feeTarget?.id ?? null]);
+  const sessionKey = JSON.stringify([props.companyId, props.actorUid, props.issueOpen, props.receiveTarget?.id ?? null, props.feeTarget?.id ?? null]);
   return <OemSession key={sessionKey} {...props} />;
 }
 
 function OemSession({
-  companyId, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
+  companyId, actorUid='', isCurrentActor, items, partners, rawStockKg, issueDrafts, purchaseOrders, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee, orderUnitInputs,
 }: Props) {
-  const receiptKey = 'oem-receipt-pending:'+companyId+':'+(receiveTarget?.id ?? '');
-  const [receiptStored, setReceiptStored] = useState(() => readPending(receiptKey,
-    (value): value is ReceiveInput => receiptPending(value, companyId, receiveTarget?.id)));
-  const pendingReceipt = receiptStored.value;
+  const [,setReceiptRevision]=useState(0);
+  const [recoveryOpen,setRecoveryOpen]=useState(false);
+  const [selectedReceipt,setSelectedReceipt]=useState<OemReceiptEntry|null>(null);
+  const receipts=actorUid?listOemReceiptEntries(companyId,actorUid):[];
+  React.useEffect(()=>{const update=()=>setReceiptRevision(value=>value+1);window.addEventListener('storage',update);return()=>window.removeEventListener('storage',update);},[]);
   const [storageNotice, setStorageNotice] = useState({ message: '', blocked: false });
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const alive = useRef(true);
+  const current=()=>alive.current&&!!actorUid&&(!isCurrentActor||isCurrentActor());
   // 새 화면이 커밋되는 순간 이전 세대를 닫아, 늦은 Promise가 화면 정리를 먼저 하지 못하게 한다.
   React.useLayoutEffect(() => {
     alive.current = true;
@@ -144,8 +149,62 @@ function OemSession({
     finally { if (alive.current) { busyRef.current = false; setBusy(false); } }
   };
 
+  const submitReceipt=async(input:ReceiveInput,intent:'new'|'resume',selected?:OemReceiptEntry)=>{
+    if(busyRef.current||!current())return;busyRef.current=true;setBusy(true);let original=selected;
+    const scope=selected?.scope??{companyId,actorUid,poId:input.po.id};
+    try{
+      if(intent==='new'){
+        const before=readOemReceiptEntry(scope);
+        if(before.draft||before.packet||before.legacy){setSelectedReceipt(before);setRecoveryOpen(true);throw Error('이 배치의 이전 입고 결과를 확인해야 합니다. 이전 처리 결과를 확인해 주세요.');}
+        original=await storeOemReceiptDraft(scope,input,current);
+      }
+      if(!original||original.scope.companyId!==companyId||original.scope.actorUid!==actorUid||original.legacy)throw Error('과거 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 배치 입고 이력과 실제 재고를 확인해 주세요.');
+      const before=readOemReceiptEntry(scope);
+      if(before.draftText!==original.draftText||before.packetText!==original.packetText)throw Error('다른 창에서 최초 입고 요청이 변경되었습니다. 목록에서 다시 선택해 주세요.');
+      await onReceive(intent==='new'?original.draft!.input:input,intent,scope.actorUid);if(!current())return;
+      const fresh=readOemReceiptEntry(scope);
+      await clearOemReceiptAttempt({...fresh,draftText:original.draftText},current);if(!current())return;
+      setReceiptRevision(value=>value+1);setSelectedReceipt(null);if(intent==='new')onClose();
+    }catch(error){if(!current())return;const message=error instanceof Error?error.message:String(error);
+      try{const fresh=readOemReceiptEntry(scope);if(original&&isOemReceiptPreCallFailure(error,scope)){await clearOemReceiptAttempt({...fresh,draftText:original.draftText},current);setSelectedReceipt(null);}
+        else if(fresh.draft||fresh.packet||fresh.legacy){const expected={...fresh,draftText:original?.draftText??fresh.draftText};await markOemReceiptFailure(expected,message,fresh.deleted,current);setSelectedReceipt(readOemReceiptEntry(scope));setRecoveryOpen(true);}else window.alert(message);
+      }catch{setStorageNotice({message:'보존된 입고 원문이 변경되었습니다. 원문을 유지했습니다. 목록에서 다시 확인해 주세요.',blocked:false});setRecoveryOpen(true);}
+      if(current())setReceiptRevision(value=>value+1);
+    }finally{if(current()){busyRef.current=false;setBusy(false);}}
+  };
+  const resumeReceipt=(entry:OemReceiptEntry)=>{
+    if(entry.legacy||!entry.draft&&!entry.packet)return;
+    const r=entry.packet?.request;
+    const input=entry.draft?.input??{po:purchaseOrders?.find(po=>po.id===entry.scope.poId)??{id:entry.scope.poId,companyId:entry.scope.companyId} as PurchaseOrder,returns:r!.returns,bulk:r!.bulk??[],date:r!.date,unitPricePerKg:r!.unitPricePerKg??OEM_DEFAULT_FEE_PER_KG,...(r!.oemCostEvidence?{oemCostEvidence:r!.oemCostEvidence}:{})};
+    void submitReceipt(input,'resume',entry);
+  };
+  const removeReceipt=async(entry:OemReceiptEntry)=>{
+    if(busyRef.current||!current())return;busyRef.current=true;setBusy(true);
+    try{await markOemReceiptFailure(entry,entry.error,true,current);if(current()){setReceiptRevision(value=>value+1);setSelectedReceipt(null);}}
+    catch(error){if(current())setStorageNotice({message:error instanceof Error?error.message:String(error),blocked:false});}
+    finally{if(current()){busyRef.current=false;setBusy(false);}}
+  };
+  const recoveryButton='rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold disabled:opacity-50';
   return (
     <>
+      <button type="button" className={recoveryButton} onClick={()=>{setReceiptRevision(value=>value+1);setSelectedReceipt(null);setRecoveryOpen(true);}}>OEM 실패 작업 {receipts.filter(entry=>!entry.deleted).length}</button>
+      {recoveryOpen&&<ModalShell title={selectedReceipt?'OEM 실패 작업 상세':'OEM 실패 작업 목록'} layer={1300} onClose={()=>{if(!busyRef.current){if(selectedReceipt)setSelectedReceipt(null);else setRecoveryOpen(false);}}}>
+        {!selectedReceipt?<><p>최초 입고 요청을 선택해 처리 결과와 확인할 내용을 살펴보세요.</p>{storageNotice.message&&<p>{storageNotice.message}</p>}
+          {!receipts.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
+          {receipts.filter(entry=>!entry.deleted).map(entry=><button type="button" key={entry.scope.poId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>setSelectedReceipt(entry)}>{entry.draft?.input.po.partnerName??purchaseOrders?.find(po=>po.id===entry.scope.poId)?.partnerName??'OEM 배치'} · {entry.scope.poId} · {entry.draft?.input.date??entry.packet?.request.date??'일자 확인 필요'} · {entry.legacy?'과거 요청 확인 필요':'처리 결과 미확인'}</button>)}
+        </>: (()=>{let matches=false;try{const fresh=readOemReceiptEntry(selectedReceipt.scope);matches=fresh.draftText===selectedReceipt.draftText&&fresh.packetText===selectedReceipt.packetText&&fresh.legacy===selectedReceipt.legacy;}catch{/* 판독 불가 원문은 임의 선택하지 않는다. */}
+          const input=selectedReceipt.draft?.input,packet=selectedReceipt.packet?.request;
+          return <div className="space-y-4"><p className="font-bold">{input?.po.partnerName??'OEM 배치'} · {selectedReceipt.scope.poId} · {input?.date??packet?.date??'일자 확인 필요'}</p>
+            {storageNotice.message&&<p>{storageNotice.message}</p>}
+            <p>{!matches?'다른 창에서 원문이 변경되었습니다. 목록에서 다시 선택해 주세요.':selectedReceipt.legacy?'과거 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 자동으로 다시 입고하지 않습니다.':selectedReceipt.error||'입고 처리 결과를 아직 확인하지 못했습니다.'}</p>
+            <p>확인할 내용: 배치 입고 이력, 최초 품목·수량·날짜·원가 근거와 실제 원료·완제품 재고를 확인해 주세요.</p>
+            <ul>{(input?.returns??packet?.returns??[]).map(row=><li key={row.itemId}>{row.itemId} · 수량 {row.qty}</li>)}{(input?.bulk??packet?.bulk??[]).map(row=><li key={row.material}>{row.material} · {row.kg}kg</li>)}</ul>
+            {selectedReceipt.deleted&&!packet&&<p>최초 송신 기록이 없어 다시 입고하지 않습니다. 배치 입고 이력과 실제 원료·완제품 재고를 확인해 주세요.</p>}
+            <div className="flex flex-wrap gap-2"><button type="button" className={recoveryButton} disabled={busy||!matches||selectedReceipt.legacy||selectedReceipt.deleted&&!packet||!input&&!packet} onClick={()=>resumeReceipt(selectedReceipt)}>같은 내용 다시 시도</button><button type="button" className={recoveryButton} disabled={busy||!matches} onClick={()=>void removeReceipt(selectedReceipt)}>실패 요청 삭제</button></div>
+            <p>삭제는 실패 목록에서 요청을 제거합니다. 실제 입고·재고·가공비는 바뀌지 않습니다. 같은 배치는 이전 처리 결과를 확인해야 다시 입고할 수 있습니다.</p>
+          </div>;
+        })()}
+      </ModalShell>}
       {issueOpen && (
         <IssueModal companyId={companyId} partners={partners} rawItems={rawItems} rawStockKg={rawStockKg} issueDrafts={issueDrafts} purchaseOrders={purchaseOrders} pendingIssue={pendingIssue} busy={busy}
           pendingError={issueStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
@@ -175,24 +234,7 @@ function OemSession({
             });
           }} />
       )}
-      {receiveTarget && (
-        <>
-        <ReceiveModal companyId={companyId} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs}
-          pendingError={receiptStored.error || (storageNotice.blocked ? storageNotice.message : '')} storageNotice={storageNotice.message}
-          pendingReceipt={pendingReceipt} onClose={close} onSubmit={(v) => {
-            if (busyRef.current) return;
-            const payload=pendingReceipt ?? {po:receiveTarget,...v};
-            const encoded = savePending(receiptKey, receiptStored, payload);
-            if (encoded === null) return;
-            setReceiptStored({ value: payload, encoded, error: '' });
-            run(async () => {
-              await onReceive(payload);
-              return clearPending(receiptKey, encoded, () => setReceiptStored({ value: null, encoded: null, error: '' }));
-            });
-          }} />
-        </>
-      )}
-      {feeTarget && (
+      {receiveTarget && <div hidden={recoveryOpen}><ReceiveModal companyId={companyId} po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy} orderUnitInputs={orderUnitInputs} pendingReceipt={null} onClose={close} onSubmit={v=>void submitReceipt({po:receiveTarget,...v},'new')} /></div>}      {feeTarget && (
         <FeeModal po={feeTarget} items={items} companyId={companyId} busy={busy} orderUnitInputs={orderUnitInputs}
           onClose={close} onSubmit={(v) => run(() => onIssueFee({ po: feeTarget, ...v }))} />
       )}
@@ -396,7 +438,7 @@ function ReceiveModal({ pendingReceipt, pendingError, storageNotice, companyId, 
   return (
     <ModalShell title="가공입고" onClose={onClose} bodyClassName="space-y-4">
         {(pendingError || storageNotice) && <p role="alert" className="text-xs text-amber-800">{pendingError || storageNotice}</p>}
-        {pendingReceipt && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">이전 입고 요청의 완료 여부를 확인해야 합니다. 재개하면 당시 수량·날짜·원가 근거 그대로 다시 확인합니다. 화면에서 바꾼 입력은 재개 요청에 적용하지 않습니다.</p>}
+        {pendingReceipt && <p role="status" className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700">이전 입고 요청의 완료 여부를 확인해야 합니다. 재개하면 당시 수량·날짜·원가 근거 그대로 다시 확인합니다. 화면에서 바꾼 입력은 재개 요청에 적용하지 않습니다.</p>}
 
         <div className="bg-slate-50 rounded-2xl px-4 py-3 flex items-center gap-3">
           <div className="min-w-0">
@@ -568,7 +610,7 @@ function FeeModal({ po, items, companyId, busy, onClose, onSubmit, orderUnitInpu
 
 function OemCostSummary({po,companyId}:{po:PurchaseOrder;companyId:CompanyId}) {
  const display=inspectStoredOemCostDisplay(po,companyId);
- if(display.status==='unconfirmed') return <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">OEM 원가 미확인 · {display.message}</p>;
+ if(display.status==='unconfirmed') return <p className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700">OEM 원가 미확인 · {display.message}</p>;
  const cost=display.cost;
  return <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1">
    <strong>OEM 원가 {cost.status==='confirmed' ? '확정' : '가공비 공급가액 확인 대기'}</strong>

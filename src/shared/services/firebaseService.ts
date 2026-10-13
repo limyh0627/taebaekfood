@@ -1,4 +1,6 @@
 import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {readOemReceiptEntry,pinOemReceiptPacket,acknowledgeOemReceiptPacket,markOemReceiptPreCallFailure,
+ withOemReceiptLock,type OemReceiptScope} from '../oemReceiptPending';
 import {advanceOrderInventoryStage,assertOrderInventoryGeneration,generationFromOrder,hasOrderInventoryGenerationCompletion,validateOrderInventoryGeneration,type OrderInventoryGeneration} from '../orderInventoryGeneration';
 import { itemWritePayload } from '../itemWritePayload';
 import {advanceInventoryWriterProtocol,preserveInventoryWriterProtocol,protectInventoryWriterPatch,protectItemInventoryPatch,ITEM_INVENTORY_FIELDS,inventoryWriterSame} from '../inventoryWriterProtocol';
@@ -180,15 +182,57 @@ export async function issueOemFeeVoucherCommand(input: { poId: string; perKg: nu
   return (await call({ ...input, releaseId, statement: scoped as unknown as IssuedStatement })).data;
 }
 
+export async function getOemReceiptRecoveryContext(companyId:CompanyId,poId:string,expectedActorUid?:string){
+ await authReady;const user=auth.currentUser;if(!user)throw Error('로그인을 확인한 뒤 입고 요청을 처리해 주세요.');
+ const uid=user.uid;if(expectedActorUid&&uid!==expectedActorUid)throw Error('입고 요청의 로그인 계정이 변경되었습니다.');
+ const token=await user.getIdTokenResult();
+ const isCurrent=()=>auth.currentUser?.uid===uid;
+ if(!isCurrent()||token.claims.companyId!==companyId||token.claims.isAdmin!==true||typeof token.claims.employeeId!=='string')throw Error('현재 회사의 관리자 계정을 확인해 주세요.');
+ const scope:OemReceiptScope={companyId,actorUid:uid,poId};return {scope,entry:readOemReceiptEntry(scope),isCurrent};
+}
 export async function receiveOemFinishedGoodsCommand(input: {
   poId: string; operationId: string; date: string; returns: { itemId: string; qty: number }[]; unitPricePerKg?: number;
   oemCostEvidence?: OemCostEvidence;
   bulk?: { material: string; kg: number; rawItemId?: string }[];
-}): Promise<{ status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }> {
-  const releaseId = await activeReleaseId();
+  releaseId?:string;
+},expectedCompanyId?:CompanyId,expectedActorUid?:string): Promise<{ status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }> {
+ let scope:OemReceiptScope|undefined,hadPrior=false,entered=false;
+ try{
+ await authReady;const user=auth.currentUser;if(!user)throw Error('로그인을 확인한 뒤 입고 요청을 처리해 주세요.');
+ const uid=user.uid;
+ if(expectedActorUid&&uid!==expectedActorUid)throw Error('입고 요청의 로그인 계정이 변경되었습니다. 원문을 보존했습니다.');
+ const token=await user.getIdTokenResult(),companyId=token.claims.companyId;
+ if((companyId!=='taebaek'&&companyId!=='punghoe')||expectedCompanyId&&companyId!==expectedCompanyId
+  ||token.claims.isAdmin!==true||typeof token.claims.employeeId!=='string'||auth.currentUser?.uid!==uid)throw Error('현재 회사의 관리자 계정을 확인해 주세요.');
+ scope={companyId,actorUid:uid,poId:input.poId};
+ const current=()=>auth.currentUser?.uid===uid;
+ const before=readOemReceiptEntry(scope);hadPrior=before.packet!==null||before.legacy;
+ if(before.legacy)throw Error('과거 입고 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 배치 입고 이력과 재고를 확인해 주세요.');
+ if(before.deleted&&(!before.packet||JSON.stringify(input)!==JSON.stringify(before.packet.request)))throw Error('이 배치의 이전 입고 결과가 미확인이라 새 입고를 막았습니다. 최초 송신 요청으로 배치 입고 결과를 확인해 주세요.');
+ const {releaseId:_release,...business}=input;
+ let entry=before;
+ if(before.packet){const {releaseId:_oldRelease,...oldBusiness}=before.packet.request;
+  if(JSON.stringify(oldBusiness)!==JSON.stringify(business))throw Error('이 배치의 최초 입고 송신 원문이 다릅니다. 실패 작업에서 같은 요청을 확인해 주세요.');
+ }else{
+  const releaseId=await activeReleaseId();if(!current())throw Error('입고 요청의 로그인 계정이 변경되었습니다.');
+  entry=await pinOemReceiptPacket(scope,{...business,releaseId},current);
+ }
+ const request=entry.packet!.request;
+ const assertActor=async()=>{const latest=await user.getIdTokenResult();if(!current()||latest.claims.companyId!==companyId||latest.claims.isAdmin!==true)throw Error('입고 요청의 계정이나 회사 권한이 변경되었습니다. 원문을 보존했습니다.');};
+ await assertActor();
   const call = httpsCallable<typeof input & { releaseId: string },
     { status: 'applied' | 'duplicate'; receivedKg: number; loss: number; lotNos: Record<string, string> }>(functions, 'receiveOemFinishedGoodsCommand');
-  return (await call({ ...input, releaseId })).data;
+ entered=true;const result=(await call(request)).data;await assertActor();
+ if(!result||!['applied','duplicate'].includes(result.status)||!Number.isFinite(result.receivedKg)||!Number.isFinite(result.loss)
+  ||!result.lotNos||typeof result.lotNos!=='object'||Object.values(result.lotNos).some(value=>typeof value!=='string'))throw Error('가공입고 응답을 확인할 수 없습니다. 같은 요청의 처리 결과를 확인해 주세요.');
+ await withOemReceiptLock(scope,()=>{const saved=readOemReceiptEntry(scope!);if(saved.packetText!==entry.packetText)throw Error('다른 창의 입고 송신 원문이 변경되었습니다. 원문을 보존했습니다.');acknowledgeOemReceiptPacket(entry);},current);
+ return result;
+ }catch(error){
+  if(scope&&!entered&&!hadPrior){
+   try{const now=readOemReceiptEntry(scope);if(!now.packet&&!now.legacy)markOemReceiptPreCallFailure(error,scope);}catch{/* 손상되거나 기존 원문이 있으면 미확인 상태로 보존한다. */}
+  }
+  throw error;
+ }
 }
 
 export const subscribeToDocument = <T>(

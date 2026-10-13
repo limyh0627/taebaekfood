@@ -1,4 +1,6 @@
 import {buildOrderProductionRecordPlan} from '../../shared/orderProductionRecordPlan';
+import {readOemReceiptEntry,markOemReceiptPreCallFailure} from '../../shared/oemReceiptPending';
+import {getOemReceiptRecoveryContext} from '../../shared/services/firebaseService';
 import type {OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
 import { confirmPendingPurchaseOrder } from '../../shared/services/confirmPendingPurchaseOrderService';
 import { sendSharedChatMessage } from '../../shared/services/sharedChatMessageService';
@@ -1724,17 +1726,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
+  const oemReceiptSendTracker=useRef(new Map<string,{entered:boolean;uid:string}>());
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
     orderUnitInputs: appData.orderUnitInputs,
     companyId, items: allItems, partners, adjustRawLots, updateItem, addItem, buildFormula,
     issueOemBatchJob: input => issueOemBatchJob(db, input),
-    applyOemReceiptInventory: input => receiveOemFinishedGoodsCommand({
+    applyOemReceiptInventory: input => {
+      const tracker=oemReceiptSendTracker.current.get(input.poId);if(tracker)tracker.entered=true;
+      return receiveOemFinishedGoodsCommand({
       poId: input.poId, operationId: input.operationId, date: input.date,
       returns: input.items.map(row => ({ itemId: row.itemId, qty: row.qty })),
       unitPricePerKg: input.feeRequest.oemFeePerKg,
       ...(input.oemCostEvidence !== undefined ? { oemCostEvidence: input.oemCostEvidence } : {}),
       ...(input.bulk?.length ? { bulk: input.bulk } : {}),
-    }),
+      },companyId,tracker?.uid);
+    },
     applyOemFeeStatement,
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
@@ -2855,11 +2861,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await cancelOemIssue(db, companyId, po.id);
                 setLedgerReloadKey(k => k + 1);
               }}
-              onOemReceive={async (v) => {
+              onOemReceive={async (v,intent?:'new'|'resume',expectedActorUid?:string) => {
+                const context=await getOemReceiptRecoveryContext(companyId,v.po.id,expectedActorUid);
+                const tracker={entered:false,uid:context.scope.actorUid};
+                if((v.po.companyId??'taebaek')!==companyId)throw Error('다른 회사의 OEM 입고 요청은 처리하지 않습니다.');
+                if(context.entry.legacy)throw Error('과거 입고 요청의 최초 계정과 송신 원문을 확인할 수 없습니다. 배치 입고 이력과 재고를 확인해 주세요.');
+                if(context.entry.deleted&&(intent!=='resume'||!context.entry.packet))throw Error('이 배치의 이전 입고 결과가 아직 미확인입니다. 최초 송신 요청으로 배치 입고 결과를 확인해 주세요.');
+                oemReceiptSendTracker.current.set(v.po.id,tracker);
                 try {
-                  await receiveOemBatch({ ...v, addedBy: currentUser?.name });
+                  if(context.entry.packet){
+                    if(intent!=='resume')throw Error('이 배치의 최초 입고 요청이 남아 있습니다. 실패 작업에서 같은 요청의 결과를 확인해 주세요.');
+                    tracker.entered=true;
+                    await receiveOemFinishedGoodsCommand(context.entry.packet.request,companyId,context.scope.actorUid);
+                  }else await receiveOemBatch({ ...v, addedBy: currentUser?.name });
+                  if(!context.isCurrent())throw Error('입고 요청의 로그인 계정이 변경되었습니다.');
                   setLedgerReloadKey(k => k + 1);
-                } catch (e) { alert(`가공입고가 일부 처리됐을 수 있습니다. 같은 배치에서 재시도하세요: ${(e as Error)?.message ?? String(e)}`); throw e; }
+                } catch (e) {
+                  if(!tracker.entered&&context.isCurrent()&&!context.entry.packet&&!readOemReceiptEntry(context.scope).packet)
+                    markOemReceiptPreCallFailure(e,context.scope);
+                  throw e;
+                }finally{if(oemReceiptSendTracker.current.get(v.po.id)===tracker)oemReceiptSendTracker.current.delete(v.po.id);}
               }}
               onOemIssueFee={async (v) => {
                 try { await issueOemFeeStatement(v); }
