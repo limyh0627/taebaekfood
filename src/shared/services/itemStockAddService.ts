@@ -1,9 +1,11 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 import {doc,runTransaction,type Firestore} from 'firebase/firestore';
+import {protectItemInventoryPatch} from '../inventoryWriterProtocol';
 import {db} from '../firebase';
 import {COL} from '../collections';
 import {companyOf,type Item} from '../types';
 import {isRawHolder} from '../rawHolder';
-import {anchorLotsByQty} from '../lotAnchor';
+import {anchorLotsByQty,stocktakeLotMaterial} from '../lotAnchor';
 import {canStockAfter} from '../unpackLots';
 import {pruneDepletedLots} from '../lotUtils';
 import {operationDocId} from '../rawInventoryCore';
@@ -13,7 +15,7 @@ const clean=<T>(value:T):T=>JSON.parse(JSON.stringify(value));
 /** 기존 수동 증감 계산을 모든 품목에 준비한 뒤 전체와 영수증을 한 번에 쓴다. */
 export async function applyItemStockAddWithDb(store:Firestore,request:ItemStockAddRequest,mode:'apply'|'inspect',check:()=>Promise<void>):Promise<ItemInventoryOutcome>{
  validateItemInventoryRequest(request);if(request.kind!=='stock-add')throw Error('재고 추가 요청 종류가 다릅니다.');request=clean(request);await check();const requestHash=await itemInventoryRequestHash(request);await check();
- return runTransaction<ItemInventoryOutcome>(store,async tx=>{
+ return runInventoryWriterTransaction<ItemInventoryOutcome>(store,await captureInventoryWriterContext(store,{requestIdentity:itemInventoryRequestText(request),companyId:request.companyId,isStillCurrent:async()=>{await check();return true;}}),async tx=>{
   await check();const receiptRef=doc(store,COL.itemStockAddOperations,operationDocId(request.operationId));
   const receipt=await tx.get(receiptRef);await check();
   if(receipt.exists()){
@@ -28,7 +30,7 @@ export async function applyItemStockAddWithDb(store:Firestore,request:ItemStockA
    if(companyOf(data)!==request.companyId||isRawHolder({...data,id:row.itemId} as Item))throw Error('재고 추가 품목의 회사·분류가 다릅니다.');
    const beforeQty=Number(data.stock??0),targetQty=beforeQty+row.deltaQty;if(!Number.isFinite(beforeQty)||!Number.isFinite(targetQty)||targetQty<0)throw Error('추가할 현재 재고를 확인해 주세요.');
    const lots=data.lots??[],anchorId=`add-${operationDocId(request.operationId)}-${index}`;
-   const anchored=anchorLotsByQty({lots,targetQty,unitKg:lots.find((lot:any)=>lot.unitKg)?.unitKg??row.unitKg,det:{id:anchorId,createdAt:request.capturedAt,receivedDate:request.date}});
+   const anchored=anchorLotsByQty({lots,targetQty,material:stocktakeLotMaterial(data),unitKg:lots.find((lot:any)=>lot.unitKg)?.unitKg??row.unitKg,det:{id:anchorId,createdAt:request.capturedAt,receivedDate:request.date}});
    const afterQty=canStockAfter(anchored.lots);
    const candidate={stock:afterQty,lots:pruneDepletedLots(anchored.lots),stocktakeAnchors:[...(Array.isArray(data.stocktakeAnchors)?data.stocktakeAnchors:[]),{id:anchorId,date:request.date,createdAt:request.capturedAt,targetQty,beforeQty,deltaQty:row.deltaQty,note:row.note}].slice(-100)};
    assertItemInventoryWriteBudget([candidate]);const patch=clean(candidate);
@@ -38,7 +40,7 @@ export async function applyItemStockAddWithDb(store:Firestore,request:ItemStockA
   const saved={id:operationDocId(request.operationId),companyId:request.companyId,uid:request.uid,status:'complete',request,requestHash,completedAt:request.capturedAt,results:prepared.map(row=>row.result)};
   if(prepared.length+1>500||new TextEncoder().encode(JSON.stringify(saved)).byteLength>900_000)throw Error('재고 추가 저장 한도를 초과했습니다.');
   assertItemInventoryWriteBudget([...prepared.map((row,index)=>({...snaps[index].data(),...row.patch})),saved]);
-  await check();prepared.forEach((row,index)=>tx.update(refs[index],row.patch));tx.set(receiptRef,saved);
+  await check();prepared.forEach((row,index)=>tx.update(refs[index],protectItemInventoryPatch(snaps[index].data(),row.patch)));tx.set(receiptRef,saved);
   return {ok:true,status:'applied',message:`${prepared.length}개 품목 재고를 늘렸습니다.`,retainPending:false};
  }).catch(error=>{if(mode==='apply'&&error instanceof ItemInventoryRejected)return {ok:false,status:'rejected',message:error.message,retainPending:false};throw error;});
 }

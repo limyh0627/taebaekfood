@@ -58,7 +58,7 @@ describe.skipIf(process.env.OEM_CANCEL_EMULATOR_TEST !== 'true')('OEM 발주 취
     if (consumed.status !== 'applied') throw new Error('차감 fixture 오류');
     await save(`purchaseOrders/${poId}`, { ...input, companyId: 'taebaek', poType: 'oem', status: 'invoiced', oemIssueStatus: 'complete', oemIssueDate: date,
       oemIssueFingerprint: oemIssueFingerprint(input), oemIssuedBy: input.addedBy, oemPartnerId: partnerId, oemSent: input.sent, itemId: '', itemName: '', quantity: 0, items: [] });
-    await save(`items/${rawItemId}`, { companyId: 'taebaek', name: material, stock: 100, lots: [...consumed.state.activeLots, ...consumed.state.recentDepletedLots] });
+    await save(`items/${rawItemId}`, { companyId: 'taebaek', name: material, subtype: '벌크', stock: 100, lots: [...consumed.state.activeLots, ...consumed.state.recentDepletedLots] });
     await save(`rawInventories/${inventoryDocId('taebaek', rawItemId)}`, consumed.state);
     await save(`rawMaterialLedger/${operationDocId(originalId)}`, consumed.movement);
     await save(`partners/${partnerId}`, { companyId: 'taebaek', name: '합성 외주공장' });
@@ -96,5 +96,53 @@ describe.skipIf(process.env.OEM_CANCEL_EMULATOR_TEST !== 'true')('OEM 발주 취
     const po = await read(`purchaseOrders/${s.poId}`);
     if (po?.oemCancelledAt) { expect((await read(`items/${s.rawItemId}`))?.stock).toBe(200); expect((await read(`items/${s.productId}`))?.stock).toBe(0); expect(await read(`oemReceiptOperations/oem-receive:${s.poId}`)).toBeUndefined(); }
     else { expect(po?.status).toBe('received'); expect((await read(`items/${s.rawItemId}`))?.stock).toBe(100); expect((await read(`items/${s.productId}`))?.stock).toBe(1); await expect(cancelOemIssue(db, 'taebaek', s.poId)).rejects.toThrow('취소할 수 없습니다'); }
+  }, 60_000);
+  it.each([false, true])('벌크 입고와 실제 취소 경합은 완제품 혼합=%s에서도 원료를 한 번만 반영한다', async mixed => {
+    const s = await seed(mixed ? 'bulk-packed-race' : 'bulk-only-race');
+    const originalPath = `rawMaterialLedger/${operationDocId(`oem-issue:${s.poId}:${s.rawItemId}`)}`;
+    const original = await read(originalPath);
+    expect(original?.reportedDeltaKg).toBe(-100);
+    expect(original?.appliedDeltaKg).toBe(-100);
+    const receiptPath = `oemReceiptOperations/oem-receive:${s.poId}`;
+    const rawReceivePath = `rawMaterialLedger/${operationDocId(`oem-receive-raw:${s.poId}:${s.rawItemId}`)}`;
+    paths.add(rawReceivePath);
+    const receive = { ...s.receive, returns: mixed ? s.receive.returns : [],
+      bulk: [{ material: s.input.sent[0]!.material, rawItemId: s.rawItemId, kg: 10 }] };
+    const results = await Promise.allSettled([
+      cancelOemIssue(db, 'taebaek', s.poId), receiveOemFinishedGoods(adminDb, 'taebaek', receive),
+    ]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+    expect(await read(originalPath)).toEqual(original);
+    const po = await read(`purchaseOrders/${s.poId}`), raw = await read(`items/${s.rawItemId}`);
+    const state = await read(`rawInventories/${inventoryDocId('taebaek', s.rawItemId)}`);
+    if (po?.oemCancelledAt) {
+      expect(raw?.stock).toBe(200);
+      expect(state?.stockKg).toBe(200);
+      expect((await read(`items/${s.productId}`))?.stock).toBe(0);
+      expect(await read(receiptPath)).toBeUndefined();
+      expect(await read(rawReceivePath)).toBeUndefined();
+      expect(await read(`adjustmentRequests/OEMFEE-${s.poId}`)).toBeUndefined();
+      const before = await read(`items/${s.rawItemId}`);
+      expect(await cancelOemIssue(db, 'taebaek', s.poId)).toEqual({ status: 'duplicate' });
+      expect(await read(`items/${s.rawItemId}`)).toEqual(before);
+      await expect(receiveOemFinishedGoods(adminDb, 'taebaek', receive)).rejects.toThrow('취소');
+    } else {
+      expect(po?.status).toBe('received');
+      expect(raw?.stock).toBe(110);
+      expect(state?.stockKg).toBe(110);
+      expect((await read(`items/${s.productId}`))?.stock).toBe(mixed ? 1 : 0);
+      const movement = await read(rawReceivePath), receipt = await read(receiptPath);
+      expect(movement).toMatchObject({ reportedDeltaKg: 10, appliedDeltaKg: 10,
+        rawItemId: s.rawItemId, source: { type: 'oem', id: s.poId } });
+      expect(receipt?.bulkReceipts[0]?.commandHash).toBe(movement?.commandHash);
+      expect(po?.oemReceivedBulk[0]).toMatchObject({ rawItemId: s.rawItemId, kg: 10,
+        reportedDeltaKg: 10, appliedDeltaKg: 10, commandHash: movement?.commandHash });
+      const before = await read(`items/${s.rawItemId}`);
+      expect((await receiveOemFinishedGoods(adminDb, 'taebaek', receive)).status).toBe('duplicate');
+      expect(await read(`items/${s.rawItemId}`)).toEqual(before);
+      await expect(cancelOemIssue(db, 'taebaek', s.poId)).rejects.toThrow('취소할 수 없습니다');
+    }
+    expect(await read(originalPath)).toEqual(original);
   }, 60_000);
 });

@@ -1,7 +1,8 @@
+import { advanceInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
 import * as admin from 'firebase-admin';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { inventoryOpeningStatement, calendarDay } from './shared/inventoryOpening';
-import { anchorLotsByQty } from './shared/lotAnchor';
+import { anchorLotsByQty, stocktakeLotMaterial } from './shared/lotAnchor';
 import { itemPackageKg, unpackStockComponent } from './shared/stockUnitMeasure';
 import { isRawHolder } from './shared/rawHolder';
 import { prepareRawCommand } from './shared/rawInventoryPrepare';
@@ -55,9 +56,9 @@ export async function createInventoryOpening(db: admin.firestore.Firestore, acto
       if (stateSnap.exists && (Number(stateSnap.data()?.stockKg ?? 0) !== 0 || Number(stateSnap.data()?.revision ?? 0) !== 0)) fail('원료 상태에 기존 재고 이력이 있어 기초 재고로 등록할 수 없습니다.');
       const result = prepareRawCommand(command,{itemSnap:snapshot(itemSnap),stateSnap:snapshot(stateSnap),movementSnap:snapshot(movementSnap),oldMovementSnap:oldMovementSnap ? snapshot(oldMovementSnap) : null},{now:recordedAt,legacy:{note:'기초 재고',type:'manual'}});
       if (result.status !== 'applied') fail(result.status === 'rejected' ? result.message : '기초 원료 명령이 이미 처리됐습니다.');
-      tx.set(stateRef,clean(result.state));
-      tx.set(movementRef,clean(toLedgerDoc(result.movement,{note:'기초 재고',type:'manual'})));
-      tx.update(itemRef,{stock:result.state.stockKg,lots:clean([...result.state.activeLots,...result.state.recentDepletedLots])});
+      tx.set(stateRef,advanceInventoryWriterProtocol(stateSnap.data(),clean(result.state)));
+      tx.set(movementRef,advanceInventoryWriterProtocol(movementSnap.data(),clean(toLedgerDoc(result.movement,{note:'기초 재고',type:'manual'}))));
+      tx.update(itemRef,advanceInventoryWriterProtocol(item,{stock:result.state.stockKg,lots:clean([...result.state.activeLots,...result.state.recentDepletedLots])}));
     } else {
       const bom = await tx.get(db.collection('item_bom').where('parent_id','==',itemId));
       const ownLines = bom.docs.filter(row => companyOf(row.data()) === companyId);
@@ -65,8 +66,8 @@ export async function createInventoryOpening(db: admin.firestore.Firestore, acto
       if (childSnaps.some(row => row.exists && companyOf(row.data()!) !== companyId)) fail('다른 회사의 구성 품목입니다.');
       const component = unpackStockComponent(ownLines.map((row,index) => ({childId:String(row.data().child_id),qty:typeof row.data().quantity === 'number' ? row.data().quantity : 1,child:childSnaps[index].data()})));
       const unitKg = itemPackageKg(item,component !== null);
-      const anchored = anchorLotsByQty({lots:[],targetQty:quantity,unitKg,det:{id:`lot-${operationId}`,createdAt:recordedAt,receivedDate:date}});
-      tx.update(itemRef,{stock:quantity,lots:clean(anchored.lots),stocktakeAnchors:[{id:operationId,date,createdAt:recordedAt,targetQty:quantity,beforeQty:0,deltaQty:quantity,note:'기초 재고'}]});
+      const anchored = anchorLotsByQty({lots:[],targetQty:quantity,unitKg,material:stocktakeLotMaterial(item),det:{id:`lot-${operationId}`,createdAt:recordedAt,receivedDate:date}});
+      tx.update(itemRef,advanceInventoryWriterProtocol(item,{stock:quantity,lots:clean(anchored.lots),stocktakeAnchors:[{id:operationId,date,createdAt:recordedAt,targetQty:quantity,beforeQty:0,deltaQty:quantity,note:'기초 재고'}]}));
     }
     tx.update(openingRef,{hasInventoryOpening:true});
     tx.set(voucherRef,voucher);

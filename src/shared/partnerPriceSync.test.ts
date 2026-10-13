@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { partnerPriceWrites } from './partnerPriceSync';
 import type { PartnerItem, Item } from './types';
+import {makeManualPurchaseUnitSnapshot} from './purchaseUnit';
 
 /**
  * 이 셈이 세 벌로 쓰여 있어서 갈렸다. 갈린 자리를 여기 잠근다 —
@@ -354,4 +355,21 @@ it('같은 원료의 20·25kg 포는 kg 가중 원가 한 건만 갱신하고 �
  const request={type:'매입',partnerId:'p1',newIssue:true,lines:[line(20,20000),line(25,25000)],items:[{id:'raw',type:'raw' as const,subtype:'벌크'}],partnerItems:[]};
  expect(partnerPriceWrites(request)).toMatchObject({costUpdates:[{itemId:'raw',price:1000,sourceLineIndices:[0,1]}],upserts:[]});
  expect(partnerPriceWrites({...request,lines:[line(20,20000),{itemId:'raw',name:'원료',qty:1,price:25000,supply:25000}]})).toMatchObject({costUpdates:[],upserts:[]});
+});
+
+describe('직접 매입단위의 다음 kg 기본 단가',()=>{
+ const input=(lines:any[])=>({type:'매입',partnerId:'p1',newIssue:true,lines,items:[{id:'raw',type:'raw' as const,subtype:'벌크'}],partnerItems:[]});
+ const line=(unit='20kg',price=44000,isTaxExempt=true,accountCode='500')=>({itemId:'raw',name:'참깨',qty:2,price,isTaxExempt,accountCode,supply:isTaxExempt?price*2:Math.round(price*2/1.1),...makeManualPurchaseUnitSnapshot(unit,2)});
+ it.each([true,false])('20kg44000은 다음kg단가2200이며 세금flag %s·전표금액·공급가kg원가는 그대로다',isTaxExempt=>{const rows=[line('20kg',44000,isTaxExempt)],before=structuredClone(rows),result=partnerPriceWrites(input(rows));expect(result.upserts[0]).toMatchObject({price:2200,taxType:isTaxExempt?'면세':'과세',Account_Code:'500'});expect(result.costUpdates).toEqual([{itemId:'raw',price:isTaxExempt?2200:2000}]);expect(rows).toEqual(before);});
+ it('소수kg 환산의 거래처단가는 추가반올림하지 않는다',()=>{const result=partnerPriceWrites(input([line('3kg',10000)]));expect(result.upserts[0].price).toBe(10000/3);});
+ it('숫자20/g 직접단위의label은보존하고거래처단가만kg기준으로환산한다',()=>{const rows=[line('20g',44)],before=structuredClone(rows),result=partnerPriceWrites(input(rows));expect(result.upserts[0].price).toBe(2200);expect(rows).toEqual(before);expect(rows[0]).toMatchObject({purchaseUnit:'20g',unitKg:.02,inventoryQty:.04});});
+ it('kg44000은1kg 단가44000 그대로다',()=>{expect(partnerPriceWrites(input([line('kg',44000)])).upserts[0].price).toBe(44000);});
+ it('같은manual ID의kg/20kg 혼합은 거래처upsert0·원가합산은계속한다',()=>{const result=partnerPriceWrites(input([line('kg',2200),line('20kg',44000)]));expect(result.upserts).toEqual([]);expect(result.costUpdates).toEqual([{itemId:'raw',price:2200,sourceLineIndices:[0,1]}]);});
+ it('manual ID와거래단가가둘다같아도 kg/20kg 혼합은 한kg단가를고르지 않는다',()=>{const result=partnerPriceWrites(input([line('kg',44000),line('20kg',44000)]));expect(result.upserts).toEqual([]);expect(result.costUpdates).toEqual([{itemId:'raw',price:4190,sourceLineIndices:[0,1]}]);});
+ it('ID·라벨이같아도 unitKg가다른 등록snapshot은 모호한 단가를 되밀지 않는다',()=>{const rows=[line('20kg',44000),line('20kg',44000)].map((row,i)=>({...row,purchaseUnitId:'registered',purchaseUnit:'포대',unitKg:i?25:20,inventoryQty:i?50:40}));expect(partnerPriceWrites(input(rows)).upserts).toEqual([]);});
+ it.each(['price','tax','account'] as const)('같은manual 단위라도 %s가다르면 거래처upsert0·원가합산유지',kind=>{const rows=[line(),line()];if(kind==='price')rows[1]=line('20kg',46000);if(kind==='tax')rows[1]=line('20kg',44000,false);if(kind==='account')rows[1]=line('20kg',44000,true,'505');const result=partnerPriceWrites(input(rows));expect(result.upserts).toEqual([]);expect(result.costUpdates).toHaveLength(1);expect(result.costUpdates[0].sourceLineIndices).toEqual([0,1]);});
+ it('같은단위·가격·세금·계정manual 두줄은kg단가한건만쓴다',()=>{const result=partnerPriceWrites(input([line(),line()]));expect(result.upserts).toHaveLength(1);expect(result.upserts[0].price).toBe(2200);expect(result.costUpdates).toEqual([{itemId:'raw',price:2200,sourceLineIndices:[0,1]}]);});
+ it('등록단위·legacy는20kg표시가있어도 원거래단가를환산하지 않는다',()=>{const manual=line(),registered={...manual,purchaseUnitId:'registered'},legacy={itemId:'raw',name:'참깨20kg',qty:2,price:44000,supply:88000,purchaseQuantityKg:40};expect(partnerPriceWrites(input([registered])).upserts[0].price).toBe(44000);expect(partnerPriceWrites(input([legacy])).upserts[0].price).toBe(44000);});
+ it('isLatest/noLinkIds는manual 환산단가와원가에도유지한다',()=>{expect(partnerPriceWrites({...input([line()]),isLatest:false})).toEqual({upserts:[],costUpdates:[]});expect(partnerPriceWrites({...input([line()]),noLinkIds:new Set(['raw'])})).toEqual({upserts:[],costUpdates:[]});});
+ it('손상된manual kg근거는거래처단가를쓰지 않는다',()=>{const row={...line(),unitKg:25,inventoryQty:50};expect(partnerPriceWrites(input([row])).upserts).toEqual([]);});
 });

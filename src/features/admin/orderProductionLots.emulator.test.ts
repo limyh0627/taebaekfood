@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { connectFirestoreEmulator, doc, getFirestore, setDoc, updateDoc } from 'firebase/firestore';
+import { connectFirestoreEmulator, doc, getFirestore, setDoc, updateDoc, runTransaction } from 'firebase/firestore';
 import { initializeApp as initializeAdminApp, deleteApp as deleteAdminApp } from 'firebase-admin/app';
 import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
@@ -10,6 +10,7 @@ import { createOrderStockEngine } from './orderStockEngine';
 import { buildBomIndex } from '../../shared/bomIndex';
 import { buildPackIndex } from '../../shared/packIndex';
 import { OrderStatus, type Item, type Order } from '../../shared/types';
+import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
 import { inventoryDocId, operationDocId } from '../../shared/rawInventoryCore';
 
 describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 생산·출고·취소 실제 인증 저장', () => {
@@ -47,6 +48,7 @@ describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 �
     if (adminAuth) { await adminAuth.deleteUser(prefix); await expect(adminAuth.getUser(prefix)).rejects.toMatchObject({ code: 'auth/user-not-found' }); }
     if (app) await deleteApp(app); if (adminApp) await deleteAdminApp(adminApp);
   }, 90_000);
+  async function currentWrite(collection:string,id:string,data:Record<string,any>){await runTransaction(db,async tx=>{const ref=doc(db,collection,id),snap=await tx.get(ref);const next=collection==='items'?protectItemInventoryPatch(snap.data(),data):['orders','rawInventories','rawInventoryJobs','rawMaterialLedger'].includes(collection)?protectInventoryWriterPatch(snap.exists()?snap.data():undefined,data,collection==='orders'?Object.keys(data):undefined):data;tx.update(ref,next);});}
   async function seed(suffix: string, stockProduction = false) {
     const product = { id: prefix + '-' + suffix + '-product', companyId: 'taebaek', name: '합성 완제품', type: 'product', unit: '개', spec: '1kg', stock: stockProduction ? 10 : 0, lots: stockProduction ? [{ id: prefix + '-existing', material: '합성 완제품', supplierName: '합성', qtyIn: 10, qtyRemaining: 10, unitKg: 1, kgIn: 10, kgRemaining: 10, receivedDate: '2026-01-01', status: 'active', createdAt: '2026-01-01T00:00:00.000Z' }] : [] } as unknown as Item;
     const ready = { ...product, id: prefix + '-' + suffix + '-ready', name: '합성 구성 완제품', stock: 20,
@@ -59,8 +61,8 @@ describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 �
     const engine = createOrderStockEngine({ db, allItems: [product, ready], submaterials: [], partners: [], allOrders: [order], orders: [order],
       orderUnitInputs: { bom: buildBomIndex([product, ready], [{ parent_id: product.id, child_id: ready.id, quantity: 1 }]), pack: buildPackIndex([]) },
       actorName: '합성 관리자', buildFormula: () => [], createProductionRecordsForOrder: async () => {},
-      updateItem: async (collection, id, data) => updateDoc(doc(db, collection, id), data),
-      addItem: async (collection, data) => { const id = data.id ?? prefix + '-audit-' + randomUUID(); paths.add(collection + '/' + id); await setDoc(doc(db, collection, id), { ...data, companyId: 'taebaek' }); },
+      updateItem: async (collection, id, data) => currentWrite(collection,id,data),
+      addItem: async (collection, data) => { const id = data.id ?? prefix + '-audit-' + randomUUID(); paths.add(collection + '/' + id); await setDoc(doc(db, collection, id), ['orders','rawInventories','rawInventoryJobs','rawMaterialLedger'].includes(collection)?protectInventoryWriterPatch(undefined,{...data,companyId:'taebaek'}):{...data,companyId:'taebaek'}); },
     });
     return { product, ready, order, engine };
   }
@@ -83,7 +85,7 @@ describe.skipIf(process.env.ORDER_PRODUCTION_EMULATOR_TEST !== 'true')('자체 �
     const engine = createOrderStockEngine({ db, allItems, submaterials: [packaging, bottle], partners: [], allOrders: [order], orders: [order], actorName: '합성 관리자',
       orderUnitInputs: { bom: buildBomIndex(allItems, edges.map(([parent, child, quantity]) => ({ parent_id: parent.id, child_id: child.id, quantity }))), pack: buildPackIndex([]) },
       buildFormula: () => [], createProductionRecordsForOrder: async () => {},
-      updateItem: async (collection, documentId, data) => updateDoc(doc(db, collection, documentId), data),
+      updateItem: async (collection, documentId, data) => currentWrite(collection,documentId,data),
       addItem: async (collection, data) => { const documentId = data.id ?? id + '-audit-' + randomUUID(); paths.add(collection + '/' + documentId); await setDoc(doc(db, collection, documentId), { ...data, companyId: 'taebaek' }); },
     });
     return { kit, a, b, packaging, bottle, raw, rawPath, order, engine };

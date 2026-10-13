@@ -3,12 +3,13 @@ import * as admin from 'firebase-admin';
 import { randomUUID } from 'node:crypto';
 
 vi.mock('firebase-functions/v2/https', () => ({
-  HttpsError: class extends Error { constructor(public code: string, message: string) { super(message); } },
+  HttpsError: class extends Error { constructor(public code: string, message: string, public details?: unknown) { super(message); } },
   onCall: (_options: unknown, handler: unknown) => handler,
 }));
 
 import { issueTradeStatement } from './tradeStatementIssue';
 import { issueVoucher } from './voucherIssue';
+import {makeManualPurchaseUnitSnapshot} from './shared/purchaseUnit';
 
 const available = /^(?:127\.0\.0\.1|localhost):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '');
 const projectId = `demo-trade-statement-${Math.random().toString(36).slice(2)}`;
@@ -40,6 +41,37 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it.each(['taxable','exempt','default-kg','fractional','g-taxable','g-exempt','wrong-unit','wrong-item','wrong-company','wrong-po','wrong-cost'] as const)('직접 kg 매입 %s는 등록표 없이 원료·행·PO·원가 근거를 함께 보호한다',async scenario=>{
+    await seed();const id='manual-'+randomUUID(),rawId=id+'-raw',poId='po-'+id,cardNo='PO-261003-'+Math.floor(100000000+Math.random()*899999999);
+    const owned=[db.collection('items').doc(rawId),db.collection('issuedStatements').doc(id),db.collection('purchaseOrders').doc(poId),db.collection('itemCostHistory').doc(`${id}_${rawId}_0`),db.collection('appMeta').doc(`poCardNo_taebaek_${cardNo}`),db.collection('rawInventories').doc('taebaek__'+rawId),db.collection('item_purchase_unit').doc('manual-kg')];
+    const [item,issued,po,history,reservation,rawState,pretendRegistration]=owned;
+    try{
+      await item.set({companyId:scenario==='wrong-company'?'punghoe':'taebaek',name:'합성 원료',type:scenario==='wrong-item'?'product':'raw',subtype:scenario==='wrong-item'?'낱개':'벌크',unit:'kg',cost:80,stock:7,lots:[{id:id+'-lot',kgRemaining:7}]});
+      await rawState.set({companyId:'taebaek',rawItemId:rawId,stockKg:7,revision:3});
+      // reserved ID의 가짜 등록표가 있어도 직접 kg는 그 표를 근거로 바꾸지 않는다.
+      await pretendRegistration.set({companyId:'punghoe',itemId:'other',purchaseUnit:'포',unitKg:999,active:false});
+      const qty=scenario==='fractional'?1.5:2,snapshot=makeManualPurchaseUnitSnapshot(scenario==='default-kg'?'kg':scenario.startsWith('g-')?'20g':'20kg',qty),exempt=scenario==='exempt'||scenario==='g-exempt';
+      const total=Math.round(qty*44000),supply=exempt?total:Math.round(total/1.1),line={itemId:rawId,name:'합성 원료',qty,price:44000,supply,tax:total-supply,total,isTaxExempt:exempt,accountCode:'500',sourceLineIndex:0,...snapshot};
+      if(scenario==='wrong-unit'){line.unitKg=25;line.inventoryQty=qty*25;}
+      const poLine={itemId:rawId,itemName:'합성 원료',quantity:qty,isBox:false,unit:'kg',sourceLineIndex:0,...snapshot};
+      if(scenario==='wrong-unit'){poLine.unitKg=line.unitKg;poLine.inventoryQty=line.inventoryQty;}
+      if(scenario==='wrong-po')poLine.inventoryQty+=1;
+      const cost=scenario==='wrong-cost'?Math.round(supply/qty):Math.round(supply/line.inventoryQty);
+      const request={...input(id),orderIds:[],statement:{...statement(id),type:'매입',orderId:'',totalSupply:supply,totalTax:total-supply,totalAmount:total,items:[line]},newPo:{id:poId,cardNo,items:[poLine]},costUpdates:[{itemId:rawId,price:cost,beforeCost:80,sourceLineIndex:0}]};
+      const before=await Promise.all([item.get(),rawState.get(),pretendRegistration.get()]);
+      if(scenario.startsWith('wrong')){await expect(issue(request)).rejects.toThrow();expect((await issued.get()).exists).toBe(false);expect((await po.get()).exists).toBe(false);expect((await history.get()).exists).toBe(false);expect((await reservation.get()).exists).toBe(false);expect((await item.get()).get('cost')).toBe(80);}
+      else{
+        const result=await issue(request);expect(result.status).toBe('applied');expect(await issue(request)).toEqual({...result,status:'duplicate'});
+        expect((await issued.get()).get('items')[0]).toEqual(line);expect((await po.get()).get('items')[0]).toEqual(poLine);
+        expect((await item.get()).get('cost')).toBe(cost);expect((await history.get()).get('purchaseCostBasis')).toMatchObject({confirmedKg:snapshot.inventoryQty,calculatedCost:cost,lines:[{purchaseUnitId:'manual-kg',purchaseUnit:snapshot.purchaseUnit,purchaseQty:qty,inventoryQty:snapshot.inventoryQty}]});
+        if(scenario==='taxable')expect(cost).toBe(2000);if(scenario==='exempt')expect(cost).toBe(2200);
+        if(scenario.startsWith('g-')){expect(snapshot).toMatchObject({purchaseUnit:'20g',unitKg:0.02,inventoryQty:0.04});expect(cost).toBe(scenario==='g-exempt'?2200000:2000000);}
+      }
+      expect((await item.get()).get('stock')).toBe(7);expect((await item.get()).get('lots')).toEqual(before[0].get('lots'));
+      expect((await rawState.get()).updateTime!.isEqual(before[1].updateTime!)).toBe(true);expect((await pretendRegistration.get()).updateTime!.isEqual(before[2].updateTime!)).toBe(true);
+      expect((await db.collection('rawMaterialLedger').where('rawItemId','==',rawId).get()).empty).toBe(true);
+    }finally{await Promise.all(owned.map(ref=>ref.delete()));expect((await Promise.all(owned.map(ref=>ref.get()))).every(snap=>!snap.exists)).toBe(true);}
+  },30000);
 
   // 실제 로컬 Admin SDK TX를 호출한다. Callable·실제 로그인 검증 시험으로 확대하지 않는다.
   it.each(['manual','unit','mixed','same-cost','missing-kg','truthy-tax-exempt'] as const)('TODO028 신규 원가 근거 %s는 최초 공급가·kg만 보존하고 입고를 만들지 않는다',async scenario=>{
@@ -204,7 +236,7 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
         costUpdates:[{itemId,price:1000,beforeCost:80,sourceLineIndex:0}]};
       await expect(issue(request)).rejects.toThrow();expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
       expect((await db.collection('items').doc(itemId).get()).data()?.cost).toBe(80);
-      await expect(issue({...request,costUpdates:[{...request.costUpdates[0],price:20000}]})).rejects.toThrow('전표 줄과 원가');
+      await expect(issue({...request,costUpdates:[{...request.costUpdates[0],price:20000}]})).rejects.toThrow('최초 전표 요청 원문');
     }
     expect((await counter.get()).data()).toEqual(before);
   });
@@ -248,7 +280,11 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     else{await expect(issue(request)).rejects.toThrow('중복되거나 누락');expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);expect((await db.collection('items').doc(rawId).get()).get('cost')).toBe(80);}
   });
   beforeAll(async () => { app = admin.initializeApp({ projectId }, projectId); db = admin.firestore(app); });
-  afterAll(async () => { await app?.delete(); });
+  afterAll(async () => {
+    // 이 파일이 만든 격리 project의 최초 요청 영수증만 정리한다. 공유 운영·타 시험 자료를 지우지 않는다.
+    const receipts=await db.collection('statementIssueOperations').get();await Promise.all(receipts.docs.map(doc=>doc.ref.delete()));
+    expect((await db.collection('statementIssueOperations').get()).empty).toBe(true);await app?.delete();
+  });
 
   it('최신 생산용 주문은 매출 연결을 거절하고 번호·원문을 바꾸지 않는다', async () => {
     await seed('stock-production-order');
@@ -289,10 +325,10 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     const result = await issue(input('stmt-1'));
     expect(result).toEqual({ status: 'applied', id: 'stmt-1', docNo: '261003-001' });
     await db.collection('appMeta').doc('releaseCutover').update({ status: 'paused' });
-    await expect(issue(input('stmt-1'))).rejects.toThrow('활성화');
+    expect(await issue(input('stmt-1'))).toEqual({...result,status:'duplicate'});
     await db.collection('appMeta').doc('releaseCutover').update({ status: 'active' });
-    expect(await issue({ ...input('stmt-1'), actorId: 'spoofed', recordedAt: '2000-01-01T00:00:00.000Z' } as never))
-      .toEqual({ ...result, status: 'duplicate' });
+    await expect(issue({ ...input('stmt-1'), actorId: 'spoofed', recordedAt: '2000-01-01T00:00:00.000Z' } as never)).rejects.toThrow('최초 전표 요청 원문');
+    expect(await issue(input('stmt-1'))).toEqual({ ...result, status: 'duplicate' });
     expect((await db.collection('orders').doc('o1').get()).data()?.linkedStatementId).toBe('stmt-1');
     expect((await db.collection('orders').doc('o1').get()).data()?.invoicePrinted).toBe(false);
     expect((await db.collection('issuedStatements').doc('stmt-1').get()).data()?.docNo).toBe(result.docNo);
@@ -343,6 +379,17 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     expect((await db.collection('orders').doc('o2').get()).data()?.invoicePrinted).toBe(false);
     expect((await db.collection('issuedStatements').doc('stmt-3').get()).exists).toBe(false);
   });
+  it('이전 release·추가창 종료 뒤 일반 전표 정확 원문 ACK는 번호·주문·원문을 쓰지 않는다',async()=>{
+    await seed('previous-release-order');const id='old-release-'+randomUUID(),extraDate='2026-09-30';
+    const counter=db.doc('appMeta/voucherNo_taebaek_2026-09-30_추가');await counter.set({companyId:'taebaek',tradeDate:extraDate,prefix:'추가',last:0});
+    await db.doc('appMeta/releaseCutover').update({catchUp:{companyId:'taebaek',tradeDate:extraDate,status:'open'}});
+    const request={...input(id),statement:{...statement(id),tradeDate:extraDate,orderId:'previous-release-order'},orderIds:['previous-release-order']},first=await issue(request);
+    await db.doc('appMeta/releaseCutover').update({releaseId:'new-release',catchUp:{companyId:'taebaek',tradeDate:extraDate,status:'closed'},voucherNotBefore:{taebaek:'2099-01-01'}});
+    const before=await Promise.all([db.doc('issuedStatements/'+id).get(),db.doc('orders/previous-release-order').get(),counter.get()]);
+    expect(await issue(request)).toEqual({...first,status:'duplicate'});const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+    const nextId=id+'-new';await expect(issue({...request,operationId:nextId+':ISSUE',statement:{...request.statement,id:nextId}})).rejects.toThrow('활성화');
+    await db.doc('issuedStatements/'+id).delete();await counter.delete();
+  });
 
   it('매입 전표와 발주 링크·원가·이력을 한 거래로 저장한다', async () => {
     await seed('o3');
@@ -354,7 +401,7 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
       ...statement('stmt-4'), type: '매입', orderId: '',
       items: [{ ...statement('stmt-4').items[0], accountCode: '500' }],
     };
-    const request = { ...input('stmt-4'), statement: purchase, orderIds: [], poIds: ['po1'],
+    const request = { ...input('stmt-4'), actorId:'spoofed',recordedAt:'2000-01-01T00:00:00.000Z',statement: purchase, orderIds: [], poIds: ['po1'],
       costUpdates: [{ itemId: 'i1', price: 100, beforeCost: 80, sourceLineIndex: 0 }] };
     const result = await issue({ ...request, actorId: 'spoofed', recordedAt: '2000-01-01T00:00:00.000Z' } as never);
     expect(result.status).toBe('applied');

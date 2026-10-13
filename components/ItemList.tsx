@@ -410,7 +410,7 @@ const ItemListContent: React.FC<ItemListProps> = ({
   const inventoryLabel = (kind: ItemInventoryRequest['kind']) => kind === 'stock-add' ? '재고 추가' : kind === 'can-unpack' ? '캔 개봉' : '박스 개봉';
   const inventoryRequestSummary = (request: ItemInventoryRequest) => request.kind === 'stock-add'
     ? request.rows.map(row => row.itemName + ' +' + row.deltaQty).join(', ')
-    : request.kind === 'can-unpack' ? request.plan.canName + ' ' + request.plan.cans + '개 → ' + request.plan.bulkName + ' ' + request.plan.bulkQty + request.plan.bulkUnit + ' (개당 ' + request.plan.perCan + request.plan.bulkUnit + ')'
+    : request.kind === 'can-unpack' ? unpackSummary(request.plan) + ' (개당 ' + request.plan.perCan + 'kg)'
     : (request.boxItemName || '박스') + ' 1개 → ' + (request.unitItemName || '낱개') + ' +' + request.count + '개';
   const runInventoryAttempt = async (kind: ItemInventoryRequest['kind'], build?: () => Parameters<typeof beginItemInventoryAttempt>[0]) => {
     if (inventoryBusyRef.current || !unpackMounted.current) return false;
@@ -3529,6 +3529,8 @@ const ItemListContent: React.FC<ItemListProps> = ({
             if(r.canEditRetry)return {ok:false as const,canEditRetry:true,reason:r.reason};
             return false;
           }
+          // 원장은 실시간 구독하지 않으므로 확정 성공 뒤에만 파생 입고까지 다시 조회한다.
+          onLedgerChanged?.();
           if (r.appliedKg === 0 && (entry.received > 0 || entry.used > 0)) {
             //  실사 앵커보다 앞선 날짜라 재고를 안 움직였다. 원장 줄은 남는다(서류가 본다).
             setToast({ message: `${entry.material} — 마지막 실사 이전 날짜라 기록만 남기고 재고는 그대로 둡니다` });

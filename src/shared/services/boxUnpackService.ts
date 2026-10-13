@@ -1,4 +1,6 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 import { doc, runTransaction } from 'firebase/firestore';
+import {protectItemInventoryPatch} from '../inventoryWriterProtocol';
 import { db } from '../firebase';
 import { companyOf, type RawMaterialLot } from '../types';
 import { deductLotsByQty, lotQtyRemaining, pruneDepletedLots } from '../lotUtils';
@@ -23,7 +25,7 @@ export async function unpackBoxStock(params: {
   try {
     if(context){validateItemInventoryRequest(context.request);if(context.request.kind!=='box-unpack'||context.request.boxItemId!==boxItemId||context.request.unitItemId!==unitItemId||context.request.count!==count||context.request.operationId!==operationId)throw Error('박스 개봉의 최초 원문과 입력이 다릅니다.');context={...context,request:JSON.parse(JSON.stringify(context.request))};await context.check();}
     const requestHash=context?await itemInventoryRequestHash(context.request):undefined;if(context)await context.check();let duplicate=false;
-    await runTransaction(db, async tx => {
+    await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:context?itemInventoryRequestText(context.request):JSON.stringify({boxItemId,unitItemId,count,operationId}),companyId:context?.request.companyId,isStillCurrent:async()=>{await context?.check();return true;}}), async tx => {
       if(context)await context.check();
       const boxRef = doc(db, 'items', boxItemId);
       const unitRef = doc(db, 'items', unitItemId);
@@ -67,8 +69,8 @@ export async function unpackBoxStock(params: {
       const evidence=context?{inventoryRequest:context.request,inventoryRequestHash:requestHash,inventoryResult:{sourceText:itemInventoryResultText(taken.distribution),boxBefore:boxStock,boxAfter:boxStock-1,unitBefore:unitStock,unitAfter:unitStock+count,unitKg:unitWeight}}:{};
       assertItemInventoryWriteBudget([{...box,lots:pruneDepletedLots(taken.lots)},{...unit,lots:[...unitLots,...addedLots]},{...evidence,sourceLots:taken.distribution,createdLotIds:addedLots.map(lot=>lot.id)}]);
       if(context)await context.check();
-      tx.update(boxRef, { stock: boxStock - 1, lots: clean(pruneDepletedLots(taken.lots)) });
-      tx.update(unitRef, { stock: unitStock + count, lots: clean([...unitLots, ...addedLots]) });
+      tx.update(boxRef, protectItemInventoryPatch(box,{ stock: boxStock - 1, lots: clean(pruneDepletedLots(taken.lots)) }));
+      tx.update(unitRef, protectItemInventoryPatch(unit,{ stock: unitStock + count, lots: clean([...unitLots, ...addedLots]) }));
       tx.set(moveRef, clean({ id: operationId, companyId: companyOf(box), boxItemId, unitItemId,
         count, boxQty: 1, createdAt: now, sourceLots: taken.distribution,
         createdLotIds: addedLots.map(lot => lot.id),...evidence }));

@@ -110,7 +110,8 @@ export function unpackPlan(item: Item | undefined, cans: number, stock?: number,
       cans,
       bulkItemId: bulk.childId,
       bulkName: bulk.child!.name,
-      bulkUnit: bulk.child!.unit ?? 'kg',
+      // BOM 벌크량과 원료 수불은 kg다. 품목의 L 표시 단위를 붙이면 같은 중량이 부피로 잘못 보인다.
+      bulkUnit: 'kg',
       perCan,
       //  **소수 셋째 자리까지** — 로트도 이 자리에서 반올림하며 돈다(rawInventoryCore).
       //  여기서 더 길게 들고 있으면 로트 합계와 몇 g 씩 어긋난다.
@@ -125,5 +126,6 @@ export function unpackPlan(item: Item | undefined, cans: number, stock?: number,
 
 /** 사람에게 보여 줄 한 줄 — 확인 알림과 기록이 **같은 글**을 쓴다. */
 export function unpackSummary(plan: UnpackPlan): string {
-  return `${plan.canName} −${plan.cans}개 → ${plan.bulkName} +${plan.bulkQty}${plan.bulkUnit}`;
+  // 옛 최초 요청에는 L이 남아 있어도 원문을 바꾸면 재시도 해시가 달라진다. 표시만 kg로 바로잡는다.
+  return `${plan.canName} −${plan.cans}개 → ${plan.bulkName} +${plan.bulkQty}kg`;
 }

@@ -1,4 +1,6 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
 import { cancellationEvidenceText } from '../../shared/orderCancellationEvidence';
+import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
 import { doc, getDoc, runTransaction, type Firestore, type Transaction } from 'firebase/firestore';
 import { readRawCommandInTransaction, prepareRawCommand, writePreparedRawCommand, normalizeRawMovement } from '../../shared/services/rawInventoryService';
 import type { RawInventoryState } from '../../shared/rawInventoryCore';
@@ -160,13 +162,13 @@ export async function readOrderCancellationReceipt(db: Firestore, ticket: Cancel
 async function recordCancellationFailure(db: Firestore, ticket: CancellationTicket, code: string, claimedStartedAt: string | undefined) {
   if (!claimedStartedAt) return;
   try {
-    await runTransaction(db, async tx => {
+    await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(ticket),companyId:ticket.companyId}), async tx => {
       const orderRef = doc(db, 'orders', ticket.orderId);
       const [audit, snap] = await Promise.all([tx.get(receiptRef(db, ticket)), tx.get(orderRef)]);
       if (audit.exists() || !snap.exists()) return;
       const order = snap.data() as Order;
       if (companyOf(order) !== ticket.companyId || order.inventoryOperation?.id !== ticket.operationId || order.inventoryOperation.startedAt !== claimedStartedAt) return;
-      tx.update(orderRef, { inventoryOperation: { ...order.inventoryOperation, state: 'failed', stage: 'final-stock', error: code } });
+      tx.update(orderRef, protectInventoryWriterPatch(snap.data(),{ inventoryOperation: { ...order.inventoryOperation, state: 'failed', stage: 'final-stock', error: code } }));
     });
   } catch { /* 실패 기록의 통신 장애가 최초 실패를 성공으로 바꾸면 안 된다. */ }
 }
@@ -179,7 +181,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
     validateAction(ticket.action);
     if (!/^[a-f0-9]{64}$/.test(ticket.evidence) || ticket.operationId !== `order-cancellation-${ticket.action}-${ticket.orderId}-${ticket.evidence}`) block('CANCELLATION_TICKET_INVALID');
     // 일반 상태 변경의 기존 claim도 processing을 차단하므로 탭/기기 사이 충돌을 같은 문서로 막는다.
-    const claim = await runTransaction(db, async tx => {
+    const claim = await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(ticket),companyId:ticket.companyId}), async tx => {
       const [audit, snap] = await Promise.all([tx.get(auditRef), tx.get(orderRef)]);
       if (audit.exists()) {
         if (!matchesReceipt(audit.data(), ticket)) block('CANCELLATION_RECEIPT_MISMATCH');
@@ -198,13 +200,13 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
         id: ticket.operationId, kind: 'status', targetStatus: ticket.action === 'delete' ? OrderStatus.PENDING : OrderStatus.DISPATCHED,
         state: 'processing', startedAt: new Date().toISOString(), actor: actorName,
       };
-      tx.update(orderRef, { inventoryOperation: operation });
+      tx.update(orderRef, protectInventoryWriterPatch(snap.data(),{ inventoryOperation: operation }));
       return operation;
     });
     if (!claim) return completed(ticket);
     claimedStartedAt = claim.startedAt;
 
-    return await runTransaction(db, async tx => {
+    return await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(ticket),companyId:ticket.companyId}), async tx => {
       const reads = new Map<string, Promise<any>>();
       const readTx = { get: (ref: any) => {
         if (!reads.has(ref.path)) reads.set(ref.path, tx.get(ref));
@@ -277,7 +279,7 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
         },
       } as unknown as Transaction;
       for (const row of rawPrepared) writePreparedRawCommand(buffer, row.command, row.read, row.result, { legacy: { type: 'auto', orderId: order.id, addedBy: claim.actor } });
-      for (const [id, patch] of patches) buffer.update(doc(db, 'items', id), patch);
+      for (const [id, patch] of patches){const itemRef=doc(db,'items',id),itemSnap=await readTx.get(itemRef);buffer.update(itemRef,protectItemInventoryPatch(itemSnap.data(),patch));}
       const now = new Date().toISOString();
       const auditData = { id: ticket.operationId, companyId: ticket.companyId, orderId: order.id, partnerName: order.partnerName ?? '',
         previousStatus: order.status, nextStatus: ticket.action === 'delete' ? OrderStatus.PENDING : OrderStatus.DISPATCHED,
@@ -285,10 +287,10 @@ export async function executeOrderInventoryCancellation(db: Firestore, ticket: C
         stockAdjustments: [...plan.deltas].map(([itemId, delta]) => ({ itemId, delta, name: itemId, unit: '' })),
         cancellation: { action: ticket.action, evidence: ticket.evidence, deleted: ticket.action === 'delete' },
       };
-      buffer.set(auditRef, auditData);
+      buffer.set(auditRef, protectInventoryWriterPatch(undefined,{...auditData,beforeOrderWriteRevision:(order as Order&{inventoryWriteRevision?:number}).inventoryWriteRevision??0}));
       if (ticket.action === 'delete') writes.set(orderRef.path, { ref: orderRef, method: 'delete' });
-      else buffer.update(orderRef, { status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [], shipmentConfirmedBy: null, shipmentConfirmedAt: null,
-        inventorySnapshots: { ...order.inventorySnapshots, shipment: { ...order.inventorySnapshots!.shipment!, stockDeltas: [], productConsumedLots: [] } }, inventoryOperation: null });
+      else buffer.update(orderRef, protectInventoryWriterPatch(snap.data(),{ status: OrderStatus.DISPATCHED, shippedOut: false, productConsumedLots: [], shipmentConfirmedBy: null, shipmentConfirmedAt: null,
+        inventorySnapshots: { ...order.inventorySnapshots, shipment: { ...order.inventorySnapshots!.shipment!, stockDeltas: [], productConsumedLots: [] } }, inventoryOperation: null }));
       const bytes = new TextEncoder().encode(JSON.stringify([...writes.values()].map(write => ({ path: write.ref.path, data: write.data })))).byteLength;
       const oversizedDocument = [...writes.values()].some(write => write.data && new TextEncoder().encode(JSON.stringify(write.data)).byteLength > 512 * 1024);
       if (writes.size > 200 || bytes > 4 * 1024 * 1024 || oversizedDocument) block('CANCELLATION_TRANSACTION_BUDGET');

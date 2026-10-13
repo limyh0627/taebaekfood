@@ -33,7 +33,9 @@ vi.mock('firebase/firestore', () => ({
       }) }
     : { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }),
   runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
-    get: async (ref: any) => ({ exists: () => dbx.stock.has(ref.id), data: () => ({
+    get: async (ref: any) => ref.col === 'orders'
+      ? { exists: () => dbx.orders.has(ref.id), data: () => dbx.orders.get(ref.id) }
+      : ({ exists: () => dbx.stock.has(ref.id), data: () => ({
       stock: dbx.stock.get(ref.id), lots: dbx.lots.get(ref.id), inventoryReservations: dbx.reservations.get(ref.id),
     }) }),
     update: (ref: any, data: any) => {

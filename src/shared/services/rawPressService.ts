@@ -1,3 +1,5 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {protectInventoryWriterPatch} from '../inventoryWriterProtocol';
 import { doc, getDocFromServer, runTransaction, type Firestore } from 'firebase/firestore';
 import { COL } from '../collections';
 import { commandHash, operationDocId, type RawInventoryJob, type RawInventoryCommand } from '../rawInventoryCore';
@@ -61,10 +63,11 @@ function cancellationMatches(job:RawPressJob,sourceRead:Read,derivedRead:Read):b
 }
 /** 둘의 이력과 완료 근거를 함께 저장한다. 기존 순차 job을 복구 완료로 추정하지 않는다. */
 export async function executeRawPressWithDb(database: Firestore, request: RawPressRequest, assertScope?: () => Promise<void>): Promise<RawPressOutcome> {
+  request=JSON.parse(JSON.stringify(request));
   validateRawPressRequest(request);
   const source = request.sourceCommand, derived = request.derivedCommand;
   const jobRef = doc(database, COL.rawInventoryJobs, `raw-press-${operationDocId(source.operationId)}`);
-  return runTransaction(database, async tx => {
+  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.companyId,isStillCurrent:async()=>{await assertScope?.();return true;}}), async tx => {
     await assertScope?.();
     const [jobSnap, sourceRead, derivedRead] = await Promise.all([
       tx.get(jobRef), readRawCommandInTransaction(tx, database, source), readRawCommandInTransaction(tx, database, derived),
@@ -98,7 +101,7 @@ export async function executeRawPressWithDb(database: Firestore, request: RawPre
       source: { type: 'production', id: request.entry.id }, expectedOperationIds: disposition === 'received' ? [source.operationId, derived.operationId] : [source.operationId],
       status: 'complete', createdAt: request.entry.createdAt, completedAt: request.entry.createdAt,
       rawPressEvidence: request, sourceAppliedKg, derivedAppliedKg, derivedDisposition: disposition };
-    tx.set(jobRef, prune(job));
+    tx.set(jobRef, protectInventoryWriterPatch(jobSnap.exists()?jobSnap.data():undefined,prune(job)));
     return { status: 'applied', sourceAppliedKg, derivedAppliedKg };
   });
 }
@@ -123,9 +126,10 @@ export type RawPressCancellationOutcome={status:'cancelled'|'duplicate';sourceAp
   |{status:'already-cancelled';reason:string}
   |{status:'blocked';reason:string;retainPending:boolean}|{status:'legacy'};
 export async function executeRawPressCancellationWithDb(database:Firestore,request:RawPressCancellationRequest,assertScope?:()=>Promise<void>):Promise<RawPressCancellationOutcome>{
+  request=JSON.parse(JSON.stringify(request));
   validateRawPressCancellationRequest(request);
   const jobRef=doc(database,COL.rawInventoryJobs,`raw-press-${operationDocId(request.originalOperationId)}`);
-  return runTransaction(database,async tx=>{
+  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.companyId,isStillCurrent:async()=>{await assertScope?.();return true;}}),async tx=>{
     await assertScope?.();
     const jobSnap=await tx.get(jobRef);
     const blocked=(reason:string,retainPending=true):RawPressCancellationOutcome=>({status:'blocked',reason,retainPending});
@@ -156,7 +160,7 @@ export async function executeRawPressCancellationWithDb(database:Firestore,reque
     writePreparedRawCommand(tx,request.sourceReverse,sourceRead,source,{legacy});
     if(derived?.status==='applied')writePreparedRawCommand(tx,request.derivedReverse,derivedRead,derived,{legacy});
     const sourceAppliedKg=source.movement.appliedDeltaKg,derivedAppliedKg=derived?.status==='applied'?derived.movement.appliedDeltaKg:0;
-    tx.update(jobRef,{cancellation:prune({request,companyId:request.companyId,actorUid:request.actorUid,completedAt:request.createdAt,sourceAppliedKg,derivedAppliedKg})});
+    tx.update(jobRef,protectInventoryWriterPatch(jobSnap.data(),{cancellation:prune({request,companyId:request.companyId,actorUid:request.actorUid,completedAt:request.createdAt,sourceAppliedKg,derivedAppliedKg})}));
     return {status:'cancelled',sourceAppliedKg,derivedAppliedKg};
   });
 }

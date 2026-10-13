@@ -45,6 +45,13 @@ const 에뮬있나 = async () => {
 
 const 켜짐 = await 에뮬있나();
 let env: RulesTestEnvironment;
+const ownRulesProject = 'demo-rules-' + randomUUID().slice(0,8);
+let ownRulesAdmin: ReturnType<typeof initAdmin>;
+async function clearOwnRulesFixtures() {
+  if (!ownRulesAdmin) return;
+  const database = adminFirestore(ownRulesAdmin);
+  for (const collection of await database.listCollections()) for (const row of (await collection.get()).docs) await database.recursiveDelete(row.ref);
+}
 
 //  주체 넷 — claim 모양은 `functions/src/employeeLogin.ts` 가 발급하는 것 그대로다.
 const 태백직원 = () => env.authenticatedContext('u-taebaek', { employeeId: 'e1', companyId: 'taebaek', isAdmin: false }).firestore();
@@ -271,14 +278,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
   });
   beforeAll(async () => {
     env = await initializeTestEnvironment({
-      projectId: 'demo-taebaekfood-local',
+      projectId: ownRulesProject,
       firestore: { rules: readFileSync('firestore.rules', 'utf-8'), host: '127.0.0.1', port: 8082 },
     });
   });
-  afterAll(async () => { await env?.cleanup(); });
+  afterAll(async () => { await clearOwnRulesFixtures(); await env?.cleanup(); if(ownRulesAdmin) await deleteAdmin(ownRulesAdmin); });
 
   beforeEach(async () => {
-    await env.clearFirestore();
+    if(!ownRulesAdmin) ownRulesAdmin = initAdmin({projectId:ownRulesProject},ownRulesProject);
+    await clearOwnRulesFixtures();
     //  규칙을 끄고 밑자료를 깐다 — 시험하려는 건 **읽고 쓰는 쪽**이지 심는 쪽이 아니다.
     await env.withSecurityRulesDisabled(async ctx => {
       const db = ctx.firestore();
@@ -432,7 +440,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
 
     it('**회사를 안 붙이고는 못 만든다**', async () => {
       await assertFails(setDoc(doc(태백직원(), 'orders', 'o-새것'), { partnerName: '회사없음' }));
-      await assertSucceeds(setDoc(doc(태백직원(), 'orders', 'o-새것2'), { companyId: 'taebaek', partnerName: '있음' }));
+      await assertSucceeds(setDoc(doc(태백직원(), 'orders', 'o-새것2'), { companyId: 'taebaek', partnerName: '있음', inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
     });
   });
 
@@ -481,7 +489,7 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
     });
 
     it('현장 자료(주문·품목)는 일반 직원도 쓴다', async () => {
-      await assertSucceeds(setDoc(doc(태백직원(), 'items', 'i-새것'), { companyId: 'taebaek', name: '들기름' }));
+      await assertSucceeds(setDoc(doc(태백직원(), 'items', 'i-새것'), { companyId: 'taebaek', name: '들기름',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
     });
   });
 
@@ -527,13 +535,13 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       const raw = doc(db, 'rawInventories', 'taebaek__i-수량');
       await assertFails(setDoc(item, { companyId: 'taebaek', stock: -1 }));
       await assertFails(setDoc(raw, { companyId: 'taebaek', stockKg: -1 }));
-      await assertSucceeds(setDoc(item, { companyId: 'taebaek', stock: 2 }));
-      await assertSucceeds(setDoc(raw, { companyId: 'taebaek', stockKg: 2 }));
-      await assertFails(updateDoc(item, { stock: -0.001 }));
-      await assertFails(updateDoc(raw, { stockKg: -0.001 }));
+      await assertSucceeds(setDoc(item, { companyId: 'taebaek', stock: 2,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertSucceeds(setDoc(raw, { companyId: 'taebaek', stockKg: 2,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertFails(updateDoc(item, { stock: -0.001,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
+      await assertFails(updateDoc(raw, { stockKg: -0.001,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
       await assertFails(updateDoc(item, { stock: '음수 아님' }));
-      await assertSucceeds(updateDoc(item, { stock: 0 }));
-      await assertSucceeds(updateDoc(raw, { stockKg: 0 }));
+      await assertSucceeds(updateDoc(item, { stock: 0,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: 0,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
     });
 
     it('기존 음수 재고는 0 쪽 회복과 다른 필드 수정을 허용하고 악화는 거절한다', async () => {
@@ -546,15 +554,15 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       const item = doc(db, 'items', 'i-옛음수');
       const raw = doc(db, 'rawInventories', 'taebaek__i-옛음수');
       await assertSucceeds(updateDoc(item, { name: '이름 수정' }));
-      await assertSucceeds(updateDoc(raw, { materialSnapshot: '표시 수정' }));
-      await assertSucceeds(updateDoc(item, { stock: -4 }));
-      await assertSucceeds(updateDoc(raw, { stockKg: -4 }));
-      await assertSucceeds(updateDoc(item, { stock: -4 }));
-      await assertSucceeds(updateDoc(raw, { stockKg: -4 }));
+      await assertSucceeds(updateDoc(raw, { materialSnapshot: '표시 수정',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertSucceeds(updateDoc(item, { stock: -4,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: -4,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
+      await assertSucceeds(updateDoc(item, { stock: -4,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: -4,inventoryWriterProtocolVersion:1,inventoryWriteRevision:3 }));
       await assertFails(updateDoc(item, { stock: -4.001 }));
-      await assertFails(updateDoc(raw, { stockKg: -4.001 }));
-      await assertSucceeds(updateDoc(item, { stock: 0 }));
-      await assertSucceeds(updateDoc(raw, { stockKg: 0 }));
+      await assertFails(updateDoc(raw, { stockKg: -4.001,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4 }));
+      await assertSucceeds(updateDoc(item, { stock: 0,inventoryWriterProtocolVersion:1,inventoryWriteRevision:2 }));
+      await assertSucceeds(updateDoc(raw, { stockKg: 0,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4 }));
     });
 
     it('배치의 한 수량이 음수면 다른 쓰기도 함께 반영되지 않는다', async () => {
@@ -573,10 +581,10 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       const itemRef = doc(db, 'items', 'i-taebaek');
       await tx.get(itemRef);
       tx.set(doc(db, 'purchaseOrders', 'oem-job-1'), { companyId: 'taebaek', poType: 'oem', status: 'pending', oemIssueStatus: 'processing' });
-      tx.set(doc(db, 'rawInventoryJobs', 'oem-issue-oem-job-1'), { companyId: 'taebaek', status: 'complete' });
-      tx.set(doc(db, 'rawMaterialLedger', 'oem-ledger-1'), { companyId: 'taebaek', operationId: 'oem-issue:oem-job-1:raw-1' });
+      tx.set(doc(db, 'rawInventoryJobs', 'oem-issue-oem-job-1'), { companyId: 'taebaek', status: 'complete',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
+      tx.set(doc(db, 'rawMaterialLedger', 'oem-ledger-1'), { companyId: 'taebaek', operationId: 'oem-issue:oem-job-1:raw-1',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
       tx.set(doc(db, 'adjustmentRequests', 'OEMFEE-oem-job-1'), { companyId: 'taebaek', type: 'oem_fee', oemPoId: 'oem-job-1', status: 'pending' });
-      tx.update(itemRef, { companyId: 'taebaek', stock: 1 });
+      tx.update(itemRef, { companyId: 'taebaek', stock: 1,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
     }));
     expect((await getDoc(doc(db, 'adjustmentRequests', 'OEMFEE-oem-job-1'))).exists()).toBe(true);
     await assertFails(setDoc(doc(풍회관리자(), 'adjustmentRequests', 'OEMFEE-oem-job-2'), { companyId: 'taebaek', type: 'oem_fee' }));
@@ -888,8 +896,8 @@ describe.skipIf(!켜짐)('회사별·메뉴별 권한 (Firestore 규칙)', () =>
       await assertFails(deleteDoc(doc(태백직원(), 'orders', 'o-punghoe')));
     });
 
-    it('내 회사 것은 지운다', async () => {
-      await assertSucceeds(deleteDoc(doc(태백직원(), 'orders', 'o-taebaek')));
+    it('내 회사 주문도 현재 claim 완료 audit 없이는 직접 지우지 못한다', async () => {
+      await assertFails(deleteDoc(doc(태백직원(), 'orders', 'o-taebaek')));
     });
   });
 });

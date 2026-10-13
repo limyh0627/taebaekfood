@@ -5,7 +5,7 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import ItemList from './ItemList';
 import {buildBomIndex} from '../src/shared/bomIndex';
 import {buildPackIndex} from '../src/shared/packIndex';
-import {beginItemInventoryAttempt,itemInventoryAttemptKey,readItemInventoryAttempt} from '../src/shared/itemInventoryAttempt';
+import {beginItemInventoryAttempt,itemInventoryAttemptKey,readItemInventoryAttempt,itemInventoryRequestText,itemInventoryRequestHash} from '../src/shared/itemInventoryAttempt';
 const state=vi.hoisted(()=>({auth:{currentUser:{uid:'employee'} as {uid:string}|null},confirm:vi.fn(),stock:vi.fn(),can:vi.fn(),box:vi.fn(),actor:vi.fn()}));
 vi.mock('../src/shared/firebase',()=>({db:{},storage:{},functions:{},auth:state.auth,authReady:Promise.resolve()}));
 vi.mock('../src/shared/services/firebaseService',()=>({fetchCollection:vi.fn().mockResolvedValue([]),subscribeToCollection:vi.fn(()=>()=>{}),addItem:vi.fn()}));
@@ -52,9 +52,18 @@ it('새 박스 개봉은 회사 BOM의 count와 중량을 확인 전 고정한�
  fireEvent.click(screen.getAllByRole('button',{name:/개봉/})[0]);await waitFor(()=>expect(state.box).toHaveBeenCalledOnce());expect(state.box.mock.calls[0][0]).toMatchObject({kind:'box-unpack',boxItemId:'box',unitItemId:'unit',boxItemName:'참기름 박스',unitItemName:'참기름 낱개',count:12,unitKg:1});expect(state.confirm.mock.calls[0][0]).toContain('참기름 박스');expect(state.confirm.mock.calls[0][0]).toContain('참기름 낱개');expect(state.confirm.mock.calls[0][0]).toContain('+12개');
 });
 it('새 캔 개봉은 개수와 회사 BOM의 perCan을 최초 계획에 보존한다',async()=>{
- const items=[{id:'can',companyId:'taebaek',name:'참기름 캔',type:'product',unit:'캔',stock:3,minStock:0,spec:'16.5kg',unpackable:true},{id:'raw',companyId:'taebaek',name:'참기름 벌크',type:'rawmaterial',subtype:'벌크',rawMaterialName:'참기름',unit:'kg',stock:0,minStock:0}] as any;
+ const items=[{id:'can',companyId:'taebaek',name:'참기름 캔',type:'product',unit:'캔',stock:3,minStock:0,spec:'16.5kg',unpackable:true},{id:'raw',companyId:'taebaek',name:'참기름 벌크',type:'rawmaterial',subtype:'벌크',rawMaterialName:'참기름',unit:'L',density:0.916,stock:0,minStock:0}] as any;
  const inputs={bom:buildBomIndex(items,[{parent_id:'can',child_id:'raw',quantity:16.5}]),pack:buildPackIndex()};render(<ItemList {...props} items={items} orderUnitInputs={inputs}/>);
- fireEvent.click(screen.getAllByRole('button',{name:/개봉/})[0]);const count=screen.getByRole('spinbutton');fireEvent.change(count,{target:{value:'2'}});fireEvent.click(screen.getAllByRole('button',{name:'개봉'}).at(-1)!);await waitFor(()=>expect(state.can).toHaveBeenCalledOnce());expect(state.can.mock.calls[0][0]).toMatchObject({kind:'can-unpack',plan:{canItemId:'can',cans:2,bulkItemId:'raw',perCan:16.5,bulkQty:33}});expect(state.confirm.mock.calls[0][0]).toContain('33kg');
+ fireEvent.click(screen.getAllByRole('button',{name:/개봉/})[0]);const count=screen.getByRole('spinbutton');fireEvent.change(count,{target:{value:'2'}});fireEvent.click(screen.getAllByRole('button',{name:'개봉'}).at(-1)!);await waitFor(()=>expect(state.can).toHaveBeenCalledOnce());expect(state.can.mock.calls[0][0]).toMatchObject({kind:'can-unpack',plan:{canItemId:'can',cans:2,bulkItemId:'raw',perCan:16.5,bulkQty:33,bulkUnit:'kg'}});expect(state.confirm.mock.calls[0][0]).toContain('참기름 캔 −2개 → 참기름 벌크 +33kg (개당 16.5kg)');
+});
+it('옛 L 캔 요청도 안내와 확인만 kg로 보여주고 최초 원문과 해시는 유지한다',async()=>{
+ const request=pending('can-unpack');if(request.kind!=='can-unpack')throw Error('캔 요청이 필요합니다.');request.plan.bulkUnit='L';
+ const key=itemInventoryAttemptKey('taebaek','employee','can-unpack');localStorage.setItem(key,JSON.stringify({request,state:'prepared'}));
+ const original=localStorage.getItem(key);const text=itemInventoryRequestText(request);const hash=await itemInventoryRequestHash(request);
+ render(<ItemList {...props}/>);expect(screen.getByText(/캔 −2개 → 벌크 \+33kg \(개당 16.5kg\)/)).toBeInTheDocument();expect(localStorage.getItem(key)).toBe(original);
+ fireEvent.click(screen.getByRole('button',{name:'보존된 입력으로 계속'}));await waitFor(()=>expect(state.can).toHaveBeenCalledWith(request));
+ expect(state.confirm.mock.calls[0][0]).toContain('캔 −2개 → 벌크 +33kg (개당 16.5kg)');
+ const retained=readItemInventoryAttempt('taebaek','employee','can-unpack')!.request;expect(retained).toEqual(request);expect(itemInventoryRequestText(retained)).toBe(text);expect(await itemInventoryRequestHash(retained)).toBe(hash);expect(request.plan.bulkUnit).toBe('L');
 });
 it('재고 추가 완료 후 부모 재고 현황의 품목추가 버튼으로 focus가 돌아온다',async()=>{
  vi.spyOn(HTMLElement.prototype,'getClientRects').mockReturnValue([{width:1,height:1}] as any);state.stock.mockResolvedValue({ok:true,status:'applied',retainPending:false,message:'추가 완료'});const items=[{id:'p1',companyId:'taebaek',name:'참기름 첫품목',type:'product',unit:'개',stock:1,minStock:0,spec:'1L'}] as any;render(<ItemList {...props} items={items}/>);fireEvent.click(screen.getAllByRole('button',{name:'재고 현황'}).at(-1)!);const opener=screen.getByRole('button',{name:'품목추가'});opener.focus();fireEvent.click(opener);fireEvent.change(screen.getAllByPlaceholderText('0')[0],{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'확정'}));await waitFor(()=>expect(state.stock).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.queryByText('품목 추가하기')).not.toBeInTheDocument());await waitFor(()=>expect(opener).toHaveFocus());

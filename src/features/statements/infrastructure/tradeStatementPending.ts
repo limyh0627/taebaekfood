@@ -13,4 +13,31 @@ export function readTradePending(key:string,companyId:CompanyId,userId:string):T
 }
 export function storeTradePending(key:string,p:TradeStatementPending):string {const text=JSON.stringify(p),old=localStorage.getItem(key);if(old!==null&&old!==text)throw new Error('이전에 저장 중이던 전표를 먼저 재시도해 주세요.');localStorage.setItem(key,text);return text;}
 export function clearTradePending(key:string,text:string):void {if(localStorage.getItem(key)===text)localStorage.removeItem(key);}
-export function tradeNoWriteProof(error:unknown,p:TradeStatementPending):boolean {const d=(error as {details?:Record<string,unknown>})?.details;return d?.operationStatus==='rejected'&&d.version===1&&d.financialWrites===false&&d.companyId===p.companyId&&d.operationId===p.input.command.operationId;}
+type IssueRequest={operationId:string;statement:Record<string,unknown>;orderIds:string[];poIds:string[];costUpdates:Record<string,unknown>[];newPo?:{items:Record<string,unknown>[]}};
+const verifiedRejections=new WeakMap<object,{companyId:string;userId:string;operationId:string;business:string}>();
+const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
+ ?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,canonical(value[key])])):value;
+const requestBusiness=(request:IssueRequest)=>{
+ const {createdBy:_createdBy,...statement}=request.statement;
+ return JSON.stringify(canonical({statement,orderIds:request.orderIds,poIds:request.poIds,costUpdates:request.costUpdates,newPoItems:request.newPo?.items??[]}));
+};
+/** 서버 원문 SHA와 실제 송신 원문을 검증한 오류 객체만 화면 해제에 사용할 수 있다. */
+export async function verifyTradeServerRejection(error:unknown,request:IssueRequest,requestText:string,companyId:string,userId:string,isCurrent:()=>boolean=()=>true):Promise<boolean>{
+ const d=(error as {details?:Record<string,unknown>})?.details;
+ if(!error||typeof error!=='object'||d?.version!==2||d.operationStatus!=='rejected'||d.financialWrites!==false
+  ||d.companyId!==companyId||d.actorId!==userId||d.operationId!==request.operationId||d.statementId!==request.statement.id
+  ||d.requestText!==requestText||typeof d.requestHash!=='string'||!Number.isSafeInteger(d.receiptRevision)||Number(d.receiptRevision)<1)return false;
+ try{if(requestBusiness(JSON.parse(requestText))!==requestBusiness(request))return false;}catch{return false;}
+ const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(requestText));
+ if(Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')!==d.requestHash||!isCurrent())return false;
+ verifiedRejections.set(error,{companyId,userId,operationId:request.operationId,business:requestBusiness(request)});return true;
+}
+export function tradeNoWriteProof(error:unknown,p:TradeStatementPending,allowLocalPreCall=true):boolean {
+ const d=(error as {details?:Record<string,unknown>})?.details;
+ if(allowLocalPreCall&&d?.operationStatus==='rejected'&&d.version===1&&d.financialWrites===false&&d.companyId===p.companyId&&d.operationId===p.input.command.operationId)return true;
+ if(!error||typeof error!=='object')return false;const verified=verifiedRejections.get(error);if(!verified)return false;
+ return verified.companyId===p.companyId&&verified.userId===p.userId&&verified.operationId===p.input.command.operationId
+  &&verified.business===requestBusiness({operationId:p.input.command.operationId,statement:p.input.statement as unknown as Record<string,unknown>,
+   orderIds:p.input.command.orderIds,poIds:p.input.poIds,costUpdates:p.input.costUpdates.map(c=>({...c,beforeCost:c.beforeCost??0,sourceLineIndex:c.sourceLineIndex??-1})),
+   ...(p.input.newPoItems.length?{newPo:{items:p.input.newPoItems}}:{})});
+}

@@ -10,17 +10,19 @@ vi.mock('firebase-functions/v2/https', () => ({
 }));
 
 import { recordPartnerPayment, recordPartnerPaymentCommand } from './partnerPaymentCommand';
+import {statementIssueRef} from './statementIssueReceipt';
 import { journalizeStatement } from '../../src/shared/autoJournal';
 import type { IssuedStatement } from '../../src/shared/types';
 
 const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
 const runId = `pay-${randomUUID()}`;
-const projectId = 'demo-taebaekfood-local';
+const projectId = 'demo-payment-'+randomUUID().slice(0,8);
 const date = '2026-10-03';
 const counterId = `voucherNo_taebaek_${date}_general`;
 const actorId = `${runId}-admin`;
 const releaseId = runId;
 let app: admin.app.App;
+let authApp: admin.app.App;
 let db: admin.firestore.Firestore;
 let clientApp: FirebaseApp;
 const owned = new Set<string>();
@@ -90,9 +92,26 @@ async function noWrites(input: Parameters<typeof recordPartnerPayment>[3], count
 }
 
 describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore Emulator', () => {
+  it.each(['prepared','rejected','applied','foreign'])('다른 전표 %s claim은 신규 지급·정산·revision만 봉쇄하고 다른 ID는 정상 처리한다',async mode=>{
+    const statementId=await seed('claim-'+mode),input=request('claim-'+mode,statementId),owner=mode==='foreign'?'punghoe':'taebaek';
+    const claim=statementIssueRef(db,{companyId:owner,operationId:input.operationId+':ISSUE'});
+    await put('statementIssueOperations',claim.id,{companyId:owner,status:mode==='foreign'?'applied':mode,actorId:'다른담당'});
+    const before=await Promise.all([ref('appMeta',counterId).get(),ref('issuedStatements',statementId).get(),claim.get()]);
+    await expect(issue(input)).rejects.toThrow('최초 요청');await noWrites(input,0,false);
+    const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+    await ref('appMeta','releaseCutover').update({statementIssueProtocol:{generation:'잘못된-none-세대'}});
+    expect((await issue(request('normal-'+mode,statementId))).status).toBe('applied');
+  });
+  it('지급 자기 원문 duplicate는 뒤늦은 타회사 전표 claim에도 원래 정산을 유지한다',async()=>{
+    const statementId=await seed('own-ack'),input=request('own-ack',statementId),first=await issue(input),claim=statementIssueRef(db,{companyId:'punghoe',operationId:input.operationId+':ISSUE'});
+    await put('statementIssueOperations',claim.id,{status:'prepared',actorId:'다른담당'});
+    const before=await Promise.all([ref('appMeta',counterId).get(),ref('cashEntries',input.operationId).get(),ref('appMeta',`partnerPaymentState_taebaek_${input.partnerId}`).get(),claim.get()]);
+    expect(await issue(input)).toEqual({...first,status:'duplicate'});const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+  });
   beforeAll(async () => {
     app = admin.initializeApp({ projectId });
     db = admin.firestore(app);
+    authApp=admin.initializeApp({projectId:'demo-taebaekfood-local'},runId+'-auth-app');
   });
   afterAll(async () => {
     if (!db) return;
@@ -113,10 +132,11 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     const state = ref('appMeta', `partnerPaymentState_taebaek_${runId}-partner`);
     if ((await state.get()).data()?.partnerId === `${runId}-partner`) await state.delete();
     if (clientApp) await deleteClientApp(clientApp);
-    try { await admin.auth(app).deleteUser(`${runId}-auth`); } catch (error) {
+    try { await admin.auth(authApp).deleteUser(`${runId}-auth`); } catch (error) {
       if ((error as { code?: string }).code !== 'auth/user-not-found') throw error;
     }
     await app.delete();
+    await authApp.delete();
   });
 
   it('rejects missing auth, staff and foreign company before writing', async () => {
@@ -124,7 +144,7 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     const input = request('auth', `${runId}-auth-statement`);
     await expect(callable({ data: input })).rejects.toThrow('로그인');
     await expect(callable({ auth: { uid: 'staff', token: { isAdmin: false, companyId: 'taebaek' } }, data: input })).rejects.toThrow('관리자');
-    await expect(issue({ ...input, partnerId: `${runId}-foreign` })).rejects.toThrow('전환');
+    await seed('auth');await expect(issue({ ...input, partnerId: `${runId}-foreign` })).rejects.toThrow('거래처');
   });
 
   it('accepts a real Auth Emulator admin token through the callable auth boundary', async () => {
@@ -132,14 +152,14 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     const uid = `${runId}-auth`;
     const email = `${runId}@example.test`;
     const password = `Demo-${randomUUID()}-pass`;
-    await admin.auth(app).createUser({ uid, email, password });
-    await admin.auth(app).setCustomUserClaims(uid, { companyId: 'taebaek', isAdmin: true });
-    clientApp = initializeClientApp({ apiKey: 'demo-key', projectId }, `${runId}-client`);
+    await admin.auth(authApp).createUser({ uid, email, password });
+    await admin.auth(authApp).setCustomUserClaims(uid, { companyId: 'taebaek', isAdmin: true });
+    clientApp = initializeClientApp({ apiKey: 'demo-key', projectId:'demo-taebaekfood-local' }, `${runId}-client`);
     const auth = getAuth(clientApp);
     connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const token = await credential.user.getIdToken(true);
-    const decoded = await admin.auth(app).verifyIdToken(token);
+    const decoded = await admin.auth(authApp).verifyIdToken(token);
     expect(decoded.companyId).toBe('taebaek');
     expect(decoded.isAdmin).toBe(true);
     const callable = recordPartnerPaymentCommand as unknown as (request: unknown) => Promise<{ status: string }>;
@@ -189,11 +209,18 @@ describe.skipIf(!available)('partner payment actual Admin SDK and Auth/Firestore
     expect((await ref('appMeta', `partnerPaymentState_taebaek_${input.partnerId}`).get()).data()?.revision).toBe(1);
     expect(await issue(input)).toMatchObject({ status: 'duplicate', docNo: first.docNo });
     await ref('appMeta', 'releaseCutover').update({ status: 'paused' });
-    await expect(issue(input)).rejects.toThrow('활성화');
+    expect(await issue(input)).toMatchObject({status:'duplicate',docNo:first.docNo});
     await ref('appMeta', 'releaseCutover').update({ status: 'active' });
     expect((await ref('appMeta', counterId).get()).data()?.last).toBe(1);
     await expect(issue({ ...input, amount: 90, allocations: [{ statementId, amount: 90 }] })).rejects.toThrow('다릅니다');
   }, 25_000);
+  it('이전 release·추가창 종료 뒤 지급 정확 ACK는 원래 정산과 revision을 유지한다',async()=>{
+    const statementId=await seed('old-release'),input=request('old-release',statementId),first=await issue(input);
+    await ref('appMeta','releaseCutover').update({releaseId:'new-release',voucherNotBefore:{taebaek:'2099-01-01'},catchUp:{companyId:'taebaek',fromDate:'2026-09-30',status:'closed'}});
+    const before=await Promise.all([ref('cashEntries',input.operationId).get(),ref('appMeta',counterId).get(),ref('appMeta',`partnerPaymentState_taebaek_${input.partnerId}`).get(),ref('settlements',`st-${input.operationId}-${statementId}`).get()]);
+    expect(await issue(input)).toEqual({...first,status:'duplicate'});const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+    await expect(issue(request('new-old-release',statementId))).rejects.toThrow('활성화');
+  });
 
   it('serializes same and different operation IDs on the partner revision', async () => {
     const statementId = await seed('race', 100);

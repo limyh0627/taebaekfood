@@ -50,6 +50,7 @@ describe.skipIf(!available)('manual settlement Admin SDK transaction', () => {
     }
     await app.delete();
   });
+  // 실제 SDK 연속 경합은 총 9.854초, 단일 동일 ID 경합은 5.964초여서 기본 5초 제한을 넘는다.
   it('historical generic cash supports manual rows, concurrent terminal rejections and immutable issue replay policy', async () => {
     const co = 'taebaek', p = `${prefix}-generic-partner`, s = `${prefix}-generic-statement`, c = `${prefix}-generic-cash`;
     const state = `partnerPaymentState_${co}_${p}`;
@@ -66,8 +67,13 @@ describe.skipIf(!available)('manual settlement Admin SDK transaction', () => {
     const invoke = (value: ReturnType<typeof command>) => mutateManualSettlement(db, co, `${prefix}-admin`, value);
     const replay = () => issueVoucher(db, co, { kind: 'cashEntries', operationId: c, tradeDate: '2026-10-07', releaseId,
       document: { date: '2026-10-07', dir: '입금', amount: 100, partnerId: p, accountCode: '108' } });
+    const rejectUnverifiableReplay=async()=>{
+      const originals=await Promise.all([ref('cashEntries',c).get(),ref('issuedStatements',s).get(),ref('appMeta',counterId).get(),ref('partners',p).get(),ref('appMeta',state).get()]);
+      await expect(replay()).rejects.toThrow('작업 ID가 다른 전표에 사용되었습니다.');
+      for(const original of originals){const after=await original.ref.get();expect(after.exists).toBe(original.exists);if(original.exists)expect(after.updateTime!.isEqual(original.updateTime!)).toBe(true);}
+    };
     try {
-      await expect(replay()).rejects.toThrow('원자 명령');
+      await rejectUnverifiableReplay();
       const denied = command('overflow', { amount: 101 });
       const failures = await Promise.allSettled([invoke(denied), invoke(denied)]);
       expect(failures.every(row => row.status === 'rejected')).toBe(true);
@@ -88,7 +94,7 @@ describe.skipIf(!available)('manual settlement Admin SDK transaction', () => {
       expect((await ref('issuedStatements', s).get()).data()).toEqual(statement);
       expect((await ref('appMeta', counterId).get()).data()).toEqual(counter);
       expect((await ref('settlements', rowId).get()).exists).toBe(false);
-      await expect(replay()).rejects.toThrow('원자 명령');
+      await rejectUnverifiableReplay();
     } finally {
       const ops = await db.collection('manualSettlementOperations').get();
       const settlements = await db.collection('settlements').get();
@@ -97,7 +103,7 @@ describe.skipIf(!available)('manual settlement Admin SDK transaction', () => {
         await ref(group, id).delete(); expect((await ref(group, id).get()).exists).toBe(false);
       }
     }
-  });
+  },30000);
   it('generic split cash matches both 251 and 253 without exceeding either budget', async () => {
     const p = prefix+'-split-partner', a = prefix+'-split-trade', b = prefix+'-split-expense', c = prefix+'-split-cash';
     const state = 'partnerPaymentState_taebaek_'+p;

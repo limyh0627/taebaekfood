@@ -4,6 +4,35 @@ import { assertVoucherDateAllowed } from './releaseGate';
 
 const fail = (): never => { throw new HttpsError('failed-precondition', '신규 번호 카운터 초기화 조건이 준비되지 않았습니다.'); };
 const owner = (row: admin.firestore.DocumentData) => row.companyId ?? 'taebaek';
+export interface VoucherScopeRows {
+  companyId: string;
+  date: string;
+  prefix: string;
+  statements: admin.firestore.QueryDocumentSnapshot[];
+  cashEntries: admin.firestore.QueryDocumentSnapshot[];
+}
+const voucherPrefixes = ['', '가공', '반품', '대체', '급여'];
+function assertVoucherScope(companyId: string, date: string, prefix: string): void {
+  if (!['taebaek', 'punghoe'].includes(companyId) || !voucherPrefixes.includes(prefix)
+    || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date + 'T00:00:00Z'))
+    || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date) fail();
+}
+/** 번호 또는 업무일이 해당 범위에 속하는 후보만 읽는다. 회사 없는 과거 원문도 기존 판정에 남긴다. */
+export async function readVoucherScopeRows(db: admin.firestore.Firestore, tx: admin.firestore.Transaction,
+  companyId: string, date: string, prefix: string): Promise<VoucherScopeRows> {
+  assertVoucherScope(companyId, date, prefix);
+  const base = prefix + date.slice(2).replace(/-/g, '');
+  const result: VoucherScopeRows = { companyId, date, prefix, statements: [], cashEntries: [] };
+  for (const [name, key] of [['issuedStatements', 'statements'], ['cashEntries', 'cashEntries']] as const) {
+    const collection = db.collection(name);
+    const queries = [collection.where('docNo', '>=', base + '-').where('docNo', '<', base + '.'),
+      collection.where('tradeDate', '==', date), collection.where('date', '==', date)];
+    const unique = new Map<string, admin.firestore.QueryDocumentSnapshot>();
+    for (const query of queries) for (const row of (await tx.get(query)).docs) unique.set(row.id, row);
+    result[key] = [...unique.values()];
+  }
+  return result;
+}
 
 function assertNewScope(gate: admin.firestore.DocumentSnapshot, companyId: string, date: string, oem = false) {
   if (!oem) assertVoucherDateAllowed(gate, companyId, date);
@@ -19,26 +48,30 @@ function assertNewScope(gate: admin.firestore.DocumentSnapshot, companyId: strin
     || !row.oldWritersBlockedEvidence.trim()) fail();
 }
 
-/** 신규 scope에만 전체 번호 원장을 확인한다. 과거/추가번호 누락은 재생성하지 않는다. */
+/** 신규 scope에만 번호·업무일 후보를 확인한다. 과거/추가번호 누락은 재생성하지 않는다. */
 export async function readVoucherCounter(db: admin.firestore.Firestore, tx: admin.firestore.Transaction,
   snap: admin.firestore.DocumentSnapshot, gate: admin.firestore.DocumentSnapshot,
-  companyId: string, date: string, prefix: string): Promise<admin.firestore.DocumentData> {
+  companyId: string, date: string, prefix: string,
+  initialRows?: VoucherScopeRows): Promise<admin.firestore.DocumentData> {
   if (snap.exists) return snap.data()!;
   if (!['', '가공', '반품', '대체', '급여'].includes(prefix)) fail();
   assertNewScope(gate, companyId, date);
-  // ponytail: 첫 발행만 전체 조회. 규모가 커지면 검증된 번호 사용 ledger로 교체한다.
-  const statements = await tx.get(db.collection('issuedStatements'));
-  const cashEntries = await tx.get(db.collection('cashEntries'));
-  const collections = [statements, cashEntries];
+  assertVoucherScope(companyId, date, prefix);
+  if (initialRows && (initialRows.companyId !== companyId || initialRows.date !== date || initialRows.prefix !== prefix
+    || !Array.isArray(initialRows.statements) || !Array.isArray(initialRows.cashEntries))) fail();
+  const rows = initialRows ?? await readVoucherScopeRows(db, tx, companyId, date, prefix);
+  const collections = [rows.statements, rows.cashEntries];
   const stamp = date.slice(2).replace(/-/g, '');
-  for (const collection of collections) for (const doc of collection.docs) {
+  for (const collection of collections) for (const doc of collection) {
     const row = doc.data();
     if (owner(row) !== companyId) continue;
     const number = typeof row.docNo === 'string' ? row.docNo : '';
     const parsed = /^(.*)(\d{6})-(\d+)$/.exec(number);
-    if (number.startsWith(`${prefix}${stamp}-`)
-      || (row.tradeDate === date || row.date === date) && (!parsed || parsed[1] === prefix)
-      || row.issuePrefix === prefix && (row.tradeDate === date || row.date === date)) fail();
+    // 날짜를 수정해도 발행 번호는 그대로다. 정규 번호의 사용 범위는 업무일이 아니라 번호 자체로 판별한다.
+    if (parsed) {
+      if (parsed[1] === prefix && parsed[2] === stamp) fail();
+    } else if (number.startsWith(`${prefix}${stamp}-`)
+      || row.tradeDate === date || row.date === date) fail();
   }
   return { companyId, tradeDate: date, prefix, last: 0, initializedByRelease: gate.data()!.releaseId };
 }
@@ -64,7 +97,8 @@ export async function readOemCounter(db: admin.firestore.Firestore, tx: admin.fi
     if (row.lots !== undefined && !Array.isArray(row.lots)) fail();
     for (const lot of row.lots ?? []) {
       if (!lot || typeof lot !== 'object') fail();
-      if ((String(lot.receivedDate ?? '').slice(0, 10) === date || String(lot.lotNo ?? '').startsWith(prefix))
+      // 번호 없는 실사 이월은 OEM 번호를 소비하지 않는다. 물질 불명의 실제 번호는 중복 가능성을 보존한다.
+      if (String(lot.lotNo ?? '').startsWith(prefix)
         && (!lot.material || lot.material === material)) fail();
     }
   }

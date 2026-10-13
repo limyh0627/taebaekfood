@@ -24,8 +24,9 @@ const items: Item[] = [
 
 function makeDeps() {
   const rawCalls: any[] = [], updates: any[] = [], adds: any[] = [];
+  const receiptCalls: any[] = [];
   return {
-    rawCalls, updates, adds,
+    rawCalls, updates, adds, receiptCalls,
     deps: {
       companyId: 'taebaek',
       items,
@@ -44,6 +45,7 @@ function makeDeps() {
         return input.statement.id;
       },
       applyOemReceiptInventory: async (input: any) => {
+        receiptCalls.push(input);
         for (const row of input.items) {
           const current = items.find(item => item.id === row.itemId)?.stock ?? 0;
           updates.push({ c: 'items', id: row.itemId, d: { stock: current + row.qty, ...(row.lot ? { lots: [row.lot] } : {}) } });
@@ -99,30 +101,34 @@ describe('임가공 사이클 — 참깨 보내고 볶음참깨 받아서 판다
     expect(led).toHaveLength(0);
   });
 
-  it('②-b 벌크 혼합 입고는 어떤 쓰기보다 먼저 거절한다', async () => {
-    const { deps, rawCalls, updates, adds } = makeDeps();
+  it('②-b 벌크 혼합 입고는 한 명령에 원kg와 제품 수량을 전달한다', async () => {
+    const { deps, rawCalls, updates, adds, receiptCalls } = makeDeps();
     const eng = createOemEngine(deps as any);
     const po = { id: 'oem-2', poType: 'oem', oemPartnerId: 'oem1', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1500 }] } as any;
 
-    await expect(eng.receiveOemBatch({
+    expect((await eng.receiveOemBatch({
       po, date: '2026-08-08',
       returns: [{ itemId: 'nakgae', qty: 100 }],        // 완포장 100kg
       bulk: [{ material: '볶음참깨', kg: 1300 }],        // 벌크 1,300kg
-    })).rejects.toThrow('벌크');
+    })).receivedKg).toBe(1400);
+    expect(receiptCalls).toHaveLength(1);
+    expect(receiptCalls[0]).toMatchObject({items:[{itemId:'nakgae',qty:100}],bulk:[{kg:1300,rawItemId:'wip-볶음참깨'}]});
     expect(rawCalls).toHaveLength(0);
-    expect(updates).toHaveLength(0);
+    expect(updates.filter(row=>row.c==='items')).toHaveLength(1);
     expect(adds).toHaveLength(0);
   });
 
-  it('②-c 벌크만 받는 경우도 쓰기 없이 거절한다', async () => {
-    const { deps, rawCalls, updates, adds } = makeDeps();
+  it('②-c 벌크만 받아도 제품 계획 없이 한 명령으로 보낸다', async () => {
+    const { deps, rawCalls, updates, adds, receiptCalls } = makeDeps();
     const eng = createOemEngine(deps as any);
     const po = { id: 'oem-3', poType: 'oem', oemPartnerId: 'oem1', partnerName: '푸미푸드', status: 'invoiced', oemSent: [{ material: '참깨', kg: 1000 }] } as any;
-    await expect(eng.receiveOemBatch({
+    expect((await eng.receiveOemBatch({
       po, date: '2026-08-08', returns: [], bulk: [{ material: '볶음참깨', kg: 950 }],
-    })).rejects.toThrow('벌크');
+    })).receivedKg).toBe(950);
+    expect(receiptCalls).toHaveLength(1);
+    expect(receiptCalls[0]).toMatchObject({items:[],bulk:[{kg:950,rawItemId:'wip-볶음참깨'}]});
     expect(rawCalls).toHaveLength(0);
-    expect(updates).toHaveLength(0);
+    expect(updates.filter(row=>row.c==='items')).toHaveLength(0);
     expect(adds).toHaveLength(0);
   });
 

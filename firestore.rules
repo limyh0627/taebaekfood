@@ -124,8 +124,20 @@ service cloud.firestore {
     //  전용 규칙이 따로 있는 컬렉션 — 포괄 규칙에서 **반드시 빼야 한다.**
     //  Firestore 는 여러 match 중 하나만 참이어도 허용하므로, 안 빼면 아래 제한이 무력화된다.
     function hasOwnRule(c) {
-      return serverAuditCollection(c) || c in ['taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
+      return serverAuditCollection(c) || c in ['items', 'orders', 'inventoryWriterDeletions', 'statementIssueOperations', 'orderRequestRetirementAuthorizations', 'orderRequestRetirements', 'taxIssueRecords', 'returnRequests', 'issuedStatements', 'cashEntries', 'employees', 'authLoginAttempts', 'usernames', 'leaveRequests', 'adjustmentRequests',
                    'chatRooms', 'chatMessages', 'notifications', 'notices', 'productionWorkDocuments', 'productionWorkDocumentLines', 'item_purchase_unit'];
+    }
+
+    // 미반영·요청 폐기 근거는 서버만 판독한다. 관리자 조회도 열면 최초 원문이 노출된다.
+    // 명시 거절만으로 포괄 허용을 이길 수 없으므로 위 hasOwnRule에서도 제외한다.
+    match /statementIssueOperations/{document=**} {
+      allow get, list, create, update, delete: if false;
+    }
+    match /orderRequestRetirementAuthorizations/{document=**} {
+      allow get, list, create, update, delete: if false;
+    }
+    match /orderRequestRetirements/{document=**} {
+      allow get, list, create, update, delete: if false;
     }
 
     // 매입 단위는 별도 등록표다. 직원은 회사 안에서 선택하고 관리자만 표를 수정한다.
@@ -431,6 +443,101 @@ service cloud.firestore {
               || request.resource.data.get('oemIssueFingerprint', null) == resource.data.get('oemIssueFingerprint', null)
                 && request.resource.data.get('oemSent', null) == resource.data.get('oemSent', null)));
     }
+    // 새 앱은 최초 조회 버전을 한 번 증가시킨다. 주문을 읽지 않는 옛 품목 writer도 여기서 막는다.
+    function writerRevision(data) {
+      return data.get('inventoryWriteRevision', 0);
+    }
+    function writerBeforeOk(data) {
+      return (!('inventoryWriterProtocolVersion' in data) || data.inventoryWriterProtocolVersion == 1)
+        && (!('inventoryWriterProtocolVersion' in data) || 'inventoryWriteRevision' in data)
+        && writerRevision(data) is int && writerRevision(data) >= 0 && writerRevision(data) < 9007199254740991;
+    }
+    function writerAdvanced(before, next, floor) {
+      return writerBeforeOk(before) && next.get('inventoryWriterProtocolVersion', 0) == 1
+        && next.get('inventoryWriteRevision', 0) is int
+        && next.inventoryWriteRevision == floor + 1 && next.inventoryWriteRevision <= 9007199254740991;
+    }
+    function writerPreserved(before, next) {
+      return next.get('inventoryWriterProtocolVersion', null) == before.get('inventoryWriterProtocolVersion', null)
+        && next.get('inventoryWriteRevision', null) == before.get('inventoryWriteRevision', null);
+    }
+    function rawWriterCollection(c) {
+      return c in ['rawInventories', 'rawInventoryJobs', 'rawMaterialLedger', 'rawInventoryReversalGuards'];
+    }
+    function rawWriterOk(c) {
+      let before = resource == null ? {} : resource.data;
+      return !(rawWriterCollection(c) || c == 'productionRecords') || writerAdvanced(before, request.resource.data, writerRevision(before));
+    }
+    function itemTombstone(company, id) {
+      return /databases/$(database)/documents/inventoryWriterDeletions/$(company + '__' + id);
+    }
+    function itemWriteOk(id) {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      let tomb = itemTombstone(next.companyId, id);
+      let floor = resource == null && exists(tomb) ? get(tomb).data.lastDeletedItemRevision : writerRevision(before);
+      return resource == null
+        ? writerAdvanced(before, next, floor)
+        : next.diff(before).affectedKeys().hasAny(['stock', 'lots', 'inventoryReservations', 'stocktakeAnchors', 'allocated', 'inventoryAllocations'])
+          ? writerAdvanced(before, next, writerRevision(before)) : writerPreserved(before, next);
+    }
+    function itemDeleteOk(id) {
+      let tomb = itemTombstone(resource.data.companyId, id);
+      let prior = exists(tomb) ? get(tomb).data.deletionRevision : 0;
+      let after = getAfter(tomb).data;
+      return writerBeforeOk(resource.data) && after.companyId == resource.data.companyId && after.itemId == id
+        && after.inventoryWriterProtocolVersion == 1 && after.beforeRevision == writerRevision(resource.data)
+        && after.lastDeletedItemRevision == writerRevision(resource.data) && after.deletionRevision == prior + 1;
+    }
+    match /items/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create, update: if createUpdateOk() && inventoryQuantityOk('items') && itemWriteOk(id);
+      allow delete: if deleteOk() && itemDeleteOk(id);
+    }
+    match /inventoryWriterDeletions/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create, update: if createUpdateOk()
+        && request.resource.data.itemId is string && request.resource.data.itemId.size() > 0
+        && id == request.resource.data.companyId + '__' + request.resource.data.itemId
+        && exists(/databases/$(database)/documents/items/$(request.resource.data.itemId))
+        && !existsAfter(/databases/$(database)/documents/items/$(request.resource.data.itemId))
+        && request.resource.data.inventoryWriterProtocolVersion == 1
+        && request.resource.data.beforeRevision == writerRevision(get(/databases/$(database)/documents/items/$(request.resource.data.itemId)).data)
+        && request.resource.data.lastDeletedItemRevision == request.resource.data.beforeRevision
+        && request.resource.data.deletionRevision is int
+        && request.resource.data.deletionRevision <= 9007199254740991
+        && request.resource.data.deletionRevision == (resource == null ? 1 : resource.data.deletionRevision + 1);
+      allow delete: if false;
+    }
+    function orderWriteOk() {
+      let before = resource == null ? {} : resource.data;
+      let next = request.resource.data;
+      let sensitive = ['status', 'items', 'inventoryOperation', 'inventoryGenerationCompletion', 'productionRecordIndex',
+        'producedAt', 'shippedOut', 'productConsumedLots', 'rawConsumedLots', 'itemInventory', 'inventorySnapshots', 'rawInventoryAttempt', 'deliveredAt'];
+      return next.get('retirementId', null) == before.get('retirementId', null)
+        && next.get('retirementClaimPending', null) == before.get('retirementClaimPending', null)
+        && !(before.get('retirementClaimPending', false) == true && next.get('inventoryOperation', null) != before.get('inventoryOperation', null))
+        && (resource == null || next.diff(before).affectedKeys().hasAny(sensitive)
+          ? writerAdvanced(before, next, writerRevision(before)) : writerPreserved(before, next));
+    }
+    function orderDeleteOk(id) {
+      let operation = resource.data.get('inventoryOperation', {});
+      let audit = /databases/$(database)/documents/orderStatusAudits/$(operation.id);
+      let after = getAfter(audit).data;
+      return writerBeforeOk(resource.data) && !exists(audit) && after.companyId == resource.data.companyId
+        && after.orderId == id && after.id == operation.id && after.state == 'completed'
+        && after.cancellation.action == 'delete' && after.cancellation.deleted == true
+        && after.beforeOrderWriteRevision == writerRevision(resource.data)
+        && after.inventoryWriterProtocolVersion == 1 && after.inventoryWriteRevision == 1;
+    }
+    match /orders/{id} {
+      allow get: if getOk();
+      allow list: if readOk();
+      allow create, update: if createUpdateOk() && orderWriteOk();
+      allow delete: if deleteOk() && orderDeleteOk(id);
+    }
     // ── 나머지 업무 컬렉션 ──────────────────────────────────────
     //  **회사가 안 적힌 문서는 아무도 못 읽고 못 쓴다.** 2026-09-16 에 4,883건을 채워
     //  지금은 빈 문서가 0건이다. 새로 만드는 문서에도 반드시 붙여야 한다 —
@@ -447,11 +554,13 @@ service cloud.firestore {
                             && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                             && createUpdateOk()
                             && inventoryQuantityOk(collection)
+                            && rawWriterOk(collection)
                             && oemCostFieldsOk(collection)
                             && payrollWriteAllowed(collection);
       allow delete: if !hasOwnRule(collection) && !isProtectedCutoverPath()
                     && (adminOnlyCollection(collection) ? isAdmin() : isEmployee())
                     && deleteOk()
+                    && !rawWriterCollection(collection)
                     && (collection != 'purchaseOrders' || resource.data.get('oemBatchCost', null) == null)
                     && payrollWriteAllowed(collection);
     }

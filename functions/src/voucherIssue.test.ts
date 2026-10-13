@@ -7,6 +7,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 vi.mock('firebase-admin', () => ({ firestore: () => ({}) }));
 
 import { formatVoucherNo, issueVoucher } from './voucherIssue';
+import {statementIssueRef} from './statementIssueReceipt';
 import { issueScheduledVoucher } from './autoVoucherCommand';
 import { buildCashVoucher, buildStatementVoucher } from '../../src/shared/autoVoucher';
 import type { FixedCostTemplate } from '../../src/shared/types';
@@ -15,10 +16,13 @@ type Row = Record<string, unknown>;
 function fakeDb(initial: Record<string, Row>) {
   const rows = new Map(Object.entries(initial));
   let queue = Promise.resolve();
+  const query=(collection:string,clauses:Array<{field:string;op:string;value:any}>)=>({collection,clauses,
+    where:(field:string,op:string,value:any)=>query(collection,[...clauses,{field,op,value}]),
+  });
   const db = {
     collection: (name: string) => ({
       doc: (id: string) => ({ key: `${name}/${id}` }),
-      where: (field: string, op: string, value: unknown) => ({ collection: name, field, op, value }),
+      where: (field: string, op: string, value: unknown) => query(name,[{field,op,value}]),
       get: async () => ({ docs: [...rows.entries()].filter(([key]) => key.startsWith(`${name}/`))
         .map(([key, value]) => ({ id: key.slice(name.length + 1), data: () => value })) }),
     }),
@@ -32,8 +36,9 @@ function fakeDb(initial: Record<string, Row>) {
         const result = await fn({
           get: async (ref: any) => ref.key ? ({ ref, exists: rows.has(ref.key), data: () => rows.get(ref.key) })
             : ({ docs: [...rows].filter(([key, row]) => key.startsWith(`${ref.collection}/`)
-              && (ref.op === 'array-contains' ? Array.isArray(row[ref.field]) && (row[ref.field] as unknown[]).includes(ref.value)
-                : row[ref.field] === ref.value)).map(([key, row]) => ({ id: key.split('/')[1], data: () => row })) }),
+              && ref.clauses.every(({field,op,value}:any)=>op==='array-contains'?Array.isArray(row[field])&&(row[field] as unknown[]).includes(value)
+                :op==='>='?typeof row[field]==='string'&&(row[field] as string)>=value:op==='<'?typeof row[field]==='string'&&(row[field] as string)<value:row[field]===value))
+              .map(([key, row]) => ({ id: key.split('/')[1], data: () => row })) }),
           update: (ref: { key: string }, value: Row) => pending.push(() => rows.set(ref.key, { ...rows.get(ref.key), ...value })),
           create: (ref: { key: string }, value: Row) => pending.push(() => rows.set(ref.key, value)),
         });
@@ -56,6 +61,33 @@ const statement = (id: string) => ({ kind: 'issuedStatements' as const, operatio
   releaseId, document: { tradeDate: date, totalSupply: 100, totalTax: 0, totalAmount: 100 } });
 
 describe('shared voucher sequence', () => {
+  it.each(['cashEntries','issuedStatements'] as const)('최초 %s 이후 추가된 revision0만 제외해 정확 ACK하며 쓰기0이다',async kind=>{
+    const {db,rows}=seeded(),id='late-zero-'+kind,input=kind==='cashEntries'?cash(id):statement(id),first=await issueVoucher(db,'taebaek',input);
+    rows.set(kind+'/'+id,{...rows.get(kind+'/'+id),mutationRevision:0});const before=structuredClone(rows);expect(await issueVoucher(db,'taebaek',input)).toEqual(first);expect(rows).toEqual(before);
+  });
+  it.each(['cashEntries','issuedStatements'] as const)('최초 %s 요청에 revision0이 포함된 기존 fullhash도 바꾸지 않는다',async kind=>{
+    const {db,rows}=seeded(),id='original-zero-'+kind,base=kind==='cashEntries'?cash(id):statement(id),input={...base,document:{...base.document,mutationRevision:0}},first=await issueVoucher(db,'taebaek',input),before=structuredClone(rows);
+    expect(await issueVoucher(db,'taebaek',input)).toEqual(first);expect(rows).toEqual(before);
+  });
+  it.each(['cost','stock','memo','quantity','nonzero-revision'])('revision0 호환은 %s 변조나 감사없는 새revision을 허용하지 않는다',async field=>{
+    for(const kind of ['cashEntries','issuedStatements'] as const){const {db,rows}=seeded(),id='zero-tamper-'+field,base=kind==='cashEntries'?cash(id):statement(id),input={...base,document:{...base.document,cost:2,stock:3,memo:'최초',quantity:4}};await issueVoucher(db,'taebaek',input);
+      rows.set(kind+'/'+id,{...rows.get(kind+'/'+id),mutationRevision:field==='nonzero-revision'?1:0,...(field==='nonzero-revision'?{}:{[field]:field==='memo'?'다른 메모':99})});const before=structuredClone(rows);
+      await expect(issueVoucher(db,'taebaek',input)).rejects.toThrow();expect(rows).toEqual(before);
+    }
+  });
+  it.each(['prepared','rejected','applied'])('먼저 고정된 전표 %s는 양사 generic 신규쓰기만 봉쇄한다',async status=>{
+    for(const kind of ['cashEntries','issuedStatements'] as const)for(const companyId of ['taebaek','punghoe']){
+      const {db,rows}=seeded(),id='stmt-1791849936745';
+      const claim=statementIssueRef(db,{companyId,operationId:`${id}:ISSUE`}) as unknown as {key:string};rows.set(claim.key,{companyId,status,actorId:'other'});
+      const before=new Map(rows);await expect(issueVoucher(db,'taebaek',kind==='cashEntries'?cash(id):statement(id))).rejects.toThrow('최초 요청');
+      expect(rows).toEqual(before);
+    }
+  });
+  it.each(['cashEntries','issuedStatements'] as const)('정확한 기존 %s duplicate ACK는 다른 claim 이후에도 쓰지 않고 반환한다',async kind=>{
+    const {db,rows}=seeded(),id='own-ack',input=kind==='cashEntries'?cash(id):statement(id),first=await issueVoucher(db,'taebaek',input);
+    const claim=statementIssueRef(db,{companyId:'punghoe',operationId:`${id}:ISSUE`}) as unknown as {key:string};rows.set(claim.key,{status:'prepared',actorId:'other'});
+    const before=new Map(rows);expect(await issueVoucher(db,'taebaek',input)).toEqual(first);expect(rows).toEqual(before);
+  });
   it.each(['108', '251', '253'])('accepts selected %s without inventing a partner or allocation', async accountCode => {
     const { db, rows } = seeded();
     rows.set(`accountCodes/${accountCode}`, { companyId: 'taebaek', code: accountCode });
@@ -210,7 +242,7 @@ describe('shared voucher sequence', () => {
     const issued = await issueVoucher(db, 'taebaek', cash('same-day'));
     expect(issued.docNo).toBe('261030-010');
     rows.set(gate, { ...active, voucherNotBefore: { taebaek: '2026-10-31' } });
-    await expect(issueVoucher(db, 'taebaek', cash('same-day'))).rejects.toThrow('전환일');
+    expect(await issueVoucher(db, 'taebaek', cash('same-day'))).toEqual(issued);
     expect(rows.get(counter)?.last).toBe(10);
   });
   it('keeps old two-digit numbers and prints three-digit new numbers', () => {
@@ -228,10 +260,19 @@ describe('shared voucher sequence', () => {
     const first = await issueVoucher(db, 'taebaek', cash('cash-a'));
     expect(await issueVoucher(db, 'taebaek', cash('cash-a'))).toEqual(first);
     rows.set('appMeta/releaseCutover', { status: 'paused', releaseId: 'test-release' });
-    await expect(issueVoucher(db, 'taebaek', cash('cash-a'))).rejects.toThrow('활성화');
+    expect(await issueVoucher(db, 'taebaek', cash('cash-a'))).toEqual(first);
     rows.set('appMeta/releaseCutover', { status: 'active', releaseId: 'test-release', voucherNotBefore: { taebaek: date } });
     expect(rows.get(counter)?.last).toBe(10);
     await expect(issueVoucher(db, 'taebaek', { ...cash('cash-a'), document: { date, amount: 200 } })).rejects.toThrow('다른 전표');
+  });
+  it.each(['cashEntries','issuedStatements'] as const)('이전 release와 종료된 추가창의 %s 정확 완료 ACK는 원번호·원문을 보존한다',async kind=>{
+    const {db,rows}=seeded(),tradeDate='2026-09-30',id='old-release-'+kind;
+    rows.set('appMeta/releaseCutover',{status:'active',releaseId,voucherNotBefore:{taebaek:'2026-10-03'},catchUp:{companyId:'taebaek',tradeDate,status:'open'}});
+    const extra='appMeta/voucherNo_taebaek_2026-09-30_추가';rows.set(extra,{companyId:'taebaek',tradeDate,prefix:'추가',last:0});
+    const input=kind==='cashEntries'?{...cash(id),tradeDate,document:{date:tradeDate,amount:100}}:{...statement(id),tradeDate,document:{tradeDate,totalSupply:100,totalTax:0,totalAmount:100}};
+    const first=await issueVoucher(db,'taebaek',input);rows.set('appMeta/releaseCutover',{status:'active',releaseId:'new-release',voucherNotBefore:{taebaek:'2099-01-01'},catchUp:{companyId:'taebaek',tradeDate,status:'closed'}});
+    const before=new Map(rows);expect(await issueVoucher(db,'taebaek',input)).toEqual(first);expect(rows).toEqual(before);
+    await expect(issueVoucher(db,'taebaek',{...input,operationId:'new-id'})).rejects.toThrow('활성화');
   });
   it('rejects an in-flight scheduled issue after the active release changes', async () => {
     const { db, rows } = seeded();
@@ -314,7 +355,7 @@ describe('shared voucher sequence', () => {
     const template = { id: 'rent', companyId: 'taebaek', name: '임대료', amount: 1_100,
       accountCode: '520', autoIssue: true, issueDay: 30, dir: '줄돈', partnerId: 'owner' };
     await issueScheduledVoucher(db, template, '2026-10', date, releaseId);
-    await expect(issueScheduledVoucher(db, { ...template, amount: 2_200 }, '2026-10', date, releaseId)).rejects.toThrow('다른 전표');
+    await expect(issueScheduledVoucher(db, { ...template, amount: 2_200 }, '2026-10', date, releaseId)).rejects.toThrow('원 발행');
     await expect(issueScheduledVoucher(db, { ...template, dir: '출금' }, '2026-10', date, releaseId)).rejects.toThrow('다른 종류');
     expect(rows.get(counter)?.last).toBe(10);
   });

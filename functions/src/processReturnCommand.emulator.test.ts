@@ -216,7 +216,7 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
       if (purchase) await seedPurchase(); else await seed();
       const lot = { id: 'raw-existing', material: '참깨', supplierName: '매입', qtyIn: 5,
         kgIn: 5, kgRemaining: 5, receivedDate: date, status: 'active' };
-      await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', lots: [lot] });
+      await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', lots: [lot], inventoryWriterProtocolVersion:1,inventoryWriteRevision:7 });
       const stateId = inventoryDocId('taebaek', itemId);
       await put('rawInventories', stateId, { id: stateId, companyId, rawItemId: itemId, materialSnapshot: '참깨',
         stockKg: 5, activeLots: [lot], recentDepletedLots: [], revision: 0, lastProcessedAt: `${date}T00:00:00Z` });
@@ -247,9 +247,9 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     await put('items', secondId, { companyId, name: '참깨/포대', rawMaterialName: '참깨', type: 'goods', unit: 'kg', stock: 0 });
     const lot = { id: 'raw-original', material: '참깨', supplierName: '매입', qtyIn: 5,
       kgIn: 5, kgRemaining: 5, receivedDate: date, status: 'active' };
-    await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', lots: [lot] });
+    await ref('items', itemId).update({ name: '참깨', type: 'raw', subtype: '벌크', unit: 'kg', lots: [lot], inventoryWriterProtocolVersion:1,inventoryWriteRevision:7 });
     const stateId = inventoryDocId('taebaek', itemId);
-    await put('rawInventories', stateId, { id: stateId, companyId, rawItemId: itemId, materialSnapshot: '참깨',
+    await put('rawInventories', stateId, { id: stateId, companyId, rawItemId: itemId, materialSnapshot: '참깨', inventoryWriterProtocolVersion:1,inventoryWriteRevision:7,
       stockKg: 5, activeLots: [lot], recentDepletedLots: [], revision: 0, lastProcessedAt: `${date}T00:00:00Z` });
     await ref('issuedStatements', sourceId).update({ items: [
       { itemId, accountCode: '404', qty: 1, supply: 100, tax: 0, total: 100 },
@@ -263,7 +263,7 @@ describe.skipIf(!available)('general-stock return actual Firestore transaction',
     expect((await issue(data)).status).toBe('duplicate');
     const state = (await ref('rawInventories', stateId).get()).data()!;
     expect(state.stockKg).toBe(7);
-    expect(state.revision).toBe(2);
+    expect(state.revision).toBe(2);expect(state).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:8});expect((await ref('items',itemId).get()).data()).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:8});
     expect(state.activeLots).toHaveLength(3);
     expect((await ref('items', itemId).get()).data()?.stock).toBe(7);
     expect((await ref('items', secondId).get()).data()?.stock).toBe(0);

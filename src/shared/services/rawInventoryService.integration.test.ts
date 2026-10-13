@@ -289,3 +289,5 @@ describe('한 트랜잭션이 상태·이력·품목을 같이 쓴다', () => {
     },
   );
 });
+
+it('rawfullset normalize 뒤 최초 marker를 보존하고 다음 명령은 별도 writerrevision을 올린다',async()=>{store.set('items/raw-x',품목('raw-x',{companyId:'taebaek'}));expect((await executeRawInventoryCommand(명령(),{db:{__memory:true} as any})).status).toBe('applied');const path='rawInventories/'+inventoryDocId('taebaek','raw-x');expect(store.get(path)).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});expect((await executeRawInventoryCommand(명령({operationId:'op-2',kind:'consume',kg:1}),{db:{__memory:true} as any})).status).toBe('applied');expect(store.get(path)).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:2});expect(store.get('items/raw-x')).toHaveProperty('inventoryWriteRevision',2);});

@@ -1732,6 +1732,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       poId: input.poId, operationId: input.operationId, date: input.date,
       returns: input.items.map(row => ({ itemId: row.itemId, qty: row.qty })),
       unitPricePerKg: input.feeRequest.oemFeePerKg,
+      ...(input.oemCostEvidence !== undefined ? { oemCostEvidence: input.oemCostEvidence } : {}),
+      ...(input.bulk?.length ? { bulk: input.bulk } : {}),
     }),
     applyOemFeeStatement,
   });

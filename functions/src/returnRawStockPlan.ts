@@ -1,3 +1,4 @@
+import { advanceInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
 import { ReturnValidationError } from './returnValidationError';
 import * as admin from 'firebase-admin';
 import { prepareRawCommand } from './shared/rawInventoryPrepare';
@@ -66,7 +67,7 @@ export async function prepareReturnRawStock(db: admin.firestore.Firestore, tx: a
   const movement = clean({ ...toLedgerDoc(result.movement, { note: `${input.partnerName} 반품`, type: 'manual' }),
     returnOperationId: input.operationId, returnRequestId: input.requestId, partnerId: input.partnerId,
     returnedItemId: input.item.id, returnedQuantityDelta: input.quantityDelta, ...(input.sourceLineIndex!==undefined?{sourceLineIndex:input.sourceLineIndex}:{}) });
-  return { stateRef, itemRef, movementRef, state: clean(result.state), itemPatch, movement,
+  return { stateRef, itemRef, movementRef, state: advanceInventoryWriterProtocol(stateSnap.data(),clean(result.state)), itemPatch:advanceInventoryWriterProtocol(itemSnap.data(),itemPatch), movement:advanceInventoryWriterProtocol(movementSnap.data(),movement),
     requestItemId: input.item.id, quantityDelta: input.quantityDelta, sourceLineIndex:input.sourceLineIndex };
 }
 

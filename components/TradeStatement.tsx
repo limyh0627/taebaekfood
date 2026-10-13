@@ -1,4 +1,4 @@
-import { invalidPurchaseUnitRow, defaultPurchaseUnitRowFields } from '../src/shared/purchaseUnitRow';
+import { invalidPurchaseUnitRow, defaultManualPurchaseUnitRowFields } from '../src/shared/purchaseUnitRow';
 import { readPurchaseUnitSnapshot } from '../src/shared/purchaseUnit';
 import { subscribeItemPurchaseUnits } from '../src/shared/services/itemPurchaseUnitService';
 import type { ItemPurchaseUnit, PurchaseUnitSnapshot } from '../src/shared/types';
@@ -1159,6 +1159,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           price: String(orderItemPrice(resolved, item, pc?.price) || ''),
           isTaxExempt: pc?.taxType === '면세',
           accountCode: pc?.Account_Code,
+          ...(!pendingInvoice.poIds?.length&&isRawPurchaseItem(resolved.product??allItems.find(candidate=>candidate.id===itemId))?defaultManualPurchaseUnitRowFields(String(resolved.qty)):{}),
         };
       }),
     ]);
@@ -1401,7 +1402,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [editingStmt, isEditMode, manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType, linkedManualItems, orderUnitInputs]);
 
   const purchaseUnitLockedItemIds = new Set(purchaseUnitOrders.filter(po => companyOf(po) === companyId && po.linkedStatementId === editingStmt?.id && po.status === 'received').flatMap(po => po.items?.map(line => line.itemId) ?? [po.itemId]));
-  const newRowPurchaseUnit = (row: ManualRow): ManualRow => !row.purchaseUnitId && stmtType === '매입' && row.itemId && isRawPurchaseItem(allItems.find(item => item.id === row.itemId)) ? { ...row, ...defaultPurchaseUnitRowFields(purchaseUnits, {companyId, itemId: row.itemId, partnerId: selectedClientId}, row.qty) } : row;
+  const newRowPurchaseUnit = (row: ManualRow): ManualRow => !row.purchaseUnitId && stmtType === '매입' && row.itemId && isRawPurchaseItem(allItems.find(item => item.id === row.itemId)) ? { ...row, ...defaultManualPurchaseUnitRowFields(row.qty),purchaseQuantityKg:undefined } : row;
   const invalidPurchaseUnit = lineItems.some(line => invalidPurchaseUnitRow(line) || (line.purchaseUnitId && !isRawPurchaseItem(allItems.find(item => item.id === line.itemId))));
   const invalidPurchaseKg = lineItems.some(line => line.purchaseQuantityKg !== undefined &&
     (!Number.isFinite(line.purchaseQuantityKg) || line.purchaseQuantityKg <= 0
@@ -1448,6 +1449,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   })), [selectedClientId, selectedClient, tradeDate, stmtType, docNo, stmtMemo, selectedOrderIds, lineItems, partySnapshot]);
   const 걸린줄들 = (code: StatementRejectionCode) =>
     발행검사.rejections.find(r => r.code === code)?.lineNames ?? [];
+  // 저장 버튼과 실제 요청 직전이 같은 검사 결과를 써야 서버 거절 뒤 원문만 남는 일을 막는다.
+  const 수량확인 = (): boolean => {
+    const 거절 = 발행검사.rejections.find(r => r.code === 'INVALID_QUANTITY');
+    if (!거절) return true;
+    alert(`수량이 0이거나 올바르지 않은 항목이 있습니다.\n${거절.lineIndexes.map((index, i) => `${index + 1}행 · ${거절.lineNames[i]}`).join('\n')}\n수량을 입력한 뒤 다시 저장해 주세요.`);
+    return false;
+  };
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
   const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId);
 
@@ -1478,6 +1486,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
+    if (!수량확인()) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
     if (invalidPurchaseUnit) { window.alert('매입단위의 거래 수량·중량을 확인해 주세요. 거래 수량은 양수로 입력해 주세요.'); return null; }
@@ -1547,7 +1556,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const key=tradePendingKey(companyId,uid),text=storeTradePending(key,pending);setIssuePending(pending);
     const token=cashEditScope.current.token;
     let 결과:Awaited<ReturnType<NonNullable<typeof onApplyStatement>>>;
-    try{결과=await onApplyStatement(input);}catch(error){if(cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&tradeNoWriteProof(error,pending)){clearTradePending(key,text);setIssuePending(null);issueIdentityRef.current=null;}throw error;}
+    try{결과=await onApplyStatement(input);}catch(error){if(cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===text&&tradeNoWriteProof(error,pending)){clearTradePending(key,text);setIssuePending(null);issueIdentityRef.current=null;}throw error;}
     if(!cashEditScope.current.alive||cashEditScope.current.token!==token||auth.currentUser?.uid!==uid)throw new Error('화면이 변경되었습니다. 이전 요청은 보존했습니다.');
     //  두 번째 클릭이면 아무것도 안 들어갔다 — 단가까지 또 밀 이유가 없다.
     if (결과 === 'applied' || (typeof 결과 !== 'string' && 결과.status === 'applied')) {
@@ -1595,7 +1604,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const statement=typeof result==='string'?p.input.statement:{...p.input.statement,docNo:result.docNo};
       if(p.payment){await recordPayment([{stmt:statement,amount:p.payment.amount}],{date:p.payment.date,method:'계좌이체',cashAccountId:p.payment.cashAccountId,pin:true});if(!alive())return;}
       clearTradePending(tradePendingKey(p.companyId,p.userId),JSON.stringify(p));completeTradeStatementRequest(p.companyId,p.userId,p.input.command.operationId);setIssuePending(null);saveBusyRef.current=false;closeCreate();
-    }catch(error){if(alive())alert(저장실패문구(error));}finally{if(alive()){saveBusyRef.current=false;setIsSaving(false);}}
+    }catch(error){if(alive()){
+      // unknown 뒤 재시도는 서버의 원문 검증·터미널 봉쇄 증거가 있을 때만 다시 입력할 수 있다.
+      const key=tradePendingKey(p.companyId,p.userId),text=JSON.stringify(p);
+      if(tradeNoWriteProof(error,p,false)&&localStorage.getItem(key)===text){clearTradePending(key,text);setIssuePending(null);issueIdentityRef.current=null;}
+      alert(저장실패문구(error));
+    }}finally{if(alive()){saveBusyRef.current=false;setIsSaving(false);}}
   };
 
   const handleIssue = async () => {
@@ -1604,6 +1618,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid;
     if (saveBusyRef.current) return;
     // 계정과목 미설정 품목이 있으면 발행 차단 (매출은 800 기본이라 대개 매입에서 걸림)
+    if (!수량확인()) return;
     const 계정없음 = 걸린줄들('NO_ACCOUNT_CODE');
     if (계정없음.length > 0) {
       alert(`계정과목이 설정되지 않은 품목이 ${계정없음.length}건 있습니다.\n(${계정없음.slice(0, 3).join(', ')}${계정없음.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
@@ -2073,12 +2088,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setEditablePrices({}); setTaxExemptOverrides({}); setAccountCodeOverrides({}); setSelectedConfirmedIds([]);
   };
 
+  const 저장대기안내 = () => (
+    (issuePending || issuePendingError) && <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+      <p>{issuePendingError || '저장 결과를 확인하지 못한 전표가 있습니다. 같은 원문으로 재시도합니다.'}</p>
+      {issuePending && <>
+        <p>{issuePending.input.statement.partnerName} · {issuePending.input.statement.tradeDate} · {issuePending.input.statement.totalAmount.toLocaleString()}원</p>
+        <button type="button" disabled={isSaving} onClick={retryIssue}>이전 전표 재시도</button>
+        {createMode && <button type="button" disabled={isSaving} onClick={closeCreate}>작성창 닫기</button>}
+      </>}
+    </div>
+  );
+
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
-      {(issuePending||issuePendingError)&&<div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-        <p>{issuePendingError||'저장 결과를 확인하지 못한 전표가 있습니다. 같은 원문으로 재시도합니다.'}</p>
-        {issuePending&&<><p>{issuePending.input.statement.partnerName} · {issuePending.input.statement.tradeDate} · {issuePending.input.statement.totalAmount.toLocaleString()}원</p><button type="button" disabled={isSaving} onClick={retryIssue}>이전 전표 재시도</button>{createMode&&<button type="button" disabled={isSaving} onClick={closeCreate}>작성창 닫기</button>}</>}
-      </div>}
+      {!createMode && 저장대기안내()}
       {!composerOnly && <>
       <PageHeader
         title="거래명세서"
@@ -2533,6 +2556,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {createMode && (
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
+          {저장대기안내()}
           <fieldset disabled={isSaving || !editingStmt && (!!issuePending || !!issuePendingError)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
 
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
@@ -2728,12 +2752,12 @@ ${names}
                 {/*  **칸 폭을 글자에 맞춘다**(2026-09-03 사장님) — 비율(%)로 두니 720px 안에서
                      품목명이 158px 밖에 안 돼 '참기름/병/분/전통/350ml' 이 잘렸다.
                      어차피 옆으로 미는 표다. 미는 김에 안 잘리는 게 맞다. */}
-                <table className="w-full min-w-[1004px] text-left border-collapse table-fixed">
+                <table className="w-full min-w-[1028px] text-left border-collapse table-fixed">
                   <colgroup>
                     <col style={{width:'40px'}}/>
                     <col style={{width:'240px'}}/>{/* 품목명 */}
                     <col style={{width:'84px'}}/>{/* 규격 */}
-                    <col style={{width:'72px'}}/>{/* 수량 */}
+                    <col style={{width:'96px'}}/>{/* 수량 */}
                     <col style={{width:'88px'}}/>{/* 단가 */}
                     <col style={{width:'100px'}}/>{/* 공급가액 */}
                     <col style={{width:'88px'}}/>{/* 세액 */}
@@ -2772,7 +2796,7 @@ ${names}
                             return searchableRows.filter(result => matchesSearch(result.product!.name, query))
                               .map(result => ({ pc: result.pc, product: result.product! }));
                           }} onSelect={setSelectedItemIdx}
-                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch,...('accountCode' in patch || 'itemId' in patch ? {purchaseQuantityKg:undefined,purchaseUnitId:undefined,purchaseUnit:undefined,purchaseQty:undefined,unitKg:undefined,inventoryQty:undefined} : {})}:row))}
+                          onChange={(index,patch)=>setManualItems(prev=>prev.map((row,i)=>i===index?{...row,...patch,...('itemId' in patch && patch.itemId!==row.itemId ? {purchaseQuantityKg:undefined,purchaseUnitId:undefined,purchaseUnit:undefined,purchaseQty:undefined,unitKg:undefined,inventoryQty:undefined} : {})}:row))}
                           onSearchFocus={setActiveSearchRow} onSearchBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
                           onChooseProduct={(index,result,unitFields)=>{setManualItems(prev=>prev.map((row,i)=>i===index?{...row,itemId:result.product.id,purchaseQuantityKg:undefined,purchaseUnitId:undefined,purchaseUnit:undefined,purchaseQty:undefined,unitKg:undefined,inventoryQty:undefined,...unitFields,name:result.product.name,spec:result.product.spec||'',price:String(result.pc.price??0),isTaxExempt:result.pc.taxType==='면세',accountCode:result.pc.Account_Code || (result.product.type === 'service' ? '' : row.accountCode)}:row));setActiveSearchRow(null);}}
                           onRemove={index=>setManualItems(prev=>prev.filter((_,i)=>i!==index))}/>
@@ -2811,7 +2835,7 @@ ${names}
                 </table>
                   {/*  **전표 비고** — 합계 바로 밑(2026-09-03 사장님). 품목 줄이 아니라
                        전표 전체에 붙는 말이라 결제 조건·납기 같은 걸 적는다. 인쇄물에도 나간다. */}
-                  <div className="min-w-[1004px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                  <div className="min-w-[1028px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">비고</p>
                     <textarea
                       value={stmtMemo}

@@ -46,12 +46,21 @@ export interface AnchorResult {
   beforeQty: number;
 }
 
+/** 완제품 이름으로 원료를 짐작하지 않고, 저장된 물질 축만 신규 이월에 남긴다. */
+export function stocktakeLotMaterial(item: Record<string, unknown>): string | undefined {
+  for (const value of [item.material, item.rawMaterialName]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 export function anchorLotsByQty(params: {
   lots: RawMaterialLot[];
   /** 실제로 세어 본 수량 */
   targetQty: number;
   /** 1개당 kg — 로트는 개수와 kg 을 같이 들고 다닌다(수불부와 이어진다) */
   unitKg?: number;
+  material?: string;
   /** 트랜잭션 안에서 부를 때 밖에서 정해 넣는다 — 재시도마다 버킷이 하나씩 더 생기면 안 된다. */
   det?: { id: string; createdAt: string; receivedDate: string };
 }): AnchorResult {
@@ -78,6 +87,7 @@ export function anchorLotsByQty(params: {
     next.push({
       id: det?.id ?? `lot-anchor-${Date.now()}`,
       supplierName: '이월',
+      ...(params.material ? { material: params.material } : {}),
       qtyIn: 0, qtyRemaining: 0, unitKg,
       kgIn: 0, kgRemaining: 0,
       receivedDate: det?.receivedDate ?? todayStr(),

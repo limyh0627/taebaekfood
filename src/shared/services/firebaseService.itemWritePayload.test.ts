@@ -1,21 +1,22 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   writes: [] as { kind: string; ref: string; data: any; options?: any }[],
-  claim: 'taebaek' as string | undefined,
+  claim: 'taebaek' as string | undefined,docs:new Map<string,any>(),
 }));
 vi.mock('../firebase', () => ({ db: {}, authReady: Promise.resolve(), functions: undefined,
   auth: { currentUser: { getIdTokenResult: async () => ({ claims: { companyId: state.claim } }) } } }));
 vi.mock('firebase/firestore', async importOriginal => ({
   ...await importOriginal<typeof import('firebase/firestore')>(),
-  doc: (_db: unknown, collection: string, id: string) => `${collection}/${id}`,
+  doc: (_db: any, collection?: any, id?: string) => ({path:collection===undefined?`${_db}/generated`:typeof collection==='string'?`${collection}/${id??'generated'}`:`${collection.path}/generated`,id:id??'generated'}),
   collection: (_db: unknown, collection: string) => collection,
+  runTransaction:async (_db:unknown,fn:any)=>fn({get:async(ref:any)=>({exists:()=>state.docs.has(ref.path),data:()=>structuredClone(state.docs.get(ref.path)),id:ref.id}),set:(ref:any,data:any,options:any)=>{state.writes.push({kind:'set',ref:ref.path,data,options});state.docs.set(ref.path,options?.merge?{...state.docs.get(ref.path),...data}:data);},update:(ref:any,data:any)=>{state.writes.push({kind:'update',ref:ref.path,data});state.docs.set(ref.path,{...state.docs.get(ref.path),...data});},delete:(ref:any)=>{state.writes.push({kind:'delete',ref:ref.path,data:undefined});state.docs.delete(ref.path);}}),
   setDoc: async (ref: string, data: any, options?: any) => { state.writes.push({ kind: 'set', ref, data, options }); },
   updateDoc: async (ref: string, data: any) => { state.writes.push({ kind: 'update', ref, data }); },
   addDoc: async (ref: string, data: any) => { state.writes.push({ kind: 'add', ref, data }); return { id: 'generated' }; },
   writeBatch: () => ({ set: (ref: string, data: any, options?: any) => { state.writes.push({ kind: 'batch', ref, data, options }); }, commit: async () => {} }),
 }));
 import { addItem, updateItem, setDocument, commitCompanyWrites } from './firebaseService';
-beforeEach(() => { state.writes = []; state.claim = 'taebaek'; });
+beforeEach(() => { state.writes = []; state.claim = 'taebaek'; state.docs.clear();state.docs.set('items/item',{companyId:'taebaek'}); });
 const writers = [
   ['생성', (collection: any, data: any) => addItem(collection, { id: 'item', ...data })],
   ['수정', (collection: any, data: any) => updateItem(collection, 'item', data)],
@@ -26,13 +27,13 @@ it.each(writers)('%s 실제 소비자는 가격을 재전송하지 않고 원가
   const original = { price: 9000, cost: 0, stock: 4, nested: { price: 7, absent: undefined }, absent: undefined };
   await write('items', original);
   expect(state.writes).toHaveLength(1);
-  expect(state.writes[0].data).toEqual({ cost: 0, stock: 4, nested: { price: 7 }, companyId: 'taebaek' });
+  expect(state.writes[0].data).toEqual({ cost: 0, stock: 4, nested: { price: 7 }, companyId: 'taebaek',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
   expect(original).toHaveProperty('price', 9000);
   expect(original.nested).toHaveProperty('absent');
 });
 it.each(writers)('%s 실제 소비자는 가격을 원가로 추정하지 않는다', async (_name, write) => {
   await write('items', { price: 5, stock: 0 });
-  expect(state.writes[0].data).toEqual({ stock: 0, companyId: 'taebaek' });
+  expect(state.writes[0].data).toEqual({ stock: 0, companyId: 'taebaek',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
 });
 it.each(writers)('%s 거래처 거래 단가는 그대로 저장한다', async (_name, write) => {
   await write('partner_item', { price: 7 });
@@ -59,5 +60,10 @@ it.each(writers)('%s 회사 claim이 없으면 쓰지 않는다', async (_name, 
 });
 it('자동 ID 생성도 같은 품목 payload를 쓴다', async () => {
   expect(await addItem('items', { price: 7, cost: 9 })).toBe('generated');
-  expect(state.writes[0].data).toEqual({ cost: 9, companyId: 'taebaek' });
+  expect(state.writes[0].data).toEqual({ cost: 9, companyId: 'taebaek',inventoryWriterProtocolVersion:1,inventoryWriteRevision:1 });
 });
+
+it('낡은 전체 품목 사본은 새 revision으로 재고를 덮지 않는다',async()=>{state.docs.set('items/item',{companyId:'taebaek',name:'현재',stock:5,lots:[],inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});await expect(updateItem('items','item',{name:'변경',stock:3,lots:[]})).rejects.toThrow('사본');expect(state.writes).toEqual([]);});
+it('일반 원가 metadata는 기존 fence와 stock을 보존한다',async()=>{state.docs.set('items/item',{companyId:'taebaek',stock:5,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});await updateItem('items','item',{cost:0});expect(state.docs.get('items/item')).toMatchObject({stock:5,cost:0,inventoryWriteRevision:4});});
+it('삭제와 연결문서는 함께 지우고 재생성은 영구 삭제 floor를 넘는다',async()=>{state.docs.set('items/item',{companyId:'taebaek',stock:5,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});state.docs.set('partner_item/link',{companyId:'taebaek'});await commitCompanyWrites([{kind:'delete',collection:'items',id:'item'},{kind:'delete',collection:'partner_item',id:'link'}]);expect(state.docs.has('items/item')).toBe(false);expect(state.docs.has('partner_item/link')).toBe(false);expect(state.docs.get('inventoryWriterDeletions/taebaek__item')).toMatchObject({deletionRevision:1,beforeRevision:4,lastDeletedItemRevision:4});await addItem('items',{id:'item',name:'재생성',stock:0});expect(state.docs.get('items/item')).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:5});await commitCompanyWrites([{kind:'delete',collection:'items',id:'item'}]);expect(state.docs.get('inventoryWriterDeletions/taebaek__item')).toMatchObject({deletionRevision:2,beforeRevision:5});});
+it('주문 일반 저장은 서버 retirement 표시를 보존하고 변조를 거절한다',async()=>{state.docs.set('orders/order',{companyId:'taebaek',retirementId:'receipt',retirementClaimPending:true,inventoryWriterProtocolVersion:1,inventoryWriteRevision:3});await setDocument('orders','order',{memo:'수정'});expect(state.docs.get('orders/order')).toMatchObject({retirementId:'receipt',retirementClaimPending:true,inventoryWriteRevision:3});state.writes=[];await expect(updateItem('orders','order',{retirementClaimPending:false})).rejects.toThrow('서버');expect(state.writes).toEqual([]);});

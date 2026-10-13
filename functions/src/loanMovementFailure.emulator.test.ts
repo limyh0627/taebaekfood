@@ -157,8 +157,16 @@ describe.skipIf(!available)('loan movement actual Admin SDK transaction', () => 
     expect((await ref('loanContracts', loanId).get()).data()).toMatchObject({ movementRevision: 2, principalBalance: 900 });
     await ref('appMeta', counterId).delete(); // simulate response lost after commit and unavailable counter
     expect(await issue(repay)).toMatchObject({ status: 'duplicate', docNo: first.docNo });
+    const originals=await Promise.all([
+      ref('loanContracts',loanId).get(),ref('cashEntries',repay.operationId).get(),ref('loanMovementOperations',repay.operationId).get(),
+    ]);
     await ref('appMeta', 'releaseCutover').update({ status: 'paused' });
-    await expect(issue(repay)).rejects.toThrow('활성화');
+    // 완료 원문 ACK는 새 금융 쓰기가 없다. pause는 새로운 작업에만 적용한다.
+    expect(await issue(repay)).toMatchObject({ status:'duplicate',docNo:first.docNo });
+    for(const original of originals)expect((await original.ref.get()).updateTime!.isEqual(original.updateTime!)).toBe(true);
+    const pausedNew={...repay,operationId:`${runId}-paused-new`};
+    await expect(issue(pausedNew)).rejects.toThrow('활성화');
+    expect((await ref('cashEntries',pausedNew.operationId).get()).exists).toBe(false);
     await ref('appMeta', 'releaseCutover').update({ status: 'active' });
     await expect(issue({ ...repay, interest: 51 })).rejects.toThrow('다릅니다');
   }, 30_000);

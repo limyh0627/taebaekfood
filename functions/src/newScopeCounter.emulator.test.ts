@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto';
 import * as admin from 'firebase-admin';
 import { issueVoucher, voucherSequenceKey } from './voucherIssue';
 import { receiveOemFinishedGoods } from './oemReceiptCommand';
+import {editIssuedStatement} from './editIssuedStatementCommand';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
 const companyId = 'taebaek', date = '2026-10-04', releaseId = 'new-scope-test';
 let app: admin.app.App, db: admin.firestore.Firestore;
 const counterId = voucherSequenceKey(companyId, date);
-const collections = ['appMeta', 'issuedStatements', 'cashEntries', 'items', 'purchaseOrders', 'partners', 'item_formula', 'oemReceiptOperations', 'adjustmentRequests'];
+const collections = ['appMeta', 'issuedStatements', 'cashEntries', 'items', 'purchaseOrders', 'partners', 'item_formula', 'oemReceiptOperations', 'adjustmentRequests', 'voucherMutationOperations', 'statementIssueOperations'];
 async function clear() {
   for (const name of collections) {
     const rows = await db.collection(name).get();
@@ -39,7 +40,11 @@ describe.skipIf(!available)('신규 날짜 counter 최초 발행 원자화', { t
       voucherNotBefore: { taebaek: date, punghoe: date }, oemLotCutoverDate: date,
       oldWritersBlocked: true, oldWritersBlockedEvidence: 'emulator verified' });
   });
-  afterAll(async () => { await clear(); await app.delete(); });
+  afterAll(async () => {
+    await clear();
+    for (const name of collections) expect((await db.collection(name).get()).empty).toBe(true);
+    await app.delete();
+  });
 
   it('양쪽 컬렉션 동시 최초 발행은 1,2를 공유하고 재시도는 번호를 소비하지 않는다', async () => {
     const results = await Promise.all([issueVoucher(db, companyId, cash('cash1')), issueVoucher(db, companyId, statement('statement1'))]);
@@ -90,6 +95,87 @@ describe.skipIf(!available)('신규 날짜 counter 최초 발행 원자화', { t
     expect(results.map(row => row.lotNos.product).sort()).toEqual(['261004-01', '261004-02']);
     expect((await db.doc('items/product').get()).data()?.stock).toBe(4);
     expect((await db.doc('appMeta/oemLotSequence_taebaek_20261004_material').get()).data()?.lastSequence).toBe(2);
+  });
+
+  it('다른 날짜의 정규 번호를 오늘로 이동해도 신규 번호 범위를 사용한 것으로 보지 않는다', async () => {
+    await db.doc('issuedStatements/moved').set({ companyId, tradeDate: date, issuePrefix: '', docNo: '261003-009' });
+    await db.doc('cashEntries/moved').set({ companyId, date, issuePrefix: '', docNo: '261003-010' });
+    const results = await Promise.all([issueVoucher(db, companyId, cash('new1')), issueVoucher(db, companyId, statement('new2'))]);
+    expect(results.map(row => row.docNo).sort()).toEqual(['261004-001', '261004-002']);
+    expect((await counter()).data()?.last).toBe(2);
+  });
+  it('다른 전표 날짜 수정과 신규 최초 발행이 동시에 와도 공통 gate 순서로 정상 완료한다',async()=>{
+    await db.doc('issuedStatements/moving').set({companyId,tradeDate:'2026-10-03',docNo:'261003-009',mutationRevision:0,totalSupply:100,totalTax:0,totalAmount:100});
+    const firstLocks:string[]=[];
+    const readPaths:string[][]=[];
+    const queryNames=new WeakMap<object,string>();
+    const observeQuery=(query:any,name:string):any=>{
+      const observed=new Proxy(query,{get(target,property){
+        if(property==='where')return (...args:any[])=>observeQuery(target.where(...args),name);
+        const value=Reflect.get(target,property,target);return typeof value==='function'?value.bind(target):value;
+      }});
+      queryNames.set(observed,name);return observed;
+    };
+    // 실제 SDK의 첫 읽기를 기록한다. 경합 스케줄이 우연히 통과해도 알려진 순환 잠금 순서로 돌아가지 않는다.
+    const observedDb={collection:(name:string)=>observeQuery(db.collection(name),name),doc:db.doc.bind(db),runTransaction:(handler:(tx:admin.firestore.Transaction)=>Promise<unknown>)=>db.runTransaction(tx=>{
+      const paths:string[]=[];readPaths.push(paths);
+      let first=true;const observed=new Proxy(tx,{get(target,property){
+        if(property==='get')return (reference:any)=>{const path=queryNames.get(reference)??reference.path??reference.id??'query';paths.push(path);if(first){first=false;firstLocks.push(path);}return target.get(reference);};
+        const value=Reflect.get(target,property);return typeof value==='function'?value.bind(target):value;
+      }});return handler(observed);
+    })} as unknown as admin.firestore.Firestore;
+    const running=[
+      issueVoucher(observedDb,companyId,cash('concurrent-new')),
+      editIssuedStatement(observedDb,{auth:{uid:'admin',token:{isAdmin:true,employeeId:'employee',companyId}},data:{statementId:'moving',expectedRevision:0,operationId:'move-date',releaseId,patch:{tradeDate:date}}}),
+    ];
+    let issued:any,edited:any;try{[issued,edited]=await Promise.all(running);}finally{await Promise.allSettled(running);}
+    expect(issued.docNo).toBe('261004-001');expect(edited.status).toBe('applied');
+    expect(firstLocks.length).toBeGreaterThanOrEqual(2);expect(firstLocks.every(path=>path==='appMeta/releaseCutover')).toBe(true);
+    for(const paths of readPaths.filter(paths=>paths.includes('cashEntries/concurrent-new'))){
+      expect(paths.indexOf('cashEntries')).toBeGreaterThanOrEqual(0);
+      expect(paths.indexOf('cashEntries')).toBeLessThan(paths.indexOf('cashEntries/concurrent-new'));
+    }
+    expect((await db.doc('issuedStatements/moving').get()).data()).toMatchObject({tradeDate:date,docNo:'261003-009',mutationRevision:1});
+    expect((await counter()).get('last')).toBe(1);
+    await db.doc('voucherMutationOperations/move-date').delete();
+    expect((await db.doc('voucherMutationOperations/move-date').get()).exists).toBe(false);
+  });
+
+  it('해당 날짜 번호는 업무일을 옮겨도 재초기화하지 않으며 불명확 번호도 보호한다', async () => {
+    for (const legacy of [
+      { tradeDate: '2026-10-03', docNo: '261004-009' },
+      { tradeDate: date, docNo: '잘못된번호' },
+      { date, issuePrefix: '다른접두사' },
+    ]) {
+      await db.doc('issuedStatements/legacy').set({ companyId, ...legacy });
+      await expect(issueVoucher(db, companyId, cash('blocked'))).rejects.toThrow('카운터');
+      expect((await counter()).exists).toBe(false);
+      expect((await db.doc('cashEntries/blocked').get()).exists).toBe(false);
+      await db.doc('issuedStatements/legacy').delete();
+    }
+  });
+
+  it('OEM 무번호 실사 이월과 다른 물질 번호는 신규 물질 입고를 막지 않는다', async () => {
+    await seedOem();
+    await db.doc('items/anchor').set({ companyId, lots: [
+      { id: 'anchor', receivedDate: date, supplierName: '이월' },
+      { id: 'other', receivedDate: date, material: '다른원료', lotNo: '261004-01' },
+      { id: 'moved', receivedDate: date, material: 'material', lotNo: '261003-01' },
+    ] });
+    expect((await receiveOemFinishedGoods(db, companyId, receipt('po1'))).lotNos.product).toBe('261004-01');
+  });
+
+  it('OEM 물질 불명 실제 번호와 소진된 발주·작업 근거는 재초기화를 막는다', async () => {
+    await seedOem();
+    await db.doc('items/unknown').set({ companyId, lots: [{ receivedDate: '2026-10-03', lotNo: '261004-99' }] });
+    await expect(receiveOemFinishedGoods(db, companyId, receipt('po1'))).rejects.toThrow('카운터');
+    await db.doc('items/unknown').delete();
+    await db.doc('purchaseOrders/depleted').set({ companyId, poType: 'oem', status: 'received', receivedAt: `${date}T12:00:00Z` });
+    await db.doc('oemReceiptOperations/depleted').set({ companyId, poId: 'depleted', date, materials: ['material'], lotNos: { old: '261004-99' } });
+    await expect(receiveOemFinishedGoods(db, companyId, receipt('po1'))).rejects.toThrow('카운터');
+    expect((await db.doc('appMeta/oemLotSequence_taebaek_20261004_material').get()).exists).toBe(false);
+    expect((await db.doc('items/product').get()).data()?.stock).toBe(0);
+    expect((await db.doc('adjustmentRequests/OEMFEE-po1').get()).exists).toBe(false);
   });
 
   it('OEM 기존 로트 및 과거 날짜는 counter/재고/가공비를 남기지 않는다', async () => {

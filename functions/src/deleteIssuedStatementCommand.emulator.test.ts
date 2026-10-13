@@ -1,9 +1,13 @@
+import {preparePartnerAdvance,applyPartnerAdvance} from './partnerAdvanceCommand';
+import {genericVoucherBusiness,semanticHash,statementBusiness} from './shared/partnerAdvanceReceipt';
+import {activeAdvanceApplications} from './shared/partnerAdvance';
+import {kstDateOf} from './shared/calculation';
 import {editIssuedStatement} from './editIssuedStatementCommand';
 import {issueTradeStatement} from './tradeStatementIssue';
 import {afterAll,beforeAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import * as admin from 'firebase-admin';
-import {deleteIssuedStatement,statementOriginalHash} from './deleteIssuedStatementCommand';
+import {deleteIssuedStatement,statementOriginalHash,statementDeletionHash} from './deleteIssuedStatementCommand';
 import {issueVoucher,voucherSequenceKey} from './voucherIssue';
 const available=['127.0.0.1:8082','127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
 const run='delete-'+randomUUID(),company='taebaek',partner=run+'-partner';
@@ -43,6 +47,41 @@ describe.skipIf(!available)('서버 전표 삭제의 원자성과 원 발행 재
  });
 
  it('동시 삭제와 재시도는 연결·정산만 한 번 없애고 재고·상태·현금을 보존한다',async()=>{const id=await seed('atomic'),input=await command(id);ref('voucherMutationOperations',input.operationId);const cash=await ref('cashEntries',id+'-cash').get();const results=await Promise.all([deleteIssuedStatement(db,company,'actor',input),deleteIssuedStatement(db,company,'actor',input)]);expect(results.map(x=>x.status).sort()).toEqual(['applied','duplicate']);expect((await ref('issuedStatements',id).get()).exists).toBe(false);expect((await ref('settlements',id+'-settlement').get()).exists).toBe(false);expect((await ref('orders',id+'-order').get()).data()).toEqual({companyId:company,status:'DONE',stock:7,lots:[{qty:7}]});expect((await ref('purchaseOrders',id+'-po').get()).data()).toEqual({companyId:company,status:'invoiced',invoicedAt:'old',items:[{quantity:7}]});expect((await state().get()).data()).toMatchObject({revision:4,extra:'보존'});expect((await ref('cashEntries',id+'-cash').get()).updateTime!.isEqual(cash.updateTime!)).toBe(true);expect((await deleteIssuedStatement(db,company,'actor',input)).status).toBe('duplicate');});
+ it('동시 신규 선급 적용과 삭제는 거래처 revision으로 직렬화하여 활성 고아 적용을 남기지 않는다',async()=>{
+  const id=run+'-advance-race',p=id+'-partner',cashId=id+'-cash',date='2026-10-08',cancelDate=kstDateOf(new Date());
+  const globals=['partnerPaymentCutover_'+company,'partnerAdvanceCutover_'+company,voucherSequenceKey(company,date,'대체'),voucherSequenceKey(company,cancelDate,'대체')];
+  const saved=await Promise.all(globals.map(key=>db.collection('appMeta').doc(key).get()));
+  const cash={id:cashId,companyId:company,partnerId:p,date:'2026-10-07',dir:'출금',amount:100,accountCode:'133',cashAccountId:'synthetic-bank',createdBy:'actor',docNo:'261007-001',issuePrefix:'',issueOperationId:cashId};
+  const target={id,companyId:company,partnerId:p,type:'매입',tradeDate:'2026-10-07',totalSupply:80,totalTax:0,totalAmount:80,
+   items:[{accountCode:'501',name:'시험',spec:'',qty:1,price:80,supply:80,tax:0,total:80}],createdBy:'actor',docNo:'261007-002',issuePrefix:'',issueOperationId:id+':ISSUE'};
+  const operationId=id+'-apply',deletionId=id+'-delete';
+  try{
+   await Promise.all([ref('appMeta','releaseCutover').set({status:'active',releaseId:run,voucherNotBefore:{taebaek:'2026-10-03'},testRunId:run}),
+    db.collection('appMeta').doc(globals[0]).set({companyId:company,enabled:true,auditPassed:true,legacyWritersBlocked:true}),
+    db.collection('appMeta').doc(globals[1]).set({companyId:company,enabled:true,auditPassed:true}),
+    ...[...new Set([date,cancelDate])].map(value=>db.collection('appMeta').doc(voucherSequenceKey(company,value,'대체')).set({companyId:company,tradeDate:value,prefix:'대체',last:100})),
+    ref('partners',p).set({companyId:company,name:'시험'}),ref('cashEntries',cashId).set({...cash,issuePayloadHash:semanticHash(genericVoucherBusiness(cash))}),
+    ref('issuedStatements',id).set({...target,issueStatementHash:semanticHash(statementBusiness(target))})]);
+   const stateRef=ref('appMeta',`partnerPaymentState_${company}_${p}`),prepared=await preparePartnerAdvance(db,company,p);
+   expect(prepared.sources).toHaveLength(1);expect(prepared.targets).toHaveLength(1);
+   const input={operationId,partnerId:p,date,source:{collection:'cashEntries' as const,id:cashId,lineKey:'133'},statementId:id,accountCode:'251' as const,amount:60,
+    expectedRevision:prepared.revision,releaseId:run,expectedSourceFingerprint:prepared.sources[0].fingerprint,expectedTargetFingerprint:prepared.targets[0].fingerprint};
+   const deletion={...await command(id),operationId:deletionId};ref('voucherMutationOperations',deletionId);ref('partnerAdvanceOperations',operationId);ref('issuedStatements','advance-'+operationId);
+   const cancellationId='delete-advance-'+statementDeletionHash([deletionId,'advance-'+operationId]);ref('partnerAdvanceOperations',cancellationId);ref('issuedStatements','advance-'+cancellationId);
+   const beforeCash=await ref('cashEntries',cashId).get();
+   const results=await Promise.allSettled([applyPartnerAdvance(db,company,'actor',input),deleteIssuedStatement(db,company,'actor',deletion)]);
+   expect(results[1].status).toBe('fulfilled');expect((await ref('issuedStatements',id).get()).exists).toBe(false);
+   const statements=await db.collection('issuedStatements').where('partnerId','==',p).get();
+   const rows=statements.docs.map(doc=>({...doc.data(),id:doc.id}));
+   for(const doc of statements.docs){owned.add(doc.ref.path);if(doc.get('noncashApplication.operationId'))ref('partnerAdvanceOperations',doc.get('noncashApplication.operationId'));}
+   expect(activeAdvanceApplications(rows as any,company,p)).toHaveLength(0);
+   if(results[0].status==='fulfilled')expect(rows.filter(row=>(row as any).noncashApplication?.kind==='advance-cancellation')).toHaveLength(1);
+   expect((await stateRef.get()).get('revision')).toBe(results[0].status==='fulfilled'?2:1);
+   expect((await beforeCash.ref.get()).updateTime!.isEqual(beforeCash.updateTime!)).toBe(true);
+   await expect(applyPartnerAdvance(db,company,'actor',{...input,operationId:id+'-later',expectedRevision:(await stateRef.get()).get('revision')})).rejects.toThrow();
+   ref('partnerAdvanceOperations',id+'-later');
+  }finally{for(const snap of saved)snap.exists?await snap.ref.set(snap.data()!):await snap.ref.delete();}
+ });
  it('원문 변경과 다른 회사는 금융·연결·감사를 쓰지 않는다',async()=>{for(const mode of ['changed','foreign']){const id=await seed(mode),input=await command(id);if(mode==='changed')await ref('issuedStatements',id).update({totalAmount:220});else await ref('orders',id+'-order').update({companyId:'punghoe'});const before=await ref('issuedStatements',id).get();await expect(deleteIssuedStatement(db,company,'actor',input)).rejects.toThrow();expect((await ref('issuedStatements',id).get()).updateTime!.isEqual(before.updateTime!)).toBe(true);expect((await ref('settlements',id+'-settlement').get()).exists).toBe(true);expect((await ref('voucherMutationOperations',input.operationId).get()).get('status')).toBe('rejected');await expect(deleteIssuedStatement(db,company,'actor',input)).rejects.toMatchObject({details:{operationStatus:'rejected',operationId:input.operationId,statementId:id,companyId:company}});}});
  it('일반 발행 삭제 뒤 원 요청 재시도는 원 번호만 반환하고 전표·카운터를 재생성하지 않는다',async()=>{const id=run+'-numbered';await ref('appMeta','releaseCutover').set({status:'active',releaseId:run,voucherNotBefore:{taebaek:'2026-10-03'},testRunId:run});const counter=ref('appMeta',voucherSequenceKey(company,'2026-10-08'));await counter.set({companyId:company,tradeDate:'2026-10-08',prefix:'',last:10});ref('issuedStatements',id);const input={kind:'issuedStatements' as const,operationId:id,tradeDate:'2026-10-08',releaseId:run,document:{tradeDate:'2026-10-08',totalSupply:100,totalTax:10,totalAmount:110}};const issued=await issueVoucher(db,company,input),stale=await command(id);stale.operationId=id+'-stale';ref('voucherMutationOperations',stale.operationId);await ref('issuedStatements',id).update({mutationRevision:1});await expect(deleteIssuedStatement(db,company,'actor',stale)).rejects.toMatchObject({details:{operationStatus:'rejected'}});await ref('issuedStatements',id).update({mutationRevision:0});const editId=id+'-real-edit';ref('voucherMutationOperations',editId);await editIssuedStatement(db,{auth:{uid:'actor',token:{isAdmin:true,employeeId:'employee',companyId:company}},data:{statementId:id,releaseId:run,expectedRevision:0,operationId:editId,patch:{memo:'실제 수정 감사'}}});const del={...await command(id),expectedRevision:1};ref('voucherMutationOperations',del.operationId);await deleteIssuedStatement(db,company,'actor',del);const before=await counter.get();expect(await issueVoucher(db,company,input)).toEqual(issued);expect((await ref('issuedStatements',id).get()).exists).toBe(false);expect((await counter.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);await ref('voucherMutationOperations',del.operationId).update({beforeHash:'0'.repeat(64)});await expect(issueVoucher(db,company,input)).rejects.toThrow('감사');});
 

@@ -7,6 +7,7 @@ import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
+import {readStatementTargetClaims,assertStatementTargetUnclaimed} from './statementIssueReceipt';
 import { partnerQuarantined } from './partnerCutover';
 import { PartnerPaymentValidationError, planPartnerPayment, type Claim, type PaymentCash, type PaymentSettlement,
   type ReturnApplication } from './partnerPaymentPlan';
@@ -111,14 +112,16 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
   const partner = db.collection('partners').doc(input.partnerId);
   const releaseGate = releaseGateRef(db);
   const outcome = await db.runTransaction(async tx => {
-    const [operationSnap, entrySnap, otherSnap, normalCounterSnap, catchUpCounterSnap, cutoverSnap, stateSnap, accountSnap, partnerSnap,
-      statementRows, cashRows, settlementRows, returnRows, releaseSnap] = await Promise.all([
-      tx.get(operation), tx.get(entry), tx.get(other), tx.get(counter), tx.get(catchUpCounter), tx.get(cutover), tx.get(state), tx.get(account), tx.get(partner),
-      tx.get(db.collection('issuedStatements').where('partnerId', '==', input.partnerId)),
-      tx.get(db.collection('cashEntries').where('partnerId', '==', input.partnerId)),
-      tx.get(db.collection('settlements')),
-      tx.get(db.collection('returnApplications').where('partnerId', '==', input.partnerId)),
-      tx.get(releaseGate),
+    const releaseSnap=await tx.get(releaseGate);
+    const [statementRows,cashRows,settlementRows,returnRows]=await Promise.all([
+      tx.get(db.collection('issuedStatements').where('partnerId','==',input.partnerId)),tx.get(db.collection('cashEntries').where('partnerId','==',input.partnerId)),
+      tx.get(db.collection('settlements')),tx.get(db.collection('returnApplications').where('partnerId','==',input.partnerId)),
+    ]);
+    const creationAudit=await tx.get(db.collection('voucherMutationOperations').where('cashEntryIds','array-contains',input.operationId));
+    const normalCounterSnap=await tx.get(counter),catchUpCounterSnap=await tx.get(catchUpCounter);
+    const targetClaims=await readStatementTargetClaims(db,tx,companyId,input.operationId);
+    const [operationSnap, entrySnap, otherSnap, cutoverSnap, stateSnap, accountSnap, partnerSnap] = await Promise.all([
+      tx.get(operation), tx.get(entry), tx.get(other), tx.get(cutover), tx.get(state), tx.get(account), tx.get(partner),
     ]);
     const prior = operationSnap.data();
     const ownedSettlements = settlementRows.docs.filter(doc => doc.data().operationId === input.operationId);
@@ -131,14 +134,12 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
     }
     let writesStarted = false;
     try {
-    assertReleaseActive(releaseSnap, input.releaseId);
-    const mode = assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate, true);
-    const effectivePrefix = mode === 'catchUp' ? '추가' : '';
-    const counterSnap = mode === 'catchUp' ? catchUpCounterSnap : normalCounterSnap;
     if (operationSnap.exists) {
       const prior = operationSnap.data()!;
+      const effectivePrefix=prior.issuePrefix??'';
+      if(!['','추가'].includes(effectivePrefix))conflict('기존 지급 접두사 근거가 다릅니다.');
       const currentEntry = entrySnap.data();
-      if (prior.companyId === companyId && prior.requestHash === requestHash && (!entrySnap.exists || (currentEntry?.mutationRevision ?? 0) > 0)) {
+      if (creationAudit.docs.length && prior.companyId === companyId && prior.requestHash === requestHash && (!entrySnap.exists || (currentEntry?.mutationRevision ?? 0) > 0)) {
         const original = await readCashCreationMutation(db, tx, companyId, input.operationId, entrySnap, row => {
           const business = { companyId: row.companyId, partnerId: row.partnerId, date: row.date, cashAccountId: row.cashAccountId,
             dir: row.dir, amount: row.amount, lines: row.lines, note: row.note };
@@ -164,6 +165,11 @@ export async function recordPartnerPayment(db: admin.firestore.Firestore, compan
         })) conflict('기존 지급 작업과 요청이 다릅니다.');
       return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo };
     }
+    assertReleaseActive(releaseSnap, input.releaseId);
+    const mode = assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate, true);
+    const effectivePrefix = mode === 'catchUp' ? '추가' : '';
+    const counterSnap = mode === 'catchUp' ? catchUpCounterSnap : normalCounterSnap;
+    assertStatementTargetUnclaimed(targetClaims);
     if (entrySnap.exists || otherSnap.exists) conflict('작업 ID가 이미 사용 중입니다.');
     if (!cutoverSnap.exists || cutoverSnap.data()?.companyId !== companyId
       || cutoverSnap.data()?.enabled !== true || cutoverSnap.data()?.legacyWritersBlocked !== true

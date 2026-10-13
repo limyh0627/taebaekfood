@@ -1,14 +1,16 @@
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
+import {readStatementCreation} from './statementCreationReceipt';
 import { readCashCreationMutation } from './cashMutationReceipt';
 import { projectCashLines, type CashProjectionInput } from './shared/cashLineProjection';
 import { partnerQuarantined } from './partnerCutover';
 import { formatVoucherNo } from './shared/voucherNumber';
 export { formatVoucherNo } from './shared/voucherNumber';
-import { readVoucherCounter, writeVoucherCounter } from './newScopeCounter';
+import { readVoucherCounter, writeVoucherCounter,readVoucherScopeRows } from './newScopeCounter';
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { createHash } from 'crypto';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
+import {readStatementTargetClaims,assertStatementTargetUnclaimed} from './statementIssueReceipt';
 
 type Kind = 'issuedStatements' | 'cashEntries';
 type Input = { kind: Kind; operationId: string; tradeDate: string; prefix?: string;
@@ -76,42 +78,70 @@ export async function issueVoucher(db: admin.firestore.Firestore, companyId: str
   const counter = db.collection('appMeta').doc(voucherSequenceKey(companyId, tradeDate, prefix));
   const catchUpCounter = db.collection('appMeta').doc(voucherSequenceKey(companyId, tradeDate, '추가'));
   const releaseGate = releaseGateRef(db);
+  const protectedCash = kind === 'cashEntries' && [document.accountCode,
+    ...(Array.isArray(document.lines) ? document.lines.map(line => line?.accountCode) : [])]
+    .some(code => ['108', '251', '253'].includes(String(code)));
   return db.runTransaction(async tx => {
-    const [existing, otherKind, normalSequence, catchUpSequence, releaseSnap] = await Promise.all([
-      tx.get(target), tx.get(other), tx.get(counter), tx.get(catchUpCounter), tx.get(releaseGate),
+    // 누락 카운터만 먼저 읽으면 순환 잠금이 남는다. 기존 공통 gate→번호→개별 전표 순서를 유지한다.
+    const releaseSnap=await tx.get(releaseGate);
+    // 광범위 조회를 개별 전표 잠금 뒤에 보내면 다른 발행의 읽기 잠금과 쓰기 대기가 맞물린다.
+    const codes=protectedCash?await tx.get(db.collection('accountCodes').where('companyId','==',companyId)):null;
+    const cashCreationAudit=kind==='cashEntries'?await tx.get(db.collection('voucherMutationOperations').where('cashEntryIds','array-contains',operationId)):null;
+    const statementDeletionAudit=kind==='issuedStatements'?await tx.get(db.collection('voucherMutationOperations').where('statementIds','array-contains',operationId)):null;
+    if(kind==='issuedStatements')await tx.get(db.collection('voucherMutationOperations').where('statementId','==',operationId));
+    const normalSequence=await tx.get(counter),catchUpSequence=await tx.get(catchUpCounter);
+    // 최초 번호의 전체 원장도 개별 target을 잠그기 전에 같은 TX에서 읽는다.
+    const initialRows=!normalSequence.exists?await readVoucherScopeRows(db,tx,companyId,tradeDate,prefix):undefined;
+    // 공통 거래처와 상태를 같은 순서로 먼저 읽어 개별 발행 사이의 순환 잠금을 막는다.
+    const commonAccount=protectedCash&&typeof document.cashAccountId==='string'&&document.cashAccountId&&!document.cashAccountId.includes('/')
+      ?await tx.get(db.collection('cashAccounts').doc(document.cashAccountId)):undefined;
+    const commonPartner=protectedCash&&typeof document.partnerId==='string'&&document.partnerId&&!document.partnerId.includes('/')
+      ?await tx.get(db.collection('partners').doc(document.partnerId)):undefined;
+    const commonState=commonPartner?await tx.get(db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${document.partnerId}`)):undefined;
+    const commonCutover=commonPartner?await tx.get(db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`)):undefined;
+    const targetClaims=await readStatementTargetClaims(db,tx,companyId,operationId);
+    const [existing, otherKind] = await Promise.all([
+      tx.get(target), tx.get(other),
     ]);
-    assertReleaseActive(releaseSnap, input.releaseId);
-    const mode = assertVoucherDateAllowed(releaseSnap, companyId, tradeDate, prefix === '');
-    const effectivePrefix = mode === 'catchUp' ? '추가' : prefix;
-    const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
+    const validatesCreation=(row:Record<string,any>)=>{
+      const {id:_id,docNo:_no,issueOperationId:_operation,issuePayloadHash:_hash,issuePrefix:_prefix,
+        createdAt:_createdAt,issuedAt:_issuedAt,createdBy:_createdBy,...semantic}=row;
+      const fullHash=createHash('sha256').update(JSON.stringify(canonical(semantic))).digest('hex');
+      // 미수정 0 marker가 나중에 붙어도 최초 업무 해시는 같다. 다른 필드와 감사 사슬은 그대로 검증한다.
+      const {mutationRevision:_revision,...beforeMarker}=semantic;
+      const matchesSemantic=fullHash===issuePayloadHash||row.mutationRevision===0
+        &&createHash('sha256').update(JSON.stringify(canonical(beforeMarker))).digest('hex')===issuePayloadHash;
+      return row.companyId===companyId&&row[field]===tradeDate&&row.issueOperationId===operationId
+        &&(row.issuePrefix===prefix||prefix===''&&row.issuePrefix==='추가')&&row.issuePayloadHash===issuePayloadHash
+        &&typeof row.docNo==='string'&&!!row.docNo&&matchesSemantic;
+    };
     if (otherKind.exists) throw new HttpsError('already-exists', '작업 ID가 다른 종류의 전표에 사용되었습니다.');
-    if (kind === 'cashEntries' && (!existing.exists || (existing.data()?.mutationRevision ?? 0) > 0)) {
-      const original = await readCashCreationMutation(db, tx, companyId, operationId, existing, row => {
-        const { id: _id, docNo: _docNo, issueOperationId: _operation, issuePayloadHash: _hash, issuePrefix: _prefix,
-          createdAt: _createdAt, issuedAt: _issuedAt, createdBy: _createdBy, ...semantic } = row;
-        return row.companyId === companyId && row[field] === tradeDate && row.issueOperationId === operationId
-          && row.issuePrefix === effectivePrefix && row.issuePayloadHash === issuePayloadHash && typeof row.docNo === 'string'
-          && createHash('sha256').update(JSON.stringify(canonical(semantic))).digest('hex') === issuePayloadHash;
-      });
+    if (kind === 'cashEntries' && cashCreationAudit!.docs.length && (!existing.exists || (existing.data()?.mutationRevision ?? 0) > 0)) {
+      const original = await readCashCreationMutation(db, tx, companyId, operationId, existing, validatesCreation);
       if (original) return { id: operationId, docNo: original.docNo as string };
     }
-    if (kind === 'issuedStatements') {
-      const deleted = await readStatementDeletion(db, tx, companyId, operationId, existing, row =>
-        row[field] === tradeDate && row.issueOperationId === operationId && row.issuePrefix === effectivePrefix
-        && row.issuePayloadHash === issuePayloadHash && typeof row.docNo === 'string' && !!row.docNo);
+    if (kind === 'issuedStatements' && statementDeletionAudit!.docs.length) {
+      const deleted = await readStatementDeletion(db, tx, companyId, operationId, existing, validatesCreation);
       if (deleted) return { id: operationId, docNo: deleted.docNo as string };
     }
     if (existing.exists) {
       const data = existing.data()!;
-      if (data.companyId !== companyId || data[field] !== tradeDate || data.issueOperationId !== operationId || data.issuePrefix !== effectivePrefix || data.issuePayloadHash !== issuePayloadHash || typeof data.docNo !== 'string') {
+      if(kind==='issuedStatements'){
+        const original=await readStatementCreation(db,tx,companyId,operationId,data,validatesCreation);
+        return {id:operationId,docNo:original.docNo as string};
+      }
+      if (!validatesCreation(data)) {
         throw new HttpsError('already-exists', '작업 ID가 다른 전표에 사용되었습니다.');
       }
       return { id: operationId, docNo: data.docNo };
     }
+    // 완료 ACK는 금융 쓰기가 없다. 전환 release·발행 가능일은 신규 쓰기에만 적용한다.
+    assertReleaseActive(releaseSnap, input.releaseId);
+    const mode = assertVoucherDateAllowed(releaseSnap, companyId, tradeDate, prefix === '');
+    const effectivePrefix = mode === 'catchUp' ? '추가' : prefix;
+    const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
+    assertStatementTargetUnclaimed(targetClaims);
     // 선택 분개 신규 기록은 자동 배분하지 않는다. 거래처 원본 변경은 정산과 같은 TX 경계에 참여한다.
-    const protectedCash = kind === 'cashEntries' && [document.accountCode,
-      ...(Array.isArray(document.lines) ? document.lines.map(line => line?.accountCode) : [])]
-      .some(code => ['108', '251', '253'].includes(String(code)));
     let partnerState: admin.firestore.DocumentSnapshot | undefined;
     let cashPartner: admin.firestore.DocumentSnapshot | undefined;
     let financialWrites = false;
@@ -126,14 +156,8 @@ export async function issueVoucher(db: admin.firestore.Firestore, companyId: str
         throw new HttpsError('invalid-argument', '회사 계좌가 필요합니다.');
       if (document.partnerId !== undefined && (typeof document.partnerId !== 'string' || document.partnerId.includes('/')))
         throw new HttpsError('invalid-argument', '거래처 입력이 잘못되었습니다.');
-      const [codes, account, partner, state, cutover] = await Promise.all([
-        tx.get(db.collection('accountCodes').where('companyId', '==', companyId)),
-        tx.get(db.collection('cashAccounts').doc(document.cashAccountId)),
-        document.partnerId ? tx.get(db.collection('partners').doc(document.partnerId as string)) : undefined,
-        document.partnerId ? tx.get(db.collection('appMeta').doc(`partnerPaymentState_${companyId}_${document.partnerId}`)) : undefined,
-        document.partnerId ? tx.get(db.collection('appMeta').doc(`partnerPaymentCutover_${companyId}`)) : undefined,
-      ]);
-      if (projection.parts.some(line => !codes.docs.some(code => code.data().code === line.accountCode)))
+      const account=commonAccount!,partner=commonPartner,state=commonState,cutover=commonCutover;
+      if (projection.parts.some(line => !codes!.docs.some(code => code.data().code === line.accountCode)))
         throw new HttpsError('failed-precondition', '현재 회사 계정과목을 확인해주세요.');
       if (!account.exists || (account.data()?.companyId ?? 'taebaek') !== companyId || account.data()?.active !== true)
         throw new HttpsError('failed-precondition', '현재 회사의 활성 계좌가 아닙니다.');
@@ -151,7 +175,7 @@ export async function issueVoucher(db: admin.firestore.Firestore, companyId: str
       partnerState = state;
       cashPartner = partner;
     }
-    const state = await readVoucherCounter(db, tx, sequence, releaseSnap, companyId, tradeDate, effectivePrefix);
+    const state = await readVoucherCounter(db, tx, sequence, releaseSnap, companyId, tradeDate, effectivePrefix,initialRows);
     if (state.companyId !== companyId || state.tradeDate !== tradeDate || state.prefix !== effectivePrefix || !Number.isSafeInteger(state.last) || state.last < 0) {
       throw new HttpsError('failed-precondition', '전표 번호 카운터가 손상되었습니다.');
     }

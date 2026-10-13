@@ -1,3 +1,4 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 import { doc, runTransaction } from 'firebase/firestore';
 import { db, auth, authReady } from '../firebase';
 import { beginProductStocktakeAttempt, submitProductStocktakeAttempt, clearProductStocktakeAttempt, productStocktakeRequest, sameProductStocktakeRequest, validateProductStocktakeRequest, type ProductStocktakeRequest } from '../productStocktakeAttempt';
@@ -9,11 +10,12 @@ import type { UnpackPlan } from '../canUnpack';
 import { unpackSummary } from '../canUnpack';
 import { unpackLots, canStockAfter, bulkStockAfter, type UnpackLotMove } from '../unpackLots';
 import { pruneDepletedLots, withCarryOverProductLot, withCarryOverLot } from '../lotUtils';
-import { anchorLotsByQty } from '../lotAnchor';
+import { anchorLotsByQty, stocktakeLotMaterial } from '../lotAnchor';
 import { today, kstDateOf } from '../day';
 import { inventoryDocId, operationDocId, type LotChange, type RawInventoryMovement } from '../rawInventoryCore';
 import { normalizeRawInventoryState, toLedgerDoc } from './rawInventoryService';
 import { rawMirrorMatches } from '../rawMirror';
+import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../inventoryWriterProtocol';
 import {ItemInventoryRejected,rejectItemInventory,prepareItemInventory,assertItemInventoryWriteBudget,validateItemInventoryRequest,itemInventoryRequestHash,itemInventoryRequestText,itemInventoryResultText,runItemInventoryAttempt,type CanUnpackRequest,type ItemInventoryOutcome} from '../itemInventoryAttempt';
 
 /**
@@ -68,7 +70,7 @@ export async function unpack(plan: UnpackPlan,context:{request:CanUnpackRequest;
     await context.check();
     const requestHash=await itemInventoryRequestHash(context.request);
     await context.check();let duplicate=false;
-    const moves = await runTransaction(db, async tx => {
+    const moves = await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:itemInventoryRequestText(context.request),companyId:context.request.companyId,isStillCurrent:async()=>{await context.check();return true;}}), async tx => {
       await context.check();
       const canRef = doc(db, 'items', plan.canItemId);
       const bulkRef = doc(db, 'items', plan.bulkItemId);
@@ -188,17 +190,17 @@ export async function unpack(plan: UnpackPlan,context:{request:CanUnpackRequest;
       const evidence={inventoryRequest:context.request,inventoryRequestHash:requestHash,inventoryResult:{movesText:itemInventoryResultText(r.moves),canBefore:canStock,canAfter:canStockAfter(r.canLots),bulkBefore:state.stockKg,bulkAfter:balanceAfterKg}};
       assertItemInventoryWriteBudget([{...canData,lots:pruneDepletedLots(r.canLots)},{...bulkData,lots:[...activeLots,...recentDepletedLots]},nextState,{...toLedgerDoc(movement,{note:unpackSummary(plan),type:'manual',addedBy:'캔 개봉',canSize:plan.perCan,canCount:plan.cans}),...evidence,unpackMoves:r.moves}]);
       await context.check();
-      tx.update(canRef, { lots: strip(pruneDepletedLots(r.canLots)), stock: canStockAfter(r.canLots) });
-      tx.update(bulkRef, { lots: strip([...activeLots, ...recentDepletedLots]), stock: balanceAfterKg });
-      tx.set(stateRef, strip(nextState));
-      tx.set(movementRef, strip({
+      tx.update(canRef, protectItemInventoryPatch(canData,{ lots: strip(pruneDepletedLots(r.canLots)), stock: canStockAfter(r.canLots) }));
+      tx.update(bulkRef, protectItemInventoryPatch(bulkData,{ lots: strip([...activeLots, ...recentDepletedLots]), stock: balanceAfterKg }));
+      tx.set(stateRef, protectInventoryWriterPatch(stateSnap.exists()?stateSnap.data():undefined,strip(nextState)));
+      tx.set(movementRef, protectInventoryWriterPatch(undefined,strip({
         ...toLedgerDoc(movement, {
           note: unpackSummary(plan), type: 'manual', addedBy: '캔 개봉',
           canSize: plan.perCan, canCount: plan.cans,
         }),
         unpackMoves: r.moves,
         ...evidence,
-      }));
+      })));
       return r.moves;
     });
 
@@ -258,7 +260,7 @@ export async function stocktakeByQty(params: {
     if (request.itemId !== itemId || request.itemName !== itemName || request.targetQty !== targetQty || request.minStock !== minStock || request.unitKg !== unitKg || request.operationId !== operationId) throw Error('실사 입력이 최초 요청 원문과 다릅니다.');
     if (await productStocktakeActor(request.companyId) !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.');
     const currentActor = () => { if (auth.currentUser?.uid !== request.uid) throw Error('실사 로그인 사용자가 변경되었습니다.'); };
-    const r = await runTransaction(db, async tx => {
+    const r = await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(request),companyId:request.companyId,isStillCurrent:async()=>{currentActor();return true;}}), async tx => {
       currentActor();
       const ref = doc(db, 'items', itemId);
       const snap = await tx.get(ref);
@@ -282,6 +284,7 @@ export async function stocktakeByQty(params: {
       const a = anchorLotsByQty({
         lots,
         targetQty,
+        material: stocktakeLotMaterial(data),
         //  1개당 kg — 로트가 들고 있던 값을 그대로 쓴다. 여기서 새로 짐작하면
         //  로트마다 다른 환산이 섞인다.
         unitKg: lots.find(l => l.unitKg)?.unitKg ?? unitKg,
@@ -299,12 +302,12 @@ export async function stocktakeByQty(params: {
         request,
       };
       currentActor();
-      tx.update(ref, {
+      tx.update(ref, protectItemInventoryPatch(data,{
         lots: strip(pruneDepletedLots(a.lots)),
         stock: canStockAfter(a.lots),
         ...(minStock !== undefined ? { minStock } : {}),
         stocktakeAnchors: strip([...stocktakeAnchors, anchor].slice(-100)),
-      });
+      }));
       return { deltaQty: a.deltaQty, beforeQty: a.beforeQty };
     });
 
@@ -333,7 +336,7 @@ export async function adjustStockByQty(params: {
   const now = new Date().toISOString();
   const 오늘 = today();
   try {
-    await runTransaction(db, async tx => {
+    await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({itemId,itemName,deltaQty,unitKg,note,now})}), async tx => {
       const itemRef = doc(db, 'items', itemId);
       const snap = await tx.get(itemRef);
       if (!snap.exists()) throw new Error(`${itemName} 품목을 찾을 수 없습니다.`);
@@ -344,18 +347,19 @@ export async function adjustStockByQty(params: {
       if (targetQty < 0) throw new Error('조정 후 재고가 음수가 됩니다.');
       const anchored = anchorLotsByQty({
         lots, targetQty,
+        material: stocktakeLotMaterial(data),
         unitKg: lots.find(lot => lot.unitKg)?.unitKg ?? unitKg,
         det: { id: `adjust-${itemId}-${Date.parse(now)}`, createdAt: now, receivedDate: 오늘 },
       });
       const anchors = Array.isArray(data.stocktakeAnchors) ? data.stocktakeAnchors : [];
-      tx.update(itemRef, {
+      tx.update(itemRef, protectItemInventoryPatch(data,{
         lots: strip(pruneDepletedLots(anchored.lots)),
         stock: canStockAfter(anchored.lots),
         stocktakeAnchors: strip([...anchors, {
           id: `adjust-${itemId}-${Date.parse(now)}`, date: 오늘, createdAt: now,
           targetQty, beforeQty, deltaQty, note,
         }].slice(-100)),
-      });
+      }));
     });
     return { ok: true, deltaQty, message: `${itemName} ${deltaQty > 0 ? '+' : ''}${deltaQty} — 기록과 로트에 반영했습니다.` };
   } catch (error) {

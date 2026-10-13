@@ -2,7 +2,7 @@ export type OemCostEvidence = { version: 1; ownerCompanyId: string;
   rawMaterials: { rawItemId: string; kg: number; supplyAmount: number }[];
   packaging: { confirmed: true; supplyAmount: number }; capturedAt: string };
 export type OemCostScope = { companyId: string; sent: readonly { rawItemId?: string; kg: number }[] };
-export type OemCostRow = { itemId: string; kg: number };
+export type OemCostRow = { itemId: string; kg: number; kind?: 'bulk'; rawItemId?: string; lotId?: string };
 export type OemBatchCostPreview = { version: 1; status: 'pending-fee'; evidenceSnapshot: OemCostEvidence;
   ownerCompanyId: string; sentKg: number; receivedKg: number; lossKg: number; rawSupplyAmount: number;
   packagingSupplyAmount: number; rows: OemCostRow[] };
@@ -53,8 +53,11 @@ export function validateOemCostEvidence(value: unknown, scope: OemCostScope): Oe
 export function buildOemBatchCostPreview(value: unknown, scope: OemCostScope, rows: OemCostRow[]): OemBatchCostPreview | OemBatchCostBlocked {
   const evidence = validateOemCostEvidence(value,scope);
   if (!evidence) return {version:1,status:'blocked',reason:'missing-evidence'};
-  if (!rows.length || new Set(rows.map(row=>row.itemId)).size !== rows.length
-    || rows.some(row=>!row.itemId || !positiveKg(row.kg))) fail('OEM 원가 배분의 입고 품목·kg를 확인해 주세요.');
+  const keys=rows.map(row=>row.kind==='bulk'?`bulk:${row.rawItemId}:${row.lotId}`:`product:${row.itemId}`);
+  if (!rows.length || new Set(keys).size !== rows.length
+    || rows.some(row=>!row.itemId || !positiveKg(row.kg) || (row.kind!==undefined && row.kind!=='bulk')
+      || (row.kind==='bulk' && (!row.rawItemId || row.itemId!==row.rawItemId || !row.lotId))
+      || (row.kind===undefined && (row.rawItemId!==undefined || row.lotId!==undefined)))) fail('OEM 원가 배분의 입고 품목·kg를 확인해 주세요.');
   const receivedKg=sumOemReceivedKg(rows.map(row=>row.kg));
   const sentKg=kg3(evidence.rawMaterials.reduce((sum,row)=>sum+row.kg,0));
   const rawSupplyAmount=evidence.rawMaterials.reduce((sum,row)=>sum+row.supplyAmount,0);
@@ -107,17 +110,24 @@ export function validateOemCostIssueFingerprint(po: {companyId?:string;partnerId
 }
 
 /** 확인 배치는 현재 규격 대신 입고 때 고정한 행 kg/원 PO 수량을 사용한다. */
-export function oemFeeUnitKgFromSavedReceipt(po: {oemCostEvidence?:unknown;oemBatchCost?:unknown;oemReceivedKg?:number;items?:readonly {itemId:string;quantity:number}[]}): Map<string,number> | null {
+export function oemFeeUnitKgFromSavedReceipt(po: {oemCostEvidence?:unknown;oemBatchCost?:unknown;oemReceivedKg?:number;items?:readonly {itemId:string;quantity:number}[];oemReceivedBulk?:readonly {rawItemId?:string;lotId?:string;kg:number}[]}): Map<string,number> | null {
   if (po.oemCostEvidence === undefined) return null;
   const cost=po.oemBatchCost as OemBatchCostPreview | OemBatchCostBlocked | OemBatchCost | undefined;
   const rows=cost?.rows;
+  const products=rows?.filter(row=>row.kind!=='bulk') ?? [];
+  const bulk=rows?.filter(row=>row.kind==='bulk') ?? [];
+  const manifest=po.oemReceivedBulk ?? [];
   const items=po.items ?? [];
-  if (!rows?.length || items.length!==rows.length || new Set(items.map(row=>row.itemId)).size!==items.length
-    || new Set(rows.map(row=>row.itemId)).size!==rows.length || rows.some(row=>!positiveKg(row.kg))
+  if (!rows?.length || items.length!==products.length || new Set(items.map(row=>row.itemId)).size!==items.length
+    || new Set(products.map(row=>row.itemId)).size!==products.length || rows.some(row=>!positiveKg(row.kg))
     || sumOemReceivedKg(rows.map(row=>row.kg))!==po.oemReceivedKg) fail('OEM 원입고 행 중량·수량 근거가 잘못되었습니다.');
+  if(bulk.length!==manifest.length || new Set(manifest.map(row=>`${row.rawItemId}:${row.lotId}`)).size!==manifest.length
+    || bulk.some(row=>!row.rawItemId || row.itemId!==row.rawItemId || !row.lotId
+      || !manifest.some(saved=>saved.rawItemId===row.rawItemId && saved.lotId===row.lotId && saved.kg===row.kg)))
+    fail('OEM 원입고 벌크 원료·로트·kg 근거가 다릅니다.');
   const result=new Map<string,number>();
   for (const item of items) {
-    const row=rows!.find(row=>row.itemId===item.itemId);
+    const row=products.find(row=>row.itemId===item.itemId);
     if (!row || !Number.isFinite(item.quantity) || item.quantity<=0 || !Number.isFinite(row.kg/item.quantity)) fail('OEM 원입고 품목·수량 근거가 다릅니다.');
     result.set(item.itemId,row!.kg/item.quantity);
   }

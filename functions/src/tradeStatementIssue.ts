@@ -1,4 +1,4 @@
-import { readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
+import { readPurchaseUnitSnapshot, isManualPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
 import { costFromPurchaseLine, costFromPurchaseLines, isRawPurchaseItem } from './shared/purchaseCost';
 import { readStatementDeletion } from './deleteIssuedStatementCommand';
 import { readStatementCreation } from './statementCreationReceipt';
@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
+import {statementIssueIdentity,prepareStatementIssue,statementIssueRef,assertStatementIssueReceipt,rejectStatementIssue,type StatementIssueIdentity} from './statementIssueReceipt';
 
 type Row = Record<string, any>;
 type Cost = { itemId: string; price: number; beforeCost: number; sourceLineIndex: number; sourceLineIndices?: number[] };
@@ -19,6 +20,7 @@ type Input = {
   newPo?: { id: string; cardNo: string; items: Row[] };
   costUpdates: Cost[];
   releaseId: string;
+  requestText?: string;
 };
 
 const bad = (message: string): never => { throw new HttpsError('invalid-argument', message); };
@@ -71,6 +73,16 @@ const statementBusiness = (row: Row) => {
 
 /** The voucher, counter, order flags, purchase-order links and cost history commit together. */
 export async function issueTradeStatement(db: admin.firestore.Firestore, companyId: string, actorId: string, input: Input) {
+  const identity=statementIssueIdentity(companyId,actorId,input);
+  await prepareStatementIssue(db,identity);
+  try{return await applyTradeStatement(db,companyId,actorId,input,identity);}
+  catch(error){
+    const rejected=await rejectStatementIssue(db,identity,error);
+    if(rejected)throw new HttpsError(rejected.failureCode,rejected.failureMessage,rejected);
+    throw error;
+  }
+}
+async function applyTradeStatement(db: admin.firestore.Firestore, companyId: string, actorId: string, input: Input, identity:StatementIssueIdentity) {
   if (!input || typeof input !== 'object') bad('전표 요청이 잘못되었습니다.');
   if (!actorId) bad('인증 사용자 ID가 필요합니다.');
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)) bad('배포 전환 ID가 필요합니다.');
@@ -158,7 +170,7 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   const newPoRef = newPo ? db.collection('purchaseOrders').doc(newPo.id) : null;
   const kgItemRefs = [...new Set<string>([...kgLines, ...unitLines].map((line: Row) => line.itemId as string))]
     .map(id => db.collection('items').doc(id));
-  const unitRefs = unitLines.map((line: Row) => db.collection('item_purchase_unit').doc(line.purchaseUnitId));
+  const unitRefs = unitLines.map((line: Row) => isManualPurchaseUnitSnapshot(line) ? null : db.collection('item_purchase_unit').doc(line.purchaseUnitId));
   const costRefs = costUpdates.map(c => db.collection('items').doc(c.itemId));
   const newPoItemRefs = newPo ? [...new Set(newPo.items.map(item => item.itemId as string))]
     .map(id => db.collection('items').doc(id)) : [];
@@ -169,40 +181,46 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
   // invoicePrinted는 송장 출력 상태다. 전표 중복은 실제 연결 기록으로 판정한다.
   const partnerStatementsQuery = db.collection('issuedStatements').where('partnerId', '==', raw.partnerId);
   const releaseGate = releaseGateRef(db);
+  const receiptRef=statementIssueRef(db,identity);
   return db.runTransaction(async tx => {
     const recordedAt = new Date().toISOString();
-    const [existing, otherKind, normalSequence, catchUpSequence, partner, orders, pos, freshPo, items, poItems, cardNos, poReservation, codes, partnerStatements, releaseSnap, kgItems, unitRegistrations] = await Promise.all([
-      tx.get(statementRef), tx.get(otherKindRef), tx.get(counterRef), tx.get(catchUpCounterRef), tx.get(partnerRef),
+    const releaseSnap=await tx.get(releaseGate);
+    const codes=await tx.get(accountCodesQuery),partnerStatements=await tx.get(partnerStatementsQuery),cardNos=cardNoQuery?await tx.get(cardNoQuery):null;
+    const deletionAudit=await tx.get(db.collection('voucherMutationOperations').where('statementIds','array-contains',raw.id));
+    await tx.get(db.collection('voucherMutationOperations').where('statementId','==',raw.id));
+    // 번호를 먼저 읽어야 다른 발행의 개별 전표 잠금과 신규 번호 전체 조회가 서로 기다리지 않는다.
+    const normalSequence=await tx.get(counterRef),catchUpSequence=await tx.get(catchUpCounterRef);
+    const receipt=await tx.get(receiptRef);assertStatementIssueReceipt(receipt.data(),identity);
+    const receiptRow=receipt.data()!;
+    if(receiptRow.status==='rejected')throw new HttpsError(receiptRow.failureCode,receiptRow.failureMessage);
+    const markApplied=(docNo:string)=>{
+      if(receiptRow.status==='applied'){if(receiptRow.docNo!==docNo)conflict('전표 처리 영수증 번호가 다릅니다.');return;}
+      tx.update(receiptRef,{status:'applied',revision:receiptRow.revision+1,docNo,appliedAt:recordedAt});
+    };
+    const [existing, otherKind, partner, orders, pos, freshPo, items, poItems, poReservation, kgItems, unitRegistrations] = await Promise.all([
+      tx.get(statementRef), tx.get(otherKindRef), tx.get(partnerRef),
       Promise.all(orderRefs.map(ref => tx.get(ref))), Promise.all(poRefs.map(ref => tx.get(ref))),
       newPoRef ? tx.get(newPoRef) : Promise.resolve(null), Promise.all(costRefs.map(ref => tx.get(ref))),
       Promise.all(newPoItemRefs.map(ref => tx.get(ref))),
-      cardNoQuery ? tx.get(cardNoQuery) : Promise.resolve(null),
       poReservationRef ? tx.get(poReservationRef) : Promise.resolve(null),
-      tx.get(accountCodesQuery),
-      tx.get(partnerStatementsQuery),
-      tx.get(releaseGate),
       Promise.all(kgItemRefs.map(ref => tx.get(ref))),
-      Promise.all(unitRefs.map(ref => tx.get(ref))),
+      Promise.all(unitRefs.map(ref => ref ? tx.get(ref) : Promise.resolve(null))),
     ]);
-    assertReleaseActive(releaseSnap, input.releaseId);
-    const mode = assertVoucherDateAllowed(releaseSnap, companyId, date, true);
-    const effectivePrefix = mode === 'catchUp' ? '추가' : '';
-    const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
     if (otherKind.exists) conflict('작업 ID가 자금전표에 사용되었습니다.');
-    const deleted = await readStatementDeletion(db, tx, companyId, raw.id, existing, row =>
-      row.issueOperationId === operationId && (row.issuePrefix ?? '') === effectivePrefix
+    const deleted = deletionAudit.docs.length ? await readStatementDeletion(db, tx, companyId, raw.id, existing, row =>
+      row.issueOperationId === operationId && ['', '추가'].includes(row.issuePrefix ?? '')
       && row.issuePayloadHash === payloadHash && row.issueStatementHash === statementHash
-      && typeof row.docNo === 'string' && !!row.docNo && row.issueVoucherNo === row.docNo);
-    if (deleted) return { status: 'duplicate' as const, id: raw.id, docNo: deleted.docNo as string };
+      && typeof row.docNo === 'string' && !!row.docNo && row.issueVoucherNo === row.docNo) : null;
+    if (deleted) {markApplied(deleted.docNo);return { status: 'duplicate' as const, id: raw.id, docNo: deleted.docNo as string };}
     if (existing.exists) {
       const saved = existing.data()!;
       await readStatementCreation(db, tx, companyId, raw.id, saved, original =>
         original.companyId === companyId && original.issueOperationId === operationId
-        && (original.issuePrefix ?? '') === effectivePrefix && original.issuePayloadHash === payloadHash
+        && ['', '추가'].includes(original.issuePrefix ?? '') && original.issuePayloadHash === payloadHash
         && original.issueStatementHash === statementHash && hash(statementBusiness(original)) === statementHash
         && typeof original.docNo === 'string' && original.docNo === original.issueVoucherNo);
       if (saved.companyId !== companyId || saved.issueOperationId !== operationId
-        || (saved.issuePrefix ?? '') !== effectivePrefix
+        || !['', '추가'].includes(saved.issuePrefix ?? '')
         || saved.issuePayloadHash !== payloadHash || saved.issueStatementHash !== statementHash
         || typeof saved.docNo !== 'string' || saved.docNo !== saved.issueVoucherNo) conflict('기존 전표와 재시도 내용이 다릅니다.');
       if (orders.some(snap => !snap.exists || oldCompany(snap.data()!) !== companyId
@@ -225,10 +243,16 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
           || savedReservation.data()!.poId !== newPo.id) conflict('기존 발주카드 번호 예약이 변경되었습니다.');
       }
       // 사용자가 수정·삭제할 수 있는 원가 이력은 발행 완료의 권위 있는 증명이 아니다.
-      return { status: 'duplicate' as const, id: raw.id, docNo: saved.docNo };
+      markApplied(saved.docNo);return { status: 'duplicate' as const, id: raw.id, docNo: saved.docNo };
     }
+    assertReleaseActive(releaseSnap, input.releaseId);
+    const mode = assertVoucherDateAllowed(releaseSnap, companyId, date, true);
+    const effectivePrefix = mode === 'catchUp' ? '추가' : '';
+    const sequence = mode === 'catchUp' ? catchUpSequence : normalSequence;
     unitLines.forEach((line: Row, index: number) => {
-      const registration = unitRegistrations[index];
+      // 직접 kg도 아래의 원료·회사·행·PO 검사는 그대로 통과해야 한다. 등록표 조회만 생략한다.
+      if (isManualPurchaseUnitSnapshot(line)) return;
+      const registration = unitRegistrations[index]!;
       if (!registration.exists) conflict('등록된 매입 단위가 없습니다.');
       try {
         validatePurchaseUnitRegistration(readPurchaseUnitSnapshot(line)!, { ...registration.data(), id: registration.id } as ItemPurchaseUnit,
@@ -302,6 +326,9 @@ export async function issueTradeStatement(db: admin.firestore.Firestore, company
     if (state.companyId !== companyId || state.tradeDate !== date || state.prefix !== effectivePrefix
       || !Number.isSafeInteger(state.last) || state.last < 0 || !Number.isSafeInteger(state.last + 1)) conflict('전표 번호 카운터가 손상되었습니다.');
     const docNo = formatVoucherNo(date, state.last + 1, effectivePrefix);
+    // 처리 영수증도 같은 금융 거래에 쓰므로 늦은 거절과 발행이 둘 다 성공할 수 없다.
+    if(receiptRow.status==='applied')conflict('완료 전표의 현재 원문 또는 삭제 감사를 확인해야 합니다.');
+    markApplied(docNo);
     writeVoucherCounter(tx, sequence, state, state.last + 1);
     tx.create(statementRef, { ...raw, companyId, docNo, issueOperationId: operationId,
       issuePayloadHash: payloadHash, issueStatementHash: statementHash, issueVoucherNo: docNo, issuePrefix: effectivePrefix });

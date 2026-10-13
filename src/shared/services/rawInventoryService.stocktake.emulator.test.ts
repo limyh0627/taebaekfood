@@ -42,7 +42,7 @@ describe.skipIf(process.env.RAW_STOCKTAKE_EMULATOR_TEST!=='true')('원료 실사
 
  it('0kg 실사는 본체·원장·품목 미러를 함께 맞추고 앵커를 기록한다',async()=>{
   const {locations,command}=await seed('own');expect((await execute(command)).status).toBe('applied');
-  const [item,state,movement]=await read(locations);expect(item!.stock).toBe(0);expect(state!.stockKg).toBe(0);expect(state!.revision).toBe(2);expect(state!.stocktakeAnchor).toMatchObject({operationId:command.operationId,sequence:2});expect(movement).toMatchObject({companyId:'taebaek',kind:'stocktake',targetKg:0,balanceAfterKg:0,sequence:2});
+  const [item,state,movement]=await read(locations);for(const row of [item,state,movement])expect(row).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});expect(item!.stock).toBe(0);expect(state!.stockKg).toBe(0);expect(state!.revision).toBe(2);expect(state!.stocktakeAnchor).toMatchObject({operationId:command.operationId,sequence:2});expect(movement).toMatchObject({companyId:'taebaek',kind:'stocktake',targetKg:0,balanceAfterKg:0,sequence:2});
  },60_000);
  it('같은 요청 재전송과 다른 목표 충돌은 세 문서에 추가 쓰기를 남기지 않는다',async()=>{
   const {locations,command}=await seed('retry');expect((await execute(command)).status).toBe('applied');const before=await read(locations);const snapshots=await Promise.all(locations.map(location=>adminDb!.doc(location).get()));

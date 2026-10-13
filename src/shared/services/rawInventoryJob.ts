@@ -1,3 +1,4 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 /**
  * **RawInventoryJob — 여러 원료를 묶는 업무의 진행표.**
  *
@@ -14,6 +15,7 @@ import { doc, getDoc, runTransaction, type Firestore } from 'firebase/firestore'
 import { COL } from '../collections';
 import { legacyOperationDocId, operationDocId, type RawInventoryCommand, type RawInventoryJob, type RawApplyResult } from '../rawInventoryCore';
 import { executeRawInventoryCommand, type RawCommandOptions } from './rawInventoryService';
+import {protectInventoryWriterPatch} from '../inventoryWriterProtocol';
 
 export interface JobCommandInput {
   command: RawInventoryCommand;
@@ -63,7 +65,7 @@ export async function runRawInventoryJob(input: {
   }
 
   //  ① 진행표 준비. 같은 jobId 로 재실행하면 `processing` 이 그대로 이어진다.
-  const initial: RawInventoryJob = await runTransaction(database, async tx => {
+  const initial: RawInventoryJob = await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify({jobId:input.jobId,companyId:input.companyId,source:input.source,expected}),companyId:input.companyId}), async tx => {
     const snap = await tx.get(jobRef);
     if (snap.exists()) {
       const cur = snap.data() as RawInventoryJob;
@@ -75,7 +77,7 @@ export async function runRawInventoryJob(input: {
         throw new Error(`같은 job 번호로 다른 업무를 실행할 수 없다: ${input.jobId}`);
       }
       const merged: RawInventoryJob = { ...cur, status: 'processing' };
-      tx.set(jobRef, merged);
+      tx.set(jobRef, protectInventoryWriterPatch(snap.data(),merged));
       return merged;
     }
     const fresh: RawInventoryJob = {
@@ -86,7 +88,7 @@ export async function runRawInventoryJob(input: {
       status: 'processing',
       createdAt: now,
     };
-    tx.set(jobRef, fresh);
+    tx.set(jobRef, protectInventoryWriterPatch(undefined,fresh));
     return fresh;
   });
 
@@ -134,7 +136,7 @@ async function markJobStatus(
   db: Firestore, jobRef: ReturnType<typeof doc>,
   patch: Partial<RawInventoryJob>,
 ): Promise<RawInventoryJob> {
-  return runTransaction(db, async tx => {
+  return runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify({jobId:jobRef.id,patch})}), async tx => {
     const snap = await tx.get(jobRef);
     if (!snap.exists()) throw new Error(`job 이 사라졌다: ${jobRef.id}`);
     const cur = snap.data() as RawInventoryJob;
@@ -143,7 +145,7 @@ async function markJobStatus(
     for (const k of Object.keys(next) as (keyof RawInventoryJob)[]) {
       if (next[k] === undefined) delete next[k];
     }
-    tx.set(jobRef, next);
+    tx.set(jobRef, protectInventoryWriterPatch(snap.data(),next));
     return next;
   });
 }

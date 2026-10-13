@@ -1,4 +1,4 @@
-import {tradeRequestKey} from './tradeStatementPending';
+import {tradeRequestKey,verifyTradeServerRejection} from './tradeStatementPending';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../../shared/firebase';
@@ -31,14 +31,19 @@ export async function issueTradeStatementCommand(input: TradeStatementIssueInput
   if(old){request=JSON.parse(old);const comparable=(r:TradeStatementIssueInput)=>JSON.stringify({...r,statement:{...r.statement,createdBy:undefined},newPo:r.newPo?{...r.newPo,cardNo:undefined}:undefined,releaseId:undefined});
    if(request.operationId!==input.operationId||request.statement.companyId!==companyId||typeof request.releaseId!=='string'||comparable(request)!==comparable(fresh))throw new Error('이전에 저장 중이던 전표 원문을 먼저 재시도해 주세요.');
   }else request=fresh;
-  encoded=JSON.stringify(request);if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
+  encoded=old??JSON.stringify(request);if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
   localStorage.setItem(key,encoded);assertActor();
  }catch(error){if(!old&&encoded&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);if(!old&&(companyId==='taebaek'||companyId==='punghoe'))throw Object.assign(new Error(error instanceof Error?error.message:String(error)),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId}});throw error;}
  try {
   const call=httpsCallable<unknown,{status:'applied'|'duplicate';id:string;docNo:string}>(functions,'issueTradeStatementCommand');
-  assertActor();const result=await call(request!);assertActor();completedTradeRequests.set(key,encoded);return result.data;
- }catch(error){const d=(error as {details?:Record<string,unknown>})?.details;
-  if(!old&&d?.operationStatus==='rejected'&&d.version===1&&d.financialWrites===false&&d.companyId===companyId&&d.operationId===input.operationId&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);
+  assertActor();const result=await call({...request!,requestText:encoded});assertActor();
+  if(result.data.id!==request!.statement.id||!['applied','duplicate'].includes(result.data.status)||typeof result.data.docNo!=='string'||!result.data.docNo)throw new Error('전표 발행 응답을 확인할 수 없습니다. 원문을 보존했습니다.');
+  completedTradeRequests.set(key,encoded);return result.data;
+ }catch(error){
+  if(await verifyTradeServerRejection(error,request! as unknown as Parameters<typeof verifyTradeServerRejection>[1],encoded,companyId!,uid!,()=>auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)
+    &&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);
+  // 예전 서버의 code·ID만 있는 거절을 화면의 송신 전 증거로 잘못 넘기지 않는다.
+  if((error as {details?:{version?:number}})?.details?.version===1)throw new Error(error instanceof Error?error.message:String(error));
   throw error;
  }
 }

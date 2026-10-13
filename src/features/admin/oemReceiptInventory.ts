@@ -1,4 +1,6 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
 import type { OemCostEvidence } from '../../shared/oemBatchCost';
+import {protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
 import { collection, doc, getDocs, query, runTransaction, where, type Firestore } from 'firebase/firestore';
 import { pruneDepletedLots, withCarryOverProductLot } from '../../shared/lotUtils';
 import { companyOf, type AdjustmentRequest, type CompanyId, type PurchaseOrder, type RawMaterialLot } from '../../shared/types';
@@ -18,6 +20,7 @@ export interface OemReceiptInventoryInput {
   operationId: string;
   date: string;
   items: OemReceiptItemChange[];
+  bulk?: { material: string; kg: number; rawItemId?: string }[];
   poPatch: Partial<PurchaseOrder>;
   feeRequest: AdjustmentRequest;
 }
@@ -36,6 +39,8 @@ export async function applyOemReceiptInventory(
   db: Firestore,
   input: OemReceiptInventoryInput,
 ): Promise<'applied' | 'duplicate'> {
+  // 기존 클라이언트 writer에는 원료 코어 거래가 없다. 서버 명령을 우회해 부분 입고하지 않는다.
+  if (input.bulk?.length) throw new Error('벌크 OEM 입고는 서버의 단일 거래 명령으로 처리해 주세요.');
   const duplicateItemIds = input.items
     .map(row => row.itemId)
     .filter((itemId, index, ids) => ids.indexOf(itemId) !== index);
@@ -55,7 +60,7 @@ export async function applyOemReceiptInventory(
   const feeQuery = query(collection(db, 'adjustmentRequests'), where('companyId', '==', input.companyId));
   const feeRequests = await getDocs(feeQuery);
   const feeExists = feeRequests.docs.some(snapshot => snapshot.id === feeId);
-  const result = await runTransaction(db, async tx => {
+  const result = await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:JSON.stringify(input),companyId:input.companyId}), async tx => {
     const poRef = doc(db, 'purchaseOrders', input.poId);
     const feeRef = doc(db, 'adjustmentRequests', feeId);
     const itemRefs = input.items.map(row => doc(db, 'items', row.itemId));
@@ -103,7 +108,7 @@ export async function applyOemReceiptInventory(
           baseLots.some(lot => lot.id === row.lot!.id) ? baseLots : [...baseLots, row.lot],
         ));
       }
-      tx.update(itemRefs[index]!, patch);
+      tx.update(itemRefs[index]!, protectItemInventoryPatch(data,patch));
     });
     tx.update(poRef, stripUndefined({ ...input.poPatch, companyId: input.companyId, oemReceiptOperationId: input.operationId }));
     tx.set(feeRef, stripUndefined(input.feeRequest));

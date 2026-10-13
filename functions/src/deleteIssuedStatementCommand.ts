@@ -52,15 +52,41 @@ export async function readStatementDeletion(db:admin.firestore.Firestore,tx:admi
  await readStatementCreation(db,tx,companyId,statementId,before,validatesCreation);
  return before;
 }
+/** 거래처 전체 적용 사슬을 먼저 확인하고 실제 취소 대상이 있을 때만 전체 원장을 읽는다. */
+export async function readDeletionAdvances(db:admin.firestore.Firestore,tx:admin.firestore.Transaction,
+ companyId:'taebaek'|'punghoe',partnerId:string|undefined,statementId:string,prefetched?:admin.firestore.QuerySnapshot){
+ if(!partnerId)return {snapshot:null,affected:[]};
+ const candidates=prefetched??await tx.get(db.collection('issuedStatements').where('partnerId','==',partnerId));
+ const rows=candidates.docs.map(doc=>({...doc.data(),id:doc.id}));
+ const affected=activeAdvanceApplications(rows as any,companyId,partnerId)
+  .filter(row=>row.noncashApplication.kind==='advance-application'&&row.noncashApplication.allocations.some(allocation=>allocation.statementId===statementId
+   ||allocation.source.collection==='issuedStatements'&&allocation.source.id===statementId));
+ const snapshot=affected.length?await readPartnerAdvanceSnapshot(db,tx,companyId,partnerId):null;
+ return {snapshot,affected};
+}
 export async function deleteIssuedStatement(db:admin.firestore.Firestore,companyId:string,actorId:string,input:Input){
  if(!actorId||!input||!/^[A-Za-z0-9_-]{1,150}$/.test(input.operationId)||!/^[A-Za-z0-9_-]{1,160}$/.test(input.statementId)
   ||!/^[A-Za-z0-9_-]{1,100}$/.test(input.releaseId)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0
   ||!/^[a-f0-9]{64}$/.test(input.expectedOriginalHash))throw new HttpsError('invalid-argument','전표 삭제 입력이 잘못되었습니다.');
  const requestHash=statementDeletionHash({companyId,actorId,...input});
  const statementRef=db.collection('issuedStatements').doc(input.statementId),operationRef=db.collection('voucherMutationOperations').doc(input.operationId);
+ // 외부 값은 조회 잠금 순서에만 사용하고, 승인 원문은 같은 거래 안에서 다시 읽는다.
+ const [hintStatement,hintReceipt]=await Promise.all([statementRef.get(),operationRef.get()]);
+ const route=(statement:admin.firestore.DocumentSnapshot,receipt:admin.firestore.DocumentSnapshot)=>{
+  const row=statement.exists?statement.data():receipt.data()?.beforeSnapshot;
+  return row?{companyId:row.companyId??'taebaek',partnerId:row.partnerId??null}:null;
+ };
+ const hint=route(hintStatement,hintReceipt);
  const result=await db.runTransaction(async tx=>{
   const gate=await tx.get(releaseGateRef(db));
-  const [prior,statement]=await Promise.all([tx.get(operationRef),tx.get(statementRef)]);
+  // 거래처 조회를 먼저 끝내 개별 전표 잠금과 조회 잠금 사이의 순환 대기를 막는다.
+  const hintedPartner=hint?.partnerId;
+  const advanceCandidates=typeof hintedPartner==='string'&&hintedPartner&&!hintedPartner.includes('/')
+   ?await tx.get(db.collection('issuedStatements').where('partnerId','==',hintedPartner)):undefined;
+  const statement=await tx.get(statementRef);
+  const prior=await tx.get(operationRef);
+  if(statementDeletionHash(route(statement,prior))!==statementDeletionHash(hint))
+   throw new HttpsError('aborted','전표 거래처 조회 경로가 변경됐습니다. 다시 확인해 주세요.');
   if(prior.exists&&prior.data()!.status==='rejected'){
    const receipt=prior.data()!;
    if(receipt.companyId!==companyId||receipt.createdBy!==actorId||receipt.kind!=='issuedStatements'||receipt.action!=='delete'
@@ -97,10 +123,7 @@ export async function deleteIssuedStatement(db:admin.firestore.Firestore,company
   const links:Link[]=snapshots.filter(snap=>snap.exists).map(snap=>({kind:snap.ref.parent.id as Link['kind'],id:snap.id,data:snap.data()!}));
   const plan=planStatementDeletion(companyId,input.statementId,original,links,state?.exists?state.data()!:null);
   const oemCostInvalidation=await readOemCostInvalidation(db,tx,companyId,input.statementId,'fee-deleted');
-  const advanceSnapshot=partnerId?await readPartnerAdvanceSnapshot(db,tx,companyId as 'taebaek'|'punghoe',partnerId):null;
-  const affected=advanceSnapshot?activeAdvanceApplications(advanceSnapshot.rows.issuedStatements as any,companyId as 'taebaek'|'punghoe',partnerId)
-    .filter(row=>row.noncashApplication.kind==='advance-application'&&row.noncashApplication.allocations.some(allocation=>allocation.statementId===input.statementId
-      ||allocation.source.collection==='issuedStatements'&&allocation.source.id===input.statementId)):[];
+  const {snapshot:advanceSnapshot,affected}=await readDeletionAdvances(db,tx,companyId as 'taebaek'|'punghoe',partnerId,input.statementId,advanceCandidates);
   const cancelDate=[kstDateOf(new Date()),...affected.map(row=>row.tradeDate)].sort().at(-1)!;
   const advanceScope=affected.length?await readPartnerAdvanceWriteScope(db,tx,advanceSnapshot!,cancelDate,input.releaseId,plan.revision):null;
   const advanceMutations=[];

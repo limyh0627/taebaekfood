@@ -51,4 +51,15 @@ describe.skipIf(process.env.PRODUCT_STOCKTAKE_EMULATOR_TEST!=='true')('제품 �
   await login('taebaek');const params=await seed('race'),uid=accounts.get('taebaek')!.uid,request=productStocktakeRequest(submitProductStocktakeAttempt(beginProductStocktakeAttempt({...params,uid})));
   const results=await Promise.all([stocktakeByQty({...request,request,mode:'apply'}),stocktakeByQty({...request,request,mode:'apply'})]);expect(results.every(result=>result.ok)).toBe(true);const after=await read(params.itemId);expect(after.stock).toBe(5);expect(after.stocktakeAnchors).toHaveLength(1);
  },60000);
+ it('양사 신규 이월은 실제 품목의 물질만 남기고 기존 로트와 단가를 보존한다',async()=>{
+  for(const companyId of ['taebaek','punghoe'] as const){
+   await login(companyId);const params=await seed('material-'+companyId,companyId);
+   await adminDb.doc('items/'+params.itemId).update({rawMaterialName:'볶음참깨',costPrice:12345});
+   const before=await read(params.itemId),uid=accounts.get(companyId)!.uid;
+   const request=productStocktakeRequest(submitProductStocktakeAttempt(beginProductStocktakeAttempt({...params,companyId,uid})));
+   expect((await stocktakeByQty({...request,request,mode:'apply'})).ok).toBe(true);
+   const after=await read(params.itemId);expect(after.lots.find((lot:any)=>lot.supplierName==='이월')).toMatchObject({material:'볶음참깨',qtyRemaining:2,kgRemaining:2});
+   expect(after.lots[0]).toEqual(before.lots[0]);expect(after.costPrice).toBe(12345);expect(after.stock).toBe(5);expect(after.stocktakeAnchors[0].request).toEqual(request);
+  }
+ },60000);
 });

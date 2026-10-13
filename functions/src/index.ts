@@ -343,3 +343,4 @@ export { cancelPendingReturnCommand } from './cancelPendingReturnCommand';
 export { recordTaxIssueCommand } from './taxIssueCommand';
 
 export { recoverOrderInventoryLockCommand } from './orderLockRecovery';
+export { retireOrderRequestCommand, claimRetiredOrderInventoryOperationCommand } from './orderRequestRetirement';

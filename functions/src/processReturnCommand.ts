@@ -1,3 +1,4 @@
+import { advanceInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
 import { returnBusinessText } from './shared/returnBusinessEvidence';
 import { readPurchaseUnitSnapshot, returnKgFromPurchaseSnapshot } from './shared/purchaseUnit';
 import { isRawPurchaseItem } from './shared/purchaseCost';
@@ -348,8 +349,8 @@ export async function processGeneralStockReturn(
     if (advanceScope) writePartnerAdvanceMutations(tx, advanceSnapshot, advanceScope, advanceMutations, { writePartnerRevision: false });
     writeVoucherCounter(tx, counterSnap, sequence, sequence.last + 1);
     for (const row of prepared) {
-      tx.update(db.collection('items').doc(row.itemId), { stock: row.nextStock,
-        ...('lots' in row ? { lots: JSON.parse(JSON.stringify(row.lots)) } : {}) });
+      tx.update(db.collection('items').doc(row.itemId), advanceInventoryWriterProtocol(itemDocs.get(row.itemId),{ stock: row.nextStock,
+        ...('lots' in row ? { lots: JSON.parse(JSON.stringify(row.lots)) } : {}) }));
       if ('receipt' in row) tx.create(db.collection('itemReceipts').doc(row.receiptId), row.receipt);
     }
     for (const row of rawPrepared) writeReturnRawStock(tx, row);

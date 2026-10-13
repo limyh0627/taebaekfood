@@ -1,3 +1,4 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
 import { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
 export { prepareRawCommand } from '../../../functions/src/shared/rawInventoryPrepare';
 import { normalizeRawInventoryState, normalizeRawMovement, toLedgerDoc, type LegacyLedgerFields } from '../../../functions/src/shared/rawInventoryDocument';
@@ -30,6 +31,7 @@ import {
 } from '../rawInventoryCore';
 import { companyOf, type RawMaterialLot } from '../types';
 import { rawMirrorMatches } from '../rawMirror';
+import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../inventoryWriterProtocol';
 
 /** Firestore 는 `undefined` 필드를 거부한다 — 로트의 미입력 옵션들이 여기 걸린다. */
 const stripUndefined = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -94,16 +96,16 @@ export function writePreparedRawCommand(
   const original = originalSnap?.exists() ? normalizeRawMovement(originalSnap.data()) : null;
   const 원장전용 = command.kind === 'ledger-consume' || (command.kind === 'reverse' && original?.kind === 'ledger-consume');
     //  ③ 상태·이력·품목을 **같은 트랜잭션**에 쓴다. 한쪽만 남을 수 없다.
-    tx.set(read.stateRef, stripUndefined(result.state));
-    tx.set(read.movementRef, stripUndefined(toLedgerDoc(result.movement, options.legacy)));
-    if (result.guard) tx.set(read.guardRef, stripUndefined(result.guard));
+    tx.set(read.stateRef, protectInventoryWriterPatch(read.stateSnap.exists()?read.stateSnap.data():undefined,stripUndefined(result.state)));
+    tx.set(read.movementRef, protectInventoryWriterPatch(read.movementSnap.exists()?read.movementSnap.data():undefined,stripUndefined(toLedgerDoc(result.movement, options.legacy))));
+    if (result.guard) tx.set(read.guardRef, protectInventoryWriterPatch(read.guardSnap?.exists()?read.guardSnap.data():undefined,stripUndefined(result.guard)));
     if (options.mirrorToItem !== false && !원장전용 && read.itemSnap.exists()) {
       //  화면이 보는 `lots` 는 활성·소진이 한 배열이다. 활성을 앞에 둬야 FIFO 순서가 산다.
       const lots = [...result.state.activeLots, ...result.state.recentDepletedLots];
       const patch: Record<string, unknown> = { lots: stripUndefined(lots) };
       //  **재고 = 로트 합계.** 예외는 없다(2026-09-16 `lotsAreTotal` 을 걷어냈다).
       patch.stock = result.state.stockKg;
-      tx.update(read.itemRef, patch);
+      tx.update(read.itemRef, protectItemInventoryPatch(read.itemSnap.data(),patch));
     }
 }
 
@@ -117,6 +119,7 @@ export async function executeRawInventoryCommand(
   command: RawInventoryCommand,
   options: RawCommandOptions = {},
 ): Promise<RawApplyResult> {
+  command=JSON.parse(JSON.stringify(command));
   const database = options.db ?? (await import('../firebase')).db;
   //  ★ 트랜잭션 밖에서 딱 한 번 정한다.
   const now = options.now ?? new Date().toISOString();
@@ -124,7 +127,7 @@ export async function executeRawInventoryCommand(
   const newLotId = options.newLotId ?? `lot-${opId}`;
   const carryOverLotId = options.carryOverLotId ?? `carry-${opId}`;
 
-  return runTransaction(database, async tx => {
+  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify(command),companyId:command.companyId}), async tx => {
     const read = await readRawCommandInTransaction(tx, database, command);
     const result = prepareRawCommand(command, read, { ...options, now, newLotId, carryOverLotId });
     if (result.status === 'applied') writePreparedRawCommand(tx, command, read, result, options);
@@ -160,7 +163,7 @@ export async function updateRawInventoryLotMetadata(input: {
   const database = input.db ?? (await import('../firebase')).db;
   const stateRef = doc(database, COL.rawInventories, inventoryDocId(input.companyId, input.rawItemId));
   const itemRef = doc(database, COL.items, input.rawItemId);
-  return runTransaction(database, async tx => {
+  return runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:JSON.stringify(input),companyId:input.companyId}), async tx => {
     const [stateSnap, itemSnap] = await Promise.all([tx.get(stateRef), tx.get(itemRef)]);
     if (!stateSnap.exists()) throw new Error(`이관 안 된 원료다: ${input.companyId}/${input.rawItemId}`);
     if (!itemSnap.exists()) throw new Error(`원료 품목을 찾을 수 없다: ${input.rawItemId}`);
@@ -187,8 +190,8 @@ export async function updateRawInventoryLotMetadata(input: {
 
     const activeLots = after.filter(lot => lot.status !== 'depleted' && Number(lot.kgRemaining) !== 0);
     const recentDepletedLots = after.filter(lot => lot.status === 'depleted' || Number(lot.kgRemaining) === 0);
-    tx.set(stateRef, stripUndefined({ ...state, activeLots, recentDepletedLots }));
-    tx.update(itemRef, { lots: after });
+    tx.set(stateRef, protectInventoryWriterPatch(stateSnap.data(),stripUndefined({ ...state, activeLots, recentDepletedLots })));
+    tx.update(itemRef, protectItemInventoryPatch(itemSnap.data(),{ lots: after }));
     return after;
   });
 }

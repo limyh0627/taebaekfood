@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {createHash} from 'node:crypto';
+import {verifyTradeServerRejection} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement, { VoucherDateChip } from './TradeStatement';
 import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
@@ -105,6 +107,41 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(window, 'alert').mockImplementation(() => {});
   vi.mocked(appConfirm).mockResolvedValue(true);
+});
+
+it('수량 0은 원문 저장과 서버 요청 전에 행·품목을 안내하고 수정 후 저장된다', async () => {
+  const { onApplyStatement } = setup(undefined, undefined, {
+    composerOnly: true, pendingInvoice: { ...pendingInvoice, items: [{ ...pendingInvoice.items[0], qty: 0 }] },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  expect(window.alert).toHaveBeenCalledWith(expect.stringContaining(`1행 · ${item.name}`));
+  expect(onApplyStatement).not.toHaveBeenCalled();
+  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();
+  fireEvent.change(screen.getByLabelText('1행 거래 수량'), { target: { value: '2' } });
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(onApplyStatement).toHaveBeenCalledOnce());
+});
+
+it('확인되지 않은 원문 안내는 모달 안에 한 번 표시되고 재시도·닫기가 가능하다', async () => {
+  const apply = vi.fn().mockRejectedValue(new Error('응답 유실'));
+  setup(undefined, undefined, { composerOnly: true, onApplyStatement: apply });
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(apply).toHaveBeenCalledOnce());
+  const dialog = screen.getByRole('dialog', { name: '매입 전표 작성' });
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  const banner = within(dialog).getByRole('status');
+  const retry = within(banner).getByRole('button', { name: '이전 전표 재시도' });
+  await waitFor(() => expect(retry).not.toBeDisabled());
+  expect(within(dialog).getByLabelText('1행 거래 수량')).toBeDisabled();
+  fireEvent.click(retry);
+  await waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
+  expect(apply.mock.calls[1][0]).toEqual(apply.mock.calls[0][0]);
+  const close = within(banner).getByRole('button', { name: '작성창 닫기' });
+  await waitFor(() => expect(close).not.toBeDisabled());
+  fireEvent.click(close);
+  expect(screen.queryByRole('dialog', { name: '매입 전표 작성' })).not.toBeInTheDocument();
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).not.toBeNull();
 });
 
 describe('전표 목록 화면 구성', () => {
@@ -443,44 +480,114 @@ it('최초 명확한 송신 전 거절만 원문 대기를 해제해 입력 수�
  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();
 });
 
-it('신규 원료 매입은 거래2포/확인40kg와 원가1000을 저장하고 unknown 재열기에도 원문을 보존한다', async () => {
+it.each(['exact','v1','other','changed-tab'])('응답 유실 재시도 %s 거절은 검증된 원문만 입력 수정 가능하다',async kind=>{
+ const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실'));
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const key='trade-statement-issue:taebaek:test-uid',first=localStorage.getItem(key)!;
+ apply.mockImplementationOnce(async draft=>{
+  const request={operationId:draft.command.operationId,statement:{...draft.statement,createdBy:'관리자'},orderIds:draft.command.orderIds,poIds:draft.poIds,
+   costUpdates:draft.costUpdates.map((c:{beforeCost?:number;sourceLineIndex?:number})=>({...c,beforeCost:c.beforeCost??0,sourceLineIndex:c.sourceLineIndex??-1})),
+   ...(draft.newPoItems.length?{newPo:{items:draft.newPoItems}}:{})};
+  const requestText=JSON.stringify(request),error=Object.assign(new Error('확정 업무거절'),{details:{version:kind==='v1'?1:2,operationStatus:'rejected',financialWrites:false,companyId:'taebaek',actorId:'test-uid',operationId:request.operationId,statementId:request.statement.id,requestText,requestHash:createHash('sha256').update(requestText).digest('hex'),receiptRevision:1}});
+  if(kind==='other')request.statement={...request.statement,totalAmount:request.statement.totalAmount+1};
+  if(kind!=='v1')await verifyTradeServerRejection(error,request,requestText,'taebaek','test-uid');
+  if(kind==='changed-tab')localStorage.setItem(key,'다른 창 원문');throw error;
+ });
+ fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
+ if(kind==='exact'){await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());expect(localStorage.getItem(key)).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();}
+ else{await waitFor(()=>expect(screen.getByRole('button',{name:'이전 전표 재시도'})).not.toBeDisabled());expect(localStorage.getItem(key)).toBe(kind==='changed-tab'?'다른 창 원문':first);}
+});
+
+it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2000을 저장하고 unknown 재열기에도 원문을 보존한다', async () => {
  const raw: Item = {...item,id:'raw-20kg',name:'원료 20kg포',spec:'20kg',type:'raw',subtype:'벌크',unit:'포',cost:80};
- const rawPrice: PartnerItem = {...price,id:'raw-price',itemId:raw.id,price:22000};
+ const rawPrice: PartnerItem = {...price,id:'raw-price',itemId:raw.id,price:44000};
  const callback = vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>()
    .mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValueOnce('duplicate');
  const props={orders:[],allItems:[raw],partners:[partner],partnerItems:[rawPrice],issuedStatements:[],composerOnly:true,
- pendingInvoice:{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:22000}]},onApplyStatement:callback};
+ pendingInvoice:{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:44000}]},onApplyStatement:callback};
  const view=render(<TradeStatement {...props}/>);
- fireEvent.change(await screen.findByLabelText('1행 원가 기준 수량 kg'),{target:{value:'40'}});
- expect(screen.getByText('거래 수량 (포)')).toBeInTheDocument();
+ fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});
+ expect(screen.queryByText(/^거래 수량 \(/)).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(callback).toHaveBeenCalledOnce());
  const sent=structuredClone(callback.mock.calls[0][0]);
- expect(sent.statement.items[0]).toMatchObject({qty:2,price:22000,supply:40000,total:44000,purchaseQuantityKg:40});
- expect(sent.costUpdates).toEqual([{itemId:raw.id,price:1000,beforeCost:80,sourceLineIndex:0}]);
- expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'포'});
+ expect(sent.statement.items[0]).toMatchObject({qty:2,price:44000,supply:80000,total:88000,purchaseUnitId:'manual-kg',purchaseUnit:'20kg',purchaseQty:2,unitKg:20,inventoryQty:40});
+ expect(sent.costUpdates).toEqual([{itemId:raw.id,price:2000,beforeCost:80,sourceLineIndex:0}]);
+ expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'20kg',purchaseUnitId:'manual-kg',unitKg:20,inventoryQty:40});
  view.unmount();render(<TradeStatement {...props}/>);
  fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
  expect(callback.mock.calls[1][0]).toEqual(sent);
 });
 
 
-it('신규 벌크 매입은 kg를 확인하지 않아도 정상 발행하며 원가 갱신만 하지 않는다', async () => {
+it('신규 벌크 매입의 기본kg는 snapshot을 저장하고 면세단가44000을kg원가로 사용한다', async () => {
  const raw: Item = {...item,id:'raw-unknown-kg',name:'원료 20kg포',spec:'20kg',type:'raw',subtype:'벌크',unit:'포',cost:80};
- const rawPrice={...price,itemId:raw.id,price:22000};
+ const rawPrice:PartnerItem={...price,itemId:raw.id,price:44000,taxType:'면세'};
  const apply=vi.fn<NonNullable<React.ComponentProps<typeof TradeStatement>['onApplyStatement']>>().mockResolvedValue('applied');
  const updateCost=vi.fn(),upsertPrice=vi.fn();
  render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[rawPrice]} issuedStatements={[]}
-   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:22000}]}} onApplyStatement={apply} onUpdateItemCost={updateCost} onUpsertPartnerItem={upsertPrice} composerOnly/>);
- expect(await screen.findByLabelText('1행 원가 기준 수량 kg')).toHaveValue('');
+   pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:raw.spec!,qty:2,price:44000}]}} onApplyStatement={apply} onUpdateItemCost={updateCost} onUpsertPartnerItem={upsertPrice} composerOnly/>);
+ expect(await screen.findByLabelText('1행 매입단위 숫자')).toHaveValue('1');expect(screen.queryByLabelText('1행 원가 기준 수량 kg')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'저장'}));
  await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
  const sent=apply.mock.calls[0][0];
- expect(sent.costUpdates).toEqual([]);
- expect(sent.statement.items[0]).toMatchObject({qty:2,price:22000,supply:40000,total:44000});
+ expect(sent.costUpdates).toEqual([{itemId:raw.id,price:44000,beforeCost:80,sourceLineIndex:0}]);
+ expect(sent.statement.items[0]).toMatchObject({qty:2,price:44000,supply:88000,total:88000,purchaseUnitId:'manual-kg',purchaseUnit:'kg',unitKg:1,inventoryQty:2});
  expect(sent.statement.items[0].purchaseQuantityKg).toBeUndefined();
- expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'포'});
- await waitFor(()=>expect(upsertPrice).toHaveBeenCalled());expect(upsertPrice.mock.calls[0][0].price).toBe(22000);
- expect(updateCost).not.toHaveBeenCalled();
+ expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'kg',purchaseUnitId:'manual-kg',unitKg:1,inventoryQty:2});
+ await waitFor(()=>expect(upsertPrice).toHaveBeenCalled());expect(upsertPrice.mock.calls[0][0].price).toBe(44000);
+ expect(updateCost).toHaveBeenCalledWith(raw.id,44000);
+});
+
+it('실제매입20kg·수량2·면세44000 단가는 입고40kg와kg원가2200을 같은전표에 보존한다',async()=>{
+ const raw={...item,id:'manual-raw',name:'들깨',type:'raw',subtype:'벌크',unit:'포',cost:80} as Item,apply=vi.fn().mockResolvedValue('applied');
+ render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});expect(screen.queryByText(/단위당/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const sent=apply.mock.calls[0][0];expect(sent.statement.items[0]).toMatchObject({qty:2,price:44000,supply:88000,tax:0,inventoryQty:40,purchaseUnit:'20kg'});expect(sent.statement.items[0].purchaseQuantityKg).toBeUndefined();expect(sent.costUpdates).toEqual([{itemId:raw.id,price:2200,beforeCost:80,sourceLineIndex:0}]);
+});
+it('실제숫자20에서단위만g로바꾸면숫자는20이며20g·수량2스냅샷.04kg를발행한다',async()=>{
+ const raw={...item,id:'grams-raw',name:'소량들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onUpsertPartnerItem={upsert}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44}]}}/>);
+ const amount=await screen.findByLabelText('1행 매입단위 숫자'),measure=screen.getByLabelText('1행 매입단위 단위');expect(amount).toHaveValue('1');expect(measure).toHaveValue('kg');fireEvent.change(amount,{target:{value:'20'}});fireEvent.change(measure,{target:{value:'g'}});expect(amount).toHaveValue('20');expect(measure).toHaveValue('g');for(const text of ['원료 매입 설정','단위당','금액은 거래 수량'])expect(screen.queryByText(text,{exact:false})).not.toBeInTheDocument();expect(screen.queryByText(/^거래 수량 \(/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,price:44,purchaseUnit:'20g',unitKg:.02,inventoryQty:.04,total:88});expect(apply.mock.calls[0][0].costUpdates).toEqual([{itemId:raw.id,price:2200,beforeCost:0,sourceLineIndex:0}]);await waitFor(()=>expect(upsert).toHaveBeenCalledOnce());expect(upsert.mock.calls[0][0].price).toBe(2200);
+});
+it('숫자빈값뒤단위g/거래수량3을바꿔도자동1로살아나지않고폼보존·저장거절',async()=>{
+ const raw={...item,id:'blank-grams',name:'소량참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44}]}}/>);const amount=await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(amount,{target:{value:''}});fireEvent.change(screen.getByLabelText('1행 매입단위 단위'),{target:{value:'g'}});fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'3'}});expect(amount).toHaveValue('');expect(screen.getByLabelText('1행 매입단위 단위')).toHaveValue('g');fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(amount).toHaveValue('');
+});
+it.each(['','0','.'])('잘못된단위 %s는 실제저장콜백0·입력보존',async value=>{
+ const raw={...item,id:'invalid-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ const input=await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(input,{target:{value}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(input).toHaveValue(value);
+});
+it.each([['unit','0.0001'],['qty','0.0001'],['unit','9'.repeat(308)],['qty','9'.repeat(308)],['qty','Infinity']])('작은중량·overflow 실제 %s 입력은 순차편집중 폼을보존하고 저장만거절',async(field,value)=>{
+ const raw={...item,id:'tiny-raw',name:'참깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn();render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id}]} issuedStatements={[]} composerOnly onApplyStatement={apply}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ const unit=await screen.findByLabelText('1행 매입단위 숫자'),qty=screen.getByLabelText('1행 거래 수량');if(field==='unit')fireEvent.change(qty,{target:{value:'1'}});else if(value.length>100)fireEvent.change(unit,{target:{value:'2'}});
+ const input=field==='unit'?unit:qty;for(const partial of ['',value.slice(0,1),value.slice(0,3),value])expect(()=>fireEvent.change(input,{target:{value:partial}})).not.toThrow();expect(input).toHaveValue(value);expect(screen.getByRole('button',{name:'저장'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(apply).not.toHaveBeenCalled();expect(input).toHaveValue(value);
+});
+
+it('계정만 변경하면 직접입력 단위snapshot·거래수량을 유지한다',async()=>{
+ const raw={...item,id:'account-raw',name:'들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied');
+ render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,taxType:'면세',price:44000}]} accountCodes={[{id:'500',code:'500',name:'원재료비'},{id:'505',code:'505',name:'부재료비'}] as any} issuedStatements={[]} composerOnly onApplyStatement={apply}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});const quantity=screen.getByLabelText('1행 거래 수량'),select=quantity.closest('tr')!.querySelector('select')!;fireEvent.change(select,{target:{value:'505'}});expect(screen.getByLabelText('1행 매입단위 숫자')).toHaveValue('20');expect(screen.queryByText(/단위당/)).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,purchaseUnitId:'manual-kg',purchaseUnit:'20kg',purchaseQty:2,unitKg:20,inventoryQty:40,accountCode:'505'});
+});
+
+it('실제20kg발행은 거래처kg단가2200을 저장하고 다음 신규kg품목선택에2200을 넣는다',async()=>{
+ const raw={...item,id:'next-raw',name:'다음들깨',type:'raw',subtype:'벌크',unit:'포',cost:80} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn().mockResolvedValue(undefined);
+ const base={orders:[],allItems:[raw],partners:[partner],issuedStatements:[],composerOnly:true,onApplyStatement:apply,onUpsertPartnerItem:upsert};
+ const view=render(<TradeStatement {...base} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ fireEvent.change(await screen.findByLabelText('1행 매입단위 숫자'),{target:{value:'20'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(upsert).toHaveBeenCalledOnce());const savedPartnerPrice=upsert.mock.calls[0][0];expect(savedPartnerPrice).toMatchObject({itemId:raw.id,price:2200,taxType:'면세'});expect(apply.mock.calls[0][0].statement.items[0]).toMatchObject({qty:2,price:44000,inventoryQty:40});view.unmount();
+ render(<TradeStatement {...base} partnerItems={[savedPartnerPrice]} pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:'',name:'',spec:'',qty:1,price:0}]}}/>);
+ const search=await screen.findByPlaceholderText('제품명...');fireEvent.focus(search);fireEvent.change(search,{target:{value:raw.name}});fireEvent.mouseDown(await screen.findByText(raw.name));
+ expect(screen.getByLabelText('1행 매입단위 숫자')).toHaveValue('1');const quantity=screen.getByLabelText('1행 거래 수량');expect(quantity).toHaveValue('1');expect(quantity.closest('tr')!.querySelector('td:nth-child(5) input')).toHaveValue('2200');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));expect(apply.mock.calls[1][0].statement.items[0]).toMatchObject({qty:1,price:2200,purchaseUnit:'kg',unitKg:1,inventoryQty:1});
+});
+it('실제같은원료 kg/20kg 혼합발행은거래처단가upsert0이며 원가합산만보존한다',async()=>{
+ const raw={...item,id:'mixed-raw',name:'혼합들깨',type:'raw',subtype:'벌크',unit:'kg'} as Item,apply=vi.fn().mockResolvedValue('applied'),upsert=vi.fn();
+ render(<TradeStatement orders={[]} allItems={[raw]} partners={[partner]} partnerItems={[{...price,itemId:raw.id,price:44000,taxType:'면세'}]} issuedStatements={[]} composerOnly onApplyStatement={apply} onUpsertPartnerItem={upsert}
+  pendingInvoice={{partnerId:partner.id,partnerName:partner.name,items:[{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000},{itemId:raw.id,name:raw.name,spec:'',qty:2,price:44000}]}}/>);
+ await screen.findByLabelText('1행 매입단위 숫자');fireEvent.change(screen.getByLabelText('2행 매입단위 숫자'),{target:{value:'20'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const sent=apply.mock.calls[0][0];expect(sent.statement.items.map((row:any)=>row.price)).toEqual([44000,44000]);expect(sent.statement.items.map((row:any)=>row.inventoryQty)).toEqual([2,40]);expect(sent.costUpdates).toEqual([{itemId:raw.id,price:4190,beforeCost:0,sourceLineIndex:0,sourceLineIndices:[0,1]}]);expect(upsert).not.toHaveBeenCalled();
 });
 
 

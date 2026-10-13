@@ -128,6 +128,7 @@ describe('receiveOemBatch (가공입고)', () => {
     oemSent: [{ material: '참깨', kg: 1000 }], status: 'invoiced',
     itemId: '', itemName: '', quantity: 0, createdAt: '',
   };
+  it('없는 벌크 홀더를 뒤에서 발견해도 완제품 또는 원료를 먼저 쓰지 않는다',async()=>{const {deps,updates,rawCalls}=makeDeps();await expect(createOemEngine(deps as any).receiveOemBatch({po:openPo,returns:[{itemId:'box10',qty:1}],bulk:[{material:'없는원료',kg:100}],date:'2026-10-13'})).rejects.toThrow('홀더');expect(updates).toEqual([]);expect(rawCalls).toEqual([]);});
 
   it('완제품 재고 +N, 배치 닫힘, 로스 자동 — 전표는 안 끊는다', async () => {
     const { deps, updates, adds } = makeDeps();

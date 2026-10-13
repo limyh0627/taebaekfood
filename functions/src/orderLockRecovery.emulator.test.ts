@@ -41,7 +41,7 @@ describe.skipIf(!available)('같은 회사 사용자 원자 취소 잠금 복구
   expect(await recoverOrderInventoryLock(db,'taebaek','actor',{...f.input,action:'inspect'})).toMatchObject({status:'ready',inventoryApplied:'none',orderId:f.orderId,failedOperationId:f.failedOperationId});
   expect((await orderRef.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
   expect(await recoverOrderInventoryLock(db,'taebaek','actor',f.input)).toMatchObject({status:'recovered',inventoryApplied:'none'});
-  const current=await orderRef.get();expect(current.data()).toEqual({...before.data(),inventoryOperation:null});
+  const current=await orderRef.get();expect(current.data()).toEqual({...before.data(),inventoryOperation:null,inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
   expect(await recoverOrderInventoryLock(db,'taebaek','actor',f.input)).toMatchObject({status:'duplicate',inventoryApplied:'none'});
   expect((await orderRef.get()).updateTime!.isEqual(current.updateTime!)).toBe(true);
   for(const [index,snap] of (await Promise.all([itemRef.get(),rawRef.get(),ledgerRef.get()])).entries())expect(snap.updateTime!.isEqual(original[index].updateTime!)).toBe(true);

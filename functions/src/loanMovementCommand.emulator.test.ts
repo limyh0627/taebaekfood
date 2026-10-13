@@ -8,9 +8,10 @@ vi.mock('firebase-functions/v2/https', () => ({
 }));
 
 import { recordLoanMovement, recordLoanMovementCommand } from './loanMovementCommand';
+import {statementIssueRef} from './statementIssueReceipt';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
-const projectId = 'demo-taebaekfood-local';
+const available = ['127.0.0.1:8082','127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST ?? '');
+const projectId = 'demo-loan-'+randomUUID().slice(0,8);
 const runId = `loan-${randomUUID()}`;
 const releaseId = runId;
 const date = '2026-10-03';
@@ -61,6 +62,22 @@ describe.skipIf(!available)('loan movement actual Admin SDK transaction', () => 
     await clearFixture();
     await app.delete();
   });
+  it.each(['prepared','rejected','applied','foreign'])('다른 전표 %s claim은 신규 대출·번호·계약 쓰기를 막고 다른 ID는 정상 처리한다',async mode=>{
+    await seed();const input=request('claim-'+mode,'상환',100),owner=mode==='foreign'?'punghoe':'taebaek';
+    const claim=statementIssueRef(db,{companyId:owner,operationId:input.operationId+':ISSUE'});
+    await put('statementIssueOperations',claim.id,{companyId:owner,statementId:input.operationId,status:mode==='foreign'?'applied':mode,actorId:'다른담당'});
+    const before=await Promise.all([ref('loanContracts',loanId).get(),ref('appMeta',counterId).get(),claim.get()]);
+    await expect(issue(input)).rejects.toThrow('최초 요청');expect((await ref('cashEntries',input.operationId).get()).exists).toBe(false);expect((await ref('loanMovementOperations',input.operationId).get()).exists).toBe(false);
+    const after=await Promise.all([ref('loanContracts',loanId).get(),ref('appMeta',counterId).get(),claim.get()]);after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+    await ref('appMeta','releaseCutover').update({statementIssueProtocol:{generation:'잘못된-none-세대'}});
+    expect((await issue(request('normal-'+mode,'상환',100))).status).toBe('applied');
+  });
+  it('대출 자기 원문 duplicate는 뒤늦은 타회사 일반 전표 claim으로 막지 않는다',async()=>{
+    await seed();const input=request('own-ack','상환',100),first=await issue(input),claim=statementIssueRef(db,{companyId:'punghoe',operationId:input.operationId+':ISSUE'});
+    await put('statementIssueOperations',claim.id,{status:'prepared',actorId:'다른담당'});
+    const before=await Promise.all([ref('loanContracts',loanId).get(),ref('appMeta',counterId).get(),ref('cashEntries',input.operationId).get(),claim.get()]);
+    expect(await issue(input)).toEqual({...first,status:'duplicate'});const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+  });
 
   it('checks callable auth and fails closed without cutover, counter or current revision', async () => {
     const callable = recordLoanMovementCommand as unknown as (request: unknown) => Promise<unknown>;
@@ -99,10 +116,17 @@ describe.skipIf(!available)('loan movement actual Admin SDK transaction', () => 
     await ref('appMeta', counterId).delete(); // simulate response lost after commit and unavailable counter
     expect(await issue(repay)).toMatchObject({ status: 'duplicate', docNo: first.docNo });
     await ref('appMeta', 'releaseCutover').update({ status: 'paused' });
-    await expect(issue(repay)).rejects.toThrow('활성화');
+    expect(await issue(repay)).toMatchObject({status:'duplicate',docNo:first.docNo});
     await ref('appMeta', 'releaseCutover').update({ status: 'active' });
     await expect(issue({ ...repay, interest: 51 })).rejects.toThrow('다릅니다');
   }, 30_000);
+  it('이전 release·발행 가능일 변경 뒤 대출 정확 ACK는 계약·번호·원문을 쓰지 않는다',async()=>{
+    await seed();const input=request('old-release','상환',100),first=await issue(input);
+    await ref('appMeta','releaseCutover').update({releaseId:'new-release',voucherNotBefore:{taebaek:'2099-01-01'}});
+    const before=await Promise.all([ref('loanContracts',loanId).get(),ref('appMeta',counterId).get(),ref('cashEntries',input.operationId).get(),ref('loanMovementOperations',input.operationId).get()]);
+    expect(await issue(input)).toEqual({...first,status:'duplicate'});const after=await Promise.all(before.map(snap=>snap.ref.get()));after.forEach((snap,index)=>expect(snap.updateTime!.isEqual(before[index].updateTime!)).toBe(true));
+    await expect(issue(request('new-old-release','상환',100))).rejects.toThrow('활성화');
+  });
 
   it('keeps interest-only repayment principal unchanged and rejects over-repayment', async () => {
     await seed();

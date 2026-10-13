@@ -8,6 +8,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { planLoanMovement, type LoanCash, type LoanSnapshot } from './loanMovementPlan';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
+import {readStatementTargetClaims,assertStatementTargetUnclaimed} from './statementIssueReceipt';
 
 type Row = Record<string, any>;
 export type LoanMovementInput = {
@@ -51,11 +52,14 @@ async function loanMovementInTransaction(db: admin.firestore.Firestore, tx: admi
   const counter = db.collection('appMeta').doc(voucherSequenceKey(companyId, input.tradeDate));
   const cutover = db.collection('appMeta').doc(`loanMovementCutover_${companyId}`);
   const releaseGate = releaseGateRef(db);
+    const releaseSnap=await tx.get(releaseGate);
+    const movementRows=await tx.get(db.collection('cashEntries').where('loanId','==',input.loanId));
+    const creationAudit=await tx.get(db.collection('voucherMutationOperations').where('cashEntryIds','array-contains',input.operationId));
+    const counterSnap=await tx.get(counter);
+    const targetClaims=await readStatementTargetClaims(db,tx,companyId,input.operationId);
     const operationSnap = await tx.get(operation);
-    const [cashSnap, otherSnap, contractSnap, accountSnap, counterSnap, cutoverSnap, movementRows, releaseSnap] = await Promise.all([
-      tx.get(cash), tx.get(other), tx.get(contract), tx.get(account), tx.get(counter), tx.get(cutover),
-      tx.get(db.collection('cashEntries').where('loanId', '==', input.loanId)),
-      tx.get(releaseGate),
+    const [cashSnap, otherSnap, contractSnap, accountSnap, cutoverSnap] = await Promise.all([
+      tx.get(cash), tx.get(other), tx.get(contract), tx.get(account), tx.get(cutover),
     ]);
     const prior = operationSnap.data();
     if (operationSnap.exists && prior?.status === 'rejected') {
@@ -67,11 +71,9 @@ async function loanMovementInTransaction(db: admin.firestore.Firestore, tx: admi
     }
     let writesStarted = false;
     try {
-    assertReleaseActive(releaseSnap, input.releaseId);
-    assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate);
     if (operationSnap.exists) {
       const prior = operationSnap.data()!, stored = cashSnap.data();
-      if (prior.companyId === companyId && prior.requestHash === requestHash && (!cashSnap.exists || (stored?.mutationRevision ?? 0) > 0)) {
+      if (creationAudit.docs.length && prior.companyId === companyId && prior.requestHash === requestHash && (!cashSnap.exists || (stored?.mutationRevision ?? 0) > 0)) {
         const original = await readCashCreationMutation(db, tx, companyId, input.operationId, cashSnap, row => {
           const business = { companyId: row.companyId, loanId: row.loanId, date: row.date,
             cashAccountId: row.cashAccountId, dir: row.dir, amount: row.amount,
@@ -90,6 +92,9 @@ async function loanMovementInTransaction(db: admin.firestore.Firestore, tx: admi
         fail('기존 대출 작업과 요청이 다릅니다.');
       return { status: 'duplicate' as const, id: input.operationId, docNo: prior.docNo, balanceAfter: prior.balanceAfter };
     }
+    assertReleaseActive(releaseSnap, input.releaseId);
+    assertVoucherDateAllowed(releaseSnap, companyId, input.tradeDate);
+    assertStatementTargetUnclaimed(targetClaims);
     if (cashSnap.exists || otherSnap.exists) fail('작업 ID가 이미 사용 중입니다.');
     if (!cutoverSnap.exists || cutoverSnap.data()?.companyId !== companyId
       || cutoverSnap.data()?.enabled !== true || cutoverSnap.data()?.legacyWritersBlocked !== true
@@ -174,6 +179,8 @@ export async function recordScheduledLoanMovement(db: admin.firestore.Firestore,
   const operationId = recurringId(templateId, yearMonth);
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(operationId) || !['taebaek', 'punghoe'].includes(companyId)) bad('정기 대출 양식의 회사·작업이 잘못되었습니다.');
   return db.runTransaction<{ skip: string } | { outcome: Awaited<ReturnType<typeof loanMovementInTransaction>>; input: LoanMovementInput }>(async tx => {
+    // 정기 발행도 계약·개별 영수증을 먼저 잡으면 일반 발행의 gate 대기와 순환할 수 있다.
+    await tx.get(releaseGateRef(db));
     const operation = await tx.get(db.collection('loanMovementOperations').doc(operationId));
     if (operation.exists) {
       const prior = operation.data()!, saved = prior.scheduledRequest as ScheduledRequest | undefined;

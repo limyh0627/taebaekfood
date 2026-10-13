@@ -1,4 +1,4 @@
-import { readPurchaseUnitSnapshot, type PurchaseUnitSnapshot } from './purchaseUnit';
+import { readPurchaseUnitSnapshot, MANUAL_PURCHASE_UNIT_ID, type PurchaseUnitSnapshot } from './purchaseUnit';
 import type { PartnerItem, Item } from './types';
 import { costFromPurchaseLine } from './lineAmount';
 import { isRawPurchaseItem, costFromPurchaseLines } from '../../functions/src/shared/purchaseCost';
@@ -81,6 +81,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
   const book = partnerItems.filter(p => p.Direction === dir);
   const groupedRaw = new Set<string>();
   const ambiguousPrices = new Set<string>();
+  const emittedManualPrices = new Set<string>();
   if (type === '매입') {
     for (const product of items.filter(isRawPurchaseItem)) {
       const indexes = lines.map((line,index)=>line.itemId===product.id?index:-1).filter(index=>index>=0);
@@ -90,7 +91,11 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
       try { snapshots=group.map(readPurchaseUnitSnapshot); } catch { /* 불명확 원가는 남기고 거래 전표 금액은 유지한다. */ }
       if (!group.some(line=>line.purchaseUnitId!==undefined)) continue;
       groupedRaw.add(product.id);
-      if (new Set(snapshots.map(snapshot=>snapshot?.purchaseUnitId)).size>1 || snapshots.length!==group.length || snapshots.some(snapshot=>!snapshot))
+      if (new Set(snapshots.map(snapshot=>JSON.stringify([snapshot?.purchaseUnitId,snapshot?.purchaseUnit,snapshot?.unitKg]))).size>1 || snapshots.length!==group.length || snapshots.some(snapshot=>!snapshot))
+        ambiguousPrices.add(product.id);
+      // 직접 kg 단위의 거래처 단가는 한 kg 기준이다. 같은 단위라도 가격·세금·계정이 다르면 한 값으로 고르지 않는다.
+      if(snapshots.every(snapshot=>snapshot?.purchaseUnitId===MANUAL_PURCHASE_UNIT_ID)
+        &&new Set(group.map(line=>JSON.stringify([Number(line.price??0),!!line.isTaxExempt,line.accountCode??null]))).size>1)
         ambiguousPrices.add(product.id);
       if (!noLinkIds?.has(product.id)) {
         const cost=costFromPurchaseLines(group);
@@ -100,11 +105,19 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
   }
 
   for (const line of lines) {
-    const price = Number(line.price ?? 0);
+    let price = Number(line.price ?? 0);
     if (!(price > 0)) continue;
     const product = line.itemId ? items.find(p => p.id === line.itemId) : undefined;
     if (!product) continue;
     if (noLinkIds?.has(product.id)) continue;
+    const manualRaw=type==='매입'&&isRawPurchaseItem(product)&&line.purchaseUnitId===MANUAL_PURCHASE_UNIT_ID;
+    if(manualRaw){
+      let snapshot:PurchaseUnitSnapshot|null;try{snapshot=readPurchaseUnitSnapshot(line);}catch{continue;}
+      if(!snapshot)continue;
+      // 다음 새 행은 kg가 기본이므로 20kg 거래단가를 그대로 되밀면 다음 전표 단가가 스무 배가 된다.
+      price=price/snapshot.unitKg;
+      if(!Number.isFinite(price)||price<=0)continue;
+    }
 
     const prev = book.find(s => s.itemId === product.id && s.partnerId === partnerId);
     /**
@@ -121,7 +134,9 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
       if (!changed) continue;
     }
 
-    if (!ambiguousPrices.has(product.id)) out.upserts.push({
+    if (!ambiguousPrices.has(product.id)&&(!manualRaw||!emittedManualPrices.has(product.id))) {
+      if(manualRaw)emittedManualPrices.add(product.id);
+      out.upserts.push({
       ...(prev ?? {}),
       id: prev?.id ?? `${product.id}_${partnerId}_${dir}`,
       itemId: product.id,
@@ -132,7 +147,8 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
       //  전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
       taxType: line.isTaxExempt ? '면세' : '과세',
       Account_Code: line.accountCode || prev?.Account_Code,
-    } as PartnerItem);
+      } as PartnerItem);
+    }
 
     /*
      * **원가는 그 전표 줄의 공급가액이다.**

@@ -16,6 +16,9 @@ export const COL = {
   // 앱과 Admin SDK 실제 소비 컬렉션. 운영 DB 생성이나 쓰기 정책 변경이 아니다.
   returnApplications: 'returnApplications',
   voucherMutationOperations: 'voucherMutationOperations',
+  statementIssueOperations: 'statementIssueOperations',
+  orderRequestRetirementAuthorizations: 'orderRequestRetirementAuthorizations',
+  orderRequestRetirements: 'orderRequestRetirements',
   appMeta: 'appMeta',
   loanMovementOperations: 'loanMovementOperations',
   manualSettlementBatchOperations: 'manualSettlementBatchOperations',
@@ -32,6 +35,8 @@ export const COL = {
   items: 'items',
   // 여러 품목을 함께 늘린 최초 요청과 결과를 보존해 응답 유실 뒤 재적용을 막는다.
   itemStockAddOperations: 'itemStockAddOperations',
+  // 삭제와 재생성을 연결해 오래된 화면의 재고 쓰기가 삭제 기록을 재사용하지 못하게 한다.
+  inventoryWriterDeletions: 'inventoryWriterDeletions',
   itemBom: 'item_bom',
   partners: 'partners',
   partnerItem: 'partner_item',

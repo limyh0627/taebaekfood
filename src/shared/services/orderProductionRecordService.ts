@@ -1,3 +1,5 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {protectInventoryWriterPatch} from '../inventoryWriterProtocol';
 import {doc,runTransaction,type Firestore} from 'firebase/firestore';
 import {COL} from '../collections';
 import {auth,authReady,db} from '../firebase';
@@ -26,7 +28,7 @@ export async function executeOrderProductionRecordsWithDb(database:Firestore,req
  const nextIndex=deriveNextProductionRecordIndex(plan,requestHash);
  const priorRows=plan.records.flatMap(record=>{const entry=plan.previousIndex[record.lineId];return entry?[{record,entry}]:[];});
  const recordIds=expectedReceipt.recordIds,productIds=[...new Set(plan.records.map(record=>record.itemId))];
- const outcome=await runTransaction(database,async tx=>{
+ const outcome=await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.generation.companyId,isStillCurrent:async()=>{await assertActor();return true;}}),async tx=>{
   await assertActor();
   const jobRef=doc(database,COL.rawInventoryJobs,request.jobId),orderRef=doc(database,COL.orders,request.generation.orderId);
   const [jobSnap,orderSnap]=await Promise.all([tx.get(jobRef),tx.get(orderRef)]);
@@ -47,7 +49,7 @@ export async function executeOrderProductionRecordsWithDb(database:Firestore,req
    if(order.inventoryOperation?.productionRecordContractVersion!==1)return blocked('이전 작업에는 최초 생산기록 계약이 없습니다. 원문을 보존했습니다.');
   }
   if(productSnaps.some(snap=>!snap.exists()||companyOf(snap.data())!==request.generation.companyId))return blocked('생산기록 품목의 회사를 확인해 주세요.');
-  const exact=recordSnaps.every((snap,index)=>snap.exists()&&rawPressText(snap.data())===rawPressText(plan.records[index]));
+  const exact=recordSnaps.every((snap,index)=>{if(!snap.exists())return false;const {inventoryWriterProtocolVersion:_version,inventoryWriteRevision:_revision,...business}=snap.data();return rawPressText(business)===rawPressText(plan.records[index]);});
   const savedReceipt=jobSnap.data().productionRecordReceipt;
   if(savedReceipt!==undefined){
    if(rawPressText(savedReceipt)!==rawPressText(expectedReceipt))return blocked('생산기록 완료 근거가 최초 계획과 다릅니다.');
@@ -80,10 +82,10 @@ export async function executeOrderProductionRecordsWithDb(database:Firestore,req
   const serialized=JSON.stringify({...jobSnap.data(),productionRecordReceipt:expectedReceipt});
   if(new TextEncoder().encode(serialized).byteLength>900_000||recordIds.length+priorRows.length+2>500)return blocked('생산기록과 완료 근거의 저장 한도를 초과했습니다.');
   await assertActor();
-  plan.records.forEach(record=>tx.set(doc(database,COL.productionRecords,record.id),record));
-  priorRows.forEach((row,index)=>{if(priorSnaps[index].exists())tx.update(doc(database,COL.productionRecords,row.entry.recordId),{supersededBy:nextIndex[row.record.lineId]});});
-  tx.update(jobRef,{productionRecordReceipt:expectedReceipt});
-  tx.update(orderRef,{'inventoryOperation.stage':stage,productionRecordIndex:nextIndex});
+  plan.records.forEach(record=>tx.set(doc(database,COL.productionRecords,record.id),protectInventoryWriterPatch(undefined,record)));
+  priorRows.forEach((row,index)=>{if(priorSnaps[index].exists())tx.update(doc(database,COL.productionRecords,row.entry.recordId),protectInventoryWriterPatch(priorSnaps[index].data(),{supersededBy:nextIndex[row.record.lineId]}));});
+  tx.update(jobRef,protectInventoryWriterPatch(jobSnap.data(),{productionRecordReceipt:expectedReceipt}));
+  tx.update(orderRef,protectInventoryWriterPatch(orderSnap.data(),{'inventoryOperation.stage':stage,productionRecordIndex:nextIndex},['inventoryOperation.stage','productionRecordIndex']));
   return {status:'recorded',recordIds} as OrderProductionRecordOutcome;
  });await assertActor();return outcome;
 }

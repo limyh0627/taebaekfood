@@ -44,7 +44,7 @@ describe.skipIf(process.env.ITEM_QTY_EMULATOR_TEST!=='true')('품목 수량 실�
   expect((await stocktakeByQty(params)).ok).toBe(true);expect((await stocktakeByQty({...params,targetQty:1})).ok).toBe(false);expect(await read(location)).toEqual(before);expect((await adminDb!.doc(location).get()).updateTime!.isEqual(snap.updateTime!)).toBe(true);
  },60_000);
  it('동시 +2와 +3 증감은 최신 수량을 재읽어 재고·로트·두 기록을 보존한다',async()=>{
-  const {itemId,location,itemName}=await seed('race');const results=await Promise.all([adjustStockByQty({itemId,itemName,deltaQty:2,unitKg:1,note:'합성 +2'}),adjustStockByQty({itemId,itemName,deltaQty:3,unitKg:1,note:'합성 +3'})]);expect(results.every(result=>result.ok)).toBe(true);
+  const {itemId,location,itemName}=await seed('race');const results=await Promise.all([adjustStockByQty({itemId,itemName,deltaQty:2,unitKg:1,note:'합성 +2'}),adjustStockByQty({itemId,itemName,deltaQty:3,unitKg:1,note:'합성 +3'})]);expect(results,JSON.stringify(results)).toEqual(expect.arrayContaining([expect.objectContaining({ok:true})]));expect(results.every(result=>result.ok),JSON.stringify(results)).toBe(true);
   const saved=await read(location);expect(saved.stock).toBe(8);expect(saved.lots.reduce((sum:number,lot:any)=>sum+(lot.qtyRemaining??0),0)).toBe(8);expect(saved.stocktakeAnchors).toHaveLength(2);expect(saved.stocktakeAnchors.map((anchor:any)=>anchor.deltaQty).sort()).toEqual([2,3]);expect(saved.note).toBe('보존');
  },60_000);
  it('음수 결과와 타회사 두 경로 거절은 품목 원문과 저장시각을 보존한다',async()=>{

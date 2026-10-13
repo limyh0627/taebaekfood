@@ -60,3 +60,31 @@ it('확인 배치의 원입고 kg만 수량으로 나누고 legacy는 현재 경
  expect(()=>oemFeeUnitKgFromSavedReceipt({...po,items:[po.items[0],po.items[0]]})).toThrow();
  expect(()=>oemFeeUnitKgFromSavedReceipt({...po,items:[po.items[0],{itemId:'b',quantity:0}]})).toThrow();
 });
+
+describe('벌크와 제품의 원입고 원가 배분',()=>{
+ const bulk={itemId:'raw',rawItemId:'raw',lotId:'bulk-lot',kind:'bulk' as const,kg:70};
+ it.each([false,true])('벌크 단독·혼합 입고의 총 kg와 실제 공급가를 보존한다(%s)',mixed=>{
+  const inputs=mixed?[{itemId:'a',kg:20},bulk]:[bulk];
+  const preview=buildOemBatchCostPreview({...evidence,packaging:{confirmed:true,supplyAmount:0}},scope,inputs);
+  if(preview.status!=='pending-fee')throw Error('시험 원가 미리보기');
+  const po={oemCostEvidence:evidence,oemBatchCost:preview,oemReceivedKg:mixed?90:70,
+   items:mixed?[{itemId:'a',quantity:2}]:[],oemReceivedBulk:[{rawItemId:'raw',lotId:'bulk-lot',kg:70}]};
+  expect([...oemFeeUnitKgFromSavedReceipt(po)!]).toEqual(mixed?[['a',10]]:[]);
+  const confirmed=finalizeOemBatchCost(preview,{statementId:'fee',feeSupplyAmount:35000});
+  expect(confirmed.totalSupplyAmount).toBe(235000);
+  expect(confirmed.allocations.reduce((sum,row)=>sum+row.supplyAmount,0)).toBe(235000);
+  expect(confirmed.allocations.at(-1)).toMatchObject(bulk);
+ });
+ it.each(['kg','lot','raw','duplicate','missing'])('원벌크 명세 변조 %s는 확정하지 않는다',mode=>{
+  const preview=buildOemBatchCostPreview(evidence,scope,[bulk]);
+  const manifest=[{rawItemId:'raw',lotId:'bulk-lot',kg:70}];
+  if(mode==='kg')manifest[0].kg=69;if(mode==='lot')manifest[0].lotId='other';if(mode==='raw')manifest[0].rawItemId='other';
+  if(mode==='duplicate')manifest.push({...manifest[0]});if(mode==='missing')manifest.length=0;
+  expect(()=>oemFeeUnitKgFromSavedReceipt({oemCostEvidence:evidence,oemBatchCost:preview,oemReceivedKg:70,items:[],oemReceivedBulk:manifest})).toThrow('벌크');
+ });
+ it('제품 ID와 벌크 원료 ID가 같아도 별도 로트를 배분하고 벌크 로트 중복은 거절한다',()=>{
+  expect(buildOemBatchCostPreview(evidence,scope,[{itemId:'raw',kg:20},bulk])).toMatchObject({receivedKg:90});
+  expect(()=>buildOemBatchCostPreview(evidence,scope,[bulk,bulk])).toThrow('배분');
+  expect(()=>buildOemBatchCostPreview(evidence,scope,[{...bulk,rawItemId:'other'}])).toThrow('배분');
+ });
+});

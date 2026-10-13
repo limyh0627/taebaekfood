@@ -2,6 +2,7 @@ import {afterAll,beforeAll,describe,it,expect} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import * as admin from 'firebase-admin';
 import {editIssuedStatement} from './editIssuedStatementCommand';
+import {makeManualPurchaseUnitSnapshot} from './shared/purchaseUnit';
 const available=['127.0.0.1:8082','127.0.0.1:8182'].includes(process.env.FIRESTORE_EMULATOR_HOST??'');
 const runId='approval-'+randomUUID(), statementId=runId+'-stmt', pendingId=runId+'-pending', operationId=runId+'-operation';
 let app:admin.app.App,db:admin.firestore.Firestore;
@@ -17,7 +18,7 @@ async function seed(){await ref('voucherMutationOperations',operationId).delete(
  ref('pendingStatementEdits',pendingId).set(pending),
 ]);}
 describe.skipIf(!available)('전표 수정 요청의 원자 승인',{timeout:30000},()=>{
- beforeAll(()=>{app=admin.initializeApp({projectId:'demo-taebaekfood-local'},runId);db=admin.firestore(app);});
+ beforeAll(()=>{app=admin.initializeApp({projectId:'demo-edit-'+randomUUID().slice(0,8)},runId);db=admin.firestore(app);});
  afterAll(async()=>{if(!db)return;for(const [group,id]of [['issuedStatements',statementId],['pendingStatementEdits',pendingId],['voucherMutationOperations',operationId]])await ref(group,id).delete();const gate=ref('appMeta','releaseCutover');if((await gate.get()).get('testRunId')===runId)await gate.delete();await app.delete();});
  it('동시 승인과 동일 재시도는 전표·요청을 한 번만 바꾼다',async()=>{await seed();const results=await Promise.all([editIssuedStatement(db,command()),editIssuedStatement(db,command())]);expect(results.map(r=>r.status).sort()).toEqual(['applied','duplicate']);expect((await ref('issuedStatements',statementId).get()).data()).toMatchObject({...patch,mutationRevision:1});expect((await ref('pendingStatementEdits',pendingId).get()).data()).toMatchObject({status:'approved',approvalOperationId:operationId,approvedBy:'employee'});const before=await ref('issuedStatements',statementId).get();expect((await editIssuedStatement(db,command())).status).toBe('duplicate');expect((await ref('issuedStatements',statementId).get()).updateTime?.isEqual(before.updateTime!)).toBe(true);});
  it('원문 요청 변경·다른 회사·revision 충돌은 두 원문을 보존한다',async()=>{for(const mode of ['changed','foreign','revision']){await seed();if(mode==='changed')await ref('pendingStatementEdits',pendingId).update({createdAt:'2026-10-09T00:00:00Z'});if(mode==='foreign')await ref('pendingStatementEdits',pendingId).update({companyId:'punghoe'});if(mode==='revision')await ref('issuedStatements',statementId).update({mutationRevision:1});const before=await Promise.all([ref('issuedStatements',statementId).get(),ref('pendingStatementEdits',pendingId).get()]);await expect(editIssuedStatement(db,command())).rejects.toThrow();const after=await Promise.all([ref('issuedStatements',statementId).get(),ref('pendingStatementEdits',pendingId).get()]);after.forEach((snap,i)=>expect(snap.updateTime?.isEqual(before[i].updateTime!)).toBe(true));expect((await ref('voucherMutationOperations',operationId).get()).exists).toBe(false);}});
@@ -47,5 +48,35 @@ describe.skipIf(!available)('전표 수정 요청의 원자 승인',{timeout:300
    const moneyOnly={...request,data:{...request.data,expectedRevision:1,operationId:runId+'-money',patch:{memo:'금액·메모 수정 가능'}}};
    expect((await editIssuedStatement(db,moneyOnly)).status).toBe('applied');
   } finally {await Promise.all([ref('items',rawId).delete(),ref('purchaseOrders',poId).delete(),ref('voucherMutationOperations',runId+'-money').delete(),ref('voucherMutationOperations',runId+'-received').delete(),ref('voucherMutationOperations',runId+'-reorder').delete()]);}
+ });
+ it.each(['manual-change','legacy-adopt','default-kg','received','returned','foreign','not-raw','po-mismatch','source-index','invalid-unit'] as const)('직접 kg 수정 %s는 등록조회만 생략하고 입고·반품·원료·행 연결을 보호한다',async mode=>{
+  await seed();const rawId=runId+'-'+mode+'-raw',poId=runId+'-'+mode+'-po',returnId=runId+'-'+mode+'-return';
+  const oldSnapshot=makeManualPurchaseUnitSnapshot('20kg',1),newSnapshot=makeManualPurchaseUnitSnapshot(mode==='default-kg'?'kg':'25kg',2);
+  const oldLine:Record<string,any>={itemId:rawId,name:'합성 원료',qty:1,price:110,supply:100,tax:10,total:110,sourceLineIndex:0,...(mode==='legacy-adopt'?{}:oldSnapshot)};
+  const nextLine:Record<string,any>={...oldLine,qty:2,supply:200,tax:20,total:220,...newSnapshot};
+  if(mode==='source-index')nextLine.sourceLineIndex=1;
+  if(mode==='invalid-unit')nextLine.purchaseUnit='포';
+  const item=ref('items',rawId),po=ref('purchaseOrders',poId),ret=ref('returnRequests',returnId),registration=ref('item_purchase_unit','manual-kg');
+  try{
+   await item.set({companyId:mode==='foreign'?'punghoe':'taebaek',type:mode==='not-raw'?'product':'raw',subtype:mode==='not-raw'?'낱개':'벌크',stock:7,cost:80,lots:[{id:rawId+'-lot',kgRemaining:7}]});
+   await registration.set({companyId:'punghoe',itemId:'other',purchaseUnit:'포',unitKg:999,active:false});
+   await ref('issuedStatements',statementId).update({type:'매입',items:[oldLine],totalSupply:100,totalTax:10,totalAmount:110});
+   await po.set({companyId:'taebaek',partnerId:'same',linkedStatementId:statementId,status:mode==='received'?'received':'invoiced',items:[{...oldLine,quantity:mode==='po-mismatch'?3:oldLine.qty,unit:'kg'}]});
+   if(mode==='returned')await ret.set({companyId:'taebaek',linkedStatementId:statementId,items:[{itemId:rawId,sourceLineIndex:0}]});
+   const request={auth:command().auth,data:{statementId,releaseId:runId,expectedRevision:0,operationId,patch:{items:[nextLine],totalSupply:200,totalTax:20,totalAmount:220}}};
+   const before=await Promise.all([ref('issuedStatements',statementId).get(),po.get(),item.get(),registration.get()]);
+   if(['manual-change','legacy-adopt','default-kg'].includes(mode)){
+    expect((await editIssuedStatement(db,request)).status).toBe('applied');
+    expect((await ref('issuedStatements',statementId).get()).get('items')).toEqual([nextLine]);
+    expect((await po.get()).get('items')[0]).toMatchObject({purchaseUnitId:'manual-kg',purchaseUnit:newSnapshot.purchaseUnit,unitKg:newSnapshot.unitKg,quantity:2,inventoryQty:newSnapshot.inventoryQty,sourceLineIndex:0});
+    expect((await editIssuedStatement(db,request)).status).toBe('duplicate');
+   }else{
+    await expect(editIssuedStatement(db,request)).rejects.toThrow();
+    expect((await ref('issuedStatements',statementId).get()).updateTime!.isEqual(before[0].updateTime!)).toBe(true);
+    expect((await po.get()).updateTime!.isEqual(before[1].updateTime!)).toBe(true);
+    expect((await ref('voucherMutationOperations',operationId).get()).exists).toBe(false);
+   }
+   expect((await item.get()).updateTime!.isEqual(before[2].updateTime!)).toBe(true);expect((await registration.get()).updateTime!.isEqual(before[3].updateTime!)).toBe(true);
+  }finally{await Promise.all([item.delete(),po.delete(),ret.delete(),registration.delete()]);expect((await Promise.all([item.get(),po.get(),ret.get(),registration.get()])).every(row=>!row.exists)).toBe(true);}
  });
 });

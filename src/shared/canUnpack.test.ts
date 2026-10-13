@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { isUnpackable, unpackPlan, unpackSummary } from './canUnpack';
 import { buildBomIndex, setBomIndex, resetBomIndex } from './bomIndex';
 import type { Item } from './types';
+import { itemInventoryRequestHash, itemInventoryRequestText, type CanUnpackRequest } from './itemInventoryAttempt';
 
 const it_ = (o: Partial<Item> & { id: string }) =>
   ({ name: o.id, type: 'submaterial', unit: '개', stock: 0, minStock: 0, price: 0, ...o }) as Item;
 
-//  16.5kg 캔 = 통깨참기름 16.5L + 공캔 1개 (운영 데이터 그대로)
+// 품목 표시 단위가 L이어도 BOM과 개봉 수불의 수량은 kg다.
 const 캔 = it_({ id: '캔', name: '시골향참기름1-캔/16.5kg', type: 'wip', unit: '캔', stock: 5, unpackable: true });
 const 벌크 = it_({ id: '벌크', name: '통깨참기름', type: 'wip', unit: 'L', subtype: '벌크' });
 const 공캔 = it_({ id: '공캔', name: '16.5kg 캔', type: 'submaterial' });
@@ -82,11 +83,31 @@ describe('무엇을 깔 수 있나', () => {
 });
 
 describe('개봉 한 번을 셈한다', () => {
-  it('캔 1개 → 벌크 16.5L', () => {
+  it('캔 1개 → 벌크 16.5kg — 품목의 L 표시 단위와 구분한다', () => {
     const r = unpackPlan(캔, 1);
     expect(r.ok && r.plan.bulkName).toBe('통깨참기름');
     expect(r.ok && r.plan.bulkQty).toBe(16.5);
-    expect(r.ok && r.plan.bulkUnit).toBe('L');
+    expect(r.ok && r.plan.bulkUnit).toBe('kg');
+    expect(r.ok && unpackSummary(r.plan)).toBe('시골향참기름1-캔/16.5kg −1개 → 통깨참기름 +16.5kg');
+  });
+
+  it('캔 2개 → 벌크 33kg — 밀도로 중량을 다시 환산하지 않는다', () => {
+    const index = buildBomIndex([캔, { ...벌크, density: 0.916 }, 공캔], [bom('캔', '벌크', 16.5), bom('캔', '공캔', 1)]);
+    const r = unpackPlan(캔, 2, 5, index);
+    expect(r).toMatchObject({ ok: true, plan: { perCan: 16.5, bulkQty: 33, bulkUnit: 'kg' } });
+    expect(r.ok && unpackSummary(r.plan)).toBe('시골향참기름1-캔/16.5kg −2개 → 통깨참기름 +33kg');
+  });
+
+  it('옛 L 계획도 kg로 표시하지만 최초 원문·중량·해시는 바꾸지 않는다', async () => {
+    const r = unpackPlan(캔, 2);
+    if (!r.ok) throw Error('시험용 캔 계획이 필요합니다.');
+    const request: CanUnpackRequest = { version: 1, kind: 'can-unpack', operationId: 'old-unpack', companyId: 'taebaek', uid: 'test-user', capturedAt: '2026-10-13T00:00:00.000Z', date: '2026-10-13', plan: { ...r.plan, bulkUnit: 'L' } };
+    const textBefore = itemInventoryRequestText(request);
+    const hashBefore = await itemInventoryRequestHash(request);
+    expect(unpackSummary(request.plan)).toBe('시골향참기름1-캔/16.5kg −2개 → 통깨참기름 +33kg');
+    expect(request.plan).toMatchObject({ bulkUnit: 'L', perCan: 16.5, bulkQty: 33 });
+    expect(itemInventoryRequestText(request)).toBe(textBefore);
+    expect(await itemInventoryRequestHash(request)).toBe(hashBefore);
   });
 
   it('여러 개도 한 번에 깐다', () => {
@@ -120,7 +141,7 @@ describe('개봉 한 번을 셈한다', () => {
 
   it('확인 알림과 기록이 같은 글을 쓴다', () => {
     const r = unpackPlan(캔, 3);
-    expect(r.ok && unpackSummary(r.plan)).toBe('시골향참기름1-캔/16.5kg −3개 → 통깨참기름 +49.5L');
+    expect(r.ok && unpackSummary(r.plan)).toBe('시골향참기름1-캔/16.5kg −3개 → 통깨참기름 +49.5kg');
   });
 });
 

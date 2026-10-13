@@ -88,6 +88,7 @@ export interface OrderStockEngineDeps {
   updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   claimOrderOperation?: (orderId: string, expectedStatus: OrderStatus, operation: NonNullable<Order['inventoryOperation']>) => Promise<Order>;
+  retireRetainedRequestBeforeClaim?:(order:Order)=>Promise<void|'archived-only'>;
   /** 시험에서는 인메모리 job을 주입한다. 운영 기본값은 공용 원자화 job 러너다. */
   runRawInventoryJob?: typeof runRawInventoryJob;
 }
@@ -138,6 +139,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     applyItemStockDeltas,
   } = createOrderItemStockOperations({ db, allItems, bomIndex: inputs.bom,getActorUid:deps.getActorUid??(()=>actorAuth?.currentUser?.uid) });
   const generationOf=(order:Order)=>generationFromOrder(order);
+  const retireRetainedRequestBeforeClaim=deps.retireRetainedRequestBeforeClaim??(async(order:Order)=>(await import('../../shared/services/orderRequestRetirementService')).retireRetainedOrderRequestBeforeClaim(order));
   const expectedRecordIndex=async(generation:OrderInventoryGeneration,fallback:Order['productionRecordIndex'])=>{
     const first=readOrderRawBatchAttempt(generation.companyId,generation.actorUid,generation.orderId);
     if(!first)return fallback;
@@ -841,6 +843,16 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
     if((deps.getActorUid??(()=>actorAuth?.currentUser?.uid))()!==uid)throw Error('완료 확인 중 로그인 사용자가 바뀌었습니다.');
     clearOrderRawBatchAttempt(request,retained.encoded);return true;
   };
+  /** 서버 첫claim의 완료 ACK는 null 잠금으로 legacy 재고 셈에 내려가지 않는다. */
+  const confirmCompletedFirstClaim=async(live:Order,selection:Record<string,unknown>,requestedItem?:OrderItem):Promise<boolean>=>{
+    if(live.inventoryOperation!=null||typeof (live as Order&{retirementId?:unknown}).retirementId!=='string')return false;
+    const marker=live.inventoryGenerationCompletion;
+    if(!marker||!hasOrderInventoryGenerationCompletion(live,marker.generation))throw Error('첫 claim의 정확한 완료 세대를 확인하지 못했습니다.');
+    await ensureGenerationActor(marker.generation);
+    if((deps.getActorUid??(()=>actorAuth?.currentUser?.uid))()!==marker.generation.actorUid)throw Error('첫 claim 완료의 최초 로그인 계정이 다릅니다.');
+    await confirmCompletedAtomicRaw(live,selection,requestedItem);
+    return true;
+  };
 
   /** 체크된 품목만 출고 전 배정으로 남긴다. 생산에 사용한 구성품은 이미 stock에서 빠져 있다. */
   const completedLineAllocation = (
@@ -886,6 +898,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       if (!after) throw new Error('주문 품목을 찾을 수 없습니다. 새로고침 후 다시 확인해 주세요.');
       const lineId = after.lineId!;
       const applying = after.checked === true;
+      if(await retireRetainedRequestBeforeClaim(live)==='archived-only'){await getFreshOrder(id,true);return;}
       if(await confirmCompletedAtomicRaw(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;
 
       const initialItems=ensureOrderLineIds(live.items);
@@ -907,6 +920,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
+      if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'line',lineId,applying,itemsText:rawItemSelectionText(nextItems),stockUsePlan:plan??null}),after))return;
       claimed = true;
       const operationOrder = live;
       const generation=generationOf(operationOrder);
@@ -1143,6 +1157,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       // producedAt·shippedOut은 DB에서 다시 읽는다 — React 상태는 같은 틱에 갱신되지 않아
       // 직전 호출이 이미 생산했는지 알 수 없다.
       let live = await getFreshOrder(id, !!context.approvedPlan) ?? order;
+      if(await retireRetainedRequestBeforeClaim(live)==='archived-only'){await getFreshOrder(id,true);return;}
       if(await confirmCompletedAtomicRaw(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
       if (live.status === status) {
         await updateItem('orders', id, { status });
@@ -1174,6 +1189,7 @@ function createScopedOrderStockEngine(deps: OrderStockEngineDeps, inputs: OrderU
       const operation = { id: auditId, kind: 'status' as const, targetStatus: status, state: 'processing' as const, startedAt: approvedAt, actor: approvedBy };
       if (claimOrderOperation) live = await claimOrderOperation(id, live.status, operation);
       else await updateItem('orders', id, { inventoryOperation: operation });
+      if(claimOrderOperation&&await confirmCompletedFirstClaim(live,plain({kind:'status',targetStatus:status,stockUsePlan:plan??null})))return;
       const generation=generationOf(live);
       await ensureGenerationActor(generation);
       if(generation){approvedAt=generation.startedAt;auditId=generation.operationId;}

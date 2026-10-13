@@ -604,6 +604,7 @@ describe('작업완료와 출고를 따로 눌러도 재고가 안 날아간다'
     // 두 번째 주문 — 화면 상태는 아직 5인 채로 들어온다
     items.find(i => i.id === 'box10')!.stock = 5;
     const o2 = { ...주문(2), id: 'o2' } as Order;
+    store.orders.set(o2.id, o2);
     await engine.reconcileOrderStock(o2, OrderStatus.SHIPPED);
     expect(stockOf('box10')).toBe(1);       // 3 − 2. 전에는 5 − 2 = 3으로 덮어썼다
   });

@@ -55,6 +55,7 @@ export type StatementRejectionCode =
   | 'NO_LINES'        // 줄이 하나도 없다
   | 'NO_ACCOUNT_CODE' // 계정과목이 없는 줄
   | 'ZERO_PRICE'      // 단가가 0인 줄
+  | 'INVALID_QUANTITY' // 서버에 보내기 전에 0·비유한 수량을 바로잡는다
   | 'NO_TRADE_DATE';  // 거래일이 없다
 
 export interface StatementRejection {
@@ -159,6 +160,7 @@ export function checkStatementCommand(command: StatementCommand): StatementCheck
     lines.length === 0 ? { code: 'NO_LINES' as const, lineIndexes: [], lineNames: [] } : undefined,
     걸린줄('NO_ACCOUNT_CODE' as const, lines, line => !line.accountCode),
     걸린줄('ZERO_PRICE' as const, lines, line => !line.price),
+    걸린줄('INVALID_QUANTITY' as const, lines, line => !Number.isFinite(line.qty) || line.qty === 0),
   ];
   const rejections = 거절후보.filter((r): r is StatementRejection => !!r);
 

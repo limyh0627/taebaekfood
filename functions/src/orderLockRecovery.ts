@@ -1,3 +1,4 @@
+import { advanceInventoryWriterProtocol } from './shared/inventoryWriterProtocol';
 import * as admin from 'firebase-admin';
 import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
@@ -49,7 +50,7 @@ export async function recoverOrderInventoryLock(db:admin.firestore.Firestore,com
   if(assessment.status==='blocked')return {...base,...details,status:'blocked',inventoryApplied:assessment.inventoryApplied,reason:assessment.reason};
   if(input.action==='inspect')return {...base,...details,status:'ready',inventoryApplied:'none'};
   // 완료표의 부재와 주문 지문이 같은 TX에 묶여 있으므로 진행 중 취소와 경합하면 재조회해 차단한다.
-  tx.update(orderRef,{inventoryOperation:null});
+  tx.update(orderRef,advanceInventoryWriterProtocol(orderSnap.data(),{inventoryOperation:null}));
   tx.create(recoveryRef,{companyId,...base,status:'recovered',inventoryApplied:'none',evidenceHash,action:assessment.action,
    failedOperation:operation,recoveredBy:actorId,recoveredAt:new Date().toISOString()});
   return {...base,...details,status:'recovered',inventoryApplied:'none'};

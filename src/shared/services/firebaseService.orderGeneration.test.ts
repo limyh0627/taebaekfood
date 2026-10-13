@@ -1,15 +1,17 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {OrderStatus,type Order} from '../types';
 import {finalOrderInventoryRequestText,generationFromOrder,type OrderInventoryGeneration} from '../orderInventoryGeneration';
-const mem=vi.hoisted(()=>({docs:new Map<string,any>(),writes:[] as any[],uid:'actor' as string|null,company:'taebaek',employee:'employee' as unknown,afterToken:null as null|(()=>void),afterRead:null as null|(()=>void)}));
+const bridge=vi.hoisted(()=>({call:vi.fn(),retained:vi.fn()}));
+vi.mock('./orderRequestRetirementService',()=>({claimRetiredOrderInventoryOperation:bridge.call,hasRetainedRetirementClaim:bridge.retained}));
+const mem=vi.hoisted(()=>({docs:new Map<string,any>(),writes:[] as any[],txCalls:0,uid:'actor' as string|null,company:'taebaek',employee:'employee' as unknown,afterToken:null as null|(()=>void),afterRead:null as null|(()=>void)}));
 vi.mock('../firebase',()=>({db:{},authReady:Promise.resolve(),auth:{get currentUser(){return mem.uid?{uid:mem.uid,getIdTokenResult:async()=>{const claims={companyId:mem.company,employeeId:mem.employee};mem.afterToken?.();return {claims};}}:null;}},functions:{}}));
 vi.mock('firebase/functions',()=>({httpsCallable:vi.fn(()=>vi.fn())}));
-vi.mock('firebase/firestore',async original=>({...await original<typeof import('firebase/firestore')>(),doc:(_db:unknown,...parts:string[])=>({path:parts.join('/'),id:parts.at(-1)}),runTransaction:async(_db:unknown,fn:any)=>{const pending:any[]=[];const result=await fn({get:async(ref:any)=>{const value=mem.docs.get(ref.path);mem.afterRead?.();return {id:ref.id,exists:()=>value!==undefined,data:()=>structuredClone(value)};},update:(ref:any,data:any)=>pending.push([ref.path,{...mem.docs.get(ref.path),...data}])});for(const [path,data]of pending){mem.docs.set(path,data);mem.writes.push([path,data]);}return result;}}));
+vi.mock('firebase/firestore',async original=>({...await original<typeof import('firebase/firestore')>(),doc:(_db:unknown,...parts:string[])=>({path:parts.join('/'),id:parts.at(-1)}),getDoc:async(ref:any)=>{const value=mem.docs.get(ref.path);return {id:ref.id,exists:()=>value!==undefined,data:()=>structuredClone(value)};},runTransaction:async(_db:unknown,fn:any)=>{mem.txCalls++;const pending:any[]=[];const result=await fn({get:async(ref:any)=>{const value=mem.docs.get(ref.path);mem.afterRead?.();return {id:ref.id,exists:()=>value!==undefined,data:()=>structuredClone(value)};},update:(ref:any,data:any)=>pending.push([ref.path,{...mem.docs.get(ref.path),...data}])});for(const [path,data]of pending){mem.docs.set(path,data);mem.writes.push([path,data]);}return result;}}));
 const {claimOrderInventoryOperation,guardedUpdateOrderInventoryGeneration,markOrderInventoryGenerationFailed,clearOrderInventoryGeneration}=await import('./firebaseService');
 const gen:OrderInventoryGeneration={contractVersion:1,companyId:'taebaek',orderId:'order',operationId:'op',startedAt:'2026-10-12T00:00:00Z',actorUid:'actor'};
 const operation=()=>({id:'op',kind:'line' as const,lineId:'line-a',stage:'claim' as const,state:'processing' as const,targetStatus:OrderStatus.DISPATCHED,startedAt:gen.startedAt,actor:'표시 이름'});
 const current=()=>mem.docs.get('orders/order') as Order;
-beforeEach(()=>{mem.docs.clear();mem.writes.length=0;mem.uid='actor';mem.company='taebaek';mem.employee='employee';mem.afterToken=null;mem.afterRead=null;mem.docs.set('orders/order',{id:'order',companyId:'taebaek',status:OrderStatus.PENDING,items:[]});});
+beforeEach(()=>{bridge.call.mockReset();bridge.retained.mockReset().mockReturnValue(false);mem.docs.clear();mem.writes.length=0;mem.txCalls=0;mem.uid='actor';mem.company='taebaek';mem.employee='employee';mem.afterToken=null;mem.afterRead=null;mem.docs.set('orders/order',{id:'order',companyId:'taebaek',status:OrderStatus.PENDING,items:[]});});
 it('실제 claim은 구형 요청 모양이어도 실제 UID와 새 계약을 저장하여 반환한다',async()=>{const live=await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());expect(live.inventoryOperation).toMatchObject({contractVersion:1,productionRecordContractVersion:1,actorUid:'actor',id:'op',startedAt:gen.startedAt,stage:'claim'});expect(generationFromOrder(live)).toEqual(gen);});
 it('기존 gen1 실패에는 새 생산기록 flag를 추정해 붙이지 않는다',async()=>{current().inventoryOperation={...operation(),contractVersion:1,actorUid:'actor',state:'failed',stage:'raw-inventory'};const before=structuredClone(current());await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,operation())).rejects.toThrow('최초 생산기록');expect(current()).toEqual(before);expect(mem.writes).toEqual([]);});
 it.each(['uid','employee','company','missing-company'] as const)('%s 불명확 상태는 실제 claim 쓰기0이다',async field=>{if(field==='uid')mem.uid=null;if(field==='employee')mem.employee='';if(field==='company')mem.company='punghoe';if(field==='missing-company')delete current().companyId;await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,operation())).rejects.toThrow();expect(mem.writes).toEqual([]);});
@@ -24,3 +26,36 @@ it('토큰·DB 조회 대기 중 UID 변경은 새 계정으로 옛 작업을 �
 it.each(['inventoryOperation.actorUid','inventoryOperation.id','inventoryGenerationCompletion.requestText','productionRecordIndex','productionRecordIndex.line.recordId','companyId.child','id.child'])('보호 dotted %s 요청은 세대 검증을 우회하지 못하며 쓰기0이다',async key=>{await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());const before=structuredClone(current()),count=mem.writes.length;await expect(guardedUpdateOrderInventoryGeneration(gen,{[key]:'other'})).rejects.toThrow('임의 패치');expect(current()).toEqual(before);expect(mem.writes).toHaveLength(count);});
 
 it('원료 반영 뒤 늦은 claim 오류와 재개로 단계가 후퇴하거나 예약 전 해제가 되지 않는다',async()=>{await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());current().inventoryOperation!.stage='raw-inventory';await markOrderInventoryGenerationFailed(gen,'늦은 claim 오류','claim');expect(current().inventoryOperation!.stage).toBe('raw-inventory');await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());const before=structuredClone(current()),count=mem.writes.length;await expect(clearOrderInventoryGeneration(gen,{mode:'pre-reservation-noop'})).rejects.toThrow('예약 이후');expect(current()).toEqual(before);expect(mem.writes).toHaveLength(count);});
+
+it('pending 해제 영수증은 TX 밖 서버 첫claim으로 연결하고 직접쓰기0이다',async()=>{Object.assign(current(),{retirementId:'terminal',retirementClaimPending:true});bridge.call.mockResolvedValue({...current(),retirementClaimPending:false,inventoryOperation:operation()});expect((await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation()) as Order&{retirementClaimPending?:boolean}).retirementClaimPending).toBe(false);expect(bridge.call).toHaveBeenCalledWith('order',OrderStatus.PENDING,expect.objectContaining({actorUid:'actor',contractVersion:1}));expect(mem.writes).toEqual([]);});
+it('entry 이후 pending이 등장하면 TX sentinel후 서버를 한 번만 호출한다',async()=>{let reads=0;mem.afterRead=()=>{if(++reads===1)Object.assign(current(),{retirementId:'terminal',retirementClaimPending:true});};bridge.call.mockResolvedValue({...current(),inventoryOperation:operation()});await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());expect(bridge.call).toHaveBeenCalledTimes(1);expect(mem.writes).toEqual([]);});
+it('일반 claim·실패·clear는 최초snapshot 기준 한 버전씩 증가한다',async()=>{await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());expect(current()).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});await markOrderInventoryGenerationFailed(gen,'확인','claim');expect(current()).toHaveProperty('inventoryWriteRevision',2);await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());expect(current()).toHaveProperty('inventoryWriteRevision',3);await clearOrderInventoryGeneration(gen,{mode:'pre-reservation-noop'});expect(current()).toHaveProperty('inventoryWriteRevision',4);});
+
+it('응답 유실 뒤 pendingfalse ownfirst는 기존 processing 세대 ACK만 받고 새 nonce를 저장하지 않는다',async()=>{
+ const original={...operation(),id:'first-nonce',startedAt:'2026-10-13T00:00:00Z',contractVersion:1 as const,productionRecordContractVersion:1 as const,actorUid:'actor'};
+ Object.assign(current(),{retirementId:'terminal',retirementClaimPending:false,inventoryOperation:original,inventoryWriteRevision:5});
+ bridge.retained.mockImplementation((id,company,uid,terminal)=>id==='order'&&company==='taebaek'&&uid==='actor'&&(terminal===undefined||terminal==='terminal'));
+ bridge.call.mockResolvedValue(structuredClone(current()));const before=structuredClone(current());
+ const ack=await claimOrderInventoryOperation('order',OrderStatus.PENDING,{...operation(),id:'replacement',startedAt:'2026-10-14T00:00:00Z'});
+ expect(ack.inventoryOperation).toEqual(original);expect(current()).toEqual(before);expect(mem.writes).toEqual([]);expect(mem.txCalls).toBe(0);
+ expect(bridge.call).toHaveBeenCalledTimes(1);expect(bridge.retained).toHaveBeenCalledWith('order','taebaek','actor','terminal');
+});
+it('entry 뒤 ownfirst가 생기면 pendingfalse라도 native TX를 쓰지 않고 밖에서 ACK한다',async()=>{
+ Object.assign(current(),{retirementId:'terminal',retirementClaimPending:false,inventoryOperation:{...operation(),actorUid:'actor'}});
+ let retained=false;bridge.retained.mockImplementation(()=>retained);mem.afterRead=()=>{retained=true;};bridge.call.mockResolvedValue(structuredClone(current()));
+ await claimOrderInventoryOperation('order',OrderStatus.PENDING,operation());expect(mem.txCalls).toBe(1);expect(mem.writes).toEqual([]);expect(bridge.call).toHaveBeenCalledTimes(1);
+});
+it('다른 직원의 firstctx는 조회 요청에 현재 UID만 쓰며 일반 processing guard를 유지한다',async()=>{
+ Object.assign(current(),{retirementId:'terminal',retirementClaimPending:false,inventoryOperation:{...operation(),actorUid:'other'}});
+ bridge.retained.mockImplementation((_id,_company,uid)=>uid==='other');
+ await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,operation())).rejects.toThrow('이미 진행');expect(bridge.call).not.toHaveBeenCalled();expect(mem.writes).toEqual([]);
+ for(const call of bridge.retained.mock.calls)expect(call[2]).toBe('actor');
+});
+it('다른 retirement에 속한 ownfirst는 일반claim으로 넘어가지 않고 원문을 보존한다',async()=>{
+ Object.assign(current(),{retirementId:'new-terminal',retirementClaimPending:false});bridge.retained.mockImplementation((_id,_company,_uid,terminal)=>terminal===undefined||terminal==='old-terminal');
+ await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,operation())).rejects.toThrow('해제 영수증');expect(bridge.call).not.toHaveBeenCalled();expect(mem.txCalls).toBe(0);expect(mem.writes).toEqual([]);
+});
+it('손상된 ownfirst 또는 다른 선택은 서비스 strict거절을 유지하고 새 일반claim 쓰기0이다',async()=>{
+ Object.assign(current(),{retirementId:'terminal',retirementClaimPending:false});bridge.retained.mockReturnValue(true);bridge.call.mockRejectedValue(Error('최초 원문을 보존했습니다.'));
+ await expect(claimOrderInventoryOperation('order',OrderStatus.PENDING,{...operation(),lineId:'another-line'})).rejects.toThrow('원문');expect(mem.txCalls).toBe(0);expect(mem.writes).toEqual([]);
+});

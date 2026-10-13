@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { anchorLotsByQty } from './lotAnchor';
+import { anchorLotsByQty, stocktakeLotMaterial } from './lotAnchor';
 import { lotQtyRemaining } from './lotUtils';
 import type { RawMaterialLot } from './types';
 
@@ -13,6 +13,18 @@ const 로트 = (o: Partial<RawMaterialLot> & { id: string; qtyRemaining: number 
 } as RawMaterialLot);
 
 describe('실사 — 로트를 실제 수량에 맞춘다', () => {
+  it('신규 이월만 저장된 물질 축을 갖고 이름으로 원료를 추정하지 않는다', () => {
+    expect(stocktakeLotMaterial({ material: ' 볶음참깨 ', rawMaterialName: '다른원료' })).toBe('볶음참깨');
+    expect(stocktakeLotMaterial({ rawMaterialName: ' 참깨 ' })).toBe('참깨');
+    expect(stocktakeLotMaterial({})).toBeUndefined();
+    const result = anchorLotsByQty({ lots: [], targetQty: 2, unitKg: 16.5, material: '참깨', det });
+    expect(result.lots[0]).toMatchObject({ material: '참깨', qtyRemaining: 2, kgRemaining: 33 });
+    expect(anchorLotsByQty({ lots: [], targetQty: 2, det }).lots[0]).not.toHaveProperty('material');
+    const existing = 로트({ id: '이월', supplierName: '이월', qtyRemaining: 2, material: '원래물질' });
+    expect(anchorLotsByQty({ lots: [existing], targetQty: 3, material: '참깨', det }).lots[0].material).toBe('원래물질');
+    const missing = 로트({ id: '옛이월', supplierName: '이월', qtyRemaining: 2 });
+    expect(anchorLotsByQty({ lots: [missing], targetQty: 3, material: '참깨', det }).lots[0]).not.toHaveProperty('material');
+  });
   it('**맞추고 나면 로트 합계 = 실제 수량**. 이게 전부다', () => {
     const r = anchorLotsByQty({ lots: [로트({ id: 'a', qtyRemaining: 48 })], targetQty: 30, det });
     expect(lotQtyRemaining(r.lots)).toBe(30);

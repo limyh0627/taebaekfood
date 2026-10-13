@@ -57,7 +57,7 @@ describe.skipIf(process.env.BOX_UNPACK_EMULATOR_TEST !== 'true')('박스 개봉 
  it('실제 로그인으로 세 문서를 원자 개봉하며 동시 재시도와 payload 충돌을 구분한다',async()=>{
   const request=await fixture('own');
   const results=await Promise.all([unpackBoxStock(request),unpackBoxStock(request)]);
-  expect(results.every(result=>result.ok)).toBe(true);
+  expect(results,JSON.stringify(results)).toEqual(expect.arrayContaining([expect.objectContaining({ok:true})]));expect(results.every(result=>result.ok),JSON.stringify(results)).toBe(true);
   const saved=await state(request);expect(saved.box?.stock).toBe(1);expect(saved.unit?.stock).toBe(20);
   expect(saved.box?.lots[0].qtyRemaining).toBe(1);
   expect(saved.unit?.lots).toHaveLength(1);expect(saved.unit?.lots[0]).toMatchObject({supplierName:'합성 공급처',lotNo:'TEST-LOT',qtyRemaining:20,unitKg:1,kgRemaining:20});

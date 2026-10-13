@@ -1,5 +1,5 @@
 import { readOemCostInvalidation, writeOemCostInvalidation } from './oemBatchCostInvalidation';
-import { readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
+import { readPurchaseUnitSnapshot, isManualPurchaseUnitSnapshot, validatePurchaseUnitRegistration, type ItemPurchaseUnit } from './shared/purchaseUnit';
 import { isRawPurchaseItem } from './shared/purchaseCost';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
@@ -58,8 +58,11 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
   const operationRef = db.collection('voucherMutationOperations').doc(operationId);
   const settlementQuery = db.collection('settlements').where('statementId', '==', statementId);
   return db.runTransaction(async tx => {
-    const [gate, operation, original, settlements] = await Promise.all([
-      tx.get(gateRef), tx.get(operationRef), tx.get(statementRef), tx.get(settlementQuery),
+    // 발행도 같은 gate를 읽는다. gate→전표→개별 승인 순서가 반대면 전체 장부 조회와 순환 대기한다.
+    const gate=await tx.get(gateRef);
+    const original=await tx.get(statementRef);
+    const [operation, settlements] = await Promise.all([
+      tx.get(operationRef), tx.get(settlementQuery),
     ]);
     const editRef = approval ? db.collection('pendingStatementEdits').doc(approval.pendingEditRequestId) : null;
     const editSnap = editRef ? await tx.get(editRef) : null;
@@ -142,7 +145,7 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
         const [poRows, returnRows, unitRows, itemRows] = await Promise.all([
           tx.get(db.collection('purchaseOrders').where('linkedStatementId', '==', statementId)),
           tx.get(db.collection('returnRequests').where('linkedStatementId', '==', statementId)),
-          Promise.all(changed.map(line => tx.get(db.collection('item_purchase_unit').doc(line.purchaseUnitId)))),
+          Promise.all(changed.map(line => isManualPurchaseUnitSnapshot(line) ? Promise.resolve(null) : tx.get(db.collection('item_purchase_unit').doc(line.purchaseUnitId)))),
           Promise.all(changed.map(line => tx.get(db.collection('items').doc(line.itemId)))),
         ]);
         const pos = poRows.docs.filter(row => companyOf(row.data().companyId) === claims.companyId);
@@ -167,8 +170,9 @@ export async function editIssuedStatement(db: admin.firestore.Firestore, request
             throw new HttpsError('failed-precondition', '등록된 원료 품목·매입 단위를 확인해 주세요.');
           const previousUnit = readPurchaseUnitSnapshot(previous);
           const sameSavedUnit = previousUnit && previousUnit.purchaseUnitId === snapshot.purchaseUnitId && previousUnit.purchaseUnit === snapshot.purchaseUnit && previousUnit.unitKg === snapshot.unitKg && next.partnerId === old.partnerId;
-          if (!sameSavedUnit && !registration.exists) throw new HttpsError('failed-precondition', '등록된 매입 단위를 확인해 주세요.');
-          try { if (!sameSavedUnit) validatePurchaseUnitRegistration(snapshot, {...registration.data(),id:registration.id} as ItemPurchaseUnit,
+          const manual = isManualPurchaseUnitSnapshot(snapshot);
+          if (!sameSavedUnit && !manual && !registration?.exists) throw new HttpsError('failed-precondition', '등록된 매입 단위를 확인해 주세요.');
+          try { if (!sameSavedUnit && !manual) validatePurchaseUnitRegistration(snapshot, {...registration!.data(),id:registration!.id} as ItemPurchaseUnit,
             {companyId:claims.companyId,itemId:line.itemId,partnerId:next.partnerId}); }
           catch (error) { throw new HttpsError('failed-precondition', error instanceof Error ? error.message : '매입 단위가 변경되었습니다.'); }
           if (linked.length) {

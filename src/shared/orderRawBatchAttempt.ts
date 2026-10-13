@@ -3,10 +3,10 @@ import {rawPressText} from './rawPressAttempt';
 import type {LegacyLedgerFields} from './services/rawInventoryService';
 import {validateOrderInventoryGeneration,type OrderInventoryGeneration} from './orderInventoryGeneration';
 import type {Order} from './types';
+import {selectOrderRawBatchOrderEvidence} from '../../functions/src/shared/orderRawBatchOrderEvidence';
 /** 재클릭 시각·잠금 상태는 제외하고 원래 품목과 생산·출고 근거는 보존한다. */
 export function orderRawBatchOrderEvidence(order:Order):string{
- const items=order.items.map(({checkedAt,checkedBy,...row})=>row);
- return rawPressText({id:order.id,companyId:order.companyId,status:order.status,items,producedAt:order.producedAt,shippedOut:order.shippedOut,deliveredAt:order.deliveredAt,rawInventoryAttempt:order.rawInventoryAttempt,itemInventory:order.itemInventory,inventorySnapshots:order.inventorySnapshots,rawConsumedLots:order.rawConsumedLots,purpose:order.purpose});
+ return selectOrderRawBatchOrderEvidence(order,rawPressText);
 }
 export interface OrderRawBatchCommand {command:RawInventoryCommand;options?:{newLotId?:string;carryOverLotId?:string;legacy?:LegacyLedgerFields}}
 export interface OrderRawBatchRequest {
@@ -44,4 +44,17 @@ export function saveOrderRawBatchAttempt(request:OrderRawBatchRequest):{request:
 }
 export function clearOrderRawBatchAttempt(request:OrderRawBatchRequest,encoded:string):void {
  const g=request.generation,key=orderRawBatchAttemptKey(g.companyId,g.actorUid,g.orderId);if(localStorage.getItem(key)!==encoded)throw Error('최초 원료 요청이 달라 정리하지 않았습니다.');localStorage.removeItem(key);
+}
+
+/** 수동 unknown 퇴역은 폐기가 아니다. 정확 서버 영수증과 원문을 따로 보관한 다음 활성 키만 비운다. */
+export function archiveRetiredOrderRawBatchAttempt(request:OrderRawBatchRequest,encoded:string,receipt:{status:string;inventoryApplied:string;requestHash:string;requestText:string;retirementId:string;generation:OrderInventoryGeneration}):void {
+ const g=request.generation,key=orderRawBatchAttemptKey(g.companyId,g.actorUid,g.orderId);
+ if(!['retired','duplicate'].includes(receipt.status)||receipt.inventoryApplied!=='unknown'||!receipt.retirementId||!/^[a-f0-9]{64}$/.test(receipt.requestHash)||receipt.requestText!==rawPressText(request)||rawPressText(receipt.generation)!==rawPressText(g))throw Error('최초 요청 퇴역 영수증이 원문과 다릅니다.');
+ if(localStorage.getItem(key)!==encoded)throw Error('퇴역할 최초 요청이 바뀌었습니다. 원문을 보존했습니다.');
+ const archiveKey='order-raw-batch-retired:'+receipt.retirementId,archive=JSON.stringify({version:1,encoded,requestText:receipt.requestText,requestHash:receipt.requestHash,retirementId:receipt.retirementId,generation:g,inventoryApplied:'unknown'}),old=localStorage.getItem(archiveKey);
+ if(old!==null&&old!==archive)throw Error('퇴역 보관 원문이 다릅니다.');
+ if(old===null)localStorage.setItem(archiveKey,archive);
+ if(localStorage.getItem(archiveKey)!==archive||localStorage.getItem(key)!==encoded)throw Error('최초 요청 보관을 확인하지 못했습니다. 활성 원문을 보존했습니다.');
+ localStorage.removeItem(key);
+ if(localStorage.getItem(key)!==null)throw Error('최초 요청 퇴역을 확인하지 못했습니다.');
 }

@@ -34,7 +34,7 @@ describe.skipIf(process.env.INVENTORY_OPENING_EMULATOR_TEST!=='true')('재고 �
  it('박스는 최신 BOM으로 로트 kg와 146/375를 함께 기록하며 재시도는 불변이다',async()=>{
   const id=await seed('product',{spec:'1kg * 20'}),child=await seed();await save('item_bom/'+prefix+'-bom',{companyId:'taebaek',parent_id:id,child_id:child,quantity:20});
   expect(await createInventoryOpening(db,actor,input(id))).toBe('created');
-  const item=(await db.doc('items/'+id).get()).data();expect(item.stock).toBe(2);expect(item.lots[0].kgRemaining).toBe(40);
+  const item=(await db.doc('items/'+id).get()).data();expect(item).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});expect(item.stock).toBe(2);expect(item.lots[0].kgRemaining).toBe(40);
   const ref=db.doc('issuedStatements/opening-inventory-taebaek-'+id),before=(await ref.get()).data();expect(before.items.map((l:any)=>[l.accountCode,l.side,l.total])).toEqual([['146','차변',100],['375','대변',100]]);
   expect(await createInventoryOpening(db,actor,input(id))).toBe('unchanged');expect((await ref.get()).data()).toEqual(before);
   await expect(createInventoryOpening(db,actor,input(id,3))).rejects.toThrow('다른 내용');expect((await ref.get()).data()).toEqual(before);
@@ -42,8 +42,14 @@ describe.skipIf(process.env.INVENTORY_OPENING_EMULATOR_TEST!=='true')('재고 �
  it('원료 기초는 본체 원장 mirror 로트를 함께 기록한다',async()=>{
   const id=await seed('raw',{subtype:'벌크',unit:'kg'});expect(await createInventoryOpening(db,actor,input(id,2.125))).toBe('created');
   const item=(await db.doc('items/'+id).get()).data();expect(item.stock).toBe(2.125);expect(item.lots.reduce((s:number,l:any)=>s+l.kgRemaining,0)).toBe(2.125);
-  const states=await db.collection('rawInventories').where('rawItemId','==',id).get();expect(states.size).toBe(1);expect(states.docs[0].data().stockKg).toBe(2.125);
-  const movements=await db.collection('rawMaterialLedger').where('operationId','==',`opening-inventory:taebaek:${id}`).get();expect(movements.size).toBe(1);
+  const states=await db.collection('rawInventories').where('rawItemId','==',id).get();expect(states.size).toBe(1);expect(states.docs[0].data().stockKg).toBe(2.125);expect(states.docs[0].data()).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
+  const movements=await db.collection('rawMaterialLedger').where('operationId','==',`opening-inventory:taebaek:${id}`).get();expect(movements.size).toBe(1);expect(movements.docs[0].data()).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
+ });
+ it('기초 제품 신규 이월은 snapshot의 물질을 남기고 가격과 전표 금액은 보존한다',async()=>{
+  const id=await seed('product',{material:'볶음참깨',costPrice:12345});
+  expect(await createInventoryOpening(db,actor,input(id))).toBe('created');
+  const item=(await db.doc('items/'+id).get()).data();expect(item.lots[0]).toMatchObject({material:'볶음참깨',qtyRemaining:2,kgRemaining:2});expect(item.costPrice).toBe(12345);
+  expect((await db.doc('issuedStatements/opening-inventory-taebaek-'+id).get()).data().totalAmount).toBe(100);
  });
  it('기존 재고·일자·146·타회사·직원 거절은 금융 원문을 만들지 않는다',async()=>{
   const id=await seed('product',{stock:3}),original=(await db.doc('items/'+id).get()).data();

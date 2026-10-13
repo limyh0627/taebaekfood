@@ -1,7 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { makePurchaseUnitSnapshot, recalculatePurchaseUnitSnapshot, readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, returnKgFromPurchaseSnapshot, type ItemPurchaseUnit } from './purchaseUnit';
+import { MANUAL_PURCHASE_UNIT_ID, parseManualPurchaseUnitKg, makeManualPurchaseUnitSnapshot, isManualPurchaseUnitSnapshot, makePurchaseUnitSnapshot, recalculatePurchaseUnitSnapshot, readPurchaseUnitSnapshot, validatePurchaseUnitRegistration, returnKgFromPurchaseSnapshot, type ItemPurchaseUnit } from './purchaseUnit';
 const unit: ItemPurchaseUnit = { id: 'u', companyId: 'taebaek', itemId: 'raw', purchaseUnit: '자루', unitKg: 22.5, isDefault: false, active: true, createdAt: '2026-10-11', updatedAt: '2026-10-11' };
 describe('매입 단위의 발행 당시 kg', () => {
+  it.each([['kg',1],[' KG ',1],['20kg',20],[' 020.00 KG ',20],['22.5kg',22.5],['.5kg',0.5],['0.003kg',0.003],['20g',0.02],[' 020.00 G ',0.02],['500g',0.5],['1.5g',0.0015]])('직접 입력 %s는 명시 kg·g만 kg로 해석한다', (text,kg) => {
+    expect(parseManualPurchaseUnitKg(text)).toBe(kg);
+    const snapshot=makeManualPurchaseUnitSnapshot(String(text),2);
+    expect(snapshot).toMatchObject({purchaseUnitId:MANUAL_PURCHASE_UNIT_ID,purchaseQty:2,unitKg:kg,inventoryQty:Number(kg)*2});
+    expect(isManualPurchaseUnitSnapshot(snapshot)).toBe(true);
+  });
+  it.each(['', '포', '20', '20포', '20kg포', '20kg/포', 'kg20', '20 kg extra', '+20kg', '-20kg', '0kg', 'NaNkg', 'Infinitykg', '1e2kg', '1,000kg', '1 0kg', '20.kg', null, 20])('직접 입력 %s는 추정 없이 거절한다', value => {
+    expect(parseManualPurchaseUnitKg(value)).toBeNull();
+    expect(()=>makeManualPurchaseUnitSnapshot(value as string,2)).toThrow();
+  });
+  it('20kg 두 거래수량은 40kg로 고정하고 기본 kg·수량변경·부분반품도 공용 환산한다', () => {
+    const snapshot=makeManualPurchaseUnitSnapshot(' 020.00 KG ',2);
+    expect(snapshot).toEqual({purchaseUnitId:'manual-kg',purchaseUnit:'20kg',purchaseQty:2,unitKg:20,inventoryQty:40});
+    expect(makeManualPurchaseUnitSnapshot('kg',2)).toEqual({...snapshot,purchaseUnit:'kg',unitKg:1,inventoryQty:2});
+    expect(recalculatePurchaseUnitSnapshot(snapshot,3).inventoryQty).toBe(60);
+    expect(returnKgFromPurchaseSnapshot(snapshot,0.5)).toBe(10);
+    expect(returnKgFromPurchaseSnapshot(snapshot,1.5,0.5)).toBe(30);
+    const fractional=makeManualPurchaseUnitSnapshot('3.3333kg',3);expect(fractional.inventoryQty).toBe(10);
+  });
+  it('g는 최초 선택 단위 문자열을 보존하고 kg3·부분반품·수량변경만 공용 환산한다',()=>{
+    const snapshot=makeManualPurchaseUnitSnapshot(' 020.00 G ',2);
+    expect(snapshot).toEqual({purchaseUnitId:'manual-kg',purchaseUnit:'20g',purchaseQty:2,unitKg:0.02,inventoryQty:0.04});
+    expect(recalculatePurchaseUnitSnapshot(snapshot,3)).toEqual({...snapshot,purchaseQty:3,inventoryQty:0.06});
+    expect(returnKgFromPurchaseSnapshot(snapshot,1)).toBe(0.02);
+    expect(makeManualPurchaseUnitSnapshot('1.5g',3).inventoryQty).toBe(0.005);
+    for(const change of [{purchaseUnit:'20kg'},{unitKg:20,inventoryQty:40},{purchaseUnit:'20mg'},{qty:3},{inventoryQty:0.041}])expect(()=>readPurchaseUnitSnapshot({...snapshot,...change})).toThrow();
+    for(const unit of ['g','0g','-20g','NaNg','Infinityg','1e3g','20mg','20t','20L','0.01g',`${'9'.repeat(310)}g`])expect(()=>makeManualPurchaseUnitSnapshot(unit,1)).toThrow();
+  });
+  it('reserved 수동 ID는 단위와 kg 위조·부분필드·등록표 위장을 허용하지 않는다', () => {
+    const snapshot=makeManualPurchaseUnitSnapshot('20kg',2);
+    for(const change of [{purchaseUnit:'포'},{purchaseUnit:'25kg'},{unitKg:25,inventoryQty:50},{purchaseQty:1},{inventoryQty:40.001},{qty:3},{purchaseUnitId:undefined}])
+      expect(()=>readPurchaseUnitSnapshot({...snapshot,...change})).toThrow();
+    expect(()=>makePurchaseUnitSnapshot({...unit,id:MANUAL_PURCHASE_UNIT_ID,purchaseUnit:'20kg',unitKg:20},2)).toThrow();
+    expect(()=>validatePurchaseUnitRegistration(snapshot,{...unit,id:MANUAL_PURCHASE_UNIT_ID,purchaseUnit:'20kg',unitKg:20},{companyId:'taebaek',itemId:'raw'})).toThrow('직접 입력');
+    expect(isManualPurchaseUnitSnapshot(makePurchaseUnitSnapshot(unit,2))).toBe(false);
+    for(const qty of [0,-1,NaN,Infinity])expect(()=>makeManualPurchaseUnitSnapshot('20kg',qty)).toThrow();
+  });
   it('임의 등록 kg를 곱하고 거래 수량은 그대로 보존한다', () => {
     expect(makePurchaseUnitSnapshot(unit, 3)).toEqual({ purchaseUnitId: 'u', purchaseUnit: '자루', purchaseQty: 3, unitKg: 22.5, inventoryQty: 67.5 });
     expect(makePurchaseUnitSnapshot({ ...unit, unitKg: 7.1234 }, 2).inventoryQty).toBe(14.247);

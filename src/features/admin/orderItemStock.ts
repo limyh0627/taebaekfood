@@ -1,4 +1,6 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../../shared/inventoryWriterProtocol';
 import {rawPressText} from '../../shared/rawPressAttempt';
+import {protectInventoryWriterPatch,protectItemInventoryPatch} from '../../shared/inventoryWriterProtocol';
 import {orderRawBatchOrderEvidence} from '../../shared/orderRawBatchAttempt';
 import {validateProductionRecordIndex} from '../../shared/orderProductionRecordPlan';
 import {advanceOrderInventoryStage,sameOrderInventoryGeneration,assertOrderInventoryGeneration,hasOrderInventoryGenerationCompletion,finalOrderInventoryRequestText,validateOrderInventoryConsumedLots,type OrderInventoryGeneration} from '../../shared/orderInventoryGeneration';
@@ -146,7 +148,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     const nowMs = now.getTime();
     const createdAt = now.toISOString();
 
-    return runTransaction(db, async tx => {
+    return runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({generation,operationId,orderId:order.id,ids}),companyId:generation?.companyId,isStillCurrent:()=>{assertActor(generation);return true;}}), async tx => {
       const current=generation?await readGeneration(tx,generation):null;
       const refs = ids.map(itemId => doc(db, 'items', itemId));
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
@@ -169,11 +171,11 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
           : active;
         // 만료되었거나 같은 작업의 낡은 예약도 이 transaction에서 걷어낸다.
         if (qty > 0 || Array.isArray(data.inventoryReservations)) {
-          tx.update(refs[index]!, { inventoryReservations: next });
+          tx.update(refs[index]!, protectItemInventoryPatch(data,{ inventoryReservations: next }));
         }
       });
 
-      if(current)tx.update(current.ref,{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}});
+      if(current)tx.update(current.ref,protectInventoryWriterPatch(current.order,{inventoryOperation:{...current.order.inventoryOperation!,stage:advanceOrderInventoryStage(current.order.inventoryOperation?.stage,'reservation')}}));
       return {
         operationId,
         orderId: order.id,
@@ -206,7 +208,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
     const generation=reservation.generation;assertActor(generation);
     if (reservation.itemIds.length === 0&&!generation) return;
     const nowMs = Date.now();
-    await runTransaction(db, async tx => {
+    await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({generation,operationId:reservation.operationId,orderId:reservation.orderId,action:'release'}),companyId:generation?.companyId,isStillCurrent:()=>{assertActor(generation);return true;}}), async tx => {
       if(generation)await readGeneration(tx,generation,true);
       const refs = reservation.itemIds.map(itemId => doc(db, 'items', itemId));
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
@@ -221,7 +223,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         if (!hasCurrent) return;
         const otherOrders = active.filter(row => row.orderId !== reservation.orderId);
         const previous = reservation.previousReservations.get(reservation.itemIds[index]!) ?? [];
-        tx.update(refs[index]!, { inventoryReservations: [...otherOrders, ...previous] });
+        tx.update(refs[index]!, protectItemInventoryPatch(data,{ inventoryReservations: [...otherOrders, ...previous] }));
       });
     });
   };
@@ -261,8 +263,9 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         item: allItems.find(item => item.id === itemId),
       }));
     if (rows.length === 0&&!generation) {
-      if (orderMutation) await runTransaction(db, async tx => {
-        tx.update(doc(db, 'orders', orderMutation.orderId), stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch));
+      if (orderMutation) await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({orderId:orderMutation.orderId,patch:orderMutation.patch})}), async tx => {
+        const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
+        tx.update(ref,protectInventoryWriterPatch(snap.data(),stripUndefined(typeof orderMutation.patch === 'function' ? orderMutation.patch([]) : orderMutation.patch)));
       });
       return [];
     }
@@ -272,7 +275,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       throw new Error(`재고 반영 중 품목 기준정보를 찾을 수 없습니다: ${missingCatalog.join(', ')}`);
     }
 
-    const changed = await runTransaction(db, async tx => {
+    const changed = await runInventoryWriterTransaction(db,await captureInventoryWriterContext(db,{requestIdentity:rawPressText({generation,deltas:[...deltas],lotMutations,reservationId:reservation?.operationId,rows}),companyId:generation?.companyId,isStillCurrent:()=>{assertActor(generation);return true;}}), async tx => {
       let current:{ref:ReturnType<typeof doc>;order:Order}|null=null;
       if(generation){
         assertActor(generation);const ref=doc(db,'orders',generation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');
@@ -293,6 +296,7 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
         if(order.inventoryOperation?.productionRecordContractVersion===1&&['production-record','final-stock'].includes(order.inventoryOperation.stage!)&&orderMutation!.expectedProductionRecordIndex===undefined)throw Error('최초 생산기록 연결의 최종 확정 근거가 없습니다.');
         current={ref,order};
       }
+      else if(orderMutation){const ref=doc(db,'orders',orderMutation.orderId),snap=await tx.get(ref);if(!snap.exists())throw Error('주문을 찾을 수 없습니다.');current={ref,order:{...snap.data(),id:orderMutation.orderId} as Order};}
       const refs = rows.map(row => doc(db, 'items', row.itemId));
       // Firestore transaction은 첫 write 전에 모든 read가 끝나야 한다.
       const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
@@ -358,9 +362,9 @@ export function createOrderItemStockOperations(deps: OrderItemStockDeps) {
       const requestText=generation?finalOrderInventoryRequestText(generation,deltas,lotMutations.map(row=>row.itemId),patch!,reservationEvidence):null;
       if(generation&&patch?.inventoryOperation!=null)throw Error('최종 확정에서 다른 작업 표식을 만들 수 없습니다.');
       assertActor(generation);
-      for(const update of updates)if(Object.keys(update.patch).length>0)tx.update(update.ref,update.patch);
-      if(current)tx.update(current.ref,stripUndefined({...patch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}}));
-      else if(orderMutation)tx.update(doc(db,'orders',orderMutation.orderId),stripUndefined(patch!));
+      for(const [index,update] of updates.entries())if(Object.keys(update.patch).length>0)tx.update(update.ref,protectItemInventoryPatch(snapshots[index].data(),update.patch));
+      if(current&&generation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined({...patch,inventoryOperation:null,inventoryGenerationCompletion:{generation,completedAt:new Date().toISOString(),requestText,consumedLotsText:rawPressText(consumed),consumedLots:consumed}})));
+      else if(current&&orderMutation)tx.update(current.ref,protectInventoryWriterPatch(current.order,stripUndefined(patch!)));
       return consumed;
     });
 

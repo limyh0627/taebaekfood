@@ -8,7 +8,7 @@ function descendants(node:ts.Node):ts.Node[]{const nodes:ts.Node[]=[];const visi
 
 describe('캔 개봉 원자화 연결', () => {
   it('캔·벌크·원자화 상태·원장 이력을 같은 트랜잭션에서 쓴다', () => {
-    expect(src).toContain('runTransaction(db');
+    expect(src).toContain('runInventoryWriterTransaction(db');
     expect(src).toContain('COL.rawInventories');
     expect(src).toContain('COL.rawMaterialLedger');
     expect(src).toContain('tx.update(canRef');
@@ -25,8 +25,8 @@ describe('캔 개봉 원자화 연결', () => {
   it('기존 원장 작업번호가 있으면 개봉을 다시 적용하지 않는다', () => {
     const file=ts.createSourceFile('unpackService.ts',src,ts.ScriptTarget.Latest,true);
     const unpack=descendants(file).find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='unpack')!;
-    const transaction=descendants(unpack).find(node=>ts.isCallExpression(node)&&node.expression.getText(file)==='runTransaction') as ts.CallExpression;
-    const callback=transaction.arguments[1] as ts.ArrowFunction;
+    const transaction=descendants(unpack).find(node=>ts.isCallExpression(node)&&node.expression.getText(file)==='runInventoryWriterTransaction') as ts.CallExpression;
+    const callback=transaction.arguments[2] as ts.ArrowFunction;
     const receiptRead=descendants(callback.body).find(node=>ts.isVariableDeclaration(node)&&node.initializer?.getText(file)==='await tx.get(movementRef)') as ts.VariableDeclaration;
     expect(receiptRead).toBeDefined();
     const receiptName=receiptRead.name.getText(file);

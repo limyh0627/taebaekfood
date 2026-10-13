@@ -129,8 +129,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     const { po } = input;
     if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
     assertPoCompany(po);
-    // The legacy bulk path commits raw stock before the finished-goods transaction.
-    if (input.bulk?.length) throw new Error('벌크 OEM 입고는 단일 거래 명령이 준비될 때까지 처리할 수 없습니다.');
+    // 벌크도 서버의 같은 입고 거래에 전달한다. 옛 원료별 순차 writer는 재사용하지 않는다.
     if (po.status === 'received' && po.oemReceiptOperationId !== `oem-receive:${po.id}`)
       throw new Error('이미 가공입고된 배치입니다.');
 
@@ -139,12 +138,12 @@ export function createOemEngine(deps: OemEngineDeps) {
       quantityByItem.set(row.itemId, (quantityByItem.get(row.itemId) ?? 0) + row.qty);
     }
     const lines = [...quantityByItem].map(([itemId, qty]) => ({ itemId, qty }));
-    const bulkByHolder = new Map<string, { material: string; kg: number }>();
+    const bulkByHolder = new Map<string, { material: string; kg: number; rawItemId: string }>();
     for (const row of (input.bulk ?? []).filter(b => b.material && b.kg > 0)) {
       const holder = findRawHolder(items, row.material, companyId);
       if (!holder) throw new Error(`현재 회사의 벌크 원료 홀더를 찾을 수 없습니다: ${row.material}`);
       const previous = bulkByHolder.get(holder.id);
-      bulkByHolder.set(holder.id, { material: row.material, kg: (previous?.kg ?? 0) + row.kg });
+      bulkByHolder.set(holder.id, { material: row.material, kg: (previous?.kg ?? 0) + row.kg, rawItemId: holder.id });
     }
     const bulkLines = [...bulkByHolder.values()];
     if (lines.length === 0 && bulkLines.length === 0) throw new Error('입고할 품목이 없습니다.');
@@ -194,11 +193,12 @@ export function createOemEngine(deps: OemEngineDeps) {
       receiptItems.push({ itemId: item.id, qty: r.qty, ...(productLot && material ? { lot: productLot, material, unitKg } : {}) });
     }
 
+    receivedKg += bulkLines.reduce((sum, row) => sum + row.kg, 0);
     receivedKg = po.oemCostEvidence || input.oemCostEvidence
-      ? sumOemReceivedKg(lines.map(row => {
+      ? sumOemReceivedKg([...lines.map(row => {
           const product = items.find(item => item.id === row.itemId)!;
           return itemKg(product, deps.orderUnitInputs) * row.qty;
-        }))
+        }), ...bulkLines.map(row => row.kg)])
       : Math.round(receivedKg * 1000) / 1000;
 
     //  **완포장 서류용 원장 줄(`rm-oem-...`)은 더 이상 만들지 않는다**(2026-09-10 원자화 5단계).
@@ -227,6 +227,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       operationId,
       date: input.date,
       items: receiptItems,
+      ...(bulkLines.length ? { bulk: bulkLines } : {}),
       feeRequest,
       ...(receiptEvidence ? {oemCostEvidence: receiptEvidence} : {}),
       poPatch: {

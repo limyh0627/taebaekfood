@@ -1,3 +1,5 @@
+import {runInventoryWriterTransaction,captureInventoryWriterContext} from '../inventoryWriterProtocol';
+import {protectInventoryWriterPatch} from '../inventoryWriterProtocol';
 import {doc,runTransaction,type Firestore} from 'firebase/firestore';
 import {COL} from '../collections';
 import {commandHash,inventoryDocId,operationDocId,type RawApplyResult,type RawInventoryState} from '../rawInventoryCore';
@@ -59,9 +61,10 @@ export function orderRawBatchProofProblem(data:Record<string,any>,request:OrderR
 }
 /** 각 대기 경계에서 실제 로그인 UID와 회사를 다시 검증한다. */
 export async function executeOrderRawBatchWithDb(database:Firestore,request:OrderRawBatchRequest,assertActor:()=>Promise<void>):Promise<OrderRawBatchOutcome>{
+ request=JSON.parse(JSON.stringify(request));
  validateOrderRawBatchRequest(request);await assertActor();
  const requestHash=await orderRawBatchRequestHash(request);await assertActor();
- const outcome=await runTransaction(database,async tx=>{
+ const outcome=await runInventoryWriterTransaction(database,await captureInventoryWriterContext(database,{requestIdentity:rawPressText(request),companyId:request.generation.companyId,isStillCurrent:async()=>{await assertActor();return true;}}),async tx=>{
   await assertActor();
   const jobRef=doc(database,COL.rawInventoryJobs,request.jobId),orderRef=doc(database,COL.orders,request.generation.orderId);
   const [job,order,...legacy]=await Promise.all([tx.get(jobRef),tx.get(orderRef),...request.legacyJobIds.map(id=>tx.get(doc(database,COL.rawInventoryJobs,id)))]);
@@ -108,8 +111,8 @@ export async function executeOrderRawBatchWithDb(database:Firestore,request:Orde
   if(new TextEncoder().encode(reserved).byteLength>900_000||request.commands.length*3+2>500)return blocked('원료 일괄 저장 크기 또는 쓰기 한도를 초과했습니다.','rejected');
   await assertActor();
   results.forEach((result,index)=>writePreparedRawCommand(tx,request.commands[index].command,reads[index],result,{...request.commands[index].options,now:request.recordedAt}));
-  tx.set(jobRef,JSON.parse(serialized));
-  tx.update(orderRef,{'inventoryOperation.stage':nextStage});
+  tx.set(jobRef,protectInventoryWriterPatch(job.exists()?job.data():undefined,JSON.parse(serialized)));
+  tx.update(orderRef,protectInventoryWriterPatch(order.data(),{'inventoryOperation.stage':nextStage},['inventoryOperation.stage']));
   return {status:'committed',request,results} as OrderRawBatchOutcome;
  });
  await assertActor();return outcome;

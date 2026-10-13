@@ -29,7 +29,7 @@ const saved = async (path: string) => (await db.doc(path).get()).data();
 
 describe('OEM finished-goods server transaction', () => {
   beforeAll(async () => {
-    process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8182';
+    process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8082';
     process.env.GCLOUD_PROJECT = projectId;
     app = admin.initializeApp({ projectId }, prefix);
     db = app.firestore();
@@ -55,6 +55,7 @@ describe('OEM finished-goods server transaction', () => {
         if (path === 'appMeta/releaseCutover' && snap.data()?.testRunId !== prefix) throw new Error('gate ownership changed');
         if (path.includes(prefix) || snap.data()?.testRunId === prefix) await db.doc(path).delete();
       }
+      for (const path of paths) expect((await db.doc(path).get()).exists).toBe(false);
     }
     if (app) await app.delete();
   }, 30000);
@@ -142,7 +143,7 @@ describe('OEM finished-goods server transaction', () => {
     const applied = await receiveOemFinishedGoods(db, 'taebaek', input());
     expect(applied).toMatchObject({ status: 'applied', receivedKg: 5, loss: 1 });
     expect(applied.lotNos[itemId]).toBe('261003-01');
-    expect((await saved(`items/${itemId}`))?.stock).toBe(7);
+    expect((await saved(`items/${itemId}`))?.stock).toBe(7);expect(await saved(`items/${itemId}`)).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:1});
     expect((await saved(`items/${itemId}`))?.lots).toHaveLength(2);
     expect((await saved(`appMeta/${counterId}`))?.lastSequence).toBe(1);
     expect((await saved(`purchaseOrders/${poId}`))?.status).toBe('received');

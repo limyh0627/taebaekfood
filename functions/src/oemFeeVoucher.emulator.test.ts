@@ -10,7 +10,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 import { issueOemFeeVoucher, issueOemFeeVoucherCommand } from './oemFeeVoucher';
 import { issueVoucher } from './voucherIssue';
 
-const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8182';
+const available = process.env.FIRESTORE_EMULATOR_HOST === '127.0.0.1:8082';
 const projectId = `demo-oem-shared-sequence-${Math.random().toString(36).slice(2)}`;
 const date = '2026-10-03';
 const counterId = `voucherNo_taebaek_${date}_가공`;
@@ -40,7 +40,17 @@ async function seed(poIds: string[], counter = true) {
 
 describe.skipIf(!available)('OEM 가공비 공통 번호 Firestore SDK 거래', () => {
   beforeAll(async () => { app = admin.initializeApp({ projectId }, projectId); db = admin.firestore(app); });
-  afterAll(async () => { await app?.delete(); });
+  afterAll(async () => {
+    if(db){
+      // 이 실행의 고유 demo 프로젝트만 비운다. 다른 시험·운영 프로젝트에는 접근하지 않는다.
+      for(const collection of await db.listCollections()){
+        const docs=await collection.get();
+        for(const doc of docs.docs) await doc.ref.delete();
+        expect((await collection.get()).empty).toBe(true);
+      }
+    }
+    await app?.delete();
+  });
 
   it('비관리자와 다른 회사 요청은 발행 전에 거절한다', async () => {
     const callable = issueOemFeeVoucherCommand as unknown as (request: unknown) => Promise<string>;

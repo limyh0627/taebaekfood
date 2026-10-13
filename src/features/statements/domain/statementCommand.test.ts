@@ -62,6 +62,17 @@ describe('buildStatementCommand — 흩어진 값을 한 덩이로', () => {
 });
 
 describe('checkStatementCommand — 막는 것', () => {
+  it.each([0, NaN, Infinity, -Infinity])('수량 %s은 행과 품목을 지정해 거절한다', qty => {
+    const result = checkStatementCommand(명령({ lines: [줄({}), 줄({ name: '들깨', qty })] }));
+    expect(result.ok).toBe(false);
+    expect(result.rejections.find(row => row.code === 'INVALID_QUANTITY')).toEqual({
+      code: 'INVALID_QUANTITY', lineIndexes: [1], lineNames: ['들깨'],
+    });
+  });
+
+  it('음수 수량의 반품·할인 행은 유지한다', () => {
+    expect(checkStatementCommand(명령({ lines: [줄({ qty: -2 })] })).ok).toBe(true);
+  });
   it('성한 명령은 통과한다', () => {
     const r = checkStatementCommand(명령());
     expect(r.ok).toBe(true);
