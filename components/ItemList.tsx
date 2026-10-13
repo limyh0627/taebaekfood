@@ -1255,16 +1255,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
     return counts;
   }, [cart, items]);
 
-  const [adjustmentModal, setAdjustmentModal] = useState<{
-    isOpen: boolean;
-    itemId: string;
-    itemName: string;
-    originalQuantity: number;
-    type: AdjustmentType;
-  } | null>(null);
-  const [adjustmentReason, setAdjustmentReason] = useState('');
-  const [adjustmentQty, setAdjustmentQty] = useState<number>(0);
-
   // 품목별 필터 탭 — 분류 관리에서 정한 하위 분류를 그대로 따라간다(추가하면 여기 바로 뜬다)
   const SUB_ICONS: Record<string, any> = {
     용기: Cylinder, 마개: Disc, 테이프: StickyNote, 박스: Inbox, 라벨: Tag, 향미유: Grape,
@@ -3675,98 +3665,6 @@ const ItemListContent: React.FC<ItemListProps> = ({
                 닫기
               </button>
             </div>
-        </ModalShell>
-      )}
-
-      {adjustmentModal?.isOpen && (
-        <ModalShell title="수량 변동 및 취소 요청" subtitle={adjustmentModal.itemName} onClose={() => setAdjustmentModal(null)} className="md:max-w-md">
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <span className="text-xs font-bold text-slate-500">기존 입고 예정 수량</span>
-                  <span className="text-lg font-black text-slate-900">{adjustmentModal.originalQuantity}</span>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">요청 유형</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button 
-                      onClick={() => setAdjustmentModal({...adjustmentModal, type: 'quantity_change'})}
-                      className={`py-3 rounded-xl text-xs font-black border transition-all ${
-                        adjustmentModal.type === 'quantity_change' 
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' 
-                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                      }`}
-                    >
-                      수량 변경
-                    </button>
-                    <button 
-                      onClick={() => setAdjustmentModal({...adjustmentModal, type: 'cancel_receipt'})}
-                      className={`py-3 rounded-xl text-xs font-black border transition-all ${
-                        adjustmentModal.type === 'cancel_receipt' 
-                          ? 'bg-rose-500 border-rose-500 text-white shadow-lg' 
-                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                      }`}
-                    >
-                      입고 취소
-                    </button>
-                  </div>
-                </div>
-
-                {adjustmentModal.type === 'quantity_change' && (
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">변경할 수량</label>
-                    <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 p-2 rounded-2xl">
-                      <input 
-                        type="number" 
-                        value={adjustmentQty}
-                        onChange={(e) => setAdjustmentQty(parseInt(e.target.value) || 0)}
-                        className="flex-1 bg-transparent text-center font-black text-lg outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">변동 사유</label>
-                  <textarea 
-                    value={adjustmentReason}
-                    onChange={(e) => setAdjustmentReason(e.target.value)}
-                    placeholder="사유를 입력해주세요 (예: 오발주, 수량 오기입 등)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all h-24 resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                <button 
-                  onClick={() => setAdjustmentModal(null)}
-                  className="py-4 bg-slate-100 text-slate-500 rounded-2xl text-sm font-black hover:bg-slate-200 transition-all"
-                >
-                  닫기
-                </button>
-                <button 
-                  disabled={!adjustmentReason.trim()}
-                  onClick={() => {
-                    onAddAdjustmentRequest({
-                      id: `ADJ-${Date.now()}`,
-                      itemId: adjustmentModal.itemId,
-                      itemName: adjustmentModal.itemName,
-                      originalQuantity: adjustmentModal.originalQuantity,
-                      requestedQuantity: adjustmentModal.type === 'quantity_change' ? adjustmentQty : 0,
-                      type: adjustmentModal.type,
-                      reason: adjustmentReason,
-                      status: 'pending',
-                      requestedAt: new Date().toISOString()
-                    });
-                    setAdjustmentModal(null);
-                    alert('변동 요청이 관리자에게 전달되었습니다.');
-                  }}
-                  className="py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  요청 전송
-                </button>
-              </div>
         </ModalShell>
       )}
 

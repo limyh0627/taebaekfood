@@ -41,7 +41,7 @@ async function command(request:OrderInterpretationRequest,action:'submit'|'inspe
 }
 export const submitOrderCopy=(request:OrderInterpretationRequest)=>command(request,'submit');
 export const inspectOrderCopy=(request:OrderInterpretationRequest)=>command(request,'inspect');
-export interface OrderInterpretationRule{ruleId:string;companyId:OrderInterpretationScope['companyId'];partnerId:string;alias:string;itemId:string;status:'proposed'|'approved'|'stopped';revision:number;captureIds:string[];orderIds:string[]}
+export interface OrderInterpretationRule{ruleId:string;companyId:OrderInterpretationScope['companyId'];partnerId:string;alias:string;itemId:string;status:'proposed'|'approved'|'stopped';revision:number;captureIds:string[];orderIds:string[];kind?:'alias'|'expression';scope?:'partner'|'company';target?:'note';value?:string}
 export async function listOrderInterpretationRules(companyId:OrderInterpretationScope['companyId'],includeAll=false):Promise<OrderInterpretationRule[]>{
  await authReady;const scope={companyId,actorUid:auth.currentUser?.uid??''};await active(scope,includeAll);const call=httpsCallable<Record<string,unknown>,OrderInterpretationRule[]>(functions,'listOrderInterpretationRulesCommand');const result=(await call({companyId,includeAll})).data;await active(scope,includeAll);return result;
 }

@@ -1,13 +1,15 @@
 export type OrderInterpretationJson = null | boolean | number | string | OrderInterpretationJson[] | OrderInterpretationJsonObject;
 export type OrderInterpretationJsonObject = { [key: string]: OrderInterpretationJson };
 export type OrderInterpretationScope = { companyId: 'taebaek' | 'punghoe'; actorUid: string };
+export interface OrderExpressionConfirmation {sourceStart:number;sourceEnd:number;sourceText:string;scope:'partner'|'company';target:'note';value:string}
+export interface OrderExpressionRule {kind?:'alias'|'expression';partnerId:string;alias:string;itemId:string;status:string;scope?:'partner'|'company';target?:'note';value?:string}
 export interface OrderInterpretationRequest extends OrderInterpretationScope {
   version: 1;
   requestId: string;
   createdAt: string;
   sourceText: string;
   firstAnalysis: OrderInterpretationJsonObject;
-  confirmed: { inputLines: OrderInterpretationJsonObject[]; orderDraft: OrderInterpretationJsonObject };
+  confirmed: { inputLines: OrderInterpretationJsonObject[]; orderDraft: OrderInterpretationJsonObject; expressionConfirmations?: OrderExpressionConfirmation[] };
 }
 
 export class OrderInterpretationValidationError extends Error {}
@@ -69,8 +71,9 @@ export function validateOrderInterpretation(value: unknown, scope: OrderInterpre
   if (copy.version !== 1 || !nonblank(copy.requestId) || copy.companyId !== scope.companyId || copy.actorUid !== scope.actorUid
     || !validOrderInterpretationIso(copy.createdAt) || typeof copy.sourceText !== 'string') fail('주문 판독 요청의 버전·회사·사용자·시각이 맞지 않습니다.');
   if (!plain(copy.firstAnalysis) || !plain(copy.confirmed)) fail('최초 분석과 확정 입력 전체가 필요합니다.');
-  exactKeys(copy.confirmed as OrderInterpretationJsonObject, ['inputLines', 'orderDraft']);
+  exactKeys(copy.confirmed as OrderInterpretationJsonObject, ['inputLines', 'orderDraft', ...(Object.prototype.hasOwnProperty.call(copy.confirmed,'expressionConfirmations')?['expressionConfirmations']:[])]);
   if (!Array.isArray(copy.confirmed.inputLines) || !copy.confirmed.inputLines.every(plain) || !plain(copy.confirmed.orderDraft)) fail('확정 주문줄과 주문 초안 원문이 필요합니다.');
+  validateOrderExpressionConfirmations(copy as unknown as OrderInterpretationRequest);
   return copy as unknown as OrderInterpretationRequest;
 }
 export function canonicalOrderInterpretation(value: unknown, scope: OrderInterpretationScope): string {
@@ -101,7 +104,35 @@ export function orderInterpretationAliasCandidates(request:OrderInterpretationRe
  }
  return result.filter((row,index)=>result.findIndex(other=>other.partnerId===row.partnerId&&other.alias===row.alias&&other.itemId===row.itemId)===index);
 }
-export function matchOrderInterpretationAlias(expression:string,rules:readonly {alias:string;itemId:string;partnerId:string;status:string}[],partnerId:string):string|null{
- const normalized=normalizeOrderInterpretationAlias(expression),matches=rules.filter(row=>row.status==='approved'&&row.partnerId===partnerId&&normalizeOrderInterpretationAlias(row.alias)===normalized);
+export function matchOrderInterpretationAlias(expression:string,rules:readonly {alias:string;itemId:string;partnerId:string;status:string;kind?:string}[],partnerId:string):string|null{
+ const normalized=normalizeOrderInterpretationAlias(expression),matches=rules.filter(row=>(row.kind===undefined||row.kind==='alias')&&row.status==='approved'&&row.partnerId===partnerId&&normalizeOrderInterpretationAlias(row.alias)===normalized);
  const ids=new Set(matches.map(row=>row.itemId));return ids.size===1?[...ids][0]:null;
+}
+/** 원문은 보존하며 판독 사본에만 명시 숫자 단위를 적용한다. */
+export const normalizeOrderInterpretationUnits=(text:string):string=>text.replace(/(\d+(?:\.\d+)?)\s*미리(?=\s|$|\d|[개병박스캔포])/g,'$1ml');
+export function validateOrderExpressionConfirmations(request:OrderInterpretationRequest):void {
+ const rows=request.confirmed.expressionConfirmations;if(rows===undefined)return;
+ if(!Array.isArray(rows)||rows.length>50)fail('확정 표현 목록을 확인해 주세요.');
+ const seen=new Set<string>();
+ for(const row of rows){
+  if(!plain(row))fail('확정 표현은 객체여야 합니다.');
+  exactKeys(row as unknown as OrderInterpretationJsonObject,['sourceStart','sourceEnd','sourceText','scope','target','value']);
+  if(!Number.isSafeInteger(row.sourceStart)||!Number.isSafeInteger(row.sourceEnd)||row.sourceStart<0||row.sourceEnd<=row.sourceStart||row.sourceEnd>request.sourceText.length||typeof row.sourceText!=='string'||request.sourceText.slice(row.sourceStart,row.sourceEnd)!==row.sourceText||!row.sourceText.trim()||row.sourceText.length>200||/[\r\n]/.test(row.sourceText)||!['partner','company'].includes(row.scope)||row.target!=='note'||typeof row.value!=='string'||!row.value.trim()||row.value.length>500||/[\r\n]/.test(row.value))fail('최초 원문 구간과 확정 표현이 다릅니다.');
+  const draft=request.confirmed.orderDraft;
+  if(typeof draft.note!=='string'||!draft.note.split(/\r?\n/).includes(row.value))fail('최종 비고와 확정 표현이 다릅니다.');
+  const key=JSON.stringify([row.sourceStart,row.sourceEnd,row.target]);if(seen.has(key))fail('같은 원문 표현을 중복 확정할 수 없습니다.');seen.add(key);
+ }
+}
+export interface OrderExpressionCandidate {kind:'expression';partnerId:string;alias:string;itemId:string;scope:'partner'|'company';target:'note';value:string}
+export function orderInterpretationExpressionCandidates(request:OrderInterpretationRequest):OrderExpressionCandidate[]{
+ validateOrderExpressionConfirmations(request);const partnerId=request.confirmed.orderDraft.partnerId;if(typeof partnerId!=='string'||!partnerId)return [];
+ return (request.confirmed.expressionConfirmations??[]).map(row=>({kind:'expression' as const,partnerId:row.scope==='company'?'':partnerId,alias:normalizeOrderInterpretationAlias(row.sourceText),itemId:'',scope:row.scope,target:row.target,value:row.value})).filter((row,index,rows)=>rows.findIndex(other=>JSON.stringify(other)===JSON.stringify(row))===index);
+}
+export function matchOrderInterpretationExpressions(sourceText:string,rules:readonly OrderExpressionRule[],partnerId:string):{notes:string[];conflicted:boolean}{
+ const lines=new Set(sourceText.split(/\r?\n/).map(normalizeOrderInterpretationAlias));
+ const eligible=rules.filter(row=>row.kind==='expression'&&row.status==='approved'&&((row.scope==='company'&&row.partnerId==='')||(row.scope==='partner'&&row.partnerId===partnerId))&&lines.has(normalizeOrderInterpretationAlias(row.alias))&&row.target==='note'&&typeof row.value==='string');
+ const groups=new Map<string,OrderExpressionRule[]>();for(const row of eligible){const key=normalizeOrderInterpretationAlias(row.alias);groups.set(key,[...(groups.get(key)??[]),row]);}
+ const notes=new Set<string>();let conflicted=false;
+ for(const rows of groups.values()){const values=new Set(rows.map(row=>row.value!));if(values.size!==1){conflicted=true;continue;}notes.add([...values][0]);}
+ return {notes:[...notes],conflicted};
 }

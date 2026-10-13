@@ -27,7 +27,7 @@ import { Employee, ChatRoom, ChatMessage } from '../types';
 import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTION_ADMIN_ID } from '../src/shared/mention';
 import { uploadChatFile, filesFromPaste, messageImages, imagePatch, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
 import { canPin, pinPatch, unpinPatch, noticeOf, noticeLine, isPinned } from '../src/shared/roomNotice';
-import { consumeSharedText } from '../src/shared/shareTarget';
+import { peekSharedText,clearSharedText } from '../src/shared/shareTarget';
 import { readSharedFile, discardSharedFile, shareIdFromUrl, type SharedFileDraft } from '../src/shared/shareInbox';
 import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
 import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
@@ -39,7 +39,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../src/firebase';
 import { sharedChatActor } from '../src/shared/services/sharedChatMessageService';
-import { beginSharedChatAttempt, readSharedChatAttempt, readSharedChatAttempts, completeSharedChatAttempt, clearSharedChatAttempt, assertSharedChatDraft, sharedChatAttemptText, discardSharedChatAttemptText, type SharedChatAttempt } from '../src/shared/sharedChatAttempt';
+import { beginSharedTextChatAttempt, beginSharedChatAttempt, readSharedChatAttempt, readSharedChatAttempts, completeSharedChatAttempt, clearSharedChatAttempt, assertSharedChatDraft, sharedChatAttemptText, discardSharedChatAttemptText, type SharedChatAttempt } from '../src/shared/sharedChatAttempt';
 import { actionsFor, replySnippet, deletePatch, isDeleted, type MessageAction } from '../src/shared/messageActions';
 import { REACTION_EMOJIS, toggleReaction, reactionChips, reactionTitle } from '../src/shared/messageReactions';
 import { matchesSearch } from '../src/shared/hangul';
@@ -48,6 +48,8 @@ import { participantCompaniesOf } from '../src/shared/chatParticipants';
 import { isTouchLikeDevice, shouldSendChatOnEnter } from '../src/shared/chatComposer';
 import { officeTalkSortTime, officeTalkStamp } from '../src/shared/officeTalkTime';
 
+export interface SharedChatAck{companyId:string;actorUid:string;shareId:string;messageText:string;}
+const sharedChatAck=(value:unknown):value is SharedChatAck=>!!value&&typeof value==='object'&&['companyId','actorUid','shareId','messageText'].every(key=>typeof (value as Record<string,unknown>)[key]==='string');
 interface OfficeTalkProps {
   currentUser: Employee;
   employees: Employee[];
@@ -58,7 +60,7 @@ interface OfficeTalkProps {
   onAddRoom: (_room: ChatRoom) => void | Promise<unknown>;
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void | Promise<unknown>;
   onDeleteRoom: (_id: string) => void;
-  onSendMessage: (_msg: ChatMessage, _sharedUUID?: string) => void | Promise<unknown>;
+  onSendMessage: (_msg: ChatMessage, _sharedUUID?: string,expectedUid?:string) => void | Promise<unknown>;
   /** 말 지우기 — 줄은 남기고 내용만 비운다(shared/messageActions) */
   onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void;
   /** 관리자면 남의 말도 지울 수 있다 */
@@ -128,45 +130,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [uploadCount, setUploadCount] = useState({ done: 0, total: 0 });
   //  **카톡·문자에서 공유해 들어온 글**(2026-09-03 사장님).
   //  들어올 땐 대화방이 안 정해져 있다. 방을 고를 때까지 들고 있다가 입력칸에 넣는다.
-  const [pendingShare, setPendingShare] = useState<string>(() => consumeSharedText());
+  const [pendingShare, setPendingShare] = useState<string>(() => peekSharedText());
   const [sharedFile, setSharedFile] = useState<SharedFileDraft | null>(null);
   const [shareError, setShareError] = useState(() => new URLSearchParams(window.location.search).has('shareRejected')
-    ? '이전 공유 파일이 남아 있어 새 공유를 받지 않았습니다. 먼저 전송하거나 폐기한 뒤 다시 공유해 주세요.' : '');
+    ? '이전 공유 파일이 남아 있어 새 공유를 받지 않았습니다. 기존 파일의 처리 결과를 확인한 뒤 다시 공유해 주세요.' : '');
   const [shareSending, setShareSending] = useState(false);
   const shareSendLock = useRef(false);
   const [shareAttempt, setShareAttempt] = useState<SharedChatAttempt | null>(null);
   const [shareAttempts, setShareAttempts] = useState<SharedChatAttempt[]>([]);
+  const [shareRecoveryOpen,setShareRecoveryOpen]=useState(false);
   const shareScope = useRef('');
-  shareScope.current = companyOf(currentUser) + ':' + currentUser.id;
+  shareScope.current = companyOf(currentUser) + ':' + currentUser.id+':'+(auth.currentUser?.uid??'');
   useEffect(() => {
-    shareScope.current = companyOf(currentUser) + ':' + currentUser.id;
+    shareScope.current = companyOf(currentUser) + ':' + currentUser.id+':'+(auth.currentUser?.uid??'');
     return () => { shareScope.current = 'closed'; };
   }, [currentUser.id, currentUser.companyId]);
-  useEffect(() => {
-    const id = shareIdFromUrl();
-    setSharedFile(null); setShareAttempt(null); setShareAttempts([]);
-    let live = true;
-    void (async () => {
-      let pending: SharedChatAttempt | null = null;
-      try {
-        const uid = await sharedChatActor(companyOf(currentUser), currentUser.id);
-        if (!live) return;
-        const candidates = readSharedChatAttempts(companyOf(currentUser), uid);
-        setShareAttempts(candidates);
-        pending = id ? readSharedChatAttempt(companyOf(currentUser), uid, id) : candidates.length === 1 ? candidates[0] : null;
-        setShareAttempt(pending);
-        const selectedId = id || pending?.shareId;
-        if (!selectedId) return;
-        const draft = await readSharedFile(selectedId);
-        if (pending) await assertSharedChatDraft(pending, draft);
-        if (live) setSharedFile(draft);
-      } catch (error: any) {
-        // 캐시 삭제는 성공하고 완료 원문 정리가 실패한 경우에도 최초 메시지를 재확인한다.
-        if (live && !pending?.message) setShareError(error?.message || '공유 파일을 읽지 못했습니다.');
-      }
-    })();
-    return () => { live = false; };
-  }, [currentUser.id, currentUser.companyId]);
+  useEffect(()=>{let live=true;const scope=shareScope.current;setSharedFile(null);setShareAttempt(null);setShareAttempts([]);setShareRecoveryOpen(false);setShareSending(false);shareSendLock.current=false;setPendingShare(peekSharedText());
+    const refresh=async()=>{try{const uid=await sharedChatActor(companyOf(currentUser),currentUser.id);if(live&&shareScope.current===scope&&auth.currentUser?.uid===uid)setShareAttempts(readSharedChatAttempts(companyOf(currentUser),uid));}catch(error){if(live&&shareScope.current===scope)setShareError(error instanceof Error?error.message:String(error));}};
+    void refresh();const update=()=>{setPendingShare(peekSharedText());void refresh();};window.addEventListener('storage',update);return()=>{live=false;window.removeEventListener('storage',update);};
+  },[currentUser.id,currentUser.companyId,auth.currentUser?.uid]);
   //  사진을 눌렀을 때 — 전에는 새 탭으로 보내서 앱 밖으로 나가 버렸다(2026-09-03 사장님).
   //  여러 장을 묶어 보낼 수 있게 되면서(2026-09-09) **그 말의 사진 전부**를 들고 다닌다 —
   //  크게 띄운 채로 옆으로 넘길 수 있어야 한 장씩 닫았다 열 일이 없다.
@@ -340,47 +322,32 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (!pendingShare || !activeRoomId) return;
-    setMessageText(t => (t ? t + '\n' + pendingShare : pendingShare));
-    setPendingShare('');
-    inputRef.current?.focus();
-  }, [pendingShare, activeRoomId]);
-
   /**
    * @param attach 사진 아닌 첨부(문서·엑셀) 하나
    * @param photos 사진 여럿을 묶어 보낼 때 — 어느 칸에 실을지는 [imagePatch](../src/shared/chatUpload.ts) 가 정한다
    */
-  const discardShare = async () => {
-    const id = sharedFile?.id || shareAttempt?.shareId || shareIdFromUrl();
-    if (!id || shareSendLock.current) return;
-    const scope = shareScope.current;
-    try {
-      const uid = await sharedChatActor(currentCompanyId, currentUser.id);
-      if (shareScope.current !== scope || auth.currentUser?.uid !== uid) throw Error('로그인·회사가 변경되어 폐기하지 않았습니다.');
-      const expected = sharedChatAttemptText(currentCompanyId, uid, id);
-      await discardSharedFile(id);
-      if (shareScope.current !== scope || auth.currentUser?.uid !== uid) throw Error('로그인·회사가 변경되어 보존 원문은 폐기하지 않았습니다.');
-      discardSharedChatAttemptText(currentCompanyId, uid, id, expected);
-      setSharedFile(null); setShareAttempt(null); setShareAttempts(rows => rows.filter(p => p.shareId !== id)); setShareError('');
-    } catch (error: any) { setShareError(error?.message || '공유 파일을 폐기하지 못했습니다.'); }
-  };
-
+  const discardShare=async()=>{if(!shareAttempt||shareSendLock.current)return;const scope=shareScope.current,expectedUid=auth.currentUser?.uid;try{const uid=await sharedChatActor(currentCompanyId,currentUser.id);if(!expectedUid||uid!==expectedUid||shareScope.current!==scope||auth.currentUser?.uid!==uid)throw Error('로그인·회사가 변경되어 삭제하지 않았습니다.');discardSharedChatAttemptText(currentCompanyId,uid,shareAttempt.shareId,JSON.stringify(shareAttempt));if(shareScope.current!==scope||auth.currentUser?.uid!==uid)return;setShareAttempt(null);setSharedFile(null);setShareAttempts(readSharedChatAttempts(currentCompanyId,uid));setShareError('');}catch(error){if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid)setShareError(error instanceof Error?error.message:String(error));}};
+  const connectIncomingShare=async(kind:'text'|'file')=>{if(shareSendLock.current)return;const scope=shareScope.current,expectedUid=auth.currentUser?.uid;if(!expectedUid){setShareError('로그인을 확인해주세요.');return;}shareSendLock.current=true;setShareSending(true);try{const uid=await sharedChatActor(currentCompanyId,currentUser.id);if(uid!==expectedUid)throw Error('연결 중 로그인 계정이 변경되었습니다.');const current=()=>shareScope.current===scope&&auth.currentUser?.uid===uid; if(!current())throw Error('로그인·회사가 변경되었습니다.');const room=myRooms.find(row=>row.id===activeRoomId&&companyOf(row)===currentCompanyId);if(!room)throw Error('현재 회사의 참여 중인 대화방을 선택해주세요.');let attempt:SharedChatAttempt;
+    if(kind==='text'){const original=peekSharedText();if(!original)throw Error('연결할 공유 내용이 없습니다.');attempt=beginSharedTextChatAttempt(currentCompanyId,uid,{id:crypto.randomUUID(),text:original},room.id,currentUser.id,currentUser.name);if(!current())throw Error('로그인 계정이 변경되었습니다.');clearSharedText(original);setPendingShare(peekSharedText());}
+    else{const id=shareIdFromUrl();if(!id)throw Error('연결할 공유 파일이 없습니다.');const draft=await readSharedFile(id);if(!current())throw Error('로그인 계정이 변경되었습니다.');attempt=await beginSharedChatAttempt(currentCompanyId,uid,draft,room.id,currentUser.id,currentUser.name);if(!current())throw Error('로그인 계정이 변경되었습니다.');setSharedFile(draft);}
+    setShareAttempt(attempt);setShareAttempts(readSharedChatAttempts(currentCompanyId,uid));setShareError('');setShareRecoveryOpen(true);
+  }catch(error){if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){setShareAttempts(readSharedChatAttempts(currentCompanyId,expectedUid));setShareError(error instanceof Error?error.message:String(error));setShareRecoveryOpen(true);}}finally{if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){shareSendLock.current=false;setShareSending(false);}}};
   const selectSharedAttempt = async (candidate: SharedChatAttempt) => {
     if (shareSendLock.current) return;
-    const scope = shareScope.current;
+    const scope = shareScope.current,expectedUid=auth.currentUser?.uid;
     try {
-      const uid = await sharedChatActor(currentCompanyId, currentUser.id);
+      const uid = await sharedChatActor(currentCompanyId, currentUser.id);if(!expectedUid||uid!==expectedUid)throw Error('로그인 계정이 변경되었습니다.');
       if (shareScope.current !== scope || auth.currentUser?.uid !== uid) throw Error('로그인·회사가 변경되었습니다.');
       const pending = readSharedChatAttempt(currentCompanyId, uid, candidate.shareId);
       if (!pending) throw Error('보존된 공유 전송을 찾지 못했습니다.');
-      setShareAttempt(pending); setSharedFile(null); setShareError('');
-      if (!pending.message) {
+      if(JSON.stringify(pending)!==JSON.stringify(candidate))throw Error('다른 창에서 요청이 변경되었습니다. 실패 목록을 새로 확인해주세요.');
+      setShareAttempt(pending); setSharedFile(null); setShareError('');setShareRecoveryOpen(true);
+      if (pending.kind!=='text'&&!pending.message) {
         const draft = await readSharedFile(pending.shareId); await assertSharedChatDraft(pending, draft);
         if (shareScope.current !== scope || auth.currentUser?.uid !== uid) throw Error('로그인·회사가 변경되었습니다.');
         setSharedFile(draft);
       }
-    } catch (error: any) { setShareError(error?.message || '보존된 공유 전송을 읽지 못했습니다.'); }
+    } catch (error: any) { if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid)setShareError(error?.message || '보존된 공유 전송을 읽지 못했습니다.'); }
   };
 
   const sendSharedFile = async () => {
@@ -389,9 +356,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     const room = myRooms.find(r => r.id === activeRoomId && companyOf(r) === currentCompanyId);
     if (!room) { setShareError('본인 회사의 참여 중인 대화방을 선택해 주세요.'); return; }
     shareSendLock.current = true; setShareSending(true); setShareError('');
-    const scope = shareScope.current;
+    const scope = shareScope.current,expectedUid=auth.currentUser?.uid;
     try {
-      const uid = await sharedChatActor(currentCompanyId, currentUser.id);
+      const uid = await sharedChatActor(currentCompanyId, currentUser.id);if(!expectedUid||uid!==expectedUid)throw Error('로그인 계정이 변경되었습니다.');
       const assertScope = () => { if (shareScope.current !== scope || auth.currentUser?.uid !== uid) throw Error('로그인·회사가 변경되어 공유 전송을 중단했습니다.'); };
       assertScope();
       let attempt = readSharedChatAttempt(currentCompanyId, uid, id);
@@ -399,9 +366,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         if (!sharedFile) throw Error('최초 공유 파일을 찾지 못했습니다.');
         attempt = await beginSharedChatAttempt(currentCompanyId, uid, sharedFile, room.id, currentUser.id, currentUser.name);
       }
-      assertScope(); setShareAttempt(attempt);
-      if (attempt.roomId !== room.id) throw Error('이미 선택한 최초 대화방에서 다시 시도하거나 공유 파일을 폐기해 주세요.');
-      if (!attempt.message) {
+      assertScope(); if(shareAttempt&&JSON.stringify(attempt)!==JSON.stringify(shareAttempt))throw Error('다른 창에서 요청이 변경되었습니다. 실패 목록을 새로 확인해주세요.'); setShareAttempt(attempt);
+      if (attempt.roomId !== room.id) throw Error('이미 선택한 최초 대화방에서 같은 내용으로 다시 시도해 주세요.');
+      if (attempt.kind!=='text'&&!attempt.message) {
         if (!sharedFile) throw Error('최초 공유 파일을 찾지 못했습니다. 다시 공유하거나 폐기해 주세요.');
         await assertSharedChatDraft(attempt, sharedFile); assertScope();
         const attachment = await uploadChatFile(currentCompanyId, attempt.roomId, sharedFile.file); assertScope();
@@ -412,13 +379,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         });
         setShareAttempt(attempt);
       }
-      await onSendMessage(attempt.message!, attempt.shareId); assertScope();
-      await discardSharedFile(attempt.shareId); assertScope();
+      const expectedText=JSON.stringify(attempt.message),ack=await onSendMessage(attempt.message!,attempt.shareId,uid);assertScope();
+      if(!sharedChatAck(ack)||ack.companyId!==currentCompanyId||ack.actorUid!==uid||ack.shareId!==attempt.shareId||ack.messageText!==expectedText)throw Error('최초 공유 내용의 처리 결과를 확인하지 못했습니다. 원문을 유지했습니다.');
+      if(attempt.kind!=='text'){await discardSharedFile(attempt.shareId);assertScope();}
       clearSharedChatAttempt(attempt);
       setSharedFile(null); setShareAttempt(null); setShareAttempts(rows => rows.filter(p => p.shareId !== attempt.shareId));
     } catch (error: any) {
-      setShareError(error?.message || '전송하지 못했습니다. 최초 원문으로 다시 시도해 주세요.');
-    } finally { shareSendLock.current = false; setShareSending(false); }
+      if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){setShareError(error?.message || '전송하지 못했습니다. 최초 원문으로 다시 시도해 주세요.');setShareRecoveryOpen(true);}
+    } finally {if(shareScope.current===scope&&auth.currentUser?.uid===expectedUid){shareSendLock.current = false; setShareSending(false);}}
   };
 
   const handleSendMessage = async (
@@ -722,6 +690,11 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     return results;
   }, [employees, mentionSearch, currentUser.id]);
 
+  const sharedControls=(surface:"desktop"|"mobile")=>(<div data-testid={`shared-controls-${surface}`} className={`m-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3 ${surface==='mobile'?'lg:hidden':''}`}>
+          <button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" onClick={()=>{setShareAttempt(null);setShareRecoveryOpen(true);}}>공유 실패 작업 {shareAttempts.length}</button>
+          {(pendingShare||shareIdFromUrl())&&<><p className="text-xs">현재 계정에 연결하지 않은 공유가 있습니다. 대화방을 선택하고 직접 연결해주세요.</p>{pendingShare&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('text')}>공유 내용 연결</button>}{shareIdFromUrl()&&<button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void connectIncomingShare('file')}>공유 파일 연결</button>}</>}
+        </div>);
+
   return (
     <div className="flex bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative" style={{ height: 'calc(100dvh - 120px)' }}>
       {/* Sidebar: Room List */}
@@ -794,27 +767,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         </div>
 
-        {(sharedFile || shareAttempt || shareAttempts.length > 0 || shareError) && (
-          <div className="mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl" data-testid="shared-file-draft">
-            <p className="text-xs font-bold text-indigo-700">공유 파일 미리보기</p>
-            {shareAttempts.length > 0 && (!shareAttempt || shareAttempts.length > 1) && <div className="flex flex-wrap gap-2">{shareAttempts.map(candidate => <button type="button" key={candidate.shareId} disabled={shareSending} onClick={() => selectSharedAttempt(candidate)} className="text-xs font-bold text-indigo-700">보존 전송 선택: {candidate.file.name} · {candidate.roomId}</button>)}</div>}
-            {(sharedFile || shareAttempt) && <>
-              <p className="text-xs break-all">{sharedFile?.file.name || shareAttempt?.file.name} · {fileSizeLabel(sharedFile?.file.size || shareAttempt?.file.size || 0)} · {sharedFile?.file.type || shareAttempt?.file.type}</p>
-              {(sharedFile?.text || shareAttempt?.text) && <p className="text-xs whitespace-pre-wrap">{sharedFile?.text || shareAttempt?.text}</p>}
-              {shareAttempt && <p className="text-xs">최초 선택한 대화방: {myRooms.find(r => r.id === shareAttempt.roomId)?.name || shareAttempt.roomId} · 같은 원문으로 결과를 확인합니다.</p>}
-              <p className="text-xs">보낼 대화방을 직접 선택한 뒤 전송하세요.</p>
-              <button type="button" onClick={sendSharedFile} disabled={shareSending || !activeRoomId} className="mr-2 text-xs font-bold text-indigo-700">{shareSending ? '전송 중…' : '선택한 대화방에 전송'}</button>
-            </>}
-            {shareError && <p role="alert" className="text-xs text-red-600">{shareError}</p>}
-            <button type="button" onClick={discardShare} disabled={shareSending} className="text-xs font-bold text-slate-600">공유 파일 폐기</button>
-          </div>
-        )}
-        {pendingShare && (
-          <div className="mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
-            <p className="text-[10px] font-black text-indigo-700 mb-0.5">공유된 내용 — 보낼 대화방을 고르세요</p>
-            <p className="text-[10px] font-bold text-indigo-500 line-clamp-2 whitespace-pre-wrap">{pendingShare}</p>
-          </div>
-        )}
+        {sharedControls("desktop")}
+
         <div className="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1">
           {myRooms.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6 text-center">
@@ -876,10 +830,18 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         </div>
       </div>
 
+        {shareRecoveryOpen&&<ModalShell title={shareAttempt?'공유 실패 작업 상세':'공유 실패 작업 목록'} layer={1400} onClose={()=>{if(!shareSending){if(shareAttempt){setShareAttempt(null);setSharedFile(null);}else setShareRecoveryOpen(false);}}}>
+          {shareError&&<p role="alert">{shareError}</p>}
+          {!shareAttempt?<>{!shareAttempts.length&&<p>실패 작업이 없습니다.</p>}{shareAttempts.map(candidate=><button type="button" key={candidate.shareId} className="block w-full border-b border-slate-200 py-3 text-left" onClick={()=>void selectSharedAttempt(candidate)}>{candidate.kind==='text'?'공유 내용':candidate.file.name} · {myRooms.find(room=>room.id===candidate.roomId)?.name??candidate.roomId} · 처리 결과 미확인</button>)}</>:<div className="space-y-3">
+            <p>{shareAttempt.kind==='text'?'공유 내용':shareAttempt.file.name} · 최초 대화방 {myRooms.find(room=>room.id===shareAttempt.roomId)?.name??shareAttempt.roomId}</p><pre className="whitespace-pre-wrap">{shareAttempt.text}</pre><p>최초 내용·파일·대화방과 전송 시각을 확인해주세요. 응답이 끊겨 이미 전송됐을 수 있습니다.</p>
+            <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void sendSharedFile()}>{shareSending?'전송 중…':'선택한 대화방에 전송'}</button><button type="button" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs" disabled={shareSending} onClick={()=>void discardShare()}>실패 요청 삭제</button></div><p>실패 목록에서 요청을 삭제합니다. 실제 대화 내용은 삭제하지 않으며 미확인 원문은 유지합니다.</p>
+          </div>}
+        </ModalShell>}
       {/* Main Content: Chat Window */}
       <div className={`flex-1 flex flex-col bg-white min-h-0 min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         {activeRoom ? (
           <>
+            {sharedControls("mobile")}
             {/* Chat Header */}
             <div className="p-4 lg:p-6 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
               <div className="flex items-center space-x-3 lg:space-x-4">
@@ -1549,7 +1511,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               <div className="flex items-center justify-around border-b border-slate-100 px-2 py-2">
                 {REACTION_EMOJIS.map(emoji => {
                   const 내가눌렀나 = (actionMsg.reactions?.[emoji] ?? []).includes(currentUser.id);
-                  return (
+                    return (
                     <button
                       key={emoji}
                       type="button"

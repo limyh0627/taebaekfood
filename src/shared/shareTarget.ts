@@ -25,10 +25,12 @@ export function sharedTextFromSearch(search: string): string {
 
 /** 한 페이지에서 주소를 읽는 건 한 번뿐이다 — 읽고 나면 주소가 비므로 두 번째는 답이 달라진다. */
 let 읽은값: string | null = null;
+let 보존값: string | null = null;
+let 메모리전용 = false;
 
 /**
- * 주소창에서 공유 글을 꺼내 세션에 옮기고 **주소를 지운다**.
- * 안 지우면 새로고침할 때마다 같은 글이 또 뜬다.
+ * 주소창의 공유 글을 세션에 보존한 뒤 공유 query만 정리한다.
+ * 보존하지 못하면 주소를 남겨 새로고침 때 원문을 잃지 않는다.
  *
  * 여러 번 불러도 같은 답을 준다 — React StrictMode 는 useState 초기화 함수를 두 번 부르는데,
  * 두 번째에 빈 값이 나오면 공유로 들어왔는데도 엉뚱한 화면이 열린다.
@@ -39,19 +41,44 @@ export function takeShareFromUrl(loc: Location = window.location, hist: History 
   const text = sharedTextFromSearch(loc.search);
   읽은값 = text;
   if (!text) return '';
-  try { sessionStorage.setItem(SHARE_KEY, text); } catch { /* 사생활 모드면 못 쓴다 — 그냥 넘긴다 */ }
-  try { hist.replaceState(null, '', loc.pathname); } catch { /* 무시 */ }
+  보존값 = text;
+  메모리전용 = true;
+  try {
+    sessionStorage.setItem(SHARE_KEY, text);
+    if (sessionStorage.getItem(SHARE_KEY) !== text) return text;
+    메모리전용 = false;
+    const query = new URLSearchParams(loc.search);
+    for (const name of ['title', 'text', 'url']) query.delete(name);
+    const search = query.toString();
+    hist.replaceState(null, '', loc.pathname + (search ? '?' + search : '') + (loc.hash ?? ''));
+  } catch { /* 보존 실패 때 주소를 남겨 새로고침으로 원문을 잃지 않는다. */ }
   return text;
 }
 
 /** 테스트에서만 쓴다 — 한 판이 끝나면 다음 판이 새로 읽게 한다. */
-export function resetShareRead(): void { 읽은값 = null; }
+export function resetShareRead(): void { 읽은값 = null; 보존값 = null; 메모리전용 = false; }
 
-/** 한 번만 꺼낸다 — 꺼내면 자리를 비운다. */
+/** 기존 호출부 호환 이름. 연결·ACK 전에 원문을 없애지 않는다. */
 export function consumeSharedText(): string {
+  return peekSharedText();
+}
+
+/** 로그인 전 유입은 아직 누구의 요청도 아니다. 읽는 것만으로 없애지 않는다. */
+export function peekSharedText(): string {
+  if (메모리전용) return 보존값 ?? '';
   try {
-    const v = sessionStorage.getItem(SHARE_KEY) ?? '';
-    if (v) sessionStorage.removeItem(SHARE_KEY);
-    return v;
-  } catch { return ''; }
+    return sessionStorage.getItem(SHARE_KEY) ?? 보존값 ?? '';
+  } catch { return 보존값 ?? ''; }
+}
+
+/** 현재 로그인에 명시 연결해 원문을 보존한 뒤 그 원문만 비운다. */
+export function clearSharedText(expected: string): void {
+  if (peekSharedText() !== expected) throw Error('공유 글이 변경되어 지우지 않았습니다.');
+  try { if (!메모리전용) sessionStorage.removeItem(SHARE_KEY); } catch {
+    // 저장소에 접근할 수 없던 유입은 메모리에만 존재한다.
+    if (보존값 !== expected) throw Error('공유 글 보존 상태를 확인하지 못했습니다.');
+  }
+  보존값 = null;
+  메모리전용 = false;
+  읽은값 = null;
 }

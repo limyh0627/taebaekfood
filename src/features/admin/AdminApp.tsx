@@ -1478,7 +1478,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if(!first||first.body!==body){
       const requestId=crypto.randomUUID();
       const request=validateOrderInterpretation({version:1,requestId,companyId,actorUid:scope.actorUid,createdAt:new Date().toISOString(),sourceText:evidence.sourceText,firstAnalysis:evidence.firstAnalysis,
-        confirmed:{inputLines:evidence.inputLines,orderDraft:{...draft,id:`ORD-COPY-${requestId}`,cardNo:nextOrderNo(today(),allOrders),items:ensureOrderLineIds(draft.items),...(pasteOrderSourceMessageId?{sourceChatMessageId:pasteOrderSourceMessageId}:{})}}},scope);
+        confirmed:{inputLines:evidence.inputLines,...(evidence.expressionConfirmations?.length?{expressionConfirmations:evidence.expressionConfirmations}:{}),orderDraft:{...draft,id:`ORD-COPY-${requestId}`,cardNo:nextOrderNo(today(),allOrders),items:ensureOrderLineIds(draft.items),...(pasteOrderSourceMessageId?{sourceChatMessageId:pasteOrderSourceMessageId}:{})}}},scope);
       first={body,request};copyPrepared.current=first;
     }
     copyBusy.current=true;setCopyWorking(true);
@@ -4870,10 +4870,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setIsAddOrderOpen(false);
                 setIsPasteOrderOpen(true);
               }}
-              onSendMessage={async (msg, sharedUUID) => {
+              onSendMessage={async (msg,sharedUUID,expectedUid) => {
+                const originalText=JSON.stringify(msg),first=JSON.parse(originalText) as typeof msg;
+                const actorUid=expectedUid??auth.currentUser?.uid;
+                const assertScope=()=>{if(!actorUid||auth.currentUser?.uid!==actorUid||companyOf(first)!==companyId)throw Error('공유 전송의 로그인·회사 범위가 변경되었습니다.');};
+                const ack=()=>({companyId,actorUid:actorUid!,shareId:sharedUUID!,messageText:originalText});
                 if (sharedUUID) {
-                  const result = await sendSharedChatMessage(msg, sharedUUID);
-                  if (result === 'duplicate') return;
+                  msg=first;assertScope();const result = await sendSharedChatMessage(first,sharedUUID,actorUid);assertScope();
+                  if(!['created','duplicate'].includes(result))throw Error('최초 공유 전송의 완료 응답을 확인하지 못했습니다.');
+                  if (result === 'duplicate') return ack();
                 } else {
                   await addItem('chatMessages', msg);
                 }
@@ -4914,6 +4919,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     } as AdjustmentRequest);
                   }
                 })().catch(error => console.error('[오피스톡 부가 처리 실패]', error));
+                if(sharedUUID){assertScope();return ack();}
               }}
             />
           )}

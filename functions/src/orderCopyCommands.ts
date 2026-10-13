@@ -2,15 +2,17 @@ import * as admin from 'firebase-admin';
 import {createHash} from 'crypto';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {assertReleaseActive,releaseGateRef} from './releaseGate';
-import {canonicalOrderInterpretation,validateOrderInterpretation,orderInterpretationAliasCandidates,normalizeOrderInterpretationAlias,validOrderInterpretationIso,type OrderInterpretationScope} from './shared/orderInterpretation';
+import {canonicalOrderInterpretation,validateOrderInterpretation,orderInterpretationAliasCandidates,normalizeOrderInterpretationAlias,validOrderInterpretationIso,orderInterpretationExpressionCandidates,type OrderExpressionRule,type OrderInterpretationScope} from './shared/orderInterpretation';
 
 export const ORDER_COPY_OPERATIONS='orderCopyOperations';
 export const ORDER_INTERPRETATION_RULES='orderInterpretationRules';
 export const orderCopyHash=(text:string)=>createHash('sha256').update(text).digest('hex');
 export const orderInterpretationRuleId=(companyId:string,partnerId:string,alias:string,itemId:string)=>orderCopyHash(JSON.stringify([companyId,partnerId,normalizeOrderInterpretationAlias(alias),itemId]));
-export interface InterpretationRule{ruleId:string;companyId:string;partnerId:string;alias:string;itemId:string;status:'proposed'|'approved'|'stopped';revision:number;captureIds:string[];orderIds:string[]}
+export interface InterpretationRule extends OrderExpressionRule{ruleId:string;companyId:string;partnerId:string;alias:string;itemId:string;status:'proposed'|'approved'|'stopped';revision:number;captureIds:string[];orderIds:string[]}
 const fail=(message:string):never=>{throw new HttpsError('invalid-argument',message);};
 const id=(value:unknown):value is string=>typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=200&&!value.includes('/');
+export const candidateRuleId=(companyId:string,row:Pick<OrderExpressionRule,'partnerId'|'alias'|'itemId'|'kind'|'scope'|'target'|'value'>)=>(row.kind==='expression')?orderCopyHash(JSON.stringify([companyId,'expression',row.scope,row.partnerId,normalizeOrderInterpretationAlias(row.alias),row.target,row.value])):orderInterpretationRuleId(companyId,row.partnerId,row.alias,row.itemId);
+const validRule=(row:InterpretationRule)=>typeof row.alias==='string'&&row.alias.trim().length>0&&(row.kind==='expression'?(['partner','company'].includes(row.scope??'')&&(row.scope==='company'?row.partnerId==='':id(row.partnerId))&&row.itemId===''&&row.target==='note'&&typeof row.value==='string'&&!!row.value.trim()):((row.kind===undefined||row.kind==='alias')&&id(row.partnerId)&&id(row.itemId)));
 const finite=(value:unknown)=>typeof value==='number'&&Number.isFinite(value);
 const object=(value:any)=>value&&typeof value==='object'&&!Array.isArray(value);
 const allowed=(value:any,keys:string[])=>{if(!object(value)||Object.keys(value).some(key=>!keys.includes(key)))fail('주문 저장 허용 필드가 다릅니다.');};
@@ -49,7 +51,7 @@ export async function submitOrderCopy(db:admin.firestore.Firestore,scope:OrderIn
  if(!validationReason&&Buffer.byteLength(input.requestText)+Buffer.byteLength(JSON.stringify(draft))>850000)validationReason='최초 주문과 분석 원문의 저장 크기를 줄여 다시 확인해 주세요.';
  const operation=db.collection(ORDER_COPY_OPERATIONS).doc(orderCopyHash(`${scope.companyId}:${request.requestId}`)),orderId=id(draft.id)?draft.id:'';
  const order=orderId?db.collection('orders').doc(orderId):null;
- const candidates=orderInterpretationAliasCandidates(request),ruleRefs=candidates.map(row=>db.collection(ORDER_INTERPRETATION_RULES).doc(orderInterpretationRuleId(scope.companyId,row.partnerId,row.alias,row.itemId)));
+ const candidates=[...orderInterpretationAliasCandidates(request),...orderInterpretationExpressionCandidates(request)],ruleRefs=candidates.map(row=>db.collection(ORDER_INTERPRETATION_RULES).doc(candidateRuleId(scope.companyId,row)));
  const base={requestId:request.requestId,orderId,requestHash:input.requestHash};
  return db.runTransaction(async tx=>{
   const gate=await tx.get(releaseGateRef(db));const saved=await tx.get(operation);
@@ -68,7 +70,7 @@ export async function submitOrderCopy(db:admin.firestore.Firestore,scope:OrderIn
   tx.create(order!,approved);tx.create(operation,{...capture,orderText:JSON.stringify(approved)});
   for(let index=0;index<candidates.length;index++){
    const candidate=candidates[index],ref=ruleRefs[index],old=ruleSnapshots[index].data() as InterpretationRule|undefined;
-   if(old&&(old.companyId!==scope.companyId||old.partnerId!==candidate.partnerId||old.alias!==candidate.alias||old.itemId!==candidate.itemId||!Number.isSafeInteger(old.revision)||!['proposed','approved','stopped'].includes(old.status)||!Array.isArray(old.captureIds)||!Array.isArray(old.orderIds)))throw new HttpsError('failed-precondition','기존 별칭 제안 근거를 확인해 주세요.');
+   if(old&&(old.companyId!==scope.companyId||old.partnerId!==candidate.partnerId||old.alias!==candidate.alias||old.itemId!==candidate.itemId||candidateRuleId(scope.companyId,old)!==ref.id||!Number.isSafeInteger(old.revision)||!['proposed','approved','stopped'].includes(old.status)||!Array.isArray(old.captureIds)||!Array.isArray(old.orderIds)))throw new HttpsError('failed-precondition','기존 별칭 제안 근거를 확인해 주세요.');
    // 승인·중단 뒤 새 capture가 기존 관리 결정을 자동으로 바꾸지 않는다.
    if(old&&old.status!=='proposed')continue;
    const captureIds=[...new Set([...(old?.captureIds??[]),operation.id])],orderIds=[...new Set([...(old?.orderIds??[]),draft.id as string])];
@@ -86,16 +88,16 @@ export async function reviewOrderInterpretationRule(db:admin.firestore.Firestore
  if(input?.companyId!==scope.companyId||!id(input.ruleId)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1||!['approve','stop'].includes(input.action))fail('별칭 승인 회사·명세·revision을 확인해 주세요.');
  return db.runTransaction(async tx=>{
   const gate=await tx.get(releaseGateRef(db));assertReleaseActive(gate,input.releaseId);const ref=db.collection(ORDER_INTERPRETATION_RULES).doc(input.ruleId),snap=await tx.get(ref),row=snap.data() as InterpretationRule|undefined;
-  if(!row||row.companyId!==scope.companyId||row.ruleId!==input.ruleId||row.revision!==input.expectedRevision||!['proposed','approved','stopped'].includes(row.status)||!id(row.partnerId)||!id(row.itemId)||typeof row.alias!=='string'||orderInterpretationRuleId(row.companyId,row.partnerId,row.alias,row.itemId)!==ref.id)throw new HttpsError('failed-precondition','별칭 제안 원문 또는 revision이 변경되었습니다. 다시 조회해 주세요.');
+  if(!row||row.companyId!==scope.companyId||row.ruleId!==input.ruleId||row.revision!==input.expectedRevision||!['proposed','approved','stopped'].includes(row.status)||!validRule(row)||candidateRuleId(row.companyId,row)!==ref.id)throw new HttpsError('failed-precondition','별칭 제안 원문 또는 revision이 변경되었습니다. 다시 조회해 주세요.');
   if(input.action==='approve'){
    if(!Array.isArray(row.captureIds)||new Set(row.captureIds).size!==row.captureIds.length||row.captureIds.length<3||row.captureIds.length>100||row.captureIds.some(value=>!id(value)))throw new HttpsError('failed-precondition','서로 다른 확정 주문 3건의 원문 근거가 필요합니다.');
    const captures=await tx.getAll(...row.captureIds.map(value=>db.collection(ORDER_COPY_OPERATIONS).doc(value)));const orders=new Set<string>();
    for(const capture of captures){const saved=capture.data();if(!saved||saved.status!=='applied'||saved.companyId!==scope.companyId||typeof saved.actorUid!=='string'||typeof saved.requestText!=='string'||orderCopyHash(saved.requestText)!==saved.requestHash)throw new HttpsError('failed-precondition','최초 주문 capture의 원문과 해시가 다릅니다.');
     let request:any;try{request=validateOrderInterpretation(JSON.parse(saved.requestText),{companyId:scope.companyId,actorUid:saved.actorUid});}catch{throw new HttpsError('failed-precondition','최초 주문 capture를 읽을 수 없습니다.');}
-    if(canonicalOrderInterpretation(request,request)!==saved.requestText||capture.id!==orderCopyHash(`${scope.companyId}:${request.requestId}`)||saved.orderId!==request.confirmed.orderDraft.id||!orderInterpretationAliasCandidates(request).some(candidate=>candidate.partnerId===row.partnerId&&candidate.itemId===row.itemId&&candidate.alias===row.alias))throw new HttpsError('failed-precondition','제안 별칭과 최초 확정 주문줄이 다릅니다.');orders.add(saved.orderId);
+    if(canonicalOrderInterpretation(request,request)!==saved.requestText||capture.id!==orderCopyHash(`${scope.companyId}:${request.requestId}`)||saved.orderId!==request.confirmed.orderDraft.id||![...orderInterpretationAliasCandidates(request),...orderInterpretationExpressionCandidates(request)].some(candidate=>candidateRuleId(scope.companyId,candidate)===row.ruleId))throw new HttpsError('failed-precondition','제안 별칭과 최초 확정 주문줄이 다릅니다.');orders.add(saved.orderId);
    }
    if(orders.size<3)throw new HttpsError('failed-precondition','서로 다른 확정 주문 3건이 필요합니다.');
-   const [partner,item]=await tx.getAll(db.collection('partners').doc(row.partnerId),db.collection('items').doc(row.itemId));if(!partner.exists||!item.exists||(partner.data()?.companyId??'taebaek')!==scope.companyId||(item.data()?.companyId??'taebaek')!==scope.companyId||item.data()?.archived)throw new HttpsError('failed-precondition','현재 회사의 거래처와 판매 품목 연결을 확인해 주세요.');
+   const refs=row.kind==='expression'?(row.scope==='partner'?[db.collection('partners').doc(row.partnerId)]:[]):[db.collection('partners').doc(row.partnerId),db.collection('items').doc(row.itemId)];const linked=refs.length?await tx.getAll(...refs):[];if(linked.some(doc=>!doc.exists||(doc.data()?.companyId??'taebaek')!==scope.companyId||doc.data()?.archived))throw new HttpsError('failed-precondition','현재 회사의 거래처와 판매 품목 연결을 확인해 주세요.');
   }
   const next={...row,status:input.action==='approve'?'approved' as const:'stopped' as const,revision:row.revision+1};tx.update(ref,{status:next.status,revision:next.revision,reviewedBy:scope.actorUid});return next;
  });

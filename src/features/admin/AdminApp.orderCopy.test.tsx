@@ -10,6 +10,26 @@ const draft={partnerId:'partner',partnerName:'거래처',createdAt:'2026-10-14T0
 const evidence={sourceText:'  참기름 2박스\n',firstAnalysis:{kind:'rules',lines:[{qty:2}]},inputLines:[{orderedAs:'참기름 2박스',itemId:'oil',quantity:2,isBoxUnit:true}]};
 function fixture(){const scope={companyId:'taebaek',actorUid:'actor'},entries:any[]=[];const deps:any={copyBusy:{current:false},copyScope:{current:scope},auth:{currentUser:{uid:'actor'}},copyPrepared:{current:null},companyId:'taebaek',pasteOrderSourceMessageId:'chat-first',allOrders:[],nextOrderNo:vi.fn(()=> 'ORD-261014-001'),today:()=> '2026-10-14',ensureOrderLineIds:vi.fn((rows:any[])=>rows.map((row,i)=>({...row,lineId:`first-${i}`}))),validateOrderInterpretation,submitOrderCopy:vi.fn(async(request:any)=>{entries.push({key:request.requestId,text:JSON.stringify(request),request,deleted:false,error:''});return {status:'unknown',requestId:request.requestId,orderId:request.confirmed.orderDraft.id};}),inspectOrderCopy:vi.fn(async(request:any)=>({status:'duplicate',orderId:request.confirmed.orderDraft.id,requestId:request.requestId})),deletePendingOrderCopy:vi.fn(async(entry:any)=>{entry.deleted=true;}),listPendingOrderCopies:()=>entries};for(const name of ['setCopyWorking','setNewOrderId','setIsPasteOrderOpen','setPasteOrderInitialText','setPasteOrderSourceMessageId','setCopyRevision','setCopyError','setCopySelected','setCopyRecoveryOpen'])deps[name]=vi.fn();return {deps,entries,save:new Function(...Object.keys(deps),save+';return callback;')(...Object.values(deps)),recover:new Function(...Object.keys(deps),recover+';return callback;')(...Object.values(deps))};}
 afterEach(()=>vi.useRealTimers());
+it('표현 확정은 최초 원문 구간·범위·값 전체를 첫 요청에 넣고 같은 입력 재시도에서도 그대로 유지한다',async()=>{
+ const f=fixture(),sourceText='  참기름 2박스\n스티커X';
+ const noteStart=sourceText.indexOf('스티커X');
+ const expressionConfirmations=[{sourceStart:noteStart,sourceEnd:noteStart+4,sourceText:'스티커X',scope:'company' as const,target:'note' as const,value:'스티커 없음'}];
+ const input={...evidence,sourceText,expressionConfirmations},confirmed={...draft,note:'기존 비고\n스티커 없음'};
+ await f.save(confirmed,input);const first=f.deps.submitOrderCopy.mock.calls[0][0];await f.save(confirmed,input);
+ expect(first.sourceText).toBe(sourceText);expect(first.confirmed.expressionConfirmations).toEqual(expressionConfirmations);
+ expect(first.confirmed.orderDraft).toMatchObject({note:'기존 비고\n스티커 없음',shipMethod:draft.shipMethod,items:[{quantity:24,boxQuantity:2}]});
+ expect(f.deps.submitOrderCopy.mock.calls[1][0]).toEqual(first);expect(f.deps.nextOrderNo).toHaveBeenCalledOnce();
+ expressionConfirmations[0].value='후행 변경';expect(first.confirmed.expressionConfirmations[0].value).toBe('스티커 없음');
+});
+it('표현 확정 없는 과거 증거에는 새 표현 필드를 임의로 만들지 않는다',async()=>{const f=fixture();await f.save(draft,evidence);expect(f.deps.submitOrderCopy.mock.calls[0][0].confirmed).not.toHaveProperty('expressionConfirmations');});
+it('표현 원문과 최종 비고가 다르면 최초 서버 전송을 시작하지 않는다',async()=>{
+ const f=fixture(),sourceText='스티커X';await expect(f.save({...draft,note:'다른 비고'}, {...evidence,sourceText,expressionConfirmations:[{sourceStart:0,sourceEnd:4,sourceText,scope:'partner',target:'note',value:'스티커 없음'}]})).rejects.toThrow('확정 표현');
+ expect(f.deps.submitOrderCopy).not.toHaveBeenCalled();expect(f.deps.copyPrepared.current).toBeNull();
+});
+it('배송 방식은 일반 주문 값으로 유지하고 배송 표현 capture는 전송하지 않는다',async()=>{
+ const f=fixture();await expect(f.save({...draft,shipMethod:'수령'}, {...evidence,sourceText:'픽업',expressionConfirmations:[{sourceStart:0,sourceEnd:2,sourceText:'픽업',scope:'partner',target:'shipMethod',value:'수령'}]})).rejects.toThrow('표현');
+ expect(f.deps.submitOrderCopy).not.toHaveBeenCalled();expect(f.deps.copyPrepared.current).toBeNull();
+});
 it('실제 복사 저장은 전체 증거와 ID·번호·줄ID를 최초1회 고정하고 unknown 재시도에서 그대로 재사용한다',async()=>{const f=fixture();await f.save(draft,evidence);const first=f.deps.submitOrderCopy.mock.calls[0][0];vi.useFakeTimers();vi.setSystemTime(new Date('2027-01-01'));await f.save(draft,evidence);expect(f.deps.submitOrderCopy.mock.calls[1][0]).toEqual(first);expect(f.deps.nextOrderNo).toHaveBeenCalledOnce();expect(f.deps.ensureOrderLineIds).toHaveBeenCalledOnce();expect(first).toMatchObject({sourceText:evidence.sourceText,firstAnalysis:evidence.firstAnalysis,confirmed:{inputLines:evidence.inputLines,orderDraft:{id:expect.stringMatching(/^ORD-COPY-/),cardNo:'ORD-261014-001',sourceChatMessageId:'chat-first',items:[{lineId:'first-0',quantity:24,boxQuantity:2}]}}});expect(first.confirmed.orderDraft).not.toHaveProperty('status');expect(first.confirmed.orderDraft).not.toHaveProperty('createdBy');});
 it('무관 B 저장을 이전 A 재시도로 바꾸지 않고 원 A도 보존한다',async()=>{const f=fixture();await f.save(draft,evidence);await f.save({...draft,partnerId:'other',partnerName:'B'}, {...evidence,sourceText:'B 원문'});expect(f.deps.submitOrderCopy.mock.calls[0][0].requestId).not.toBe(f.deps.submitOrderCopy.mock.calls[1][0].requestId);expect(f.entries).toHaveLength(2);});
 it('조회 확인은 inspect만 사용하고 다른 실패의 ACK가 작성창을 닫지 않는다',async()=>{const f=fixture();await f.save(draft,evidence);await f.recover(f.entries[0],'inspect');expect(f.deps.inspectOrderCopy).toHaveBeenCalledWith(f.entries[0].request);expect(f.deps.submitOrderCopy).toHaveBeenCalledOnce();expect(f.deps.setIsPasteOrderOpen).not.toHaveBeenCalled();});

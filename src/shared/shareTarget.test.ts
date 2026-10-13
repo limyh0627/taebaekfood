@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { joinSharedText, sharedTextFromSearch, takeShareFromUrl, consumeSharedText, resetShareRead, SHARE_KEY } from './shareTarget';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { joinSharedText, sharedTextFromSearch, takeShareFromUrl, consumeSharedText, peekSharedText, clearSharedText, resetShareRead, SHARE_KEY } from './shareTarget';
+afterEach(() => vi.restoreAllMocks());
 
 describe('joinSharedText', () => {
   it('본문만 오면 본문만', () => {
@@ -60,9 +61,26 @@ describe('takeShareFromUrl · consumeSharedText', () => {
     expect(takeShareFromUrl({ search: '', pathname: '/' } as Location, hist)).toBe('회의');
   });
 
-  it('한 번 꺼내면 자리가 빈다 — 새로고침에 또 뜨면 안 된다', () => {
+  it('읽기만으로 비우지 않고 연결 후 정확 원문만 비운다', () => {
     sessionStorage.setItem(SHARE_KEY, '회의');
     expect(consumeSharedText()).toBe('회의');
+    expect(consumeSharedText()).toBe('회의');
+    expect(() => clearSharedText('다른 글')).toThrow('변경');
+    clearSharedText('회의');
     expect(consumeSharedText()).toBe('');
+  });
+  it('저장소 쓰기 실패 때 주소는 보존하고 메모리로 원문을 전달한다', () => {
+    const replaceState = vi.fn();
+    sessionStorage.setItem(SHARE_KEY, '이전 유입');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw Error('차단'); });
+    expect(takeShareFromUrl({ search:'?text=원문',pathname:'/' } as Location,{ replaceState } as unknown as History)).toBe('원문');
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(peekSharedText()).toBe('원문');
+    clearSharedText('원문');expect(sessionStorage.getItem(SHARE_KEY)).toBe('이전 유입');
+  });
+  it('공유 query만 정리하고 기존 검색·해시는 유지한다', () => {
+    const replaceState = vi.fn();
+    takeShareFromUrl({ search:'?view=talk&text=원문',pathname:'/',hash:'#room' } as Location,{ replaceState } as unknown as History);
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/?view=talk#room');
   });
 });

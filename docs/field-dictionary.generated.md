@@ -6,11 +6,11 @@ TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처�
 
 ## Firestore 경로 보완
 
-SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 782건. 동적 문서 ID도 미해석으로 보존하며, 미해석 410건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
+SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 784건. 동적 문서 ID도 미해석으로 보존하며, 미해석 411건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 19건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.
 
 COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `orderInterpretationRules`. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.
 
-동적 컬렉션 호출 50건과 정적 컬렉션의 동적 문서 경로 359건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
+동적 컬렉션 호출 50건과 정적 컬렉션의 동적 문서 경로 360건을 구분한다. 후자는 컬렉션 자체의 누락이 아니다. JSON dynamicWrappers는 SDK 호출의 명명 함수와 타입 검사기로 연결된 실제 소비자 위치/인수식을 기록한다. 인수식은 240자까지 표시하고 잘린 경우 truncated=true를 남기며, resolvedPaths는 실제 선언의 인수 대입으로 확인된 첫 컬렉션만 기록하며 회사 조건·문서 ID·런타임 컬렉션 전체 집합을 보장하지 않는다. 익명 고차 함수·객체 DTO·동적 분기는 원문 소스를 함께 대조한다.
 
 | 동적 컬렉션 공용 함수 | 선언 | SDK 위치 | 실제 연결된 소비자 위치 |
 | --- | --- | --- | --- |
@@ -20,9 +20,9 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | subscribeToCollection | src/shared/services/firebaseService.ts:335 | src/shared/services/firebaseService.ts:341 | src/shared/services/firebaseService.ts:381: 미해석; components/ItemList.tsx:594: stockClosings; src/shared/hooks/useAppData.ts:252: 미해석; src/shared/hooks/useAppData.ts:258: issuedStatements; src/shared/hooks/useAppData.ts:272: cashAccounts; src/shared/hooks/useAppData.ts:273: returnOperations; src/shared/hooks/useAppData.ts:276: cashEntries; src/shared/hooks/useAppData.ts:277: settlements; src/shared/hooks/useAppData.ts:278: partnerAdvanceOperations; src/shared/hooks/useAppData.ts:279: inventorySnapshots; src/shared/hooks/useAppData.ts:298: 미해석; src/shared/hooks/useAppData.ts:307: notices; src/shared/hooks/useAppData.ts:308: pallets; src/shared/hooks/useAppData.ts:310: employees; src/shared/hooks/useAppData.ts:311: leaveRequests; src/shared/hooks/useAppData.ts:312: adjustmentRequests; src/shared/hooks/useAppData.ts:313: purchaseOrders; src/shared/hooks/useAppData.ts:314: items; src/shared/hooks/useAppData.ts:315: partners; src/shared/hooks/useAppData.ts:316: chatRooms; src/shared/hooks/useAppData.ts:321: notifications; src/shared/hooks/useAppData.ts:322: workOrderItems; src/shared/hooks/useAppData.ts:324: itemReceipts; src/shared/hooks/useAppData.ts:344: orders; src/hooks/useAdminData.ts:56: fixedCosts; src/hooks/useAdminData.ts:61: productionRecords; components/HRManager.tsx:128: payrolls; components/PartnerSignupApproval.tsx:40: users; components/DocumentManager.tsx:78: fileCabinetCategories; components/DocumentManager.tsx:79: fileCabinetSubCategories; components/DocumentManager.tsx:80: fileCabinetDocs; components/QuotationManager.tsx:117: quotations; components/ReturnManager.tsx:104: returnRequests; components/ReceivingReturnsManager.tsx:56: returnRequests |
 | fetchCollection | src/shared/services/firebaseService.ts:358 | src/shared/services/firebaseService.ts:362 | components/AddItemModal.tsx:136: itemTaxonomy; components/CategoryManager.tsx:39: itemTaxonomy; components/ItemList.tsx:570: itemTaxonomy; components/ItemList.tsx:625: fileCabinetCategories; components/ItemList.tsx:627: fileCabinetSubCategories; components/ItemManager.tsx:320: itemTaxonomy; src/shared/hooks/useAppData.ts:222: orders; src/shared/hooks/useAppData.ts:377: partner_item; src/shared/hooks/useAppData.ts:378: item_bom; src/shared/hooks/useAppData.ts:379: item_pack; src/shared/hooks/useAppData.ts:380: item_formula; src/shared/hooks/useAppData.ts:384: accountGroups; src/shared/hooks/useAppData.ts:385: accountCodes; src/shared/hooks/useAppData.ts:386: fixedCostTemplates; src/shared/hooks/useAppData.ts:387: expensePresets; src/shared/hooks/useAppData.ts:388: cashFlowManual; components/DashboardLinks.tsx:53: dashboardLinks; components/DocumentManager.tsx:82: fileCabinetCategories; components/DocumentManager.tsx:114: fileCabinetCategories; components/DocumentManager.tsx:115: fileCabinetSubCategories; src/features/statements/hooks/useStatementHistoryFilters.ts:29: itemTaxonomy; src/features/admin/AdminApp.tsx:561: rawMaterialLedger; src/features/admin/AdminApp.tsx:574: rawMaterialLedger |
 | fetchDateRange | src/shared/services/firebaseService.ts:389 | src/shared/services/firebaseService.ts:397 | src/features/admin/useProductionSalesHistory.ts:14: productionSalesLogs; components/PalletManager.tsx:65: palletTransactions; components/TaxStatement.tsx:58: issuedStatements; src/features/admin/useVoucherLedger.ts:152: issuedStatements; src/features/admin/useVoucherLedger.ts:169: issuedStatements |
-| addItem | src/shared/services/firebaseService.ts:424 | src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:464, src/shared/services/firebaseService.ts:467 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:626: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:629: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:821: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:1144: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1156: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1171: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1183: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1546: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1881: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2142: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2723: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2759: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:2780: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3144: partners, partners, partners, partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3170: notices, notices, notices, notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3180: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3190: employees, employees, employees, employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3198: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3509: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4300: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4304: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4353: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4421: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4431: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4433: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4438: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4500: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4649: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4723: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4725: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4859: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:4878: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:4900: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4909: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:5030: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:5085: items, items, items, items, items, items, items, items |
-| updateItem | src/shared/services/firebaseService.ts:472 | src/shared/services/firebaseService.ts:473 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:790: items; src/features/admin/AdminApp.tsx:842: items; src/features/admin/AdminApp.tsx:1216: purchaseOrders; src/features/admin/AdminApp.tsx:1224: purchaseOrders; src/features/admin/AdminApp.tsx:1226: purchaseOrders; src/features/admin/AdminApp.tsx:1235: purchaseOrders; src/features/admin/AdminApp.tsx:1243: purchaseOrders; src/features/admin/AdminApp.tsx:2136: orders; src/features/admin/AdminApp.tsx:2629: orders; src/features/admin/AdminApp.tsx:2632: orders; src/features/admin/AdminApp.tsx:2633: orders; src/features/admin/AdminApp.tsx:2634: orders; src/features/admin/AdminApp.tsx:2635: orders; src/features/admin/AdminApp.tsx:2668: orders; src/features/admin/AdminApp.tsx:2671: orders; src/features/admin/AdminApp.tsx:2672: orders; src/features/admin/AdminApp.tsx:2673: orders; src/features/admin/AdminApp.tsx:2674: orders; src/features/admin/AdminApp.tsx:2695: orders; src/features/admin/AdminApp.tsx:2696: orders; src/features/admin/AdminApp.tsx:2700: orders; src/features/admin/AdminApp.tsx:2701: orders; src/features/admin/AdminApp.tsx:2702: orders; src/features/admin/AdminApp.tsx:2703: orders; src/features/admin/AdminApp.tsx:2741: workOrderItems; src/features/admin/AdminApp.tsx:2757: items; src/features/admin/AdminApp.tsx:2775: purchaseOrders; src/features/admin/AdminApp.tsx:2913: items; src/features/admin/AdminApp.tsx:3144: partners; src/features/admin/AdminApp.tsx:3170: notices; src/features/admin/AdminApp.tsx:3179: pallets; src/features/admin/AdminApp.tsx:3189: employees; src/features/admin/AdminApp.tsx:3193: leaveRequests; src/features/admin/AdminApp.tsx:3195: leaveRequests; src/features/admin/AdminApp.tsx:3216: leaveRequests; src/features/admin/AdminApp.tsx:3218: adjustmentRequests; src/features/admin/AdminApp.tsx:3227: adjustmentRequests; src/features/admin/AdminApp.tsx:3251: adjustmentRequests; src/features/admin/AdminApp.tsx:3262: pendingStatementEdits; src/features/admin/AdminApp.tsx:3770: orders; src/features/admin/AdminApp.tsx:4297: cashAccounts; src/features/admin/AdminApp.tsx:4301: fixedCostTemplates; src/features/admin/AdminApp.tsx:4309: orders; src/features/admin/AdminApp.tsx:4374: purchaseOrders; src/features/admin/AdminApp.tsx:4422: fixedCostTemplates; src/features/admin/AdminApp.tsx:4430: accountCodes; src/features/admin/AdminApp.tsx:4434: accountGroups; src/features/admin/AdminApp.tsx:4526: cashAccounts; src/features/admin/AdminApp.tsx:4619: items; src/features/admin/AdminApp.tsx:4651: productionRecords; src/features/admin/AdminApp.tsx:4661: adjustmentRequests; src/features/admin/AdminApp.tsx:4670: adjustmentRequests; src/features/admin/AdminApp.tsx:4704: adjustmentRequests; src/features/admin/AdminApp.tsx:4737: leaveRequests; src/features/admin/AdminApp.tsx:4739: leaveRequests; src/features/admin/AdminApp.tsx:4860: chatRooms; src/features/admin/AdminApp.tsx:4863: chatMessages; src/features/admin/AdminApp.tsx:4888: chatRooms; src/features/admin/AdminApp.tsx:5068: items; src/features/admin/AdminApp.tsx:5080: items |
-| deleteItem | src/shared/services/firebaseService.ts:483 | src/shared/services/firebaseService.ts:485 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1082: notifications; src/features/admin/AdminApp.tsx:1212: purchaseOrders; src/features/admin/AdminApp.tsx:1234: purchaseOrders; src/features/admin/AdminApp.tsx:1237: purchaseOrders; src/features/admin/AdminApp.tsx:2719: workOrderItems; src/features/admin/AdminApp.tsx:3144: partners; src/features/admin/AdminApp.tsx:3170: notices; src/features/admin/AdminApp.tsx:3191: employees; src/features/admin/AdminApp.tsx:3196: leaveRequests; src/features/admin/AdminApp.tsx:3219: adjustmentRequests; src/features/admin/AdminApp.tsx:4302: fixedCostTemplates; src/features/admin/AdminApp.tsx:4305: expensePresets; src/features/admin/AdminApp.tsx:4423: fixedCostTemplates; src/features/admin/AdminApp.tsx:4432: accountCodes; src/features/admin/AdminApp.tsx:4435: accountGroups; src/features/admin/AdminApp.tsx:4650: productionRecords; src/features/admin/AdminApp.tsx:4702: purchaseOrders; src/features/admin/AdminApp.tsx:4707: adjustmentRequests; src/features/admin/AdminApp.tsx:4861: chatRooms; src/features/admin/AdminApp.tsx:5027: partner_item; src/features/admin/AdminApp.tsx:5055: items |
+| addItem | src/shared/services/firebaseService.ts:424 | src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:437, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:441, src/shared/services/firebaseService.ts:464, src/shared/services/firebaseService.ts:467 | src/shared/services/employeeCommand.ts:36: 미해석, 미해석, 미해석, 미해석, 미해석, 미해석, 미해석, 미해석; components/CategoryManager.tsx:45: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:88: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:106: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:124: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/CategoryManager.tsx:149: itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy, itemTaxonomy; components/ItemList.tsx:626: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/ItemList.tsx:629: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DashboardLinks.tsx:64: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DashboardLinks.tsx:93: dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks, dashboardLinks; components/DocumentManager.tsx:86: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:119: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:121: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/DocumentManager.tsx:206: fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs, fileCabinetDocs; components/DocumentManager.tsx:254: fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories, fileCabinetCategories; components/DocumentManager.tsx:274: fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories, fileCabinetSubCategories; components/QuotationManager.tsx:266: quotations, quotations, quotations, quotations, quotations, quotations, quotations, quotations; components/HaccpChecklist.tsx:555: haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp, haccp_temp; components/HaccpChecklist.tsx:1095: haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming, haccp_incoming; components/HaccpChecklist.tsx:1386: haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning, haccp_cleaning; components/HaccpChecklist.tsx:1982: haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation, haccp_sanitation; components/HaccpChecklist.tsx:2591: haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene, haccp_personal_hygiene; components/HaccpChecklist.tsx:3648: haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation, haccp_periodic_sanitation; components/HaccpChecklist.tsx:4176: haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist, haccp_closing_checklist; components/BenzopyreneLog.tsx:62: benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests, benzopyreneTests; src/features/admin/AdminApp.tsx:821: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:1144: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1156: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1171: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:1183: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1546: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:1881: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:2142: orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits, orderItemEdits; src/features/admin/AdminApp.tsx:2723: workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems, workOrderItems; src/features/admin/AdminApp.tsx:2759: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:2780: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:3144: partners, partners, partners, partners, partners, partners, partners, partners; src/features/admin/AdminApp.tsx:3170: notices, notices, notices, notices, notices, notices, notices, notices; src/features/admin/AdminApp.tsx:3180: palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions, palletTransactions; src/features/admin/AdminApp.tsx:3190: employees, employees, employees, employees, employees, employees, employees, employees; src/features/admin/AdminApp.tsx:3198: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:3509: productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs, productionSalesLogs; src/features/admin/AdminApp.tsx:4300: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4304: expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets, expensePresets; src/features/admin/AdminApp.tsx:4353: pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits, pendingStatementEdits; src/features/admin/AdminApp.tsx:4421: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4431: accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes, accountCodes; src/features/admin/AdminApp.tsx:4433: accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups, accountGroups; src/features/admin/AdminApp.tsx:4438: inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots, inventorySnapshots; src/features/admin/AdminApp.tsx:4500: fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates, fixedCostTemplates; src/features/admin/AdminApp.tsx:4649: productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords, productionRecords; src/features/admin/AdminApp.tsx:4723: leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests, leaveRequests; src/features/admin/AdminApp.tsx:4725: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4859: chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms, chatRooms; src/features/admin/AdminApp.tsx:4883: chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages, chatMessages; src/features/admin/AdminApp.tsx:4905: notifications, notifications, notifications, notifications, notifications, notifications, notifications, notifications; src/features/admin/AdminApp.tsx:4914: adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests, adjustmentRequests; src/features/admin/AdminApp.tsx:5036: items, items, items, items, items, items, items, items; src/features/admin/AdminApp.tsx:5091: items, items, items, items, items, items, items, items |
+| updateItem | src/shared/services/firebaseService.ts:472 | src/shared/services/firebaseService.ts:473 | components/RawMaterialLotPanel.tsx:80: items; components/RawMaterialLotPanel.tsx:94: items; components/CategoryManager.tsx:91: itemTaxonomy; components/CategoryManager.tsx:105: itemTaxonomy; components/CategoryManager.tsx:120: itemTaxonomy; components/CategoryManager.tsx:135: itemTaxonomy; components/CategoryManager.tsx:159: itemTaxonomy; components/CategoryManager.tsx:180: itemTaxonomy; components/PalletManager.tsx:360: palletTransactions; components/DashboardLinks.tsx:103: dashboardLinks; components/DocumentManager.tsx:246: fileCabinetDocs; components/HaccpChecklist.tsx:559: haccp_temp; components/HaccpChecklist.tsx:570: haccp_temp; components/HaccpChecklist.tsx:1097: haccp_incoming; components/HaccpChecklist.tsx:1106: haccp_incoming; components/HaccpChecklist.tsx:1388: haccp_cleaning; components/HaccpChecklist.tsx:1397: haccp_cleaning; components/HaccpChecklist.tsx:1992: haccp_sanitation; components/HaccpChecklist.tsx:2015: haccp_sanitation; components/HaccpChecklist.tsx:2595: haccp_personal_hygiene; components/HaccpChecklist.tsx:2609: haccp_personal_hygiene; components/HaccpChecklist.tsx:3652: haccp_periodic_sanitation; components/HaccpChecklist.tsx:3666: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4180: haccp_closing_checklist; components/HaccpChecklist.tsx:4194: haccp_closing_checklist; components/BenzopyreneLog.tsx:81: benzopyreneTests; src/features/admin/AdminApp.tsx:790: items; src/features/admin/AdminApp.tsx:842: items; src/features/admin/AdminApp.tsx:1216: purchaseOrders; src/features/admin/AdminApp.tsx:1224: purchaseOrders; src/features/admin/AdminApp.tsx:1226: purchaseOrders; src/features/admin/AdminApp.tsx:1235: purchaseOrders; src/features/admin/AdminApp.tsx:1243: purchaseOrders; src/features/admin/AdminApp.tsx:2136: orders; src/features/admin/AdminApp.tsx:2629: orders; src/features/admin/AdminApp.tsx:2632: orders; src/features/admin/AdminApp.tsx:2633: orders; src/features/admin/AdminApp.tsx:2634: orders; src/features/admin/AdminApp.tsx:2635: orders; src/features/admin/AdminApp.tsx:2668: orders; src/features/admin/AdminApp.tsx:2671: orders; src/features/admin/AdminApp.tsx:2672: orders; src/features/admin/AdminApp.tsx:2673: orders; src/features/admin/AdminApp.tsx:2674: orders; src/features/admin/AdminApp.tsx:2695: orders; src/features/admin/AdminApp.tsx:2696: orders; src/features/admin/AdminApp.tsx:2700: orders; src/features/admin/AdminApp.tsx:2701: orders; src/features/admin/AdminApp.tsx:2702: orders; src/features/admin/AdminApp.tsx:2703: orders; src/features/admin/AdminApp.tsx:2741: workOrderItems; src/features/admin/AdminApp.tsx:2757: items; src/features/admin/AdminApp.tsx:2775: purchaseOrders; src/features/admin/AdminApp.tsx:2913: items; src/features/admin/AdminApp.tsx:3144: partners; src/features/admin/AdminApp.tsx:3170: notices; src/features/admin/AdminApp.tsx:3179: pallets; src/features/admin/AdminApp.tsx:3189: employees; src/features/admin/AdminApp.tsx:3193: leaveRequests; src/features/admin/AdminApp.tsx:3195: leaveRequests; src/features/admin/AdminApp.tsx:3216: leaveRequests; src/features/admin/AdminApp.tsx:3218: adjustmentRequests; src/features/admin/AdminApp.tsx:3227: adjustmentRequests; src/features/admin/AdminApp.tsx:3251: adjustmentRequests; src/features/admin/AdminApp.tsx:3262: pendingStatementEdits; src/features/admin/AdminApp.tsx:3770: orders; src/features/admin/AdminApp.tsx:4297: cashAccounts; src/features/admin/AdminApp.tsx:4301: fixedCostTemplates; src/features/admin/AdminApp.tsx:4309: orders; src/features/admin/AdminApp.tsx:4374: purchaseOrders; src/features/admin/AdminApp.tsx:4422: fixedCostTemplates; src/features/admin/AdminApp.tsx:4430: accountCodes; src/features/admin/AdminApp.tsx:4434: accountGroups; src/features/admin/AdminApp.tsx:4526: cashAccounts; src/features/admin/AdminApp.tsx:4619: items; src/features/admin/AdminApp.tsx:4651: productionRecords; src/features/admin/AdminApp.tsx:4661: adjustmentRequests; src/features/admin/AdminApp.tsx:4670: adjustmentRequests; src/features/admin/AdminApp.tsx:4704: adjustmentRequests; src/features/admin/AdminApp.tsx:4737: leaveRequests; src/features/admin/AdminApp.tsx:4739: leaveRequests; src/features/admin/AdminApp.tsx:4860: chatRooms; src/features/admin/AdminApp.tsx:4863: chatMessages; src/features/admin/AdminApp.tsx:4893: chatRooms; src/features/admin/AdminApp.tsx:5074: items; src/features/admin/AdminApp.tsx:5086: items |
+| deleteItem | src/shared/services/firebaseService.ts:483 | src/shared/services/firebaseService.ts:485 | src/shared/services/workOrderResetService.ts:21: workOrderItems; components/CategoryManager.tsx:169: itemTaxonomy; components/PalletManager.tsx:379: palletTransactions; components/DashboardLinks.tsx:109: dashboardLinks; components/DocumentManager.tsx:235: fileCabinetDocs; components/DocumentManager.tsx:265: fileCabinetCategories; components/DocumentManager.tsx:284: fileCabinetSubCategories; components/QuotationManager.tsx:362: quotations; components/HaccpChecklist.tsx:577: haccp_temp; components/HaccpChecklist.tsx:2028: haccp_sanitation; components/HaccpChecklist.tsx:2616: haccp_personal_hygiene; components/HaccpChecklist.tsx:3677: haccp_periodic_sanitation; components/HaccpChecklist.tsx:4205: haccp_closing_checklist; components/BenzopyreneLog.tsx:91: benzopyreneTests; src/features/admin/AdminApp.tsx:1082: notifications; src/features/admin/AdminApp.tsx:1212: purchaseOrders; src/features/admin/AdminApp.tsx:1234: purchaseOrders; src/features/admin/AdminApp.tsx:1237: purchaseOrders; src/features/admin/AdminApp.tsx:2719: workOrderItems; src/features/admin/AdminApp.tsx:3144: partners; src/features/admin/AdminApp.tsx:3170: notices; src/features/admin/AdminApp.tsx:3191: employees; src/features/admin/AdminApp.tsx:3196: leaveRequests; src/features/admin/AdminApp.tsx:3219: adjustmentRequests; src/features/admin/AdminApp.tsx:4302: fixedCostTemplates; src/features/admin/AdminApp.tsx:4305: expensePresets; src/features/admin/AdminApp.tsx:4423: fixedCostTemplates; src/features/admin/AdminApp.tsx:4432: accountCodes; src/features/admin/AdminApp.tsx:4435: accountGroups; src/features/admin/AdminApp.tsx:4650: productionRecords; src/features/admin/AdminApp.tsx:4702: purchaseOrders; src/features/admin/AdminApp.tsx:4707: adjustmentRequests; src/features/admin/AdminApp.tsx:4861: chatRooms; src/features/admin/AdminApp.tsx:5033: partner_item; src/features/admin/AdminApp.tsx:5061: items |
 | subscribeToSubcollection | src/shared/services/firebaseService.ts:501 | src/shared/services/firebaseService.ts:507 | 정적 호출 연결 없음 |
 | addSubItem | src/shared/services/firebaseService.ts:517 | src/shared/services/firebaseService.ts:526, src/shared/services/firebaseService.ts:529 | 정적 호출 연결 없음 |
 | updateSubItem | src/shared/services/firebaseService.ts:534 | src/shared/services/firebaseService.ts:541 | 정적 호출 연결 없음 |
@@ -31,7 +31,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | fetchWhereIn | src/shared/services/firebaseService.ts:644 | src/shared/services/firebaseService.ts:654 | src/features/admin/AdminApp.tsx:1402: orders |
 | fetchByIds | src/shared/services/firebaseService.ts:667 | src/shared/services/firebaseService.ts:675 | src/features/admin/useVoucherLedger.ts:136: issuedStatements |
 | subscribeWhere | src/shared/services/firebaseService.ts:681 | src/shared/services/firebaseService.ts:688 | 정적 호출 연결 없음 |
-| commitCompanyWrites | src/shared/services/firebaseService.ts:702 | src/shared/services/firebaseService.ts:709, src/shared/services/firebaseService.ts:735 | src/shared/services/firebaseService.ts:484: 미해석, 미해석; src/shared/services/firebaseService.ts:588: 미해석, 미해석; src/shared/services/firebaseService.ts:619: 미해석, 미해석; src/shared/services/firebaseService.ts:956: 미해석, 미해석; src/features/admin/AdminApp.tsx:1452: 미해석, 미해석; src/features/admin/AdminApp.tsx:4823: 미해석, 미해석; src/features/admin/AdminApp.tsx:5013: 미해석, 미해석; src/features/admin/AdminApp.tsx:5103: 미해석, 미해석 |
+| commitCompanyWrites | src/shared/services/firebaseService.ts:702 | src/shared/services/firebaseService.ts:709, src/shared/services/firebaseService.ts:735 | src/shared/services/firebaseService.ts:484: 미해석, 미해석; src/shared/services/firebaseService.ts:588: 미해석, 미해석; src/shared/services/firebaseService.ts:619: 미해석, 미해석; src/shared/services/firebaseService.ts:956: 미해석, 미해석; src/features/admin/AdminApp.tsx:1452: 미해석, 미해석; src/features/admin/AdminApp.tsx:4823: 미해석, 미해석; src/features/admin/AdminApp.tsx:5019: 미해석, 미해석; src/features/admin/AdminApp.tsx:5109: 미해석, 미해석 |
 | read | src/shared/services/oemExternalStockEvidence.ts:22 | src/shared/services/oemExternalStockEvidence.ts:23 | src/shared/services/oemExternalStockEvidence.ts:27: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:29: rawMaterialLedger; src/shared/services/oemExternalStockEvidence.ts:36: purchaseOrders; src/shared/services/oemExternalStockEvidence.ts:37: rawInventoryJobs; src/shared/services/oemExternalStockEvidence.ts:43: rawInventoryReversalGuards |
 | readVoucherScopeRows | functions/src/newScopeCounter.ts:21 | functions/src/newScopeCounter.ts:27 | functions/src/newScopeCounter.ts:62: 미해석; functions/src/voucherIssue.ts:94: 미해석 |
 | rejectStatementIssue | functions/src/statementIssueReceipt.ts:66 | functions/src/statementIssueReceipt.ts:79 | functions/src/tradeStatementIssue.ts:80: 미해석 |
@@ -120,8 +120,8 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | src/shared/services/firebaseService.ts:1029 | client | doc | root / top-level-candidate | 미해석 | orders/{generation.orderId} |  |
 | src/shared/services/firebaseService.ts:1035 | client | doc | root / top-level-candidate | 미해석 | orders/{generation.orderId} |  |
 | src/shared/services/confirmPendingPurchaseOrderService.ts:36 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{expected.id} |  |
-| src/shared/services/sharedChatMessageService.ts:34 | client | doc | root / top-level-candidate | 미해석 | chatMessages/{message.id} |  |
-| src/shared/services/sharedChatMessageService.ts:35 | client | doc | root / top-level-candidate | 미해석 | chatRooms/{message.roomId} |  |
+| src/shared/services/sharedChatMessageService.ts:36 | client | doc | root / top-level-candidate | 미해석 | chatMessages/{message.id} |  |
+| src/shared/services/sharedChatMessageService.ts:37 | client | doc | root / top-level-candidate | 미해석 | chatRooms/{message.roomId} |  |
 | src/shared/services/orderInventoryRecoveryService.ts:12 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/oemCancelService.ts:12 | client | doc | root / top-level-candidate | 미해석 | purchaseOrders/{poId} |  |
 | src/shared/services/oemCancelService.ts:18 | client | doc | root / top-level-candidate | 미해석 | oemReceiptOperations/{`oem-receive:${poId}`} |  |
@@ -181,25 +181,27 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | src/shared/services/boxUnpackService.ts:32 | client | doc | root / top-level-candidate | 미해석 | itemUnpackMovements/{operationId} | itemUnpackMovements |
 | src/shared/services/itemStockAddService.ts:19 | client | doc | root / top-level-candidate | 미해석 | itemStockAddOperations/{operationDocId(request.operationId)} |  |
 | src/shared/services/itemStockAddService.ts:27 | client | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
-| functions/src/orderCopyCommands.ts:50 | server | doc | root / top-level-candidate | 미해석 | orderCopyOperations/{orderCopyHash(`${scope.companyId}:${request.requestId}`)} | orderCopyOperations |
-| functions/src/orderCopyCommands.ts:50 | server | collection | root / top-level | 1 | orderCopyOperations | orderCopyOperations |
-| functions/src/orderCopyCommands.ts:51 | server | doc | root / top-level-candidate | 미해석 | orders/{id(draft.id)?draft.id:''} |  |
-| functions/src/orderCopyCommands.ts:51 | server | collection | root / top-level | 1 | orders |  |
-| functions/src/orderCopyCommands.ts:52 | server | doc | root / top-level-candidate | 미해석 | orderInterpretationRules/{orderInterpretationRuleId(scope.companyId,row.partnerId,row.alias,row.itemId)} | orderInterpretationRules |
-| functions/src/orderCopyCommands.ts:52 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
-| functions/src/orderCopyCommands.ts:61 | server | doc | root / top-level-candidate | 미해석 | partners/{draft.partnerId} |  |
-| functions/src/orderCopyCommands.ts:61 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/orderCopyCommands.ts:61 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
-| functions/src/orderCopyCommands.ts:61 | server | collection | root / top-level | 1 | items |  |
-| functions/src/orderCopyCommands.ts:83 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
-| functions/src/orderCopyCommands.ts:88 | server | doc | root / top-level-candidate | 미해석 | orderInterpretationRules/{input.ruleId} | orderInterpretationRules |
-| functions/src/orderCopyCommands.ts:88 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
-| functions/src/orderCopyCommands.ts:92 | server | doc | root / top-level-candidate | 미해석 | orderCopyOperations/{value} | orderCopyOperations |
-| functions/src/orderCopyCommands.ts:92 | server | collection | root / top-level | 1 | orderCopyOperations | orderCopyOperations |
-| functions/src/orderCopyCommands.ts:98 | server | doc | root / top-level-candidate | 미해석 | partners/{row.partnerId} |  |
-| functions/src/orderCopyCommands.ts:98 | server | collection | root / top-level | 1 | partners |  |
-| functions/src/orderCopyCommands.ts:98 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
-| functions/src/orderCopyCommands.ts:98 | server | collection | root / top-level | 1 | items |  |
+| functions/src/orderCopyCommands.ts:52 | server | doc | root / top-level-candidate | 미해석 | orderCopyOperations/{orderCopyHash(`${scope.companyId}:${request.requestId}`)} | orderCopyOperations |
+| functions/src/orderCopyCommands.ts:52 | server | collection | root / top-level | 1 | orderCopyOperations | orderCopyOperations |
+| functions/src/orderCopyCommands.ts:53 | server | doc | root / top-level-candidate | 미해석 | orders/{id(draft.id)?draft.id:''} |  |
+| functions/src/orderCopyCommands.ts:53 | server | collection | root / top-level | 1 | orders |  |
+| functions/src/orderCopyCommands.ts:54 | server | doc | root / top-level-candidate | 미해석 | orderInterpretationRules/{candidateRuleId(scope.companyId,row)} | orderInterpretationRules |
+| functions/src/orderCopyCommands.ts:54 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
+| functions/src/orderCopyCommands.ts:63 | server | doc | root / top-level-candidate | 미해석 | partners/{draft.partnerId} |  |
+| functions/src/orderCopyCommands.ts:63 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/orderCopyCommands.ts:63 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
+| functions/src/orderCopyCommands.ts:63 | server | collection | root / top-level | 1 | items |  |
+| functions/src/orderCopyCommands.ts:85 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
+| functions/src/orderCopyCommands.ts:90 | server | doc | root / top-level-candidate | 미해석 | orderInterpretationRules/{input.ruleId} | orderInterpretationRules |
+| functions/src/orderCopyCommands.ts:90 | server | collection | root / top-level | 1 | orderInterpretationRules | orderInterpretationRules |
+| functions/src/orderCopyCommands.ts:94 | server | doc | root / top-level-candidate | 미해석 | orderCopyOperations/{value} | orderCopyOperations |
+| functions/src/orderCopyCommands.ts:94 | server | collection | root / top-level | 1 | orderCopyOperations | orderCopyOperations |
+| functions/src/orderCopyCommands.ts:100 | server | doc | root / top-level-candidate | 미해석 | partners/{row.partnerId} |  |
+| functions/src/orderCopyCommands.ts:100 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/orderCopyCommands.ts:100 | server | doc | root / top-level-candidate | 미해석 | partners/{row.partnerId} |  |
+| functions/src/orderCopyCommands.ts:100 | server | collection | root / top-level | 1 | partners |  |
+| functions/src/orderCopyCommands.ts:100 | server | doc | root / top-level-candidate | 미해석 | items/{row.itemId} |  |
+| functions/src/orderCopyCommands.ts:100 | server | collection | root / top-level | 1 | items |  |
 | src/shared/services/orderCopyService.ts:36 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/orderCopyService.ts:49 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/pushTokenService.ts:12 | client | doc | root / top-level-candidate | 미해석 | employees/{employeeId} |  |
@@ -236,7 +238,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 | src/shared/ledgerLotCheck.ts:68 | client | collection | root / top-level | 1 | rawMaterialLedger |  |
 | src/shared/services/itemPurchaseUnitService.ts:9 | client | collection | root / top-level | 1 | item_purchase_unit |  |
 | src/shared/services/itemPurchaseUnitService.ts:20 | client | doc | root / top-level-candidate | 미해석 | item_purchase_unit/{unit.id} |  |
-| components/OfficeTalk.tsx:229 | client | collection | root / top-level | 1 | chatMessages |  |
+| components/OfficeTalk.tsx:211 | client | collection | root / top-level | 1 | chatMessages |  |
 | src/shared/hooks/useAppData.ts:420 | client | doc | root / top-level-candidate | 미해석 | issuedStatements/{id} |  |
 | src/shared/services/recordLoanMovement.ts:55 | client | doc | root / top-level | 1 | appMeta/releaseCutover |  |
 | src/shared/services/recordLoanMovement.ts:55 | client | doc | root / top-level-candidate | 미해석 | loanContracts/{input.loanId} |  |
@@ -829,7 +831,7 @@ COL 밖 정적 컬렉션 이름: `itemUnpackMovements`, `orderCopyOperations`, `
 
 ## 별도 모델 보완
 
-shared/types.ts 외 interface/type alias 800개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
+shared/types.ts 외 interface/type alias 807개를 별도 목록에 기록한다. 직접 property만 나열하며 상속·교차/공용체·mapped type·객체 전개는 펼치지 않는다. UI 상태/요청/응답 모델도 있으므로 DB 필드로 단정하지 않는다. 이 목록의 필드는 기존 shared 선언 필드 통계와 사용처 집계에 합치지 않는다. shared/types.ts 안의 type alias도 기존 interface 전용 집계에서는 제외된다.
 
 | 모델 | 선언 위치 | 종류 | 범위 | 직접 필드 |
 | --- | --- | --- | --- | --- |
@@ -1168,9 +1170,9 @@ shared/types.ts 외 interface/type alias 800개를 별도 목록에 기록한다
 | FlowStatusFilter | components/ItemList.tsx:316 | type-alias | non-object-alias-not-expanded |  |
 | InboundSubTab | components/ItemList.tsx:317 | type-alias | non-object-alias-not-expanded |  |
 | TopTab | components/ItemList.tsx:320 | type-alias | non-object-alias-not-expanded |  |
-| GroupRow | components/ItemList.tsx:1383 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
-| FlowRow | components/ItemList.tsx:1717 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
-| GridRow | components/ItemList.tsx:3781 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
+| GroupRow | components/ItemList.tsx:1373 | type-alias | direct-properties-only | p, isChild, parentId, boxCount |
+| FlowRow | components/ItemList.tsx:1707 | type-alias | direct-properties-only | key, id, type, status, date, partnerName, itemSummary, quantitySummary, source |
+| GridRow | components/ItemList.tsx:3679 | type-alias | direct-properties-only | itemId, label, spec, editable, isChild, group |
 | Vouchered | src/shared/statementOrders.ts:24 | type-alias | non-object-alias-not-expanded |  |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | interface | direct-properties-only | orders, partnerId, isVouchered, onlyActive, dateFrom, dateTo |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | interface | direct-properties-only | status, className |
@@ -1186,15 +1188,18 @@ shared/types.ts 외 interface/type alias 800개를 별도 목록에 기록한다
 | OrderInterpretationJson | functions/src/shared/orderInterpretation.ts:1 | type-alias | non-object-alias-not-expanded |  |
 | OrderInterpretationJsonObject | functions/src/shared/orderInterpretation.ts:2 | type-alias | direct-properties-only |  |
 | OrderInterpretationScope | functions/src/shared/orderInterpretation.ts:3 | type-alias | direct-properties-only | companyId, actorUid |
-| OrderInterpretationRequest | functions/src/shared/orderInterpretation.ts:4 | interface | direct-properties-only | version, requestId, createdAt, sourceText, firstAnalysis, confirmed |
-| OrderInterpretationAliasCandidate | functions/src/shared/orderInterpretation.ts:84 | interface | direct-properties-only | partnerId, alias, itemId |
+| OrderExpressionConfirmation | functions/src/shared/orderInterpretation.ts:4 | interface | direct-properties-only | sourceStart, sourceEnd, sourceText, scope, target, value |
+| OrderExpressionRule | functions/src/shared/orderInterpretation.ts:5 | interface | direct-properties-only | kind, partnerId, alias, itemId, status, scope, target, value |
+| OrderInterpretationRequest | functions/src/shared/orderInterpretation.ts:6 | interface | direct-properties-only | version, requestId, createdAt, sourceText, firstAnalysis, confirmed |
+| OrderInterpretationAliasCandidate | functions/src/shared/orderInterpretation.ts:87 | interface | direct-properties-only | partnerId, alias, itemId |
+| OrderExpressionCandidate | functions/src/shared/orderInterpretation.ts:126 | interface | direct-properties-only | kind, partnerId, alias, itemId, scope, target, value |
 | InterpretationRule | functions/src/orderCopyCommands.ts:11 | interface | direct-properties-only | ruleId, companyId, partnerId, alias, itemId, status, revision, captureIds, orderIds |
-| OrderCopyInput | functions/src/orderCopyCommands.ts:37 | interface | direct-properties-only | action, requestText, requestHash, releaseId |
-| OrderCopyResult | functions/src/orderCopyCommands.ts:38 | interface | direct-properties-only | status, requestId, orderId, requestHash, reason |
+| OrderCopyInput | functions/src/orderCopyCommands.ts:39 | interface | direct-properties-only | action, requestText, requestHash, releaseId |
+| OrderCopyResult | functions/src/orderCopyCommands.ts:40 | interface | direct-properties-only | status, requestId, orderId, requestHash, reason |
 | PendingOrderCopy | src/shared/services/orderCopyService.ts:7 | interface | direct-properties-only | key, text, request, deleted, error |
-| OrderInterpretationRule | src/shared/services/orderCopyService.ts:44 | interface | direct-properties-only | ruleId, companyId, partnerId, alias, itemId, status, revision, captureIds, orderIds |
+| OrderInterpretationRule | src/shared/services/orderCopyService.ts:44 | interface | direct-properties-only | ruleId, companyId, partnerId, alias, itemId, status, revision, captureIds, orderIds, kind, scope, target, value |
 | ParsedLine | components/PasteOrderModal.tsx:55 | type-alias | direct-properties-only | rawText, rawName, qty, isBox, selectedProductId |
-| OrderCopyEvidence | components/PasteOrderModal.tsx:105 | interface | direct-properties-only | sourceText, firstAnalysis, inputLines |
+| OrderCopyEvidence | components/PasteOrderModal.tsx:105 | interface | direct-properties-only | sourceText, firstAnalysis, inputLines, expressionConfirmations |
 | PasteOrderModalProps | components/PasteOrderModal.tsx:106 | interface | direct-properties-only | suspended, isCurrentActor, companyId, actorUid, orderUnitInputs, items, partners, orders, partnerItems, palletStocks, initialText, onClose, onBack, onSave |
 | Step | components/PasteOrderModal.tsx:129 | type-alias | non-object-alias-not-expanded |  |
 | Props | components/OrderInterpretationRules.tsx:6 | interface | direct-properties-only | companyId, actorUid, isAdmin, onClose, onChanged, isCurrentActor |
@@ -1284,12 +1289,16 @@ shared/types.ts 외 interface/type alias 800개를 별도 목록에 기록한다
 | NotifyMode | src/shared/notify.ts:6 | type-alias | non-object-alias-not-expanded |  |
 | NotifyVolume | src/shared/notify.ts:57 | type-alias | non-object-alias-not-expanded |  |
 | NotifyOpts | src/shared/notify.ts:107 | interface | direct-properties-only | title, body, tag, mode, whenFocused, onClick, view |
-| SharedChatAttempt | src/shared/sharedChatAttempt.ts:4 | interface | direct-properties-only | version, companyId, uid, shareId, roomId, senderId, senderName, text, createdAt, file, message |
+| SharedChatBase | src/shared/sharedChatAttempt.ts:4 | interface | direct-properties-only | companyId, uid, shareId, roomId, senderId, senderName, text, createdAt, message |
+| SharedChatFileAttempt | src/shared/sharedChatAttempt.ts:9 | type-alias | non-object-alias-not-expanded |  |
+| SharedChatTextAttempt | src/shared/sharedChatAttempt.ts:13 | type-alias | non-object-alias-not-expanded |  |
+| SharedChatAttempt | src/shared/sharedChatAttempt.ts:14 | type-alias | non-object-alias-not-expanded |  |
 | MessageAction | src/shared/messageActions.ts:9 | type-alias | non-object-alias-not-expanded |  |
 | ActionCtx | src/shared/messageActions.ts:11 | interface | direct-properties-only | msg, me, isAdmin, pinned |
 | Reactions | src/shared/messageReactions.ts:21 | type-alias | non-object-alias-not-expanded |  |
 | TimestampLike | src/shared/officeTalkTime.ts:1 | type-alias | direct-properties-only | toDate, seconds, _seconds |
-| OfficeTalkProps | components/OfficeTalk.tsx:51 | interface | direct-properties-only | currentUser, employees, chatRooms, chatMessages, initialRoomId, onRoomOpened, onAddRoom, onUpdateRoom, onDeleteRoom, onSendMessage, onUpdateMessage, isAdmin, onExtractOrder, extractedMessageIds |
+| SharedChatAck | components/OfficeTalk.tsx:51 | interface | direct-properties-only | companyId, actorUid, shareId, messageText |
+| OfficeTalkProps | components/OfficeTalk.tsx:53 | interface | direct-properties-only | currentUser, employees, chatRooms, chatMessages, initialRoomId, onRoomOpened, onAddRoom, onUpdateRoom, onDeleteRoom, onSendMessage, onUpdateMessage, isAdmin, onExtractOrder, extractedMessageIds |
 | OrderLike | src/shared/newOrderAlert.ts:6 | interface | direct-properties-only | id, createdAt |
 | PickOpts | src/shared/newOrderAlert.ts:8 | interface | direct-properties-only | seeded, since, mine |
 | RoomLike | src/shared/newChatAlert.ts:6 | interface | direct-properties-only | id, name, nameBy, participantIds, lastMessage, lastUpdatedAt, lastReadBy |
@@ -2061,9 +2070,9 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | FlowStatusFilter | components/ItemList.tsx:316 | non-object-model-not-expanded | 0 |
 | InboundSubTab | components/ItemList.tsx:317 | non-object-model-not-expanded | 0 |
 | TopTab | components/ItemList.tsx:320 | non-object-model-not-expanded | 0 |
-| GroupRow | components/ItemList.tsx:1383 | checker-resolved-properties-only | 4 |
-| FlowRow | components/ItemList.tsx:1717 | checker-resolved-properties-only | 9 |
-| GridRow | components/ItemList.tsx:3781 | checker-resolved-properties-only | 6 |
+| GroupRow | components/ItemList.tsx:1373 | checker-resolved-properties-only | 4 |
+| FlowRow | components/ItemList.tsx:1707 | checker-resolved-properties-only | 9 |
+| GridRow | components/ItemList.tsx:3679 | checker-resolved-properties-only | 6 |
 | Vouchered | src/shared/statementOrders.ts:24 | checker-resolved-properties-only | 0 |
 | PartnerOrdersInput | src/shared/statementOrders.ts:39 | checker-resolved-properties-only | 6 |
 | OrderStatusDotProps | src/shared/components/OrderStatusDot.tsx:4 | checker-resolved-properties-only | 2 |
@@ -2079,15 +2088,18 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | OrderInterpretationJson | functions/src/shared/orderInterpretation.ts:1 | non-object-model-not-expanded | 0 |
 | OrderInterpretationJsonObject | functions/src/shared/orderInterpretation.ts:2 | checker-resolved-properties-only | 0 |
 | OrderInterpretationScope | functions/src/shared/orderInterpretation.ts:3 | checker-resolved-properties-only | 2 |
-| OrderInterpretationRequest | functions/src/shared/orderInterpretation.ts:4 | checker-resolved-properties-only | 8 |
-| OrderInterpretationAliasCandidate | functions/src/shared/orderInterpretation.ts:84 | checker-resolved-properties-only | 3 |
-| InterpretationRule | functions/src/orderCopyCommands.ts:11 | checker-resolved-properties-only | 9 |
-| OrderCopyInput | functions/src/orderCopyCommands.ts:37 | checker-resolved-properties-only | 4 |
-| OrderCopyResult | functions/src/orderCopyCommands.ts:38 | checker-resolved-properties-only | 5 |
+| OrderExpressionConfirmation | functions/src/shared/orderInterpretation.ts:4 | checker-resolved-properties-only | 6 |
+| OrderExpressionRule | functions/src/shared/orderInterpretation.ts:5 | checker-resolved-properties-only | 8 |
+| OrderInterpretationRequest | functions/src/shared/orderInterpretation.ts:6 | checker-resolved-properties-only | 8 |
+| OrderInterpretationAliasCandidate | functions/src/shared/orderInterpretation.ts:87 | checker-resolved-properties-only | 3 |
+| OrderExpressionCandidate | functions/src/shared/orderInterpretation.ts:126 | checker-resolved-properties-only | 7 |
+| InterpretationRule | functions/src/orderCopyCommands.ts:11 | checker-resolved-properties-only | 13 |
+| OrderCopyInput | functions/src/orderCopyCommands.ts:39 | checker-resolved-properties-only | 4 |
+| OrderCopyResult | functions/src/orderCopyCommands.ts:40 | checker-resolved-properties-only | 5 |
 | PendingOrderCopy | src/shared/services/orderCopyService.ts:7 | checker-resolved-properties-only | 5 |
-| OrderInterpretationRule | src/shared/services/orderCopyService.ts:44 | checker-resolved-properties-only | 9 |
+| OrderInterpretationRule | src/shared/services/orderCopyService.ts:44 | checker-resolved-properties-only | 13 |
 | ParsedLine | components/PasteOrderModal.tsx:55 | checker-resolved-properties-only | 5 |
-| OrderCopyEvidence | components/PasteOrderModal.tsx:105 | checker-resolved-properties-only | 3 |
+| OrderCopyEvidence | components/PasteOrderModal.tsx:105 | checker-resolved-properties-only | 4 |
 | PasteOrderModalProps | components/PasteOrderModal.tsx:106 | checker-resolved-properties-only | 14 |
 | Step | components/PasteOrderModal.tsx:129 | non-object-model-not-expanded | 0 |
 | Props | components/OrderInterpretationRules.tsx:6 | checker-resolved-properties-only | 6 |
@@ -2177,12 +2189,16 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | NotifyMode | src/shared/notify.ts:6 | non-object-model-not-expanded | 0 |
 | NotifyVolume | src/shared/notify.ts:57 | non-object-model-not-expanded | 0 |
 | NotifyOpts | src/shared/notify.ts:107 | checker-resolved-properties-only | 7 |
-| SharedChatAttempt | src/shared/sharedChatAttempt.ts:4 | checker-resolved-properties-only | 11 |
+| SharedChatBase | src/shared/sharedChatAttempt.ts:4 | checker-resolved-properties-only | 9 |
+| SharedChatFileAttempt | src/shared/sharedChatAttempt.ts:9 | checker-resolved-properties-only | 12 |
+| SharedChatTextAttempt | src/shared/sharedChatAttempt.ts:13 | checker-resolved-properties-only | 11 |
+| SharedChatAttempt | src/shared/sharedChatAttempt.ts:14 | non-object-model-not-expanded | 0 |
 | MessageAction | src/shared/messageActions.ts:9 | non-object-model-not-expanded | 0 |
 | ActionCtx | src/shared/messageActions.ts:11 | checker-resolved-properties-only | 4 |
 | Reactions | src/shared/messageReactions.ts:21 | checker-resolved-properties-only | 0 |
 | TimestampLike | src/shared/officeTalkTime.ts:1 | checker-resolved-properties-only | 3 |
-| OfficeTalkProps | components/OfficeTalk.tsx:51 | checker-resolved-properties-only | 14 |
+| SharedChatAck | components/OfficeTalk.tsx:51 | checker-resolved-properties-only | 4 |
+| OfficeTalkProps | components/OfficeTalk.tsx:53 | checker-resolved-properties-only | 14 |
 | OrderLike | src/shared/newOrderAlert.ts:6 | checker-resolved-properties-only | 2 |
 | PickOpts | src/shared/newOrderAlert.ts:8 | checker-resolved-properties-only | 3 |
 | RoomLike | src/shared/newChatAlert.ts:6 | checker-resolved-properties-only | 7 |
@@ -2854,7 +2870,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/services/firebaseService.ts:986 | current.companyId | Record<string, any> | property-symbol-unresolved |
 | src/shared/services/firebaseService.ts:988 | current.companyId | Record<string, any> | property-symbol-unresolved |
 | src/shared/services/firebaseService.ts:988 | current.retirementId | Record<string, any> | property-symbol-unresolved |
-| src/shared/services/sharedChatMessageService.ts:36 | room.data().participantIds?.includes | any | any-receiver |
+| src/shared/services/sharedChatMessageService.ts:38 | room.data().participantIds?.includes | any | any-receiver |
 | src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.companyId | any | any-receiver |
 | src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.orderId | any | any-receiver |
 | src/shared/services/orderInventoryRecoveryService.ts:23 | ticket.operationId | any | any-receiver |
@@ -3260,13 +3276,13 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | components/ItemList.tsx:1215 | value.unitPricePerKg | any | any-receiver |
 | components/ItemList.tsx:1215 | value.date | any | any-receiver |
 | components/ItemList.tsx:1215 | value.date | any | any-receiver |
-| components/ItemList.tsx:2157 | (e as any).lotChanges?.some | any | any-receiver |
-| components/ItemList.tsx:2157 | (e as any).lotChanges | any | any-receiver |
-| components/ItemList.tsx:2157 | change.lotId | any | any-receiver |
-| components/ItemList.tsx:2159 | (e as any).source?.type | any | any-receiver |
-| components/ItemList.tsx:2159 | (e as any).source | any | any-receiver |
-| components/ItemList.tsx:2159 | (e as any).source?.id | any | any-receiver |
-| components/ItemList.tsx:2159 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:2147 | (e as any).lotChanges?.some | any | any-receiver |
+| components/ItemList.tsx:2147 | (e as any).lotChanges | any | any-receiver |
+| components/ItemList.tsx:2147 | change.lotId | any | any-receiver |
+| components/ItemList.tsx:2149 | (e as any).source?.type | any | any-receiver |
+| components/ItemList.tsx:2149 | (e as any).source | any | any-receiver |
+| components/ItemList.tsx:2149 | (e as any).source?.id | any | any-receiver |
+| components/ItemList.tsx:2149 | (e as any).source | any | any-receiver |
 | components/AddOrderModal.tsx:67 | pi.Direction | any | any-receiver |
 | components/AddOrderModal.tsx:235 | pi.partnerId | any | any-receiver |
 | components/AddOrderModal.tsx:236 | pi.itemId | any | any-receiver |
@@ -3277,80 +3293,79 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/orderExtract.ts:105 | row.isBox | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/orderExtract.ts:105 | row.isBox | Record<string, unknown> | property-symbol-unresolved |
 | src/shared/orderExtract.ts:106 | row.source | Record<string, unknown> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:20 | value.id | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.cardNo | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.partnerId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.partnerName | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.items | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.items.length | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.items | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.items.length | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.items | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.totalAmount | any | any-receiver |
-| functions/src/orderCopyCommands.ts:20 | value.totalAmount | any | any-receiver |
-| functions/src/orderCopyCommands.ts:21 | value.source | any | any-receiver |
-| functions/src/orderCopyCommands.ts:21 | value.shipMethod | any | any-receiver |
-| functions/src/orderCopyCommands.ts:21 | value.createdAt | any | any-receiver |
-| functions/src/orderCopyCommands.ts:21 | value.deliveryDate | any | any-receiver |
-| functions/src/orderCopyCommands.ts:23 | value.items | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.lineId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.lineId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.itemId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.name | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.price | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.price | any | any-receiver |
-| functions/src/orderCopyCommands.ts:25 | row.lineId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:27 | row.isBoxUnit | any | any-receiver |
-| functions/src/orderCopyCommands.ts:27 | row.isBoxUnit | any | any-receiver |
-| functions/src/orderCopyCommands.ts:31 | value.noteImportant | any | any-receiver |
-| functions/src/orderCopyCommands.ts:31 | value.noteImportant | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | value.pallets | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | pallet.type | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | pallet.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | pallet.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | pallet.isExchange | any | any-receiver |
-| functions/src/orderCopyCommands.ts:33 | pallet.isExchange | any | any-receiver |
-| functions/src/orderCopyCommands.ts:34 | value.deliveryBoxes | any | any-receiver |
-| functions/src/orderCopyCommands.ts:34 | box.itemId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:34 | box.name | any | any-receiver |
-| functions/src/orderCopyCommands.ts:34 | box.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:34 | box.quantity | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | auth.token | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | token?.companyId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | token.employeeId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | token.employeeId.trim | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | token.employeeId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | auth.uid | any | any-receiver |
-| functions/src/orderCopyCommands.ts:41 | token.isAdmin | any | any-receiver |
-| functions/src/orderCopyCommands.ts:42 | token.companyId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:42 | auth.uid | any | any-receiver |
-| functions/src/orderCopyCommands.ts:42 | token.employeeId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:50 | draft.id | Record<string, any> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:50 | draft.id | Record<string, any> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:61 | draft.partnerId | Record<string, any> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:61 | draft.items.map | any | any-receiver |
-| functions/src/orderCopyCommands.ts:61 | draft.items | Record<string, any> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:61 | row.itemId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:63 | row.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:64 | row.data()?.archived | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:74 | draft.id | Record<string, any> | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:95 | request.requestId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:95 | request.confirmed.orderDraft.id | any | any-receiver |
-| functions/src/orderCopyCommands.ts:95 | request.confirmed.orderDraft | any | any-receiver |
-| functions/src/orderCopyCommands.ts:95 | request.confirmed | any | any-receiver |
-| functions/src/orderCopyCommands.ts:98 | partner.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:98 | item.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:98 | item.data()?.archived | DocumentData \| undefined | property-symbol-unresolved |
-| functions/src/orderCopyCommands.ts:103 | request.data?.includeAll | any | any-receiver |
-| functions/src/orderCopyCommands.ts:103 | request.data?.companyId | any | any-receiver |
-| functions/src/orderCopyCommands.ts:103 | request.data?.includeAll | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.id | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.cardNo | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.partnerId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.partnerName | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.items | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.items.length | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.items | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.items.length | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.items | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.totalAmount | any | any-receiver |
+| functions/src/orderCopyCommands.ts:22 | value.totalAmount | any | any-receiver |
+| functions/src/orderCopyCommands.ts:23 | value.source | any | any-receiver |
+| functions/src/orderCopyCommands.ts:23 | value.shipMethod | any | any-receiver |
+| functions/src/orderCopyCommands.ts:23 | value.createdAt | any | any-receiver |
+| functions/src/orderCopyCommands.ts:23 | value.deliveryDate | any | any-receiver |
+| functions/src/orderCopyCommands.ts:25 | value.items | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.lineId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.lineId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.itemId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.name | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.price | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.price | any | any-receiver |
+| functions/src/orderCopyCommands.ts:27 | row.lineId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:29 | row.isBoxUnit | any | any-receiver |
+| functions/src/orderCopyCommands.ts:29 | row.isBoxUnit | any | any-receiver |
+| functions/src/orderCopyCommands.ts:33 | value.noteImportant | any | any-receiver |
+| functions/src/orderCopyCommands.ts:33 | value.noteImportant | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | value.pallets | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | pallet.type | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | pallet.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | pallet.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | pallet.isExchange | any | any-receiver |
+| functions/src/orderCopyCommands.ts:35 | pallet.isExchange | any | any-receiver |
+| functions/src/orderCopyCommands.ts:36 | value.deliveryBoxes | any | any-receiver |
+| functions/src/orderCopyCommands.ts:36 | box.itemId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:36 | box.name | any | any-receiver |
+| functions/src/orderCopyCommands.ts:36 | box.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:36 | box.quantity | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | auth.token | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | token?.companyId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | token.employeeId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | token.employeeId.trim | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | token.employeeId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | auth.uid | any | any-receiver |
+| functions/src/orderCopyCommands.ts:43 | token.isAdmin | any | any-receiver |
+| functions/src/orderCopyCommands.ts:44 | token.companyId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:44 | auth.uid | any | any-receiver |
+| functions/src/orderCopyCommands.ts:44 | token.employeeId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:52 | draft.id | Record<string, any> | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:52 | draft.id | Record<string, any> | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:63 | draft.partnerId | Record<string, any> | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:63 | draft.items.map | any | any-receiver |
+| functions/src/orderCopyCommands.ts:63 | draft.items | Record<string, any> | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:63 | row.itemId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:65 | row.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:66 | row.data()?.archived | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:76 | draft.id | Record<string, any> | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:97 | request.requestId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:97 | request.confirmed.orderDraft.id | any | any-receiver |
+| functions/src/orderCopyCommands.ts:97 | request.confirmed.orderDraft | any | any-receiver |
+| functions/src/orderCopyCommands.ts:97 | request.confirmed | any | any-receiver |
+| functions/src/orderCopyCommands.ts:100 | doc.data()?.companyId | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:100 | doc.data()?.archived | DocumentData \| undefined | property-symbol-unresolved |
+| functions/src/orderCopyCommands.ts:105 | request.data?.includeAll | any | any-receiver |
+| functions/src/orderCopyCommands.ts:105 | request.data?.companyId | any | any-receiver |
+| functions/src/orderCopyCommands.ts:105 | request.data?.includeAll | any | any-receiver |
 | src/shared/services/orderCopyService.ts:50 | gate?.releaseId | DocumentData \| undefined | property-symbol-unresolved |
 | components/PasteOrderModal.tsx:135 | pi.Direction | any | any-receiver |
-| components/PasteOrderModal.tsx:221 | r.partnerId | any | any-receiver |
-| components/PasteOrderModal.tsx:221 | r.Direction | any | any-receiver |
-| components/PasteOrderModal.tsx:223 | r.itemId | any | any-receiver |
+| components/PasteOrderModal.tsx:229 | r.partnerId | any | any-receiver |
+| components/PasteOrderModal.tsx:229 | r.Direction | any | any-receiver |
+| components/PasteOrderModal.tsx:231 | r.itemId | any | any-receiver |
 | src/shared/push.ts:97 | e?.message | any | any-receiver |
 | src/shared/services/orderRawBatchService.ts:40 | data.requestText | Record<string, any> | property-symbol-unresolved |
 | src/shared/services/orderRawBatchService.ts:40 | data.requestText | Record<string, any> | property-symbol-unresolved |
@@ -3490,19 +3505,17 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/shared/officeTalkTime.ts:34 | parts.day | { [k: string]: string; } | property-symbol-unresolved |
 | src/shared/officeTalkTime.ts:35 | parts.hour | { [k: string]: string; } | property-symbol-unresolved |
 | src/shared/officeTalkTime.ts:35 | parts.minute | { [k: string]: string; } | property-symbol-unresolved |
-| components/OfficeTalk.tsx:165 | error?.message | any | any-receiver |
-| components/OfficeTalk.tsx:339 | err?.message | any | any-receiver |
-| components/OfficeTalk.tsx:366 | error?.message | any | any-receiver |
-| components/OfficeTalk.tsx:383 | error?.message | any | any-receiver |
-| components/OfficeTalk.tsx:420 | error?.message | any | any-receiver |
-| components/OfficeTalk.tsx:467 | err?.message | any | any-receiver |
-| components/OfficeTalk.tsx:490 | err?.message | any | any-receiver |
-| components/OfficeTalk.tsx:1258 | user.id | any | any-receiver |
-| components/OfficeTalk.tsx:1259 | user.name | any | any-receiver |
-| components/OfficeTalk.tsx:1266 | user.name | any | any-receiver |
-| components/OfficeTalk.tsx:1267 | user.position | any | any-receiver |
-| components/OfficeTalk.tsx:1267 | user.department | any | any-receiver |
-| components/OfficeTalk.tsx:1428 | err?.message | any | any-receiver |
+| components/OfficeTalk.tsx:321 | err?.message | any | any-receiver |
+| components/OfficeTalk.tsx:350 | error?.message | any | any-receiver |
+| components/OfficeTalk.tsx:388 | error?.message | any | any-receiver |
+| components/OfficeTalk.tsx:435 | err?.message | any | any-receiver |
+| components/OfficeTalk.tsx:458 | err?.message | any | any-receiver |
+| components/OfficeTalk.tsx:1220 | user.id | any | any-receiver |
+| components/OfficeTalk.tsx:1221 | user.name | any | any-receiver |
+| components/OfficeTalk.tsx:1228 | user.name | any | any-receiver |
+| components/OfficeTalk.tsx:1229 | user.position | any | any-receiver |
+| components/OfficeTalk.tsx:1229 | user.department | any | any-receiver |
+| components/OfficeTalk.tsx:1390 | err?.message | any | any-receiver |
 | functions/src/shared/partnerAdvanceAudit.ts:7 | statement.noncashApplication | Row | property-symbol-unresolved |
 | functions/src/shared/partnerAdvanceAudit.ts:8 | operation.status | Row | property-symbol-unresolved |
 | functions/src/shared/partnerAdvanceAudit.ts:8 | operation.action | Row | property-symbol-unresolved |
@@ -3770,7 +3783,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | src/features/admin/AdminApp.tsx:2734 | patch.sortIndex | Record<string, unknown> | property-symbol-unresolved |
 | src/features/admin/AdminApp.tsx:4777 | error?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:4787 | error?.message | any | any-receiver |
-| src/features/admin/AdminApp.tsx:4974 | copySelected.request?.confirmed.orderDraft.partnerName | OrderInterpretationJsonObject \| undefined | property-symbol-unresolved |
+| src/features/admin/AdminApp.tsx:4980 | copySelected.request?.confirmed.orderDraft.partnerName | OrderInterpretationJsonObject \| undefined | property-symbol-unresolved |
 | src/shared/components/AuthPage.tsx:34 | cause?.code | any | any-receiver |
 | functions/src/newScopeCounter.ts:40 | gate.data()?.oemLotCutoverDate | DocumentData \| undefined | property-symbol-unresolved |
 | functions/src/newScopeCounter.ts:46 | row?.status | DocumentData \| undefined | property-symbol-unresolved |
@@ -5811,7 +5824,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | Order | partnerId | 선택 | string | src/shared/types.ts:259 | 58 |
 | Order | partnerName | 필수 | string | src/shared/types.ts:260 | 91 |
 | Order | items | 필수 | OrderItem[] | src/shared/types.ts:261 | 154 |
-| Order | note | 선택 | string | src/shared/types.ts:263 | 14 |
+| Order | note | 선택 | string | src/shared/types.ts:263 | 15 |
 | Order | noteImportant | 선택 | boolean | src/shared/types.ts:264 | 4 |
 | Order | noteBy | 선택 | string | src/shared/types.ts:265 | 2 |
 | Order | noteAt | 선택 | string | src/shared/types.ts:266 | 2 |
@@ -6013,9 +6026,9 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | CabinetDoc | uploadedAt | 필수 | string | src/shared/types.ts:703 | 2 |
 | AnnualLeave | carryOverLeave | 필수 | number | src/shared/types.ts:710 | 7 |
 | AnnualLeave | bonusLeave | 필수 | number | src/shared/types.ts:711 | 7 |
-| Employee | id | 필수 | string | src/shared/types.ts:715 | 139 |
+| Employee | id | 필수 | string | src/shared/types.ts:715 | 142 |
 | Employee | companyId | 선택 | CompanyId | src/shared/types.ts:717 | 4 |
-| Employee | name | 필수 | string | src/shared/types.ts:718 | 97 |
+| Employee | name | 필수 | string | src/shared/types.ts:718 | 99 |
 | Employee | username | 선택 | string | src/shared/types.ts:719 | 1 |
 | Employee | position | 필수 | string | src/shared/types.ts:720 | 25 |
 | Employee | department | 필수 | string | src/shared/types.ts:721 | 21 |
@@ -6075,23 +6088,23 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | ChatMessage | id | 필수 | string | src/shared/types.ts:854 | 18 |
 | ChatMessage | companyId | 선택 | CompanyId | src/shared/types.ts:855 | 2 |
 | ChatMessage | roomId | 필수 | string | src/shared/types.ts:856 | 7 |
-| ChatMessage | senderId | 필수 | string | src/shared/types.ts:857 | 11 |
+| ChatMessage | senderId | 필수 | string | src/shared/types.ts:857 | 12 |
 | ChatMessage | senderName | 필수 | string | src/shared/types.ts:858 | 9 |
-| ChatMessage | text | 필수 | string | src/shared/types.ts:859 | 20 |
+| ChatMessage | text | 필수 | string | src/shared/types.ts:859 | 21 |
 | ChatMessage | imageUrl | 선택 | string | src/shared/types.ts:860 | 4 |
 | ChatMessage | images | 선택 | string[] | src/shared/types.ts:867 | 2 |
 | ChatMessage | createdAt | 필수 | string | src/shared/types.ts:868 | 6 |
 | ChatMessage | mentions | 선택 | string[] | src/shared/types.ts:869 | 0 |
-| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:871 | 4 |
-| ChatMessage | fileName | 선택 | string | src/shared/types.ts:872 | 3 |
-| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:873 | 4 |
+| ChatMessage | fileUrl | 선택 | string | src/shared/types.ts:871 | 5 |
+| ChatMessage | fileName | 선택 | string | src/shared/types.ts:872 | 4 |
+| ChatMessage | fileSize | 선택 | number | src/shared/types.ts:873 | 5 |
 | ChatMessage | replyTo | 선택 | { id: string; senderName: string; text: string } | src/shared/types.ts:878 | 3 |
 | ChatMessage | deletedAt | 선택 | string | src/shared/types.ts:883 | 4 |
 | ChatMessage | deletedBy | 선택 | string | src/shared/types.ts:884 | 0 |
 | ChatMessage | reactions | 선택 | Record<string, string[]> | src/shared/types.ts:890 | 6 |
-| ChatRoom | id | 필수 | string | src/shared/types.ts:894 | 25 |
+| ChatRoom | id | 필수 | string | src/shared/types.ts:894 | 29 |
 | ChatRoom | companyId | 선택 | CompanyId | src/shared/types.ts:895 | 0 |
-| ChatRoom | name | 선택 | string | src/shared/types.ts:897 | 4 |
+| ChatRoom | name | 선택 | string | src/shared/types.ts:897 | 5 |
 | ChatRoom | nameBy | 선택 | Record<string, string> | src/shared/types.ts:899 | 1 |
 | ChatRoom | createdBy | 선택 | string | src/shared/types.ts:901 | 0 |
 | ChatRoom | participantIds | 필수 | string[] | src/shared/types.ts:902 | 12 |
@@ -6287,7 +6300,7 @@ JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 �
 | AppNotification | linkedId | 선택 | string | src/shared/types.ts:1336 | 4 |
 | AppNotification | senderId | 선택 | string | src/shared/types.ts:1337 | 0 |
 | AppNotification | targetId | 선택 | string | src/shared/types.ts:1338 | 2 |
-| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1356 | 57 |
+| RawMaterialEntry | id | 필수 | string | src/shared/types.ts:1356 | 59 |
 | RawMaterialEntry | companyId | 선택 | CompanyId | src/shared/types.ts:1358 | 6 |
 | RawMaterialEntry | rawItemId | 선택 | string | src/shared/types.ts:1369 | 13 |
 | RawMaterialEntry | kind | 선택 | RawMovementKind | src/shared/types.ts:1370 | 17 |

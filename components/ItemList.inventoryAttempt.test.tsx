@@ -34,7 +34,7 @@ beforeEach(()=>{Object.defineProperty(navigator,'locks',{configurable:true,value
 it.each(['stock-add','can-unpack','box-unpack'] as const)('제출된 %s는 품목/BOM이 없어도 최초 입력을 그대로 결과 조회한다',async kind=>{
  const request=pending(kind,true);render(<ItemList {...props}/>);fireEvent.click(await recoveryAction('결과 확인'));
  const service=kind==='stock-add'?state.stock:kind==='can-unpack'?state.can:state.box;
- await waitFor(()=>expect(service).toHaveBeenCalledWith(request));expect(service).toHaveBeenCalledOnce();expect(state.confirm).not.toHaveBeenCalled();expect(readPending('taebaek','employee',kind)?.request).toEqual(request);
+ await waitFor(()=>expect(service).toHaveBeenCalledWith(request));expect(service).toHaveBeenCalledOnce();expect(state.confirm).not.toHaveBeenCalled();expect(props.onAddAdjustmentRequest).not.toHaveBeenCalled();expect(readPending('taebaek','employee',kind)?.request).toEqual(request);
 });
 it('동시 클릭은 확인 await 전에 하나로 막는다',async()=>{pending('stock-add');const answer=deferred<boolean>();state.confirm.mockReturnValue(answer.promise);render(<ItemList {...props}/>);const button=await recoveryAction('보존된 입력으로 계속');fireEvent.click(button);fireEvent.click(button);await waitFor(()=>expect(state.confirm).toHaveBeenCalledOnce());await act(async()=>{answer.resolve(true);await answer.promise;});await waitFor(()=>expect(state.stock).toHaveBeenCalledOnce());});
 it('준비 요청 확인 취소는 원문만 해제하고 서비스 쓰기를 시작하지 않는다',async()=>{pending('stock-add');state.confirm.mockResolvedValue(false);render(<ItemList {...props}/>);fireEvent.click(await recoveryAction('보존된 입력으로 계속'));await waitFor(()=>expect(readPending('taebaek','employee','stock-add')).toBeNull());expect(state.stock).not.toHaveBeenCalled();});

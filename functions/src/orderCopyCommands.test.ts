@@ -6,3 +6,6 @@ it.each(['status','inventoryOperation','purpose','shippedOut','companyId','creat
 it('중복 줄ID와 비정상 수량을 거절한다',()=>{const d=draft();expect(()=>selectOrderCopyDraft({...d,items:[...d.items,...d.items]})).toThrow();expect(()=>selectOrderCopyDraft({...d,items:[{...d.items[0],quantity:Infinity}]})).toThrow();});
 it('원문 해시는 문자와 공백 차이를 보존한다',()=>expect(orderCopyHash('원문 ')).not.toBe(orderCopyHash('원문')));
 it.each([1,null,'2026-02-30T00:00:00.000Z','2026-10-14','2026-10-14T25:00:00Z'])('주문 날짜 %s는 최초 저장 계약에서 거절한다',value=>{for(const key of ['createdAt','deliveryDate'])expect(()=>selectOrderCopyDraft({...draft(),[key]:value})).toThrow('날짜');});
+
+import {candidateRuleId,orderInterpretationRuleId} from './orderCopyCommands';
+it('옛 별칭ID는 그대로이며 expression 회사공통/파트너/확정값은 별도ID다',()=>{const alias={partnerId:'partner',alias:'기름',itemId:'oil'};expect(candidateRuleId('taebaek',alias)).toBe(orderInterpretationRuleId('taebaek','partner','기름','oil'));const expression={kind:'expression' as const,...alias,itemId:'',scope:'partner' as const,target:'note' as const,value:'스티커 없음',status:'proposed'};const ids=[candidateRuleId('taebaek',expression),candidateRuleId('taebaek',{...expression,scope:'company',partnerId:''}),candidateRuleId('punghoe',expression),candidateRuleId('taebaek',{...expression,value:'스티커 붙임'})];expect(new Set(ids).size).toBe(4);});

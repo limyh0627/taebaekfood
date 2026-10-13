@@ -11,7 +11,7 @@ import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
-import { matchOrderInterpretationAlias,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
+import { matchOrderInterpretationAlias,normalizeOrderInterpretationUnits,matchOrderInterpretationExpressions,type OrderExpressionConfirmation,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
 import type {OrderInterpretationRule} from '../src/shared/services/orderCopyService';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import type { OrderUnitInputs } from '../src/shared/orderUnits';
@@ -102,7 +102,7 @@ const matchClient = (name: string, q: string) => {
 };
 
 // ── Props ────────────────────────────────────────────────────
-export interface OrderCopyEvidence {sourceText:string;firstAnalysis:OrderInterpretationJsonObject;inputLines:OrderInterpretationJsonObject[];}
+export interface OrderCopyEvidence {sourceText:string;firstAnalysis:OrderInterpretationJsonObject;inputLines:OrderInterpretationJsonObject[];expressionConfirmations?:OrderExpressionConfirmation[];}
 interface PasteOrderModalProps {
   suspended?:boolean;
   isCurrentActor?:()=>boolean;
@@ -183,6 +183,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [showPallets, setShowPallets] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [noteImportant, setNoteImportant] = useState(false);
+  const [expressionOpen,setExpressionOpen]=useState(false);
+  const automaticNote=useRef<{partnerId:string|null;sourceText:string;before:string;after:string}|null>(null);
+  const [expressionInputs,setExpressionInputs]=useState<Record<number,{target:'note';value:string;scope:'partner'|'company';confirmed:boolean;suggest:boolean}>>({});
+  const expressionLines=useMemo(()=>{let offset=0;return pasteText.split('\n').flatMap(raw=>{const start=offset;offset+=raw.length+1;const text=raw.replace(/\r$/,'');return text.trim()?[{sourceStart:start,sourceEnd:start+text.length,sourceText:text}]:[];});},[pasteText]);
+  useEffect(()=>{setExpressionInputs({});if(automaticNote.current&&(automaticNote.current.partnerId!==selectedClientId||automaticNote.current.sourceText!==pasteText)){const previous=automaticNote.current;automaticNote.current=null;setOrderNote(current=>current===previous.after?previous.before:current);}},[pasteText,selectedClientId]);
+  const appendNotes=(before:string,notes:string[])=>{const existing=before.split(/\r?\n/),added=[...new Set(notes)].filter(note=>!existing.includes(note));return added.length?before+(before&&!before.endsWith('\n')?'\n':'')+added.join('\n'):before;};
+  const choice=(sourceText:string)=>({target:'note' as const,value:/스티커\s*[xX]/.test(sourceText)?'스티커 없이':sourceText.trim(),scope:'partner' as 'partner'|'company',confirmed:false,suggest:false});
+  const confirmExpression=(start:number,row:ReturnType<typeof choice>,checked:boolean)=>{invalidateAiRead();setExpressionInputs(current=>({...current,[start]:{...row,confirmed:checked}}));if(checked){automaticNote.current=null;setOrderNote(current=>appendNotes(current,[row.value]));}};
 
   const selectClient = (client: Partner) => {
     invalidateAiRead();
@@ -236,7 +244,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     step, pasteText, client: selectedClient, shipToId: shipToId ?? null,
     catalog: productPool.map(item => ({ id: item.id, companyId: item.companyId ?? null,
       name: item.name, spec: item.spec, unit: item.unit, type: item.type })),
-    parsedLines, orderDate, deadline, orderNote, noteImportant, isDelivery, pallets,
+    parsedLines, orderDate, deadline, orderNote, noteImportant, isDelivery, pallets, expressionInputs,
   });
   if (aiRequest.current.snapshot !== aiSnapshot) {
     aiRequest.current.snapshot = aiSnapshot;
@@ -269,15 +277,17 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     }
     const lines=pasteText.split('\n').filter(line=>line.trim());
     const parsed=lines.map(line=>{
-      const result=parseLine(line,productPool);
+      const result={...parseLine(normalizeOrderInterpretationUnits(line),productPool),rawText:line};
       const suffix=/^(.*?)\s*(\d+(?:\.\d+)?)\s*(개|병|박스|캔|포)$/.exec(line.trim());
       const expression=suffix&&Number(suffix[2])===result.qty&&(result.isBox?suffix[3]==='박스':suffix[3]!=='박스')?suffix[1]:line;
-      const approved=matchOrderInterpretationAlias(expression,rules,selectedClientId??'');
+      const approved=matchOrderInterpretationAlias(normalizeOrderInterpretationUnits(expression),rules.map(rule=>({...rule,alias:normalizeOrderInterpretationUnits(rule.alias)})),selectedClientId??'');
       return approved&&productPool.some(item=>item.id===approved)?{...result,selectedProductId:approved}:result;
     });
     if(firstAnalysis.current?.sourceText!==pasteText)firstAnalysis.current={sourceText:pasteText,value:{kind:'rules',lines:parsed.map(line=>({...line}))}};
+    const interpreted=matchOrderInterpretationExpressions(pasteText,rules,selectedClientId??'');
+    setOrderNote(current=>{const after=appendNotes(current,interpreted.notes);if(after!==current)automaticNote.current={partnerId:selectedClientId,sourceText:pasteText,before:automaticNote.current?.before??current,after};return after;});
     setParsedLines(parsed);
-    setAiNote(null);
+    setAiNote(interpreted.conflicted?{tone:'warn',text:'승인 표현의 연결이 충돌했습니다. 비고와 수령 방식을 직접 확인해주세요.'}:null);
     setStep('review');
   };
 
@@ -338,7 +348,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         selectedProductId: 줄.itemId,
       })));
       if (읽은것.deliveryDate) setDeadline(읽은것.deliveryDate);
-      if (읽은것.note) setOrderNote(clampNote(읽은것.note));
+      if (읽은것.note) {automaticNote.current=null;setOrderNote(clampNote(읽은것.note));}
 
       const 못읽은수 = 읽은것.rejected.length;
       setAiNote({
@@ -383,7 +393,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setIsSaving(true);
     setSaveError('');
     try {
-      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox}))});
+      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox})),expressionConfirmations:expressionLines.flatMap(line=>{const row=expressionInputs[line.sourceStart];if(!row?.confirmed||!row.suggest)return [];if(!draft.note?.split(/\r?\n/).includes(row.value))return [];return [{...line,scope:row.scope,target:row.target,value:row.value}];})});
     } catch (error) {
       console.error('복사 주문 저장 실패', error);
       setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');
@@ -431,13 +441,13 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       <div className="space-y-2">
         {/*  **배송지 딱지 토글**(2026-09-16) — 주문 화면과 같은 모양·같은 자리다.
              배송지를 쓰는 거래처에만 뜬다. 고르면 아래 품목 목록이 따라 바뀐다. */}
-        <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3">
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3">
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-black text-indigo-900">{selectedClient.name}</span>
-              <span className="shrink-0 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black text-white">{selectedClient.type}</span>
+              <span className="truncate text-sm font-black text-slate-800">{selectedClient.name}</span>
+              <span className="shrink-0 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[8px] font-black text-slate-600">{selectedClient.type}</span>
             </div>
-            {selectedClient.region && <span className="text-[10px] font-medium text-indigo-500">{selectedClient.region}</span>}
+            {selectedClient.region && <span className="text-[10px] font-medium text-slate-500">{selectedClient.region}</span>}
           </div>
           <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
             <button type="button" onClick={() => { invalidateAiRead(); setIsDelivery(false); }} aria-pressed={!isDelivery}
@@ -449,8 +459,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
           </div>
         </div>
         {activeShipTos(selectedClient).length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-            <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">배송지</p>
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-600">배송지</p>
             <div className="flex flex-wrap gap-1.5">
               {activeShipTos(selectedClient).map(st => (
                 <button key={st.id} type="button" onClick={() => { invalidateAiRead(); setShipToId(st.id); }} aria-pressed={shipToId === st.id}
@@ -590,14 +600,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                 </button>
               </div>
               {aiNote && (
-                <p className={`rounded-lg px-3 py-2 text-[11px] font-bold leading-4 ${
-                  aiNote.tone === 'good' ? 'border border-slate-200 bg-white text-slate-600'
-                  : aiNote.tone === 'warn' ? 'bg-amber-50 text-amber-700'
-                  : 'bg-rose-50 text-rose-700'}`}>
+                <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold leading-4 text-slate-600">
                   {aiNote.text}
                 </p>
               )}
-              <div className={`rounded-xl border bg-white px-3 py-3 ${unmatchedLineCount === 0 ? 'border-slate-200' : matchedLineCount === 0 ? 'border-rose-200' : 'border-amber-200'}`} role="status">
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3" role="status">
                 <div className="flex items-start gap-2.5">
                   {unmatchedLineCount === 0 ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <AlertCircle size={18} className={`mt-0.5 shrink-0 ${matchedLineCount === 0 ? 'text-rose-600' : 'text-amber-600'}`} aria-hidden="true" />}
                   <div className="min-w-0">
@@ -611,11 +618,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   </div>
                 </div>
               </div>
+              {expressionLines.some(line=>!parsedLines.some(parsed=>parsed.selectedProductId&&parsed.rawText.trim()===line.sourceText.trim()))&&<section className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"><button type="button" className="rounded border border-slate-300 bg-white px-3 py-2 text-sm" aria-expanded={expressionOpen} onClick={()=>setExpressionOpen(value=>!value)}>원문 표현 확인</button>{expressionOpen&&<><p className="text-xs">품목 외 요청은 필요한 비고로 직접 확인해주세요. 배송 방식과 날짜는 원문에서 추정하지 않습니다.</p>
+                {expressionLines.filter(line=>!parsedLines.some(parsed=>parsed.selectedProductId&&parsed.rawText.trim()===line.sourceText.trim())).map(line=>{const row=expressionInputs[line.sourceStart]??choice(line.sourceText);const update=(patch:Partial<typeof row>)=>{invalidateAiRead();setExpressionInputs(current=>({...current,[line.sourceStart]:{...row,...patch,confirmed:false}}));};return <div key={line.sourceStart} className="space-y-2 border-t border-slate-200 pt-3"><p>{line.sourceText}</p><div className="flex flex-wrap gap-2"><input aria-label={`표현 ${line.sourceStart} 확인값`} className="rounded border border-slate-300 p-2" value={row.value} onChange={event=>update({value:event.target.value})}/></div><label className="block text-xs"><input type="checkbox" aria-label={`표현 ${line.sourceStart} 내용 확인`} checked={row.confirmed} disabled={!row.value.trim()||line.sourceText.length>200} onChange={event=>confirmExpression(line.sourceStart,row,event.target.checked)}/> 내용을 확인해 주문에 반영</label><label className="block text-xs"><input type="checkbox" aria-label={`표현 ${line.sourceStart} 규칙 제안`} checked={row.suggest} onChange={event=>setExpressionInputs(current=>({...current,[line.sourceStart]:{...row,suggest:event.target.checked}}))}/> 확인한 내용을 판독 규칙으로 제안</label>{row.suggest&&<select aria-label={`표현 ${line.sourceStart} 적용 범위`} value={row.scope} onChange={event=>setExpressionInputs(current=>({...current,[line.sourceStart]:{...row,scope:event.target.value as typeof row.scope}}))}><option value="partner">이 거래처만</option><option value="company">현재 회사 공통</option></select>}</div>;})}
+              </>}</section>}
               {parsedLines.map((line, idx) => {
                 const matched = line.selectedProductId
                   ? productPool.find(p => p.id === line.selectedProductId) : null;
                 return (
-                  <div key={idx} className={`space-y-3 rounded-xl border p-4 ${line.selectedProductId ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+                  <div key={idx} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                     {/* 원문 + 상태 */}
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-xs font-medium text-slate-500">"{line.rawText}"</span>
@@ -689,7 +699,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
               <section className="space-y-2 border-t border-slate-200 pt-5">
                 <label htmlFor="pasted-order-note" className="text-sm font-black text-slate-700">주문 비고</label>
-                <textarea id="pasted-order-note" value={orderNote} onChange={event => { invalidateAiRead(); setOrderNote(clampNote(event.target.value)); }}
+                <textarea id="pasted-order-note" value={orderNote} onChange={event => { invalidateAiRead(); automaticNote.current=null; setOrderNote(clampNote(event.target.value)); }}
                   maxLength={NOTE_MAX} rows={2} placeholder="주문 전체에 전달할 내용을 적어 주세요."
                   className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400" />
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
