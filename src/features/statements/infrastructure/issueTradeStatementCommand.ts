@@ -1,4 +1,4 @@
-import {tradeRequestKey,verifyTradeServerRejection} from './tradeStatementPending';
+import {tradeRequestKey,verifyTradeServerRejection,withTradeStatementLock,listTradePendings,findTradePendingConflicts,tradePendingMatchesRequest,tradePendingConflictMessage} from './tradeStatementPending';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, authReady, db, functions } from '../../../shared/firebase';
@@ -15,45 +15,91 @@ export type TradeStatementIssueInput = {
 };
 
 const completedTradeRequests=new Map<string,string>();
+const requestComparable=(r:TradeStatementIssueInput)=>JSON.stringify({...r,statement:{...r.statement,createdBy:undefined},newPo:r.newPo?{...r.newPo,cardNo:undefined}:undefined,releaseId:undefined});
+function savedTradeRequests(companyId:'taebaek'|'punghoe',uid:string):{key:string;text:string;request:TradeStatementIssueInput&{releaseId:string}}[]{
+ const legacy=tradeRequestKey(companyId,uid);
+ return Object.keys(localStorage).filter(key=>key===legacy||key.startsWith(tradeRequestKey(companyId,uid,''))).sort().map(key=>{
+  const text=localStorage.getItem(key)!;
+  try{const request=JSON.parse(text);
+   if(!request||typeof request.operationId!=='string'||!request.operationId||request.operationId.includes('/')
+    ||!request.statement||request.statement.companyId!==companyId||typeof request.statement.id!=='string'||!request.statement.id||request.statement.id.includes('/')
+    ||typeof request.releaseId!=='string'||!request.releaseId||!Array.isArray(request.orderIds)||request.orderIds.some((id:unknown)=>typeof id!=='string')
+    ||!Array.isArray(request.poIds)||request.poIds.some((id:unknown)=>typeof id!=='string')||!Array.isArray(request.costUpdates)
+    ||key!==legacy&&key!==tradeRequestKey(companyId,uid,request.operationId))throw Error();
+   return {key,text,request};
+  }catch{throw new Error('저장된 전표 송신 원문이 손상되었습니다. 원문을 보존했습니다.');}
+ });
+}
 /** 발행과 연관 기록을 서버 한 거래로 저장한다. */
 export async function issueTradeStatementCommand(input: TradeStatementIssueInput): Promise<{status:'applied'|'duplicate';id:string;docNo:string}> {
  const uid=auth.currentUser?.uid,companyId=input.statement.companyId;
  const assertActor=()=>{if(!uid||auth.currentUser?.uid!==uid)throw new Error('로그인 사용자가 변경되었습니다. 전표를 보내지 않았습니다.');};
- let request:TradeStatementIssueInput&{releaseId:string};let key='';let old:string|null=null;let encoded='';
+ let request!:TradeStatementIssueInput&{releaseId:string};let key='';let old:string|null=null;let encoded='';let saved=false;let hadPrior=false;
+ const refreshPrior=()=>{
+  if(!uid||(companyId!=='taebaek'&&companyId!=='punghoe'))return;
+  hadPrior=hadPrior||localStorage.getItem(tradeRequestKey(companyId,uid,input.operationId))!==null;
+  const legacyText=localStorage.getItem(tradeRequestKey(companyId,uid));
+  if(legacyText!==null){try{hadPrior=hadPrior||JSON.parse(legacyText)?.operationId===input.operationId;}catch{hadPrior=true;}}
+ };
+ refreshPrior();
  try {
   await authReady;assertActor();
   if(companyId!=='taebaek'&&companyId!=='punghoe')throw new Error('전표 회사를 확인해 주세요.');
-  key=tradeRequestKey(companyId,uid!);old=localStorage.getItem(key);
   const gate=(await getDoc(doc(db,'appMeta','releaseCutover'))).data();assertActor();
   if(gate?.status!=='active'||typeof gate.releaseId!=='string')throw new Error('전표 발행 서버가 준비되지 않았습니다. 관리자에게 문의해 주세요.');
   const scoped=await companyScopedWriteData('issuedStatements',input.statement as unknown as Record<string,unknown>);assertActor();
+  if(scoped.companyId!==companyId)throw new Error('전표 회사 권한이 변경되었습니다.');
   const fresh={...input,statement:JSON.parse(JSON.stringify(scoped)),releaseId:gate.releaseId};
-  if(old){request=JSON.parse(old);const comparable=(r:TradeStatementIssueInput)=>JSON.stringify({...r,statement:{...r.statement,createdBy:undefined},newPo:r.newPo?{...r.newPo,cardNo:undefined}:undefined,releaseId:undefined});
-   if(request.operationId!==input.operationId||request.statement.companyId!==companyId||typeof request.releaseId!=='string'||comparable(request)!==comparable(fresh))throw new Error('이전에 저장 중이던 전표 원문을 먼저 재시도해 주세요.');
-  }else request=fresh;
-  encoded=old??JSON.stringify(request);if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
-  localStorage.setItem(key,encoded);assertActor();
- }catch(error){if(!old&&encoded&&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);if(!old&&(companyId==='taebaek'||companyId==='punghoe'))throw Object.assign(new Error(error instanceof Error?error.message:String(error)),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId}});throw error;}
+  await withTradeStatementLock(companyId,uid!,()=>{
+   assertActor();refreshPrior();key=tradeRequestKey(companyId,uid!,input.operationId);
+   const pendings=listTradePendings(companyId,uid!);
+   const conflicts=findTradePendingConflicts(pendings,{statementId:input.statement.id,operationId:input.operationId,orderIds:input.orderIds,poIds:input.poIds});
+   if(conflicts.length)throw new Error(tradePendingConflictMessage(conflicts[0]));
+   if(pendings.some(row=>row.pending?.input.command.operationId===input.operationId&&!tradePendingMatchesRequest(row.pending,fresh)))
+    throw new Error('저장된 전표 최초 원문과 송신할 내용이 다릅니다. 원문을 보존했습니다.');
+   const requests=savedTradeRequests(companyId,uid!);
+   const same=requests.filter(row=>row.request.operationId===input.operationId);
+   if(same.some(row=>requestComparable(row.request)!==requestComparable(fresh)))throw new Error('이전에 저장 중이던 전표 원문을 먼저 재시도해 주세요.');
+   for(const row of requests.filter(row=>row.request.operationId!==input.operationId)){
+    if(row.request.statement.id===input.statement.id||row.request.orderIds.some(id=>input.orderIds.includes(id))||row.request.poIds.some(id=>input.poIds.includes(id)))
+     throw new Error(`${row.request.statement.partnerName??'이전 거래처'} · ${row.request.statement.tradeDate??''} 전표의 같은 주문·발주 송신 원문이 남아 있습니다. 실패 작업에서 기존 요청을 확인해 주세요.`);
+   }
+   const own=same.find(row=>row.key===key)??same[0];old=localStorage.getItem(key);
+   request=own?.request??fresh;encoded=own?.text??JSON.stringify(request);
+   if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
+   localStorage.setItem(key,encoded);saved=true;
+   if(localStorage.getItem(key)!==encoded)throw new Error('최초 전표 송신 원문 저장을 확인하지 못했습니다.');assertActor();
+  },()=>auth.currentUser?.uid===uid);
+ }catch(error){
+  // 전송 전 거절이어도 기존 사본과 창 간 충돌은 지우지 않는다.
+  if(!hadPrior&&!old&&!saved&&(companyId==='taebaek'||companyId==='punghoe'))throw Object.assign(new Error(error instanceof Error?error.message:String(error)),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId,operationId:input.operationId}});throw error;
+ }
  try {
   const call=httpsCallable<unknown,{status:'applied'|'duplicate';id:string;docNo:string}>(functions,'issueTradeStatementCommand');
-  assertActor();const result=await call({...request!,requestText:encoded});assertActor();
-  if(result.data.id!==request!.statement.id||!['applied','duplicate'].includes(result.data.status)||typeof result.data.docNo!=='string'||!result.data.docNo)throw new Error('전표 발행 응답을 확인할 수 없습니다. 원문을 보존했습니다.');
+  assertActor();const result=await call({...request,requestText:encoded});assertActor();
+  if(result.data.id!==request.statement.id||!['applied','duplicate'].includes(result.data.status)||typeof result.data.docNo!=='string'||!result.data.docNo)throw new Error('전표 발행 응답을 확인할 수 없습니다. 원문을 보존했습니다.');
   completedTradeRequests.set(key,encoded);return result.data;
  }catch(error){
-  if(await verifyTradeServerRejection(error,request! as unknown as Parameters<typeof verifyTradeServerRejection>[1],encoded,companyId!,uid!,()=>auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)
-    &&auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)localStorage.removeItem(key);
-  // 예전 서버의 code·ID만 있는 거절을 화면의 송신 전 증거로 잘못 넘기지 않는다.
+  if(await verifyTradeServerRejection(error,request as unknown as Parameters<typeof verifyTradeServerRejection>[1],encoded,companyId!,uid!,()=>auth.currentUser?.uid===uid&&localStorage.getItem(key)===encoded)){
+   await withTradeStatementLock(companyId as 'taebaek'|'punghoe',uid!,()=>{
+    if(auth.currentUser?.uid!==uid||localStorage.getItem(key)!==encoded)return;
+    for(const row of savedTradeRequests(companyId as 'taebaek'|'punghoe',uid!))if(row.request.operationId===input.operationId&&row.text===encoded&&localStorage.getItem(row.key)===row.text)localStorage.removeItem(row.key);
+   },()=>auth.currentUser?.uid===uid);
+  }
   if((error as {details?:{version?:number}})?.details?.version===1)throw new Error(error instanceof Error?error.message:String(error));
   throw error;
  }
 }
 /** 즉시 지급까지 완료한 화면만 원 요청을 정리한다. */
-export function completeTradeStatementRequest(companyId:string,uid:string,operationId:string):void {
+export async function completeTradeStatementRequest(companyId:string,uid:string,operationId:string):Promise<void> {
  if(auth.currentUser?.uid!==uid||(companyId!=='taebaek'&&companyId!=='punghoe'))return;
- const key=tradeRequestKey(companyId,uid),text=localStorage.getItem(key);if(!text)return;
- try{if(JSON.parse(text).operationId===operationId&&completedTradeRequests.get(key)===text&&localStorage.getItem(key)===text){localStorage.removeItem(key);completedTradeRequests.delete(key);}}catch{/* 손상 원문 보존 */}
+ const key=tradeRequestKey(companyId,uid,operationId),completed=completedTradeRequests.get(key);if(!completed)return;
+ await withTradeStatementLock(companyId,uid,()=>{
+  if(auth.currentUser?.uid!==uid||localStorage.getItem(key)!==completed)return;
+  for(const row of savedTradeRequests(companyId,uid))if(row.request.operationId===operationId&&row.text===completed&&localStorage.getItem(row.key)===row.text)localStorage.removeItem(row.key);
+  completedTradeRequests.delete(key);
+ },()=>auth.currentUser?.uid===uid);
 }
-
 /** 주문 연결이 없는 일반 대체전표도 번호와 본문을 서버에서 함께 확정한다. */
 export async function issueNumberedStatement(statement: IssuedStatement): Promise<{ id: string; docNo: string }> {
   const actorId=auth.currentUser?.uid;

@@ -2,13 +2,31 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {createHash} from 'node:crypto';
-import {verifyTradeServerRejection} from '../src/features/statements/infrastructure/tradeStatementPending';
+import {archiveTradePending,listTradePendings,verifyTradeServerRejection} from '../src/features/statements/infrastructure/tradeStatementPending';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TradeStatement, { VoucherDateChip } from './TradeStatement';
 import type { IssuedStatement, Item, Partner, PartnerItem, Settlement } from '../src/shared/types';
 import { appConfirm } from '../src/shared/components/appDialog';
 import { OrderStatus, type Order } from '../src/shared/types';
+import {auth} from '../src/shared/firebase';
 
+async function recoveryAction(name:string){
+ if(!screen.queryByRole('dialog',{name:'실패 작업 상세'})){
+  if(!screen.queryByRole('dialog',{name:'실패 작업 목록'}))fireEvent.click(screen.getByRole('button',{name:/^실패 작업 \d+$/}));
+  const list=await screen.findByRole('dialog',{name:'실패 작업 목록'});
+  const rows=within(list).getAllByRole('button').filter(button=>button.textContent?.includes('원')||button.textContent?.includes('원문 확인이 필요한 요청'));
+  fireEvent.click(rows[0]);
+ }
+ return screen.findByRole('button',{name});
+}
+async function archiveCurrentRequest(){
+ await recoveryAction('같은 내용 다시 시도');const entry=listTradePendings('taebaek','test-uid')[0];await act(async()=>archiveTradePending(entry.key,entry.text,'taebaek','test-uid'));fireEvent(window,new StorageEvent('storage'));fireEvent.click(screen.getByRole('button',{name:'실패 작업 상세 닫기'}));
+}
+function returnToComposer(){
+ const detail=screen.queryByRole('button',{name:'실패 작업 상세 닫기'});if(detail)fireEvent.click(detail);
+ const list=screen.queryByRole('button',{name:'실패 작업 목록 닫기'});if(list)fireEvent.click(list);
+}
+const pendingKey=()=>listTradePendings('taebaek','test-uid')[0]?.key??'trade-statement-issue:taebaek:test-uid';
 const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn()}));
 vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment}));
@@ -102,8 +120,10 @@ function setup(onAddIssuedStatement = vi.fn(async (_s: IssuedStatement) => {}),
 }
 
 beforeEach(() => {
+  (auth.currentUser as {uid:string}).uid='test-uid';
   issueMocks.payment.mockResolvedValue(undefined);
   localStorage.clear();
+  Object.defineProperty(navigator,'locks',{configurable:true,value:{request:async (_name:string,_options:unknown,callback:()=>Promise<unknown>)=>callback()}});
   vi.clearAllMocks();
   vi.spyOn(window, 'alert').mockImplementation(() => {});
   vi.mocked(appConfirm).mockResolvedValue(true);
@@ -116,34 +136,20 @@ it('수량 0은 원문 저장과 서버 요청 전에 행·품목을 안내하�
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
   expect(window.alert).toHaveBeenCalledWith(expect.stringContaining(`1행 · ${item.name}`));
   expect(onApplyStatement).not.toHaveBeenCalled();
-  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();
+  expect(localStorage.getItem(pendingKey())).toBeNull();
   fireEvent.change(screen.getByLabelText('1행 거래 수량'), { target: { value: '2' } });
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
   await waitFor(() => expect(onApplyStatement).toHaveBeenCalledOnce());
 });
 
-it('확인되지 않은 원문 안내는 모달 안에 한 번 표시되고 재시도·닫기가 가능하다', async () => {
-  const apply = vi.fn().mockRejectedValue(new Error('응답 유실'));
-  setup(undefined, undefined, { composerOnly: true, onApplyStatement: apply });
-  fireEvent.click(screen.getByRole('button', { name: '저장' }));
-  await waitFor(() => expect(apply).toHaveBeenCalledOnce());
-  const dialog = screen.getByRole('dialog', { name: '매입 전표 작성' });
-  expect(screen.getAllByRole('status')).toHaveLength(1);
-  const banner = within(dialog).getByRole('status');
-  const retry = within(banner).getByRole('button', { name: '이전 전표 재시도' });
-  await waitFor(() => expect(retry).not.toBeDisabled());
-  expect(within(dialog).getByLabelText('1행 거래 수량')).toBeDisabled();
-  fireEvent.click(retry);
-  await waitFor(() => expect(apply).toHaveBeenCalledTimes(2));
-  expect(apply.mock.calls[1][0]).toEqual(apply.mock.calls[0][0]);
-  const close = within(banner).getByRole('button', { name: '작성창 닫기' });
-  await waitFor(() => expect(close).not.toBeDisabled());
-  fireEvent.click(close);
-  expect(screen.queryByRole('dialog', { name: '매입 전표 작성' })).not.toBeInTheDocument();
-  expect(screen.getAllByRole('status')).toHaveLength(1);
-  expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).not.toBeNull();
+it('작성창에는 실패 목록이 없고 메뉴 목록에서 상세 재시도 후 원문과 입력을 유지한다', async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ returnToComposer();expect(within(screen.getByRole('dialog',{name:'매입 전표 작성'})).queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('status')).not.toBeInTheDocument();
+ const retry=await recoveryAction('같은 내용 다시 시도');fireEvent.click(retry);await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));expect(apply.mock.calls[1][0]).toEqual(apply.mock.calls[0][0]);
+ returnToComposer();expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();expect(localStorage.getItem(pendingKey())).not.toBeNull();
 });
-
 describe('전표 목록 화면 구성', () => {
   it('입고 화면에서는 목록을 펼치지 않고 같은 발행 모달만 열어 저장 후 닫는다', async () => {
     const close = vi.fn();
@@ -283,7 +289,7 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     fireEvent.click(await screen.findByRole('button', { name: '저장' }));
     await waitFor(() => expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('전표 저장 권한이 거부됐습니다')));
     expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('로그인이 풀려서'));
-    expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
+    returnToComposer();expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
   });
 
   it('전표 저장이 실패하면 단가를 쓰지 않고 입력창을 유지한다', async () => {
@@ -292,7 +298,7 @@ describe('전표와 거래처 단가의 저장 완료', () => {
     fireEvent.click(await screen.findByRole('button', { name: '저장' }));
     await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(onUpsertPartnerItem).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
+    returnToComposer();expect(screen.getByRole('button', { name: '새 전표' })).toBeInTheDocument();
   });
 });
 
@@ -432,17 +438,83 @@ it('저장 대기 중 갱신된 외부 날짜를 늦은 완료가 이전 날짜�
 });
 
 
+it('실패 요청 삭제는 목록에서 제거하고 작성 입력과 중복 보호 원문을 유지한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,pendingInvoice:{...pendingInvoice,poIds:['deleted-po']}});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),text=localStorage.getItem(key);
+ fireEvent.click(await recoveryAction('실패 요청 삭제'));const list=await screen.findByRole('dialog',{name:'실패 작업 목록'});expect(within(list).getByText('확인할 실패 작업이 없습니다.')).toBeInTheDocument();expect(localStorage.getItem(key)).toBe(text);expect(listTradePendings('taebaek','test-uid')[0].deleted).toBe(true);expect(screen.queryByRole('button',{name:/휴지통|복원/})).not.toBeInTheDocument();returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();expect(screen.getByRole('button',{name:'실패 작업 0'})).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'저장'}));await screen.findByRole('dialog',{name:'실패 작업 상세'});expect(screen.getByText(/이 주문의 이전 발행 결과를 확인해야/)).toBeInTheDocument();expect(apply).toHaveBeenCalledOnce();expect(localStorage.getItem(key)).toBe(text);
+});
+it.each(['company','uid'])('복구에서 연 발행 상세는 %s 변경 시 닫힌다',async scope=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const p=JSON.parse(localStorage.getItem(pendingKey())!);p.input.command.orderIds=['order-A'];localStorage.setItem(pendingKey(),JSON.stringify(p));first.unmount();
+ const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[{...p.input.statement,id:'actual-other',orderId:'order-A',docNo:'261013-001'}],onApplyStatement:apply};const view=render(<TradeStatement {...props}/>);await recoveryAction('같은 내용 다시 시도');fireEvent.click(screen.getByRole('button',{name:'발행된 전표 보기 · 261013-001'}));expect(screen.getAllByText('261013-001').length).toBeGreaterThan(0);
+ if(scope==='uid')(auth.currentUser as {uid:string}).uid='other-uid';view.rerender(<TradeStatement {...props} companyId={scope==='company'?'punghoe':'taebaek'}/>);expect(screen.queryByRole('button',{name:'✕'})).not.toBeInTheDocument();expect(screen.queryByRole('dialog',{name:'실패 작업 상세'})).not.toBeInTheDocument();
+});
+
+it('외부 상세 ID의 최초 열기는 회사 초기화 뒤에도 유지한다',async()=>{
+ const stmt={id:'external',companyId:'taebaek',partnerId:partner.id,partnerName:partner.name,type:'매입',tradeDate:'2026-10-13',docNo:'261013-001',items:[{name:item.name,spec:item.spec,qty:1,price:6000,supply:6000,tax:600,total:6600,isTaxExempt:false}],totalAmount:6600} as IssuedStatement;setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[stmt],detailStatementId:stmt.id});expect(await screen.findByRole('dialog',{name:'매입 전표 수정'})).toBeInTheDocument();
+});
+
+it('실패 작업이 없어도 메뉴에서 빈 목록을 확인한다',async()=>{
+ setup(undefined,undefined,{pendingInvoice:null});fireEvent.click(screen.getByRole('button',{name:'실패 작업 0'}));expect(await screen.findByText('확인할 실패 작업이 없습니다.')).toBeInTheDocument();
+});
+
+it('보관 요청 상세 탐색과 완료 재시도는 새 작성 수량을 보존한다',async()=>{
+ const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const original=apply.mock.calls[0][0];
+ await archiveCurrentRequest();await screen.findByRole('dialog',{name:'실패 작업 목록'});returnToComposer();fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'2'}});
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));await screen.findByRole('dialog',{name:'실패 작업 목록'});returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('2');expect(apply.mock.calls[1][0]).toEqual(original);expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();
+});
+
+it('상세 선택 원문이 다른 창에서 바뀌면 재시도 없이 원문 확인을 안내한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());await recoveryAction('같은 내용 다시 시도');const key=pendingKey();localStorage.setItem(key,'다른 창 원문');fireEvent(window,new StorageEvent('storage',{key,newValue:'다른 창 원문'}));
+ expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();expect(screen.getByText(/다른 창에서 요청이 변경되었거나/)).toBeInTheDocument();expect(localStorage.getItem(key)).toBe('다른 창 원문');expect(apply).toHaveBeenCalledOnce();
+});
+
+it('보관한 미확인 A와 무관한 B는 새로 저장하며 A 원문도 다시 확인할 수 있다',async()=>{
+ const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
+ const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const original=apply.mock.calls[0][0],key=pendingKey(),text=localStorage.getItem(key);
+ await archiveCurrentRequest();await waitFor(()=>expect(screen.getByRole('dialog',{name:'실패 작업 목록'})).toBeInTheDocument());returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();
+ expect(localStorage.getItem(key)).toBe(text);first.unmount();
+ setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-B']},onApplyStatement:apply});
+ expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));expect(apply.mock.calls[1][0].command.statementId).not.toBe(original.command.statementId);expect(apply.mock.calls[1][0].poIds).toEqual(['po-B']);expect(localStorage.getItem(key)).toBe(text);
+ expect(screen.queryByText('처리 결과를 아직 확인하지 못한 요청입니다. 이전 내용을 보관하고 다른 전표를 작성할 수 있습니다.')).not.toBeInTheDocument();
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(3));expect(apply.mock.calls[2][0]).toEqual(original);
+});
+
+it('보관한 A와 같은 발주 B는 원문과 저장 횟수를 유지하고 어떤 요청인지 안내한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));
+ const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-A']}} onApplyStatement={apply} composerOnly/>);
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),text=localStorage.getItem(key);
+ await archiveCurrentRequest();await waitFor(()=>expect(screen.getByRole('dialog',{name:'실패 작업 목록'})).toBeInTheDocument());returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();first.unmount();
+ setup(undefined,undefined,{composerOnly:true,pendingInvoice:{...pendingInvoice,poIds:['po-A']},onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('같은 주문·발주의 미확인 전표')));expect(apply).toHaveBeenCalledOnce();expect(localStorage.getItem(key)).toBe(text);expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).toBeEnabled();
+});
+
+it('동일 주문의 다른 발행 전표는 보기만 안내하고 미확인 원문을 완료로 삭제하지 않는다',async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));
+ const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} onApplyStatement={apply} composerOnly/>);
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),p=JSON.parse(localStorage.getItem(key)!);p.input.command.orderIds=['order-A'];const text=JSON.stringify(p);localStorage.setItem(key,text);first.unmount();
+ setup(undefined,undefined,{pendingInvoice:null,issuedStatements:[{...p.input.statement,id:'actual-other',orderId:'order-A',docNo:'261013-001'}],onApplyStatement:apply});
+ await recoveryAction('같은 내용 다시 시도');expect(screen.getByText(/관련 주문은 이미 다른 전표로 발행되어 있습니다/)).toBeInTheDocument();expect(screen.getByRole('button',{name:'발행된 전표 보기 · 261013-001'})).toBeEnabled();expect(localStorage.getItem(key)).toBe(text);expect(apply).toHaveBeenCalledOnce();
+});
+
+it('요청 삭제 저장 실패는 원문과 작성 화면을 유지한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(new Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const key=pendingKey(),text=localStorage.getItem(key);
+ const original=Storage.prototype.setItem;const spy=vi.spyOn(Storage.prototype,'setItem').mockImplementation(function(this:Storage,k,v){if(k.startsWith('trade-statement-issue-state:'))throw Error('보관 저장 실패');original.call(this,k,v);});
+ try{fireEvent.click(await recoveryAction('실패 요청 삭제'));await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('실패 요청을 삭제하지 못했습니다')));returnToComposer();expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();expect(localStorage.getItem(key)).toBe(text);expect(screen.getByLabelText('1행 거래 수량')).toBeDisabled();}finally{spy.mockRestore();}
+});
+
 it('응답 유실 뒤 다시 열면 이전 주요 발행 원문을 재시도한다', async () => {
   const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
   const first=render(<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={{...pendingInvoice,poIds:['po-original']}} onApplyStatement={apply} composerOnly/>);
   fireEvent.click(screen.getByRole('button',{name:'저장'}));
   await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
   const original=apply.mock.calls[0][0];
-  const close=await screen.findByRole('button',{name:'작성창 닫기'});await waitFor(()=>expect(close).not.toBeDisabled());fireEvent.click(close);
+  returnToComposer();const close=screen.getByRole('button',{name:'매입 전표 작성 닫기'});await waitFor(()=>expect(close).not.toBeDisabled());fireEvent.click(close);
   expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument();
   first.unmount();
   setup(undefined,undefined,{pendingInvoice:null,composerOnly:true,onApplyStatement:apply});
-  fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));
+  fireEvent.click(await recoveryAction('같은 내용 다시 시도'));
   await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
   expect(apply.mock.calls[1][0]).toEqual(original);
 });
@@ -455,9 +527,9 @@ it('전표 발행 뒤 지급 응답 유실도 재열기에서 같은 전표와 �
  fireEvent.click(screen.getByLabelText('지불도 함께'));fireEvent.click(screen.getByRole('button',{name:'저장'}));
  await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledOnce());const original=issueMocks.payment.mock.calls[0];const body=apply.mock.calls[0][0];view.unmount();
  setup(undefined,undefined,{pendingInvoice:null,composerOnly:true,onApplyStatement:apply,cashAccounts:accounts});
- fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledTimes(2));
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(issueMocks.payment).toHaveBeenCalledTimes(2));
  expect(apply.mock.calls[1][0]).toEqual(body);expect(issueMocks.payment.mock.calls[1]).toEqual(original);
- await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument());
 });
 
 
@@ -465,7 +537,7 @@ it('최초 발행 늦은 완료는 다른 창의 저장 원문을 지우지 않�
  const gate=deferred();const apply=vi.fn(async()=>{await gate.promise;return 'applied' as const;});
  setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,pendingInvoice:{...pendingInvoice,poIds:['po-original']}});
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
- const key='trade-statement-issue:taebaek:test-uid',first=JSON.parse(localStorage.getItem(key)!);
+ const key=pendingKey(),first=JSON.parse(localStorage.getItem(key)!);
  const other={...first,input:{...first.input,command:{...first.input.command,operationId:'other-operation',statementId:'other-statement'},statement:{...first.input.statement,id:'other-statement'}}};
  const encoded=JSON.stringify(other);localStorage.setItem(key,encoded);
  await act(async()=>{gate.resolve();await gate.promise;});await waitFor(()=>expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument());
@@ -476,14 +548,14 @@ it('최초 발행 늦은 완료는 다른 창의 저장 원문을 지우지 않�
 it('최초 명확한 송신 전 거절만 원문 대기를 해제해 입력 수정을 허용한다',async()=>{
  const apply=vi.fn(async(input:{command:{operationId:string}})=>{throw Object.assign(new Error('송신 전 회사 확인 실패'),{details:{operationStatus:'rejected',version:1,financialWrites:false,companyId:'taebaek',operationId:input.command.operationId}});});
  setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));
- await waitFor(()=>expect(apply).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());
- expect(localStorage.getItem('trade-statement-issue:taebaek:test-uid')).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();
+ await waitFor(()=>expect(apply).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument());
+ expect(localStorage.getItem(pendingKey())).toBeNull();returnToComposer();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();
 });
 
 it.each(['exact','v1','other','changed-tab'])('응답 유실 재시도 %s 거절은 검증된 원문만 입력 수정 가능하다',async kind=>{
  const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실'));
  setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
- const key='trade-statement-issue:taebaek:test-uid',first=localStorage.getItem(key)!;
+ const key=pendingKey(),first=localStorage.getItem(key)!;
  apply.mockImplementationOnce(async draft=>{
   const request={operationId:draft.command.operationId,statement:{...draft.statement,createdBy:'관리자'},orderIds:draft.command.orderIds,poIds:draft.poIds,
    costUpdates:draft.costUpdates.map((c:{beforeCost?:number;sourceLineIndex?:number})=>({...c,beforeCost:c.beforeCost??0,sourceLineIndex:c.sourceLineIndex??-1})),
@@ -493,9 +565,9 @@ it.each(['exact','v1','other','changed-tab'])('응답 유실 재시도 %s 거절
   if(kind!=='v1')await verifyTradeServerRejection(error,request,requestText,'taebaek','test-uid');
   if(kind==='changed-tab')localStorage.setItem(key,'다른 창 원문');throw error;
  });
- fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
- if(kind==='exact'){await waitFor(()=>expect(screen.queryByRole('button',{name:'이전 전표 재시도'})).not.toBeInTheDocument());expect(localStorage.getItem(key)).toBeNull();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();}
- else{await waitFor(()=>expect(screen.getByRole('button',{name:'이전 전표 재시도'})).not.toBeDisabled());expect(localStorage.getItem(key)).toBe(kind==='changed-tab'?'다른 창 원문':first);}
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
+ if(kind==='exact'){await waitFor(()=>expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument());expect(localStorage.getItem(key)).toBeNull();returnToComposer();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();}
+ else{if(kind==='changed-tab')await screen.findByText('다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다. 원문은 유지했습니다. 목록으로 돌아가 현재 요청을 확인하고, 관리자에게 확인을 요청해 주세요.');else await waitFor(()=>expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).not.toBeDisabled());expect(localStorage.getItem(key)).toBe(kind==='changed-tab'?'다른 창 원문':first);}
 });
 
 it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2000을 저장하고 unknown 재열기에도 원문을 보존한다', async () => {
@@ -514,7 +586,7 @@ it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2
  expect(sent.costUpdates).toEqual([{itemId:raw.id,price:2000,beforeCost:80,sourceLineIndex:0}]);
  expect(sent.newPoItems[0]).toMatchObject({quantity:2,unit:'20kg',purchaseUnitId:'manual-kg',unitKg:20,inventoryQty:40});
  view.unmount();render(<TradeStatement {...props}/>);
- fireEvent.click(await screen.findByRole('button',{name:'이전 전표 재시도'}));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(callback).toHaveBeenCalledTimes(2));
  expect(callback.mock.calls[1][0]).toEqual(sent);
 });
 
