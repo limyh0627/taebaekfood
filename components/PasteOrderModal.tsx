@@ -11,7 +11,7 @@ import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
-import { matchOrderInterpretationAlias,normalizeOrderInterpretationUnits,matchOrderInterpretationExpressions,type OrderExpressionConfirmation,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
+import { resolveOrderInterpretationAlias,normalizeOrderInterpretationUnits,matchOrderInterpretationExpressions,type OrderExpressionConfirmation,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
 import type {OrderInterpretationRule} from '../src/shared/services/orderCopyService';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import type { OrderUnitInputs } from '../src/shared/orderUnits';
@@ -276,18 +276,20 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       if(!aiRequest.current.open||aiRequest.current.generation!==captured.generation||aiRequest.current.snapshot!==captured.snapshot||isCurrentActor&&!isCurrentActor())return;
     }
     const lines=pasteText.split('\n').filter(line=>line.trim());
+    let aliasConflicted=false;
     const parsed=lines.map(line=>{
       const result={...parseLine(normalizeOrderInterpretationUnits(line),productPool),rawText:line};
       const suffix=/^(.*?)\s*(\d+(?:\.\d+)?)\s*(개|병|박스|캔|포)$/.exec(line.trim());
       const expression=suffix&&Number(suffix[2])===result.qty&&(result.isBox?suffix[3]==='박스':suffix[3]!=='박스')?suffix[1]:line;
-      const approved=matchOrderInterpretationAlias(normalizeOrderInterpretationUnits(expression),rules.map(rule=>({...rule,alias:normalizeOrderInterpretationUnits(rule.alias)})),selectedClientId??'');
-      return approved&&productPool.some(item=>item.id===approved)?{...result,selectedProductId:approved}:result;
+      const approved=resolveOrderInterpretationAlias(normalizeOrderInterpretationUnits(expression),rules.map(rule=>({...rule,alias:normalizeOrderInterpretationUnits(rule.alias)})),selectedClientId??'');
+      if(approved.status==='conflict'){aliasConflicted=true;return {...result,selectedProductId:null};}
+      return approved.status==='matched'&&productPool.some(item=>item.id===approved.itemId)?{...result,selectedProductId:approved.itemId}:result;
     });
     if(firstAnalysis.current?.sourceText!==pasteText)firstAnalysis.current={sourceText:pasteText,value:{kind:'rules',lines:parsed.map(line=>({...line}))}};
     const interpreted=matchOrderInterpretationExpressions(pasteText,rules,selectedClientId??'');
     setOrderNote(current=>{const after=appendNotes(current,interpreted.notes);if(after!==current)automaticNote.current={partnerId:selectedClientId,sourceText:pasteText,before:automaticNote.current?.before??current,after};return after;});
     setParsedLines(parsed);
-    setAiNote(interpreted.conflicted?{tone:'warn',text:'승인 표현의 연결이 충돌했습니다. 비고와 수령 방식을 직접 확인해주세요.'}:null);
+    setAiNote(aliasConflicted?{tone:'warn',text:'같은 표현에 서로 다른 품목이 승인되어 자동 선택을 해제했습니다. 원문과 규격을 확인하고 품목을 직접 선택해 주세요.'}:interpreted.conflicted?{tone:'warn',text:'승인 표현의 비고 연결이 충돌했습니다. 비고를 직접 확인해 주세요.'}:null);
     setStep('review');
   };
 

@@ -23,7 +23,7 @@ it('승인된 같은 거래처의 전체 별칭만 기존 수량과 함께 적�
  api.rules.mockResolvedValue([{partnerId:'partner',alias:'붙임참기름 350ml',itemId:'other',status:'approved'},{partnerId:'different',alias:'참기름',itemId:'other',status:'approved'}]);const save=vi.fn();render(<PasteOrderModal {...props} onSave={save}/>);await analyze('붙임참기름 350ml 10박스');expect(screen.getByRole('combobox')).toHaveValue('other');expect(screen.getByRole('spinbutton')).toHaveValue(10);
 });
 it('서로 다른 품목으로 승인된 충돌 별칭은 강제로 적용하지 않는다',async()=>{
- api.rules.mockResolvedValue([{partnerId:'partner',alias:'참기름',itemId:'oil',status:'approved'},{partnerId:'partner',alias:'참기름',itemId:'other',status:'approved'}]);render(<PasteOrderModal {...props} onSave={vi.fn()}/>);await analyze('참기름 2개');expect(screen.getByRole('combobox')).toHaveValue('oil');expect(api.call).not.toHaveBeenCalled();
+ api.rules.mockResolvedValue([{partnerId:'partner',alias:'참기름',itemId:'oil',status:'approved'},{partnerId:'partner',alias:'참기름',itemId:'other',status:'approved'}]);render(<PasteOrderModal {...props} onSave={vi.fn()}/>);await analyze('참기름 2개');expect(screen.getByRole('combobox')).toHaveValue('');expect(screen.getByRole('spinbutton')).toHaveValue(2);expect(api.call).not.toHaveBeenCalled();
 });
 it('승인 목록의 늦은 답은 사람이 바꾼 원문과 거래처 판독을 덮지 않는다',async()=>{
  let finish!:(rows:any[])=>void;const pending=new Promise<any[]>(resolve=>finish=resolve);api.rules.mockReturnValue(pending);render(<PasteOrderModal {...props} onSave={vi.fn()}/>);fireEvent.click(screen.getByRole('button',{name:'거래처'}));const input=screen.getByPlaceholderText(/주문 내용을 그대로 붙여넣으세요/);fireEvent.change(input,{target:{value:'참기름 2박스'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));fireEvent.change(input,{target:{value:'사람이 바꾼 새 원문'}});await act(async()=>{finish([{partnerId:'partner',alias:'참기름',itemId:'other',status:'approved'}]);await pending;});expect(input).toHaveValue('사람이 바꾼 새 원문');expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
@@ -44,4 +44,26 @@ it.each([false,true])('자동 비고만 원문 변경 시 회수하고 직접 �
 
 it('이전 거래처의 자동 비고는 다른 거래처 주문에 옮기지 않는다',async()=>{
  api.rules.mockResolvedValue([{kind:'expression',scope:'partner',partnerId:'partner',alias:'스티커X',target:'note',value:'스티커 없이',status:'approved'}]);render(<PasteOrderModal {...props} partners={[partner,{...partner,id:'b',name:'다른 거래처',type:'택배'}]} onSave={vi.fn()}/>);fireEvent.click(screen.getByRole('button',{name:'거래처'}));fireEvent.change(screen.getByPlaceholderText(/주문 내용을 그대로 붙여넣으세요/),{target:{value:'참기름10박스\n스티커X'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));await screen.findAllByRole('spinbutton');expect(screen.getByLabelText('주문 비고')).toHaveValue('스티커 없이');fireEvent.click(screen.getByRole('button',{name:/거래처 다시 선택/}));fireEvent.click(screen.getByRole('button',{name:'다른 거래처'}));fireEvent.change(screen.getByPlaceholderText(/주문 내용을 그대로 붙여넣으세요/),{target:{value:'참기름10박스'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));await screen.findByRole('spinbutton');expect(screen.getByLabelText('주문 비고')).toHaveValue('');
+});
+
+
+it.each([false,true])('승인 별칭이 충돌하면 자동 품목을 해제하며 한쪽이 목록 밖이어도 충돌을 숨기지 않는다: %s',async outside=>{
+ const text='  참기름350ml 2박스  ',save=vi.fn().mockResolvedValue(undefined);
+ api.rules.mockResolvedValue([{partnerId:'partner',alias:'참기름350ml',itemId:'oil',status:'approved'},{partnerId:'partner',alias:'참기름350ml',itemId:outside?'outside':'other',status:'approved'}]);
+ render(<PasteOrderModal {...props} onSave={save}/>);await analyze(text);
+ expect(screen.getByRole('combobox')).toHaveValue('');expect(screen.getByRole('spinbutton')).toHaveValue(2);
+ expect(screen.getByText(/같은 표현에 서로 다른 품목이 승인되어/)).toHaveTextContent('품목을 직접 선택해 주세요.');
+ expect(screen.getByRole('button',{name:/주문 생성/})).toBeDisabled();expect(api.call).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByRole('combobox'),{target:{value:'oil'}});fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));
+ await waitFor(()=>expect(save).toHaveBeenCalledOnce());
+ const [draft,evidence]=save.mock.calls[0];expect(draft.items[0]).toMatchObject({itemId:'oil',quantity:24,boxQuantity:2,orderedAs:text.trim()});
+ expect(evidence).toMatchObject({sourceText:text,firstAnalysis:{kind:'rules',lines:[{qty:2,rawText:text,selectedProductId:null}]},inputLines:[{orderedAs:text,itemId:'oil',quantity:2,isBoxUnit:true}]});
+});
+
+it.each(['duplicate','unapproved','different-partner','none'])('충돌이 아닌 승인 및 일반 판독은 기존 품목·수량을 유지한다: %s',async kind=>{
+ const base={partnerId:'partner',alias:'참기름',itemId:'other',status:'approved'};
+ api.rules.mockResolvedValue(kind==='duplicate'?[base,{...base}]:kind==='unapproved'?[{...base,status:'proposed'},{...base,status:'stopped'}]:kind==='different-partner'?[{...base,partnerId:'else'}]:[]);
+ render(<PasteOrderModal {...props} onSave={vi.fn()}/>);await analyze('참기름 2박스');
+ expect(screen.getByRole('combobox')).toHaveValue(kind==='duplicate'?'other':'oil');expect(screen.getByRole('spinbutton')).toHaveValue(2);
+ expect(screen.queryByText(/같은 표현에 서로 다른 품목이 승인되어/)).toBeNull();expect(api.call).not.toHaveBeenCalled();
 });

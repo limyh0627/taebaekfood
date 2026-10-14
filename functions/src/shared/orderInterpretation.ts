@@ -104,9 +104,15 @@ export function orderInterpretationAliasCandidates(request:OrderInterpretationRe
  }
  return result.filter((row,index)=>result.findIndex(other=>other.partnerId===row.partnerId&&other.alias===row.alias&&other.itemId===row.itemId)===index);
 }
-export function matchOrderInterpretationAlias(expression:string,rules:readonly {alias:string;itemId:string;partnerId:string;status:string;kind?:string}[],partnerId:string):string|null{
+export type OrderInterpretationAliasResolution = {status:'none'} | {status:'matched';itemId:string} | {status:'conflict'};
+export function resolveOrderInterpretationAlias(expression:string,rules:readonly {alias:string;itemId:string;partnerId:string;status:string;kind?:string}[],partnerId:string):OrderInterpretationAliasResolution{
  const normalized=normalizeOrderInterpretationAlias(expression),matches=rules.filter(row=>(row.kind===undefined||row.kind==='alias')&&row.status==='approved'&&row.partnerId===partnerId&&normalizeOrderInterpretationAlias(row.alias)===normalized);
- const ids=new Set(matches.map(row=>row.itemId));return ids.size===1?[...ids][0]:null;
+ const ids=new Set(matches.map(row=>row.itemId));
+ return ids.size===0?{status:'none'}:ids.size===1?{status:'matched',itemId:[...ids][0]}:{status:'conflict'};
+}
+export function matchOrderInterpretationAlias(expression:string,rules:readonly {alias:string;itemId:string;partnerId:string;status:string;kind?:string}[],partnerId:string):string|null{
+ const result=resolveOrderInterpretationAlias(expression,rules,partnerId);
+ return result.status==='matched'?result.itemId:null;
 }
 /** 원문은 보존하며 판독 사본에만 명시 숫자 단위를 적용한다. */
 export const normalizeOrderInterpretationUnits=(text:string):string=>text.replace(/(\d+(?:\.\d+)?)\s*미리(?=\s|$|\d|[개병박스캔포])/g,'$1ml');

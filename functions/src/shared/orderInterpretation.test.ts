@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalOrderInterpretation, sameOrderInterpretationRequest, validateOrderInterpretation,orderInterpretationAliasCandidates,normalizeOrderInterpretationAlias,matchOrderInterpretationAlias } from './orderInterpretation';
+import { canonicalOrderInterpretation, sameOrderInterpretationRequest, validateOrderInterpretation,orderInterpretationAliasCandidates,normalizeOrderInterpretationAlias,resolveOrderInterpretationAlias,matchOrderInterpretationAlias } from './orderInterpretation';
 
 const scope = { companyId: 'taebaek' as const, actorUid: 'actor' };
 const request = () => ({ version: 1, requestId: 'request-1', ...scope, createdAt: '2026-10-13T10:00:00.000Z',
@@ -72,3 +72,16 @@ it('company 명시는 비고에만 적용하며 배송 expression은 기존 배�
 it('승인 전체 줄만 적용하고 partner/company 충돌 및 옛 alias 섞임은 자동선택하지 않는다',()=>{const rule={kind:'expression' as const,partnerId:'partner',alias:'스티커X',itemId:'',status:'approved',scope:'partner' as const,target:'note' as const,value:'스티커 없음'};expect(matchOrderInterpretationExpressions('스티커X',[rule],'partner').notes).toEqual(['스티커 없음']);expect(matchOrderInterpretationExpressions('스티커X 부탁',[rule],'partner').notes).toEqual([]);expect(matchOrderInterpretationExpressions('스티커X',[rule],'other').notes).toEqual([]);expect(matchOrderInterpretationExpressions('스티커X',[rule,{...rule,scope:'company',partnerId:'',value:'스티커 붙임'}],'partner')).toEqual({notes:[],conflicted:true});expect(matchOrderInterpretationAlias('스티커X',[rule],'partner')).toBeNull();});
 
 it('기존 shipping expression 문서가 조회되어도 수령 자동추천을 만들지 않는다',()=>{const old:any={kind:'expression',scope:'company',partnerId:'',itemId:'',alias:'금요일 방문',target:'shipMethod',value:'수령',status:'approved'};const result=matchOrderInterpretationExpressions('금요일 방문',[old],'partner');expect(result).toEqual({notes:[],conflicted:false});expect(result).not.toHaveProperty('shipMethod');});
+
+
+it('승인 별칭의 부재·동일 품목 중복·서로 다른 품목 충돌을 구분하며 옛 matcher 계약을 유지한다',()=>{
+ const base={partnerId:'partner',alias:'기름 350ml',itemId:'oil',status:'approved'};
+ expect(resolveOrderInterpretationAlias('기름 350ml',[],'partner')).toEqual({status:'none'});
+ expect(resolveOrderInterpretationAlias('  기름  350ml ',[base,{...base}],'partner')).toEqual({status:'matched',itemId:'oil'});
+ expect(matchOrderInterpretationAlias('기름 350ml',[base,{...base}],'partner')).toBe('oil');
+ const conflict=[base,{...base,itemId:'other'}];
+ expect(resolveOrderInterpretationAlias('기름 350ml',conflict,'partner')).toEqual({status:'conflict'});
+ expect(matchOrderInterpretationAlias('기름 350ml',conflict,'partner')).toBeNull();
+ expect(resolveOrderInterpretationAlias('기름 350ml',[{...base,status:'proposed'},{...base,partnerId:'else'},{...base,kind:'expression'}],'partner')).toEqual({status:'none'});
+ expect(matchOrderInterpretationAlias('기름 350ml',[],'partner')).toBeNull();
+});
