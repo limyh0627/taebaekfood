@@ -1,0 +1,61 @@
+import {createHash} from 'node:crypto';
+import {readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {createRequire} from 'node:module';
+import {isDeepStrictEqual} from 'node:util';
+import * as receiptModule from '../functions/src/statementIssueReceipt.js';
+// 실행 도구는 ESM이고 서버 패키지는 CommonJS이므로 같은 원함수를 namespace에서 읽는다.
+const {statementIssueDrainReady,STATEMENT_ISSUE_FENCE_GENERATION,STATEMENT_ISSUE_FENCE_WRITERS}=(Reflect.get(receiptModule,'default')??receiptModule) as Pick<typeof import('../functions/src/statementIssueReceipt.js'),'statementIssueDrainReady'|'STATEMENT_ISSUE_FENCE_GENERATION'|'STATEMENT_ISSUE_FENCE_WRITERS'>;
+type Row=Record<string,any>;
+export const protocolHash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
+const fail=(message:string):never=>{throw Error(message)};
+export function decodeProtocolField(v:any):any {if(!v)return undefined;if(v.mapValue)return Object.fromEntries(Object.entries(v.mapValue.fields??{}).map(([k,x])=>[k,decodeProtocolField(x)]));if(v.arrayValue)return (v.arrayValue.values??[]).map(decodeProtocolField);if('nullValue'in v)return null;if('integerValue'in v)return Number(v.integerValue);if('doubleValue'in v)return v.doubleValue;if('booleanValue'in v)return v.booleanValue;if('stringValue'in v)return v.stringValue;return fail('지원하지 않는 준비 문서 필드입니다.');}
+export function encodeProtocolField(v:any):any {if(v===null)return {nullValue:null};if(typeof v==='string')return {stringValue:v};if(typeof v==='boolean')return {booleanValue:v};if(typeof v==='number'&&Number.isSafeInteger(v))return {integerValue:String(v)};if(Array.isArray(v))return {arrayValue:{values:v.map(encodeProtocolField)}};if(v&&typeof v==='object')return {mapValue:{fields:Object.fromEntries(Object.entries(v).map(([k,x])=>[k,encodeProtocolField(x)]))}};return fail('준비 정보 값의 형식을 확인해 주세요.');}
+export function otherProtocolFields(doc:Row){const {statementIssueProtocol,...rest}=doc.fields??{};return rest;}
+export function validateProtocolPlan(plan:Row,current:Row,now=Date.now()){
+ const change=plan.proposedChange,expectedName='projects/'+plan.project+'/databases/(default)/documents/appMeta/releaseCutover';
+ if(plan.project!=='taebaek-3abe4'&&!/^demo-[a-z0-9-]+$/.test(plan.project??''))fail('프로젝트 범위가 다릅니다.');
+ if(plan.document!=='appMeta/releaseCutover'||change?.document!==plan.document||change?.field!=='statementIssueProtocol'||current.name!==expectedName||!current.updateTime||change.expectedUpdateTime!==current.updateTime||plan.updateTime!==current.updateTime||!isDeepStrictEqual(plan.originalDocument,current))fail('계획과 현재 문서 버전이 다릅니다. 새로 조회해 주세요.');
+ const read=Date.parse(plan.readAt);if(!Number.isFinite(read)||read>now||now-read>600000)fail('준비 근거가 오래됐습니다. 다시 조회해 주세요.');
+ const gate=Object.fromEntries(Object.entries(current.fields??{}).map(([k,v])=>[k,decodeProtocolField(v)]));
+ if(!isDeepStrictEqual(gate.statementIssueProtocol??null,change.before)||!statementIssueDrainReady({...gate,statementIssueProtocol:change.after}))fail('서버 봉쇄·종료 근거가 완성되지 않았습니다.');
+ if(!Array.isArray(plan.writers)||plan.writers.length!==4||new Set(plan.writers.map((w:Row)=>w.name)).size!==4)fail('네 발행 경로의 근거가 필요합니다.');
+ for(const name of STATEMENT_ISSUE_FENCE_WRITERS){const writer=plan.writers.find((w:Row)=>w.name===name),e=change.after.writerEvidence[name];let evidence:Row;try{evidence=JSON.parse(e.evidence)}catch{return fail('발행 경로 근거를 읽을 수 없습니다.');}
+  const traffic=writer?.trafficStatuses,revision=writer?.latestReadyRevision?.split('/').at(-1),updated=Date.parse(writer?.updateTime),deployed=Date.parse(e.deployedAt),drained=Date.parse(e.oldRevisionDrainedAt);
+  if(writer?.state!=='ACTIVE'||writer.runtime!=='nodejs22'||writer.runReadStatus!==200||!Array.isArray(traffic)||traffic.length!==1||traffic[0].percent!==100||traffic[0].revision!==revision||!Number.isFinite(updated)||!Number.isFinite(deployed)||Math.abs(deployed-updated)>1000||!Number.isFinite(drained)||drained>now||!Number.isInteger(writer.timeoutSeconds)||writer.timeoutSeconds<1||updated+writer.timeoutSeconds*1000>drained||e.generation!==STATEMENT_ISSUE_FENCE_GENERATION||evidence.revision!==writer.latestReadyRevision||!isDeepStrictEqual(evidence.traffic,traffic)||!isDeepStrictEqual(evidence.source,writer.source)||!/^[a-f0-9]{64}$/.test(evidence.sourceZipSha256??''))fail('발행 경로의 활성 소스·전체 트래픽·이전 요청 종료 근거가 다릅니다.');
+ }
+ return change.after;
+}
+export function protocolWrite(current:Row,field:any,remove=false){if(!current.name||!current.updateTime)fail('문서 버전이 없습니다.');return {writes:[{update:{name:current.name,fields:remove?{}:{statementIssueProtocol:field}},updateMask:{fieldPaths:['statementIssueProtocol']},currentDocument:{updateTime:current.updateTime}}]};}
+export interface ProtocolStore {read():Promise<Row>;commit(body:Row):Promise<void>}
+export async function applyProtocolPlan(store:ProtocolStore,plan:Row,backupPath:string,now=Date.now()){
+ if(existsSync(backupPath)||existsSync(backupPath+'.applied.json'))fail('백업이 이미 있어 재적용하지 않습니다.');const original=await store.read(),after=validateProtocolPlan(plan,original,now);
+ const backup={version:1,project:plan.project,planHash:protocolHash(plan),original,after:encodeProtocolField(after)};writeFileSync(backupPath,JSON.stringify(backup,null,2),{flag:'wx'});
+ await store.commit(protocolWrite(original,backup.after));const applied=await store.read();if(!isDeepStrictEqual(otherProtocolFields(original),otherProtocolFields(applied))||!isDeepStrictEqual(applied.fields.statementIssueProtocol,backup.after))fail('적용 뒤 다른 필드 또는 준비 정보가 달라졌습니다. 자동 되돌림은 하지 않습니다.');
+ writeFileSync(backupPath+'.applied.json',JSON.stringify({version:1,backupHash:protocolHash(backup),applied},null,2),{flag:'wx'});return applied;
+}
+export async function undoProtocolPlan(store:ProtocolStore,backupPath:string){const backup=JSON.parse(readFileSync(backupPath,'utf8')),receipt=JSON.parse(readFileSync(backupPath+'.applied.json','utf8'));if(backup.version!==1||receipt.version!==1||receipt.backupHash!==protocolHash(backup))fail('백업 또는 적용 기록이 다릅니다.');const current=await store.read();if(!isDeepStrictEqual(current,receipt.applied))fail('적용 뒤 문서가 변경되어 되돌리지 않습니다.');const existed=Object.hasOwn(backup.original.fields,'statementIssueProtocol');await store.commit(protocolWrite(current,backup.original.fields.statementIssueProtocol,!existed));const undone=await store.read();if(!isDeepStrictEqual(undone.fields,backup.original.fields))fail('되돌림 결과가 원문과 다릅니다.');return undone;}
+export async function verifyRemoteProtocolWriters(plan:Row,getJson:(url:string)=>Promise<Row>,getBytes:(url:string)=>Promise<Uint8Array>){
+ for(const name of STATEMENT_ISSUE_FENCE_WRITERS){
+  const expected=plan.writers.find((writer:Row)=>writer.name===name),fn=await getJson('https://cloudfunctions.googleapis.com/v2/projects/'+plan.project+'/locations/asia-northeast3/functions/'+name);
+  if(fn.state!=='ACTIVE'||fn.buildConfig?.runtime!=='nodejs22'||fn.updateTime!==expected.updateTime||fn.serviceConfig?.service!==expected.service||fn.serviceConfig?.timeoutSeconds!==expected.timeoutSeconds||!isDeepStrictEqual(fn.buildConfig?.source,expected.source))fail('적용 직전 발행 경로의 소스·상태가 변경됐습니다. 준비 근거를 다시 조회해 주세요.');
+  const run=await getJson('https://run.googleapis.com/v2/'+expected.service);
+  if(run.latestReadyRevision!==expected.latestReadyRevision||!isDeepStrictEqual(run.trafficStatuses,expected.trafficStatuses))fail('적용 직전 실제 트래픽·리비전이 변경됐습니다.');
+  const source=fn.buildConfig?.source?.storageSource;if(!source?.bucket||!source?.object||!source?.generation)fail('원격 소스 세대를 확인하지 못했습니다.');
+  const bytes=await getBytes('https://storage.googleapis.com/storage/v1/b/'+encodeURIComponent(source.bucket)+'/o/'+encodeURIComponent(source.object)+'?alt=media&generation='+encodeURIComponent(source.generation)),evidence=JSON.parse(plan.proposedChange.after.writerEvidence[name].evidence);
+  if(createHash('sha256').update(bytes).digest('hex')!==evidence.sourceZipSha256)fail('현재 원격 배포 소스 SHA가 계획·로컬 백업과 다릅니다.');
+ }
+}
+async function verifySourceZips(plan:Row,folder:string){const require=createRequire(import.meta.url),zip=require('unzipper');for(const name of STATEMENT_ISSUE_FENCE_WRITERS){const bytes=readFileSync(resolve(folder,'statement-cancel-source-'+name+'-20261015.zip')),expected=JSON.parse(plan.proposedChange.after.writerEvidence[name].evidence).sourceZipSha256;if(createHash('sha256').update(bytes).digest('hex')!==expected)fail('배포 소스 백업 SHA가 다릅니다.');const archive=await zip.Open.buffer(bytes);const consumer=name==='issueTradeStatementCommand'?'lib/tradeStatementIssue.js':name==='issueNumberedVoucher'?'lib/voucherIssue.js':name==='recordLoanMovementCommand'?'lib/loanMovementCommand.js':'lib/partnerPaymentCommand.js';const entry=archive.files.find((f:Row)=>f.path===consumer),receipt=archive.files.find((f:Row)=>f.path==='lib/statementIssueReceipt.js');if(!entry||!receipt)fail('배포 소스에 필수 봉쇄 모듈이 없습니다.');const source=(await entry.buffer()).toString(),fence=(await receipt.buffer()).toString();if(!fence.includes(STATEMENT_ISSUE_FENCE_GENERATION)||!source.includes(name==='issueTradeStatementCommand'?'prepareStatementIssue':'readStatementTargetClaims')||name!=='issueTradeStatementCommand'&&!source.includes('assertStatementTargetUnclaimed'))fail('배포 소스의 동일 작업 봉쇄를 확인하지 못했습니다.');}}
+export async function protocolMain(args=process.argv.slice(2)){
+ if(args.filter(a=>['--dry','--apply','--undo'].includes(a)).length>1)fail('실행 방식은 하나만 선택해 주세요.');const option=(name:string)=>{const n=args.indexOf(name);return n>=0?args[n+1]:undefined};const planPath=option('--plan'),backupPath=option('--backup');if(!planPath||!backupPath)fail('--plan과 --backup 비공개 경로가 필요합니다.');const plan=JSON.parse(readFileSync(resolve(planPath),'utf8')),emulator=process.env.FIRESTORE_EMULATOR_HOST;if(emulator&&!/^(127\.0\.0\.1|localhost):8082$/.test(emulator))fail('자기 로컬 에뮬레이터 주소만 허용합니다.');if(emulator&&!/^demo-/.test(plan.project))fail('운영 프로젝트를 에뮬레이터로 우회하지 않습니다.');
+ let bearer='';if(!emulator){const require=createRequire(import.meta.url),auth=require(resolve(process.env.APPDATA??fail('기존 CLI 위치가 없습니다.'),'npm/node_modules/firebase-tools/lib/auth.js')),account=auth.getProjectDefaultAccount(resolve(dirname(fileURLToPath(import.meta.url)),'..'));if(!account?.tokens?.refresh_token)fail('기존 CLI 로그인이 필요합니다.');const token=await auth.getAccessToken(account.tokens.refresh_token,['https://www.googleapis.com/auth/cloud-platform']);if(!token?.access_token)fail('기존 인증을 확인하지 못했습니다.');bearer=token.access_token;}
+ const base=emulator?'http://'+emulator+'/v1':'https://firestore.googleapis.com/v1',database=base+'/projects/'+plan.project+'/databases/(default)',headers={'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:emulator?{Authorization:'Bearer owner'}:{})};const request=async(url:string,body?:Row)=>{const response=await fetch(url,{method:body?'POST':'GET',headers,...(body?{body:JSON.stringify(body)}:{})});if(!response.ok)fail('서버 문서 작업 실패 HTTP '+response.status);return response.json();};const store:ProtocolStore={read:()=>request(database+'/documents/appMeta/releaseCutover'),commit:async body=>{await request(database+'/documents:commit',body)}};const mode=args.includes('--undo')?'undo':args.includes('--apply')?'apply':'dry';
+ if(mode==='undo'){await undoProtocolPlan(store,resolve(backupPath));}else{const current=await store.read();validateProtocolPlan(plan,current);await verifySourceZips(plan,dirname(resolve(planPath)));if(!emulator)await verifyRemoteProtocolWriters(plan,async url=>{const r=await fetch(url,{headers:{Authorization:'Bearer '+bearer}});if(!r.ok)fail('발행 경로 확인 실패 HTTP '+r.status);return r.json();},async url=>{const r=await fetch(url,{headers:{Authorization:'Bearer '+bearer}});if(!r.ok)fail('원격 소스 확인 실패 HTTP '+r.status);return new Uint8Array(await r.arrayBuffer());});if(mode==='apply')await applyProtocolPlan(store,plan,resolve(backupPath));}console.log(JSON.stringify({mode,document:'appMeta/releaseCutover',changedField:'statementIssueProtocol',remoteWrites:mode==='dry'?0:1}));
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)protocolMain().catch(error=>{console.error(error instanceof Error?error.message:'준비 정보 작업 실패');process.exitCode=1});
+
+
+
+

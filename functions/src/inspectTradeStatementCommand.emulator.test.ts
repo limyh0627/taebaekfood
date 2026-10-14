@@ -50,6 +50,13 @@ describe.skipIf(!available)('전표 결과 확인의 실제 로컬 SDK 읽기',(
   if(kind!=='absent')await prepareStatementIssue(db,statementIssueIdentity(companyId,actor,{...f.command,requestText:f.input.requestText}));
   const before=await state();expect(await inspect(f.input)).toMatchObject({status:'unknown',currentStatement:'unverified',requestHash:f.input.requestHash,inspectionId:f.input.inspectionId});expect(await state()).toEqual(before);
  });
+ it('원문 없는 취소 봉인도 실제 회사·사용자와 취소 근거로 읽기만 한다',async()=>{
+  const f=fixture();await statementIssueRef(db,f.identity).set({version:2,companyId,actorId:actor,statementId:f.id,operationId:f.command.operationId,
+   status:'cancelled',revision:1,cancellationId:'cancel-proof',cancelledAt:'2026-01-01T00:00:03.000Z',drainGeneration:STATEMENT_ISSUE_FENCE_GENERATION,drainReleaseId:releaseId});
+  const before=await state(),input={companyId,statementId:f.id,operationId:f.command.operationId,inspectionId:f.input.inspectionId};
+  expect(await inspect(input)).toMatchObject({status:'cancelled',requestHash:'',cancellation:{cancellationId:'cancel-proof',receiptRevision:1}});expect(await state()).toEqual(before);
+  await statementIssueRef(db,f.identity).update({actorId:'다른 사람'});await expect(inspect(input)).rejects.toMatchObject({code:'permission-denied'});
+ });
  it.each(['absent','prepared','applied','foreignActor','tampered'] as const)('로컬 원문이 없어도 알려진 작업 ID의 %s 서버 원문을 안전하게 조회한다',async kind=>{
   const f=fixture();
   if(kind==='applied'||kind==='foreignActor'||kind==='tampered')await applied(f);
@@ -115,6 +122,21 @@ describe.skipIf(!available)('전표 결과 확인의 실제 로컬 SDK 읽기',(
   const before=await state(),request={...f.input,paymentRequestText:JSON.stringify(payment)};
   if(kind==='wrongActor')await expect(inspect(request)).rejects.toThrow('사용자');
   else expect(await inspect(request)).toMatchObject({status:'applied',payment:{status:kind==='wrongEntry'||kind==='absent'?'unknown':kind==='rejected'?'rejected':'applied',operationId,requestHash}});
+  expect(await state()).toEqual(before);
+ });
+ it.each(['cancelled-applied','cancelled-rejected','cancelled-absent','missing-applied','wrongActor','wrongCompany','wrongAllocation','wrongPartner','wrongHash'] as const)('전표 원문이 없는 %s에서도 기존 결제 결과만 검증해 읽는다',async kind=>{
+  const f=fixture(),operationId='payment-'+randomUUID(),payment={operationId,tradeDate:date,partnerId:'partner',direction:'입금',amount:100,cashAccountId:'inactive',pin:false,allocations:[{statementId:f.id,amount:100}],note:'',expectedRevision:0,releaseId};
+  const requestHash=fingerprint(payment),business={companyId,partnerId:'partner',date,cashAccountId:'inactive',dir:'입금',amount:100,lines:[{accountCode:'108',amount:100}],note:''};
+  if(kind!=='missing-applied')await statementIssueRef(db,f.identity).set({version:2,companyId,actorId:actor,statementId:f.id,operationId:f.command.operationId,status:'cancelled',revision:1,cancellationId:'cancel-proof',cancelledAt:'2026-01-01T00:00:03.000Z',drainGeneration:STATEMENT_ISSUE_FENCE_GENERATION,drainReleaseId:releaseId});
+  if(kind!=='cancelled-absent'){
+   await ref('partnerPaymentOperations',operationId).set({companyId:kind==='wrongCompany'?'punghoe':companyId,partnerId:kind==='wrongPartner'?'other':'partner',createdBy:kind==='wrongActor'?'other':actor,requestHash:kind==='wrongHash'?'tampered':requestHash,
+    ...(kind==='cancelled-rejected'?{status:'rejected',failureCode:'failed-precondition',failureMessage:'이미 거절된 결제'}:{entryHash:fingerprint(business),docNo:'결제번호',cashEntryId:operationId,issuePrefix:'',settlements:[]})});
+   if(kind!=='cancelled-rejected')await ref('cashEntries',operationId).set({...business,docNo:'결제번호',issuePrefix:'',issueOperationId:operationId,issuePayloadHash:requestHash});
+  }
+  if(kind==='wrongAllocation')payment.allocations[0].statementId='different-statement';
+  const input={companyId,statementId:f.id,operationId:f.command.operationId,inspectionId:f.input.inspectionId,paymentRequestText:JSON.stringify(payment)},before=await state();
+  if(kind.startsWith('wrong'))await expect(inspect(input)).rejects.toThrow();
+  else expect(await inspect(input)).toMatchObject({status:kind==='missing-applied'?'unknown':'cancelled',payment:{status:kind==='cancelled-absent'?'unknown':kind==='cancelled-rejected'?'rejected':'applied',operationId,requestHash}});
   expect(await state()).toEqual(before);
  });
  it('호출 인증·관리자·회사 권한과 actual UID를 확인한다',async()=>{

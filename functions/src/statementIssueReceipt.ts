@@ -34,13 +34,31 @@ export async function readStatementTargetClaims(db:admin.firestore.Firestore,tx:
 export function assertStatementTargetUnclaimed(receipts:admin.firestore.DocumentSnapshot[]){
  if(receipts.some(snap=>snap.exists))throw new HttpsError('already-exists','이 작업 ID는 먼저 저장된 일반 전표 요청이 사용 중입니다. 최초 요청을 확인해 주세요.');
 }
+export function assertStatementIssueNotCancelled(row:Row|undefined,identity:Pick<StatementIssueIdentity,'companyId'|'actorId'|'operationId'|'statementId'>){
+ if(row?.status==='cancelled'){
+  if(['companyId','actorId','operationId','statementId'].some(key=>row[key]!==identity[key as keyof typeof identity]))fail();
+  throw new HttpsError('failed-precondition','사용자가 취소한 이전 전표 요청입니다. 새 작성 화면에서 다시 발행해 주세요.');
+ }
+}
+/** 거절과 사용자 취소가 같은 효과 흔적을 확인해야 한다. */
+export async function readStatementIssueEffects(db:admin.firestore.Firestore,tx:admin.firestore.Transaction,id:string){
+ const documents=await Promise.all([tx.get(db.collection('issuedStatements').doc(id)),tx.get(db.collection('cashEntries').doc(id))]);
+ const queries=await Promise.all([
+  ['voucherMutationOperations','statementId','=='],['voucherMutationOperations','statementIds','array-contains'],
+  ['voucherMutationOperations','cashEntryId','=='],['voucherMutationOperations','cashEntryIds','array-contains'],
+  ['settlements','statementId','=='],['settlements','cashEntryId','=='],['orders','linkedStatementId','=='],['purchaseOrders','linkedStatementId','=='],
+ ].map(([collection,field,operator])=>tx.get(db.collection(collection).where(field,operator as admin.firestore.WhereFilterOp,id))));
+ return documents.some(snapshot=>snapshot.exists)||queries.some(snapshot=>!snapshot.empty);
+}
 export function assertStatementIssueReceipt(row:Row|undefined,identity:StatementIssueIdentity){
  if(!row||Object.entries(identity).some(([key,value])=>row[key]!==value)
   ||!['prepared','applied','rejected'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<0)fail();
 }
 export async function prepareStatementIssue(db:admin.firestore.Firestore,identity:StatementIssueIdentity){
  return db.runTransaction(async tx=>{const ref=statementIssueRef(db,identity),snap=await tx.get(ref);
-  if(snap.exists){assertStatementIssueReceipt(snap.data(),identity);return;}
+  const other=await tx.get(statementIssueRef(db,{companyId:identity.companyId==='taebaek'?'punghoe':'taebaek',operationId:identity.operationId}));
+  if(other.exists)throw new HttpsError('already-exists','다른 회사의 전표 요청이 사용한 작업입니다. 새 전표로 작성해 주세요.');
+  if(snap.exists){assertStatementIssueNotCancelled(snap.data(),identity);assertStatementIssueReceipt(snap.data(),identity);return;}
   tx.create(ref,{...identity,status:'prepared',revision:0,createdAt:new Date().toISOString()});
  });
 }
@@ -70,16 +88,10 @@ export async function rejectStatementIssue(db:admin.firestore.Firestore,identity
  return db.runTransaction(async tx=>{
   const ref=statementIssueRef(db,identity),id=identity.statementId;
   const gate=await tx.get(releaseGateRef(db)),receipt=await tx.get(ref);
-  const [statement,cash,...evidence]=await Promise.all([
-   tx.get(db.collection('issuedStatements').doc(id)),tx.get(db.collection('cashEntries').doc(id)),
-   ...[['voucherMutationOperations','statementId','=='],['voucherMutationOperations','statementIds','array-contains'],
-    ['voucherMutationOperations','cashEntryId','=='],['voucherMutationOperations','cashEntryIds','array-contains'],
-    ['settlements','statementId','=='],['settlements','cashEntryId','=='],['orders','linkedStatementId','=='],
-    ['purchaseOrders','linkedStatementId','==']].map(([collection,field,operator])=>
-     tx.get(db.collection(collection).where(field,operator as admin.firestore.WhereFilterOp,id))),
-  ]);
+  const hasEffects=await readStatementIssueEffects(db,tx,id);
+  if(receipt.get('status')==='cancelled')return null;
   assertStatementIssueReceipt(receipt.data(),identity);const row=receipt.data()!;
-  if(!statementIssueDrainReady(gate.data())||statement.exists||cash.exists||evidence.some(snap=>!snap.empty)||row.status==='applied')return null;
+  if(!statementIssueDrainReady(gate.data())||hasEffects||row.status==='applied')return null;
   if(row.status==='prepared')tx.update(ref,{status:'rejected',revision:row.revision+1,
    failureCode:error.code,failureMessage:error.message,rejectedAt:new Date().toISOString(),
    drainGeneration:STATEMENT_ISSUE_FENCE_GENERATION,drainReleaseId:gate.data()!.releaseId});

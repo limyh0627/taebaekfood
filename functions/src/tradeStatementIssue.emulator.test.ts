@@ -10,6 +10,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 import { issueTradeStatement } from './tradeStatementIssue';
 import { issueVoucher } from './voucherIssue';
 import {makeManualPurchaseUnitSnapshot} from './shared/purchaseUnit';
+import {statementIssueIdentity,statementIssueRef,STATEMENT_ISSUE_FENCE_GENERATION} from './statementIssueReceipt';
 
 const available = /^(?:127\.0\.0\.1|localhost):(8082|8182)$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? '');
 const projectId = `demo-trade-statement-${Math.random().toString(36).slice(2)}`;
@@ -41,6 +42,13 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it('취소 봉인은 회사 전환이나 새 원문으로도 재발행하지 않는다',async()=>{
+    await seed();const id='stmt-'+Date.now(),request={...input(id),orderIds:[],statement:{...statement(id),orderId:''}},identity=statementIssueIdentity('taebaek','auth-user',request);
+    await statementIssueRef(db,identity).set({companyId:'taebaek',actorId:'auth-user',operationId:request.operationId,statementId:id,status:'cancelled',revision:1,cancellationId:'sdk-cancel',drainGeneration:STATEMENT_ISSUE_FENCE_GENERATION});
+    await expect(issue(request)).rejects.toThrow('취소한');
+    await expect(issueTradeStatement(db,'punghoe','auth-user',{...request,statement:{...request.statement,companyId:'punghoe'}})).rejects.toThrow('다른 회사');
+    expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
+  });
   it.each(['order','po'] as const)('다른 작업 두 개가 동일 %s에 실제 동시 발행해도 금융 반영은 한 번이다',async kind=>{
     await seed();const key='parallel-'+randomUUID(),itemId=key+'-item';
     const resource=db.collection(kind==='order'?'orders':'purchaseOrders').doc(key);

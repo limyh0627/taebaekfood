@@ -35,7 +35,61 @@ export async function inspectTradeStatement(db:admin.firestore.Firestore,company
    ||!Array.isArray(capturedPayment.allocations)||capturedPayment.allocations.some((row:Row)=>!row||!identifier(row.statementId)))invalid();
  }
  return db.runTransaction(async tx=>{
+  const attachPayment=async(result:Row,partnerId?:string)=>{
+   const payment=capturedPayment;
+   if(payment){
+    if(!identifier(payment.partnerId)||!payment.allocations.some((row:Row)=>row.statementId===target.statementId)
+     ||(partnerId!==undefined&&payment.partnerId!==partnerId))invalid();
+   }
+  if(payment){
+   const request=payment,requestHash=fingerprint({...request,note:request.note?.trim()??''});
+   const proof:Row={status:'unknown',operationId:request.operationId,requestHash,reason:'수금·지불 결과를 아직 확인하지 못했습니다. 최초 수금 요청을 보관해 주세요.'};
+   const operation=await tx.get(db.collection('partnerPaymentOperations').doc(request.operationId));
+   const entry=await tx.get(db.collection('cashEntries').doc(request.operationId));
+   const other=await tx.get(db.collection('issuedStatements').doc(request.operationId));
+   if(operation.exists){
+    const prior=operation.data()!;
+    if(prior.companyId!==companyId||prior.createdBy!==actorId||prior.partnerId!==request.partnerId||prior.requestHash!==requestHash)
+     throw new HttpsError('failed-precondition','보관된 수금 요청과 처리 영수증의 회사·사용자·원문이 다릅니다.');
+    const settlements=await tx.get(db.collection('settlements').where('operationId','==',request.operationId));
+    if(prior.status==='rejected'&&failure(prior)&&!entry.exists&&!other.exists&&settlements.empty){proof.status='rejected';proof.reason=prior.failureMessage;}
+    else if((prior.status===undefined||prior.status==='applied')&&!other.exists&&typeof prior.docNo==='string'&&prior.docNo&&prior.cashEntryId===request.operationId){
+     const validates=(row:Row)=>row.companyId===companyId&&row.partnerId===request.partnerId
+      &&row.issueOperationId===request.operationId&&row.issuePayloadHash===requestHash
+      &&row.issuePrefix===(prior.issuePrefix??'')&&row.docNo===prior.docNo
+      &&fingerprint({companyId:row.companyId,partnerId:row.partnerId,date:row.date,cashAccountId:row.cashAccountId,
+       dir:row.dir,amount:row.amount,lines:row.lines,note:row.note})===prior.entryHash;
+     try{
+      const original=await readCashCreationMutation(db,tx,companyId,request.operationId,entry,validates);
+      const unchanged=entry.exists&&(entry.data()!.mutationRevision??0)===0&&validates(entry.data()!);
+      const stored:Row[]=prior.settlements??[];
+      const settlementMatch=Array.isArray(stored)&&settlements.size===stored.length&&stored.every(row=>{
+       const document=settlements.docs.find(doc=>doc.id===`st-${request.operationId}-${row.statementId}`)?.data();
+       return document&&document.companyId===companyId&&document.cashEntryId===request.operationId
+        &&document.statementId===row.statementId&&document.amount===row.amount;
+      });
+      if(original||(unchanged&&settlementMatch)){proof.status='applied';proof.cashEntryId=request.operationId;proof.docNo=prior.docNo;proof.reason='최초 수금·지불 요청의 반영을 확인했습니다.';}
+     }catch(error){if(!(error instanceof HttpsError))throw error;}
+    }
+   }
+   result.payment=proof;
+  }
+   return result;
+  };
   const receipt=await tx.get(statementIssueRef(db,target));
+  if(receipt.get('status')==='cancelled'){
+   const stored=receipt.data()!;
+   if(stored.companyId!==companyId||stored.actorId!==actorId||stored.operationId!==target.operationId||stored.statementId!==target.statementId)
+    throw new HttpsError('permission-denied','다른 회사 또는 다른 사용자의 취소 요청은 확인할 수 없습니다.');
+   if(!identifier(stored.cancellationId)||!Number.isSafeInteger(stored.revision)||stored.revision<1
+    ||stored.drainGeneration!==STATEMENT_ISSUE_FENCE_GENERATION||!identifier(stored.drainReleaseId)
+    ||typeof stored.cancelledAt!=='string'||!Number.isFinite(Date.parse(stored.cancelledAt))||Date.parse(stored.cancelledAt)>Date.now())invalid();
+   return attachPayment({companyId,actorId,operationId:target.operationId,statementId:target.statementId,inspectionId:input.inspectionId,
+    requestHash:stored.requestHash??'',status:'cancelled',currentStatement:'unverified',
+    reason:'이전 요청은 취소되었습니다. 사본을 삭제하고 새 전표로 다시 작성할 수 있습니다.',
+    cancellation:{cancellationId:stored.cancellationId,receiptRevision:stored.revision,drainGeneration:stored.drainGeneration,drainReleaseId:stored.drainReleaseId},
+    ...(typeof stored.requestText==='string'?{serverRequestText:stored.requestText}:{})});
+  }
   let identity=captured,command=capturedCommand;
   if(!identity&&receipt.exists){
    const stored=receipt.data()!;
@@ -48,7 +102,7 @@ export async function inspectTradeStatement(db:admin.firestore.Firestore,company
   const result:Row={companyId,actorId,operationId:target.operationId,statementId:target.statementId,
    requestHash:identity?.requestHash??'',inspectionId:input.inspectionId,status:'unknown',
    reason:'최초 요청의 처리 완료를 아직 확인하지 못했습니다. 원문을 보관하고 같은 요청의 결과를 다시 확인해 주세요.',currentStatement:'unverified'};
-  if(!identity||!command)return result;
+  if(!identity||!command)return attachPayment(result);
   if(!captured&&receipt.exists)result.serverRequestText=identity.requestText;
   const current=await tx.get(db.collection('issuedStatements').doc(identity.statementId));
   const cash=await tx.get(db.collection('cashEntries').doc(identity.statementId));
@@ -93,40 +147,7 @@ export async function inspectTradeStatement(db:admin.firestore.Firestore,company
     }catch(error){if(!(error instanceof HttpsError)&&!(error instanceof Error))throw error;}
    }
   }
-  if(payment){
-   const request=payment,requestHash=fingerprint({...request,note:request.note?.trim()??''});
-   const proof:Row={status:'unknown',operationId:request.operationId,requestHash,reason:'수금·지불 결과를 아직 확인하지 못했습니다. 최초 수금 요청을 보관해 주세요.'};
-   const operation=await tx.get(db.collection('partnerPaymentOperations').doc(request.operationId));
-   const entry=await tx.get(db.collection('cashEntries').doc(request.operationId));
-   const other=await tx.get(db.collection('issuedStatements').doc(request.operationId));
-   if(operation.exists){
-    const prior=operation.data()!;
-    if(prior.companyId!==companyId||prior.createdBy!==actorId||prior.partnerId!==request.partnerId||prior.requestHash!==requestHash)
-     throw new HttpsError('failed-precondition','보관된 수금 요청과 처리 영수증의 회사·사용자·원문이 다릅니다.');
-    const settlements=await tx.get(db.collection('settlements').where('operationId','==',request.operationId));
-    if(prior.status==='rejected'&&failure(prior)&&!entry.exists&&!other.exists&&settlements.empty){proof.status='rejected';proof.reason=prior.failureMessage;}
-    else if((prior.status===undefined||prior.status==='applied')&&!other.exists&&typeof prior.docNo==='string'&&prior.docNo&&prior.cashEntryId===request.operationId){
-     const validates=(row:Row)=>row.companyId===companyId&&row.partnerId===request.partnerId
-      &&row.issueOperationId===request.operationId&&row.issuePayloadHash===requestHash
-      &&row.issuePrefix===(prior.issuePrefix??'')&&row.docNo===prior.docNo
-      &&fingerprint({companyId:row.companyId,partnerId:row.partnerId,date:row.date,cashAccountId:row.cashAccountId,
-       dir:row.dir,amount:row.amount,lines:row.lines,note:row.note})===prior.entryHash;
-     try{
-      const original=await readCashCreationMutation(db,tx,companyId,request.operationId,entry,validates);
-      const unchanged=entry.exists&&(entry.data()!.mutationRevision??0)===0&&validates(entry.data()!);
-      const stored:Row[]=prior.settlements??[];
-      const settlementMatch=Array.isArray(stored)&&settlements.size===stored.length&&stored.every(row=>{
-       const document=settlements.docs.find(doc=>doc.id===`st-${request.operationId}-${row.statementId}`)?.data();
-       return document&&document.companyId===companyId&&document.cashEntryId===request.operationId
-        &&document.statementId===row.statementId&&document.amount===row.amount;
-      });
-      if(original||(unchanged&&settlementMatch)){proof.status='applied';proof.cashEntryId=request.operationId;proof.docNo=prior.docNo;proof.reason='최초 수금·지불 요청의 반영을 확인했습니다.';}
-     }catch(error){if(!(error instanceof HttpsError))throw error;}
-    }
-   }
-   result.payment=proof;
-  }
-  return result;
+  return attachPayment(result,command.statement.partnerId);
  });
 }
 

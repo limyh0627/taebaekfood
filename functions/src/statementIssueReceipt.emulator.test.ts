@@ -25,6 +25,13 @@ describe.skipIf(!available)('전표 저장 전 거절 실제 Admin SDK 영수증
   expect((await before.ref.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
   expect(()=>statementIssueIdentity('taebaek','actor',{...input,requestText:JSON.stringify({...input,orderIds:['other']})})).toThrow('원문');
  });
+ it('다른 회사가 같은 ID를 선점했으면 새 prepare도 반대 회사 취소도 허용하지 않는다',async()=>{
+  const input=request(),identity=statementIssueIdentity('taebaek','actor',input);
+  await prepareStatementIssue(db,identity);
+  const other={...identity,companyId:'punghoe'};
+  await expect(prepareStatementIssue(db,other)).rejects.toThrow('다른 회사');
+  expect((await statementIssueRef(db,other).get()).exists).toBe(false);
+ });
  it('저장 전 확정 거절은 원문 증거를 주고 같은 요청을 영구 봉쇄한다',async()=>{
   const input=request();input.statement.items[0].qty=0;const identity=statementIssueIdentity('taebaek','actor',input);
   await expect(issue(input)).rejects.toMatchObject({details:{...identity,version:2,operationStatus:'rejected',financialWrites:false,receiptRevision:1}});

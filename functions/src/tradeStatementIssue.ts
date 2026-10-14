@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { formatVoucherNo, voucherSequenceKey } from './voucherIssue';
 import { assertReleaseActive, assertVoucherDateAllowed, releaseGateRef } from './releaseGate';
-import {statementIssueIdentity,prepareStatementIssue,statementIssueRef,assertStatementIssueReceipt,rejectStatementIssue,type StatementIssueIdentity} from './statementIssueReceipt';
+import {statementIssueIdentity,prepareStatementIssue,statementIssueRef,assertStatementIssueReceipt,assertStatementIssueNotCancelled,rejectStatementIssue,type StatementIssueIdentity} from './statementIssueReceipt';
 
 type Row = Record<string, any>;
 type Cost = { itemId: string; price: number; beforeCost: number; sourceLineIndex: number; sourceLineIndices?: number[] };
@@ -195,7 +195,7 @@ async function applyTradeStatement(db: admin.firestore.Firestore, companyId: str
     await tx.get(db.collection('voucherMutationOperations').where('statementId','==',raw.id));
     // 번호를 먼저 읽어야 다른 발행의 개별 전표 잠금과 신규 번호 전체 조회가 서로 기다리지 않는다.
     const normalSequence=await tx.get(counterRef),catchUpSequence=await tx.get(catchUpCounterRef);
-    const receipt=await tx.get(receiptRef);assertStatementIssueReceipt(receipt.data(),identity);
+    const receipt=await tx.get(receiptRef);assertStatementIssueNotCancelled(receipt.data(),identity);assertStatementIssueReceipt(receipt.data(),identity);
     const receiptRow=receipt.data()!;
     if(receiptRow.status==='rejected')throw new HttpsError(receiptRow.failureCode,receiptRow.failureMessage);
     const markApplied=(docNo:string)=>{
