@@ -1,3 +1,4 @@
+import {recoveryKeyIdentity,validateTradeStatementDraft} from '../domain/tradeStatementRecovery';
 import type {CompanyId,IssuedStatement,PurchaseUnitSnapshot} from '../../../shared/types';
 import type {StatementCommand} from '../domain/statementCommand';
 import {isCalendarDay} from '../../../shared/day';
@@ -18,7 +19,7 @@ function parseTradePending(text:string,companyId:CompanyId,userId:string,allowZe
 export function storeTradePending(key:string,p:TradeStatementPending):string {const text=JSON.stringify(p);parseTradePending(text,p.companyId,p.userId);if(key!==tradePendingKey(p.companyId,p.userId)&&key!==tradePendingKey(p.companyId,p.userId,p.input.statement.id))throw new Error('전표 원문과 저장 키가 다릅니다.');const old=localStorage.getItem(key);if(old!==null&&old!==text)throw new Error('이전에 저장 중이던 전표를 먼저 재시도해 주세요.');localStorage.setItem(key,text);return text;}
 export function clearTradePending(key:string,text:string):void {if(localStorage.getItem(key)===text)localStorage.removeItem(key);}
 
-export type PendingEntry={key:string;text:string;pending:TradeStatementPending|null;archived:boolean;deleted:boolean;invalid:boolean;recoveryReason?:'zero-total';copies:{key:string;text:string}[]};
+export type PendingEntry={key:string;text:string;pending:TradeStatementPending|null;archived:boolean;deleted:boolean;invalid:boolean;recoveryReason?:'zero-total';identity?:{statementId?:string;operationId?:string};copies:{key:string;text:string}[]};
 const pendingStateKey=(companyId:CompanyId,uid:string,key:string)=>`trade-statement-issue-state:${companyId}:${uid}:${encodeURIComponent(key)}`;
 const belongs=(key:string,companyId:CompanyId,uid:string)=>key===tradePendingKey(companyId,uid)||key.startsWith(tradePendingKey(companyId,uid,''));
 const samePending=(a:TradeStatementPending,b:TradeStatementPending)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
@@ -38,7 +39,7 @@ export function listTradePendings(companyId:CompanyId,uid:string):PendingEntry[]
   }catch{/* 손상된 원문도 목록과 충돌 판정에 남긴다. */}
   const state=copyState(companyId,uid,key,text),same=pending?entries.find(row=>row.pending&&samePending(row.pending,pending!)):undefined;
   if(same){same.copies.push({key,text});same.archived=same.archived&&state.archived;same.deleted=same.deleted&&state.deleted;}
-  else entries.push({key,text,pending,archived:state.archived,deleted:pending!==null&&state.deleted,invalid:pending===null,...(pending?.input.statement.totalAmount===0?{recoveryReason:'zero-total' as const}:{}),copies:[{key,text}]});
+  else entries.push({key,text,pending,identity:recoveryKeyIdentity(key,{companyId,actorUid:uid}),archived:state.archived,deleted:pending!==null&&state.deleted,invalid:pending===null,...(pending?.input.statement.totalAmount===0?{recoveryReason:'zero-total' as const}:{}),copies:[{key,text}]});
  }
  return entries;
 }
@@ -46,7 +47,7 @@ type PendingSources={statementId:string;operationId:string;orderIds:string[];poI
 export function findTradePendingConflicts(entries:PendingEntry[],draft:TradeStatementDraft|PendingSources):PendingEntry[]{
  const source:PendingSources='command' in draft?{statementId:draft.statement.id,operationId:draft.command.operationId,orderIds:draft.command.orderIds,poIds:draft.poIds}:draft;
  return entries.filter(entry=>{
-  if(!entry.pending)return true;
+  if(!entry.pending)return !!(entry.identity?.statementId===source.statementId||entry.identity?.operationId===source.operationId);
   const input=entry.pending.input;
   if(entry.recoveryReason!=='zero-total'&&input.statement.id===source.statementId&&input.command.operationId===source.operationId)return false;
   return input.statement.id===source.statementId||input.command.operationId===source.operationId

@@ -3,7 +3,10 @@ import { readPurchaseUnitSnapshot } from '../src/shared/purchaseUnit';
 import { subscribeItemPurchaseUnits } from '../src/shared/services/itemPurchaseUnitService';
 import type { ItemPurchaseUnit, PurchaseUnitSnapshot } from '../src/shared/types';
 import {auth} from '../src/shared/firebase';
-import {listTradePendings,findTradePendingConflicts,storeTradePendingEntry,clearTradePendingEntry,deleteTradePendingEntry,tradeNoWriteProof,type TradeStatementPending,type PendingEntry} from '../src/features/statements/infrastructure/tradeStatementPending';
+import {listTradePendings,tradePendingMatchesRequest,findTradePendingConflicts,storeTradePendingEntry,clearTradePendingEntry,deleteTradePendingEntry,tradeNoWriteProof,type TradeStatementPending,type PendingEntry} from '../src/features/statements/infrastructure/tradeStatementPending';
+import type { RecoveryEntry, RecoveryInspection } from '../src/features/statements/domain/tradeStatementRecovery';
+import { validateTradeStatementDraft, validateTradeStatementPaymentInput } from '../src/features/statements/domain/tradeStatementRecovery';
+import { listTradeStatementRecoveryEntries, inspectTradeStatementRecovery, exportTradeStatementRecovery, clearVerifiedTradeStatementRecovery, retryTradeStatementRecovery, resumeTradeStatementRecoveryPayment, deleteTradeStatementRecovery } from '../src/features/statements/infrastructure/tradeStatementRecoveryService';
 import { isStockProduction } from '../src/shared/orderPurpose';
 import type { ReadonlyReturnOperation } from '../src/features/admin/cashLedger';
 import { loadPayrollCashEdit, prepareTransferCash, hasPendingCashMutation, type PayrollCashEdit, type TransferCashEdit, type PreparedTransferCashEdit } from '../src/features/admin/cashMutationCommands';
@@ -18,7 +21,7 @@ import DateChipButton from '../src/shared/components/DateChipButton';
 import { settleStatus, settlementTypeOf, settlementDirectionOf, isAccruedPayableStatement } from '../src/features/admin/voucherMerge';
 import { evidenceChoices, evidenceOf } from '../src/features/statements/domain/evidence';
 import { toggleSort, sortRank, sortSummary, type TimelineSortColumn } from '../src/shared/timelineColumnSort';
-import { today, dateOfLocal, monthStart } from '../src/shared/day';
+import { today, dateOfLocal, monthStart, isCalendarDay } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy } from '../src/shared/taxonomy';
 import { hasInboundInventoryLines, isInboundInventoryItem } from '../src/shared/inboundInventory';
@@ -439,15 +442,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const confirmDelete = useDeleteConfirmation();
   const [isSaving, setIsSaving] = useState(false);
   // 전표 저장 뒤 단가 저장만 실패해도 재시도는 같은 전표에 쓴다. 새 ID면 중복 발행된다.
-  const [issuePendings,setIssuePendings]=useState<PendingEntry[]>([]);
+  const [issuePendings,setIssuePendings]=useState<RecoveryEntry[]>([]);
+  const [recoveryInspection,setRecoveryInspection]=useState<{key:string;text:string;result:RecoveryInspection}|null>(null);
   const [issueAcknowledged,setIssueAcknowledged]=useState<Record<string,string>>({});
   const [issueFailureReasons,setIssueFailureReasons]=useState<Record<string,string>>({});
   const [recoveryOpen,setRecoveryOpen]=useState(false);
   const [recoverySelection,setRecoverySelection]=useState<{key:string;text:string}|null>(null);
+  const recoverySelectionRef=useRef(recoverySelection);
+  recoverySelectionRef.current=recoverySelection;
   const [issuePendingError,setIssuePendingError]=useState('');
   const issueActor=auth.currentUser?.uid;
-  const refreshIssuePendings=()=>{if(!issueActor)return;try{setIssuePendings(listTradePendings(companyId,issueActor));setIssuePendingError('');}catch(error){setIssuePendingError((error as Error).message);}};
-  useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePendings([]);setIssueAcknowledged({});setIssueFailureReasons({});setIssuePendingError('');setRecoveryOpen(false);setRecoverySelection(null);setDetailStmt(null);refreshIssuePendings();const changed=()=>refreshIssuePendings();window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[companyId,issueActor]);
+  const refreshIssuePendings=()=>{if(!issueActor)return;try{setIssuePendings(listTradeStatementRecoveryEntries({companyId,actorUid:issueActor}));setIssuePendingError('');}catch(error){setIssuePendingError((error as Error).message);}};
+  useEffect(()=>{saveBusyRef.current=false;setIsSaving(false);setIssuePendings([]);setRecoveryInspection(null);setIssueAcknowledged({});setIssueFailureReasons({});setIssuePendingError('');setRecoveryOpen(false);setRecoverySelection(null);setDetailStmt(null);refreshIssuePendings();const changed=()=>refreshIssuePendings();window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed);},[companyId,issueActor]);
   const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
 
   /**
@@ -463,10 +469,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [purchaseUnits, setPurchaseUnits] = useState<ItemPurchaseUnit[]>([]);
   const [purchaseUnitLoadError, setPurchaseUnitLoadError] = useState('');
   useEffect(() => { let alive = true; setPurchaseUnits([]); setPurchaseUnitLoadError(''); const stop = subscribeItemPurchaseUnits(companyId, rows => { if (alive) setPurchaseUnits(rows); }, error => { if (alive) setPurchaseUnitLoadError(error.message); }); return () => { alive = false; stop(); }; }, [companyId]);
-  const cashEditScope = useRef({ companyId, alive: true, token: {} });
-  if (cashEditScope.current.companyId !== companyId) cashEditScope.current = { companyId, alive: true, token: {} };
+  const cashEditScope = useRef({ companyId, actorUid:issueActor, alive: true, token: {} });
+  if (cashEditScope.current.companyId !== companyId || cashEditScope.current.actorUid !== issueActor) cashEditScope.current = { companyId, actorUid:issueActor, alive: true, token: {} };
   useEffect(() => { cashEditScope.current.alive = true; return () => { cashEditScope.current.alive = false; cashEditScope.current.token = {}; }; }, []);
   const [payAccountId, setPayAccountId] = useState('');
+  const [recoverySettleInput,setRecoverySettleInput]=useState<{amount:number;date:string}|undefined>();
   const [quickPayAccountId, setQuickPayAccountId] = useState('');
 
   //  템플릿 창 — 열고 닫는 것만 화면이 쥔다. 대상 월·진행 상태는 창 안의 일이다.
@@ -655,6 +662,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
+    setRecoverySettleInput(undefined);
     cashOpening.current = null;
     setCashModalSession(session => session + 1);
     setCashModal({ kind: '수금지불', stmt });
@@ -1491,6 +1499,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (registerInbound = true, skipLinkIds = noLinkIds): Promise<{statement:IssuedStatement;pending:TradeStatementPending} | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
+    // 입력 실수는 저장 시도 원문을 만들기 전에 고친다. 실패 복구 목록은 송신 결과 확인에만 쓴다.
+    if (!isCalendarDay(tradeDate)) { alert('전표일자를 확인해 주세요. 실제 존재하는 날짜를 YYYY-MM-DD 형식으로 입력한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
+    if (!Number.isSafeInteger(totalAmount) || totalAmount <= 0) { alert('전표 합계가 0원이거나 올바른 원 단위 금액이 아닙니다. 각 품목의 수량·단가·할인 금액을 확인한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
+    if (issuePay) {
+      const amountText=(issuePayAmount||'').replace(/[,\s원]/g,'');
+      const amount=Number(amountText);
+      if (!amountText || !Number.isSafeInteger(amount) || amount <= 0 || !defaultCashAccountId(activeCashAccounts,companyId)) { alert('함께 처리할 수금·지불 금액과 입출금 계좌를 확인해 주세요. 금액은 양의 정수 원으로 입력하고 활성 입출금 계좌를 선택한 뒤 저장해 주세요. 작성 내용은 그대로 남아 있습니다.'); return null; }
+    }
     if (!수량확인()) return null;
     const serviceErrors = serviceStatementErrors(lineItems, allItems, [...partnerOut, ...partnerIn], selectedClientId, stmtType);
     if (serviceErrors.length) { window.alert(serviceErrors.join('\n')); return null; }
@@ -1554,10 +1570,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const input={command,statement:{...stmt,companyId},costUpdates,
       poIds:stmtType==='매입'&&registerInbound?loadedPoIds:[],newPoItems:registerInbound?newPoItems:[]};
     const uid=auth.currentUser?.uid;if(!uid)throw new Error('로그인을 확인해 주세요.');
-    const paymentAmount=Number((issuePayAmount||'').replace(/[,\s원]/g,''))||0;
+    const paymentAmount=issuePay?validateTradeStatementPaymentInput(issuePayAmount):0;
     if(issuePay&&paymentAmount>0&&(!Number.isSafeInteger(paymentAmount)||!defaultCashAccountId(activeCashAccounts,companyId)))throw new Error('지불 금액과 입출금 계좌를 확인해 주세요.');
     const pending:TradeStatementPending={version:1,companyId,userId:uid,input,
       ...(issuePay&&paymentAmount>0?{payment:{amount:paymentAmount,date:tradeDate,cashAccountId:defaultCashAccountId(activeCashAccounts,companyId)}}:{})};
+    validateTradeStatementDraft(input,pending.payment);
     const token=cashEditScope.current.token;
     const current=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&cashEditScope.current.companyId===companyId;
     const conflicts=findTradePendingConflicts(listTradePendings(companyId,uid),input);
@@ -1605,17 +1622,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return link ? noLinkIds : new Set([...noLinkIds, ...unlinked.map(line => line.itemId!)]);
   };
 
-  const retryIssue=async(entry:PendingEntry)=>{
-    const p=entry.pending;if(!p||saveBusyRef.current||!onApplyStatement)return;
-    if(entry.recoveryReason==='zero-total'){alert('0원인 이전 요청은 다시 발행할 수 없습니다. 금액과 기존 발행 여부를 확인해 주세요.');return;}
-    // 보관 후 새로 작성한 내용은 남기고, 이번에 저장되는 요청의 작성 창만 닫는다.
-    const sameComposer=issueIdentityRef.current?.id===p.input.statement.id
+  const isSameIssueComposer=(p:TradeStatementPending)=>issueIdentityRef.current?.id===p.input.statement.id
       &&JSON.stringify(buildStatementCommand({
         statementId:p.input.statement.id,partnerId:selectedClientId,partnerName:selectedClient?.name,
         tradeDate,type:stmtType,docNo:p.input.command.docNo,memo:stmtMemo,
         orderIds:selectedOrderIds,lines:lineItems,partySnapshot,
       }))===JSON.stringify(p.input.command)
       &&JSON.stringify(loadedPoIds)===JSON.stringify(p.input.poIds);
+  const retryIssue=async(entry:PendingEntry)=>{
+    const p=entry.pending;if(!p||saveBusyRef.current||!onApplyStatement)return;
+    if(recoveryInspection?.key===entry.key&&recoveryInspection.text===entry.text&&recoveryInspection.result.currentStatement==='deleted'){alert('이 요청의 발행 전표는 삭제되었습니다. 삭제 이력을 확인해 주세요. 전표와 결제를 다시 만들지 않습니다.');return;}
+    if(entry.recoveryReason==='zero-total'){alert('0원인 이전 요청은 다시 발행할 수 없습니다. 금액과 기존 발행 여부를 확인해 주세요.');return;}
+    // 새로 작성한 내용은 남기고, 이번에 저장되는 요청의 작성 창만 닫는다.
+    const sameComposer=isSameIssueComposer(p);
     const token=cashEditScope.current.token;
     const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===p.userId&&companyId===p.companyId;
     if(!alive())return;saveBusyRef.current=true;setIsSaving(true);
@@ -1647,6 +1666,80 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if(!current()||saveBusyRef.current)return;saveBusyRef.current=true;setIsSaving(true);
     try{await deleteTradePendingEntry(entry.key,entry.text,p.companyId,p.userId,current);if(!current())return;refreshIssuePendings();setRecoverySelection(null);if(issueIdentityRef.current?.id===p.input.statement.id)issueIdentityRef.current=null;}
     catch(error){if(current())alert(`실패 요청을 삭제하지 못했습니다. ${error instanceof Error?error.message:String(error)}`);}
+    finally{if(current()){saveBusyRef.current=false;setIsSaving(false);}}
+  };
+
+  // 조회 응답은 회사·사용자뿐 아니라 지금 선택한 원문에도 묶는다. 다른 항목을 연 뒤 온 응답은 버린다.
+  const recoveryAction=async(entry:RecoveryEntry,action:'inspect'|'export'|'clear'|'rewrite-payment'|'retry'|'retry-server'|'payment'|'delete')=>{
+    if(saveBusyRef.current)return;
+    const token=cashEditScope.current.token,uid=auth.currentUser?.uid;
+    const current=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===uid&&uid===issueActor&&cashEditScope.current.companyId===companyId&&recoverySelectionRef.current?.key===entry.key&&recoverySelectionRef.current?.text===entry.text;
+    if(!current())return;
+    saveBusyRef.current=true;setIsSaving(true);setIssuePendingError('');
+    try{
+      if(action==='inspect'){
+        setRecoveryInspection(null);
+        const result=await inspectTradeStatementRecovery(entry,current);
+        if(current())setRecoveryInspection({key:entry.key,text:entry.text,result});
+      }else if(action==='export')await exportTradeStatementRecovery(entry,current,recoveryInspection?.key===entry.key&&recoveryInspection.text===entry.text?recoveryInspection.result:undefined);
+      else if(action==='clear'||action==='rewrite-payment'){
+        if(recoveryInspection?.key!==entry.key||recoveryInspection.text!==entry.text)throw Error('먼저 처리결과 확인을 눌러 이 요청의 저장 결과를 확인해 주세요.');
+        const inspectedResult=recoveryInspection.result;
+        if(action==='rewrite-payment'&&(inspectedResult.status!=='applied'||inspectedResult.payment?.status!=='rejected'||inspectedResult.currentStatement==='deleted'||!inspectedResult.statement))throw Error('현재 발행 전표와 수금·지불 미반영 결과를 먼저 확인해 주세요. 삭제된 전표로 결제를 새로 작성하지 않습니다.');
+        const sameComposer=!!entry.pending&&isSameIssueComposer(entry.pending);
+        const cleared=await clearVerifiedTradeStatementRecovery(entry,recoveryInspection.result,current);
+        if(current()&&cleared){
+          if(issueIdentityRef.current?.id===entry.pending?.input.statement.id)issueIdentityRef.current=null;
+          setRecoveryInspection(null);setRecoverySelection(null);refreshIssuePendings();
+          // 결제 수정으로 이동할 때는 부모의 작성창 종료 콜백이 이 컴포넌트까지 내리므로 유지한다.
+          if(action!=='rewrite-payment'&&sameComposer&&recoveryInspection.result.status==='applied'){saveBusyRef.current=false;setRecoveryOpen(false);closeCreate();}
+          if(action==='rewrite-payment'){
+            const statement=inspectedResult.statement!;
+            // 발행 완료된 원작성창은 로컬에서만 닫는다. 부모를 내리지 않고 결제 입력을 이어 간다.
+            if(sameComposer){setCreateMode(null);setEditingStmt(null);setIsEditMode(false);}
+            let originalAccount=entry.pending?.payment?.cashAccountId;
+            if(!originalAccount&&entry.paymentRequestText){try{originalAccount=JSON.parse(entry.paymentRequestText).cashAccountId;}catch{/* 검증된 계좌가 없으면 직접 선택한다. */}}
+            setRecoveryOpen(false);openPayModal(statement);
+            let originalPayment=entry.pending?.payment;
+            if(!originalPayment&&entry.paymentRequestText){try{const payment=JSON.parse(entry.paymentRequestText);originalPayment={amount:payment.amount,date:payment.tradeDate,cashAccountId:payment.cashAccountId};}catch{/* 원문을 재구성하지 않는다. */}}
+            if(originalPayment)setRecoverySettleInput({amount:originalPayment.amount,date:originalPayment.date});
+            setPayAccountId(activeCashAccounts.some(account=>account.id===originalAccount)?originalAccount!:'');
+          }
+        }else if(current()){
+          setIssuePendingError('전표와 함께 요청한 수금·지불 결과가 아직 모두 확인되지 않아 지난 시도 내용을 유지합니다. 수금·지불 상태를 확인한 뒤 같은 내용으로 다시 시도해 주세요.');
+        }
+      }else if(action==='delete'){
+        await deleteTradeStatementRecovery(entry,current);
+        if(current()){refreshIssuePendings();setRecoverySelection(null);}
+      }else{
+        const inspection=recoveryInspection?.key===entry.key&&recoveryInspection.text===entry.text?recoveryInspection.result:undefined;
+        const sameComposer=!!entry.pending&&isSameIssueComposer(entry.pending);
+        if(action==='payment'){
+          if(!inspection)throw Error('먼저 처리결과 확인을 눌러 주세요.');
+          const complete=await resumeTradeStatementRecoveryPayment(entry,inspection,current);
+          if(current()&&complete&&sameComposer){refreshIssuePendings();setRecoveryInspection(null);setRecoverySelection(null);saveBusyRef.current=false;setRecoveryOpen(false);closeCreate();return;}
+        }else{
+          await retryTradeStatementRecovery(entry,current,action==='retry-server'?inspection:undefined);
+          if(current()&&action==='retry-server'&&entry.kind==='upper-only'){
+            const confirmed=await inspectTradeStatementRecovery(entry,current);
+            if(!current())return;
+            setRecoveryInspection({key:entry.key,text:entry.text,result:confirmed});
+            if(confirmed.status==='applied'&&await clearVerifiedTradeStatementRecovery(entry,confirmed,current)){
+              if(!current())return;
+              refreshIssuePendings();setRecoverySelection(null);setRecoveryInspection(null);
+              if(sameComposer){saveBusyRef.current=false;setRecoveryOpen(false);closeCreate();}
+              return;
+            }
+            setIssuePendingError('첫 요청의 전표 저장을 확인했습니다. 아래에서 함께 요청한 수금·지불 결과를 확인해 주세요.');
+            return;
+          }
+        }
+        if(current()){refreshIssuePendings();setRecoveryInspection(null);if(localStorage.getItem(entry.key)===null){setRecoverySelection(null);setIssuePendingError('첫 저장 시도 내용으로 전표 저장을 확인하고 완료된 요청을 정리했습니다.');}else setIssuePendingError('첫 저장 시도 내용으로 전표 저장을 확인했습니다. 처리결과 확인을 눌러 함께 요청한 수금·지불 상태도 확인해 주세요.');}
+      }
+    }catch(error){if(current()){
+      const message=error instanceof Error?error.message:String(error),code=String((error as {code?:string})?.code??'');
+      setIssuePendingError(/permission-denied/.test(code)?'이 회사의 처리결과를 확인할 권한이 없습니다. 선택한 회사와 관리자 로그인을 확인한 뒤 처리결과 확인을 다시 눌러 주세요. 작성 내용과 지난 요청은 유지했습니다.':/unauthenticated/.test(code)?'로그인이 만료되어 처리결과를 확인하지 못했습니다. 작성 내용을 복사해 둔 뒤 다시 로그인하고 이 요청의 처리결과 확인을 눌러 주세요.':message);
+    }}
     finally{if(current()){saveBusyRef.current=false;setIsSaving(false);}}
   };
 
@@ -2128,36 +2221,68 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const recoveryButtonClass='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50';
   const selectedRecovery=recoverySelection?issuePendings.find(entry=>entry.key===recoverySelection.key):undefined;
   const selectedRecoveryCurrent=selectedRecovery?.text===recoverySelection?.text;
+  const selectedRecoveryDeleted=selectedRecoveryCurrent&&recoveryInspection?.key===selectedRecovery?.key&&recoveryInspection?.text===selectedRecovery?.text&&recoveryInspection?.result.currentStatement==='deleted';
   const recoveryDialogs=()=> <>
     {recoveryOpen&&!recoverySelection&&<LargeModalShell title="실패 작업 목록" onClose={()=>{if(!isSaving)setRecoveryOpen(false);}}>
-      <p className="mb-4 text-sm text-slate-600">처리 결과를 확인하지 못한 요청과 보관한 요청입니다. 항목을 선택해 이유와 확인할 내용을 살펴보세요.</p>
+      <p className="mb-4 text-sm text-slate-600">지난 저장 시도 중 결과 확인이 필요한 내용입니다. 항목을 선택한 뒤 처리결과 확인을 눌러 주세요. 작성 중인 다른 전표의 입력은 유지됩니다.</p>
       {issuePendingError&&<p>{issuePendingError}</p>}
       {!issuePendings.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
       {issuePendings.filter(entry=>!entry.deleted).map(entry=><button key={entry.key} type="button" className="flex w-full flex-wrap justify-between gap-2 border-b border-slate-200 px-2 py-4 text-left" onClick={()=>setRecoverySelection({key:entry.key,text:entry.text})}>
-        <span>{entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:'원문 확인이 필요한 요청'}</span><span>{entry.invalid?'원문 확인 필요':entry.recoveryReason==='zero-total'?'0원 요청 · 재시도 불가':entry.deleted?'이전 처리 확인 필요':entry.archived?'보관':'처리 확인 필요'}</span>
+        <span>{entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:entry.metadata.partnerName?`${entry.metadata.partnerName} · ${entry.metadata.tradeDate??''} · ${entry.metadata.totalAmount?.toLocaleString()??'금액 확인 필요'}원`:'원문 확인이 필요한 요청'}</span><span>{entry.invalid?'원문 확인 필요':entry.recoveryReason==='zero-total'?'지난 시도 0원 · 재시도 불가':entry.deleted?'이전 처리 확인 필요':'저장 결과 확인 필요'}</span>
       </button>)}
     </LargeModalShell>}
     {recoveryOpen&&recoverySelection&&<LargeModalShell title="실패 작업 상세" onClose={()=>{if(!isSaving)setRecoverySelection(null);}}>
-      {!selectedRecoveryCurrent||!selectedRecovery?.pending?<p>다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다. 원문은 유지했습니다. 목록으로 돌아가 현재 요청을 확인하고, 관리자에게 확인을 요청해 주세요.</p>: (()=>{
+      {issuePendingError&&<p className="mb-4 whitespace-pre-wrap" role="status">{issuePendingError}</p>}
+      {isSaving&&<p role="status">요청 내용을 확인하고 있습니다. 잠시 기다려 주세요.</p>}
+      {!selectedRecoveryCurrent||!selectedRecovery?.pending?<div className="space-y-4">{selectedRecoveryCurrent&&selectedRecovery?.request?<><p className="font-bold">{selectedRecovery.metadata.partnerName} · {selectedRecovery.metadata.tradeDate} · {selectedRecovery.metadata.totalAmount?.toLocaleString()}원</p><p>{selectedRecovery.reason}</p><p>최초 송신 내용만 남아 있습니다. 처리결과 확인으로 전표 저장 여부를 확인해 주세요. 작성 중인 전표에 이 내용을 덮어쓰지 않습니다.</p><p>주문: {selectedRecovery.request.orderIds.join(', ')||'직접 작성'} · 발주: {selectedRecovery.request.poIds.join(', ')||'없음'}</p></>:<p>다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다. 원문은 유지했습니다. 원문 백업을 내려받고 새로 읽기를 눌러 주세요. 읽을 수 없는 내용으로 다시 발행하지 않습니다.</p>}{selectedRecoveryCurrent&&selectedRecovery&&<>
+        {(selectedRecovery.request||selectedRecovery.metadata.statementId||selectedRecovery.metadata.operationId)&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'inspect')}>처리결과 확인</button>}
+        {selectedRecovery.request&&!selectedRecovery.invalid&&<button type="button" className={recoveryButtonClass} disabled={isSaving||selectedRecoveryDeleted||selectedRecovery.kind==='conflict'||!Number.isSafeInteger(selectedRecovery.metadata.totalAmount)||(selectedRecovery.metadata.totalAmount??0)<=0} onClick={()=>void recoveryAction(selectedRecovery,'retry')}>같은 내용 다시 시도</button>}
+        {selectedRecovery.request&&(selectedRecovery.metadata.totalAmount??0)<=0&&<p>지난 저장 시도 내용의 금액이 0원입니다. 실제 주문 금액을 뜻하지 않습니다. 이 내용으로 송신하지 않으며 처리결과 확인과 목록 삭제는 가능합니다.</p>}
+        <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'export')}>원문 백업 다운로드</button>
+        <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'delete')}>실패 요청 삭제</button>
+      </>}</div>: (()=>{
         const entry=selectedRecovery,p=entry.pending!;
-        const linked=mergedStatements.find(statement=>companyOf(statement)===p.companyId&&statement.id!==p.input.statement.id&&p.input.command.orderIds.some(orderId=>statement.orderId===orderId||orders.some(order=>order.id===orderId&&(order as Order & {linkedStatementId?:string}).linkedStatementId===statement.id)));
+        const linked=mergedStatements.find(statement=>companyOf(statement)===p.companyId&&statement.id!==p.input.statement.id&&(p.input.command.orderIds.some(orderId=>String(statement.orderId??'').split(/[,\s]+/).includes(orderId)||orders.some(order=>order.id===orderId&&(order as Order & {linkedStatementId?:string}).linkedStatementId===statement.id))||[...purchaseUnitOrders,...confirmedOrders,...orderRequests].some(po=>companyOf(po)===p.companyId&&p.input.poIds.includes(po.id)&&po.linkedStatementId===statement.id)));
         return <div className="space-y-4">
           <p className="font-bold">{p.input.statement.partnerName} · {p.input.statement.tradeDate} · {p.input.statement.totalAmount.toLocaleString()}원</p>
-          <p>상태: {entry.deleted?'이전 처리 확인 필요':entry.archived?'보관': '처리 확인 필요'}</p>
+          <p>상태: {entry.deleted?'이전 처리 확인 필요':'저장 결과 확인 필요'}</p>
+          <p>{entry.reason}</p>
+          {!entry.request&&<p>이 브라우저에 첫 송신 내용이 남아 있지 않습니다. 처리결과 확인으로 서버에 남은 첫 저장 시도 내용과 결과를 조회해 주세요.</p>}
           {entry.deleted&&<p>이 주문의 이전 발행 결과를 확인해야 합니다. 발행된 전표를 확인하거나 관리자에게 문의해 주세요.</p>}
-          <p>{entry.recoveryReason==='zero-total'?'이전 요청의 합계가 0원이라 다시 발행할 수 없습니다. 기존 발행 여부와 금액을 확인해 주세요.':issueAcknowledged[p.input.statement.id]&&p.payment?'전표 저장은 확인됐지만 수금·지불 완료는 아직 확인되지 않았습니다.':'저장 응답을 확인하지 못했습니다. 실제 저장 여부를 같은 내용으로 다시 확인해야 합니다.'}</p>
+          <p>{entry.recoveryReason==='zero-total'?'이전 요청의 합계가 0원인 것은 지난 저장 시도 내용의 금액입니다. 실제 주문 금액이 0원이라는 뜻이 아닙니다. 이 내용으로 다시 발행하지 않습니다. 처리결과 확인으로 기존 전표를 확인한 뒤 입력 금액을 바로잡아 주세요.':issueAcknowledged[p.input.statement.id]&&p.payment?'전표 저장은 확인됐지만 수금·지불 완료는 아직 확인되지 않았습니다. 처리결과 확인을 눌러 주세요.':'서버 저장 결과를 아직 확인하지 못했습니다. 처리결과 확인을 눌러 주세요.'}</p>
+          <p>확인 대상 주문: {p.input.command.orderIds.join(', ')||'직접 작성'} · 발주: {p.input.poIds.join(', ')||'없음'}</p>
+          {p.payment&&<p>함께 요청한 수금·지불: {p.payment.amount.toLocaleString()}원 · {p.payment.date} · 원래 계좌 {cashAccounts.find(account=>account.id===p.payment!.cashAccountId)?.name??'현재 계좌 목록에 없음'}{cashAccounts.find(account=>account.id===p.payment!.cashAccountId)?.active===false?' (비활성)':''}. 전표 저장과 별도로 결과를 확인합니다. 다른 계좌나 새 지급으로 바꾸지 않습니다.</p>}
           {issueFailureReasons[p.input.statement.id]&&<p>이번 시도에서 확인된 안내: {issueFailureReasons[p.input.statement.id]}</p>}
           {linked&&<p>관련 주문은 이미 다른 전표로 발행되어 있습니다. 이전 요청을 완료로 간주하지 않고 보관합니다.</p>}
           <p>확인할 내용: 거래처·일자·금액과 아래 품목이 원래 요청과 같은지 확인해 주세요.{p.payment?' 함께 요청한 수금·지불도 같은 내용으로 확인합니다.':''}</p>
           <ul>{p.input.statement.items.map((line,index)=><li key={index}>{line.name} · {line.spec} · 수량 {line.qty} · {line.total.toLocaleString()}원</li>)}</ul>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={recoveryButtonClass} disabled={isSaving||entry.recoveryReason==='zero-total'} onClick={()=>void retryIssue(entry)}>같은 내용 다시 시도</button>
+            <button type="button" className={recoveryButtonClass} disabled={isSaving||!(entry.request||entry.metadata.statementId||entry.metadata.operationId)} onClick={()=>void recoveryAction(entry,'inspect')}>처리결과 확인</button>
+            <button type="button" className={recoveryButtonClass} disabled={isSaving||selectedRecoveryDeleted||entry.recoveryReason==='zero-total'||entry.kind==='conflict'||entry.invalid} onClick={()=>void retryIssue(entry)}>같은 내용 다시 시도</button>
             {!entry.deleted&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void changeDeletedIssue(entry)}>실패 요청 삭제</button>}
+            <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(entry,'export')}>원문 백업 다운로드</button>
+            {mergedStatements.find(statement=>companyOf(statement)===p.companyId&&statement.id===p.input.statement.id)&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{setRecoveryOpen(false);setDetailStmt(mergedStatements.find(statement=>companyOf(statement)===p.companyId&&statement.id===p.input.statement.id)!);}}>현재 전표 보기</button>}
             {linked&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{setRecoveryOpen(false);setDetailStmt(linked);}}>발행된 전표 보기 · {linked.docNo}</button>}
           </div>
           <p className="text-sm text-slate-600">삭제는 실패 목록에서 요청을 제거합니다. 실제 전표·재고·수금은 바뀌지 않습니다.</p>
         </div>;
       })()}
+      {selectedRecoveryCurrent&&selectedRecovery?.paymentRequestText&&!selectedRecovery.pending?.payment&&(()=>{try{const payment=JSON.parse(selectedRecovery.paymentRequestText);const account=cashAccounts.find(row=>row.id===payment.cashAccountId);return <p className="mt-4">함께 요청한 수금·지불: {Number(payment.amount).toLocaleString()}원 · {payment.tradeDate} · 원래 계좌 {account?.name??'현재 계좌 목록에 없음'}{account?.active===false?' (비활성)':''}. 최초 결제 내용으로 결과를 확인하며 계좌를 바꾸지 않습니다.</p>;}catch{return <p>함께 요청한 수금·지불 원문을 읽을 수 없습니다. 원문 백업을 내려받아 확인해 주세요.</p>;}})()}
+      {selectedRecoveryCurrent&&selectedRecovery&&recoveryInspection?.key===selectedRecovery.key&&recoveryInspection.text===selectedRecovery.text&&<div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+        <p>{recoveryInspection.result.status==='applied'?'전표 저장이 확인됐습니다. 수금·지불은 아래 결과를 따로 확인해 주세요.':recoveryInspection.result.status==='rejected'?'이 저장 시도는 반영되지 않은 것으로 확인됐습니다. 확인된 결과 정리 후 작성 중인 입력을 수정해 저장할 수 있습니다.':'서버 저장 결과를 아직 확인하지 못했습니다. 첫 저장 시도 내용과 원문을 유지합니다. 새로 읽거나 같은 내용으로 다시 확인해 주세요.'}</p>
+        <p>{recoveryInspection.result.reason}</p>
+        {(()=>{const text=(recoveryInspection.result as RecoveryInspection&{serverRequestText?:string}).serverRequestText;if(!text)return null;try{const first=JSON.parse(text),statement=first.statement;return <div className="space-y-2 border-t border-slate-200 pt-3"><p className="font-bold">서버에 남은 첫 저장 시도 내용</p><p>{statement.partnerName} · {statement.tradeDate} · {Number(statement.totalAmount).toLocaleString()}원 · 전표번호 {statement.docNo||'확인 중'}</p><p>주문: {first.orderIds?.join(', ')||'직접 작성'} · 발주: {first.poIds?.join(', ')||'없음'}</p><ul>{statement.items?.map((line:{name:string;qty:number;total:number},index:number)=><li key={index}>{line.name} · 수량 {line.qty} · {Number(line.total).toLocaleString()}원</li>)}</ul><p>이 내용은 현재 작성 중인 입력을 덮어쓰지 않습니다. 거래처·날짜·금액과 품목을 확인한 뒤 같은 첫 요청만 다시 시도할 수 있습니다.</p>{recoveryInspection.result.status==='unknown'&&(selectedRecovery.lowerCopies.some(copy=>copy.text===text)||selectedRecovery.kind==='upper-only'&&!!selectedRecovery.pending&&tradePendingMatchesRequest(selectedRecovery.pending,first))&&<button type="button" className={recoveryButtonClass} disabled={isSaving||selectedRecoveryDeleted||selectedRecovery.kind==='conflict'||!Number.isSafeInteger(statement.totalAmount)||statement.totalAmount<=0} onClick={()=>void recoveryAction(selectedRecovery,'retry-server')}>서버에 남은 첫 내용으로 다시 시도</button>}</div>;}catch{return <p>서버에서 확인한 첫 내용을 표시하지 못했습니다. 원문 백업을 내려받고 새로 읽기를 눌러 주세요.</p>;}})()}
+        {recoveryInspection.result.currentStatement==='deleted'&&<p>이 요청으로 발행됐던 전표는 현재 삭제된 것으로 확인됐습니다. 같은 내용을 새 전표로 재구성하지 않습니다. 기존 전표의 삭제 이력을 확인해 주세요.</p>}
+        {recoveryInspection.result.currentStatement==='changed'&&<p>발행 뒤 현재 전표 내용이 바뀌었습니다. 현재 전표 보기를 눌러 수정된 내용과 원래 요청을 비교해 주세요.</p>}
+        {selectedRecovery.paymentRequired&&!recoveryInspection.result.payment&&<p>수금·지불 결과를 아직 확인하지 못했습니다. 전표 저장만으로 결제 완료로 처리하지 않습니다. 원래 금액·날짜·계좌를 유지한 채 확인해 주세요.</p>}
+        {recoveryInspection.result.payment&&<p>수금·지불 결과: {recoveryInspection.result.payment.status==='applied'?'완료 확인':recoveryInspection.result.payment.status==='rejected'?'반영되지 않음 확인':'아직 확인되지 않음'} · {recoveryInspection.result.payment.reason}</p>}
+        {selectedRecovery.paymentRequestText&&recoveryInspection.result.status==='applied'&&recoveryInspection.result.currentStatement!=='deleted'&&recoveryInspection.result.payment?.status==='unknown'&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'payment')}>원래 수금·지불 요청 다시 확인</button>}
+        {recoveryInspection.result.status==='applied'&&recoveryInspection.result.payment?.status==='rejected'&&recoveryInspection.result.currentStatement!=='deleted'&&recoveryInspection.result.statement&&selectedRecovery.kind!=='conflict'&&selectedRecovery.kind!=='invalid'&&<><p>원래 수금·지불은 반영되지 않았고 전표는 이미 발행됐습니다. 아래 버튼으로 확인된 실패 내용을 정리한 뒤 기존 전표의 결제 입력을 다시 작성해 주세요. 전표를 새로 발행하지 않습니다.</p><button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'rewrite-payment')}>수금·지불 미반영 확인 · 기존 전표에서 다시 작성</button></>}
+        {recoveryInspection.result.statement&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{setRecoveryOpen(false);setDetailStmt(recoveryInspection.result.statement as IssuedStatement);}}>확인된 전표 보기</button>}
+        {recoveryInspection.result.status!=='unknown'&&!(recoveryInspection.result.status==='applied'&&recoveryInspection.result.payment?.status==='rejected'&&recoveryInspection.result.currentStatement!=='deleted')&&selectedRecovery.kind!=='conflict'&&selectedRecovery.kind!=='invalid'&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void recoveryAction(selectedRecovery,'clear')}>확인된 결과 정리 · 입력으로 돌아가기</button>}
+        {(selectedRecovery.kind==='conflict'||selectedRecovery.kind==='invalid')&&<p>지난 작성 내용과 송신 내용을 안전하게 대조할 수 없어 원문을 자동 정리하지 않습니다. 원문 백업을 내려받아 비교하거나 실패 요청 삭제로 목록을 정리해 주세요. 관련 주문·발주의 중복 보호는 유지됩니다.</p>}
+      </div>}
+      <button type="button" className={`${recoveryButtonClass} mt-4`} disabled={isSaving} onClick={()=>{refreshIssuePendings();setRecoveryInspection(null);setRecoverySelection(null);}}>새로 읽기</button>
       <button type="button" className={`${recoveryButtonClass} mt-4`} disabled={isSaving} onClick={()=>setRecoverySelection(null)}>실패 작업 목록으로</button>
     </LargeModalShell>}
   </>;
@@ -2480,35 +2605,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         * **자금 전표 창** — 수금·지불(전표에서 연 입출금)도, 이미 난 전표를 고치는 것도 하나다.
         * `key`로 열 때마다 새로 마운트한다 — 그래야 창이 폼을 되씻는 effect 없이 초기값만 읽는다.
         */}
-      {cashModal && companyOf(cashModal.kind === '수정' ? cashModal.entry : cashModal.stmt) === companyId && (
-        <CashEntryModal
-          key={`${cashModal.kind}:${cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}:${cashModalSession}`}
-          mode={cashModal}
-          partners={partners.filter(partner => companyOf(partner) === companyId)}
-          companyId={companyId}
-          accountCodes={accountCodes}
-          cashAccounts={activeCashAccounts}
-          accountId={payAccountId}
-          onAccountId={setPayAccountId}
-          partnerBalances={partnerBalances}
-          getBalance={getBalance}
-          latestStatement={id => mergedStatements.find(s => s.id === id)}
-          onClose={() => { cashOpening.current = null; setCashModal(null); }}
-          onSettle={savePayment}
-          payrollEdit={cashModal.kind === '수정' ? cashPayrollEdit : undefined}
-          transferEdit={cashModal.kind === '수정' ? cashTransferEdit : undefined}
-          onSaveEdit={saveEditCash}
-          onAssignCashAccount={onUpdateCashEntry ? assignCashAccount : undefined}
-          hasPendingRequest={id => hasPendingCashMutation(companyId, id)}
-          onResumeEntry={onResumeCashMutation}
-          onDeleteEntry={onDeleteCashEntry ? async id => {
-            const original = cashModal.kind === '수정' ? cashModal.entry : cashEntries.find(row => row.id === id);
-            if (!original) throw new Error('삭제할 자금 원문을 찾지 못했습니다.');
-            await deleteCashAtomic(original);
-          } : undefined}
-        />
-      )}
-
       {/* ── 빠른 수금/지불 모달 ── */}
 
       {/* ── 정기 고정비 생성 모달 ── */}
@@ -2561,6 +2657,36 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       </>}
       </>}
       {/* ── 계좌 관리 모달 (장부 흡수) ── */}
+      {cashModal && companyOf(cashModal.kind === '수정' ? cashModal.entry : cashModal.stmt) === companyId && (
+        <CashEntryModal
+          key={`${cashModal.kind}:${cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}:${cashModalSession}`}
+          mode={cashModal}
+          initialSettle={cashModal.kind==='수금지불'?recoverySettleInput:undefined}
+          partners={partners.filter(partner => companyOf(partner) === companyId)}
+          companyId={companyId}
+          accountCodes={accountCodes}
+          cashAccounts={activeCashAccounts}
+          accountId={payAccountId}
+          onAccountId={setPayAccountId}
+          partnerBalances={partnerBalances}
+          getBalance={getBalance}
+          latestStatement={id => mergedStatements.find(s => s.id === id)}
+          onClose={() => { cashOpening.current = null; setCashModal(null); }}
+          onSettle={savePayment}
+          payrollEdit={cashModal.kind === '수정' ? cashPayrollEdit : undefined}
+          transferEdit={cashModal.kind === '수정' ? cashTransferEdit : undefined}
+          onSaveEdit={saveEditCash}
+          onAssignCashAccount={onUpdateCashEntry ? assignCashAccount : undefined}
+          hasPendingRequest={id => hasPendingCashMutation(companyId, id)}
+          onResumeEntry={onResumeCashMutation}
+          onDeleteEntry={onDeleteCashEntry ? async id => {
+            const original = cashModal.kind === '수정' ? cashModal.entry : cashEntries.find(row => row.id === id);
+            if (!original) throw new Error('삭제할 자금 원문을 찾지 못했습니다.');
+            await deleteCashAtomic(original);
+          } : undefined}
+        />
+      )}
+
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (
         <LargeModalShell title={`발행 전표 상세 — ${detailStmt.partnerName}`} onClose={closeDetail} bodyClassName="!p-0">

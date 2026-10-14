@@ -26,7 +26,7 @@ const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(
   : value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value as Row).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)]))
     : value;
-const fingerprint = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+export const fingerprint = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const validDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
   && !Number.isNaN(new Date(`${date}T00:00:00Z`).valueOf())
   && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;

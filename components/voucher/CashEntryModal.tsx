@@ -46,6 +46,8 @@ export interface SettleInput {
 
 interface Props {
   mode: CashModalMode;
+  /** 미반영이 확인된 결제의 수정 입력은 원래 금액·일자로 시작한다. */
+  initialSettle?: { amount: number; date: string };
   partners: Partner[];
   companyId: CompanyId;
   accountCodes: AccountCode[];
@@ -87,7 +89,7 @@ export default function CashEntryModal(p: Props) {
 // ── 수금·지불 (전표에서 연다) ────────────────────────────────────────────────
 
 function SettleBody({
-  stmt, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle,
+  stmt, cashAccounts, accountId, onAccountId, partnerBalances, getBalance, latestStatement, onClose, onSettle, initialSettle,
 }: Props & { stmt: IssuedStatement }) {
   const isBuy = settlementTypeOf(stmt) === '매입';
   const accrued = isAccruedPayableStatement(stmt);
@@ -96,8 +98,8 @@ function SettleBody({
    * 찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
    * 일자도 **그 전표 날짜**가 기본이다 — 오늘로 박아 두면 8/28 전표를 8/31에 열 때마다 고쳐야 한다.
    */
-  const [amount, setAmount] = useState(formatMoneyInput(Math.round(getBalance(stmt))));
-  const [date, setDate] = useState(stmt.tradeDate || today());
+  const [amount, setAmount] = useState(formatMoneyInput(initialSettle?.amount ?? Math.round(getBalance(stmt))));
+  const [date, setDate] = useState(initialSettle?.date ?? (stmt.tradeDate || today()));
   const [method, setMethod] = useState<PaymentMethod>('계좌이체');
   const [note, setNote] = useState('');
   const [scope, setScope] = useState<'stmt' | 'partner'>('stmt');   // 기본은 '이 전표'
@@ -165,6 +167,7 @@ function SettleBody({
               <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">{isBuy ? '출금 계좌' : '입금 계좌'}</label>
               <select value={accountId} onChange={e => onAccountId(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300">
+                {!accountId&&<option value="">계좌를 선택해 주세요</option>}
                 {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <p className="text-[10px] text-slate-400 mt-1">현금출납장에 자동으로 기록되고 이 전표에 매칭됩니다.</p>

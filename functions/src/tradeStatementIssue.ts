@@ -60,16 +60,24 @@ const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(
     ? Object.fromEntries(Object.entries(value as Row).filter(([, v]) => v !== undefined)
       .sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)]))
     : value;
-const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+export const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const uniqueIds = (ids: unknown): ids is string[] => Array.isArray(ids)
   && ids.every(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(id))
   && new Set(ids).size === ids.length;
-const statementBusiness = (row: Row) => {
+export const statementBusiness = (row: Row) => {
   const { docNo: _no, id: _id, issuedAt: _time, createdBy: _by,
     issueOperationId: _op, issuePayloadHash: _requestHash,
     issueStatementHash: _businessHash, issueVoucherNo: _voucherNo, issuePrefix: _prefix, ...business } = row;
   return business;
 };
+
+/** 조회와 발행이 최초 요청의 같은 지문을 사용해야 한다. */
+export function tradeStatementIssueHashes(companyId:string,input:Input){
+  const {statement:raw,orderIds,poIds,newPo,costUpdates}=input;
+  const semantic=statementBusiness(raw);
+  return {statementHash:hash({...semantic,companyId}),payloadHash:hash({statement:semantic,orderIds,poIds,
+    newPo:newPo?{id:newPo.id,items:newPo.items}:undefined,costUpdates})};
+}
 
 /** The voucher, counter, order flags, purchase-order links and cost history commit together. */
 export async function issueTradeStatement(db: admin.firestore.Firestore, companyId: string, actorId: string, input: Input) {
@@ -156,10 +164,7 @@ async function applyTradeStatement(db: admin.firestore.Firestore, companyId: str
       bad('전표 줄과 원가가 일치하지 않습니다.');
     }
   }
-  const semantic = statementBusiness(raw);
-  const statementHash = hash({ ...semantic, companyId });
-  const payloadHash = hash({ statement: semantic, orderIds, poIds,
-    newPo: newPo ? { id: newPo.id, items: newPo.items } : undefined, costUpdates });
+  const {statementHash,payloadHash}=tradeStatementIssueHashes(companyId,input);
   const statementRef = db.collection('issuedStatements').doc(raw.id);
   const otherKindRef = db.collection('cashEntries').doc(raw.id);
   const counterRef = db.collection('appMeta').doc(voucherSequenceKey(companyId, date, ''));

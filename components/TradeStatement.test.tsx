@@ -27,7 +27,143 @@ function returnToComposer(){
  const list=screen.queryByRole('button',{name:'실패 작업 목록 닫기'});if(list)fireEvent.click(list);
 }
 const pendingKey=()=>listTradePendings('taebaek','test-uid')[0]?.key??'trade-statement-issue:taebaek:test-uid';
+const lowerKey='trade-statement-request-v2:taebaek:test-uid:lower-only%3AISSUE';
+function lowerOnlyFixture(){
+ const statement={id:'lower-only',companyId:'taebaek',partnerId:partner.id,partnerName:partner.name,type:'매입',tradeDate:'2026-10-15',docNo:'261015-001',totalAmount:6600,totalSupply:6000,totalTax:600,items:[{name:item.name,spec:'300ml',qty:1,price:6000,total:6000,accountCode:'500'}]};
+ const request={operationId:'lower-only:ISSUE',statement,orderIds:['original-order'],poIds:['original-po'],costUpdates:[],releaseId:'fixture-release'};
+ localStorage.setItem(lowerKey,JSON.stringify(request));return request;
+}
+
+it('첫 송신 내용만 남은 요청도 목록·상세·처리결과 조회가 가능하고 다른 작성 입력을 보존한다',async()=>{
+ const request=lowerOnlyFixture();
+ recoveryMocks.inspect.mockResolvedValueOnce({status:'applied',reason:'전표 저장 확인',currentStatement:'present',statement:request.statement,payment:{status:'unknown',reason:'수금 응답 확인 필요'}});
+ setup(undefined,undefined,{composerOnly:true});
+ fireEvent.change(screen.getByLabelText('1행 거래 수량'),{target:{value:'3'}});
+ fireEvent.click(await recoveryAction('처리결과 확인'));
+ await screen.findByText('전표 저장이 확인됐습니다. 수금·지불은 아래 결과를 따로 확인해 주세요.');
+ expect(screen.getByText(/수금·지불 결과: 아직 확인되지 않음/)).toBeInTheDocument();
+ expect(recoveryMocks.clear).not.toHaveBeenCalled();
+ expect(localStorage.getItem(lowerKey)).toBe(JSON.stringify(request));
+ returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('3');
+});
+
+it('손상된 지난 요청은 백업·새로읽기 동선을 제공하고 독립 전표 입력을 막지 않는다',async()=>{
+ const key='trade-statement-issue:taebaek:test-uid',text='읽을 수 없는 최초 내용';localStorage.setItem(key,text);
+ setup(undefined,undefined,{composerOnly:true});
+ expect(screen.getByLabelText('1행 거래 수량')).not.toBeDisabled();
+ fireEvent.click(await recoveryAction('원문 백업 다운로드'));await waitFor(()=>expect(recoveryMocks.backup).toHaveBeenCalled());
+ expect(screen.getByRole('button',{name:'새로 읽기'})).toBeEnabled();
+ expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument();
+ expect(localStorage.getItem(key)).toBe(text);
+});
+
+it('비활성 원래 계좌의 수금·지불도 조회하고 원래 요청 재개만 제공한다',async()=>{
+ const request=lowerOnlyFixture(),payment={operationId:'payment-first',releaseId:'fixture-release',expectedRevision:0,partnerId:partner.id,direction:'출금',pin:true,amount:3300,tradeDate:'2026-10-14',cashAccountId:'old-bank',allocations:[{statementId:request.statement.id,amount:3300}],note:'진단 거래처 지불'};
+ localStorage.setItem('partner-payment-pending:taebaek:partner:test-uid',JSON.stringify({version:2,request:payment}));
+ recoveryMocks.inspect.mockResolvedValueOnce({status:'applied',reason:'전표 저장 확인',currentStatement:'present',payment:{status:'unknown',reason:'원래 지불 상태 확인 필요'}});
+ setup(undefined,undefined,{composerOnly:true,cashAccounts:[{id:'old-bank',companyId:'taebaek',name:'기존 은행',type:'통장',active:false,openingBalance:0,openingDate:'2026-01-01',createdAt:''}]});
+ fireEvent.click(await recoveryAction('처리결과 확인'));
+ expect(await screen.findByText(/3,300원 · 2026-10-14 · 원래 계좌 기존 은행 \(비활성\)/)).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'원래 수금·지불 요청 다시 확인'}));
+ await waitFor(()=>expect(recoveryMocks.resumePayment).toHaveBeenCalledOnce());
+ expect(JSON.parse(recoveryMocks.resumePayment.mock.calls[0][0].paymentRequestText)).toEqual(payment);
+ expect(issueMocks.payment).not.toHaveBeenCalled();
+});
+
+it.each([true,false])('수금·지불 미반영 확정은 원금액·날짜를 유지해 기존 전표에서 수정한다: 원계좌활성 %s',async active=>{
+ const request=lowerOnlyFixture(),apply=vi.fn();
+ localStorage.setItem('partner-payment-pending:taebaek:partner:test-uid',JSON.stringify({version:2,request:{operationId:'payment-first',releaseId:'fixture-release',expectedRevision:0,partnerId:partner.id,direction:'출금',pin:true,amount:100,tradeDate:'2026-10-14',cashAccountId:'old-bank',allocations:[{statementId:request.statement.id,amount:100}]}}));
+ recoveryMocks.inspect.mockResolvedValueOnce({status:'applied',reason:'전표 저장 확인',currentStatement:'present',statement:request.statement,payment:{status:'rejected',reason:'원래 지불 미반영 확정'}});
+ recoveryMocks.clear.mockImplementationOnce(async()=>{localStorage.removeItem(lowerKey);return true;});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,issuedStatements:[request.statement as IssuedStatement],cashAccounts:[{id:'main-bank',companyId:'taebaek',name:'다른 메인',type:'통장',active:true,openingBalance:0,openingDate:'2026-01-01',createdAt:''},{id:'old-bank',companyId:'taebaek',name:'원래 계좌',type:'통장',active,openingBalance:0,openingDate:'2026-01-01',createdAt:''}]});
+ fireEvent.click(await recoveryAction('처리결과 확인'));fireEvent.click(await screen.findByRole('button',{name:'수금·지불 미반영 확인 · 기존 전표에서 다시 작성'}));
+ const dialog=await screen.findByRole('dialog',{name:'지불 처리'});expect(recoveryMocks.clear).toHaveBeenCalledOnce();
+ expect(dialog.querySelector('input[inputmode="numeric"]')).toHaveValue('100');expect(dialog.querySelector('input[type="date"]')).toHaveValue('2026-10-14');
+ expect(within(dialog).getByRole('combobox')).toHaveValue(active?'old-bank':'');if(!active)expect(within(dialog).getByRole('option',{name:'계좌를 선택해 주세요'})).toBeInTheDocument();
+ expect(apply).not.toHaveBeenCalled();expect(issueMocks.payment).not.toHaveBeenCalled();
+});
+
+it('같은 작성창의 결제 미반영 복구는 부모 종료로 컴포넌트를 내리지 않고 결제 수정창을 유지한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(Error('응답 유실')),close=vi.fn();
+ function Parent(){const [open,setOpen]=React.useState(true);return open?<TradeStatement orders={[]} allItems={[item]} partners={[partner]} partnerItems={[price]} issuedStatements={[]} pendingInvoice={pendingInvoice} composerOnly onApplyStatement={apply} onComposerClose={()=>{close();setOpen(false);}}/>:<p>부모가 작성창을 종료함</p>;}
+ render(<Parent/>);fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const entry=listTradePendings('taebaek','test-uid')[0],p=entry.pending!;
+ p.payment={amount:100,date:'2026-10-14',cashAccountId:'old-bank'};localStorage.setItem(entry.key,JSON.stringify(p));fireEvent(window,new StorageEvent('storage'));
+ recoveryMocks.inspect.mockResolvedValueOnce({status:'applied',reason:'전표 저장 확인',currentStatement:'present',statement:p.input.statement,payment:{status:'rejected',reason:'원래 지불 미반영 확정'}});
+ recoveryMocks.clear.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return true;});
+ fireEvent.click(await recoveryAction('처리결과 확인'));fireEvent.click(await screen.findByRole('button',{name:'수금·지불 미반영 확인 · 기존 전표에서 다시 작성'}));
+ expect(await screen.findByRole('dialog',{name:'지불 처리'})).toBeInTheDocument();expect(close).not.toHaveBeenCalled();
+ const paymentDialog=screen.getByRole('dialog',{name:'지불 처리'});expect(paymentDialog.querySelector('input[inputmode="numeric"]')).toHaveValue('100');expect(paymentDialog.querySelector('input[type="date"]')).toHaveValue('2026-10-14');
+ expect(screen.queryByText('부모가 작성창을 종료함')).not.toBeInTheDocument();expect(apply).toHaveBeenCalledOnce();expect(issueMocks.payment).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'지불 처리 닫기'}));
+ expect(screen.queryByRole('dialog',{name:'지불 처리'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'저장'})).not.toBeInTheDocument();expect(close).not.toHaveBeenCalled();
+});
+
+it('삭제된 발행 전표는 수금·지불 원요청 재개나 새 결제 입력 버튼을 제공하지 않는다',async()=>{
+ const request=lowerOnlyFixture();
+ localStorage.setItem('partner-payment-pending:taebaek:partner:test-uid',JSON.stringify({version:2,request:{operationId:'payment-first',releaseId:'fixture-release',expectedRevision:0,partnerId:partner.id,direction:'출금',pin:true,amount:3300,tradeDate:'2026-10-14',cashAccountId:'old-bank',allocations:[{statementId:request.statement.id,amount:3300}]}}));
+ recoveryMocks.inspect.mockResolvedValueOnce({status:'applied',reason:'발행 후 삭제 확인',currentStatement:'deleted',payment:{status:'unknown',reason:'지불 확인 필요'}});
+ setup(undefined,undefined,{composerOnly:true});fireEvent.click(await recoveryAction('처리결과 확인'));
+ await screen.findByText(/이 요청으로 발행됐던 전표는 현재 삭제된 것으로 확인/);
+ expect(screen.queryByRole('button',{name:'원래 수금·지불 요청 다시 확인'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'수금·지불 미반영 확인 · 기존 전표에서 다시 작성'})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).toBeDisabled();
+});
+
+it('전표일자 입력 오류는 저장 시도와 실패목록을 만들지 않고 수정 후 같은 입력으로 저장된다',async()=>{
+ const {onApplyStatement}=setup(undefined,undefined,{composerOnly:true});
+ const date=screen.getByLabelText('전표일자');fireEvent.change(date,{target:{value:''}});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('전표일자를 확인해 주세요')));
+ expect(onApplyStatement).not.toHaveBeenCalled();expect(listTradePendings('taebaek','test-uid')).toHaveLength(0);
+ expect(screen.getByRole('button',{name:'실패 작업 0'})).toBeInTheDocument();
+ expect(window.alert).not.toHaveBeenCalledWith(expect.stringContaining('전표 저장에 실패'));
+ fireEvent.change(date,{target:{value:'2026-10-15'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));
+ await waitFor(()=>expect(onApplyStatement).toHaveBeenCalledOnce());
+});
+
+it('브라우저 송신 내용이 없는 요청도 서버 첫 내용을 조회해 비교하고 백업한다',async()=>{
+ const apply=vi.fn().mockRejectedValue(Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const p=listTradePendings('taebaek','test-uid')[0].pending!;
+ const response={status:'unknown',reason:'첫 요청 확인',currentStatement:'unverified',serverRequestText:JSON.stringify({operationId:p.input.command.operationId,statement:p.input.statement,orderIds:[],poIds:[],costUpdates:[],releaseId:'fixture-release'})};
+ recoveryMocks.inspect.mockResolvedValueOnce(response);fireEvent.click(await recoveryAction('처리결과 확인'));
+ await screen.findByText('서버에 남은 첫 저장 시도 내용');expect(apply).toHaveBeenCalledOnce();
+ fireEvent.click(screen.getByRole('button',{name:'원문 백업 다운로드'}));
+ await waitFor(()=>expect(recoveryMocks.backup).toHaveBeenCalled());expect(recoveryMocks.backup.mock.calls[0][2]).toBe(response);
+});
+
+it('서버 첫 내용으로 재시도한 뒤 정확한 재조회·정리 완료시에만 같은 작성 창을 닫는다',async()=>{
+ const apply=vi.fn().mockRejectedValue(Error('응답 유실')),close=vi.fn();setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const entry=listTradePendings('taebaek','test-uid')[0],p=entry.pending!;
+ const request={operationId:p.input.command.operationId,statement:p.input.statement,orderIds:p.input.command.orderIds,poIds:p.input.poIds,costUpdates:p.input.costUpdates.map(c=>({...c,beforeCost:c.beforeCost??0,sourceLineIndex:c.sourceLineIndex??-1})),...(p.input.newPoItems.length?{newPo:{items:p.input.newPoItems}}:{}),releaseId:'fixture-release'};
+ const response={status:'unknown',reason:'첫 요청 확인',currentStatement:'unverified',serverRequestText:JSON.stringify(request)};
+ recoveryMocks.inspect.mockResolvedValueOnce(response).mockResolvedValueOnce({...response,status:'applied'});
+ recoveryMocks.retry.mockResolvedValueOnce({status:'duplicate',id:p.input.statement.id,docNo:p.input.statement.docNo});
+ recoveryMocks.clear.mockImplementationOnce(async()=>{localStorage.removeItem(entry.key);return true;});
+ fireEvent.click(await recoveryAction('처리결과 확인'));fireEvent.click(await screen.findByRole('button',{name:'서버에 남은 첫 내용으로 다시 시도'}));
+ await waitFor(()=>expect(close).toHaveBeenCalledOnce());expect(recoveryMocks.retry.mock.calls[0][2]).toBe(response);
+ expect(recoveryMocks.inspect).toHaveBeenCalledTimes(2);expect(recoveryMocks.clear).toHaveBeenCalledOnce();expect(apply).toHaveBeenCalledOnce();
+});
+
+it('처리결과 확인 중 사용자가 바뀌었다 돌아와 같은 항목을 열어도 늦은 결과를 표시하지 않는다',async()=>{
+ lowerOnlyFixture();let resolve!:(value:unknown)=>void;recoveryMocks.inspect.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+ const props={orders:[],allItems:[item],partners:[partner],partnerItems:[price],issuedStatements:[],pendingInvoice,composerOnly:true};
+ const view=render(<TradeStatement {...props}/>);fireEvent.click(await recoveryAction('처리결과 확인'));
+ await waitFor(()=>expect(recoveryMocks.inspect).toHaveBeenCalledOnce());
+ (auth.currentUser as {uid:string}).uid='another-user';view.rerender(<TradeStatement {...props}/>);
+ (auth.currentUser as {uid:string}).uid='test-uid';view.rerender(<TradeStatement {...props}/>);
+ await recoveryAction('처리결과 확인');
+ await act(async()=>resolve({status:'applied',reason:'다른 사용자에게 보이면 안 되는 이전 결과',currentStatement:'present'}));
+ expect(screen.queryByText('다른 사용자에게 보이면 안 되는 이전 결과')).not.toBeInTheDocument();
+ expect(localStorage.getItem(lowerKey)).not.toBeNull();
+});
 const issueMocks=vi.hoisted(()=>({payment:vi.fn(),print:vi.fn()}));
+const recoveryMocks=vi.hoisted(()=>({inspect:vi.fn(),backup:vi.fn(),clear:vi.fn(),resumePayment:vi.fn(),retry:vi.fn()}));
+vi.mock('../src/features/statements/infrastructure/tradeStatementRecoveryService',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/tradeStatementRecoveryService')>(),inspectTradeStatementRecovery:recoveryMocks.inspect,exportTradeStatementRecovery:recoveryMocks.backup,clearVerifiedTradeStatementRecovery:recoveryMocks.clear,resumeTradeStatementRecoveryPayment:recoveryMocks.resumePayment,retryTradeStatementRecovery:recoveryMocks.retry}));
 vi.mock('../src/features/statements/infrastructure/statementPrint',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/statementPrint')>(),printStatementViaIframe:issueMocks.print}));
 vi.mock('../src/features/statements/infrastructure/issueTradeStatementCommand',async(importOriginal)=>({...await importOriginal<typeof import('../src/features/statements/infrastructure/issueTradeStatementCommand')>(),recordPartnerPayment:issueMocks.payment}));
 vi.mock('../src/shared/firebase',()=>({auth:{currentUser:{uid:'test-uid'}},db:{}}));
@@ -597,7 +733,7 @@ it.each(['exact','v1','other','changed-tab'])('응답 유실 재시도 %s 거절
  });
  fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
  if(kind==='exact'){await waitFor(()=>expect(screen.queryByRole('button',{name:'같은 내용 다시 시도'})).not.toBeInTheDocument());expect(localStorage.getItem(key)).toBeNull();returnToComposer();expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();}
- else{if(kind==='changed-tab')await screen.findByText('다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다. 원문은 유지했습니다. 목록으로 돌아가 현재 요청을 확인하고, 관리자에게 확인을 요청해 주세요.');else await waitFor(()=>expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).not.toBeDisabled());expect(localStorage.getItem(key)).toBe(kind==='changed-tab'?'다른 창 원문':first);}
+ else{if(kind==='changed-tab')await screen.findByText(/다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다/);else await waitFor(()=>expect(screen.getByRole('button',{name:'같은 내용 다시 시도'})).not.toBeDisabled());expect(localStorage.getItem(key)).toBe(kind==='changed-tab'?'다른 창 원문':first);}
 });
 
 it('신규 원료 매입은20kg직접입력/수량2로 입고40kg·과세원가2000을 저장하고 unknown 재열기에도 원문을 보존한다', async () => {
@@ -756,8 +892,8 @@ it('외부 일반 전표에서 적용 전표로 선택을 바꾸면 일반 compo
  expect(screen.queryByRole('dialog',{name:'매출 전표 수정'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'적용 취소'})).toBeInTheDocument();
 });
 
-it('구조가 손상된 요청의 없는 ID가 무관한 새 작성 입력을 잠그지 않는다',async()=>{
- const key='trade-statement-issue:taebaek:test-uid',text=JSON.stringify({version:1,companyId:'taebaek',userId:'test-uid',input:{statement:{id:'zero-A',companyId:'taebaek',totalAmount:0}}});localStorage.setItem(key,text);const apply=vi.fn();setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});expect(listTradePendings('taebaek','test-uid')[0].pending).toBeNull();const qty=screen.getByLabelText('1행 거래 수량');expect(qty).not.toBeDisabled();fireEvent.change(qty,{target:{value:'2'}});expect(qty).toHaveValue('2');expect(screen.getByRole('button',{name:'저장'})).not.toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'저장'}));await screen.findByRole('dialog',{name:'실패 작업 상세'});expect(screen.getByText(/다른 창에서 요청이 변경되었거나 원문을 읽을 수 없습니다/)).toBeInTheDocument();expect(apply).not.toHaveBeenCalled();expect(localStorage.getItem(key)).toBe(text);returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toHaveValue('2');
+it('구조가 손상된 요청의 없는 ID가 무관한 새 작성 입력과 저장을 막지 않는다',async()=>{
+ const key='trade-statement-issue:taebaek:test-uid',text=JSON.stringify({version:1,companyId:'taebaek',userId:'test-uid',input:{statement:{id:'zero-A',companyId:'taebaek',totalAmount:0}}});localStorage.setItem(key,text);const apply=vi.fn().mockResolvedValue('applied');setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});expect(listTradePendings('taebaek','test-uid')[0].pending).toBeNull();const qty=screen.getByLabelText('1행 거래 수량');expect(qty).not.toBeDisabled();fireEvent.change(qty,{target:{value:'2'}});expect(qty).toHaveValue('2');fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());expect(apply.mock.calls[0][0].statement.items[0].qty).toBe(2);expect(localStorage.getItem(key)).toBe(text);
 });
 it('실제 같은 ID의 유효한 미확인 요청은 작성 입력을 계속 잠근다',async()=>{
  const apply=vi.fn().mockRejectedValue(Error('응답 유실'));setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply});fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());const entry=listTradePendings('taebaek','test-uid')[0];expect(entry.pending?.input.statement.id).toBeTruthy();returnToComposer();expect(screen.getByLabelText('1행 거래 수량')).toBeDisabled();expect(localStorage.getItem(entry.key)).toBe(entry.text);expect(apply).toHaveBeenCalledOnce();

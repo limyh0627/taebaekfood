@@ -1,0 +1,16 @@
+import {it,expect} from 'vitest';
+import {buildRecoveryEntries,parseRecoveryRequest,recoveryKeyIdentity,validateTradeStatementDraft,validateTradeStatementPaymentInput,type RecoveryScope} from './tradeStatementRecovery';
+import {tradePendingMatchesRequest,type TradeStatementPending,type PendingEntry} from '../infrastructure/tradeStatementPending';
+const scope:RecoveryScope={companyId:'taebaek',actorUid:'u:1'};
+const request={operationId:'s:ISSUE',releaseId:'r',statement:{id:'s',companyId:'taebaek',partnerId:'p',partnerName:'거래처',tradeDate:'2026-10-15',totalAmount:100},orderIds:['o'],poIds:['po'],costUpdates:[]};
+const lower={key:'trade-statement-request-v2:taebaek:u%3A1:s%3AISSUE',text:JSON.stringify(request)};
+const p={version:1,companyId:'taebaek',userId:'u:1',input:{statement:request.statement,command:{operationId:'s:ISSUE',statementId:'s',orderIds:['o']},poIds:['po'],costUpdates:[],newPoItems:[]}} as unknown as TradeStatementPending;
+const upper={key:'trade-statement-issue-v2:taebaek:u%3A1:s',text:JSON.stringify(p),pending:p,archived:false,deleted:false,invalid:false,copies:[]} as PendingEntry;upper.copies=[{key:upper.key,text:upper.text}];
+const match=(p:TradeStatementPending,r:typeof request)=>tradePendingMatchesRequest(p,r as unknown as Parameters<typeof tradePendingMatchesRequest>[1]);
+it('회사·UID의 정확 modern 키만 식별하고 다른 UID와 임의 suffix를 추정하지 않는다',()=>{expect(recoveryKeyIdentity(lower.key,scope)).toEqual({statementId:'s',operationId:'s:ISSUE'});expect(recoveryKeyIdentity(lower.key,{...scope,actorUid:'u'})).toEqual({});expect(parseRecoveryRequest(lower,{...scope,companyId:'punghoe'})).toBeNull();expect(parseRecoveryRequest({...lower,key:lower.key+'other'},scope)).toBeNull();});
+it('업무동치 upper/lower를 연결하고 불일치도 원문 둘을 유지하며 자동선택하지 않는다',()=>{expect(buildRecoveryEntries(scope,[upper],[lower],match as any)[0]).toMatchObject({kind:'paired',request,upperCopies:upper.copies,lowerCopies:[lower]});const changed={...lower,text:JSON.stringify({...request,statement:{...request.statement,totalAmount:200}})};const entry=buildRecoveryEntries(scope,[upper],[changed],match as any)[0];expect(entry.kind).toBe('conflict');expect(entry.lowerCopies[0].text).toBe(changed.text);expect(entry.upperCopies[0].text).toBe(upper.text);});
+it('upper-only/lower-only와 손상 원문을 모두 목록에 남긴다',()=>{expect(buildRecoveryEntries(scope,[upper],[],match as any)[0].kind).toBe('upper-only');const rows=buildRecoveryEntries(scope,[],[lower,{key:'trade-statement-request:taebaek:u:1',text:'손상'}],match as any);expect(rows.map(row=>row.kind)).toEqual(['lower-only','invalid']);expect(rows[1].text).toBe('손상');});
+it.each(['','2026-02-30'])('잘못된 날짜 %s는 보관 전 거절한다',date=>{expect(()=>validateTradeStatementDraft({...p.input,statement:{...p.input.statement,tradeDate:date}})).toThrow('날짜');});
+it.each([0,-1,NaN,1.5])('새 전표 총액 %s는 보관 전 거절한다',total=>{expect(()=>validateTradeStatementDraft({...p.input,statement:{...p.input.statement,totalAmount:total}})).toThrow('합계');});
+it.each(['','abc','-1','0','1.5','Infinity'])('수금 원문 %s는 명확한 입력 오류로 거절한다',text=>{expect(()=>validateTradeStatementPaymentInput(text)).toThrow('금액');});
+it('정상 금액과 날짜는 기존 수량·원문을 바꾸지 않는다',()=>{expect(validateTradeStatementPaymentInput('1,000원')).toBe(1000);expect(()=>validateTradeStatementDraft(p.input)).not.toThrow();expect(p.input.statement.totalAmount).toBe(100);});

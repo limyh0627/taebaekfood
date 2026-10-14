@@ -41,6 +41,30 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it.each(['order','po'] as const)('다른 작업 두 개가 동일 %s에 실제 동시 발행해도 금융 반영은 한 번이다',async kind=>{
+    await seed();const key='parallel-'+randomUUID(),itemId=key+'-item';
+    const resource=db.collection(kind==='order'?'orders':'purchaseOrders').doc(key);
+    const item=db.collection('items').doc(itemId);
+    await Promise.all([resource.set({companyId:'taebaek',partnerId:'p1',status:'pending',invoicePrinted:false,items:[]}),
+      item.set({companyId:'taebaek',name:'합성 보존 품목',stock:7,cost:80,lots:[{id:'보존로트',remaining:7}]})]);
+    const requests=[key+'-a',key+'-b'].map(id=>({...input(id),orderIds:kind==='order'?[key]:[],poIds:kind==='po'?[key]:[],
+      statement:{...statement(id),type:kind==='po'?'매입':'매출',orderId:kind==='order'?key:'',items:[{...statement(id).items[0],itemId,accountCode:kind==='po'?'500':'800'}]}}));
+    const counter=db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`);
+    const beforeItem=await item.get(),beforeCounter=(await counter.get()).get('last');
+    try{
+      const results=await Promise.allSettled(requests.map(issue));
+      expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+      expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);
+      const rows=await Promise.all(requests.map(request=>db.collection('issuedStatements').doc(request.statement.id).get()));
+      expect(rows.filter(row=>row.exists)).toHaveLength(1);
+      const winner=rows.find(row=>row.exists)!;
+      expect((await resource.get()).get('linkedStatementId')).toBe(winner.id);
+      expect((await counter.get()).get('last')).toBe(beforeCounter+1);
+      expect((await item.get()).updateTime!.isEqual(beforeItem.updateTime!)).toBe(true);
+      expect((await db.collection('cashEntries').where('partnerId','==','p1').get()).docs.filter(doc=>requests.some(request=>request.statement.id===doc.id))).toHaveLength(0);
+      expect((await db.collection('itemCostHistory').where('itemId','==',itemId).get()).empty).toBe(true);
+    }finally{await Promise.all([resource.delete(),item.delete(),...requests.map(request=>db.collection('issuedStatements').doc(request.statement.id).delete())]);}
+  },30000);
   it.each(['taxable','exempt','default-kg','fractional','g-taxable','g-exempt','wrong-unit','wrong-item','wrong-company','wrong-po','wrong-cost'] as const)('직접 kg 매입 %s는 등록표 없이 원료·행·PO·원가 근거를 함께 보호한다',async scenario=>{
     await seed();const id='manual-'+randomUUID(),rawId=id+'-raw',poId='po-'+id,cardNo='PO-261003-'+Math.floor(100000000+Math.random()*899999999);
     const owned=[db.collection('items').doc(rawId),db.collection('issuedStatements').doc(id),db.collection('purchaseOrders').doc(poId),db.collection('itemCostHistory').doc(`${id}_${rawId}_0`),db.collection('appMeta').doc(`poCardNo_taebaek_${cardNo}`),db.collection('rawInventories').doc('taebaek__'+rawId),db.collection('item_purchase_unit').doc('manual-kg')];

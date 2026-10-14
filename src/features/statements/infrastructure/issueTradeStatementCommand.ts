@@ -1,3 +1,4 @@
+import {parseRecoveryRequest,recoveryKeyIdentity} from '../domain/tradeStatementRecovery';
 import {tradeRequestKey,verifyTradeServerRejection,withTradeStatementLock,listTradePendings,findTradePendingConflicts,tradePendingMatchesRequest,tradePendingConflictMessage} from './tradeStatementPending';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -16,19 +17,13 @@ export type TradeStatementIssueInput = {
 
 const completedTradeRequests=new Map<string,string>();
 const requestComparable=(r:TradeStatementIssueInput)=>JSON.stringify({...r,statement:{...r.statement,createdBy:undefined},newPo:r.newPo?{...r.newPo,cardNo:undefined}:undefined,releaseId:undefined});
-function savedTradeRequests(companyId:'taebaek'|'punghoe',uid:string):{key:string;text:string;request:TradeStatementIssueInput&{releaseId:string}}[]{
- const legacy=tradeRequestKey(companyId,uid);
- return Object.keys(localStorage).filter(key=>key===legacy||key.startsWith(tradeRequestKey(companyId,uid,''))).sort().map(key=>{
-  const text=localStorage.getItem(key)!;
-  try{const request=JSON.parse(text);
-   if(!request||typeof request.operationId!=='string'||!request.operationId||request.operationId.includes('/')
-    ||!request.statement||request.statement.companyId!==companyId||typeof request.statement.id!=='string'||!request.statement.id||request.statement.id.includes('/')
-    ||typeof request.releaseId!=='string'||!request.releaseId||!Array.isArray(request.orderIds)||request.orderIds.some((id:unknown)=>typeof id!=='string')
-    ||!Array.isArray(request.poIds)||request.poIds.some((id:unknown)=>typeof id!=='string')||!Array.isArray(request.costUpdates)
-    ||key!==legacy&&key!==tradeRequestKey(companyId,uid,request.operationId))throw Error();
-   return {key,text,request};
-  }catch{throw new Error('저장된 전표 송신 원문이 손상되었습니다. 원문을 보존했습니다.');}
- });
+function savedTradeRequests(companyId:'taebaek'|'punghoe',uid:string,requestedOperation?:string):{key:string;text:string;request:TradeStatementIssueInput&{releaseId:string}}[]{
+ const legacy=tradeRequestKey(companyId,uid);const rows:{key:string;text:string;request:TradeStatementIssueInput&{releaseId:string}}[]=[];
+ for(const key of Object.keys(localStorage).filter(key=>key===legacy||key.startsWith(tradeRequestKey(companyId,uid,''))).sort()){
+  const text=localStorage.getItem(key);if(text===null)continue;const request=parseRecoveryRequest({key,text},{companyId,actorUid:uid});
+  if(!request){if(requestedOperation&&recoveryKeyIdentity(key,{companyId,actorUid:uid}).operationId===requestedOperation)throw new Error('이 작업의 최초 송신 원문이 손상되었습니다. 실패 작업에서 진단 원문을 확인해 주세요.');continue;}
+  rows.push({key,text,request:request as unknown as TradeStatementIssueInput&{releaseId:string}});
+ }return rows;
 }
 /** 발행과 연관 기록을 서버 한 거래로 저장한다. */
 export async function issueTradeStatementCommand(input: TradeStatementIssueInput): Promise<{status:'applied'|'duplicate';id:string;docNo:string}> {
@@ -39,7 +34,7 @@ export async function issueTradeStatementCommand(input: TradeStatementIssueInput
   if(!uid||(companyId!=='taebaek'&&companyId!=='punghoe'))return;
   hadPrior=hadPrior||localStorage.getItem(tradeRequestKey(companyId,uid,input.operationId))!==null;
   const legacyText=localStorage.getItem(tradeRequestKey(companyId,uid));
-  if(legacyText!==null){try{hadPrior=hadPrior||JSON.parse(legacyText)?.operationId===input.operationId;}catch{hadPrior=true;}}
+  if(legacyText!==null){try{hadPrior=hadPrior||JSON.parse(legacyText)?.operationId===input.operationId;}catch{/* 식별할 수 없는 옛 사본은 별도 보존하며 새 작업의 송신 여부와 섞지 않는다. */}}
  };
  refreshPrior();
  try {
@@ -57,7 +52,7 @@ export async function issueTradeStatementCommand(input: TradeStatementIssueInput
    if(conflicts.length)throw new Error(tradePendingConflictMessage(conflicts[0]));
    if(pendings.some(row=>row.pending?.input.command.operationId===input.operationId&&!tradePendingMatchesRequest(row.pending,fresh)))
     throw new Error('저장된 전표 최초 원문과 송신할 내용이 다릅니다. 원문을 보존했습니다.');
-   const requests=savedTradeRequests(companyId,uid!);
+   const requests=savedTradeRequests(companyId,uid!,input.operationId);
    const same=requests.filter(row=>row.request.operationId===input.operationId);
    if(same.some(row=>requestComparable(row.request)!==requestComparable(fresh)))throw new Error('이전에 저장 중이던 전표 원문을 먼저 재시도해 주세요.');
    for(const row of requests.filter(row=>row.request.operationId!==input.operationId)){
@@ -169,7 +164,7 @@ type PartnerPaymentInput = {
 const partnerPaymentRunning = new Set<string>();
 
 /** 번호·정산·자금 전표는 한 서버 거래로 확정하며 불확실 요청 전체를 보존한다. */
-export async function recordPartnerPayment(companyId: string, input: PartnerPaymentInput): Promise<void> {
+export async function recordPartnerPayment(companyId: string, input: PartnerPaymentInput, recovery?: {requestText:string;isCurrent:()=>boolean}): Promise<void> {
   const validDay = /^\d{4}-\d{2}-\d{2}$/.test(input.tradeDate)
     && Number.isFinite(Date.parse(`${input.tradeDate}T00:00:00Z`))
     && new Date(`${input.tradeDate}T00:00:00Z`).toISOString().slice(0, 10) === input.tradeDate;
@@ -235,19 +230,22 @@ export async function recordPartnerPayment(companyId: string, input: PartnerPaym
         expectedRevision: revision, releaseId: release.releaseId } };
       localStorage.setItem(key, JSON.stringify(pending));
     }
-    await assertCompany();
+    const expectedPendingText=localStorage.getItem(key);
+    const assertRecovery=()=>{if(recovery&&(!recovery.isCurrent()||JSON.stringify(pending!.request)!==recovery.requestText))throw new Error('수금 최초 요청 또는 로그인 상태가 변경되었습니다.');if(localStorage.getItem(key)!==expectedPendingText)throw new Error('수금 최초 원문이 변경되었습니다.');};
+    assertRecovery();await assertCompany();assertRecovery();
     const call = httpsCallable<Request, { status: 'applied' | 'duplicate'; id: string }>(functions, 'recordPartnerPaymentCommand');
     let result;
     try { result = await call(pending.request); }
     catch (error) {
       const failure = (error as { details?: { partnerPaymentFailure?: Record<string, unknown> } })?.details?.partnerPaymentFailure;
-      if (failure?.version === 1 && failure.companyId === companyId && failure.partnerId === input.partnerId
+      if (!recovery && failure?.version === 1 && failure.companyId === companyId && failure.partnerId === input.partnerId
         && failure.operationId === pending.request.operationId && failure.operationRejected === true && failure.financialWrites === false)
         localStorage.removeItem(key);
       throw error;
     }
     if (result.data.id !== pending.request.operationId || !['applied', 'duplicate'].includes(result.data.status))
       throw new Error('수금·지불 응답을 확인할 수 없습니다. 같은 내용으로 재시도해 주세요.');
-    localStorage.removeItem(key);
+    await assertCompany();assertRecovery();
+    if(!recovery)localStorage.removeItem(key);
   } finally { partnerPaymentRunning.delete(key); }
 }
