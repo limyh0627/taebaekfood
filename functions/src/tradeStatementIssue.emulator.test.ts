@@ -42,6 +42,19 @@ async function seed(orderId = 'o1', counter = true) {
 }
 
 describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
+  it('옛 앱의 빈 선택 발주 null 송신은 첫 발행과 동일 원문 재시도에서 한 번만 저장한다',async()=>{
+    await seed();const id='legacy-empty-po-'+randomUUID(),original=input(id),text=JSON.stringify(original,null,2);
+    const wire={...original,newPo:null,requestText:text} as unknown as Parameters<typeof issue>[0],identity=statementIssueIdentity('taebaek','auth-user',wire);
+    try{const first=await issue(wire),before=await statementIssueRef(db,identity).get();
+    expect(first.status).toBe('applied');expect(await issue(wire)).toEqual({...first,status:'duplicate'});
+    const after=await before.ref.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+    expect(after.get('requestText')).toBe(text);expect(after.get('requestHash')).toBe(identity.requestHash);
+    expect((await db.collection('issuedStatements').doc(id).get()).get('docNo')).toBe(first.docNo);
+    expect((await db.collection('appMeta').doc(`voucherNo_taebaek_${date}_general`).get()).get('last')).toBe(1);
+    expect((await db.collection('orders').doc('o1').get()).get('linkedStatementId')).toBe(id);
+    expect((await db.collection('purchaseOrders').where('linkedStatementId','==',id).get()).empty).toBe(true);
+    }finally{await Promise.all([db.collection('issuedStatements').doc(id).delete(),statementIssueRef(db,identity).delete()]);}
+  });
   it('취소 봉인은 회사 전환이나 새 원문으로도 재발행하지 않는다',async()=>{
     await seed();const id='stmt-'+Date.now(),request={...input(id),orderIds:[],statement:{...statement(id),orderId:''}},identity=statementIssueIdentity('taebaek','auth-user',request);
     await statementIssueRef(db,identity).set({companyId:'taebaek',actorId:'auth-user',operationId:request.operationId,statementId:id,status:'cancelled',revision:1,cancellationId:'sdk-cancel',drainGeneration:STATEMENT_ISSUE_FENCE_GENERATION});
@@ -268,7 +281,7 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
         costUpdates:[{itemId,price:1000,beforeCost:80,sourceLineIndex:0}]};
       await expect(issue(request)).rejects.toThrow();expect((await db.collection('issuedStatements').doc(id).get()).exists).toBe(false);
       expect((await db.collection('items').doc(itemId).get()).data()?.cost).toBe(80);
-      await expect(issue({...request,costUpdates:[{...request.costUpdates[0],price:20000}]})).rejects.toThrow('최초 전표 요청 원문');
+      await expect(issue({...request,costUpdates:[{...request.costUpdates[0],price:20000}]})).rejects.toThrow('원문');
     }
     expect((await counter.get()).data()).toEqual(before);
   });
@@ -359,7 +372,7 @@ describe.skipIf(!available)('일반 전표 Firestore SDK 거래', () => {
     await db.collection('appMeta').doc('releaseCutover').update({ status: 'paused' });
     expect(await issue(input('stmt-1'))).toEqual({...result,status:'duplicate'});
     await db.collection('appMeta').doc('releaseCutover').update({ status: 'active' });
-    await expect(issue({ ...input('stmt-1'), actorId: 'spoofed', recordedAt: '2000-01-01T00:00:00.000Z' } as never)).rejects.toThrow('최초 전표 요청 원문');
+    await expect(issue({ ...input('stmt-1'), actorId: 'spoofed', recordedAt: '2000-01-01T00:00:00.000Z' } as never)).rejects.toThrow('원문');
     expect(await issue(input('stmt-1'))).toEqual({ ...result, status: 'duplicate' });
     expect((await db.collection('orders').doc('o1').get()).data()?.linkedStatementId).toBe('stmt-1');
     expect((await db.collection('orders').doc('o1').get()).data()?.invoicePrinted).toBe(false);

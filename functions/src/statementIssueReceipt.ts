@@ -6,10 +6,21 @@ import {releaseGateRef} from './releaseGate';
 type Row=Record<string,any>;
 export const STATEMENT_ISSUE_FENCE_GENERATION='statement-issue-fence-v1-20261013';
 export const STATEMENT_ISSUE_FENCE_WRITERS=['issueTradeStatementCommand','issueNumberedVoucher','recordLoanMovementCommand','recordPartnerPaymentCommand'] as const;
-const fail=():never=>{throw new HttpsError('failed-precondition','최초 전표 요청 원문과 처리 영수증이 다릅니다.');};
+const fail=(kind:'format'|'request'|'receipt'='format'):never=>{
+ const reason=kind==='request'?'전표 요청 원문과 송신 내용이 다릅니다.':kind==='receipt'
+  ?'기존 전표의 접수 정보와 현재 요청이 맞지 않습니다.':'전표 요청 원문 형식을 확인할 수 없습니다.';
+ throw new HttpsError('failed-precondition',reason+' 처음 요청한 계정으로 전표 메뉴의 실패 작업에서 원문과 처리 결과를 확인해 주세요. 이미 발행됐다면 기존 전표를 확인하고, 이전 요청의 취소가 확인된 경우 사본을 삭제하여 다시 작성해 주세요.');
+};
 const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'
  ?Object.fromEntries(Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>[key,canonical(value[key])])):value;
 export const statementIssueTextHash=(text:string)=>createHash('sha256').update(text).digest('hex');
+const comparableCommand=(value:Row)=>{
+ const copy={...value};
+ // 옛 앱은 Callable SDK를 통해 빈 선택 발주를 null로 보내지만 보관 JSON에서는 칸이 빠졌다.
+ // 비교 사본만 맞추며 최초 원문 문자열과 영수증 지문은 바꾸지 않는다.
+ if(copy.newPo===null||copy.newPo===undefined)delete copy.newPo;
+ return canonical(copy);
+};
 export function statementIssueIdentity(companyId:string,actorId:string,input:Row){
  const {requestText:provided,...command}=input??{};
  if(!actorId||!['taebaek','punghoe'].includes(companyId)||typeof command.statement?.id!=='string'
@@ -17,7 +28,7 @@ export function statementIssueIdentity(companyId:string,actorId:string,input:Row
  const requestText=provided===undefined?JSON.stringify(command):provided;
  if(typeof requestText!=='string'||requestText.length>700000)fail();
  let parsed:Row;try{parsed=JSON.parse(requestText);}catch{return fail();}
- if(JSON.stringify(canonical(parsed))!==JSON.stringify(canonical(command)))fail();
+ if(JSON.stringify(comparableCommand(parsed))!==JSON.stringify(comparableCommand(command)))fail('request');
  return {version:2,companyId,actorId,operationId:command.operationId,statementId:command.statement.id,
   requestText,requestHash:statementIssueTextHash(requestText)};
 }
@@ -36,7 +47,7 @@ export function assertStatementTargetUnclaimed(receipts:admin.firestore.Document
 }
 export function assertStatementIssueNotCancelled(row:Row|undefined,identity:Pick<StatementIssueIdentity,'companyId'|'actorId'|'operationId'|'statementId'>){
  if(row?.status==='cancelled'){
-  if(['companyId','actorId','operationId','statementId'].some(key=>row[key]!==identity[key as keyof typeof identity]))fail();
+  if(['companyId','actorId','operationId','statementId'].some(key=>row[key]!==identity[key as keyof typeof identity]))fail('receipt');
   throw new HttpsError('failed-precondition','사용자가 취소한 이전 전표 요청입니다. 새 작성 화면에서 다시 발행해 주세요.');
  }
 }
@@ -52,7 +63,7 @@ export async function readStatementIssueEffects(db:admin.firestore.Firestore,tx:
 }
 export function assertStatementIssueReceipt(row:Row|undefined,identity:StatementIssueIdentity){
  if(!row||Object.entries(identity).some(([key,value])=>row[key]!==value)
-  ||!['prepared','applied','rejected'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<0)fail();
+  ||!['prepared','applied','rejected'].includes(row.status)||!Number.isSafeInteger(row.revision)||row.revision<0)fail('receipt');
 }
 export async function prepareStatementIssue(db:admin.firestore.Firestore,identity:StatementIssueIdentity){
  return db.runTransaction(async tx=>{const ref=statementIssueRef(db,identity),snap=await tx.get(ref);

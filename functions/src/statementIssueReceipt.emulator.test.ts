@@ -13,6 +13,24 @@ let statementNumber=Date.now();
 const request=(id='stmt-'+(++statementNumber))=>({operationId:`${id}:ISSUE`,releaseId,statement:{id,companyId:'taebaek',type:'매출',partnerId:'p',partnerName:'합성 거래처',tradeDate:date,orderId:'',docNo:'preview',issuedAt:'',totalSupply:100,totalTax:0,totalAmount:100,items:[{name:'품목',qty:1,price:100,supply:100,tax:0,total:100,isTaxExempt:true,accountCode:'800'}]},orderIds:[] as string[],poIds:[] as string[],costUpdates:[]});
 const gate=()=>({status:'active',releaseId,voucherNotBefore:{taebaek:date},oldWritersBlocked:true,oldWritersBlockedEvidence:'실제 로컬 SDK 합성 봉쇄',statementIssueProtocol:{version:1,status:'active',generation:STATEMENT_ISSUE_FENCE_GENERATION,releaseId,oldServerDrained:true,oldServerDrainConfirmedAt:'2026-01-01T00:00:02.000Z',writerEvidence:Object.fromEntries(STATEMENT_ISSUE_FENCE_WRITERS.map(name=>[name,{generation:STATEMENT_ISSUE_FENCE_GENERATION,deployedAt:'2026-01-01T00:00:00.000Z',oldRevisionDrainedAt:'2026-01-01T00:00:01.000Z',evidence:'실제 로컬 SDK 합성 revision 종료 근거'}]))}});
 const issue=(input:ReturnType<typeof request>)=>issueTradeStatement(db,'taebaek','actor',input);
+
+describe('옛 앱의 선택 발주 송신 표현 호환',()=>{
+ it.each(['omitted','null'] as const)('보관 newPo=%s와 반대 송신 표현만 호환하고 원문·hash는 그대로 보존한다',kind=>{
+  const base=request(),saved=kind==='null'?{...base,newPo:null}:base,text=JSON.stringify(saved,null,2);
+  const wire=kind==='null'?{...base,requestText:text}:{...base,newPo:null,requestText:text};
+  const before=JSON.stringify(wire),identity=statementIssueIdentity('taebaek','actor',wire);
+  expect(identity.requestText).toBe(text);expect(identity.requestHash).toBe(statementIssueTextHash(text));
+  expect(JSON.stringify(wire)).toBe(before);
+ });
+ it.each([false,0,'',{}, {id:'new-po'}])('값이 있는 newPo %j를 빈 발주로 바꾸어 통과시키지 않는다',newPo=>{
+  const base=request();expect(()=>statementIssueIdentity('taebaek','actor',{...base,newPo,requestText:JSON.stringify(base)})).toThrow('원문과 송신');
+ });
+ it('다른 선택 필드의 null과 값 있는 발주 변조는 계속 거절한다',()=>{
+  const base=request(),text=JSON.stringify(base);
+  expect(()=>statementIssueIdentity('taebaek','actor',{...base,statement:{...base.statement,note:null},requestText:text})).toThrow('원문과 송신');
+  expect(()=>statementIssueIdentity('taebaek','actor',{...base,newPo:{id:'changed'},requestText:JSON.stringify({...base,newPo:{id:'original'}})})).toThrow('원문과 송신');
+ });
+});
 describe.skipIf(!available)('전표 저장 전 거절 실제 Admin SDK 영수증',()=>{
  beforeAll(()=>{app=admin.initializeApp({projectId:'demo-stmt-'+randomUUID().slice(0,8)},'stmt-'+randomUUID());db=admin.firestore(app);});
  beforeEach(async()=>{await db.doc('appMeta/releaseCutover').set(gate());await db.doc('partners/p').set({companyId:'taebaek'});await db.doc('accountCodes/sale').set({companyId:'taebaek',code:'800'});await db.doc(`appMeta/voucherNo_taebaek_${date}_general`).set({companyId:'taebaek',tradeDate:date,prefix:'',last:0});});
@@ -24,6 +42,14 @@ describe.skipIf(!available)('전표 저장 전 거절 실제 Admin SDK 영수증
   await expect(prepareStatementIssue(db,{...identity,requestText:JSON.stringify(input)})).rejects.toThrow('원문');
   expect((await before.ref.get()).updateTime!.isEqual(before.updateTime!)).toBe(true);
   expect(()=>statementIssueIdentity('taebaek','actor',{...input,requestText:JSON.stringify({...input,orderIds:['other']})})).toThrow('원문');
+ });
+ it('옛 null 송신도 최초 원문 영수증을 그대로 저장하고 같은 재시도로 바꾸지 않는다',async()=>{
+  const base=request(),text=JSON.stringify(base,null,2),wire={...base,newPo:null,requestText:text};
+  const identity=statementIssueIdentity('taebaek','actor',wire);await prepareStatementIssue(db,identity);
+  const before=await statementIssueRef(db,identity).get();await prepareStatementIssue(db,statementIssueIdentity('taebaek','actor',wire));
+  const after=await before.ref.get();expect(after.data()).toEqual(before.data());expect(after.updateTime!.isEqual(before.updateTime!)).toBe(true);
+  expect(after.get('requestText')).toBe(text);expect(after.get('requestHash')).toBe(statementIssueTextHash(text));
+  await expect(prepareStatementIssue(db,{...identity,actorId:'other'})).rejects.toThrow('기존 전표의 접수 정보');
  });
  it('다른 회사가 같은 ID를 선점했으면 새 prepare도 반대 회사 취소도 허용하지 않는다',async()=>{
   const input=request(),identity=statementIssueIdentity('taebaek','actor',input);
