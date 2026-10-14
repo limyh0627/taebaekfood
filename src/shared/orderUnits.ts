@@ -1,7 +1,13 @@
 import type { Item, OrderItem } from './types';
 import { bomOf, bomParentsOf, type BomIndex } from './bomIndex';
 import { packUnitsOf, type PackIndex } from './packIndex';
-import { unpackStockComponent, itemPackageKg, stockUnitKg } from '../../functions/src/shared/stockUnitMeasure';
+import * as stockUnitMeasureModule from '../../functions/src/shared/stockUnitMeasure';
+
+// 스크립트의 CommonJS 경계와 앱의 ESM 모두 기존 공용 함수 원본을 그대로 사용한다.
+const { unpackStockComponent, itemPackageKg, stockUnitKg } =
+  (Reflect.get(stockUnitMeasureModule, 'default') ?? stockUnitMeasureModule) as Pick<
+    typeof stockUnitMeasureModule, 'unpackStockComponent' | 'itemPackageKg' | 'stockUnitKg'
+  >;
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
 type BoxLike = Pick<Item, 'id'>;

@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { boxDerivedUnitPrice, boxSiblings, isBoxStockItem, stockUnits, unpackComponent, 묶음갈래of } from './orderUnits';
 import { buildBomIndex, setBomIndex } from './bomIndex';
@@ -193,4 +195,20 @@ describe('박스 품목의 재고 차감 수량', () => {
   it('박스 품목이 아니면 quantity 그대로 — 향미유는 낱개로 센다', () => {
     expect(stockUnits({ quantity: 60, boxQuantity: 5, isBoxUnit: true }, 참기름300)).toBe(60);
   });
+});
+
+it('실제 Node+tsx ESM에서 공용 단위 모듈을 읽고 박스와 낱개 kg를 계산한다',()=>{
+ const program=`import assert from 'node:assert/strict';
+ import {itemKg,kgPerStockUnit,unpackComponent} from './src/shared/orderUnits.ts';
+ import {buildBomIndex} from './src/shared/bomIndex.ts';
+ import {buildPackIndex} from './src/shared/packIndex.ts';
+ const loose={id:'synthetic-loose',name:'합성 낱개',type:'product',unit:'개',spec:'1kg'};
+ const box={id:'synthetic-box',name:'합성 박스',type:'product',unit:'박스',spec:'1kg * 12'};
+ const inputs={bom:buildBomIndex([loose,box],[{parent_id:box.id,child_id:loose.id,quantity:12}]),pack:buildPackIndex([])};
+ assert.deepEqual(unpackComponent(box,inputs),{itemId:loose.id,count:12});
+ assert.equal(itemKg(loose,inputs),1);assert.equal(itemKg(box,inputs),12);
+ assert.equal(kgPerStockUnit(box,id=>id===loose.id?loose:undefined,inputs),12);
+ console.log('ORDER_UNITS_TSX_IMPORT_OK');`;
+ const result=spawnSync(process.execPath,['--import','tsx','--input-type','module','--eval',program],{cwd:fileURLToPath(new URL('../../',import.meta.url)),env:{...process.env,TSX_DISABLE_CACHE:'1'},encoding:'utf8',timeout:15000});
+ expect(result.error).toBeUndefined();expect(result.status,result.stderr).toBe(0);expect(result.stdout.trim()).toBe('ORDER_UNITS_TSX_IMPORT_OK');
 });
