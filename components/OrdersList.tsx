@@ -3,6 +3,8 @@ import { isStockProduction } from '../src/shared/orderPurpose';
 
 import { appConfirm, appNotice, appPrompt } from '../src/shared/components/appDialog';
 import React, { useState, useEffect, useMemo, memo, useRef } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../src/shared/firebase';
 import { today, dateOfLocal } from '../src/shared/day';
 import { RotateCcw } from 'lucide-react';
 import {
@@ -1638,8 +1640,27 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [logEdits, setLogEdits] = useState<OrderItemEdit[]>([]);
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState<string | undefined>(undefined);
+  const [logActorUid, setLogActorUid] = useState(() => auth.currentUser?.uid ?? null);
+  const observedLogUid = useRef(logActorUid);
+  const logScope = useRef({ companyId, uid: auth.currentUser?.uid ?? null });
+  if (logScope.current.companyId !== companyId || logScope.current.uid !== (auth.currentUser?.uid ?? null)) {
+    logScope.current = { companyId, uid: auth.currentUser?.uid ?? null };
+  }
+  const resetOrderLog = () => {
+    setLogOrderId(null); setLogAudits([]); setLogEdits([]); setLogLoading(false); setLogError(undefined);
+  };
+  // 회사가 돌아오거나 같은 이름의 직원이 로그인해도 이전 조회를 다시 열지 않는다.
+  useEffect(() => { resetOrderLog(); }, [companyId, logActorUid]);
+  useEffect(() => onAuthStateChanged(auth, user => {
+    if (observedLogUid.current === (user?.uid ?? null)) return;
+    observedLogUid.current = user?.uid ?? null;
+    logScope.current = { ...logScope.current, uid: user?.uid ?? null };
+    resetOrderLog();
+    setLogActorUid(user?.uid ?? null);
+  }), []);
   useEffect(() => {
-    if (!logOrderId) return;
+    if (!logOrderId || !logActorUid) return;
+    const scope = logScope.current;
     let 살아있나 = true;
     setLogLoading(true); setLogError(undefined); setLogAudits([]); setLogEdits([]);
     //  둘 다 주문 문서 밖이다 — 한 번에 읽는다. 하나가 실패해도 나머지는 보여 준다.
@@ -1647,7 +1668,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       fetchWhere<OrderStatusAudit>('orderStatusAudits', 'orderId', logOrderId),
       fetchWhere<OrderItemEdit>('orderItemEdits', 'orderId', logOrderId),
     ]).then(([상태, 수정]) => {
-      if (!살아있나) return;
+      if (!살아있나 || logScope.current !== scope || auth.currentUser?.uid !== scope.uid) return;
       if (상태.status === 'fulfilled') setLogAudits(상태.value);
       if (수정.status === 'fulfilled') setLogEdits(수정.value);
       //  못 읽어도 창은 띄운다 — 주문 문서에 있는 기록(등록·체크·라벨·비고)은 그대로 보인다.
@@ -1656,7 +1677,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       setLogLoading(false);
     });
     return () => { 살아있나 = false; };
-  }, [logOrderId]);
+  }, [logOrderId, companyId, logActorUid]);
   /*  주문 수정 창의 팔레트는 **접어 둔다**(2026-09-12 사장님: "팔레트는 좀 접어둬라
       필요할때 펼치게"). 늘 건드리는 칸이 아닌데 자리를 크게 먹어 품목이 밀렸다.
       창을 닫았다 열면 다시 접힌다. */
@@ -1723,10 +1744,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
    */
   const [workGroups, setWorkGroups] = useState<string[]>(['기름', '깨', '미분류']);
   useEffect(() => {
+    setWorkGroups(['기름', '깨', '미분류']);
     if (embeddedListOnly) return;
-    return subscribeToDocument<{ names: string[] }>('settings', companySettingDocId(companyId, 'workGroups'), doc => {
-      if (doc?.names?.length) setWorkGroups(doc.names);
+    let current = true;
+    const unsubscribe = subscribeToDocument<{ names: string[] }>('settings', companySettingDocId(companyId, 'workGroups'), doc => {
+      if (current) setWorkGroups(doc?.names?.length ? doc.names : ['기름', '깨', '미분류']);
     });
+    return () => { current = false; unsubscribe(); };
   }, [companyId, embeddedListOnly]);
   const saveWorkGroups = (names: string[]) => {
     setWorkGroups(names);
@@ -1847,20 +1871,22 @@ const OrdersList: React.FC<OrdersListProps> = ({
     return () => clearTimeout(timer);
   }, [newOrderId]);
 
+  const highlightClearRef = useRef(onHighlightClear);
+  highlightClearRef.current = onHighlightClear;
   // 알림에서 넘어온 주문 하이라이트 + 스크롤
   useEffect(() => {
     if (!highlightOrderId) return;
     // 히스토리 탭에 있을 경우 active 탭으로 전환
     setActiveTab('active');
+    let clearTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       const el = document.getElementById(`order-card-${highlightOrderId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      const clearTimer = setTimeout(() => onHighlightClear?.(), 3000);
-      return () => clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => highlightClearRef.current?.(), 3000);
     }, 200);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); clearTimeout(clearTimer); };
   }, [highlightOrderId]);
 
 
