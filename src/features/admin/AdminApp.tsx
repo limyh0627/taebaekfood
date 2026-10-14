@@ -45,6 +45,7 @@ import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem, holdsUnitStock } from '../../shared/itemTaxonomy';
+import { isSmartStoreItem } from '../../shared/partnerPrice';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
 import { orderLinesUsingRaw } from '../../shared/rawUsers';
@@ -673,6 +674,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const allItems = useMemo(() =>
     [...products, ...submaterials].map(p => ({
       ...p,
+      // 판매 연결로 배열을 바꾸기 전에 옛 채널 표식의 공용 판독 결과를 보존한다.
+      isSmartStore: isSmartStoreItem(p),
       partnerIds: productClientMap.get(p.id) ?? [],
     })),
     [products, submaterials, productClientMap]

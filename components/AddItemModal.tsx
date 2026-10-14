@@ -12,6 +12,7 @@ import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
 import { 묶음갈래of, type OrderUnitInputs } from '../src/shared/orderUnits';
 import { isPhysicalInventoryItem } from '../src/shared/itemTaxonomy';
+import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import PickRow from '../src/shared/ui/PickRow';
 import ModalShell from '../src/shared/components/ModalShell';
 import { db, storage } from '../src/shared/firebase';
@@ -109,7 +110,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ companyId, orderUnitInputs,
     freightType: (initialData?.freightType || 's') as 's' | 'a' | 'b' | 'c' | 'd' | 'e',
     spec: initialData?.spec || '',
     품목: initialData?.품목 || '',
-    isSmartStore: initialData?.isSmartStore ?? false,
+    isSmartStore: isSmartStoreItem(initialData),
     phantom: initialData?.phantom ?? false,
     unpackable: initialData?.unpackable ?? false,
     //  원가 출처 — 안 정했으면 롤업이 기본이다(구성·원료식에서 계산).

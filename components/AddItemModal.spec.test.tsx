@@ -75,3 +75,31 @@ describe('원가 입력의 빈칸과 명시0', () => {
     expect(onSave.mock.calls[0][0]).not.toHaveProperty('cost');
   });
 });
+
+describe('스마트스토어 채널 초기값', () => {
+  it.each([undefined, false])('옛 표식을 가진 편집 화면은 기존 OR 판독을 보존하고 그대로 저장한다 (새 표식=%s)', async isSmartStore => {
+    const original = { ...item, type: 'product', isSmartStore, partnerIds: ['SMARTSTORE', 'old-partner'] };
+    const before = JSON.stringify(original), onSave = vi.fn();
+    render(<ProductModal companyId="taebaek" initialData={original} items={[]} onSave={onSave} onClose={vi.fn()} />);
+    const toggle = screen.getByText('스마트스토어 전용').parentElement!.querySelector('button')!;
+    expect(toggle.querySelector('span')?.className).toContain('translate-x-4');
+    fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: true })));
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('partnerIds');
+    expect(JSON.stringify(original)).toBe(before);
+  });
+  it('옛 표식 없는 일반 품목은 false를 유지한다', async () => {
+    const onSave = vi.fn();
+    render(<ProductModal companyId="taebaek" initialData={{ ...item, type: 'product', isSmartStore: false, partnerIds: ['ordinary'] }} items={[]} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '수정 완료' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false })));
+  });
+  it('신규 품목은 채널을 선택하지 않으면 false로 등록한다', async () => {
+    const onSave = vi.fn();
+    render(<ProductModal companyId="taebaek" items={[]} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText('예: 프리미엄 참기름 (300ml)'), { target: { value: '신규 일반 품목' } });
+    fireEvent.change(screen.getByPlaceholderText('예: 시골향참기름1'), { target: { value: '신규 일반' } });
+    fireEvent.click(screen.getByRole('button', { name: '등록 완료' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isSmartStore: false })));
+  });
+});
