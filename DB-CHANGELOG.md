@@ -1,5 +1,14 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-15 — 품목의 미사용 price:+0 필드 408개 정리
+
+- 작업자: 개발부 부장 제임스. 사용자가 태백402개·풍회6개에서 숫자 +0인 옛 `price` 필드 하나만 삭제하도록 명시 승인했다. 기존 `cost`의 값·미기록 상태, 재고·수량 및 다른 모든 필드는 변경하지 않았다.
+- 실행 도구: main `5ae483ff66432f30f094f30d87e9e201f5434804`의 `scripts/execute-zero-item-price-rest-20261015.mts`. 회사별 원문 백업과 나노초 버전 CAS를 적용한 단일 commit이며 자동 재시도는 없다. 태백402·풍회6건 각각 applied/exit0을 반환했고 실제 writeResults.updateTime 영수증 저장과 전체 원문 사후 대조를 완료했다.
+- 원문 백업은 비공개 `work/zero-item-price-{company}-20261015.json`이다. 태백 planHash `6f10d5802e3ae5a33f04314384b9ed06c6e83e40b98b044eb454616d89bf3c19`, 파일 SHA256 `5ad00493cf9c092ca520e521815d7d3aeaea267d4354070ef65f401e2f95bf6f`. 풍회 planHash `0952fc0ab83ae8bf1164c5d370974d4166a9f00c36335368b290cd8b04d5f938`, 파일 SHA256 `7a72f8b413c29d8bc675ea8907169eb43b966397df45aea3eb9a2286ac2a432c`.
+- 원본 파일 뒤 `.applied.json` 처리 영수증과 `.rest-apply.intent.json` 전송 의도를 보존한다. 적용 완료 후 자기 실행 잠금은 해제됐다. 백업·영수증·개별 품목 ID와 원문은 Git에 포함하지 않는다.
+- 독립 담당의 적용 후 읽기 inspect에서도 양쪽 applied/writes0이며 전체 after 원문·실제 영수증 나노초 버전이 일치했다. 원백업 SHA 불변과 두 잠금 부재를 확인했다. 복원은 실행하지 않았다.
+- 되돌리기: 같은 도구에 `--undo --auth=firebase-cli --company=<회사> --backup=<원본 절대 경로> --approved-hash=<위 회사 hash>`를 명시한다. 적용 영수증과 현재 전체 원문·나노초 버전이 모두 일치할 때만 +0 필드를 복원한다. 이후 정상 수정이 있으면 거절하며 강제로 덮지 않는다. 이 기록은 복원 실행 승인이 아니다.
+
 ## 2026-10-15 — 회사별 과거 전표 조회 인덱스 1개 생성
 
 - 작업자: 개발부 부장 제임스·시험배포 담당. 회사 조건과 거래일 범위를 함께 읽는 조회가 운영에서 `FAILED_PRECONDITION`을 반환해 필요한 인덱스 하나를 배포했다. 문서 이름만 최대 1건 조회했고 문서 ID·본문은 보존하지 않았다.
