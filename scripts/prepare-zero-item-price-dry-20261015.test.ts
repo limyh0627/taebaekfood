@@ -58,3 +58,10 @@ it('완전 원문/계획 검증 뒤에만 단일 백업을 쓰고 요약에는 I
 });
 
 it('독립 self-check는 실제 인증·통신·출력을 수행하지 않는다',()=>{expect(selfCheck()).toEqual({selfCheck:'passed',productionRead:false,productionOutputWritten:false});});
+
+it('명시 v2 dry는 원본 파일을 바꾸지 않고 새 경로만 쓰며 같은 revision 덮어쓰기는 인증 전에 막는다',async()=>{
+ const original=args()[2].slice('--backup='.length),next=original.replace(/\.json$/,'-v2.json'),files=new Map([[original,'SYNTHETIC_ORIGINAL_BYTES']]);
+ const token=vi.fn().mockResolvedValue('SYNTHETIC'),read=vi.fn().mockResolvedValue(parseFullResponse([document()])),write=vi.fn((path:string,text:string)=>{if(files.has(path))throw Error('exists');files.set(path,text);});
+ const input=[...args().slice(0,2),'--backup='+next];await runDry(input,{exists:path=>files.has(String(path)),token,read,write});expect(files.get(original)).toBe('SYNTHETIC_ORIGINAL_BYTES');expect(files.has(next)).toBe(true);
+ token.mockClear();await expect(runDry(input,{exists:path=>files.has(String(path)),token,read,write})).rejects.toThrow();expect(token).not.toHaveBeenCalled();
+});

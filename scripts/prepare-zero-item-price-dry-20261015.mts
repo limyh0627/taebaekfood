@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {Timestamp} from 'firebase-admin/firestore';
 import {cliToken} from './diag-zero-item-price-20261015.mts';
 import {prepareZeroItemPrice,checkPlan,type Document,type Plan} from './shared/zeroItemPriceMigration.ts';
-import {encode,decode,hash} from './shared/zeroItemPriceBackup.ts';
+import {encode,decode,hash,resolveZeroItemPriceBackupPath} from './shared/zeroItemPriceBackup.ts';
 
 const root='projects/taebaek-3abe4/databases/(default)/documents/';
 function check(value:unknown):asserts value{if(!value)throw Error('정식 dry 원문 검증 실패');}
@@ -55,7 +55,7 @@ export async function readFullItems(token:string,transport:Transport=fetch){
 export function options(args:string[],exists:(path:string)=>boolean=existsSync):{company:Plan['companyId'];backup:string}{
  check(args.length===3&&args[0]==='--auth=firebase-cli'&&args[1].startsWith('--company=')&&args[2].startsWith('--backup='));
  const company=args[1].slice('--company='.length);check(company==='taebaek'||company==='punghoe');
- const backup=resolve(`work/zero-item-price-${company}-20261015.json`);check(resolve(args[2].slice('--backup='.length))===backup&&!exists(backup));return {company,backup};
+ const backup=resolveZeroItemPriceBackupPath(company,args[2].slice('--backup='.length)).path;check(!exists(backup));return {company,backup};
 }
 export function backupText(company:Plan['companyId'],documents:Document[]){
  const plan=prepareZeroItemPrice(company,documents);checkPlan(plan);const planHash=hash(plan);
