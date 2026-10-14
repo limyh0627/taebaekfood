@@ -1,7 +1,5 @@
 import { adminDb } from './_admin.mts';
-import { Timestamp } from 'firebase-admin/firestore';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { resolve, relative, dirname, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { getApp } from 'firebase-admin/app';
@@ -19,23 +17,7 @@ if (!inside || isAbsolute(inside) || inside.startsWith('..') || resolve(backup) 
 if (process.env.FIRESTORE_EMULATOR_HOST) throw Error('이 CLI는 운영 전용이며 자동 실행하지 않습니다.');
 const db = adminDb();
 if (getApp().options.projectId !== 'taebaek-3abe4') throw Error('프로젝트 불일치');
-// JSON은 Timestamp/비유한수/undefined를 잃으므로 원문을 명시적으로 보존한다.
-const encode = (v: any): any => {
-  if (v instanceof Timestamp) return { __zeroMigrationType: 'timestamp', seconds: v.seconds, nanoseconds: v.nanoseconds };
-  if (v === undefined) return { __zeroMigrationType: 'undefined' };
-  if (typeof v === 'number' && (!Number.isFinite(v) || Object.is(v, -0))) return { __zeroMigrationType: 'number', value: Object.is(v, -0) ? '-0' : String(v) };
-  if (Array.isArray(v)) return v.map(encode);
-  if (v && typeof v === 'object') {
-    if (Object.getPrototypeOf(v) !== Object.prototype || Object.hasOwn(v, '__zeroMigrationType')) throw Error('지원하지 않는 원문 타입. 적용 보류');
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, encode(x)]));
-  }
-  return v;
-};
-const decode = (v: any): any => v?.__zeroMigrationType === 'timestamp' ? new Timestamp(v.seconds, v.nanoseconds)
-  : v?.__zeroMigrationType === 'undefined' ? undefined : v?.__zeroMigrationType === 'number' ? Number(v.value)
-  : Array.isArray(v) ? v.map(decode) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, decode(x)])) : v;
-const stable = (v: any): any => Array.isArray(v) ? v.map(stable) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, stable(v[k])])) : v;
-const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(stable(encode(v)))).digest('hex');
+const { encode, decode, hash } = createRequire(import.meta.url)('./shared/zeroItemPriceBackup.ts') as typeof import('./shared/zeroItemPriceBackup');
 const version = (snap: any) => ({ seconds: snap.updateTime.seconds, nanoseconds: snap.updateTime.nanoseconds });
 const document = (snap: any): Document => {
   if (!snap.exists) throw Error('품목 삭제/부재');
