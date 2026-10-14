@@ -1607,6 +1607,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const retryIssue=async(entry:PendingEntry)=>{
     const p=entry.pending;if(!p||saveBusyRef.current||!onApplyStatement)return;
+    if(entry.recoveryReason==='zero-total'){alert('0원인 이전 요청은 다시 발행할 수 없습니다. 금액과 기존 발행 여부를 확인해 주세요.');return;}
     // 보관 후 새로 작성한 내용은 남기고, 이번에 저장되는 요청의 작성 창만 닫는다.
     const sameComposer=issueIdentityRef.current?.id===p.input.statement.id
       &&JSON.stringify(buildStatementCommand({
@@ -2133,7 +2134,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {issuePendingError&&<p>{issuePendingError}</p>}
       {!issuePendings.some(entry=>!entry.deleted)&&<p>확인할 실패 작업이 없습니다.</p>}
       {issuePendings.filter(entry=>!entry.deleted).map(entry=><button key={entry.key} type="button" className="flex w-full flex-wrap justify-between gap-2 border-b border-slate-200 px-2 py-4 text-left" onClick={()=>setRecoverySelection({key:entry.key,text:entry.text})}>
-        <span>{entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:'원문 확인이 필요한 요청'}</span><span>{entry.invalid?'원문 확인 필요':entry.deleted?'이전 처리 확인 필요':entry.archived?'보관':'처리 확인 필요'}</span>
+        <span>{entry.pending?`${entry.pending.input.statement.partnerName} · ${entry.pending.input.statement.tradeDate} · ${entry.pending.input.statement.totalAmount.toLocaleString()}원`:'원문 확인이 필요한 요청'}</span><span>{entry.invalid?'원문 확인 필요':entry.recoveryReason==='zero-total'?'0원 요청 · 재시도 불가':entry.deleted?'이전 처리 확인 필요':entry.archived?'보관':'처리 확인 필요'}</span>
       </button>)}
     </LargeModalShell>}
     {recoveryOpen&&recoverySelection&&<LargeModalShell title="실패 작업 상세" onClose={()=>{if(!isSaving)setRecoverySelection(null);}}>
@@ -2144,13 +2145,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <p className="font-bold">{p.input.statement.partnerName} · {p.input.statement.tradeDate} · {p.input.statement.totalAmount.toLocaleString()}원</p>
           <p>상태: {entry.deleted?'이전 처리 확인 필요':entry.archived?'보관': '처리 확인 필요'}</p>
           {entry.deleted&&<p>이 주문의 이전 발행 결과를 확인해야 합니다. 발행된 전표를 확인하거나 관리자에게 문의해 주세요.</p>}
-          <p>{issueAcknowledged[p.input.statement.id]&&p.payment?'전표 저장은 확인됐지만 수금·지불 완료는 아직 확인되지 않았습니다.':'저장 응답을 확인하지 못했습니다. 실제 저장 여부를 같은 내용으로 다시 확인해야 합니다.'}</p>
+          <p>{entry.recoveryReason==='zero-total'?'이전 요청의 합계가 0원이라 다시 발행할 수 없습니다. 기존 발행 여부와 금액을 확인해 주세요.':issueAcknowledged[p.input.statement.id]&&p.payment?'전표 저장은 확인됐지만 수금·지불 완료는 아직 확인되지 않았습니다.':'저장 응답을 확인하지 못했습니다. 실제 저장 여부를 같은 내용으로 다시 확인해야 합니다.'}</p>
           {issueFailureReasons[p.input.statement.id]&&<p>이번 시도에서 확인된 안내: {issueFailureReasons[p.input.statement.id]}</p>}
           {linked&&<p>관련 주문은 이미 다른 전표로 발행되어 있습니다. 이전 요청을 완료로 간주하지 않고 보관합니다.</p>}
           <p>확인할 내용: 거래처·일자·금액과 아래 품목이 원래 요청과 같은지 확인해 주세요.{p.payment?' 함께 요청한 수금·지불도 같은 내용으로 확인합니다.':''}</p>
           <ul>{p.input.statement.items.map((line,index)=><li key={index}>{line.name} · {line.spec} · 수량 {line.qty} · {line.total.toLocaleString()}원</li>)}</ul>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void retryIssue(entry)}>같은 내용 다시 시도</button>
+            <button type="button" className={recoveryButtonClass} disabled={isSaving||entry.recoveryReason==='zero-total'} onClick={()=>void retryIssue(entry)}>같은 내용 다시 시도</button>
             {!entry.deleted&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>void changeDeletedIssue(entry)}>실패 요청 삭제</button>}
             {linked&&<button type="button" className={recoveryButtonClass} disabled={isSaving} onClick={()=>{setRecoveryOpen(false);setDetailStmt(linked);}}>발행된 전표 보기 · {linked.docNo}</button>}
           </div>
@@ -2620,7 +2621,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <LargeModalShell title={`${createMode} 전표 ${editingStmt ? '수정' : '작성'}`} onClose={closeCreate}
           className="h-[100dvh] md:h-[80vh]" bodyClassName="!p-0">
 
-          <fieldset disabled={isSaving || !editingStmt && issuePendings.some(entry=>!entry.archived&&entry.pending?.input.statement.id===issueIdentityRef.current?.id)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
+          <fieldset disabled={isSaving || !editingStmt && !!issueIdentityRef.current?.id && issuePendings.some(entry=>!entry.archived&&entry.pending?.input.statement.id===issueIdentityRef.current?.id)} aria-busy={isSaving} className="min-w-0 m-0 p-0 border-0 w-full h-full flex flex-col overflow-hidden">
 
             <StatementComposerHeader mode={createMode} twoSided={isTwoSided}
               editingDocNo={editingStmt?.docNo} editMode={isEditMode}
