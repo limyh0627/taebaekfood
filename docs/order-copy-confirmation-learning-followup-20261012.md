@@ -82,3 +82,7 @@
 총괄의 최종 실제 화면에서 혼합3행 중 명시 수량1행은 제외하고 애매한2행만 RPC1회로 보냈다. 일부 응답 후 성공2/확인1, 직접 수량4로 수정한 뒤3/0과 추가 AI 호출0, 합성 저장의 첫 규칙 결과와 최종 수량24/24/48개를 확인했다. 한 문장1개를 참기름3박스·들기름2박스로 분리하고 최종 orderedAs가 각 원문 조각으로 저장되는 것도 확인했다. 입력을9로 바꾼 뒤 늦은 응답은 폐기돼9/1/1을 유지했다.
 
 390px 모바일에서도 원인 안내·직접 수량 수정·합성 저장을 수행했고 모달 clientWidth와 scrollWidth가364로 같아 내부 가로 넘침이 없었다. 검수용 RPC 패널만 접을 수 있게 보완했으며 제품 소스는 바꾸지 않았다. 최종 증거는 저장소 밖 order-scoped-ai-final-desktop-20261015.png 및 order-scoped-ai-final-mobile-20261015.png다. 실제 Gemini 호출·운영 주문 저장은0이며, 서버와 Hosting 배포는 다음 단계다.
+
+배포 완료: 정확11파일 main/origin/canonical 885bc81e5b36d2ef1f502d41fb1ee5a94d0e7f71. extractOrder 하나만 Node22·asia-northeast3에 배포해 ACTIVE/revision extractorder-00009-xug·트래픽100%를 확인했다. 실제 source ZIP generation1792021300002313의 서버/공용 protocol TS와 compiled JS 네 SHA가 로컬 동결 코드와 같았다. 이후 관리자·직원 Hosting release가 성공했고 2026-10-14T23:44:08.561Z 공개148/148파일이 동결 manifest와 바이트 SHA까지 일치했다. 다른 함수·Rules·gate·실제 주문·원가·재고 자료는 변경하지 않았다.
+
+원본019 전체 요구의 기존 저장/승인 근거와 이번 최종 범위·배포를 독립 대조해 완료로 인수했다. Notion 원본019를 완료로 갱신했으며 원본43개는24완료·19잔여다. 다음 App Check 읽기 진단은 이 배포에 포함하지 않았다.
