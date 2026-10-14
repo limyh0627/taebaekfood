@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { validateExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
+import { validateScopedExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
 import { defaultShipToId, activeShipTos, linksForShipTo } from '../src/shared/shipTo';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderPallet, PalletStock } from '../types';
@@ -13,6 +13,7 @@ import { channelStyle } from '../src/shared/channelStyle';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { resolveOrderInterpretationAlias,normalizeOrderInterpretationUnits,matchOrderInterpretationExpressions,type OrderExpressionConfirmation,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
 import type {OrderInterpretationRule} from '../src/shared/services/orderCopyService';
+import {buildOrderCopyScopedSources,classifyOrderCopyRow,mergeOrderCopyScopedResult,type OrderCopyScopeRow} from '../src/shared/orderCopyInterpretationScope';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -52,15 +53,9 @@ const scoreProduct = (product: { name: string; spec?: string }, query: string): 
   return Math.max(이름, 규격까지);
 };
 
-type ParsedLine = {
-  rawText: string;
-  rawName: string;
-  qty: number;
-  isBox: boolean;
-  selectedProductId: string | null;
-};
+type ParsedLine = OrderCopyScopeRow;
 
-const parseLine = (line: string, pool: Item[]): ParsedLine => {
+const parseLine = (line: string, pool: Item[]): Omit<ParsedLine,'sourceId'> => {
   // "3박스", "5개", "1kg" 형태에서 마지막 수량+단위 추출
   // ※ \b 는 한글(非ASCII) 뒤에서 동작하지 않으므로 (?:\s|$) 로 대체
   const re = /(\d+(?:\.\d+)?)\s*(박스|box|개|kg|g|L|ml|l)(?=\s|$)/gi;
@@ -164,6 +159,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   }, [selectedClient]);
   const [pasteText, setPasteText] = useState(initialText);
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
+  const sourceGeneration=useRef(0);
+  const interpretationRules=useRef<OrderInterpretationRule[]>([]);
   const firstAnalysis=useRef<{sourceText:string;value:OrderInterpretationJsonObject}|null>(null);
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
   const [aiBusy, setAiBusy] = useState(false);
@@ -241,7 +238,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   // 요청 당시의 회사·거래처·주소·원문과 검토 내용을 함께 견준다. 같은 ID 원본이
   // 구독으로 바뀌어도 예전 회사·배송지에 대한 AI 답으로 최신 입력을 갈아 끼우지 않는다.
   const aiSnapshot = JSON.stringify({
-    step, pasteText, client: selectedClient, shipToId: shipToId ?? null,
+    companyId,actorUid,step, pasteText, client: selectedClient, shipToId: shipToId ?? null,
     catalog: productPool.map(item => ({ id: item.id, companyId: item.companyId ?? null,
       name: item.name, spec: item.spec, unit: item.unit, type: item.type })),
     parsedLines, orderDate, deadline, orderNote, noteImportant, isDelivery, pallets, expressionInputs,
@@ -275,14 +272,17 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     if(companyId&&actorUid){try{const service=await import('../src/shared/services/orderCopyService');rules=await service.listOrderInterpretationRules(companyId);}catch{/* 승인 조회 실패는 새 규칙을 추정하지 않고 기존 판독으로 남긴다. */}
       if(!aiRequest.current.open||aiRequest.current.generation!==captured.generation||aiRequest.current.snapshot!==captured.snapshot||isCurrentActor&&!isCurrentActor())return;
     }
-    const lines=pasteText.split('\n').filter(line=>line.trim());
+    interpretationRules.current=rules;
+    const generation=++sourceGeneration.current;
+    const lines=Array.from(pasteText.matchAll(/[^\r\n]+/g)).filter(match=>match[0].trim());
     let aliasConflicted=false;
-    const parsed=lines.map(line=>{
-      const result={...parseLine(normalizeOrderInterpretationUnits(line),productPool),rawText:line};
+    const parsed=lines.map(match=>{
+      const line=match[0],sourceStart=match.index??0;
+      const result={...parseLine(normalizeOrderInterpretationUnits(line),productPool),rawText:line,sourceId:`source_${generation}_${sourceStart}`,sourceStart,sourceEnd:sourceStart+line.length};
       const suffix=/^(.*?)\s*(\d+(?:\.\d+)?)\s*(개|병|박스|캔|포)$/.exec(line.trim());
       const expression=suffix&&Number(suffix[2])===result.qty&&(result.isBox?suffix[3]==='박스':suffix[3]!=='박스')?suffix[1]:line;
       const approved=resolveOrderInterpretationAlias(normalizeOrderInterpretationUnits(expression),rules.map(rule=>({...rule,alias:normalizeOrderInterpretationUnits(rule.alias)})),selectedClientId??'');
-      if(approved.status==='conflict'){aliasConflicted=true;return {...result,selectedProductId:null};}
+      if(approved.status==='conflict'){aliasConflicted=true;return {...result,selectedProductId:null,aliasConflict:true};}
       return approved.status==='matched'&&productPool.some(item=>item.id===approved.itemId)?{...result,selectedProductId:approved.itemId}:result;
     });
     if(firstAnalysis.current?.sourceText!==pasteText)firstAnalysis.current={sourceText:pasteText,value:{kind:'rules',lines:parsed.map(line=>({...line}))}};
@@ -307,8 +307,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
    */
   const aiRead = async () => {
     if (aiBusy || aiRequest.current.inFlight || !aiRequest.current.open || savingRef.current) return;
-    const 글 = pasteText.trim();
-    if (!글 || !productPool.length) return;
+    if (!pasteText.trim() || !productPool.length) return;
+    let scopedSources:ReturnType<typeof buildOrderCopyScopedSources>;
+    try{scopedSources=buildOrderCopyScopedSources(parsedLines,{catalog:productPool,rules:interpretationRules.current,partnerId:selectedClientId??''});}
+    catch{setAiNote({tone:'bad',text:'다시 읽을 원문 구간을 확인하지 못했습니다. 내용을 줄이거나 품목을 직접 확인해 주세요.'});return;}
+    if(!scopedSources.length){setAiNote(current=>current?.tone==='warn'?current:{tone:'good',text:'AI로 다시 읽을 애매한 품목이 없습니다. 확정된 품목과 직접 수정한 내용을 유지합니다.'});return;}
     const requestId = ++aiRequest.current.sequence;
     aiRequest.current.inFlight = requestId;
     const captured = { generation: aiRequest.current.generation, snapshot: aiRequest.current.snapshot };
@@ -323,7 +326,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     try {
       const 부르기 = httpsCallable(getFunctions(getApp(), 'asia-northeast3'), 'extractOrder');
       const 답 = await 부르기({
-        text: 글,
+        scopedSources,
         catalog: productPool.map(catalogLine),
         //  **이 집이 전에 시킨 것** — 고를 품목을 좁히고, 그 집 말버릇(`orderedAs`)을 전한다.
         history: historyLines(orders ?? [], selectedClient?.id ?? ''),
@@ -331,38 +334,16 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()),
       });
       if (!current()) { preserveInput(); return; }
-      const 읽은것 = validateExtract(답.data as Record<string, unknown>, productPool);
-      if(firstAnalysis.current?.sourceText!==pasteText||firstAnalysis.current.value.kind!=='ai')firstAnalysis.current={sourceText:pasteText,value:{kind:'ai',rawResponse:structuredClone(답.data) as OrderInterpretationJsonObject,
-        validatedResult:{lines:읽은것.lines.map(line=>({itemId:line.itemId,name:line.name,qty:line.qty,...(line.isBox!==undefined?{isBox:line.isBox}:{}),...(line.source!==undefined?{source:line.source}:{})})),rejected:읽은것.rejected.map(row=>({...row})),...(읽은것.deliveryDate!==undefined?{deliveryDate:읽은것.deliveryDate}:{}),...(읽은것.note!==undefined?{note:읽은것.note}:{})},
-        ...(firstAnalysis.current?.sourceText===pasteText?{firstRules:firstAnalysis.current.value}:{})}};
-
-      if (!읽은것.lines.length) {
-        setAiNote({ tone: 'bad', text: '주문으로 읽을 것을 못 찾았습니다. 규칙으로 읽은 결과를 그대로 둡니다.' });
-        return;
-      }
-      //  **읽은 것으로 갈아 끼운다** — 규칙이 잘못 잡은 줄을 남겨 두면 둘이 섞여 더 헷갈린다.
-      setParsedLines(읽은것.lines.map(줄 => ({
-        rawText: 줄.source ?? 줄.name,
-        rawName: 줄.name,
-        qty: 줄.qty,
-        //  박스 여부를 못 정했으면 지금 화면이 쓰던 기본값(박스)을 그대로 둔다.
-        isBox: 줄.isBox ?? true,
-        selectedProductId: 줄.itemId,
-      })));
-      if (읽은것.deliveryDate) setDeadline(읽은것.deliveryDate);
-      if (읽은것.note) {automaticNote.current=null;setOrderNote(clampNote(읽은것.note));}
-
-      const 못읽은수 = 읽은것.rejected.length;
-      setAiNote({
-        tone: 못읽은수 ? 'warn' : 'good',
-        text: [
-          `${읽은것.lines.length}건을 읽었습니다.`,
-          읽은것.deliveryDate ? `출고예정일 ${읽은것.deliveryDate}` : '',
-          읽은것.note ? `비고: ${읽은것.note}` : '',
-          //  **못 읽은 것을 조용히 버리지 않는다** — 빠진 줄을 나중에 못 찾는다.
-          못읽은수 ? `못 읽은 ${못읽은수}건: ${읽은것.rejected.map(r => r.text).join(', ')}` : '',
-        ].filter(Boolean).join(' · '),
-      });
+      const 읽은것 = validateScopedExtract(답.data as Record<string, unknown>, productPool, scopedSources);
+      const first=firstAnalysis.current;
+      if(first?.sourceText===pasteText&&!Object.hasOwn(first.value,'scopedAiEvidence'))firstAnalysis.current={sourceText:first.sourceText,value:{...first.value,scopedAiEvidence:{
+        sources:scopedSources.map(source=>({...source})),targets:scopedSources.map(source=>{const row=parsedLines.find(row=>row.sourceId===source.sourceId);return {sourceId:source.sourceId,sourceStart:row?.sourceStart??null,sourceEnd:row?.sourceEnd??null};}),rawResponse:structuredClone(답.data) as OrderInterpretationJsonObject,
+        validatedResult:JSON.parse(JSON.stringify({valid:읽은것.valid,results:읽은것.results,unresolvedSourceIds:읽은것.unresolvedSourceIds})) as OrderInterpretationJsonObject,
+      }}};
+      if(!읽은것.valid){setAiNote({tone:'bad',text:'AI 응답의 원문 연결을 확인하지 못했습니다. 기존 품목과 입력을 유지했습니다. 품목을 직접 확인해 주세요.'});return;}
+      setParsedLines(rows=>mergeOrderCopyScopedResult(rows,scopedSources,읽은것));
+      const unresolved=읽은것.unresolvedSourceIds.length,matched=읽은것.results.reduce((sum,result)=>sum+result.lines.length,0);
+      setAiNote({tone:unresolved?'warn':'good',text:matched?`애매한 원문에서 ${matched}개 품목을 읽었습니다. 확정된 품목과 직접 입력한 내용은 유지했습니다.${unresolved?` 원문 ${unresolved}곳은 직접 확인해 주세요.`:''}`:'애매한 원문을 확정하지 못했습니다. 기존 행을 유지했습니다. 품목을 직접 확인해 주세요.'});
     } catch (error) {
       if (!current()) { preserveInput(); return; }
       console.error('[주문 AI 읽기] 실패', error);
@@ -375,7 +356,9 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       }
     }
   };
-  const matchedLineCount = parsedLines.filter(line => !!line.selectedProductId).length;
+  const lineStatuses = parsedLines.map(line => classifyOrderCopyRow(line,{catalog:productPool,rules:interpretationRules.current,partnerId:selectedClientId??''}).status);
+  const lineConfirmed = (index:number) => !!parsedLines[index].selectedProductId && ['confirmed','manual','resolved'].includes(lineStatuses[index]);
+  const matchedLineCount = parsedLines.filter((_,index) => lineConfirmed(index)).length;
   const unmatchedLineCount = parsedLines.length - matchedLineCount;
 
   const handleSubmit = async () => {
@@ -385,7 +368,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       partner: selectedClient, items, partnerItems: partnerOut, orderUnitInputs,
       lines: parsedLines.filter(line => line.selectedProductId && line.qty > 0).map(line => ({
         itemId: line.selectedProductId!, quantity: line.qty, isBoxUnit: line.isBox,
-        orderedAs: line.rawText,
+        orderedAs: line.orderedAs?.trim()??line.rawText,
       })),
       orderDate, deliveryDate: deadline, shipToId,
       note: orderNote, noteImportant, pallets,
@@ -395,7 +378,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setIsSaving(true);
     setSaveError('');
     try {
-      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox})),expressionConfirmations:expressionLines.flatMap(line=>{const row=expressionInputs[line.sourceStart];if(!row?.confirmed||!row.suggest)return [];if(!draft.note?.split(/\r?\n/).includes(row.value))return [];return [{...line,scope:row.scope,target:row.target,value:row.value}];})});
+      await onSave(draft,{sourceText:pasteText,firstAnalysis:firstAnalysis.current?.sourceText===pasteText?firstAnalysis.current.value:{kind:'rules',lines:parsedLines.map(line=>({...line}))},inputLines:parsedLines.map(line=>({orderedAs:line.orderedAs?.trim()??line.rawText,rawName:line.rawName,itemId:line.selectedProductId,quantity:line.qty,isBoxUnit:line.isBox})),expressionConfirmations:expressionLines.flatMap(line=>{const row=expressionInputs[line.sourceStart];if(!row?.confirmed||!row.suggest)return [];if(!draft.note?.split(/\r?\n/).includes(row.value))return [];return [{...line,scope:row.scope,target:row.target,value:row.value}];})});
     } catch (error) {
       console.error('복사 주문 저장 실패', error);
       setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');
@@ -590,7 +573,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                    누를 일이 없으므로 값이 안 든다 — 말로 온 주문만 이쪽으로 간다. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] font-bold text-slate-400">
-                  규칙으로 읽은 결과입니다. 사람 말로 온 주문이면 아래 단추를 눌러 보세요.
+                  확정된 줄은 유지하고 애매한 부분만 AI로 다시 읽습니다.
                 </p>
                 <button
                   type="button"
@@ -611,11 +594,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                   {unmatchedLineCount === 0 ? <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden="true" /> : <AlertCircle size={18} className={`mt-0.5 shrink-0 ${matchedLineCount === 0 ? 'text-rose-600' : 'text-amber-600'}`} aria-hidden="true" />}
                   <div className="min-w-0">
                     <p className="text-xs font-black text-slate-800">
-                      {unmatchedLineCount === 0 ? '모든 주문 품목을 분석했습니다.' : matchedLineCount === 0 ? '자동으로 매칭된 품목이 없습니다.' : '일부 품목의 확인이 필요합니다.'}
+                      {unmatchedLineCount === 0 ? '모든 주문 품목을 확인했습니다.' : matchedLineCount === 0 ? '주문 품목과 수량을 확인해주세요.' : '일부 품목의 확인이 필요합니다.'}
                     </p>
                     <p className="mt-0.5 text-[11px] font-medium text-slate-500">
                       전체 <span className="font-black text-indigo-600">{parsedLines.length}건</span> · 성공 <span className="font-black text-emerald-600">{matchedLineCount}건</span> · 확인 필요 <span className={unmatchedLineCount > 0 ? 'font-black text-amber-600' : 'font-black text-slate-500'}>{unmatchedLineCount}건</span>
-                      {unmatchedLineCount > 0 && ' — 확인이 필요한 행에서 품목을 직접 선택해주세요.'}
+                      {unmatchedLineCount > 0 && ' — 품목·수량을 직접 확인하거나 애매한 부분만 AI로 다시 읽어주세요.'}
                     </p>
                   </div>
                 </div>
@@ -631,10 +614,11 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                     {/* 원문 + 상태 */}
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-xs font-medium text-slate-500">"{line.rawText}"</span>
-                      <span className={`shrink-0 px-1 py-1 text-[11px] font-bold leading-none ${line.selectedProductId ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        {line.selectedProductId ? '분석 성공' : '확인 필요'}
+                      <span className={`shrink-0 px-1 py-1 text-[11px] font-bold leading-none ${lineConfirmed(idx) ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {lineConfirmed(idx) ? lineStatuses[idx]==='manual' ? '직접 확인' : lineStatuses[idx]==='resolved' ? 'AI 판독 반영' : '분석 성공' : '확인 필요'}
                       </span>
                     </div>
+                    {!lineConfirmed(idx)&&<p className="text-xs text-slate-600">{lineStatuses[idx]==='conflict'?'승인된 별칭이 여러 품목과 겹칩니다. 품목과 수량을 직접 확인해주세요.':'품목이나 주문 수량을 확정하지 못했습니다. 표시된 수량은 기본값일 수 있습니다. 직접 확인하거나 AI로 다시 읽어주세요.'}</p>}
                     {/* 품목 선택 + 수량 */}
                     <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <div className="relative min-w-0">
@@ -643,7 +627,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                           onChange={e => {
                             invalidateAiRead();
                             const val = e.target.value || null;
-                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val } : l));
+                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, selectedProductId: val, manual:true } : l));
                           }}
                           className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2 pl-4 pr-10 text-sm font-bold text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         >
@@ -659,14 +643,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                           onChange={e => {
                             invalidateAiRead();
                             const qty = Math.max(1, parseInt(e.target.value) || 1);
-                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty } : l));
+                            setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, qty, manual:true } : l));
                           }}
                           className="h-11 w-20 rounded-xl border border-slate-200 bg-slate-50 px-2 text-center text-sm font-black text-slate-700 outline-none transition-colors focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                         />
                         <div className="flex h-11 items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
                           {(['박스', '개'] as const).map(unit => (
                             <button key={unit} type="button"
-                              onClick={() => { invalidateAiRead(); setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스' } : l)); }}
+                              onClick={() => { invalidateAiRead(); setParsedLines(prev => prev.map((l, i) => i === idx ? { ...l, isBox: unit === '박스', manual:true } : l)); }}
                               className={`h-9 min-w-12 rounded-lg px-2.5 text-xs font-bold transition-colors ${(unit === '박스') === line.isBox ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                             >{unit}</button>
                           ))}

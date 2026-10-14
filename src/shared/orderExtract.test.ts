@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateExtract, catalogLine, historyLines, type HistoryOrder } from './orderExtract';
+import { validateExtract, validateScopedExtract, catalogLine, historyLines, type HistoryOrder } from './orderExtract';
 
 /**
  * AI 가 읽어 온 것을 **믿지 않고 검사한다**(2026-09-15 사장님: "api달아서 메시지에서 주문
@@ -13,6 +13,12 @@ const 품목 = [
 const 거래처 = [{ id: 'c-1', name: '완도식품' }];
 
 describe('읽어 온 주문 검사', () => {
+  it('선택 원문은 공용 품목 검증을 쓰고 전체 날짜·비고를 받지 않는다', () => {
+    const result = validateScopedExtract({ deliveryDate: '2026-10-15', note: '덮어쓰기 금지', results: [{ sourceId: 's', lines: [{ itemId: 'p-sesame', qty: 2, source: '깨 두 박스' }], rejected: [] }] }, 품목, [{ sourceId: 's', text: '깨 두 박스' }]);
+    expect(result.lines[0]).toMatchObject({ name: '볶음참깨/1kg', qty: 2 });
+    expect(result).not.toHaveProperty('deliveryDate');
+    expect(result).not.toHaveProperty('note');
+  });
   it('제대로 온 것은 그대로 받는다', () => {
     const r = validateExtract({
       partnerId: 'c-1', deliveryDate: '2026-09-20',

@@ -1,4 +1,5 @@
 import { isCalendarDay } from './day';
+import { validateOrderCopyScopedResponse, type ScopedOrderSource } from '../../functions/src/shared/orderCopyInterpretationScope';
 
 /**
  * **말로 온 주문을 표로 옮긴다 — 읽어낸 것을 믿지 않는 자리.**
@@ -53,6 +54,28 @@ export interface ExtractResult {
 
 export interface CatalogItem { id: string; name: string; spec?: string }
 export interface CatalogPartner { id: string; name: string }
+export interface ScopedExtractResult {
+  valid: boolean;
+  scopeValid: boolean;
+  results: { sourceId: string; lines: ExtractedLine[] }[];
+  unresolvedSourceIds: string[];
+  lines: ExtractedLine[];
+  rejected: { sourceId: string; text: string; reason: string }[];
+}
+
+/** 날짜·비고·거래처는 전체 초안을 바꾸므로 선택 원문 판독에서는 품목 결과만 받는다. */
+export function validateScopedExtract(raw: unknown, items: readonly CatalogItem[], sources: readonly ScopedOrderSource[]): ScopedExtractResult {
+  const scoped = validateOrderCopyScopedResponse(raw, sources, items.map(item => item.id));
+  const results: ScopedExtractResult['results'] = [], unresolved = new Set(scoped.unresolvedSourceIds);
+  for (const group of scoped.results) {
+    const checked = validateExtract({ lines: group.lines }, items);
+    if (checked.rejected.length || checked.lines.length !== group.lines.length) unresolved.add(group.sourceId);
+    else results.push({ sourceId: group.sourceId, lines: checked.lines });
+  }
+  const unresolvedSourceIds = sources.filter(source => unresolved.has(source.sourceId)).map(source => source.sourceId);
+  return { valid: scoped.valid, scopeValid: scoped.valid, results, unresolvedSourceIds, lines: results.flatMap(group => group.lines),
+    rejected: sources.filter(source => unresolved.has(source.sourceId)).map(source => ({ sourceId: source.sourceId, text: source.text, reason: '이 원문은 직접 확인해 주세요.' })) };
+}
 
 const 글 = (v: unknown): string => typeof v === 'string' ? v.trim() : '';
 const 수 = (v: unknown): number => {
