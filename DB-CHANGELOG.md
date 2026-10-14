@@ -1,5 +1,13 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-15 — 실패 전표 요청 취소 준비 정보 한 항목 활성화
+
+- 작업자: 개발부 부장 제임스·시험배포 담당. 사용자가 `appMeta/releaseCutover.statementIssueProtocol` 한 항목 활성화를 명시적으로 허용했다.
+- 실제 변경은 해당 필드 하나다. 적용 전 문서 버전 `2026-10-06T03:44:19.536979Z`를 조건으로 사용했고, 적용 뒤 버전은 `2026-10-14T17:26:33.535680Z`다. 다른 필드 보존과 공용 `statementIssueDrainReady=true`를 재조회했다.
+- 서버 4개의 현재 배포·트래픽·정확한 소스와 이전 처리 종료 시간을 확인한 뒤 준비 정보를 기록했다. 실제 전표·금액·번호·원가·재고·수금은 수정하지 않았다.
+- 도구: `scripts/fix-statement-issue-protocol-20261015.mts`. 기본 dry 후 명시 apply 1회. 원문과 적용 영수증은 저장소 밖 `records/statement-issue-protocol-original-20261015.json` 및 `.json.applied.json`에 보관한다. 원문 SHA256: `bd51bf8935a0d90df9ecffe6c30751038a204158474550a5d39413c0d1dd309f`.
+- 되돌리기: 같은 도구의 `--undo --plan <statement-cancel-gate-readonly-20261015.json 절대 경로> --backup <원문 백업 절대 경로>`. 적용 영수증의 문서 버전과 일치할 때만 해당 필드를 원래 부재 상태로 되돌린다. 이후 변경이 있으면 강제 덮어쓰지 않는다. 별도 검수 담당의 운영 GET에서도 전체 문서가 적용 영수증과 같고 변경 필드가 정확히 하나임을 확인했다.
+
 ## 2026-10-08 — 들기름2 품목 라벨 이름 ②→③ 13개 (10/14 보충 기록)
 
 **작업자:** Claude Code (사장님 적용 승인) · 기록 누락을 2026-10-14 Claude Code가 보충
