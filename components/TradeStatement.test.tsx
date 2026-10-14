@@ -150,6 +150,36 @@ it('작성창에는 실패 목록이 없고 메뉴 목록에서 상세 재시도
  const retry=await recoveryAction('같은 내용 다시 시도');fireEvent.click(retry);await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));expect(apply.mock.calls[1][0]).toEqual(apply.mock.calls[0][0]);
  returnToComposer();expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();expect(localStorage.getItem(pendingKey())).not.toBeNull();
 });
+it.each(['applied','duplicate'] as const)('실패 목록의 %s 재시도 완료는 해당 작성 창도 닫는다',async status=>{
+ const close=vi.fn(),gate=deferred();
+ const apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockImplementationOnce(async()=>{await gate.promise;return status;});
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close});
+ fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const original=apply.mock.calls[0][0],key=pendingKey();
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));await waitFor(()=>expect(apply).toHaveBeenCalledTimes(2));
+ expect(close).not.toHaveBeenCalled();expect(localStorage.getItem(key)).not.toBeNull();
+ await act(async()=>{gate.resolve();await gate.promise;});
+ await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+ expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('dialog',{name:'실패 작업 목록'})).not.toBeInTheDocument();
+ expect(localStorage.getItem(key)).toBeNull();expect(apply.mock.calls[1][0]).toEqual(original);
+});
+it('재시도 전표 저장 뒤 지불이 실패하면 작성 창을 유지하고 지불 완료 후 닫는다',async()=>{
+ const close=vi.fn(),apply=vi.fn().mockRejectedValueOnce(new Error('응답 유실')).mockResolvedValue('duplicate');
+ const accounts=[{id:'bank',companyId:'taebaek' as const,name:'은행',type:'통장' as const,active:true,openingBalance:0,openingDate:'2026-01-01',createdAt:''}];
+ setup(undefined,undefined,{composerOnly:true,onApplyStatement:apply,onComposerClose:close,cashAccounts:accounts});
+ fireEvent.click(screen.getByLabelText('지불도 함께'));fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(apply).toHaveBeenCalledOnce());
+ const key=pendingKey(),original=localStorage.getItem(key);
+ issueMocks.payment.mockRejectedValueOnce(new Error('지불 실패'));
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));
+ await waitFor(()=>expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('지불 실패')));
+ expect(close).not.toHaveBeenCalled();expect(localStorage.getItem(key)).toBe(original);
+ returnToComposer();expect(screen.getByRole('dialog',{name:'매입 전표 작성'})).toBeInTheDocument();
+ fireEvent.click(await recoveryAction('같은 내용 다시 시도'));
+ await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+ expect(issueMocks.payment).toHaveBeenCalledTimes(2);expect(issueMocks.payment.mock.calls[1]).toEqual(issueMocks.payment.mock.calls[0]);
+ expect(screen.queryByRole('dialog',{name:'매입 전표 작성'})).not.toBeInTheDocument();expect(localStorage.getItem(key)).toBeNull();
+});
 describe('전표 목록 화면 구성', () => {
   it('입고 화면에서는 목록을 펼치지 않고 같은 발행 모달만 열어 저장 후 닫는다', async () => {
     const close = vi.fn();

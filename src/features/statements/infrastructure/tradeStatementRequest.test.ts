@@ -11,6 +11,18 @@ import {issueTradeStatementCommand,completeTradeStatementRequest,type TradeState
 import {tradeRequestKey} from './tradeStatementPending';
 const input:TradeStatementIssueInput={operationId:'issue:s',statement:{id:'s',companyId:'taebaek',partnerId:'p',partnerName:'거래처',tradeDate:'2026-10-09',type:'매입',docNo:'preview',orderId:'order',issuedAt:'',totalAmount:100,totalSupply:100,totalTax:0,items:[]} satisfies IssuedStatement,orderIds:['order'],poIds:['po'],newPo:{id:'new-po',cardNo:'original',items:[{itemId:'item',quantity:1}]},costUpdates:[{itemId:'item',price:100,beforeCost:90,sourceLineIndex:0}]};
 beforeEach(()=>{const queues=new Map<string,Promise<unknown>>();Object.defineProperty(navigator,'locks',{configurable:true,value:{request:(name:string,_options:unknown,work:()=>unknown)=>{const task=(queues.get(name)??Promise.resolve()).catch(()=>{}).then(work);queues.set(name,task);return task;}}});localStorage.clear();vi.clearAllMocks();m.auth.currentUser.uid='uid';m.read.mockResolvedValue({data:()=>({status:'active',releaseId:'original-release'})});m.scope.mockImplementation(async(_kind,row)=>row);m.call.mockResolvedValue({data:{status:'duplicate',id:'s',docNo:'261009-001'}});});
+it.each(['매출','매입'] as const)('신규 발주가 없는 %s 첫 저장도 송신 내용과 보관 원문이 일치한다',async type=>{
+ const request={...input,statement:{...input.statement,type},poIds:[],newPo:undefined};
+ m.call.mockImplementationOnce(async sent=>{
+  // Callable SDK는 undefined를 null로 보낸다. JSON 원문에서는 빠진 값이 서버에서 생기면 첫 저장이 거절된다.
+  const transported=JSON.parse(JSON.stringify(sent,(_key,value)=>value===undefined?null:value));
+  const {requestText,...command}=transported;
+  expect(command).toEqual(JSON.parse(requestText));
+  return {data:{status:'applied',id:'s',docNo:'261009-001'}};
+ });
+ await expect(issueTradeStatementCommand(request)).resolves.toMatchObject({status:'applied',id:'s'});
+ expect(m.call).toHaveBeenCalledOnce();
+});
 it('응답 유실 뒤 현재 발주번호·release가 달라도 실제 첫 원문을 재전송한다',async()=>{m.call.mockRejectedValueOnce(new Error('유실'));await expect(issueTradeStatementCommand(input)).rejects.toThrow('유실');const original=m.call.mock.calls[0][0];m.read.mockResolvedValue({data:()=>({status:'active',releaseId:'new-release'})});await issueTradeStatementCommand({...input,newPo:{...input.newPo!,cardNo:'new-number'}});expect(m.call.mock.calls[1][0]).toEqual(original);await completeTradeStatementRequest('taebaek','uid',input.operationId);expect(localStorage.getItem(tradeRequestKey('taebaek','uid',input.operationId))).toBeNull();});
 it('unknown 뒤 변경된 주문·원가 원문을 보내지 않는다',async()=>{m.call.mockRejectedValueOnce(new Error('유실'));await expect(issueTradeStatementCommand(input)).rejects.toThrow();await expect(issueTradeStatementCommand({...input,costUpdates:[]})).rejects.toThrow('원문');expect(m.call).toHaveBeenCalledTimes(1);});
 it.each(['gate','scope'])('%s 대기 중 UID 교체면 call0',async(stage)=>{const fn=stage==='gate'?m.read:m.scope;fn.mockImplementationOnce(async(_kind,row)=>{m.auth.currentUser.uid='other';return stage==='gate'?{data:()=>({status:'active',releaseId:'r'})}:row;});await expect(issueTradeStatementCommand(input)).rejects.toMatchObject({details:{financialWrites:false}});expect(m.call).not.toHaveBeenCalled();});

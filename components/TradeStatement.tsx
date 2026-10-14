@@ -1607,6 +1607,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const retryIssue=async(entry:PendingEntry)=>{
     const p=entry.pending;if(!p||saveBusyRef.current||!onApplyStatement)return;
+    // 보관 후 새로 작성한 내용은 남기고, 이번에 저장되는 요청의 작성 창만 닫는다.
+    const sameComposer=issueIdentityRef.current?.id===p.input.statement.id
+      &&JSON.stringify(buildStatementCommand({
+        statementId:p.input.statement.id,partnerId:selectedClientId,partnerName:selectedClient?.name,
+        tradeDate,type:stmtType,docNo:p.input.command.docNo,memo:stmtMemo,
+        orderIds:selectedOrderIds,lines:lineItems,partySnapshot,
+      }))===JSON.stringify(p.input.command)
+      &&JSON.stringify(loadedPoIds)===JSON.stringify(p.input.poIds);
     const token=cashEditScope.current.token;
     const alive=()=>cashEditScope.current.alive&&cashEditScope.current.token===token&&auth.currentUser?.uid===p.userId&&companyId===p.companyId;
     if(!alive())return;saveBusyRef.current=true;setIsSaving(true);
@@ -1615,7 +1623,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       setIssueAcknowledged(previous=>({...previous,[statement.id]:statement.docNo}));
       if(p.payment){await recordPayment([{stmt:statement,amount:p.payment.amount}],{date:p.payment.date,method:'계좌이체',cashAccountId:p.payment.cashAccountId,pin:true});if(!alive())return;}
       await completeTradeStatementRequest(p.companyId,p.userId,p.input.command.operationId);if(!alive())return;
-      await clearTradePendingEntry(entry.key,entry.text,p.companyId,p.userId,alive);if(!alive())return;refreshIssuePendings();if(localStorage.getItem(entry.key)===null)setRecoverySelection(null);saveBusyRef.current=false;if(issueIdentityRef.current?.id===statement.id)issueIdentityRef.current=null;
+      await clearTradePendingEntry(entry.key,entry.text,p.companyId,p.userId,alive);if(!alive())return;
+      refreshIssuePendings();if(localStorage.getItem(entry.key)===null)setRecoverySelection(null);
+      saveBusyRef.current=false;
+      if(issueIdentityRef.current?.id===statement.id){
+        if(sameComposer){setRecoveryOpen(false);closeCreate();}
+        else issueIdentityRef.current=null;
+      }
     }catch(error){if(alive()){
       setIssueFailureReasons(previous=>({...previous,[p.input.statement.id]:error instanceof Error?error.message:String(error)}));
       // unknown 뒤 재시도는 서버의 원문 검증·터미널 봉쇄 증거가 있을 때만 다시 입력할 수 있다.

@@ -65,7 +65,9 @@ export async function issueTradeStatementCommand(input: TradeStatementIssueInput
      throw new Error(`${row.request.statement.partnerName??'이전 거래처'} · ${row.request.statement.tradeDate??''} 전표의 같은 주문·발주 송신 원문이 남아 있습니다. 실패 작업에서 기존 요청을 확인해 주세요.`);
    }
    const own=same.find(row=>row.key===key)??same[0];old=localStorage.getItem(key);
-   request=own?.request??fresh;encoded=own?.text??JSON.stringify(request);
+   encoded=own?.text??JSON.stringify(fresh);
+   // SDK는 undefined를 null로 보내므로, 첫 송신도 보관한 JSON에서 읽어야 서버가 같은 원문으로 확인한다.
+   request=JSON.parse(encoded);
    if(localStorage.getItem(key)!==old)throw new Error('다른 창에서 저장 중인 전표를 확인해 주세요.');
    localStorage.setItem(key,encoded);saved=true;
    if(localStorage.getItem(key)!==encoded)throw new Error('최초 전표 송신 원문 저장을 확인하지 못했습니다.');assertActor();
