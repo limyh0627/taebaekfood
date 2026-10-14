@@ -8,6 +8,31 @@ import { mergeCompanyOrders } from '../src/features/admin/companyOrders';
 
 afterEach(() => vi.useRealTimers());
 
+it.each([
+  ['이틀 뒤', '2026-10-17', '2026-10-16T15:00:00Z', false, false],
+  ['내일', '2026-10-16', '2026-10-15T15:00:00Z', false, true],
+  ['오늘', '2026-10-15', '2026-10-14T15:00:00Z', false, true],
+  ['과거', '2026-10-14', '2026-10-13T15:00:00Z', false, true],
+  ['완료', '2026-10-15', '2026-10-14T15:00:00Z', true, false],
+] as const)('작업줄 %s의 출고 임박은 한국 날짜와 ISO 표현에서 같다', (_label, calendarDate, isoDate, checked, expected) => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-15T03:00:00Z'));
+  const workItem = { key: 'due-order-p1', orderId: 'due-order', itemId: item.id, itemName: item.name, partnerName: '임박 검수 거래처', qty: 1, category: '기름' };
+  const order = { ...makeOrder('due-order', OrderStatus.PENDING), partnerName: '임박 검수 거래처', deliveryDate: calendarDate,
+    items: [{ itemId: item.id, name: item.name, quantity: 1, price: 0, checked }] };
+  const props = { companyId: 'taebaek' as const, title: '주문', subtitle: '', groupBy: 'status' as const,
+    allowedStatuses: statuses, orders: [order], workOrderItems: [workItem], partners: [], items: [{ ...item, category: '기름' }],
+    onUpdateStatus: vi.fn(), onUpdateDeliveryDate: vi.fn(), onDeleteOrder: vi.fn(), onAddClick: vi.fn() };
+  const view = render(<OrdersList {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: /금일 작업순서/ }));
+  if (checked) fireEvent.click(screen.getByRole('button', { name: /작업 완료 1건/ }));
+  expect(screen.getAllByText('임박 검수 거래처').length).toBeGreaterThan(0);
+  expect(screen.queryAllByText('출고 임박').length > 0).toBe(expected);
+  view.rerender(<OrdersList {...props} orders={[{ ...order, deliveryDate: isoDate }]} />);
+  expect(screen.getAllByText('임박 검수 거래처').length).toBeGreaterThan(0);
+  expect(screen.queryAllByText('출고 임박').length > 0).toBe(expected);
+});
+
 const statuses = [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DISPATCHED, OrderStatus.ON_HOLD];
 const item = { id: 'p1', name: '검수품목', type: 'product', unit: '개', stock: 100 } as Item;
 const makeOrder = (id: string, status: OrderStatus, deliveredAt?: string): Order => ({

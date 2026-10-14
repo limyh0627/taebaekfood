@@ -2530,7 +2530,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           return !product || !String(product.category || '').trim();
         };
         const isDueSoon = (workItem: WorkItem) => {
-          const deliveryDate = workOrderOf(workItem)?.deliveryDate?.slice(0, 10);
+          const deliveryDate = dateOfLocal(workOrderOf(workItem)?.deliveryDate);
           if (!deliveryDate || isWorkComplete(workItem)) return false;
           const today = new Date(`${seoulDateInput()}T00:00:00`).getTime();
           const due = new Date(`${deliveryDate}T00:00:00`).getTime();

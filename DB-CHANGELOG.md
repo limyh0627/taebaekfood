@@ -1,5 +1,14 @@
 # DB 변경 기록 (Firestore: taebaek-3abe4)
 
+## 2026-10-15 — 회사별 과거 전표 조회 인덱스 1개 생성
+
+- 작업자: 개발부 부장 제임스·시험배포 담당. 회사 조건과 거래일 범위를 함께 읽는 조회가 운영에서 `FAILED_PRECONDITION`을 반환해 필요한 인덱스 하나를 배포했다. 문서 이름만 최대 1건 조회했고 문서 ID·본문은 보존하지 않았다.
+- 설정: `issuedStatements`, `COLLECTION`, `companyId ASC / tradeDate ASC`. `firestore.indexes.json` 정확 1파일을 `de79f149bfd417b4203c75647b4af3f697b78ec7`로 main에 반영했다.
+- 명령: `firebase deploy --only firestore:indexes --project taebaek-3abe4 --non-interactive`. 강제 삭제 옵션 없이 성공했고 기존 9개 인덱스의 resource·정의·READY 상태를 보존했다. Rules는 컴파일 검사만 했으며 배포하지 않았다. 전표·금액·재고·수금 자료는 수정하지 않았다.
+- 신규 resource: `projects/taebaek-3abe4/databases/(default)/collectionGroups/issuedStatements/indexes/CICAgNjpgYIK`. 2026-10-14T18:23:14.821Z에 `READY`를 확인했다. 같은 조건의 이름 전용 최대 1건 조회는 18:26:38.402Z에 HTTP 200으로 성공했다. 저장소 밖 `records/tax-history-query-readonly-20261015.success.json`에 상태·개수만 보존했다.
+- 원래 메타데이터: 저장소 밖 `records/tax-history-index-readonly-20261015.json`, SHA256 `0180B93D32FAC505E6914476BFABFE3C477A32959D5F871A28A7AAAE598AF505`. 원래 설정과 새 항목의 차이는 독립 검수했다.
+- 되돌리기: 새 resource가 이 기록과 정확히 같은 정의인지 확인한 뒤 그 인덱스 하나만 제거한다. 먼저 해당 인덱스를 사용하는 앱을 이전 조회 버전으로 되돌리고, 기존 9개나 업무 문서는 삭제하지 않는다. 이 기록만으로 실제 삭제를 실행하지 않는다.
+
 ## 2026-10-15 — 실패 전표 요청 취소 준비 정보 한 항목 활성화
 
 - 작업자: 개발부 부장 제임스·시험배포 담당. 사용자가 `appMeta/releaseCutover.statementIssueProtocol` 한 항목 활성화를 명시적으로 허용했다.

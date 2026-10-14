@@ -9,6 +9,8 @@ import {
 import { Partner, IssuedStatement, CompanyInfo, CompanyId } from '../types';
 import { mergeStatementItems, mergeAndSplit, type MergedItem } from '../src/shared/mergeStatementItems';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
+import { where } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import PageHeader from './PageHeader';
 import { vatOn } from '../src/shared/lineAmount';
 import { companyOf } from '../src/shared/types';
@@ -50,20 +52,38 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [activeTab, setActiveTab] = useState<'issue' | 'history'>('issue');
 
   // 라이브 구독은 7일치만 → 과거 12개월치를 온디맨드로 추가 로드
-  const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
+  const historyGeneration = useRef(0);
+  const historyRequestGeneration = useRef(0);
+  const historyCompany = useRef(companyId);
+  historyCompany.current = companyId;
+  const [historyActor, setHistoryActor] = useState(() => ({uid:auth.currentUser?.uid??null,generation:0}));
+  const historyActorUid = historyActor.uid;
+  const [historyRetry, setHistoryRetry] = useState(0);
+  const [historyState, setHistoryState] = useState<{companyId:CompanyId;actorUid:string;generation:number;rows:IssuedStatement[];error:string;loading:boolean}|null>(null);
+  useEffect(() => onAuthStateChanged(auth, user => {historyGeneration.current++;historyRequestGeneration.current++;setHistoryActor({uid:user?.uid??null,generation:historyGeneration.current});}), []);
   useEffect(() => {
+    const actorUid = historyActorUid;
+    const generation = historyActor.generation;
+    if (!actorUid || auth.currentUser?.uid !== actorUid || historyGeneration.current !== generation) return;
+    const requestGeneration = ++historyRequestGeneration.current;
+    let active = true;
+    const isCurrent = () => active && historyCompany.current === companyId && auth.currentUser?.uid === actorUid && historyGeneration.current === generation && historyRequestGeneration.current === requestGeneration;
+    setHistoryState(previous => ({companyId,actorUid,generation,rows:previous?.companyId===companyId&&previous.actorUid===actorUid&&previous.generation===generation?previous.rows:[],error:'',loading:true}));
     const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 12);
-    const from = fromDate.toISOString().slice(0, 10);
-    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)
-      .then(data => setExtraStatements(data.map(s => ({
+    const from = dateOfLocal(fromDate.toISOString());
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to, [where('companyId', '==', companyId)])
+      .then(data => { if (!isCurrent()) return; setHistoryState({companyId,actorUid,generation,error:'',loading:false,rows:data.map(s => ({
         ...s,
         items: s.items ?? [],
         tradeDate: s.tradeDate ?? '',
         issuedAt: s.issuedAt ?? '',
-      }))))
-      .catch(e => console.error('[TaxStatement] 과거 전표 로드 실패:', e));
-  }, []);
+      }))}); })
+      .catch(() => {if(isCurrent())setHistoryState(previous=>({companyId,actorUid,generation,rows:previous?.companyId===companyId&&previous.actorUid===actorUid&&previous.generation===generation?previous.rows:[],error:'과거 전표를 불러오지 못했습니다. 현재 제공된 전표만 표시합니다. 다시 불러와 주세요.',loading:false}));});
+    return () => { active = false; };
+  }, [companyId, historyActorUid, historyActor.generation, historyRetry]);
+  const currentHistory = historyState?.companyId===companyId && historyState.actorUid===historyActorUid && historyState.generation===historyActor.generation && historyActor.generation===historyGeneration.current && historyActorUid===auth.currentUser?.uid ? historyState : null;
+  const extraStatements = currentHistory?.rows ?? [];
 
   // 라이브(7일) + 과거(12개월) 병합 — id 기준 dedup, 라이브 우선
   // 회사로 한 번 더 거른다 — extraStatements는 이 화면이 직접 떠온 것이라 안 걸러져 있다
@@ -75,7 +95,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   }, [liveStatements, extraStatements, companyId]);
 
   // ── 발행 탭 상태 ──
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(() => today().slice(0, 7));
   const [onlyUnissued, setOnlyUnissued] = useState(false);
   const [taxClientId, setTaxClientId] = useState('');
   const [taxClientSearch, setTaxClientSearch] = useState('');
@@ -86,13 +106,15 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [taxPendingError,setTaxPendingError]=useState('');
   const [taxBusy,setTaxBusy]=useState(false);
   const taxBusyRef=useRef(false);
-  const taxScopeRef=useRef({companyId,uid:auth.currentUser?.uid,token:{}});
-  if(taxScopeRef.current.companyId!==companyId||taxScopeRef.current.uid!==auth.currentUser?.uid)taxScopeRef.current={companyId,uid:auth.currentUser?.uid,token:{}};
+  const taxScopeRef=useRef({companyId,uid:auth.currentUser?.uid,generation:historyActor.generation,token:{}});
+  if(taxScopeRef.current.companyId!==companyId||taxScopeRef.current.uid!==auth.currentUser?.uid||taxScopeRef.current.generation!==historyActor.generation)taxScopeRef.current={companyId,uid:auth.currentUser?.uid,generation:historyActor.generation,token:{}};
   useEffect(()=>{
-    const read=()=>{try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}};
+    const generation=historyActor.generation;
+    if(historyGeneration.current!==generation)return;
+    const read=()=>{if(historyGeneration.current!==generation)return;try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}};
     taxBusyRef.current=false;setTaxBusy(false);read();window.addEventListener('tax-issue-pending',read);window.addEventListener('storage',read);
     return()=>{window.removeEventListener('tax-issue-pending',read);window.removeEventListener('storage',read);taxScopeRef.current={...taxScopeRef.current,token:{}};};
-  },[companyId,taxActorUid]);
+  },[companyId,taxActorUid,historyActor.generation]);
 
   // ── 발행 탭 편집 상태 ──
   const [editedItems, setEditedItems] = useState<MergedItem[]>([]);
@@ -250,12 +272,17 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     if(!resume&&selectedStmts.length>100){alert('한 번에 전표 100건까지 발행 결과를 기록할 수 있습니다.');return;}
     if(taxBusyRef.current||(!resume&&(sourceChanged||selectedStmts.length===0||!onApplyTaxIssue||taxPending||taxPendingError)))return;
     const token=taxScopeRef.current.token,uid=auth.currentUser?.uid,selectedIds=taxStmtIds,selectionScope=taxSelectionScopeRef.current;
-    const active=()=>taxScopeRef.current.token===token&&auth.currentUser?.uid===uid;
+    const issueHistoryGeneration=historyGeneration.current;
+    const active=()=>taxScopeRef.current.token===token&&auth.currentUser?.uid===uid&&taxScopeRef.current.generation===issueHistoryGeneration&&historyGeneration.current===issueHistoryGeneration;
+    if(!active())return;
     taxBusyRef.current=true;setTaxBusy(true);
     try {
       const patches=resume?await resumeTaxIssue(companyId):await onApplyTaxIssue!({operationId:`tax-${crypto.randomUUID()}`,statements:selectedStmts,scope:taxScope,issuedAt:new Date().toISOString()});
       if(!active())return;
-      setExtraStatements(prev=>prev.map(s=>{const patch=patches.find(p=>p.id===s.id);return patch&&(s.mutationRevision??0)<=(patch.data.mutationRevision??0)?{...s,...patch.data}:s;}));
+      setHistoryState(previous=>{
+        if(!previous||previous.companyId!==companyId||previous.actorUid!==uid||previous.generation!==issueHistoryGeneration||historyGeneration.current!==issueHistoryGeneration)return previous;
+        return {...previous,rows:previous.rows.map(s=>{const patch=patches.find(p=>p.id===s.id);return patch&&(s.mutationRevision??0)<=(patch.data.mutationRevision??0)?{...s,...patch.data}:s;})};
+      });
       setTaxStmtIds(current=>taxSelectionScopeRef.current===selectionScope&&JSON.stringify(current)===JSON.stringify(selectedIds)?[]:current);
     } catch(error){if(active())alert(error instanceof Error?error.message:'세금계산서 발행 기록을 저장하지 못했습니다.');}
     finally{if(active()){taxBusyRef.current=false;setTaxBusy(false);try{setTaxPending(getPendingTaxIssue(companyId));setTaxPendingError('');}catch(error){setTaxPendingError(error instanceof Error?error.message:'보존된 발행 요청을 확인해주세요.');}}}
@@ -397,9 +424,14 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         }
       />
 
+      {currentHistory?.error && <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-2 text-sm">
+        <span>{currentHistory.error}</span>
+        <button type="button" disabled={currentHistory.loading} onClick={()=>{historyRequestGeneration.current++;setHistoryRetry(value=>value+1);}} className="rounded border border-slate-300 px-3 py-1">과거 전표 다시 불러오기</button>
+      </div>}
+
       {selectedStmts.length>100&&<p role="alert" className="text-sm text-amber-700">한 번에 전표 100건까지 발행 결과를 기록할 수 있습니다. 선택을 줄여주세요.</p>}
       {(taxPending||taxPendingError)&&<div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-        {taxPendingError||`발행 결과 확인이 필요합니다. 전표 ${taxPending!.statements.length}건 · ${taxPending!.scope==='all'?'과세·면세':taxPending!.scope==='taxable'?'과세':'면세'} · ${taxPending!.issuedAt.slice(0,10)}`}
+        {taxPendingError||`발행 결과 확인이 필요합니다. 전표 ${taxPending!.statements.length}건 · ${taxPending!.scope==='all'?'과세·면세':taxPending!.scope==='taxable'?'과세':'면세'} · ${dateOfLocal(taxPending!.issuedAt)}`}
         {taxPending&&!taxPendingError&&<button disabled={taxBusy} onClick={()=>void handleTaxIssue(true)} className="ml-3 rounded-lg bg-amber-700 px-3 py-2 font-bold text-white">이전 발행 결과 확인</button>}
       </div>}
       {/* ── 발행 탭 ── */}
@@ -416,7 +448,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-emerald-300"
               >
                 {(() => {
-                  const currentYm = new Date().toISOString().slice(0, 7);
+                  const currentYm = today().slice(0, 7);
                   const opts = allMonths.includes(currentYm) ? allMonths : [currentYm, ...allMonths];
                   return opts.map(ym => (
                     <option key={ym} value={ym}>{ym.replace('-', '년 ')}월</option>
