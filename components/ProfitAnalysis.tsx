@@ -183,6 +183,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // ── 거래처 탭 서브탭 ──
   const [partnersSubTab, setPartnersSubTab] = useState<'receivables' | 'stats'>('receivables');
   const now = new Date();
+  const currentYear = now.getFullYear();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
@@ -198,9 +199,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     const ys = new Set<number>();
     issuedStatements.forEach(s => ys.add(Number(s.tradeDate.slice(0, 4))));
     cashEntries.forEach(e => { const y = Number((e.date ?? '').slice(0, 4)); if (y) ys.add(y); });
-    ys.add(now.getFullYear());
+    ys.add(currentYear);
+    // 새해에도 보고 있던 연도는 남겨 두어 선택 표시와 계산 기간이 엇갈리지 않게 한다.
+    ys.add(selectedYear);
     return [...ys].sort((a, b) => b - a);
-  }, [issuedStatements, cashEntries]);
+  }, [issuedStatements, cashEntries, currentYear, selectedYear]);
 
   // 오늘 연월 (미래 달 제외 기준)
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

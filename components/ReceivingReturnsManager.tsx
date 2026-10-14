@@ -8,7 +8,7 @@ import { where } from 'firebase/firestore';
 import React, { useState, useEffect, useRef } from 'react';
 import { RotateCcw, Truck, X, Loader2 } from 'lucide-react';
 import { subscribeToCollection } from '../src/shared/services/firebaseService';
-import { Item, Order, IssuedStatement, Partner, PartnerItem, ReturnRequest } from '../src/shared/types';
+import { Item, Order, IssuedStatement, Partner, PartnerItem, ReturnRequest, companyOf } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { isLinkedToPartner } from '../src/shared/partnerPrice';
@@ -61,6 +61,8 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
 
   // ── Returns form ──
   const [returnClientId, setReturnClientId] = useState('');
+  // 늦은 자료는 자동 제안만 갱신한다. 사용자가 지운 빈 초안도 편집한 초안이다.
+  const returnDraftMode = useRef<'auto' | 'manual' | 'consumed'>('auto');
   const [returnClientSearch, setReturnClientSearch] = useState('');
   const [showReturnClientDropdown, setShowReturnClientDropdown] = useState(false);
   const [returnItems, setReturnItems] = useState<{ itemId: string; name: string; qty: string; unit: string }[]>([]);
@@ -102,6 +104,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
     submissionBusy.current = true; setResumingSubmission(true);
 
     try { await resumeReturnSubmission(companyId); if (!liveSubmission()) return;
+      returnDraftMode.current = 'consumed';
       setPendingSubmission(null); setSubmissionError(''); setReturnItems([]); setPrItems([]); setReturnNote(''); setPrNote('');
     } catch(error) { if (liveSubmission()) setSubmissionError(error instanceof Error ? error.message : '접수 결과를 확인하지 못했습니다. 원문은 보존했습니다.'); }
     finally { submissionBusy.current = false; if (liveSubmission()) setResumingSubmission(false); }
@@ -136,11 +139,12 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
   // ══════════════════════════════════════════
 
   const sellableProducts = items.filter(p =>
-    ['완제품', '향미유', '고춧가루', 'product', 'wip'].includes(p.type as string)
+    companyOf(p) === companyId && ['완제품', '향미유', '고춧가루', 'product', 'wip'].includes(p.type as string)
   );
 
   useEffect(() => {
     if (!returnClientId) { setReturnItems([]); return; }
+    if (returnDraftMode.current !== 'auto') return;
     // 거래처에 연결된 품목(partnerIds 기반) 우선 표시
     const linked = sellableProducts
       .filter(p => isLinkedToPartner(partnerItems, returnClientId, p.id))
@@ -151,7 +155,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
     }
     // 연결 품목 없으면 최근 주문 이력으로 fallback
     const partnerOrders = orders
-      .filter(o => o.partnerId === returnClientId)
+      .filter(o => companyOf(o) === companyId && o.partnerId === returnClientId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const seen = new Set<string>();
     const preItems: { itemId: string; name: string; qty: string; unit: string }[] = [];
@@ -165,9 +169,10 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
       }
     }
     setReturnItems(preItems);
-  }, [returnClientId]);
+  }, [returnClientId, companyId, items, partnerItems, orders]);
 
   const handleSelectReturnClient = (id: string, name: string) => {
+    if (id !== returnClientId) returnDraftMode.current = 'auto';
     setExplicitMoney({});
     setSalesSourceId('');
     setReturnClientId(id);
@@ -187,6 +192,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
     if (returnItems.some(i => i.itemId === itemId)) return;
     const p = returnProducts.find(x => x.id === itemId);
     if (!p) return;
+    returnDraftMode.current = 'manual';
     setReturnItems(prev => [...prev, { itemId: p.id, name: p.name, qty: '', unit: p.unit }]);
   };
 
@@ -211,6 +217,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
         ...(returnNote && { note: returnNote }),
       });
       if (!liveSubmission()) return;
+      returnDraftMode.current = 'consumed';
       setReturnClientId('');
       setReturnClientSearch('');
       setReturnItems([]);
@@ -336,6 +343,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
               {returnClientId && <div className="bg-white rounded-2xl p-4 space-y-2">
                 <label className="text-xs font-bold">원매출 전표
                   <select aria-label="원매출 전표" value={salesSourceId} onChange={e => {
+                    returnDraftMode.current = 'manual';
                     setSalesSourceId(e.target.value);
                     const original = issuedStatements.find(row => row.id === e.target.value && row.companyId === companyId && row.partnerId === returnClientId && row.type === '매출');
                     setReturnItems((original?.items ?? []).map(row => ({ itemId: row.itemId ?? '', name: row.name, qty: '', unit: items.find(item => item.id === row.itemId)?.unit ?? '' })));
@@ -371,11 +379,11 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                             min={0}
                             placeholder="0"
                             value={item.qty}
-                            onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))}
+                            onChange={e => { returnDraftMode.current = 'manual'; setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it)); }}
                             className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                           <span className="text-xs text-slate-400 w-8 shrink-0">{item.unit}</span>
-                          <button onClick={() => setReturnItems(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-slate-300 hover:text-rose-500 transition-colors">
+                          <button aria-label={`${item.name} 삭제`} onClick={() => { returnDraftMode.current = 'manual'; setReturnItems(prev => prev.filter((_, i) => i !== idx)); }} className="p-1 text-slate-300 hover:text-rose-500 transition-colors">
                             <X size={14} />
                           </button>
                         </div>
@@ -425,8 +433,8 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                   <input aria-label={`${row.name} ${{ supply: '공급가', tax: '세액', accountCode: '발생 계정' }[field]}`}
                     type={field === 'accountCode' ? 'text' : 'number'} min={0}
                     value={explicitMoney[row.itemId!]?.[field] ?? ''}
-                    onChange={e => setExplicitMoney(prev => ({ ...prev, [row.itemId!]: {
-                      ...(prev[row.itemId!] ?? { supply: '', tax: '', accountCode: '' }), [field]: e.target.value } }))} />
+                    onChange={e => { returnDraftMode.current = 'manual'; setExplicitMoney(prev => ({ ...prev, [row.itemId!]: {
+                      ...(prev[row.itemId!] ?? { supply: '', tax: '', accountCode: '' }), [field]: e.target.value } })); }} />
                 </label>)}
               </div>)}
             </div>}
@@ -435,7 +443,7 @@ const CompanyReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = (
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">비고</p>
                 <textarea
                   value={returnNote}
-                  onChange={e => setReturnNote(e.target.value)}
+                  onChange={e => { returnDraftMode.current = 'manual'; setReturnNote(e.target.value); }}
                   placeholder="반품 관련 메모 (선택)"
                   rows={2}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
