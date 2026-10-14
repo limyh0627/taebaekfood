@@ -632,14 +632,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const start = `${addMonths(`${y}-${String(m).padStart(2, '0')}`, -1)}-01`; // 전월 1일 (생성일 버퍼)
     const end = endOfMonth(`${y}-${String(m).padStart(2, '0')}`);               // 당월 말일
     loadHistoricalOrders(start, end);
-  }, [docTab, docYearMonth]);
+  }, [docTab, docYearMonth, loadHistoricalOrders]);
 
   // 거래명세서(전표): 미발행 주문은 예전 배송완료까지 다 떠야 하므로 주문 전체를 로드한다.
   //   orders 날짜창은 읽기 몇 백 건 아끼자고 건 건데, 그 때문에 미발행이 안 보이면 손해라 여기선 전체 조회.
   useEffect(() => {
     if (currentView !== 'trade-statement') return;
     loadHistoricalOrders('2020-01-01', today());
-  }, [currentView]);
+  }, [currentView, loadHistoricalOrders]);
 
   // 모바일 감지
   useEffect(() => {

@@ -175,11 +175,32 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
   const [historicalState, setHistoricalState] = useState<{ scope: number; orders: Order[]; loading: boolean } | null>(null);
+  const historicalMounted = useRef(true);
+  const historicalAuthGeneration = useRef(0);
+  const historicalObservedUid = useRef(auth?.currentUser?.uid ?? '');
+  const [, setHistoricalActorGeneration] = useState(0);
+  useEffect(() => {
+    historicalMounted.current = true;
+    setHistoricalActorGeneration(historicalAuthGeneration.current);
+    const unsubscribe = auth?.onAuthStateChanged?.(user => {
+      const uid = user?.uid ?? '';
+      if (uid === historicalObservedUid.current) return;
+      historicalObservedUid.current = uid;
+      historicalAuthGeneration.current += 1;
+      const current = historicalScopeRef.current;
+      historicalScopeRef.current = { ...current, id: current.id + 1,
+        key: historicalScopeKey(current.enabled, current.companyId, uid, historicalAuthGeneration.current) };
+      setHistoricalActorGeneration(historicalAuthGeneration.current);
+    });
+    return () => { historicalMounted.current = false; historicalAuthGeneration.current += 1; unsubscribe?.(); };
+  }, []);
   // 같은 탭에서 로그아웃→다른 회사 로그인 시 이전 요청이 늦게 돌아와도 새 세션에 쓰지 못한다.
-  const historicalScopeRef = useRef({ key: `${enabled}:${companyId}`, id: 0 });
-  const scopeKey = `${enabled}:${companyId}`;
+  const historicalScopeKey = (enabled: boolean, company: CompanyId, uid: string, generation: number) =>
+    JSON.stringify([enabled, company, uid, generation]);
+  const scopeKey = historicalScopeKey(enabled, companyId, auth?.currentUser?.uid ?? '', historicalAuthGeneration.current);
+  const historicalScopeRef = useRef({ key: scopeKey, id: 0, enabled, companyId });
   if (historicalScopeRef.current.key !== scopeKey) {
-    historicalScopeRef.current = { key: scopeKey, id: historicalScopeRef.current.id + 1 };
+    historicalScopeRef.current = { key: scopeKey, id: historicalScopeRef.current.id + 1, enabled, companyId };
   }
   const historicalScope = historicalScopeRef.current.id;
   const historicalOrders = useMemo(
@@ -209,30 +230,44 @@ export function useAppData(enabled = true, companyId: CompanyId = 'taebaek', isA
   const refreshStaticData = useCallback(() => setStaticRefreshKey(k => k + 1), []);
 
   const loadedHistoricalRangeRef = useRef<{ scope: number; start: string; end: string } | null>(null);
-  const loadHistoricalOrders = useCallback(async (start: string, end: string) => {
-    if (!enabled || historicalScopeRef.current.key !== `${enabled}:${companyId}`) return;
+  const historicalRequestGeneration = useRef(0);
+  const historicalInFlight = useRef<{ scope: number; start: string; end: string; promise: Promise<void> } | null>(null);
+  const loadHistoricalOrders = useCallback((start: string, end: string): Promise<void> => {
+    if (!enabled || !historicalMounted.current || historicalScopeRef.current.key !== historicalScopeKey(enabled, companyId, auth?.currentUser?.uid ?? '', historicalAuthGeneration.current)) return Promise.resolve();
     const scope = historicalScopeRef.current.id;
-    // 이미 같거나 더 넓은 범위를 로드했으면 skip
-    const prev = loadedHistoricalRangeRef.current;
-    if (prev?.scope === scope && prev.start <= start && prev.end >= end) return;
+    const previous = loadedHistoricalRangeRef.current;
+    if (previous?.scope === scope && previous.start <= start && previous.end >= end) return Promise.resolve();
+    const inFlight = historicalInFlight.current;
+    if (inFlight?.scope === scope && inFlight.start <= start && inFlight.end >= end) return inFlight.promise;
+    const generation = ++historicalRequestGeneration.current;
+    const authGeneration = historicalAuthGeneration.current;
+    const uid = auth?.currentUser?.uid;
+    const active = () => historicalMounted.current && historicalScopeRef.current.id === scope
+      && historicalRequestGeneration.current === generation && historicalAuthGeneration.current === authGeneration
+      && auth?.currentUser?.uid === uid;
     setHistoricalState(current => ({ scope, orders: current?.scope === scope ? current.orders : [], loading: true }));
-    try {
-      const { where } = await import('firebase/firestore');
-      const range = kstDateRangeUtc(start, end);
-      const data = await fetchCollection<Order>('orders', [
-        where('createdAt', '>=', range.startInclusive),
-        where('createdAt', '<', range.endExclusive),
-        where('companyId', '==', companyId),
-      ]);
-      if (historicalScopeRef.current.id !== scope) return;
-      setHistoricalState({ scope, orders: data, loading: false });
-      loadedHistoricalRangeRef.current = { scope, start, end };
-    } finally {
-      if (historicalScopeRef.current.id === scope) {
-        setHistoricalState(current => current?.scope === scope ? { ...current, loading: false } : current);
+    const promise = (async () => {
+      try {
+        const { where } = await import('firebase/firestore');
+        const range = kstDateRangeUtc(start, end);
+        const data = await fetchCollection<Order>('orders', [
+          where('createdAt', '>=', range.startInclusive),
+          where('createdAt', '<', range.endExclusive),
+          where('companyId', '==', companyId),
+        ]);
+        if (!active()) return;
+        setHistoricalState({ scope, orders: data, loading: false });
+        loadedHistoricalRangeRef.current = { scope, start, end };
+      } finally {
+        if (active()) {
+          historicalInFlight.current = null;
+          setHistoricalState(current => current?.scope === scope ? { ...current, loading: false } : current);
+        }
       }
-    }
-  }, [companyId, enabled]);
+    })();
+    historicalInFlight.current = { scope, start, end, promise };
+    return promise;
+  }, [companyId, enabled, scopeKey]);
 
   const markLoaded = (key: string) => {
     loadedRef.current.add(key);
