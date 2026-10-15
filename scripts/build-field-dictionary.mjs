@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { resolvedModelFields } from './resolved-model-fields.mjs';
+import { resolvedModelFields, collectFieldReferences, referencesOfDeclarations } from './resolved-model-fields.mjs';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import assert from 'node:assert/strict';
@@ -35,10 +35,12 @@ for (const statement of source.statements) {
   }
 }
 let unresolvedAccesses = 0;
+const modelReferences = new Map();
 const unresolvedPropertyAccesses = [];
 for (const file of program.getSourceFiles()) {
   if (!fileNames.has(file.fileName.replaceAll('\\', '/').toLowerCase())) continue;
   const visit = node => {
+    collectFieldReferences(checker, node, location, modelReferences);
     if (ts.isPropertyAccessExpression(node)) {
       const symbol = checker.getSymbolAtLocation(node.name);
       if (!symbol) {
@@ -162,14 +164,14 @@ for (const file of program.getSourceFiles()) {
   if (!fileNames.has(file.fileName.replaceAll('\\', '/').toLowerCase())) continue;
   const visit = node => {
     if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) {
-      resolvedModels.push({ model: node.name.text, declaration: location(node), ...resolvedModelFields(checker, node, location) });
+      resolvedModels.push({ model: node.name.text, declaration: location(node), ...resolvedModelFields(checker, node, location, modelReferences) });
     }
     if (file !== source && (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node))) {
       const members = ts.isInterfaceDeclaration(node) ? node.members : ts.isTypeLiteralNode(node.type) ? node.type.members : undefined;
       additionalModels.push({ model: node.name.text, declaration: location(node), kind: ts.isInterfaceDeclaration(node) ? 'interface' : 'type-alias',
         scope: members ? 'direct-properties-only' : 'non-object-alias-not-expanded',
         fields: members ? members.filter(ts.isPropertySignature).map(member => ({ field: member.name.getText(), optional: !!member.questionToken,
-          type: member.type?.getText() ?? 'unknown', declaration: location(member) })) : [],
+          type: member.type?.getText() ?? 'unknown', declaration: location(member), references: referencesOfDeclarations([member], modelReferences) })) : [],
         ...(members ? {} : { type: node.type.getText() }) });
     }
     const callApi = api(node);
@@ -289,7 +291,7 @@ const rows = fields.map(field => `| ${field.model} | ${field.field} | ${field.op
 writeFileSync('docs/field-dictionary.generated.md', [
   '# 현재 코드 필드 사전', '',
   `COL ${collections.length}개, 선언 필드 ${fields.length}개, 운영 소스 ${files.length}개를 분석했다.`, '',
-  'TypeScript가 shared/types.ts 선언으로 해석한 속성 접근만 사용처로 집계한다. any·동적 인덱스·객체 전개·별도 모델은 포함하지 않으며, 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.', '',
+  '첫 요약과 기존 직접 필드 통계는 TypeScript가 shared/types.ts 직접 interface 선언으로 해석한 속성 접근의 범위다. 별도 모델의 원선언에 귀속된 정적 참조는 아래 additionalModels/resolvedModels에 따로 기록하며 기존 통계와 합산하지 않는다. any·동적 인덱스·객체 전개는 전체 사용처로 해석하지 않으며 사용처 0은 삭제 근거가 아니다. JSON에 정확한 파일·행별 사용처가 있다. 현재 DB의 실제 필드나 지향 설계를 뜻하지 않는다. 현재 checkout의 미배포 후보가 포함될 수 있으므로 배포 경계는 erd-current-and-target-20261007.md에서 별도로 확인한다.', '',
   '## Firestore 경로 보완', '',
   `SDK import·선언·수신 객체 타입으로 확인한 collection/doc/collectionGroup 호출 ${pathCalls.length}건. 동적 문서 ID도 미해석으로 보존하며, 미해석 ${report.firestorePaths.unresolvedLocations.length}건은 컬렉션 이름 누락과 같은 의미가 아니다. 서버 호출·중첩 경로·직접 const 별칭을 포함한다. 동적 문자열 안의 슬래시 수는 알 수 없어 깊이를 확정하지 않으며, JSON의 argumentDepthCandidate/pathKind는 인수 형태에 따른 후보이다. 함수 반환·분기·객체 전개로 구성한 경로는 해석하지 않는다. scripts·rules·테스트·JS 및 공용 래퍼 호출부의 경로 문자열은 이 운영 TS 소스 범위 밖이다. SDK 근거 없는 같은 이름 호출 ${candidateCalls.length}건은 JSON의 candidateCalls에 집계 밖 후보로 남긴다.`, '',
   `COL 밖 정적 컬렉션 이름: ${report.firestorePaths.outsideRegistry.map(name => '`' + name + '`').join(', ') || '없음'}. 이 목록은 운영 DB 존재/삭제 대상이 아니라 코드에 나타난 이름이다. 부모를 해석하지 못한 호출은 COL 대조에서 제외한다.`, '',
@@ -306,7 +308,7 @@ writeFileSync('docs/field-dictionary.generated.md', [
   '| --- | --- | --- | --- | --- |',
   ...additionalModels.map(model => `| ${model.model} | ${model.declaration} | ${model.kind} | ${model.scope} | ${model.fields.map(field => field.field).join(', ').replaceAll('|', '\\|')} |`), '',
   '## 상속·공용 모델의 정적 필드 보완', '',
-  'JSON resolvedModels는 TypeScript checker가 해석한 상속·Partial·교차 모델의 속성과 원래 선언 위치를 별도로 기록한다. 기존 직접 선언 필드 통계에 합산하지 않는다. 공용체·any·unknown은 완전한 객체 모델로 펼치지 않고 상태를 남긴다. 정적으로 해석된 모델 역시 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.', '',
+  'JSON additionalModels/resolvedModels의 references는 같은 Program에서 원선언에 귀속된 정적 속성 사용처다. 상속·Partial·교차 모델에 반복되는 참조는 해당 모델에만 고유한 사용처가 아니며 모델 사이에서 합산하지 않는다. 기존 직접 선언 필드 통계와 references는 유지한다. 구조분해·문자열 인덱스·동적 접근·불명확한 공용체는 이번 사용처 연결에서 제외한다. 선언 Node는 JSON에 저장하지 않는다. 정적 모델과 사용처는 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.', '',
   '| 모델 | 선언 | 해석 범위 | 정적 필드 수 |',
   '| --- | --- | --- | --- |',
   ...resolvedModels.map(model => `| ${model.model} | ${model.declaration} | ${model.scope} | ${model.fields.length} |`), '',

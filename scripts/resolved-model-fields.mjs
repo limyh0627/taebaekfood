@@ -1,7 +1,21 @@
 import ts from 'typescript';
 
+/** 이름이 같은 다른 모델을 섞지 않고 원선언에 정적 접근을 귀속한다. */
+export function collectFieldReferences(checker, node, location, references) {
+  if (!ts.isPropertyAccessExpression(node)) return;
+  const receiver = checker.getTypeAtLocation(node.expression);
+  if (receiver.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Union)) return;
+  for (const declaration of checker.getSymbolAtLocation(node.name)?.declarations ?? []) {
+    if (!ts.isPropertySignature(declaration) && !ts.isPropertyDeclaration(declaration)) continue;
+    if (!references.has(declaration)) references.set(declaration, new Set());
+    references.get(declaration).add(location(node));
+  }
+}
+
+export const referencesOfDeclarations = (declarations, references) => [...new Set(declarations.flatMap(node => [...(references.get(node) ?? [])]))].sort();
+
 /** 직접 선언 통계와 별도로 상속·mapped type의 정적 필드를 확인한다. */
-export function resolvedModelFields(checker, declaration, location) {
+export function resolvedModelFields(checker, declaration, location, references) {
   const belongsToModel = node => { for (let parent = node.parent; parent; parent = parent.parent) { if (parent === declaration) return true; } return false; };
   const type = checker.getTypeAtLocation(declaration);
   if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return { scope: 'unresolved-model', fields: [] };
@@ -12,7 +26,8 @@ export function resolvedModelFields(checker, declaration, location) {
     if (!originals.length) return [];
     return [{ field: symbol.name, optional: !!(symbol.flags & ts.SymbolFlags.Optional),
       type: checker.typeToString(checker.getTypeOfSymbolAtLocation(symbol, declaration)),
-      declarations: originals.map(location), inherited: originals.every(node => !belongsToModel(node)) }];
+      declarations: originals.map(location), inherited: originals.every(node => !belongsToModel(node)),
+      ...(references ? { references: referencesOfDeclarations(originals, references) } : {}) }];
   });
   return { scope: 'checker-resolved-properties-only', fields };
 }
