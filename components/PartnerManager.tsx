@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Users,
   Plus,
@@ -20,7 +20,7 @@ import RegionSelect from './RegionSelect';
 import { Partner, PartnerChannel, PartnerType } from '../types';
 
 //  window.daum 타입은 [AddPartnerModal](AddPartnerModal.tsx) 이 한 번만 선언한다
-import AddPartnerModal from './AddPartnerModal';
+import AddPartnerModal, { partnerSaveErrorMessage } from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import { isShipMethod, isShippingPartner } from '../src/shared/partnerShipping';
@@ -30,8 +30,8 @@ import ModalShell from '../src/shared/components/ModalShell';
 
 interface PartnerManagerProps {
   partners: Partner[];
-  onUpdateClient: (_client: Partner) => void;
-  onAddClient: (_client: Partner) => void;
+  onUpdateClient: (_client: Partner) => void | Promise<unknown>;
+  onAddClient: (_client: Partner) => void | Promise<unknown>;
   onDeleteClient: (_id: string) => void;
 }
 
@@ -43,6 +43,24 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const savingRef = useRef(false);
+  const formGeneration = useRef(0);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; formGeneration.current += 1; }; }, []);
+  const openEditing = (partner: Partner) => {
+    if (savingRef.current) return;
+    formGeneration.current += 1;
+    setSaveError('');
+    setEditForm({ ...partner });
+  };
+  const closeEditing = () => {
+    if (savingRef.current) return;
+    formGeneration.current += 1;
+    setSaveError('');
+    setEditForm(null);
+  };
   const PAGE_SIZE = 15;
 
   const partnerTabs: { id: PartnerType | '전체', label: string }[] = [
@@ -78,10 +96,20 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
   const safePage = Math.min(page, totalPages);
   const pagedClients = filteredClients.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const saveEditing = () => {
-    if (editForm) {
-      onUpdateClient(editForm);
-      setEditForm(null);
+  const saveEditing = async () => {
+    if (!editForm || savingRef.current || !mounted.current) return;
+    const generation = formGeneration.current;
+    savingRef.current = true;
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await onUpdateClient(editForm);
+      if (mounted.current && generation === formGeneration.current) setEditForm(null);
+    } catch (error) {
+      if (mounted.current && generation === formGeneration.current) setSaveError(partnerSaveErrorMessage(error));
+    } finally {
+      savingRef.current = false;
+      if (mounted.current && generation === formGeneration.current) setIsSaving(false);
     }
   };
 
@@ -91,7 +119,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
         title="거래처 관리"
         subtitle="거래처 정보를 관리하고 성격별로 분류하세요."
         right={
-          <button onClick={() => setIsAddModalOpen(true)}
+          <button disabled={isSaving} onClick={() => { if (!savingRef.current) setIsAddModalOpen(true); }}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
             <Plus size={15} /><span>거래처 등록</span>
           </button>
@@ -209,7 +237,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                       </div>
                     </div>
                     <button
-                      aria-label={partner.name+' 수정'} onClick={() => setEditForm({ ...partner })}
+                      disabled={isSaving} aria-label={partner.name+' 수정'} onClick={() => openEditing(partner)}
                       className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0"
                     >
                       <Edit size={15} />
@@ -248,9 +276,9 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
 
       {/* 수정 오버레이 모달 */}
       {editForm && (
-        <ModalShell title="거래처 수정" onClose={() => setEditForm(null)} bodyClassName="!p-0">
+        <ModalShell title="거래처 수정" onClose={closeEditing} bodyClassName="!p-0">
             {/* 폼 */}
-            <div className="px-5 py-5 space-y-4">
+            <fieldset disabled={isSaving} className="min-w-0 px-5 py-5 space-y-4">
               {/* 거래처명 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">거래처명</label>
@@ -388,9 +416,15 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                   />
                   <button
                     type="button"
-                    onClick={() => new window.daum.Postcode({
-                      oncomplete: (data) => setEditForm(prev => prev ? { ...prev, address: data.address } : null),
-                    }).open()}
+                    onClick={() => {
+                      const generation = formGeneration.current;
+                      const partnerId = editForm.id;
+                      new window.daum.Postcode({
+                        oncomplete: (data) => {
+                          if (mounted.current && !savingRef.current && generation === formGeneration.current) setEditForm(prev => prev?.id === partnerId ? { ...prev, address: data.address } : prev);
+                        },
+                      }).open();
+                    }}
                     className="px-4 py-3 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 transition-all whitespace-nowrap"
                   >
                     검색
@@ -424,26 +458,28 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
-            </div>
+            </fieldset>
+            {saveError && <p role="alert" className="mx-5 mb-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">{saveError}</p>}
 
             {/* 하단 버튼 */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
               <button
-                onClick={() => setConfirmModal({
+                disabled={isSaving}
+                onClick={() => { if (!savingRef.current) setConfirmModal({
                   message: `"${editForm.name}" 거래처를 삭제하시겠습니까?`,
                   subMessage: '연결된 주문 및 품목 데이터에 영향을 줄 수 있습니다.',
                   onConfirm: () => { onDeleteClient(editForm.id); setEditForm(null); setConfirmModal(null); },
-                })}
+                }); }}
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-50 text-rose-500 rounded-xl text-sm font-bold hover:bg-rose-100 transition-all"
               >
                 <Trash2 size={14} />삭제
               </button>
               <div className="flex items-center gap-2">
-                <button onClick={() => setEditForm(null)} className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">
+                <button disabled={isSaving} onClick={closeEditing} className="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">
                   취소
                 </button>
-                <button onClick={saveEditing} className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
-                  <Check size={14} />저장
+                <button disabled={isSaving} onClick={saveEditing} className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
+                  <Check size={14} />{isSaving ? '저장 중…' : '저장'}
                 </button>
               </div>
             </div>
@@ -453,7 +489,8 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
       {isAddModalOpen && (
         <AddPartnerModal
           onClose={() => setIsAddModalOpen(false)}
-          onSave={(newClient) => { onAddClient(newClient); setIsAddModalOpen(false); }}
+          onSave={onAddClient}
+          onOpenExisting={openEditing}
         />
       )}
       {confirmModal && (

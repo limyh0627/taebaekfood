@@ -40,7 +40,7 @@ import { today, isCalendarDay } from '../day';
 import type { Order, OrderStatus, PurchaseOrder, IssuedStatement, PendingStatementEdit, OemCostEvidence } from "../types";
 import { requireActiveReleaseId } from '../releaseGate';
 import { buildProductLot, withCarryOverProductLot, lotQtyRemaining } from "../lotUtils";
-import { companyOf, poLines, type Item, type CompanyId } from '../types';
+import { companyOf, poLines, type Item, type CompanyId, type Partner } from '../types';
 import { canConfirmPurchaseOrderReceiptItem, tracksQuantityLots, quantityLotUnitKg } from '../itemTaxonomy';
 import { itemKg, type OrderUnitInputs } from '../orderUnits';
 import { getBomIndex } from '../bomIndex';
@@ -435,7 +435,36 @@ const stripUndefined = (obj: any): any => {
  * 쓰기 직전에 뒤집어 줬는데, 2026-08-23에 코드를 DB 이름으로 맞추고 그 변환을 없앴다.
  */
 
-export const addItem = async (collectionName: CollectionName, item: any) => {
+export type PartnerRegistrationConflict = {
+  code: 'partner-registration-conflict';
+  partnerId: string;
+  existingPartner?: Partner;
+};
+export type AddItemOptions = { partnerRegistration?: true };
+
+function registrationJson(value: unknown, seen = new Set<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (!value || typeof value !== 'object' || seen.has(value) || Object.getOwnPropertySymbols(value).length) return false;
+  const proto = Object.getPrototypeOf(value);
+  if (Array.isArray(value) ? proto !== Array.prototype : proto !== Object.prototype && proto !== null) return false;
+  if (Array.isArray(value)) {
+    if (Object.keys(value).length !== value.length) return false;
+    for (let index = 0; index < value.length; index++) if (!Object.hasOwn(value, index)) return false;
+  }
+  seen.add(value);
+  const valid = Object.entries(Object.getOwnPropertyDescriptors(value)).every(([key, descriptor]) =>
+    Array.isArray(value) && key === 'length' || descriptor.enumerable && 'value' in descriptor && registrationJson(descriptor.value, seen));
+  seen.delete(value);
+  return valid;
+}
+
+/** 응답을 놓쳐 다시 등록하더라도 다른 담당자가 수정한 거래처를 덮어쓰지 않는다. */
+export const addItem = async (collectionName: CollectionName, item: any, options?: AddItemOptions) => {
+  if (options?.partnerRegistration === true && (collectionName !== 'partners' || !item ||
+      typeof item.id !== 'string' || !item.id.trim() || item.id !== item.id.trim() || item.id.includes('/') || !registrationJson(item))) {
+    throw new Error('거래처 등록 요청의 고정 번호와 입력 형식을 확인해 주세요.');
+  }
   /**
    * **차·대를 못 채우는 전표는 안 만든다.** 만드는 길이 여러 갈래(전표화면·확인사항·반품·임가공)라
    * 화면마다 막으면 한 곳은 반드시 새다. 쓰는 문 하나에서 막는다.
@@ -447,6 +476,23 @@ export const addItem = async (collectionName: CollectionName, item: any) => {
   }
   const { id, ...raw } = item;
   const data = await companyScopedWriteData(collectionName, itemWritePayload(collectionName, stripUndefined(raw)));
+  if (options?.partnerRegistration === true) {
+    // 재시도마다 바뀌는 폼이나 SDK 객체가 아니라 이번 요청의 유한 JSON 사본만 비교한다.
+    const request = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+    const ref = doc(db, 'partners', id);
+    return runTransaction(db, async tx => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists()) { tx.set(ref, request); return id as string; }
+      const before = snapshot.data();
+      const sameCompany = before.companyId === request.companyId;
+      if (sameCompany && Object.keys(request).every(key => Object.hasOwn(before, key) && registrationJson(before[key]) && inventoryWriterSame(before[key], request[key]))) return id as string;
+      const error = Object.assign(new Error('이미 등록된 거래처의 내용이 달라 자동으로 덮어쓰지 않았습니다. 기존 거래처를 확인해 주세요.'), {
+        code: 'partner-registration-conflict' as const, partnerId: id as string,
+        ...(sameCompany ? { existingPartner: { ...before, id: snapshot.id } as Partner } : {}),
+      });
+      throw error;
+    });
+  }
   if(protocolCollections.has(collectionName)){
     const ref=id?doc(db,collectionName,id):doc(collection(db,collectionName));
     await protocolGatewayWrite(db,collectionName,ref,data,'set');return ref.id;

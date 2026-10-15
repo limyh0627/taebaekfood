@@ -3144,7 +3144,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             );
           })()}
           {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}
-          {currentView === 'partners' && <PartnerManager partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId })} onDeleteClient={(id) => deleteItem('partners', id)} />}
+          {currentView === 'partners' && <PartnerManager key={companyId} partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId }, { partnerRegistration: true })} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'quotation' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <QuotationManager

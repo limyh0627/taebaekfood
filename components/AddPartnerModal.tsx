@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
 import { Partner, PartnerChannel, PartnerType, ShipMethod } from '../types';
 import { channelStyle, CHANNELS } from '../src/shared/channelStyle';
 import { isShippingPartner, isShipMethod } from '../src/shared/partnerShipping';
+import type { PartnerRegistrationConflict } from '../src/shared/services/firebaseService';
 import ModalShell from '../src/shared/components/ModalShell';
 
 declare global {
@@ -14,10 +15,32 @@ declare global {
 
 interface AddPartnerModalProps {
   onClose: () => void;
-  onSave: (_client: Partner) => void;
+  onSave: (_client: Partner) => void | Promise<unknown>;
+  onOpenExisting?: (partner: Partner) => void;
 }
 
-const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) => {
+export function partnerSaveErrorMessage(error: unknown): string {
+  const code = error && typeof error === 'object' && 'code' in error ? String(error.code).split('/').pop() : '';
+  const action = code === 'permission-denied' ? '현재 계정에 거래처 저장 권한이 있는지 확인해 주세요.'
+    : code === 'unauthenticated' ? '로그인 상태를 확인한 뒤 다시 시도해 주세요.'
+    : ['unavailable', 'deadline-exceeded', 'aborted'].includes(code ?? '') ? '연결 또는 처리가 지연되어 저장 결과를 확인하지 못했습니다. 연결 상태를 확인하고 이 창에서 다시 시도해 주세요.'
+    : code === 'not-found' ? '거래처를 찾지 못했습니다. 목록에서 거래처가 존재하는지 확인해 주세요.'
+    : code === 'partner-registration-conflict' ? '같은 등록 번호의 거래처가 이미 존재하며 현재 입력과 다릅니다. 거래처 목록에서 기존 거래처를 확인한 뒤 수정해 주세요.'
+    : error instanceof Error && /[가-힣]/.test(error.message) ? error.message + ' 내용을 확인하고 이 창에서 다시 시도해 주세요.'
+    : '거래처 저장을 완료하지 못했습니다. 연결 상태와 입력을 확인하고 이 창에서 다시 시도해 주세요.';
+  return action + ' 이 창의 입력은 유지했습니다.';
+}
+
+const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave, onOpenExisting }) => {
+  // 응답을 잃어도 같은 창의 재시도가 새 거래처를 만들지 않게 등록 번호를 고정한다.
+  const [registrationId] = useState(() => 'c-' + crypto.randomUUID());
+  const savingRef = useRef(false);
+  const mounted = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [conflictPartner, setConflictPartner] = useState<Partner | null>(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const close = () => { if (!savingRef.current) onClose(); };
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -34,7 +57,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
 
   const openAddressSearch = () => {
     new window.daum.Postcode({
-      oncomplete: (data) => setFormData(prev => ({ ...prev, address: data.address })),
+      oncomplete: (data) => { if (mounted.current && !savingRef.current) setFormData(prev => ({ ...prev, address: data.address })); },
     }).open();
   };
 
@@ -44,8 +67,9 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
     return { id: id as PartnerChannel, label: c.label, icon: c.icon, color: c.chip };
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingRef.current || !mounted.current) return;
     if (!formData.name) return;
     if (isShippingPartner(formData.partnerType) && !isShipMethod(formData.defaultShipMethod)) {
       setShippingError('기본 배송방식을 선택해 주세요.');
@@ -53,7 +77,7 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
     }
 
     const newClient: Partner = {
-      id: `c-${Date.now()}`,
+      id: registrationId,
       name: formData.name,
       email: formData.email,
       mobile: formData.mobile,
@@ -65,13 +89,29 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
       ...(isShippingPartner(formData.partnerType) && isShipMethod(formData.defaultShipMethod) ? { defaultShipMethod: formData.defaultShipMethod } : {})
     };
 
-    onSave(newClient);
+    savingRef.current = true;
+    setIsSaving(true);
+    setSaveError('');
+    setConflictPartner(null);
+    try {
+      await onSave(newClient);
+      if (mounted.current) onClose();
+    } catch (error) {
+      if (!mounted.current) return;
+      setSaveError(partnerSaveErrorMessage(error));
+      const conflict = error && typeof error === 'object' ? error as Partial<PartnerRegistrationConflict> : null;
+      if (conflict?.code === 'partner-registration-conflict' && conflict.partnerId === registrationId && conflict.existingPartner?.id === registrationId && typeof conflict.existingPartner.name === 'string' && conflict.existingPartner.name.trim()) setConflictPartner(conflict.existingPartner);
+    } finally {
+      savingRef.current = false;
+      if (mounted.current) setIsSaving(false);
+    }
   };
 
   return (
-    <ModalShell title="신규 거래처 등록" onClose={onClose} bodyClassName="!p-0">
+    <ModalShell title="신규 거래처 등록" onClose={close} bodyClassName="!p-0">
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+          <fieldset disabled={isSaving} className="min-w-0 space-y-6">
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <User size={14} className="mr-2" /> 거래처명 (상호명)
@@ -218,23 +258,28 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
             </div>
           </div>
           )}
+          </fieldset>
         </form>
+        {saveError && <div role="alert" className="mx-6 mb-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">{saveError}</div>}
+        {conflictPartner && onOpenExisting && <button type="button" className="mx-6 mb-3 rounded-lg border border-slate-300 bg-white p-3 text-sm font-bold text-slate-700" onClick={() => { if (!savingRef.current) { onOpenExisting(conflictPartner); onClose(); } }}>기존 거래처 확인/수정</button>}
 
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex space-x-3">
           <button
             type="button"
-            onClick={onClose}
+            disabled={isSaving}
+            onClick={close}
             className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
           >
             취소
           </button>
           <button
             type="submit"
+            disabled={isSaving}
             onClick={handleSubmit}
             className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center space-x-2"
           >
             <Check size={20} />
-            <span>등록 완료</span>
+            <span>{isSaving ? '저장 중…' : '등록 완료'}</span>
           </button>
         </div>
     </ModalShell>
