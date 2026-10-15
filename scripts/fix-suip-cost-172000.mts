@@ -1,88 +1,14 @@
-// 수입들기름 매입 말통값 172,000원을 16.5kg로 나눈 원/kg 단가로 고치고 파생 원가를 다시 굴린다.
-// 기본 dry / 실제 적용 --apply / 되돌리기 --undo
-import admin from 'firebase-admin';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { buildFormula, formulaRowsOf } from '../src/features/admin/bom';
-import { buildCostFn } from '../src/shared/bomCost';
-
-const APPLY = process.argv.includes('--apply');
-const UNDO = process.argv.includes('--undo');
-const COMPANY = 'taebaek';
-const NEW_COST = Math.round((172_000 / 16.5) * 100) / 100;
-const BACKUP = '로컬전용/백업/suip-cost-172000-v2.json';
-
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-  console.error('GOOGLE_APPLICATION_CREDENTIALS가 없습니다.');
-  process.exit(1);
+/** 완료된 고정 정정 CLI의 안내만 유지한다. */
+const args = process.argv.slice(2);
+console.error('옛 수입들기름 고정 매입값 원가 정정·복원 명령은 폐기되었습니다. 원격 접속과 자료 변경은 하지 않습니다.');
+console.error('2026-09-17에 71건 적용과 재조회를 완료했습니다. 당시 고정 매입값을 현재 원가에 다시 적용하지 않습니다.');
+console.error('옛 undo도 종료되었습니다. 새 복원은 현재 원문과 후속 변경을 대조하고 별도 검수를 받은 계획으로 준비하세요.');
+console.error('과거 백업: 로컬전용/백업/suip-cost-172000-v2.json / 실행 기록: DB-CHANGELOG.md');
+console.error('제거 조건: docs/deprecated-field-audit-20261006.md. 과거 백업·작업 이력은 보존합니다.');
+if (args.includes('--apply') || args.includes('--undo')) {
+  console.error('쓰기 요청을 거절했습니다. 과거 고정 정정이나 무조건 복원은 실행할 수 없습니다.');
+  process.exitCode = 1;
+} else if (args.some(arg => arg !== '--dry' && arg !== '--help')) {
+  console.error('지원하지 않는 인수입니다. 기본 실행 또는 --dry, --help로 폐기 안내를 확인하세요.');
+  process.exitCode = 1;
 }
-admin.initializeApp({ credential: admin.credential.applicationDefault() });
-const db = admin.firestore();
-
-type Saved = { before: Record<string, unknown>; after: Record<string, unknown> };
-type Backup = { savedAt: string; rows: Record<string, Saved> };
-
-if (UNDO) {
-  if (!existsSync(BACKUP)) throw new Error(`백업이 없습니다: ${BACKUP}`);
-  const backup = JSON.parse(readFileSync(BACKUP, 'utf8')) as Backup;
-  const batch = db.batch();
-  for (const [id, saved] of Object.entries(backup.rows)) batch.set(db.collection('items').doc(id), saved.before);
-  await batch.commit();
-  console.log(`${Object.keys(backup.rows).length}건을 적용 전 값으로 복구했습니다.`);
-  process.exit(0);
-}
-
-const load = async (name: string) => (await db.collection(name).where('companyId', '==', COMPANY).get())
-  .docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-const [items, boms, formulas] = await Promise.all([load('items'), load('item_bom'), load('item_formula')]);
-const live = items.filter(item => !item.archived);
-const source = live.filter(item => item.name === '수입들기름');
-if (source.length !== 1) throw new Error(`태백 수입들기름 활성 품목이 ${source.length}개입니다.`);
-
-const patched = live.map(item => item.id === source[0].id ? { ...item, cost: NEW_COST } : item);
-const oldCost = buildCostFn({
-  allItems: live,
-  itemBoms: boms,
-  formulaOf: key => buildFormula(key, formulas, live),
-  formulaRowsOf: key => formulaRowsOf(key, formulas),
-});
-const cost = buildCostFn({
-  allItems: patched,
-  itemBoms: boms,
-  formulaOf: key => buildFormula(key, formulas, patched),
-  formulaRowsOf: key => formulaRowsOf(key, formulas),
-});
-const rows: Record<string, Saved> = {};
-for (const item of patched) {
-  const before = live.find(row => row.id === item.id)!;
-  const next = item.id === source[0].id ? NEW_COST : cost(item);
-  const previousCalculated = item.id === source[0].id ? Number(before.cost ?? 0) : oldCost(before);
-  // 이번 원료 단가 변경으로 계산값이 달라진 의존 품목만 고친다. 기존 원가 불일치는 별도 진단 대상이다.
-  if (!(next > 0) || Math.abs(next - previousCalculated) <= 0.005) continue;
-  rows[item.id] = { before, after: { ...before, cost: Math.round(next * 100) / 100 } };
-}
-
-console.log(`수입들기름 ${Number(source[0].cost ?? 0).toLocaleString()} → ${NEW_COST.toLocaleString()}원/kg (172,000 ÷ 16.5)`);
-console.log(`직접 1건 + 파생 롤업 ${Math.max(0, Object.keys(rows).length - 1)}건 = 총 ${Object.keys(rows).length}건`);
-for (const [id, saved] of Object.entries(rows).slice(0, 15)) {
-  console.log(`- ${String(saved.before.name)} [${id}] ${Number(saved.before.cost ?? 0).toLocaleString()} → ${Number(saved.after.cost).toLocaleString()}`);
-}
-if (Object.keys(rows).length > 15) console.log(`- 외 ${Object.keys(rows).length - 15}건`);
-console.log(APPLY ? '실제 적용' : '미리보기(dry) — 쓰기 없음');
-if (!APPLY) process.exit(0);
-if (existsSync(BACKUP)) throw new Error(`기존 백업이 있습니다: ${BACKUP}`);
-
-mkdirSync(dirname(BACKUP), { recursive: true });
-writeFileSync(BACKUP, JSON.stringify({ savedAt: new Date().toISOString(), rows } satisfies Backup, null, 2), 'utf8');
-for (const chunkStart of Array.from({ length: Math.ceil(Object.keys(rows).length / 400) }, (_, i) => i * 400)) {
-  const batch = db.batch();
-  for (const [id, saved] of Object.entries(rows).slice(chunkStart, chunkStart + 400)) {
-    batch.update(db.collection('items').doc(id), { cost: saved.after.cost });
-  }
-  await batch.commit();
-}
-for (const [id, saved] of Object.entries(rows)) {
-  const current = (await db.collection('items').doc(id).get()).data();
-  if (Number(current?.cost) !== Number(saved.after.cost)) throw new Error(`${id}: 적용 뒤 재조회 검증 실패`);
-}
-console.log(`${Object.keys(rows).length}건 적용·재조회 검증 완료`);
