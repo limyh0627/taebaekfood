@@ -42,6 +42,7 @@ export const COL = {
   itemBom: 'item_bom',
   partners: 'partners',
   partnerItem: 'partner_item',
+  partnerItemCleanupReceipts: 'partnerItemCleanupReceipts',
   itemReceipts: 'itemReceipts',
   itemTaxonomy: 'itemTaxonomy',
   itemPack: 'item_pack',

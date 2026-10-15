@@ -4749,6 +4749,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="flex flex-col h-full overflow-y-auto">
               {true && (
                 <ItemManager
+                  onPartnerItemCleanupChanged={refreshStaticData}
                   companyId={companyId}
                   orderUnitInputs={appData.orderUnitInputs}
                   isAdmin={isAdmin}

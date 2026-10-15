@@ -103,7 +103,7 @@ service cloud.firestore {
     //  사장님이 정한 관리자 전용 메뉴 그대로다: 전표·세금계산서·견적, 인사관리, 문서함,
     //  현금출납장·거래처원장·제품별원장, 재무제표, 분석 화면들.
     function serverAuditCollection(c) {
-      return c in ['retirementProfiles', 'retirementEvents', 'retirementCommandReceipts', 'manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
+      return c in ['partnerItemCleanupReceipts', 'retirementProfiles', 'retirementEvents', 'retirementCommandReceipts', 'manualSettlementOperations', 'partnerPaymentOperations', 'manualSettlementBatchOperations',
                    'loanMovementOperations', 'returnOperations', 'voucherMutationOperations',
                    'orderLockRecoveryOperations', 'companyTransferOperations', 'oemReceiptOperations', 'partnerAdvanceOperations', 'financialOpeningOperations', 'returnSubmissionOperations', 'taxIssueOperations'];
     }

@@ -349,3 +349,5 @@ export { retireOrderRequestCommand, claimRetiredOrderInventoryOperationCommand }
 export { inspectTradeStatementCommand } from './inspectTradeStatementCommand';
 
 export { cancelTradeStatementCommand } from './cancelTradeStatementCommand';
+
+export { partnerItemCleanupCommand } from './partnerItemCleanupCommand';
