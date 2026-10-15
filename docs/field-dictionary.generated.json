@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T09:48:20.556Z",
+  "generatedAt": "2026-10-15T10:02:21.166Z",
   "sourceFiles": 497,
   "unresolvedAccesses": 3490,
   "unresolvedPropertyAccesses": [
@@ -71254,7 +71254,7 @@
             "components/hr/RetirementBenefitPanel.tsx:57",
             "functions/src/retirementBenefitCommand.ts:14",
             "functions/src/retirementBenefitCommand.ts:27",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         },
         {
@@ -71386,8 +71386,8 @@
             "functions/src/retirementBenefitCommand.ts:40",
             "functions/src/retirementBenefitCommand.ts:41",
             "functions/src/retirementBenefitCommand.ts:43",
-            "functions/src/retirementBenefitCommand.ts:61",
-            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66",
             "functions/src/shared/retirementBenefit.ts:48",
             "functions/src/shared/retirementBenefit.ts:58"
           ]
@@ -71421,7 +71421,7 @@
             "functions/src/retirementBenefitCommand.ts:37",
             "functions/src/retirementBenefitCommand.ts:39",
             "functions/src/retirementBenefitCommand.ts:40",
-            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:66",
             "functions/src/shared/retirementBenefit.ts:48"
           ]
         },
@@ -71551,9 +71551,9 @@
             "functions/src/retirementBenefitCommand.ts:28",
             "functions/src/retirementBenefitCommand.ts:32",
             "functions/src/retirementBenefitCommand.ts:35",
-            "functions/src/retirementBenefitCommand.ts:60",
-            "functions/src/retirementBenefitCommand.ts:61",
             "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66",
             "src/shared/services/retirementBenefitCommands.ts:31",
             "src/shared/services/retirementBenefitCommands.ts:47"
           ]
@@ -71574,7 +71574,7 @@
           "type": "string",
           "declaration": "functions/src/shared/retirementBenefit.ts:11",
           "references": [
-            "functions/src/retirementBenefitCommand.ts:61"
+            "functions/src/retirementBenefitCommand.ts:64"
           ]
         },
         {
@@ -71585,7 +71585,7 @@
           "references": [
             "components/hr/RetirementBenefitPanel.tsx:96",
             "functions/src/retirementBenefitCommand.ts:28",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         }
       ]
@@ -90053,7 +90053,7 @@
             "functions/src/retirementBenefitCommand.ts:17",
             "functions/src/retirementBenefitCommand.ts:19",
             "functions/src/retirementBenefitCommand.ts:54",
-            "functions/src/retirementBenefitCommand.ts:61"
+            "functions/src/retirementBenefitCommand.ts:64"
           ]
         },
         {
@@ -90067,10 +90067,10 @@
             "functions/src/retirementBenefitCommand.ts:48",
             "functions/src/retirementBenefitCommand.ts:49",
             "functions/src/retirementBenefitCommand.ts:54",
-            "functions/src/retirementBenefitCommand.ts:56",
-            "functions/src/retirementBenefitCommand.ts:60",
-            "functions/src/retirementBenefitCommand.ts:61",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:59",
+            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         }
       ]
@@ -160949,7 +160949,7 @@
             "components/hr/RetirementBenefitPanel.tsx:57",
             "functions/src/retirementBenefitCommand.ts:14",
             "functions/src/retirementBenefitCommand.ts:27",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         },
         {
@@ -161228,8 +161228,8 @@
             "functions/src/retirementBenefitCommand.ts:40",
             "functions/src/retirementBenefitCommand.ts:41",
             "functions/src/retirementBenefitCommand.ts:43",
-            "functions/src/retirementBenefitCommand.ts:61",
-            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66",
             "functions/src/shared/retirementBenefit.ts:48",
             "functions/src/shared/retirementBenefit.ts:58"
           ]
@@ -161272,7 +161272,7 @@
             "functions/src/retirementBenefitCommand.ts:37",
             "functions/src/retirementBenefitCommand.ts:39",
             "functions/src/retirementBenefitCommand.ts:40",
-            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:66",
             "functions/src/shared/retirementBenefit.ts:48"
           ]
         },
@@ -161432,9 +161432,9 @@
             "functions/src/retirementBenefitCommand.ts:28",
             "functions/src/retirementBenefitCommand.ts:32",
             "functions/src/retirementBenefitCommand.ts:35",
-            "functions/src/retirementBenefitCommand.ts:60",
-            "functions/src/retirementBenefitCommand.ts:61",
             "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66",
             "src/shared/services/retirementBenefitCommands.ts:31",
             "src/shared/services/retirementBenefitCommands.ts:47"
           ]
@@ -161461,7 +161461,7 @@
           ],
           "inherited": false,
           "references": [
-            "functions/src/retirementBenefitCommand.ts:61"
+            "functions/src/retirementBenefitCommand.ts:64"
           ]
         },
         {
@@ -161475,7 +161475,7 @@
           "references": [
             "components/hr/RetirementBenefitPanel.tsx:96",
             "functions/src/retirementBenefitCommand.ts:28",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         }
       ]
@@ -189496,7 +189496,7 @@
             "functions/src/retirementBenefitCommand.ts:17",
             "functions/src/retirementBenefitCommand.ts:19",
             "functions/src/retirementBenefitCommand.ts:54",
-            "functions/src/retirementBenefitCommand.ts:61"
+            "functions/src/retirementBenefitCommand.ts:64"
           ]
         },
         {
@@ -189513,10 +189513,10 @@
             "functions/src/retirementBenefitCommand.ts:48",
             "functions/src/retirementBenefitCommand.ts:49",
             "functions/src/retirementBenefitCommand.ts:54",
-            "functions/src/retirementBenefitCommand.ts:56",
-            "functions/src/retirementBenefitCommand.ts:60",
-            "functions/src/retirementBenefitCommand.ts:61",
-            "functions/src/retirementBenefitCommand.ts:63"
+            "functions/src/retirementBenefitCommand.ts:59",
+            "functions/src/retirementBenefitCommand.ts:63",
+            "functions/src/retirementBenefitCommand.ts:64",
+            "functions/src/retirementBenefitCommand.ts:66"
           ]
         }
       ]
@@ -226729,17 +226729,17 @@
         "reason": "array-binding"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:60",
+        "location": "functions/src/retirementBenefitCommand.ts:63",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:60",
+        "location": "functions/src/retirementBenefitCommand.ts:63",
         "syntax": "binding",
         "reason": "array-binding"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:60",
+        "location": "functions/src/retirementBenefitCommand.ts:63",
         "syntax": "binding",
         "reason": "array-binding"
       },
@@ -227400,14 +227400,14 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 31182,
+      "dot:no-model-declaration": 31183,
       "dot:connected": 28070,
       "binding:connected": 1660,
       "binding:rest-binding": 53,
       "element:dynamic-key": 759,
       "binding:array-binding": 3411,
       "dot:property-symbol-unresolved": 2139,
-      "dot:ambiguous-union": 1284,
+      "dot:ambiguous-union": 1285,
       "element:array-index": 755,
       "binding:no-model-declaration": 359,
       "element:any-receiver": 98,
@@ -243205,7 +243205,7 @@
         "resolutionKind": "static-path"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:60",
+        "location": "functions/src/retirementBenefitCommand.ts:63",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -243233,7 +243233,7 @@
         "wrapperDeclaration": "functions/src/retirementBenefitCommand.ts:45"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:60",
+        "location": "functions/src/retirementBenefitCommand.ts:63",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -243257,7 +243257,7 @@
         "wrapperDeclaration": "functions/src/retirementBenefitCommand.ts:45"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:63",
+        "location": "functions/src/retirementBenefitCommand.ts:66",
         "runtime": "server",
         "api": "doc",
         "style": "method",
@@ -243285,7 +243285,7 @@
         "wrapperDeclaration": "functions/src/retirementBenefitCommand.ts:45"
       },
       {
-        "location": "functions/src/retirementBenefitCommand.ts:63",
+        "location": "functions/src/retirementBenefitCommand.ts:66",
         "runtime": "server",
         "api": "collection",
         "style": "method",
@@ -260316,7 +260316,7 @@
             ]
           },
           {
-            "location": "functions/src/retirementBenefitCommand.ts:60",
+            "location": "functions/src/retirementBenefitCommand.ts:63",
             "callee": "eventQuery",
             "resolvedPaths": [
               {
@@ -260359,14 +260359,14 @@
           "functions/src/retirementBenefitCommand.ts:49",
           "functions/src/retirementBenefitCommand.ts:54",
           "functions/src/retirementBenefitCommand.ts:54",
-          "functions/src/retirementBenefitCommand.ts:60",
-          "functions/src/retirementBenefitCommand.ts:60",
           "functions/src/retirementBenefitCommand.ts:63",
-          "functions/src/retirementBenefitCommand.ts:63"
+          "functions/src/retirementBenefitCommand.ts:63",
+          "functions/src/retirementBenefitCommand.ts:66",
+          "functions/src/retirementBenefitCommand.ts:66"
         ],
         "callers": [
           {
-            "location": "functions/src/retirementBenefitCommand.ts:66",
+            "location": "functions/src/retirementBenefitCommand.ts:69",
             "callee": "executeRetirementBenefit",
             "resolvedPaths": [
               {
@@ -260394,25 +260394,25 @@
                 "resolutionKind": "dynamic-wrapper-collection"
               },
               {
-                "sdkLocation": "functions/src/retirementBenefitCommand.ts:60",
+                "sdkLocation": "functions/src/retirementBenefitCommand.ts:63",
                 "path": "{COL.profiles}/{retirementProfileId(scope.companyId,request.employeeId)}",
                 "collectionKind": "dynamic",
                 "resolutionKind": "dynamic-wrapper-collection"
               },
               {
-                "sdkLocation": "functions/src/retirementBenefitCommand.ts:60",
+                "sdkLocation": "functions/src/retirementBenefitCommand.ts:63",
                 "path": "{COL.profiles}",
                 "collectionKind": "dynamic",
                 "resolutionKind": "dynamic-wrapper-collection"
               },
               {
-                "sdkLocation": "functions/src/retirementBenefitCommand.ts:63",
+                "sdkLocation": "functions/src/retirementBenefitCommand.ts:66",
                 "path": "{COL.events}/{retirementProfileId(scope.companyId,request.employeeId)+'__'+event.id}",
                 "collectionKind": "dynamic",
                 "resolutionKind": "dynamic-wrapper-collection"
               },
               {
-                "sdkLocation": "functions/src/retirementBenefitCommand.ts:63",
+                "sdkLocation": "functions/src/retirementBenefitCommand.ts:66",
                 "path": "{COL.events}",
                 "collectionKind": "dynamic",
                 "resolutionKind": "dynamic-wrapper-collection"
@@ -260992,10 +260992,10 @@
       "functions/src/retirementBenefitCommand.ts:54",
       "functions/src/retirementBenefitCommand.ts:54",
       "functions/src/retirementBenefitCommand.ts:56",
-      "functions/src/retirementBenefitCommand.ts:60",
-      "functions/src/retirementBenefitCommand.ts:60",
       "functions/src/retirementBenefitCommand.ts:63",
       "functions/src/retirementBenefitCommand.ts:63",
+      "functions/src/retirementBenefitCommand.ts:66",
+      "functions/src/retirementBenefitCommand.ts:66",
       "functions/src/manualSettlementBatchCommand.ts:39",
       "functions/src/manualSettlementBatchCommand.ts:40",
       "functions/src/manualSettlementBatchCommand.ts:41",
