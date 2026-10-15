@@ -1541,8 +1541,8 @@ shared/types.ts 외 interface/type alias 828개를 별도 목록에 기록한다
 | Input | src/features/statements/infrastructure/statementExcel.ts:4 | interface | direct-properties-only | type, docNo, dateLabel, tradeDate, partnerName, items, totals |
 | QuickItemMetrics | src/features/statements/domain/quickItemModel.ts:4 | type-alias | direct-properties-only | supply, tax, marginRate, unitSupply, showUnitSupply |
 | Props | components/CashLedger.tsx:24 | interface | direct-properties-only | returnOperations, advanceStatements, companyId, cashAccounts, cashEntries, accountCodes, fixedCostTemplates, partners, issuedStatements, settlements, currentUser, onAddCashAccount, onUpdateCashAccount, onCorrectCashAccount, onAddCashEntry, onDeleteCashEntry, onAddSettlement, onDeleteSettlement |
-| EntryAttempt | components/CashLedger.tsx:402 | type-alias | direct-properties-only | companyId, userId, entries |
-| AccountModalProps | components/CashLedger.tsx:971 | interface | direct-properties-only | companyId, accounts, cashEntries, onClose, onAdd, onUpdate, onCorrect, onAddEntry |
+| EntryAttempt | components/CashLedger.tsx:403 | type-alias | direct-properties-only | companyId, userId, entries |
+| AccountModalProps | components/CashLedger.tsx:972 | interface | direct-properties-only | companyId, accounts, cashEntries, onClose, onAdd, onUpdate, onCorrect, onAddEntry |
 | TradeStatementProps | components/TradeStatement.tsx:102 | interface | direct-properties-only | orderUnitInputs, returnOperations, advanceStatements, orders, allItems, partners, partnerItems, accountCodes, accountGroups, cashAccounts, cashEntries, settlements, onAddCashEntry, onIssueCashEntry, onUpdateCashEntry, onMatchCashAllocations, onResumeCashMutation, onAddSettlement, onUpdateSettlement, onDeleteCashEntry, onDeleteSettlement, onAddCashAccount, onUpdateCashAccount, fixedCostTemplates, onGenerateRecurringCosts, onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate, voucherMode, embedded, issuedStatements, onUpdateStatus, onUpsertPartnerItem, onAddIssuedStatement, onApplyStatement, companyId, onUpdateIssuedStatement, onProposeEdit, focusDocNo, onFocusHandled, detailStatementId, onDetailClose, onDeleteIssuedStatement, pendingInvoice, onClearPendingInvoice, composerOnly, onComposerClose, purchaseUnitOrders, confirmedOrders, orderRequests, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, companyInfo, onSaveCompanyInfo, onUpdateItemCost, onUpdateOrder, currentUserId, defaultTab, expensePresets, onAddExpensePreset, onDeleteExpensePreset |
 | StatementType | components/TradeStatement.tsx:187 | type-alias | non-object-alias-not-expanded |  |
 | Period | src/shared/ui/PeriodPicker.tsx:3 | type-alias | non-object-alias-not-expanded |  |
@@ -2462,8 +2462,8 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | Input | src/features/statements/infrastructure/statementExcel.ts:4 | checker-resolved-properties-only | 7 |
 | QuickItemMetrics | src/features/statements/domain/quickItemModel.ts:4 | checker-resolved-properties-only | 5 |
 | Props | components/CashLedger.tsx:24 | checker-resolved-properties-only | 18 |
-| EntryAttempt | components/CashLedger.tsx:402 | checker-resolved-properties-only | 3 |
-| AccountModalProps | components/CashLedger.tsx:971 | checker-resolved-properties-only | 8 |
+| EntryAttempt | components/CashLedger.tsx:403 | checker-resolved-properties-only | 3 |
+| AccountModalProps | components/CashLedger.tsx:972 | checker-resolved-properties-only | 8 |
 | TradeStatementProps | components/TradeStatement.tsx:102 | checker-resolved-properties-only | 62 |
 | StatementType | components/TradeStatement.tsx:187 | non-object-model-not-expanded | 0 |
 | Period | src/shared/ui/PeriodPicker.tsx:3 | non-object-model-not-expanded | 0 |
@@ -3856,11 +3856,11 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | src/features/statements/infrastructure/statementPrint.ts:122 | item.price | any | any-receiver |
 | src/features/statements/infrastructure/statementPrint.ts:123 | item.total | any | any-receiver |
 | src/shared/services/confirmedCashBalance.ts:23 | token?.claims.companyId | ParsedToken \| undefined | property-symbol-unresolved |
-| components/CashLedger.tsx:659 | proof?.operationStatus | Record<string, unknown> \| undefined | property-symbol-unresolved |
-| components/CashLedger.tsx:659 | proof.version | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:660 | proof.financialWrites | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:660 | proof.companyId | Record<string, unknown> | property-symbol-unresolved |
-| components/CashLedger.tsx:660 | proof.operationId | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:660 | proof?.operationStatus | Record<string, unknown> \| undefined | property-symbol-unresolved |
+| components/CashLedger.tsx:660 | proof.version | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:661 | proof.financialWrites | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:661 | proof.companyId | Record<string, unknown> | property-symbol-unresolved |
+| components/CashLedger.tsx:661 | proof.operationId | Record<string, unknown> | property-symbol-unresolved |
 | components/TradeStatement.tsx:236 | (item as any).itemId | any | any-receiver |
 | components/TradeStatement.tsx:238 | (item as any).partnerId | any | any-receiver |
 | components/TradeStatement.tsx:300 | pi.Direction | any | any-receiver |
@@ -3914,15 +3914,15 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | components/TradeStatement.tsx:2291 | statement.totalAmount | any | any-receiver |
 | components/TradeStatement.tsx:2919 | error?.message | any | any-receiver |
 | components/TradeStatement.tsx:3094 | (purchaseOrder as any).id | any | any-receiver |
-| components/ProfitAnalysis.tsx:395 | payload?.length | any | any-receiver |
-| components/ProfitAnalysis.tsx:399 | payload.map | any | any-receiver |
-| components/ProfitAnalysis.tsx:400 | p.name | any | any-receiver |
-| components/ProfitAnalysis.tsx:401 | p.color | any | any-receiver |
-| components/ProfitAnalysis.tsx:402 | p.name | any | any-receiver |
-| components/ProfitAnalysis.tsx:403 | p.value | any | any-receiver |
-| components/ProfitAnalysis.tsx:594 | d.sales | any | any-receiver |
-| components/ProfitAnalysis.tsx:594 | d.operatingProfit | any | any-receiver |
-| components/ProfitAnalysis.tsx:594 | d.sales | any | any-receiver |
+| components/ProfitAnalysis.tsx:396 | payload?.length | any | any-receiver |
+| components/ProfitAnalysis.tsx:400 | payload.map | any | any-receiver |
+| components/ProfitAnalysis.tsx:401 | p.name | any | any-receiver |
+| components/ProfitAnalysis.tsx:402 | p.color | any | any-receiver |
+| components/ProfitAnalysis.tsx:403 | p.name | any | any-receiver |
+| components/ProfitAnalysis.tsx:404 | p.value | any | any-receiver |
+| components/ProfitAnalysis.tsx:595 | d.sales | any | any-receiver |
+| components/ProfitAnalysis.tsx:595 | d.operatingProfit | any | any-receiver |
+| components/ProfitAnalysis.tsx:595 | d.sales | any | any-receiver |
 | components/LoanManager.tsx:106 | amountErrors.editBalance | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:106 | amountErrors.editOpening | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:123 | amountErrors.opening | Record<string, string> | property-symbol-unresolved |
@@ -3945,14 +3945,14 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
 | components/LoanManager.tsx:234 | amountErrors.interest | Record<string, string> | property-symbol-unresolved |
-| components/PartnerLedger.tsx:518 | it.name | any | any-receiver |
-| components/PartnerLedger.tsx:519 | it.spec | any | any-receiver |
-| components/PartnerLedger.tsx:520 | it.qty | any | any-receiver |
-| components/PartnerLedger.tsx:521 | it.price | any | any-receiver |
-| components/PartnerLedger.tsx:522 | it.supply | any | any-receiver |
-| components/PartnerLedger.tsx:523 | it.tax | any | any-receiver |
-| components/PartnerLedger.tsx:524 | it.total | any | any-receiver |
-| components/PartnerLedger.tsx:544 | i.name | any | any-receiver |
+| components/PartnerLedger.tsx:519 | it.name | any | any-receiver |
+| components/PartnerLedger.tsx:520 | it.spec | any | any-receiver |
+| components/PartnerLedger.tsx:521 | it.qty | any | any-receiver |
+| components/PartnerLedger.tsx:522 | it.price | any | any-receiver |
+| components/PartnerLedger.tsx:523 | it.supply | any | any-receiver |
+| components/PartnerLedger.tsx:524 | it.tax | any | any-receiver |
+| components/PartnerLedger.tsx:525 | it.total | any | any-receiver |
+| components/PartnerLedger.tsx:545 | i.name | any | any-receiver |
 | src/features/admin/AdminApp.tsx:439 | e?.message | any | any-receiver |
 | src/features/admin/AdminApp.tsx:663 | (pc as any).itemId | any | any-receiver |
 | src/features/admin/AdminApp.tsx:664 | (pc as any).partnerId | any | any-receiver |
