@@ -1676,7 +1676,7 @@ shared/types.ts 외 interface/type alias 825개를 별도 목록에 기록한다
 
 ## 상속·공용 모델의 정적 필드 보완
 
-JSON additionalModels/resolvedModels의 references는 같은 Program에서 원선언에 귀속된 정적 속성 사용처다. 상속·Partial·교차 모델에 반복되는 참조는 해당 모델에만 고유한 사용처가 아니며 모델 사이에서 합산하지 않는다. 기존 직접 선언 필드 통계와 references는 유지한다. 구조분해·문자열 인덱스·동적 접근·불명확한 공용체는 이번 사용처 연결에서 제외한다. 선언 Node는 JSON에 저장하지 않는다. 정적 모델과 사용처는 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.
+JSON additionalModels/resolvedModels의 references는 같은 Program에서 원선언에 귀속된 정적 속성 사용처다. 상속·Partial·교차 모델에 반복되는 참조는 해당 모델에만 고유한 사용처가 아니며 모델 사이에서 합산하지 않는다. 직접 선언 수와 기존 점 접근 참조는 유지하며 고정 문자열 접근 및 객체 구조분해의 원선언 참조를 추가한다. 동적 키·배열·rest·불명확한 공용체는 추정하지 않는다. referenceCoverage는 구문별 연결 및 제외 사유를 별도로 기록하고 기존 unresolved 지표는 점 접근 symbol 미해석 의미를 유지한다. 선언 Node는 JSON에 저장하지 않는다. 정적 모델과 사용처는 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.
 
 | 모델 | 선언 | 해석 범위 | 정적 필드 수 |
 | --- | --- | --- | --- |
@@ -6008,8 +6008,8 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | OrderItem | quantity | 필수 | number | src/shared/types.ts:45 | 42 |
 | OrderItem | price | 필수 | number | src/shared/types.ts:46 | 7 |
 | OrderItem | checked | 선택 | boolean | src/shared/types.ts:47 | 40 |
-| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:48 | 6 |
-| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:49 | 5 |
+| OrderItem | checkedBy | 선택 | string | src/shared/types.ts:48 | 8 |
+| OrderItem | checkedAt | 선택 | string | src/shared/types.ts:49 | 7 |
 | OrderItem | mfgDate | 선택 | string | src/shared/types.ts:50 | 18 |
 | OrderItem | mfgBy | 선택 | string | src/shared/types.ts:51 | 2 |
 | OrderItem | mfgAt | 선택 | string | src/shared/types.ts:52 | 2 |
@@ -6033,13 +6033,13 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | ShipTo | id | 필수 | string | src/shared/types.ts:110 | 19 |
 | ShipTo | name | 필수 | string | src/shared/types.ts:111 | 12 |
 | ShipTo | archived | 선택 | boolean | src/shared/types.ts:113 | 11 |
-| PartnerItem | id | 필수 | string | src/shared/types.ts:117 | 25 |
-| PartnerItem | itemId | 필수 | string | src/shared/types.ts:118 | 69 |
-| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:119 | 62 |
-| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:120 | 28 |
-| PartnerItem | price | 선택 | number | src/shared/types.ts:121 | 29 |
-| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:122 | 13 |
-| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:131 | 21 |
+| PartnerItem | id | 필수 | string | src/shared/types.ts:117 | 27 |
+| PartnerItem | itemId | 필수 | string | src/shared/types.ts:118 | 70 |
+| PartnerItem | partnerId | 필수 | string | src/shared/types.ts:119 | 63 |
+| PartnerItem | Direction | 필수 | 'in' \| 'out' | src/shared/types.ts:120 | 29 |
+| PartnerItem | price | 선택 | number | src/shared/types.ts:121 | 30 |
+| PartnerItem | Account_Code | 선택 | string | src/shared/types.ts:122 | 14 |
+| PartnerItem | taxType | 선택 | '과세' \| '면세' \| null | src/shared/types.ts:131 | 22 |
 | PartnerItem | shipToIds | 선택 | string[] | src/shared/types.ts:145 | 1 |
 | PartnerItem | isSmartStore | 선택 | boolean | src/shared/types.ts:146 | 0 |
 | Partner | shipTos | 선택 | ShipTo[] | src/shared/types.ts:158 | 5 |
@@ -6203,16 +6203,16 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | Item | cost | 선택 | number | src/shared/types.ts:535 | 20 |
 | Item | costSource | 선택 | 'rollup' \| 'manual' | src/shared/types.ts:544 | 2 |
 | Item | lotsAreTotal | 선택 | never | src/shared/types.ts:573 | 0 |
-| Item | stock | 필수 | number | src/shared/types.ts:575 | 61 |
+| Item | stock | 필수 | number | src/shared/types.ts:575 | 62 |
 | Item | inventoryReservations | 선택 | ItemInventoryReservation[] | src/shared/types.ts:577 | 4 |
 | Item | stocktakeAnchors | 선택 | ItemStocktakeAnchor[] | src/shared/types.ts:579 | 4 |
 | Item | density | 선택 | number | src/shared/types.ts:585 | 15 |
 | Item | minStock | 필수 | number | src/shared/types.ts:586 | 22 |
 | Item | unit | 필수 | string | src/shared/types.ts:587 | 113 |
-| Item | image | 필수 | string | src/shared/types.ts:588 | 3 |
-| Item | imagePath | 선택 | string | src/shared/types.ts:590 | 5 |
+| Item | image | 필수 | string | src/shared/types.ts:588 | 4 |
+| Item | imagePath | 선택 | string | src/shared/types.ts:590 | 6 |
 | Item | oil | 선택 | string | src/shared/types.ts:591 | 3 |
-| Item | partnerIds | 선택 | string[] | src/shared/types.ts:592 | 0 |
+| Item | partnerIds | 선택 | string[] | src/shared/types.ts:592 | 1 |
 | Item | freightType | 선택 | 's' \| 'a' \| 'b' \| 'c' \| 'd' \| 'e' | src/shared/types.ts:593 | 3 |
 | Item | 품목 | 선택 | string | src/shared/types.ts:596 | 13 |
 | Item | 품목이력 | 선택 | { 품목: string; until: string }[] | src/shared/types.ts:598 | 1 |
@@ -6494,7 +6494,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrderItem | quantity | 필수 | number | src/shared/types.ts:1209 | 29 |
 | PurchaseOrderItem | unit | 필수 | string | src/shared/types.ts:1210 | 12 |
 | PurchaseOrderItem | boxQuantity | 선택 | number | src/shared/types.ts:1216 | 0 |
-| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1220 | 106 |
+| PurchaseOrder | id | 필수 | string | src/shared/types.ts:1220 | 107 |
 | PurchaseOrder | companyId | 선택 | CompanyId | src/shared/types.ts:1222 | 6 |
 | PurchaseOrder | itemId | 필수 | string | src/shared/types.ts:1223 | 5 |
 | PurchaseOrder | itemName | 필수 | string | src/shared/types.ts:1224 | 1 |
@@ -6503,14 +6503,14 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | PurchaseOrder | quantity | 필수 | number | src/shared/types.ts:1227 | 11 |
 | PurchaseOrder | unit | 선택 | string | src/shared/types.ts:1228 | 1 |
 | PurchaseOrder | boxQuantity | 선택 | number | src/shared/types.ts:1230 | 1 |
-| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1231 | 59 |
+| PurchaseOrder | status | 필수 | 'pending' \| 'invoiced' \| 'received' \| 'cancelled' | src/shared/types.ts:1231 | 60 |
 | PurchaseOrder | duplicateReceiptCorrection | 선택 | {operationId:string;originalOperationId:string;commandHash:string;originalHash:string;proofHash:string;kg:number;reason:string;cancelledAt:string} | src/shared/types.ts:1232 | 2 |
 | PurchaseOrder | confirmedByUser | 선택 | boolean | src/shared/types.ts:1233 | 1 |
 | PurchaseOrder | linkedStatementId | 선택 | string | src/shared/types.ts:1234 | 25 |
 | PurchaseOrder | cardNo | 선택 | string | src/shared/types.ts:1239 | 2 |
 | PurchaseOrder | linkedStatementAt | 선택 | string | src/shared/types.ts:1240 | 0 |
 | PurchaseOrder | createdAt | 필수 | string | src/shared/types.ts:1241 | 11 |
-| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1242 | 5 |
+| PurchaseOrder | invoicedAt | 선택 | string | src/shared/types.ts:1242 | 6 |
 | PurchaseOrder | receivedAt | 선택 | string | src/shared/types.ts:1243 | 7 |
 | PurchaseOrder | items | 선택 | PurchaseOrderItem[] | src/shared/types.ts:1244 | 16 |
 | PurchaseOrder | photoUrl | 선택 | string | src/shared/types.ts:1245 | 0 |
@@ -6604,7 +6604,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | ReturnItem | supply | 선택 | number | src/shared/types.ts:1435 | 0 |
 | ReturnItem | tax | 선택 | number | src/shared/types.ts:1436 | 0 |
 | ReturnItem | accountCode | 선택 | string | src/shared/types.ts:1437 | 0 |
-| ReturnRequest | id | 필수 | string | src/shared/types.ts:1441 | 18 |
+| ReturnRequest | id | 필수 | string | src/shared/types.ts:1441 | 19 |
 | ReturnRequest | companyId | 선택 | CompanyId | src/shared/types.ts:1442 | 5 |
 | ReturnRequest | orderId | 선택 | string | src/shared/types.ts:1443 | 2 |
 | ReturnRequest | partnerId | 필수 | string | src/shared/types.ts:1444 | 3 |
@@ -6673,7 +6673,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | CashAccount | note | 선택 | string | src/shared/types.ts:1553 | 0 |
 | CashAccount | confirmedBalances | 선택 | Array<{ date: string; balance: number; recordedAt: string; reason: string }> | src/shared/types.ts:1554 | 2 |
 | CashAccount | createdAt | 필수 | string | src/shared/types.ts:1555 | 0 |
-| CashEntry | id | 필수 | string | src/shared/types.ts:1559 | 77 |
+| CashEntry | id | 필수 | string | src/shared/types.ts:1559 | 80 |
 | CashEntry | balanceAdjustment | 선택 | { before: number; target: number; delta: number; reason: string; confirmedBalance?: boolean } | src/shared/types.ts:1561 | 15 |
 | CashEntry | linkedAccrualStatementId | 선택 | string | src/shared/types.ts:1563 | 2 |
 | CashEntry | loanId | 선택 | string | src/shared/types.ts:1565 | 9 |
@@ -6689,7 +6689,7 @@ JSON additionalModels/resolvedModels의 references는 같은 Program에서 원�
 | CashEntry | lines | 선택 | {     accountCode: string;     /**      * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.      *      * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면      * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서      * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도      * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**      */     amount: number;     /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */     side?: '차변' \| '대변';     note?: string;   }[] | src/shared/types.ts:1597 | 28 |
 | CashEntry | offsetOf | 선택 | { ar: string; ap: string } | src/shared/types.ts:1613 | 0 |
 | CashEntry | note | 선택 | string | src/shared/types.ts:1614 | 23 |
-| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1615 | 14 |
+| CashEntry | createdAt | 필수 | string | src/shared/types.ts:1615 | 15 |
 | CashEntry | createdBy | 선택 | string | src/shared/types.ts:1616 | 5 |
 | Settlement | id | 필수 | string | src/shared/types.ts:1622 | 9 |
 | Settlement | cashEntryId | 필수 | string | src/shared/types.ts:1623 | 17 |

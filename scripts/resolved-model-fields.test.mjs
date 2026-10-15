@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { resolvedModelFields, collectFieldReferences, referencesOfDeclarations } from './resolved-model-fields.mjs';
+import { resolvedModelFields, collectFieldReferences, referencesOfDeclarations, summarizeReferenceCoverage } from './resolved-model-fields.mjs';
 import { resolve } from 'node:path';
 
 function fixture(source) {
@@ -42,8 +42,8 @@ function indexed(source) {
   host.getSourceFile=(name,target,...rest)=>name===path?ts.createSourceFile(path,source,target,true):original(name,target,...rest);
   const program=ts.createProgram([path],{strict:true},host), file=program.getSourceFile(path), checker=program.getTypeChecker(), refs=new Map();
   const location=node=>`${node.getSourceFile().fileName}:${node.getStart()}`;
-  const visit=node=>{collectFieldReferences(checker,node,location,refs);ts.forEachChild(node,visit);};visit(file);visit(file);
-  return {read:name=>resolvedModelFields(checker,file.statements.find(node=>node.name?.text===name),location,refs),refs,file};
+  const coverage=new Map();const visit=node=>{collectFieldReferences(checker,node,location,refs,coverage);ts.forEachChild(node,visit);};visit(file);visit(file);
+  return {read:name=>resolvedModelFields(checker,file.statements.find(node=>node.name?.text===name),location,refs),refs,file,coverage:[...coverage.values()]};
 }
 describe('원선언에 연결된 정적 사용처',()=>{
   it('동명 모델을 분리하고 상속·Partial에는 같은 원선언 참조를 중복 없이 연결한다',()=>{
@@ -52,7 +52,7 @@ describe('원선언에 연결된 정적 사용처',()=>{
   });
   it('교차 필드의 복수 원선언을 합치되 불명확한 공용체·any·인덱스·구조분해는 추정하지 않는다',()=>{
     const {read}=indexed('interface A {kg:number} interface B {kg:number} type Joined=A&B; type Union=A|B; declare let j:Joined,u:Union,x:any,a:A; j.kg; u.kg; x.kg; a["kg"]; const {kg}=a;');
-    expect(read('Joined').fields[0].declarations).toHaveLength(2);expect(read('Joined').fields[0].references).toHaveLength(1);expect(read('A').fields[0].references).toEqual(read('Joined').fields[0].references);expect(read('Union').fields).toEqual([]);
+    expect(read('Joined').fields[0].declarations).toHaveLength(2);expect(read('Joined').fields[0].references).toHaveLength(3);expect(read('A').fields[0].references).toEqual(read('Joined').fields[0].references);expect(read('Union').fields).toEqual([]);
   });
   it('실제 PackRow와 RawInventoryState 원선언에 운영 소스의 참조를 연결한다',()=>{
     const files=['src/shared/packIndex.ts','src/shared/services/rawInventoryService.ts','functions/src/shared/rawInventoryCore.ts'].map(name=>resolve(name));
@@ -64,4 +64,23 @@ describe('원선언에 연결된 정적 사용처',()=>{
       expect(result.references.some(value=>value.endsWith(consumer))).toBe(true);const original=declaration.members.find(node=>node.name?.getText()===field);expect(referencesOfDeclarations([original],refs)).toEqual(result.references);
     }
   });
+});
+describe('고정 문자열과 객체 구조분해 사용처',()=>{
+ it('중첩 기본값이 다른 원선언이면 내부 연결을 제외하고 같은 원선언은 연결한다',()=>{
+  const {read,coverage}=indexed('interface I{kg:number} interface J{kg:number} interface A{child?:I} declare let a:A,j:J,i:I; const {child:{kg}=j}=a; const {child:{kg:same}=i}=a;');
+  expect(read('I').fields[0].references).toHaveLength(1);expect(read('J').fields[0].references).toHaveLength(0);expect(coverage.filter(row=>row.reason==='ambiguous-union')).toHaveLength(1);expect(read('A').fields[0].references).toHaveLength(2);
+ });
+ it('상세 목록은 새 구문만 기록하고 집계에는 점 접근을 포함하며 재방문 중복은 없다',()=>{
+  const {coverage}=indexed('interface A{kg:number} declare let a:A; a.kg;a["kg"];const {kg}=a;');
+  const summary=summarizeReferenceCoverage(new Map(coverage.map((row,index)=>[index,row])));
+  expect(summary.entries.map(row=>row.syntax)).toEqual(['element','binding']);expect(summary.counts).toEqual({'dot:connected':1,'element:connected':1,'binding:connected':1});expect(summary.entriesScope).toContain('counts');expect(summary.entries).toHaveLength(2);
+ });
+ it('선택적 문자열·이름변경·기본값·중첩 원선언과 기본식의 다른 모델을 분리한다',()=>{
+  const {read}=indexed('interface Inner {kg:number} interface A {child:Inner;kg:number} interface B {kg:number} declare let a:A,n:A|null,b:B; a.kg; a["kg"]; n?.["kg"]; const {kg:renamed=b.kg,child:{kg:nested}}=a;');
+  expect(read('A').fields.find(row=>row.field==='kg').references).toHaveLength(4);expect(read('A').fields.find(row=>row.field==='child').references).toHaveLength(1);expect(read('Inner').fields[0].references).toHaveLength(1);expect(read('B').fields[0].references).toHaveLength(1);
+ });
+ it('동적 키·배열·rest·any·unknown·다른 객체 공용체는 제외하고 사유를 중복 없이 남긴다',()=>{
+  const {read,coverage}=indexed('interface A {kg:number} interface B {kg:number} declare let a:A,u:A|B,x:any,y:unknown,arr:A[],key:string; a[key];u["kg"];x["kg"];y["kg"];arr[0];const {...rest}=a;const [first]=arr;');
+  expect(read('A').fields[0].references).toEqual([]);expect(new Set(coverage.map(row=>row.reason))).toEqual(new Set(['dynamic-key','ambiguous-union','any-receiver','unknown-receiver','array-index','rest-binding','array-binding']));expect(coverage).toHaveLength(7);expect(JSON.parse(JSON.stringify(coverage))).toEqual(coverage);
+ });
 });

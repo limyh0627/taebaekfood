@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { resolvedModelFields, collectFieldReferences, referencesOfDeclarations } from './resolved-model-fields.mjs';
+import { resolvedModelFields, collectFieldReferences, referencesOfDeclarations, summarizeReferenceCoverage } from './resolved-model-fields.mjs';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import assert from 'node:assert/strict';
@@ -36,11 +36,12 @@ for (const statement of source.statements) {
 }
 let unresolvedAccesses = 0;
 const modelReferences = new Map();
+const referenceCoverage = new Map();
 const unresolvedPropertyAccesses = [];
 for (const file of program.getSourceFiles()) {
   if (!fileNames.has(file.fileName.replaceAll('\\', '/').toLowerCase())) continue;
   const visit = node => {
-    collectFieldReferences(checker, node, location, modelReferences);
+    collectFieldReferences(checker, node, location, modelReferences, referenceCoverage, declaration=>fileNames.has(declaration.getSourceFile().fileName.replaceAll('\\','/').toLowerCase()));
     if (ts.isPropertyAccessExpression(node)) {
       const symbol = checker.getSymbolAtLocation(node.name);
       if (!symbol) {
@@ -60,7 +61,7 @@ for (const file of program.getSourceFiles()) {
   };
   visit(file);
 }
-for (const field of fields) field.references = [...new Set(field.references)].sort();
+for (const [declaration, field] of byDeclaration) field.references = [...new Set([...field.references,...referencesOfDeclarations([declaration],modelReferences)])].sort();
 const collections = [...readFileSync('src/shared/collections.ts', 'utf8').matchAll(/^\s+(\w+): '([^']+)',/gm)]
   .map(([, key, collection]) => ({ key, collection }));
 const registry = new Set(collections.map(entry => entry.collection));
@@ -257,6 +258,10 @@ if (process.argv.includes('--self-check')) {
   assert.equal(fields.length, byDeclaration.size);
   assert(pathCalls.filter(call => call.unresolved).every(call => call.depth === null));
   assert.equal(unresolvedPropertyAccesses.length, unresolvedAccesses);
+  const coverageSummary=summarizeReferenceCoverage(referenceCoverage);
+  assert(coverageSummary.entries.every(row=>row.syntax==='element'||row.syntax==='binding'));
+  assert.equal(coverageSummary.entries.length,[...referenceCoverage.values()].filter(row=>row.syntax!=='dot').length);
+  assert.equal(Object.values(coverageSummary.counts).reduce((sum,count)=>sum+count,0),referenceCoverage.size);
   assert(unresolvedPropertyAccesses.every(access => access.location && access.expression && access.receiverType));
   assert(pathCalls.some(call => call.resolutionKind === 'known-collection-dynamic-document'));
   assert([...dynamicWrappers.values()].some(wrapper => wrapper.name === 'fetchCollection' && wrapper.callers.length > 0));
@@ -281,6 +286,7 @@ if (process.argv.includes('--self-check')) {
 const report = { generatedAt: new Date().toISOString(), sourceFiles: files.length, unresolvedAccesses, unresolvedPropertyAccesses,
   scope: 'shared/types.ts direct interface properties; statically resolved property accesses only; no DB schema or zero-use deletion proof',
   collections, fields, additionalModels, resolvedModels,
+  referenceCoverage: summarizeReferenceCoverage(referenceCoverage),
   firestorePaths: { scope: 'Firestore SDK import/declaration or receiver type confirmed calls only; direct const aliases traced; dynamic expressions and unresolved parents retained; no runtime schema proof',
     calls: pathCalls, candidateCalls, outsideRegistry: [...new Set(pathCalls.flatMap(call => call.outsideRegistry))].sort(),
     dynamicWrappers: [...dynamicWrappers.values()],
@@ -308,7 +314,7 @@ writeFileSync('docs/field-dictionary.generated.md', [
   '| --- | --- | --- | --- | --- |',
   ...additionalModels.map(model => `| ${model.model} | ${model.declaration} | ${model.kind} | ${model.scope} | ${model.fields.map(field => field.field).join(', ').replaceAll('|', '\\|')} |`), '',
   '## 상속·공용 모델의 정적 필드 보완', '',
-  'JSON additionalModels/resolvedModels의 references는 같은 Program에서 원선언에 귀속된 정적 속성 사용처다. 상속·Partial·교차 모델에 반복되는 참조는 해당 모델에만 고유한 사용처가 아니며 모델 사이에서 합산하지 않는다. 기존 직접 선언 필드 통계와 references는 유지한다. 구조분해·문자열 인덱스·동적 접근·불명확한 공용체는 이번 사용처 연결에서 제외한다. 선언 Node는 JSON에 저장하지 않는다. 정적 모델과 사용처는 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.', '',
+  'JSON additionalModels/resolvedModels의 references는 같은 Program에서 원선언에 귀속된 정적 속성 사용처다. 상속·Partial·교차 모델에 반복되는 참조는 해당 모델에만 고유한 사용처가 아니며 모델 사이에서 합산하지 않는다. 직접 선언 수와 기존 점 접근 참조는 유지하며 고정 문자열 접근 및 객체 구조분해의 원선언 참조를 추가한다. 동적 키·배열·rest·불명확한 공용체는 추정하지 않는다. referenceCoverage는 구문별 연결 및 제외 사유를 별도로 기록하고 기존 unresolved 지표는 점 접근 symbol 미해석 의미를 유지한다. 선언 Node는 JSON에 저장하지 않는다. 정적 모델과 사용처는 실제 DB 필드 전체나 동적 쓰기를 증명하지 않는다.', '',
   '| 모델 | 선언 | 해석 범위 | 정적 필드 수 |',
   '| --- | --- | --- | --- |',
   ...resolvedModels.map(model => `| ${model.model} | ${model.declaration} | ${model.scope} | ${model.fields.length} |`), '',
