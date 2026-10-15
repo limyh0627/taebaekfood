@@ -67,3 +67,33 @@ it('낡은 전체 품목 사본은 새 revision으로 재고를 덮지 않는다
 it('일반 원가 metadata는 기존 fence와 stock을 보존한다',async()=>{state.docs.set('items/item',{companyId:'taebaek',stock:5,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});await updateItem('items','item',{cost:0});expect(state.docs.get('items/item')).toMatchObject({stock:5,cost:0,inventoryWriteRevision:4});});
 it('삭제와 연결문서는 함께 지우고 재생성은 영구 삭제 floor를 넘는다',async()=>{state.docs.set('items/item',{companyId:'taebaek',stock:5,inventoryWriterProtocolVersion:1,inventoryWriteRevision:4});state.docs.set('partner_item/link',{companyId:'taebaek'});await commitCompanyWrites([{kind:'delete',collection:'items',id:'item'},{kind:'delete',collection:'partner_item',id:'link'}]);expect(state.docs.has('items/item')).toBe(false);expect(state.docs.has('partner_item/link')).toBe(false);expect(state.docs.get('inventoryWriterDeletions/taebaek__item')).toMatchObject({deletionRevision:1,beforeRevision:4,lastDeletedItemRevision:4});await addItem('items',{id:'item',name:'재생성',stock:0});expect(state.docs.get('items/item')).toMatchObject({inventoryWriterProtocolVersion:1,inventoryWriteRevision:5});await commitCompanyWrites([{kind:'delete',collection:'items',id:'item'}]);expect(state.docs.get('inventoryWriterDeletions/taebaek__item')).toMatchObject({deletionRevision:2,beforeRevision:5});});
 it('주문 일반 저장은 서버 retirement 표시를 보존하고 변조를 거절한다',async()=>{state.docs.set('orders/order',{companyId:'taebaek',retirementId:'receipt',retirementClaimPending:true,inventoryWriterProtocolVersion:1,inventoryWriteRevision:3});await setDocument('orders','order',{memo:'수정'});expect(state.docs.get('orders/order')).toMatchObject({retirementId:'receipt',retirementClaimPending:true,inventoryWriteRevision:3});state.writes=[];await expect(updateItem('orders','order',{retirementClaimPending:false})).rejects.toThrow('서버');expect(state.writes).toEqual([]);});
+it.each(writers)('%s 폐기 필드는 해당 컬렉션에서만 제외하며 기존 문서를 삭제하지 않는다', async (_name, write) => {
+  const original = Object.freeze({ lotsAreTotal: true, 'lotsAreTotal.old': true, inUse: 7, 'inUse.old': 8, nested: { lotsAreTotal: true, inUse: 9 }, lotsAreTotals: 3, inUser: 4 });
+  await write('items', original);
+  expect(state.writes[0].data).not.toHaveProperty('lotsAreTotal');
+  expect(Object.keys(state.writes[0].data)).not.toContain('lotsAreTotal.old');
+  expect(state.writes[0].data).toMatchObject({ inUse: 7, 'inUse.old': 8, nested: original.nested, lotsAreTotals: 3, inUser: 4 });
+  state.writes=[];
+  await write('pallets', original);
+  expect(state.writes[0].data).not.toHaveProperty('inUse');
+  expect(Object.keys(state.writes[0].data)).not.toContain('inUse.old');
+  expect(state.writes[0].data).toMatchObject({ lotsAreTotal: true, 'lotsAreTotal.old': true, nested: original.nested });
+  state.writes=[];
+  await write('partners', original);
+  expect(state.writes[0].data).toMatchObject(original);
+  expect(original.inUse).toBe(7); expect(original.lotsAreTotal).toBe(true);
+});
+it('서비스 전처리는 공식 SDK 값만 보존하고 임의 클래스·일반 객체의 기존 처리를 유지한다', async () => {
+  const { Timestamp, GeoPoint, Bytes, arrayUnion, vector } = await import('firebase/firestore');
+  class Custom { keep = 1; absent = undefined; }
+  const timestamp = new Timestamp(123, 456789123), point = new GeoPoint(37, 127), bytes = Bytes.fromBase64String('AQID');
+  const date = new Date(123), sentinel = arrayUnion('값'), embedding = vector([1, 2]);
+  const original = { timestamp, point, bytes, date, sentinel, embedding, nested: { timestamp, absent: undefined }, values: [point], custom: new Custom(), nullPrototype: Object.assign(Object.create(null), { keep: 2, absent: undefined }) };
+  await updateItem('pallets', 'item', original);
+  const saved = state.writes[0].data;
+  for (const key of ['timestamp', 'point', 'bytes', 'date', 'sentinel', 'embedding'] as const) expect(saved[key]).toBe(original[key]);
+  expect(saved.nested.timestamp).toBe(timestamp); expect(saved.values[0]).toBe(point);
+  expect(saved.nested).not.toHaveProperty('absent'); expect(original.nested).toHaveProperty('absent');
+  expect(saved.custom).toEqual({ keep: 1 }); expect(saved.custom).not.toBeInstanceOf(Custom);
+  expect(saved.nullPrototype).toEqual({ keep: 2 }); expect(original.nullPrototype).toHaveProperty('absent');
+});

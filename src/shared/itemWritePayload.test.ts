@@ -32,3 +32,16 @@ it('품목 dotted 가격만 제외하고 다른 중첩값과 비슷한 필드는
   expect(itemWritePayload('partner_item', original)).toBe(original);
   expect(original['price.foo']).toBe(5);
 });
+it('폐기 필드는 컬렉션별 최상위와 점 표기만 제외하고 원문·SDK 값은 보존한다', () => {
+  const timestamp = Timestamp.fromMillis(123);
+  const sentinel = arrayUnion('합성');
+  const nested = Object.freeze({ lotsAreTotal: true, inUse: 2 });
+  const original = Object.freeze({ lotsAreTotal: true, 'lotsAreTotal.old': true, inUse: 2, 'inUse.old': 2, lotsAreTotals: 3, inUser: 4, nested, timestamp, sentinel });
+  const items = itemWritePayload('items', original);
+  expect(items).toEqual({ inUse: 2, 'inUse.old': 2, lotsAreTotals: 3, inUser: 4, nested, timestamp, sentinel });
+  const pallets = itemWritePayload('pallets', original);
+  expect(pallets).toEqual({ lotsAreTotal: true, 'lotsAreTotal.old': true, lotsAreTotals: 3, inUser: 4, nested, timestamp, sentinel });
+  for (const result of [items, pallets]) { expect(result.nested).toBe(nested); expect(result.timestamp).toBe(timestamp); expect(result.sentinel).toBe(sentinel); }
+  expect(itemWritePayload('partners', original)).toBe(original);
+  expect(original.lotsAreTotal).toBe(true); expect(original.inUse).toBe(2);
+});

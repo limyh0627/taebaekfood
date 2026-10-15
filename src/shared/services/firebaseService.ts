@@ -12,6 +12,7 @@ import {runFinancialOpening} from './financialOpeningCommands';
  * Phase 2 분리 시 shared/ 로 이동하고 각 앱에서 import합니다.
  */
 import {
+  Timestamp, DocumentReference, GeoPoint, Bytes, FieldValue, VectorValue,
   collection,
   onSnapshot,
   addDoc,
@@ -406,6 +407,11 @@ export const fetchDateRange = async <T extends { id: string }>(
 const stripUndefined = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(v => stripUndefined(v));
   if (obj !== null && typeof obj === 'object') {
+    // SDK 값은 내부 참조를 순회하면 손상되거나 순환한다. 공식 공개 클래스만 원문으로 전달한다.
+    const prototype = Object.getPrototypeOf(obj);
+    if (prototype !== Object.prototype && prototype !== null
+      && (obj instanceof Date || obj instanceof Timestamp || obj instanceof DocumentReference
+        || obj instanceof GeoPoint || obj instanceof Bytes || obj instanceof FieldValue || obj instanceof VectorValue)) return obj;
     return Object.fromEntries(
       Object.entries(obj)
         .filter(([, v]) => v !== undefined)
