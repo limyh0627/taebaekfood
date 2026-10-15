@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T04:44:03.548Z",
+  "generatedAt": "2026-10-15T04:53:30.493Z",
   "sourceFiles": 491,
   "unresolvedAccesses": 3410,
   "unresolvedPropertyAccesses": [
@@ -221960,8 +221960,8 @@
       }
     ],
     "counts": {
-      "dot:no-model-declaration": 30465,
-      "dot:connected": 26042,
+      "dot:no-model-declaration": 30464,
+      "dot:connected": 26046,
       "binding:connected": 1656,
       "binding:rest-binding": 53,
       "element:dynamic-key": 751,

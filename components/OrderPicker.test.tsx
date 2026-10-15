@@ -140,3 +140,9 @@ describe('미발행 주문의 품목·수량', () => {
     expect(screen.queryByRole('dialog', { name: '주문 카드' })).not.toBeInTheDocument();
   });
 });
+
+describe('전표 선택의 로컬 날짜 표시',()=>{
+ it.each([['2026-10-31T15:00:00.000Z','2026-11-01'],['2026-12-31T15:00:00.000Z','2027-01-01']])('월 경계 %s를 선택 전후 같은 날짜로 표시한다',(iso,day)=>{const p=props();p.data.activeOrders=[{...order,deliveryDate:iso}];const view=render(<OrderPicker {...p}/>);expect(screen.getByText('납품 '+day.slice(5))).toBeInTheDocument();p.pick.selectedClientId=partner.id;p.data.partnerOrders=p.data.activeOrders;view.rerender(<OrderPicker {...p}/>);expect(screen.getByText('납품: '+day)).toBeInTheDocument();expect(screen.getByText(day.slice(0,7))).toBeInTheDocument();expect(p.on.handleOrderClick).not.toHaveBeenCalled();});
+ it('확정과 예정 발주도 등록일의 로컬 월로 묶는다',()=>{const p=props(partner.id);p.mode.createMode='매입';p.data.confirmedOrders=[{id:'confirmed',partnerId:partner.id,createdAt:'2026-12-31T15:00:00Z',items:[]} as any];p.data.orderRequests=[{id:'request',partnerId:partner.id,createdAt:'2026-12-31T15:00:00Z',items:[]} as any];render(<OrderPicker {...p}/>);expect(screen.getByText('2027-01')).toBeInTheDocument();expect(screen.getByText('발주예정 2027-01')).toBeInTheDocument();expect(screen.getByText('입고: 2027-01-01')).toBeInTheDocument();expect(screen.getByText('발주: 2027-01-01')).toBeInTheDocument();});
+ it.each([['2026-09-09','2026-09-09'],['','미정'],['invalid','invalid']])('날짜전용·빈값·잘못된 날짜 %s의 기존 표시 경계를 유지한다',(value,label)=>{const p=props(partner.id);p.data.partnerOrders=[{...order,deliveryDate:value}];render(<OrderPicker {...p}/>);expect(screen.getByText('납품: '+label)).toBeInTheDocument();});
+});

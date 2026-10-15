@@ -42,3 +42,9 @@ describe('groupByMonth', () => {
     expect(g[0].month).toBe('2026-09');
   });
 });
+
+describe('월 표시와 원문 정렬 분리',()=>{
+ it('같은 로컬 날짜에서도 원문 시각 역순을 유지한다',()=>{const rows=[날('2026-10-31T15:00:00Z'),날('2026-10-31T22:00:00Z')];const g=groupByMonth(rows,날짜,()=> '2026-11-01');expect(g[0].month).toBe('2026-11');expect(g[0].rows.map(날짜)).toEqual([rows[1].d,rows[0].d]);});
+ it('세 번째 인자를 생략한 기존 호출과 명시한 호출은 같다',()=>{const rows=[날('2026-09-01'),날(''),날('invalid')];expect(groupByMonth(rows,날짜)).toEqual(groupByMonth(rows,날짜,날짜));});
+ it('월 콜백의 빈값은 미정이고 잘못된 문자열은 기존 절단 규칙을 따른다',()=>{expect(groupByMonth([날('a'),날('b')],날짜,r=>r.d==='a'?'':'invalid').find(g=>g.month==='미정')?.rows.map(row=>row.d)).toEqual(['a']);expect(groupByMonth([날('a')],날짜,()=> 'invalid')[0].month).toBe('invalid');});
+});

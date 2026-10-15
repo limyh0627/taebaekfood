@@ -13,12 +13,13 @@ export interface MonthGroup<T> {
   rows: T[];
 }
 
-export function groupByMonth<T>(rows: readonly T[], dateOf: (r: T) => string): MonthGroup<T>[] {
+export function groupByMonth<T>(rows: readonly T[], dateOf: (r: T) => string, monthDateOf: (r: T) => string = dateOf): MonthGroup<T>[] {
   const m = new Map<string, { key: string; rows: T[] }>();
   //  달 안 순서를 여기서 못 박는다 — 안 그러면 읽어온 순서를 그대로 쓴다
   const sorted = [...rows].sort((a, b) => (dateOf(b) || '').localeCompare(dateOf(a) || ''));
   for (const r of sorted) {
-    const key = (dateOf(r) || '').slice(0, 7) || '미정';
+    // 표시 월만 로컬 날짜로 바꿔도 같은 날의 시각 순서는 원문 기준으로 유지한다.
+    const key = (monthDateOf(r) || '').slice(0, 7) || '미정';
     if (!m.has(key)) m.set(key, { key, rows: [] });
     m.get(key)!.rows.push(r);
   }

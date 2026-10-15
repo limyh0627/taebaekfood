@@ -208,7 +208,7 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                     </div>
                   );
                   //  묶는 규칙은 [shared/groupByMonth](../src/shared/groupByMonth.ts) — 주문은 납기 기준
-                  const months = 월별묶기(partnerOrders, o => o.deliveryDate || o.createdAt || '');
+                  const months = 월별묶기(partnerOrders, o => o.deliveryDate || o.createdAt || '', o => dateOfLocal(o.deliveryDate || o.createdAt || ''));
                   return (
                     <div className="divide-y divide-slate-100">
                       {months.map(({month, rows})=>(
@@ -239,7 +239,7 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                                   <VoucherStatusDot issued={alreadyIssued} excluded={excluded} className="w-16 shrink-0" />
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="flex items-center gap-2">
-                                      <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
+                                      <span className="font-black text-slate-800">납품: {dateOfLocal(o.deliveryDate)||'미정'}</span>
                                       <button type="button" onClick={() => setPreviewOrder(o)}
                                         className="pointer-events-auto text-[10px] font-black text-blue-600 tabular-nums hover:text-blue-700 underline underline-offset-2"
                                         title="주문카드 보기">
@@ -322,8 +322,8 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
 
                   // 월별 그룹 (주문카드와 동일 구조)
                   //  발주는 등록일 기준 — 묶는 규칙은 주문과 같은 함수다
-                  const confMonths = 월별묶기(myConfirmed, po => po.createdAt || '');
-                  const reqMonths  = 월별묶기(myRequests,  po => po.createdAt || '');
+                  const confMonths = 월별묶기(myConfirmed, po => po.createdAt || '', po => dateOfLocal(po.createdAt));
+                  const reqMonths  = 월별묶기(myRequests,  po => po.createdAt || '', po => dateOfLocal(po.createdAt));
 
                   return (
                     <div className="divide-y divide-slate-100">
@@ -460,7 +460,7 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                         <div className="relative z-10 pointer-events-none text-left">
                         <div className="flex items-center gap-2">
                         <VoucherStatusDot issued={isVouchered(o)} excluded={excluded} className="w-16 shrink-0" />
-                        <span className="w-24 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
+                        <span className="w-24 shrink-0 text-slate-400">납품 {dateOfLocal(o.deliveryDate).slice(5,10) || '미정'}</span>
                         {/*  **배송지까지**(2026-09-16 사장님: "여기서도 주문카드처럼 배송지명으로 표시") */}
                         <span className="font-black text-slate-800 w-32 truncate shrink-0">{partnerLabel(cl?.name || o.partnerName, shipToOf(cl, o.shipToId)?.name) || o.partnerId}</span>
                         <OrderStatusDot status={o.status} className="w-20 shrink-0" />
