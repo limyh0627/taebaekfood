@@ -64,3 +64,16 @@ it('화면 회사의 BOM 가격과 포장표 환산은 상대 회사 전역으�
    expect.objectContaining({ itemId: 'loose', quantity: 24, price: 1000, unitsPerBox: 12, boxQuantity: 2 })]);
  expect(draft.totalAmount).toBe(64000);
 });
+
+it('새 주문은 선택 배송지와 거래처 기본값을 읽고 수동 선택을 우선한다',()=>{
+ const configured={...partner,defaultShipMethod:'화물' as const,shipTos:[{id:'a',name:'합성 배송지',defaultShipMethod:'수령' as const}]};
+ const input={...base,partner:configured,lines:[{itemId:'loose',quantity:1,isBoxUnit:false}]};
+ expect(buildNewOrderDraft(input).shipMethod).toBe('화물');
+ expect(buildNewOrderDraft({...input,shipToId:'a'}).shipMethod).toBe('수령');
+ expect(buildNewOrderDraft({...input,shipToId:'a',shipMethod:'배송'}).shipMethod).toBe('배송');
+ expect(buildNewOrderDraft({...input,shipToId:'missing'}).shipMethod).toBe('화물');
+});
+it('재고 생산은 거래처 배송 설정을 가져오지 않고 기존 기본값을 유지한다',()=>{
+ const draft=buildNewOrderDraft({...base,partner:{...partner,defaultShipMethod:'화물'},purpose:'stock-production',lines:[{itemId:'loose',quantity:1,isBoxUnit:false}]});
+ expect(draft.shipMethod).toBe('배송');
+});

@@ -1,0 +1,9 @@
+/** @vitest-environment jsdom */
+import React from 'react';import {render,screen,fireEvent} from '@testing-library/react';import {it,expect,vi} from 'vitest';
+import PartnerManager from './PartnerManager';import type {Partner} from '../types';
+const partner={id:'p',name:'가상 거래처',type:'일반',partnerType:'매출처',shipTos:[{id:'s',name:'기존 창고'}]} as Partner;
+const props={onAddClient:vi.fn(),onDeleteClient:vi.fn()};
+it('기존 미설정 표시는 무관한 거래처 수정 저장을 막지 않는다',()=>{const save=vi.fn();render(<PartnerManager {...props} partners={[partner]} onUpdateClient={save}/>);
+ expect(screen.getByText('기본 배송방식: 미설정')).toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'가상 거래처 수정'}));
+ expect(screen.getByLabelText('기본 배송방식')).toHaveValue('');fireEvent.change(screen.getByPlaceholderText('메모, 특이사항 등'),{target:{value:'연락 메모'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(save).toHaveBeenCalledWith(expect.objectContaining({note:'연락 메모'}));expect(save.mock.calls[0][0]).not.toHaveProperty('defaultShipMethod');});
+it('거래처와 배송지별 기본값을 각각 저장하고 매입처에는 거래처 설정을 보이지 않는다',()=>{const save=vi.fn();const view=render(<PartnerManager {...props} partners={[partner]} onUpdateClient={save}/>);fireEvent.click(screen.getByRole('button',{name:'가상 거래처 수정'}));fireEvent.change(screen.getByLabelText('기본 배송방식'),{target:{value:'수령'}});fireEvent.change(screen.getByLabelText('기존 창고 기본 배송방식'),{target:{value:'화물'}});fireEvent.click(screen.getByRole('button',{name:'저장'}));expect(save).toHaveBeenCalledWith(expect.objectContaining({defaultShipMethod:'수령',shipTos:[expect.objectContaining({defaultShipMethod:'화물'})]}));view.rerender(<PartnerManager {...props} partners={[{...partner,partnerType:'매입처'}]} onUpdateClient={save}/>);fireEvent.click(screen.getByRole('button',{name:'가상 거래처 수정'}));expect(screen.queryByLabelText('기본 배송방식')).not.toBeInTheDocument();});

@@ -5,7 +5,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { validateScopedExtract, catalogLine, historyLines, type HistoryOrder } from '../src/shared/orderExtract';
 import { defaultShipToId, activeShipTos, linksForShipTo } from '../src/shared/shipTo';
 import { ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag, Layers, CalendarDays, Sparkles } from 'lucide-react';
-import { Item, PartnerItem, Order, Partner, OrderPallet, PalletStock } from '../types';
+import { Item, PartnerItem, Order, Partner, OrderPallet, PalletStock, ShipMethod } from '../types';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
@@ -14,6 +14,7 @@ import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { resolveOrderInterpretationAlias,normalizeOrderInterpretationUnits,matchOrderInterpretationExpressions,type OrderExpressionConfirmation,type OrderInterpretationJsonObject } from '../src/shared/orderInterpretation';
 import type {OrderInterpretationRule} from '../src/shared/services/orderCopyService';
 import {buildOrderCopyScopedSources,classifyOrderCopyRow,mergeOrderCopyScopedResult,type OrderCopyScopeRow} from '../src/shared/orderCopyInterpretationScope';
+import { resolveDefaultShipMethod } from '../src/shared/partnerShipping';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 import type { OrderUnitInputs } from '../src/shared/orderUnits';
 import ModalShell from '../src/shared/components/ModalShell';
@@ -165,7 +166,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   //  AI 로 다시 읽는 중인가, 그리고 그 결과 한 줄(2026-09-15).
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<{ tone: 'good' | 'warn' | 'bad'; text: string } | null>(null);
-  const [isDelivery, setIsDelivery] = useState(false);
+  const [shipMethod, setShipMethod] = useState<ShipMethod>('배송');
+  const manualShippingTarget = useRef<string | null>(null);
+  const shippingTarget = JSON.stringify([selectedClientId, shipToId]);
+  useEffect(() => {
+    if (manualShippingTarget.current !== shippingTarget) { manualShippingTarget.current = null; setShipMethod(resolveDefaultShipMethod(selectedClient ?? undefined, shipToId)); }
+  }, [selectedClient, shipToId, shippingTarget]);
   const [orderDate, setOrderDate] = useState(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date()));
@@ -193,7 +199,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     invalidateAiRead();
     setSelectedClientId(client.id);
     setShipToId(defaultShipToId(client));
-    setIsDelivery(client.type === '택배' || client.type === '스마트스토어');
+    manualShippingTarget.current = null;
+    setShipMethod(resolveDefaultShipMethod(client, defaultShipToId(client)));
     setSearchTerm('');
     setStep('paste');
   };
@@ -204,7 +211,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setPasteText('');
     setParsedLines([]);
     setPallets([]);
-    setIsDelivery(false);
+    manualShippingTarget.current = null;
+    setShipMethod('배송');
     setSearchTerm('');
     setStep('partner');
   };
@@ -241,7 +249,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     companyId,actorUid,step, pasteText, client: selectedClient, shipToId: shipToId ?? null,
     catalog: productPool.map(item => ({ id: item.id, companyId: item.companyId ?? null,
       name: item.name, spec: item.spec, unit: item.unit, type: item.type })),
-    parsedLines, orderDate, deadline, orderNote, noteImportant, isDelivery, pallets, expressionInputs,
+    parsedLines, orderDate, deadline, orderNote, noteImportant, shipMethod, pallets, expressionInputs,
   });
   if (aiRequest.current.snapshot !== aiSnapshot) {
     aiRequest.current.snapshot = aiSnapshot;
@@ -370,7 +378,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         itemId: line.selectedProductId!, quantity: line.qty, isBoxUnit: line.isBox,
         orderedAs: line.orderedAs?.trim()??line.rawText,
       })),
-      orderDate, deliveryDate: deadline, shipToId,
+      orderDate, deliveryDate: deadline, shipToId, shipMethod,
       note: orderNote, noteImportant, pallets,
     });
     if (!draft.items.length) return;
@@ -435,12 +443,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             {selectedClient.region && <span className="text-[10px] font-medium text-slate-500">{selectedClient.region}</span>}
           </div>
           <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
-            <button type="button" onClick={() => { invalidateAiRead(); setIsDelivery(false); }} aria-pressed={!isDelivery}
-              className={`min-h-8 rounded-md px-2.5 text-[11px] font-bold transition-colors ${!isDelivery ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>일반</button>
-            <button type="button" onClick={() => { invalidateAiRead(); setIsDelivery(true); }} aria-pressed={isDelivery}
-              className={`flex min-h-8 items-center gap-1 rounded-md px-2.5 text-[11px] font-bold transition-colors ${isDelivery ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-              <Truck size={12} aria-hidden="true" />택배
-            </button>
+            {(['배송','화물','수령','택배'] as const).map(method => <button key={method} type="button" onClick={() => { invalidateAiRead(); manualShippingTarget.current = shippingTarget; setShipMethod(method); }} aria-pressed={shipMethod===method} className={`min-h-9 rounded-md px-2.5 text-[11px] font-bold ${shipMethod===method?'bg-slate-700 text-white':'text-slate-500 hover:bg-slate-100'}`}>{method}</button>)}
           </div>
         </div>
         {activeShipTos(selectedClient).length > 0 && (
@@ -450,7 +453,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
               {activeShipTos(selectedClient).map(st => (
                 <button key={st.id} type="button" onClick={() => { invalidateAiRead(); setShipToId(st.id); }} aria-pressed={shipToId === st.id}
                   className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                    shipToId === st.id ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100'}`}
+                    shipToId === st.id ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'}`}
                 >{st.name}</button>
               ))}
             </div>

@@ -1,7 +1,8 @@
 import { isGoodsItem } from './itemTaxonomy';
 import type { Item, Order, OrderPallet, OrderSource, Partner, PartnerItem, ShipMethod } from './types';
 import { boxDerivedUnitPrice, isBoxStockItem, unitsPerBoxOf, type OrderUnitInputs } from './orderUnits';
-import { defaultShipMethod, isDeliveryChannel } from './channelStyle';
+import { isDeliveryChannel } from './channelStyle';
+import { resolveDefaultShipMethod } from './partnerShipping';
 import { clampNote } from './orderNote';
 
 export interface NewOrderLineInput {
@@ -55,7 +56,7 @@ export function buildNewOrderDraft(input: {
     deliveryDate: new Date(input.deliveryDate).toISOString(), items,
     totalAmount: items.reduce((sum, line) => sum + line.price * line.quantity, 0),
     ...(note ? { note: clampNote(note), ...(input.noteImportant ? { noteImportant: true } : {}) } : {}),
-    source, shipMethod: input.shipMethod ?? defaultShipMethod(source), region: partner.region || '미지정',
+    source, shipMethod: input.shipMethod ?? resolveDefaultShipMethod(partner, input.shipToId, source), region: partner.region || '미지정',
     pallets: input.pallets.filter(pallet => pallet.quantity > 0),
     ...(isDeliveryChannel(source) ? { deliveryBoxes: [] } : {}),
   };

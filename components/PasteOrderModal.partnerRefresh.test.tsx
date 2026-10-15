@@ -40,3 +40,20 @@ it('선택한 거래처가 원본에서 삭제되면 이전 거래처로 주문�
   fireEvent.click(screen.getByRole('button', { name: /주문 생성/ }));
   expect(onSave).not.toHaveBeenCalled();
 });
+
+it('복사 주문은 배송지 기본과 네 방식 직접선택을 적용하고 원본 갱신에도 수동값·판매채널을 보존한다',async()=>{
+ const p={...partner,defaultShipMethod:'수령',shipTos:[{id:'s1',name:'첫 배송지',defaultShipMethod:'택배'},{id:'s2',name:'선택 배송지',defaultShipMethod:'화물'}]} as Partner;
+ const save=vi.fn().mockResolvedValue(undefined);const view=render(<PasteOrderModal {...props} partners={[p]} onSave={save}/>);choose();
+ expect(screen.getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');fireEvent.click(screen.getByRole('button',{name:'수령'}));
+ view.rerender(<PasteOrderModal {...props} partners={[{...p,defaultShipMethod:'배송',shipTos:p.shipTos!.map(s=>({...s,defaultShipMethod:'배송'}))}]} onSave={save}/>);expect(screen.getByRole('button',{name:'수령'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(screen.getByRole('button',{name:/선택 배송지/}));expect(screen.getByRole('button',{name:'배송'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(screen.getByRole('button',{name:'화물'}));fireEvent.change(paste(),{target:{value:'참깨 3개'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());expect(save.mock.calls[0][0]).toMatchObject({source:'일반',shipMethod:'화물',shipToId:'s2'});
+});
+it('배송지 없는 거래처 기본과 예전 스마트스토어 채널 fallback을 복사 주문에 적용한다',()=>{
+ const view=render(<PasteOrderModal {...props} partners={[{...partner,shipTos:[],defaultShipMethod:'수령'}]} onSave={vi.fn()}/>);choose();expect(screen.getByRole('button',{name:'수령'})).toHaveAttribute('aria-pressed','true');
+ view.rerender(<PasteOrderModal {...props} partners={[{...partner,shipTos:[],type:'스마트스토어'}]} onSave={vi.fn()}/>);expect(screen.getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');
+});
+
+it('복사 주문의 방식 수동선택 뒤 배송지 왕복은 각 기본을 적용하고 저장 실패 초안을 보존한다',async()=>{
+ const p={...partner,shipTos:[{id:'a',name:'합성 A',defaultShipMethod:'택배'},{id:'b',name:'합성 B',defaultShipMethod:'화물'}]} as Partner;const save=vi.fn().mockRejectedValue(new Error('합성 저장 오류'));vi.spyOn(console,'error').mockImplementation(()=>{});render(<PasteOrderModal {...props} partners={[p]} onSave={save}/>);choose();fireEvent.click(screen.getByRole('button',{name:'수령'}));fireEvent.click(screen.getByRole('button',{name:'합성 B'}));expect(screen.getByRole('button',{name:'화물'})).toHaveAttribute('aria-pressed','true');fireEvent.click(screen.getByRole('button',{name:'합성 A'}));expect(screen.getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');fireEvent.change(paste(),{target:{value:'참깨 3개'}});fireEvent.click(screen.getByRole('button',{name:'분석하기'}));fireEvent.click(screen.getByRole('button',{name:/주문 생성/}));await screen.findByText(/합성 저장 오류/);expect(screen.getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');expect(save.mock.calls[0][0]).toMatchObject({source:'일반',shipMethod:'택배'});
+});

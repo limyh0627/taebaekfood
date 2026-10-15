@@ -201,3 +201,27 @@ it('생산 거래처 필터는 복수 ID로 품목만 거르고 판매상대를 
 describe('주문 수량 입력 단위',()=>{
  it('낱개10은 포장환산12가 있어도10으로 저장하고 박스는 명시 선택한다',async()=>{setPackIndex(buildPackIndex([{item_id:'flavor',units_per_box:12}]));try{const save=vi.fn(async()=>{}),item={id:'flavor',name:'맛기름',spec:'1.8L',unit:'개',type:'goods',stock:500} as Item;render(<AddOrderModal items={[item]} orders={[]} partners={partners} partnerItems={[{id:'link-flavor',itemId:item.id,partnerId:'partner-1',Direction:'out',price:1000} as PartnerItem]} palletStocks={[]} onClose={vi.fn()} onSave={save}/>);fireEvent.click(screen.getAllByRole('button',{name:/가을식품/})[0]);fireEvent.change(screen.getByPlaceholderText('0'),{target:{value:'10'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenNthCalledWith(1,expect.objectContaining({items:[expect.objectContaining({itemId:'flavor',quantity:10})]}));fireEvent.click(screen.getByRole('button',{name:'맛기름 수량 박스'}));expect(screen.getByText('× 12개 = 120개')).toBeInTheDocument();await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenNthCalledWith(2,expect.objectContaining({items:[expect.objectContaining({itemId:'flavor',quantity:120,boxQuantity:10,isBoxUnit:true})]}));}finally{resetPackIndex();}});
 });
+
+describe('배송 기본값과 판매채널 분리',()=>{
+ const p={...partners[0],type:'일반',defaultShipMethod:'수령',shipTos:[{id:'one',name:'택배 창고',defaultShipMethod:'택배'},{id:'two',name:'화물 창고',defaultShipMethod:'화물'}]} as Partner;
+ const props={items,orders:[],partnerItems,palletStocks:[],onClose:vi.fn()};
+ it('배송지 기본→수동 선택→원본 갱신 보존→명시 배송지 전환 기본을 저장하고 채널은 유지한다',async()=>{
+ const save=vi.fn().mockResolvedValue(undefined);const view=render(<AddOrderModal {...props} partners={[p]} onSave={save}/>);fireEvent.click(screen.getByRole('button',{name:/가을식품/}));
+ const method=()=>within(screen.getByRole('group',{name:'출고 방식'}));expect(method().getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(method().getByRole('button',{name:'수령'}));view.rerender(<AddOrderModal {...props} partners={[{...p,defaultShipMethod:'배송',shipTos:p.shipTos!.map(s=>({...s,defaultShipMethod:'배송'}))}]} onSave={save}/>);
+ expect(method().getByRole('button',{name:'수령'})).toHaveAttribute('aria-pressed','true');fireEvent.click(screen.getByRole('button',{name:'화물 창고'}));expect(method().getByRole('button',{name:'배송'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(method().getByRole('button',{name:'택배'}));fireEvent.change(screen.getAllByPlaceholderText('0')[0],{target:{value:'2'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));
+ expect(save).toHaveBeenCalledWith(expect.objectContaining({source:'일반',shipMethod:'택배',shipToId:'two',items:[expect.objectContaining({quantity:2})]}));
+ });
+ it('거래처 기본과 기존 채널 fallback을 사용하고 원본의 자동 기본 변경은 수동 전까지 반영한다',()=>{
+ const view=render(<AddOrderModal {...props} partners={[{...p,shipTos:[]}]} onSave={vi.fn()}/>);fireEvent.click(screen.getByRole('button',{name:/가을식품/}));const method=()=>within(screen.getByRole('group',{name:'출고 방식'}));expect(method().getByRole('button',{name:'수령'})).toHaveAttribute('aria-pressed','true');view.rerender(<AddOrderModal {...props} partners={[{...p,type:'스마트스토어',defaultShipMethod:undefined,shipTos:[]}]} onSave={vi.fn()}/>);
+ // 선택한 판매채널은 원본 재조회로 바꾸지 않는다. 미설정 기본은 주문 채널을 따른다.
+ expect(method().getByRole('button',{name:'배송'})).toHaveAttribute('aria-pressed','true');
+ });
+});
+
+it('수동 방식을 고른 뒤 배송지 A→B→A로 전환하면 각 기본을 새로 적용하고 저장 실패 시 선택을 보존한다',async()=>{
+ const p={...partners[0],shipTos:[{id:'a',name:'합성 A',defaultShipMethod:'택배'},{id:'b',name:'합성 B',defaultShipMethod:'화물'}]} as Partner;
+ const save=vi.fn().mockRejectedValue(new Error('합성 저장 오류'));vi.spyOn(window,'alert').mockImplementation(()=>{});vi.spyOn(console,'error').mockImplementation(()=>{});
+ render(<AddOrderModal items={items} partners={[p]} orders={[]} partnerItems={partnerItems} palletStocks={[]} onClose={vi.fn()} onSave={save}/>);fireEvent.click(screen.getByRole('button',{name:/가을식품/}));const method=()=>within(screen.getByRole('group',{name:'출고 방식'}));fireEvent.click(method().getByRole('button',{name:'수령'}));fireEvent.click(screen.getByRole('button',{name:'합성 B'}));expect(method().getByRole('button',{name:'화물'})).toHaveAttribute('aria-pressed','true');fireEvent.click(screen.getByRole('button',{name:'합성 A'}));expect(method().getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');fireEvent.change(screen.getAllByPlaceholderText('0')[0],{target:{value:'2'}});await act(async()=>fireEvent.click(screen.getByRole('button',{name:'주문 생성 완료'})));expect(save).toHaveBeenCalledOnce();expect(method().getByRole('button',{name:'택배'})).toHaveAttribute('aria-pressed','true');expect(screen.getAllByPlaceholderText('0')[0]).toHaveValue('2');
+});

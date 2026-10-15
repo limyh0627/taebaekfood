@@ -106,6 +106,8 @@ export interface PurchaseItem {
  * 판정·표시는 [shipTo.ts](shipTo.ts) 한 곳이 한다.
  */
 export interface ShipTo {
+  /** 이 배송지에서 주문을 시작할 때 쓰는 기본 방식. 미설정은 거래처 설정을 따른다. */
+  defaultShipMethod?: ShipMethod;
   /** 거래처 안에서만 고유하면 된다. 옮길 때 **옛 거래처 id 를 그대로** 쓴다 — 주문이 그걸 가리킨다. */
   id: string;
   name: string;
@@ -148,6 +150,8 @@ export interface PartnerItem {
 
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
 export interface Partner {
+  /** 새 주문의 기본 배송방식. 과거 주문의 선택값을 바꾸지는 않는다. */
+  defaultShipMethod?: ShipMethod;
   /**
    * **배송지** — 한 거래처 안에서 물건이 갈라져 가는 곳(포천·쿠팡 물류센터·네이버 물류센터).
    *

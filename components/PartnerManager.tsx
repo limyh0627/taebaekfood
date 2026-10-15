@@ -23,6 +23,8 @@ import { Partner, PartnerChannel, PartnerType } from '../types';
 import AddPartnerModal from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+import { isShipMethod, isShippingPartner } from '../src/shared/partnerShipping';
+import type { ShipMethod } from '../src/shared/types';
 import ShipToEditor from '../src/shared/components/ShipToEditor';
 import ModalShell from '../src/shared/components/ModalShell';
 
@@ -188,6 +190,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-slate-400">
+                          {isShippingPartner(partner.partnerType) && <div className="text-[11px] text-slate-500">기본 배송방식: {isShipMethod(partner.defaultShipMethod) ? partner.defaultShipMethod : '미설정'}</div>}
                           {partner.ownerName && <div className="flex items-center text-[11px] font-bold text-slate-500">{partner.ownerName}</div>}
                           {partner.bizNo && <div className="text-[11px]">{partner.bizNo}</div>}
                           {(partner.tel || partner.mobile || partner.phone) && <div className="flex items-center text-[11px]"><Phone size={11} className="mr-1" />{partner.tel || partner.mobile || partner.phone}</div>}
@@ -206,7 +209,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                       </div>
                     </div>
                     <button
-                      onClick={() => setEditForm({ ...partner })}
+                      aria-label={partner.name+' 수정'} onClick={() => setEditForm({ ...partner })}
                       className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0"
                     >
                       <Edit size={15} />
@@ -367,6 +370,11 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                 )}
               </div>
 
+              {isShippingPartner(editForm.partnerType) && <label className="block text-xs font-bold text-slate-600">기본 배송방식
+                <select aria-label="기본 배송방식" value={isShipMethod(editForm.defaultShipMethod)?editForm.defaultShipMethod:''} onChange={e=>setEditForm(prev=>prev?{...prev,defaultShipMethod:e.target.value as ShipMethod}:null)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <option value="" disabled>미설정 (기존 채널 기본 사용)</option>{(['배송','화물','수령','택배'] as const).map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>}
               {/* 주소 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1"><MapPin size={11} />주소</label>
@@ -400,6 +408,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
               {/*  **배송지**(2026-09-16 사장님: "일반기능으로 넣고") — 한 거래처가 여러 곳으로
                    나갈 때 답니다. 안 단 거래처는 화면이 하나도 안 바뀝니다. */}
               <ShipToEditor
+                shippingEnabled={isShippingPartner(editForm.partnerType)}
                 value={editForm.shipTos ?? []}
                 onChange={next => setEditForm(prev => prev ? { ...prev, shipTos: next } : null)}
               />

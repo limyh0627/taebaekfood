@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
 import { Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
-import { Partner, PartnerChannel, PartnerType } from '../types';
+import { Partner, PartnerChannel, PartnerType, ShipMethod } from '../types';
 import { channelStyle, CHANNELS } from '../src/shared/channelStyle';
+import { isShippingPartner, isShipMethod } from '../src/shared/partnerShipping';
 import ModalShell from '../src/shared/components/ModalShell';
 
 declare global {
@@ -25,8 +26,11 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
     address: '',
     addressDetail: '',
     note: '',
-    partnerType: '매출처' as PartnerType
+    partnerType: '매출처' as PartnerType,
+    defaultShipMethod: '' as ShipMethod | ''
   });
+
+  const [shippingError, setShippingError] = useState('');
 
   const openAddressSearch = () => {
     new window.daum.Postcode({
@@ -43,6 +47,10 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) return;
+    if (isShippingPartner(formData.partnerType) && !isShipMethod(formData.defaultShipMethod)) {
+      setShippingError('기본 배송방식을 선택해 주세요.');
+      return;
+    }
 
     const newClient: Partner = {
       id: `c-${Date.now()}`,
@@ -53,7 +61,8 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
       address: formData.address,
       addressDetail: formData.addressDetail,
       note: formData.note,
-      partnerType: formData.partnerType
+      partnerType: formData.partnerType,
+      ...(isShippingPartner(formData.partnerType) && isShipMethod(formData.defaultShipMethod) ? { defaultShipMethod: formData.defaultShipMethod } : {})
     };
 
     onSave(newClient);
@@ -173,6 +182,12 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
             )}
           </div>
 
+          {isShippingPartner(formData.partnerType) && <label className="block space-y-2 text-sm font-bold text-slate-600">기본 배송방식 (필수)
+            <select aria-label="기본 배송방식" required value={formData.defaultShipMethod} onChange={e => { setShippingError(''); setFormData({...formData, defaultShipMethod:e.target.value as ShipMethod | ''}); }} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <option value="">선택해 주세요</option>{(['배송','화물','수령','택배'] as const).map(method => <option key={method} value={method}>{method}</option>)}
+            </select>
+            {shippingError && <span role="alert" className="block text-xs text-slate-600">{shippingError}</span>}
+          </label>}
           {(formData.partnerType === '매출처' || formData.partnerType === '매출+매입처') && (
           <div className="space-y-4">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">

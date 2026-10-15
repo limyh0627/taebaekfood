@@ -12,7 +12,7 @@ import { VOLUME_CHIP_COLORS, catOrder, renderColoredName } from '../src/shared/p
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
-import { channelStyle, isDeliveryChannel, defaultShipMethod } from '../src/shared/channelStyle';
+import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 import { isSmartStoreItem } from '../src/shared/partnerPrice';
 import { isActive } from '../src/shared/statementOrders';
@@ -22,6 +22,7 @@ import OrderStatusDot from '../src/shared/components/OrderStatusDot';
 import OrderItemLines from '../src/shared/components/OrderItemLines';
 import ModalActionFooter from '../src/shared/components/ModalActionFooter';
 import ModalShell from '../src/shared/components/ModalShell';
+import { resolveDefaultShipMethod } from '../src/shared/partnerShipping';
 import { buildNewOrderDraft } from '../src/shared/newOrderDraft';
 
 interface AddOrderModalProps {
@@ -66,6 +67,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
   const submaterials = _submaterials ?? items.filter(i => i.type !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const savingRef = useRef(false);
 
 
@@ -103,14 +105,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
     return day === 6 ? addDays(base, 2) : day === 0 ? addDays(base, 1) : base;
   });
   const [source, setSource] = useState<OrderSource>('일반');
-  /*  **배송방식은 판매 채널과 다른 축이다**(2026-09-12 사장님). 거래처를 고르면 그 채널의
-      기본값으로 맞춰 주고(택배·스마트스토어면 택배), 그 뒤로는 사람이 고른다. */
+  // 판매채널은 유지하고 배송지·거래처 기본값은 직접 선택하기 전까지만 반영한다.
   const [shipMethod, setShipMethod] = useState<ShipMethod>('배송');
   const [pallets, setPallets] = useState<OrderPallet[]>([]);
   const [showPallets, setShowPallets] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [noteImportant, setNoteImportant] = useState(false);
-  const [isDelivery, setIsDelivery] = useState(false);
+  const manualShippingTarget = useRef<string | null>(null);
+  const shippingTarget = JSON.stringify([selectedPartnerId, shipToId]);
+  useEffect(() => {
+    if (manualShippingTarget.current !== shippingTarget) { manualShippingTarget.current = null; setShipMethod(resolveDefaultShipMethod(selectedPartner ?? undefined, shipToId, source)); }
+  }, [selectedPartner, shipToId, source, shippingTarget]);
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(() => new Set());
 
   // 거래처 이름이 같아도 주문은 섞지 않는다 — 연결의 근거는 partnerId 하나다.
@@ -140,10 +145,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
     setSelectedPartnerId(partner.id);
     setShipToId(defaultShipToId(partner));
     setSource(partner.type as OrderSource);
-    const 기본 = defaultShipMethod(partner.type);
+    manualShippingTarget.current = null;
+    const 기본 = resolveDefaultShipMethod(partner, defaultShipToId(partner));
     setShipMethod(기본);
-    setIsDelivery(기본 === '택배');
-    setIsDelivery(partner.type === '택배' || partner.type === '스마트스토어');
     setSearchTerm('');
   };
 
@@ -156,7 +160,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
     setNoteImportant(false);
     setSource('일반');
     setShipMethod('배송');
-    setIsDelivery(false);
     setProductCategoryFilter('전체');
     setVolumeFilter(null);
     setSearchTerm('');
@@ -495,8 +498,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
           const onHand = boxes.filter(b => (b.stock ?? 0) > 0);
           return (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-2">
-              <p className="text-[10px] font-black text-amber-700">낱개 재고 {full.stock ?? 0}개 · {shortBy}개 부족</p>
-              <p className="text-[10px] font-bold text-amber-600/80 mt-0.5">
+              <p className="text-[10px] font-black text-slate-600">낱개 재고 {full.stock ?? 0}개 · {shortBy}개 부족</p>
+              <p className="text-[10px] font-bold text-slate-500/80 mt-0.5">
                 {onHand.length > 0
                   ? `재고관리에서 개봉하세요 — ${onHand.map(b => `${b.name} ${b.stock}박스`).join(', ')}`
                   : '깔 박스 재고도 없습니다'}
@@ -516,15 +519,18 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
     const draft = buildNewOrderDraft({
       partner: stockProduction ? undefined : selectedPartner!, purpose: stockProduction ? 'stock-production' : undefined, items, partnerItems: partnerOut, lines: selectedItems,
       orderDate, deliveryDate: stockProduction ? orderDate : deadline, shipToId: stockProduction ? undefined : shipToId,
-      source: (isDelivery && source === '일반') ? '택배' : source,
+      source,
       shipMethod, note: orderNote, noteImportant, pallets, orderUnitInputs,
     });
     if (!draft.items.length) return;
 
     savingRef.current = true;
     setIsSaving(true);
+    setSaveError('');
     try {
       await onSave(draft);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '주문을 저장하지 못했습니다.');
     } finally {
       savingRef.current = false;
       setIsSaving(false);
@@ -533,6 +539,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
 
   return (
     <ModalShell title={stockProduction ? '재고 만들기' : '주문 등록 · 직접 선택'} onClose={() => { if (!savingRef.current) onClose(); }} bodyClassName="!p-0">
+        {saveError && <p role="alert" className="mx-4 mt-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">저장하지 못했습니다: {saveError} 입력한 내용은 유지했습니다.</p>}
         {onBack && <button type="button" onClick={() => { if (!savingRef.current) onBack(); }} className="mx-4 mt-4 text-xs font-bold text-slate-500 hover:text-indigo-600">← 주문 입력 방식 선택</button>}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 custom-scrollbar">
@@ -628,15 +635,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
                     {selectedPartner.region && <p className="text-[10px] font-medium text-indigo-500">{selectedPartner.region}</p>}
                   </div>
                 </div>
-                {/*  **배송지 고르개**(2026-09-16 사장님: "거래처 고르개에 해피유통만 뜨고
-                     토글로 세 개 중에 하나 고르게 하면 안되나? 디폴트는 포천이고").
-                     배송지를 쓰는 거래처에만 뜬다 — 대부분은 안 쓰므로 화면이 안 바뀐다.
-
-                     **딱지처럼 크고 색 있게 둔다.** 예전엔 거래처 이름에 `(쿠팡)`이 박혀 있어
-                     잘못 고르면 눈에 띄었는데, 토글로 옮기면 그 브레이크가 사라진다.
-                     작은 회색 토글이면 기본값(포천)인 채로 쿠팡 주문을 넣어 버린다. */}
+                {/* 배송지를 명시적으로 바꾸면 그 배송지 기본방식으로 시작한다. */}
                 {activeShipTos(selectedPartner).length > 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                     <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">배송지</p>
                     <div className="flex flex-wrap gap-1.5">
                       {activeShipTos(selectedPartner).map(s => (
@@ -647,8 +648,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
                           aria-pressed={shipToId === s.id}
                           className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
                             shipToId === s.id
-                              ? 'bg-amber-500 text-white shadow-sm'
-                              : 'bg-white text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100'}`}
+                              ? 'bg-slate-700 text-white'
+                              : 'bg-white text-amber-700 ring-1 ring-slate-200 hover:bg-slate-100'}`}
                         >{s.name}</button>
                       ))}
                     </div>
@@ -665,14 +666,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
                   <User size={14} aria-hidden="true" />
                   거래처 다시 선택
                 </button>
-                {/*  **출고 방식**(2026-09-12 사장님: "일반택배 거래처 다시선택 밑으로 빼고
-                     배송방식이라고 달고 배송 직접수령 택배 세개로 둬봐" → 이름은 뒤이어
-                     "배송 방식이 아니라 출고 방식으로 통일해라").
-                     거래처 이름 옆에 작게 붙어 있어서 무엇을 고르는 칸인지 안 읽혔다.
-                     **판매 채널과는 다른 축이다**(사장님: "일반 스마트스토어랑 택배는 판매 채널이고
-                     스마트스토어랑 택배는 배송방식이 기본이 택배"). 채널은 거래처가 들고 있고,
-                     배송방식은 주문마다 고른다 — 다만 택배·스마트스토어 거래처면 택배로 미리 맞춘다.
-                     택배일 때만 `deliveryBoxes` 를 만든다(송장·박스 수를 그때부터 센다). */}
+                {/* 판매채널과 출고방식을 따로 저장해 택배 선택으로 채널이 바뀌지 않게 한다. */}
                 <div>
                   <p className="mb-1.5 text-[11px] font-black text-slate-600">출고 방식</p>
                   <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5" role="group" aria-label="출고 방식">
@@ -688,9 +682,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ mode = 'order', orderUnit
                         <button
                           key={칸.key} type="button"
                           onClick={() => {
+                            manualShippingTarget.current = shippingTarget;
                             setShipMethod(칸.key);
-                            //  택배로 나갈 때만 송장·박스 수를 센다
-                            setIsDelivery(칸.key === '택배');
                           }}
                           aria-pressed={골랐나}
                           className={`flex min-h-9 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-bold transition-colors ${골랐나 ? `${칸.색} text-white` : 'text-slate-500 hover:bg-slate-100'}`}
